@@ -1,5 +1,4 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
@@ -292,7 +291,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			!isLoading
 		) {
 			const nameValue = nameRef.current.value.trim();
-			const clientValue = clientRef.current.value.trim();
+			// const clientValue = clientRef.current.value.trim();
 			const descValue = descRef.current.value.trim();
 			const priorityValue = priorityRef.current.value.trim();
 			const generationWindowValue = generationWindowRef.current.value.trim();

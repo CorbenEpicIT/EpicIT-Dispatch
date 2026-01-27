@@ -10,13 +10,7 @@ import type {
 	LineItemType,
 	DiscountType,
 } from "./common";
-import {
-	PriorityValues,
-	PriorityLabels,
-	PriorityColors,
-	LineItemTypeValues,
-	DiscountTypeValues,
-} from "./common";
+import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
 
 // ============================================================================
 // QUOTE-SPECIFIC TYPES

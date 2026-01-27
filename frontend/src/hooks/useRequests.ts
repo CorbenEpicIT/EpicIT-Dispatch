@@ -129,7 +129,7 @@ export const useDeleteRequestMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ id }: { id: string; clientId?: string }) =>
 			requestApi.deleteRequest(id),
-		onSuccess: (data, variables) => {
+		onSuccess: (_, variables) => {
 			const { id: deletedId, clientId } = variables;
 
 			// Invalidate all requests

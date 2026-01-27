@@ -1,6 +1,5 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
 import {

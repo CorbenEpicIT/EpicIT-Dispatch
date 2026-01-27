@@ -1,4 +1,4 @@
-interface DashboardPanelProps {}
+// interface DashboardPanelProps {}
 
 const DashboardPanel = () => {
 	return <div>DashboardPanel</div>;

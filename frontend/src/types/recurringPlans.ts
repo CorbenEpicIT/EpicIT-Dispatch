@@ -1,14 +1,8 @@
 import z from "zod";
-import type { ClientSummary, ClientWithPrimaryContact } from "./clients";
+import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
-import type {
-	Priority,
-	BaseNote,
-	LineItemType,
-	DispatcherReference,
-	TechReference,
-} from "./common";
-import { PriorityValues, PriorityLabels, PriorityColors, LineItemTypeValues } from "./common";
+import type { Priority, BaseNote, LineItemType, DispatcherReference } from "./common";
+import { PriorityValues, LineItemTypeValues } from "./common";
 import type { JobSummary, VisitReference } from "./jobs";
 
 // ============================================================================

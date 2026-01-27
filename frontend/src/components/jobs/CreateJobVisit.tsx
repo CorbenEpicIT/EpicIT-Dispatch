@@ -1,5 +1,4 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
 import { useState, useEffect, useRef } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
@@ -50,7 +49,6 @@ const CreateJobVisit = ({
 	const descRef = useRef<HTMLTextAreaElement>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
-	const [currentSection, setCurrentSection] = useState(0);
 	const [startDate, setStartDate] = useState<Date>(new Date());
 	const [selectedTechIds, setSelectedTechIds] = useState<string[]>([]);
 

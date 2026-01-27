@@ -10,7 +10,6 @@ import type {
 	LineItemSource,
 	PricingBreakdown,
 	ExecutionTotals,
-	DiscountType,
 } from "./common";
 import {
 	PriorityValues,
@@ -283,6 +282,7 @@ export interface JobVisit extends PricingBreakdown {
 	finish_constraint: FinishConstraint;
 	scheduled_start_at: Date | string;
 	scheduled_end_at: Date | string;
+	schedule_type: string;
 	arrival_time?: string | null; // HH:MM
 	arrival_window_start?: string | null; // HH:MM
 	arrival_window_end?: string | null; // HH:MM

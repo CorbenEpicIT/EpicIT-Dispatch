@@ -12,7 +12,11 @@ interface CreateTechnicianProps {
 	createTechnician: (input: CreateTechnicianInput) => Promise<string>;
 }
 
-const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: CreateTechnicianProps) => {
+const CreateTechnician = ({
+	isModalOpen,
+	setIsModalOpen,
+	createTechnician,
+}: CreateTechnicianProps) => {
 	const nameRef = useRef<HTMLInputElement>(null);
 	const emailRef = useRef<HTMLInputElement>(null);
 	const phoneRef = useRef<HTMLInputElement>(null);
@@ -84,7 +88,12 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 				disabled={isLoading}
 				ref={nameRef}
 			/>
-			{nameErrors && nameErrors.map((err) => <h3 key={err.message} className="my-1 text-red-300">{err.message}</h3>)}
+			{nameErrors &&
+				nameErrors.map((err) => (
+					<h3 key={err.message} className="my-1 text-red-300">
+						{err.message}
+					</h3>
+				))}
 
 			<p className="mb-1 mt-3 hover:color-accent">Email</p>
 			<input
@@ -94,7 +103,12 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 				disabled={isLoading}
 				ref={emailRef}
 			/>
-			{emailErrors && emailErrors.map((err) => <h3 key={err.message} className="my-1 text-red-300">{err.message}</h3>)}
+			{emailErrors &&
+				emailErrors.map((err) => (
+					<h3 key={err.message} className="my-1 text-red-300">
+						{err.message}
+					</h3>
+				))}
 
 			<p className="mb-1 mt-3 hover:color-accent">Phone</p>
 			<input
@@ -104,7 +118,12 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 				disabled={isLoading}
 				ref={phoneRef}
 			/>
-			{phoneErrors && phoneErrors.map((err) => <h3 key={err.message} className="my-1 text-red-300">{err.message}</h3>)}
+			{phoneErrors &&
+				phoneErrors.map((err) => (
+					<h3 key={err.message} className="my-1 text-red-300">
+						{err.message}
+					</h3>
+				))}
 
 			<p className="mb-1 mt-3 hover:color-accent">Password</p>
 			<input
@@ -114,7 +133,12 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 				disabled={isLoading}
 				ref={passwordRef}
 			/>
-			{passwordErrors && passwordErrors.map((err) => <h3 key={err.message} className="my-1 text-red-300">{err.message}</h3>)}
+			{passwordErrors &&
+				passwordErrors.map((err) => (
+					<h3 key={err.message} className="my-1 text-red-300">
+						{err.message}
+					</h3>
+				))}
 
 			<p className="mb-1 mt-3 hover:color-accent">Title</p>
 			<input
@@ -124,7 +148,12 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 				disabled={isLoading}
 				ref={titleRef}
 			/>
-			{titleErrors && titleErrors.map((err) => <h3 key={err.message} className="my-1 text-red-300">{err.message}</h3>)}
+			{titleErrors &&
+				titleErrors.map((err) => (
+					<h3 key={err.message} className="my-1 text-red-300">
+						{err.message}
+					</h3>
+				))}
 
 			<p className="mb-1 mt-3 hover:color-accent">Description</p>
 			<textarea
@@ -151,10 +180,7 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 				</div>
 				<div>
 					<p className="mb-1 hover:color-accent">Hire Date</p>
-					<DatePicker 
-						value={hireDate}
-						onChange={setHireDate}
-					/>
+					<DatePicker value={hireDate} onChange={setHireDate} />
 				</div>
 			</div>
 
@@ -182,10 +208,10 @@ const CreateTechnician = ({ isModalOpen, setIsModalOpen, createTechnician }: Cre
 	);
 
 	return (
-		<FullPopup 
-			content={content} 
-			isModalOpen={isModalOpen} 
-			onClose={() => setIsModalOpen(false)} 
+		<FullPopup
+			content={content}
+			isModalOpen={isModalOpen}
+			onClose={() => setIsModalOpen(false)}
 		/>
 	);
 };

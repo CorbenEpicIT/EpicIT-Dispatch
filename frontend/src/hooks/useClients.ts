@@ -13,7 +13,6 @@ import type {
 	ClientContactLink,
 	CreateContactInput,
 	UpdateContactInput,
-	LinkContactInput,
 	UpdateClientContactInput,
 	ClientNote,
 	CreateClientNoteInput,
@@ -99,7 +98,7 @@ export const useDeleteClientMutation = (): UseMutationResult<
 
 	return useMutation({
 		mutationFn: clientApi.deleteClient,
-		onSuccess: (data, deletedId) => {
+		onSuccess: (_, deletedId) => {
 			queryClient.invalidateQueries({ queryKey: ["clients"] });
 			queryClient.removeQueries({ queryKey: ["clients", deletedId] });
 
@@ -261,7 +260,7 @@ export const useDeleteContactMutation = (): UseMutationResult<
 
 	return useMutation({
 		mutationFn: clientApi.deleteContact,
-		onSuccess: (data, deletedContactId) => {
+		onSuccess: (_, deletedContactId) => {
 			queryClient.invalidateQueries({ queryKey: ["contacts"] });
 			queryClient.removeQueries({ queryKey: ["contacts", deletedContactId] });
 
