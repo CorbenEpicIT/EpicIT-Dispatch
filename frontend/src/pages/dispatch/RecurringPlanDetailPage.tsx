@@ -263,7 +263,10 @@ export default function RecurringPlanDetailPage() {
 	const handleGenerateVisit = async (occurrenceId: string) => {
 		if (!jobContainerId) return;
 		try {
-			const result = await generateVisitMutation.mutateAsync(occurrenceId);
+			const result = await generateVisitMutation.mutateAsync({
+				occurrenceId: occurrenceId,
+				jobId: jobContainerId,
+			});
 			navigate(`/dispatch/jobs/${jobContainerId}/visits/${result.visit_id}`);
 		} catch (error) {
 			console.error("Failed to generate visit:", error);

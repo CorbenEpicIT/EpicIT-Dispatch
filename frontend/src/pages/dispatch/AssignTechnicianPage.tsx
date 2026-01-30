@@ -12,6 +12,7 @@ import {
 	Mail,
 	Phone,
 	Award,
+	Clock,
 } from "lucide-react";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
 import {
@@ -21,7 +22,13 @@ import {
 } from "../../hooks/useJobs";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
 import { useMasonry } from "../../hooks/useMasonry";
-import type { Job, JobVisit, JobPriority } from "../../types/jobs";
+import type {
+	Job,
+	JobVisit,
+	JobPriority,
+	ArrivalConstraint,
+	FinishConstraint,
+} from "../../types/jobs";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 
@@ -41,6 +48,37 @@ export default function AssignTechnicianPage() {
 
 	const isVisitAssigned = (visit: JobVisit) => {
 		return visit.visit_techs?.some((vt) => vt.tech_id === technicianId);
+	};
+
+	// Helper function to format constraint display
+	const formatConstraintInfo = (visit: JobVisit) => {
+		const parts: string[] = [];
+
+		// Arrival constraint
+		if (visit.arrival_constraint === "at" && visit.arrival_time) {
+			parts.push(`Arrive at ${visit.arrival_time}`);
+		} else if (
+			visit.arrival_constraint === "between" &&
+			visit.arrival_window_start &&
+			visit.arrival_window_end
+		) {
+			parts.push(
+				`Arrive ${visit.arrival_window_start}-${visit.arrival_window_end}`
+			);
+		} else if (visit.arrival_constraint === "by" && visit.arrival_window_end) {
+			parts.push(`Arrive by ${visit.arrival_window_end}`);
+		} else if (visit.arrival_constraint === "anytime") {
+			parts.push("Arrive anytime");
+		}
+
+		// Finish constraint
+		if (visit.finish_constraint === "at" && visit.finish_time) {
+			parts.push(`Finish at ${visit.finish_time}`);
+		} else if (visit.finish_constraint === "by" && visit.finish_time) {
+			parts.push(`Finish by ${visit.finish_time}`);
+		}
+
+		return parts.join(" • ");
 	};
 
 	const sortedJobs = jobs
@@ -590,6 +628,10 @@ export default function AssignTechnicianPage() {
 																			.visit_techs
 																			?.length ||
 																		0;
+																	const constraintInfo =
+																		formatConstraintInfo(
+																			visit
+																		);
 
 																	return (
 																		<div
@@ -613,17 +655,18 @@ export default function AssignTechnicianPage() {
 																								className="text-zinc-400 flex-shrink-0"
 																							/>
 																							<span className="text-white text-xs font-medium truncate">
-																								{new Date(
-																									visit.scheduled_start_at
-																								).toLocaleDateString(
-																									"en-US",
-																									{
-																										month: "short",
-																										day: "numeric",
-																										hour: "numeric",
-																										minute: "2-digit",
-																									}
-																								)}
+																								{visit.name ||
+																									new Date(
+																										visit.scheduled_start_at
+																									).toLocaleDateString(
+																										"en-US",
+																										{
+																											month: "short",
+																											day: "numeric",
+																											hour: "numeric",
+																											minute: "2-digit",
+																										}
+																									)}
 																							</span>
 																							<span
 																								className={`text-xs font-medium ${getVisitStatusColor(visit.status)}`}
@@ -635,12 +678,18 @@ export default function AssignTechnicianPage() {
 																						</div>
 
 																						<div className="flex items-center gap-2 text-xs text-zinc-400">
-																							<span className="capitalize truncate">
-																								{visit.schedule_type.replace(
-																									"_",
-																									" "
-																								)}
-																							</span>
+																							{constraintInfo && (
+																								<span className="flex items-center gap-1 truncate">
+																									<Clock
+																										size={
+																											10
+																										}
+																									/>
+																									{
+																										constraintInfo
+																									}
+																								</span>
+																							)}
 																							{assignedTechCount >
 																								0 && (
 																								<span className="flex items-center gap-1">
@@ -721,14 +770,17 @@ export default function AssignTechnicianPage() {
 																					<div className="grid grid-cols-2 gap-2 text-xs">
 																						<div>
 																							<p className="text-zinc-500 mb-0.5">
+																								Scheduled
 																								Start
 																							</p>
 																							<p className="text-zinc-300">
 																								{new Date(
 																									visit.scheduled_start_at
-																								).toLocaleTimeString(
+																								).toLocaleString(
 																									"en-US",
 																									{
+																										month: "short",
+																										day: "numeric",
 																										hour: "numeric",
 																										minute: "2-digit",
 																										hour12: true,
@@ -738,14 +790,17 @@ export default function AssignTechnicianPage() {
 																						</div>
 																						<div>
 																							<p className="text-zinc-500 mb-0.5">
+																								Scheduled
 																								End
 																							</p>
 																							<p className="text-zinc-300">
 																								{new Date(
 																									visit.scheduled_end_at
-																								).toLocaleTimeString(
+																								).toLocaleString(
 																									"en-US",
 																									{
+																										month: "short",
+																										day: "numeric",
 																										hour: "numeric",
 																										minute: "2-digit",
 																										hour12: true,
@@ -754,49 +809,50 @@ export default function AssignTechnicianPage() {
 																							</p>
 																						</div>
 
-																						{visit.schedule_type ===
-																							"window" &&
-																							visit.arrival_window_start && (
-																								<>
-																									<div>
-																										<p className="text-zinc-500 mb-0.5">
-																											Window
-																											Start
-																										</p>
-																										<p className="text-zinc-300">
-																											{new Date(
-																												visit.arrival_window_start
-																											).toLocaleTimeString(
-																												"en-US",
-																												{
-																													hour: "numeric",
-																													minute: "2-digit",
-																													hour12: true,
-																												}
-																											)}
-																										</p>
-																									</div>
-																									<div>
-																										<p className="text-zinc-500 mb-0.5">
-																											Window
-																											End
-																										</p>
-																										<p className="text-zinc-300">
-																											{visit.arrival_window_end &&
-																												new Date(
-																													visit.arrival_window_end
-																												).toLocaleTimeString(
-																													"en-US",
-																													{
-																														hour: "numeric",
-																														minute: "2-digit",
-																														hour12: true,
-																													}
-																												)}
-																										</p>
-																									</div>
-																								</>
-																							)}
+																						{/* Arrival Constraint Details */}
+																						<div className="col-span-2">
+																							<p className="text-zinc-500 mb-0.5">
+																								Arrival
+																							</p>
+																							<p className="text-zinc-300 capitalize">
+																								{visit.arrival_constraint ===
+																									"at" &&
+																									visit.arrival_time &&
+																									`At ${visit.arrival_time}`}
+																								{visit.arrival_constraint ===
+																									"between" &&
+																									visit.arrival_window_start &&
+																									visit.arrival_window_end &&
+																									`Between ${visit.arrival_window_start} - ${visit.arrival_window_end}`}
+																								{visit.arrival_constraint ===
+																									"by" &&
+																									visit.arrival_window_end &&
+																									`By ${visit.arrival_window_end}`}
+																								{visit.arrival_constraint ===
+																									"anytime" &&
+																									"Anytime"}
+																							</p>
+																						</div>
+
+																						{/* Finish Constraint Details */}
+																						{visit.finish_constraint !==
+																							"when_done" && (
+																							<div className="col-span-2">
+																								<p className="text-zinc-500 mb-0.5">
+																									Finish
+																								</p>
+																								<p className="text-zinc-300 capitalize">
+																									{visit.finish_constraint ===
+																										"at" &&
+																										visit.finish_time &&
+																										`At ${visit.finish_time}`}
+																									{visit.finish_constraint ===
+																										"by" &&
+																										visit.finish_time &&
+																										`By ${visit.finish_time}`}
+																								</p>
+																							</div>
+																						)}
 																					</div>
 
 																					{visit.visit_techs &&

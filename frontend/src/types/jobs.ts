@@ -10,6 +10,7 @@ import type {
 	LineItemSource,
 	PricingBreakdown,
 	ExecutionTotals,
+	DiscountType,
 } from "./common";
 import {
 	PriorityValues,
@@ -169,7 +170,7 @@ export interface CreateJobInput extends PricingBreakdown, ExecutionTotals {
 	name: string;
 	client_id: string;
 	address: string;
-	coords: Coordinates;
+	coords?: Coordinates;
 	description: string;
 	priority?: JobPriority;
 	status?: JobStatus;
@@ -282,7 +283,6 @@ export interface JobVisit extends PricingBreakdown {
 	finish_constraint: FinishConstraint;
 	scheduled_start_at: Date | string;
 	scheduled_end_at: Date | string;
-	schedule_type: string;
 	arrival_time?: string | null; // HH:MM
 	arrival_window_start?: string | null; // HH:MM
 	arrival_window_end?: string | null; // HH:MM
@@ -384,12 +384,17 @@ export interface JobVisitResponse {
 // ============================================================================
 // VALIDATION SCHEMAS
 // ============================================================================
-
 export const CreateJobSchema = z.object({
 	name: z.string().min(1, "Job name is required"),
 	client_id: z.string().min(1, "Please select a client"),
-	address: z.string().default(""),
-	description: z.string().default(""),
+	address: z.string().min(1, "Address is required"),
+	coords: z
+		.object({
+			lat: z.number(),
+			lon: z.number(),
+		})
+		.optional(),
+	description: z.string().min(1, "Description is required"),
 	priority: z.enum(PriorityValues).default("Medium"),
 	status: z.enum(JobStatusValues).default("Unscheduled"),
 	request_id: z.string().uuid().optional().nullable(),
@@ -419,9 +424,15 @@ export const CreateJobSchema = z.object({
 });
 
 export const UpdateJobSchema = z.object({
-	name: z.string().min(1).optional(),
-	address: z.string().optional(),
-	description: z.string().optional(),
+	name: z.string().min(1, "Job name is required").optional(),
+	address: z.string().min(1, "Address is required").optional(),
+	coords: z
+		.object({
+			lat: z.number(),
+			lon: z.number(),
+		})
+		.optional(),
+	description: z.string().min(1, "Description is required").optional(),
 	priority: z.enum(PriorityValues).optional(),
 	status: z.enum(JobStatusValues).optional(),
 	estimated_total: z.number().nonnegative().optional().nullable(),
@@ -443,17 +454,22 @@ export const UpdateJobSchema = z.object({
 			})
 		)
 		.optional(),
+
+	subtotal: z.number().nonnegative().optional(),
+	tax_rate: z.number().min(0).max(1).optional(),
+	tax_amount: z.number().nonnegative().optional(),
+	discount_type: z.enum(DiscountTypeValues).optional(),
+	discount_value: z.number().nonnegative().optional(),
+	discount_amount: z.number().nonnegative().optional(),
 });
 
 export const CreateJobVisitSchema = z
 	.object({
 		job_id: z.string().uuid("Invalid job ID"),
 
-		// NEW: Visit details
 		name: z.string().min(1, "Visit name is required").max(255),
 		description: z.string().optional().nullable(),
 
-		// Constraint-based scheduling
 		arrival_constraint: z.enum(ArrivalConstraintValues),
 		finish_constraint: z.enum(FinishConstraintValues),
 		scheduled_start_at: z.coerce.date({ message: "Start time is required" }),
@@ -568,11 +584,9 @@ export const CreateJobVisitSchema = z
 
 export const UpdateJobVisitSchema = z
 	.object({
-		// NEW: Visit details
 		name: z.string().min(1).max(255).optional(),
 		description: z.string().optional().nullable(),
 
-		// Constraint-based scheduling
 		arrival_constraint: z.enum(ArrivalConstraintValues).optional(),
 		finish_constraint: z.enum(FinishConstraintValues).optional(),
 		scheduled_start_at: z.coerce.date().optional(),
