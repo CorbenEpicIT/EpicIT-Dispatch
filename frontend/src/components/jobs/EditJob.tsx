@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import type { ZodError } from "zod";
+import { Trash2, RotateCcw, Plus } from "lucide-react";
 import FullPopup from "../ui/FullPopup";
 import {
 	JobPriorityValues,
@@ -12,7 +13,6 @@ import { LineItemTypeValues, type LineItemType } from "../../types/common";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
-import { Plus, Trash2 } from "lucide-react";
 import { useUpdateJobMutation, useDeleteJobMutation } from "../../hooks/useJobs";
 import { useNavigate } from "react-router-dom";
 
@@ -24,15 +24,16 @@ interface EditJobProps {
 
 // Local UI-only interface for form state
 interface LineItem {
-	id: string; // For React key (client-side ID or DB ID)
+	id: string; // For React key
+	job_line_item_id?: string;
 	name: string;
 	description: string;
 	quantity: number;
 	unit_price: number;
 	item_type: LineItemType | "";
 	total: number;
-	isNew?: boolean; // Flag for newly added items
-	isDeleted?: boolean; // Flag for items to delete
+	isNew?: boolean;
+	isDeleted?: boolean;
 }
 
 const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
@@ -43,6 +44,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 	const nameRef = useRef<HTMLInputElement>(null);
 	const descRef = useRef<HTMLTextAreaElement>(null);
 	const priorityRef = useRef<HTMLSelectElement>(null);
+
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
@@ -53,55 +55,114 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 	const [discountValue, setDiscountValue] = useState<number>(0);
 	const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
+	// Originals + dirty tracking
+	const originalsRef = useRef({
+		name: "",
+		description: "",
+		priority: "Low" as (typeof JobPriorityValues)[number],
+		address: "",
+		coords: undefined as any,
+		taxRate: 0,
+		discountType: "amount" as "percent" | "amount",
+		discountValue: 0,
+	});
+
+	const [dirty, setDirty] = useState<Record<string, boolean>>({});
+	const setFieldDirty = (key: string, isDirty: boolean) => {
+		setDirty((prev) => {
+			if (prev[key] === isDirty) return prev;
+			return { ...prev, [key]: isDirty };
+		});
+	};
+
+	const revertIfBlank = (
+		el: HTMLInputElement | HTMLTextAreaElement | null,
+		original: string,
+		key: string
+	) => {
+		if (!el) return;
+		if (el.value.trim() === "") {
+			el.value = original;
+			setFieldDirty(key, false);
+		}
+	};
+
+	const undoToOriginal = (
+		el: HTMLInputElement | HTMLTextAreaElement | null,
+		original: string,
+		key: string
+	) => {
+		if (!el) return;
+		el.value = original;
+		setFieldDirty(key, false);
+	};
+
+	// Line item originals (for undo + blank-on-blur revert)
+	const lineItemOriginalsRef = useRef<
+		Record<
+			string,
+			{
+				name: string;
+				description: string;
+				quantity: number;
+				unit_price: number;
+				item_type: LineItemType | "";
+			}
+		>
+	>({});
+	const [lineItemDirty, setLineItemDirty] = useState<Record<string, boolean>>({});
+	const setLineItemDirtyKey = (key: string, isDirty: boolean) => {
+		setLineItemDirty((prev) => {
+			if (prev[key] === isDirty) return prev;
+			return { ...prev, [key]: isDirty };
+		});
+	};
+
 	// Initialize form data when modal opens
 	useEffect(() => {
 		if (isModalOpen && job) {
-			const existingLineItems = job.line_items || [];
+			const initialLineItems: LineItem[] =
+				job.line_items?.map((item) => ({
+					id: crypto.randomUUID(),
+					job_line_item_id: item.id,
+					name: item.name,
+					description: item.description || "",
+					quantity: Number(item.quantity),
+					unit_price: Number(item.unit_price),
+					item_type: (item.item_type as LineItemType) || "",
+					total: Number(item.total),
+					isNew: false,
+					isDeleted: false,
+				})) || [];
 
-			if (existingLineItems.length > 0) {
-				const loadedLineItems: LineItem[] = existingLineItems.map(
-					(item) => ({
-						id: item.id || crypto.randomUUID(), // Use DB ID or generate temp ID
-						name: item.name || "",
-						description: item.description || "",
-						quantity: Number(item.quantity) || 1,
-						unit_price: Number(item.unit_price) || 0,
-						item_type: (item.item_type as LineItemType) || "",
-						total: Number(item.total) || 0,
-						isNew: false,
-						isDeleted: false,
-					})
-				);
-				setLineItems(loadedLineItems);
-			} else {
-				// Start with one empty item if no existing items
-				setLineItems([
-					{
-						id: crypto.randomUUID(),
-						name: "",
-						description: "",
-						quantity: 1,
-						unit_price: 0,
-						item_type: "",
-						total: 0,
-						isNew: true,
-						isDeleted: false,
-					},
-				]);
-			}
+			setLineItems(initialLineItems);
 
-			if (job.tax_rate !== undefined && job.tax_rate !== null) {
-				setTaxRate(Number(job.tax_rate) * 100); // Convert decimal to percentage
+			// seed per-line-item originals
+			const liOriginals: typeof lineItemOriginalsRef.current = {};
+			for (const li of initialLineItems) {
+				liOriginals[li.id] = {
+					name: li.name,
+					description: li.description,
+					quantity: li.quantity,
+					unit_price: li.unit_price,
+					item_type: li.item_type,
+				};
 			}
+			lineItemOriginalsRef.current = liOriginals;
+			setLineItemDirty({});
+
+			// tax/discount init
+			const initialTaxRate = Number(job.tax_rate) * 100;
+			setTaxRate(initialTaxRate);
 
 			if (job.discount_type && job.discount_value) {
 				setDiscountType(job.discount_type);
 				setDiscountValue(Number(job.discount_value));
 			} else if (job.discount_amount && job.discount_amount > 0) {
-				// Fallback: try to infer if it was a percentage
 				const subtotal = job.subtotal ? Number(job.subtotal) : 0;
 				const discountAmount = Number(job.discount_amount);
-				const possiblePercent = (discountAmount / subtotal) * 100;
+				const possiblePercent =
+					subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
 
 				if (possiblePercent % 5 === 0 && possiblePercent <= 100) {
 					setDiscountType("percent");
@@ -115,14 +176,45 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 				setDiscountValue(0);
 			}
 
-			if (job.address) {
+			if (job.address || job.coords) {
 				setGeoData({
-					address: job.address,
+					address: job.address || "",
 					coords: job.coords,
 				} as GeocodeResult);
+			} else {
+				setGeoData(undefined);
 			}
 
+			// seed job-level originals
+			originalsRef.current = {
+				name: job.name ?? "",
+				description: job.description ?? "",
+				priority: job.priority,
+				address: job.address ?? "",
+				coords: job.coords,
+				taxRate: initialTaxRate,
+				discountType:
+					job.discount_type && job.discount_value
+						? job.discount_type
+						: job.discount_amount && job.discount_amount > 0
+							? discountType
+							: "amount",
+				discountValue:
+					job.discount_type && job.discount_value
+						? Number(job.discount_value)
+						: job.discount_amount && job.discount_amount > 0
+							? discountValue
+							: 0,
+			};
+
+			setDirty({});
 			setDeleteConfirm(false);
+			setErrors(null);
+
+			// ensure refs show correct values (uncontrolled inputs)
+			if (nameRef.current) nameRef.current.value = job.name ?? "";
+			if (descRef.current) descRef.current.value = job.description ?? "";
+			if (priorityRef.current) priorityRef.current.value = job.priority;
 		}
 	}, [isModalOpen, job]);
 
@@ -131,13 +223,31 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			address: result.address,
 			coords: result.coords,
 		}));
+		setFieldDirty(
+			"address",
+			(result.address || "") !== (originalsRef.current.address || "")
+		);
+	};
+
+	const handleClearAddress = () => {
+		// In edit mode, revert to original if it exists
+		if (job.address || job.coords) {
+			setGeoData({
+				address: job.address || "",
+				coords: job.coords,
+			});
+		} else {
+			setGeoData(undefined);
+		}
+		setFieldDirty("address", false);
 	};
 
 	const addNewLineItem = () => {
+		const id = crypto.randomUUID();
 		setLineItems([
 			...lineItems,
 			{
-				id: crypto.randomUUID(),
+				id,
 				name: "",
 				description: "",
 				quantity: 1,
@@ -163,13 +273,101 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			lineItems.map((item) => {
 				if (item.id === id) {
 					const updated = { ...item, [field]: value };
+
 					if (field === "quantity" || field === "unit_price") {
 						updated.total =
 							Number(updated.quantity) *
 							Number(updated.unit_price);
 					}
+
+					const orig = lineItemOriginalsRef.current[id];
+					if (orig && !item.isNew) {
+						const dirtyKey = `li:${id}:${String(field)}`;
+						const isDirty =
+							field === "quantity" ||
+							field === "unit_price"
+								? Number(value) !==
+									Number((orig as any)[field])
+								: String(value) !==
+									String(
+										(orig as any)[
+											field
+										] ?? ""
+									);
+						setLineItemDirtyKey(dirtyKey, isDirty);
+					}
+
 					return updated;
 				}
+				return item;
+			})
+		);
+	};
+
+	const undoLineItemField = (id: string, field: keyof LineItem) => {
+		const orig = lineItemOriginalsRef.current[id];
+		if (!orig) return;
+
+		setLineItems((prev) =>
+			prev.map((item) => {
+				if (item.id !== id) return item;
+				const updated = { ...item, [field]: (orig as any)[field] };
+
+				if (field === "quantity" || field === "unit_price") {
+					updated.total =
+						Number(updated.quantity) *
+						Number(updated.unit_price);
+				}
+				return updated;
+			})
+		);
+
+		setLineItemDirtyKey(`li:${id}:${String(field)}`, false);
+	};
+
+	const revertLineItemIfBlank = (id: string, field: keyof LineItem) => {
+		const orig = lineItemOriginalsRef.current[id];
+		if (!orig) return;
+
+		setLineItems((prev) =>
+			prev.map((item) => {
+				if (item.id !== id || item.isNew) return item;
+
+				const v = (item as any)[field];
+				if (field === "quantity" || field === "unit_price") {
+					if (
+						v === "" ||
+						v === null ||
+						v === undefined ||
+						Number.isNaN(Number(v))
+					) {
+						const updated = {
+							...item,
+							[field]: (orig as any)[field],
+						};
+						updated.total =
+							Number(updated.quantity) *
+							Number(updated.unit_price);
+						setLineItemDirtyKey(
+							`li:${id}:${String(field)}`,
+							false
+						);
+						return updated;
+					}
+				} else {
+					if (String(v ?? "").trim() === "") {
+						const updated = {
+							...item,
+							[field]: (orig as any)[field],
+						};
+						setLineItemDirtyKey(
+							`li:${id}:${String(field)}`,
+							false
+						);
+						return updated;
+					}
+				}
+
 				return item;
 			})
 		);
@@ -200,31 +398,32 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 
 	const invokeUpdate = async () => {
 		if (nameRef.current && descRef.current && priorityRef.current && !isLoading) {
+			revertIfBlank(nameRef.current, originalsRef.current.name, "name");
+			revertIfBlank(
+				descRef.current,
+				originalsRef.current.description,
+				"description"
+			);
+
 			const nameValue = nameRef.current.value.trim();
 			const descValue = descRef.current.value.trim();
 			const priorityValue = priorityRef.current.value.trim();
 
-			// Filter line items to only include valid ones (not soft-deleted, with name and quantity)
-			const validLineItems = activeLineItems.filter(
-				(item) => item.name.trim() !== "" && item.quantity > 0
-			);
-
-			// Convert to API format
-			const preparedLineItems: UpdateJobLineItemInput[] = validLineItems.map(
+			// Prepare line items - include all active items
+			const lineItemUpdates: UpdateJobLineItemInput[] = activeLineItems.map(
 				(item) => ({
-					id: item.isNew ? undefined : item.id, // No id = create new, has id = update existing
-					name: item.name,
-					description: item.description || undefined,
-					quantity: item.quantity,
-					unit_price: item.unit_price,
-					total: item.total,
+					id: item.job_line_item_id, // undefined for new items
+					name: item.name.trim(),
+					description: item.description?.trim() || undefined,
+					quantity: Number(item.quantity),
+					unit_price: Number(item.unit_price),
+					total: Number(item.total),
 					item_type: (item.item_type || undefined) as
 						| LineItemType
 						| undefined,
 				})
 			);
 
-			// Only include changed fields to minimize payload
 			const updates: UpdateJobInput = {
 				name: nameValue !== job.name ? nameValue : undefined,
 				description: descValue !== job.description ? descValue : undefined,
@@ -234,7 +433,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 						: undefined,
 				coords:
 					geoData?.coords !== job.coords
-						? geoData?.coords || undefined
+						? geoData?.coords
 						: undefined,
 				priority: priorityValue as
 					| "Low"
@@ -243,19 +442,19 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 					| "Urgent"
 					| "Emergency",
 				subtotal,
-				tax_rate: taxRate / 100, // Store as decimal
+				tax_rate: taxRate / 100,
 				tax_amount: taxAmount,
 				discount_type: discountType,
 				discount_value: discountValue,
 				discount_amount: discountAmount,
 				estimated_total: estimatedTotal,
-				line_items: preparedLineItems.length > 0 ? preparedLineItems : [],
+				line_items: lineItemUpdates,
 			};
 
 			const parseResult = UpdateJobSchema.safeParse(updates);
-
 			if (!parseResult.success) {
 				setErrors(parseResult.error);
+				console.error("Validation errors:", parseResult.error);
 				return;
 			}
 
@@ -265,7 +464,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			try {
 				await updateJob.mutateAsync({
 					id: job.id,
-					updates: updates,
+					updates,
 				});
 
 				setIsLoading(false);
@@ -277,21 +476,6 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		}
 	};
 
-	let nameErrors;
-	let addressErrors;
-	let descriptionErrors;
-	let lineItemErrors;
-
-	if (errors) {
-		nameErrors = errors.issues.filter((err) => err.path[0] === "name");
-		addressErrors = errors.issues.filter((err) => err.path[0] === "address");
-		descriptionErrors = errors.issues.filter((err) => err.path[0] === "description");
-		lineItemErrors = errors.issues.filter((err) => err.path[0] === "line_items");
-	}
-
-	// bandaid for unused var
-	console.log(lineItemErrors);
-
 	const content = (
 		<div
 			className="max-h-[85vh] overflow-y-auto pl-1"
@@ -301,12 +485,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			}}
 		>
 			<style>{`
-				.max-h-\\[85vh\\]::-webkit-scrollbar {
-					width: 8px;
-				}
-				.max-h-\\[85vh\\]::-webkit-scrollbar-track {
-					background: transparent;
-				}
+				.max-h-\\[85vh\\]::-webkit-scrollbar { width: 8px; }
+				.max-h-\\[85vh\\]::-webkit-scrollbar-track { background: transparent; }
 				.max-h-\\[85vh\\]::-webkit-scrollbar-thumb {
 					background-color: rgb(63 63 70);
 					border-radius: 4px;
@@ -320,27 +500,56 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 				<h2 className="text-2xl font-bold mb-4">Edit Job</h2>
 
 				<p className="mb-1 hover:color-accent">Job Name *</p>
-				<input
-					type="text"
-					placeholder="Job Name"
-					defaultValue={job.name}
-					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
-					disabled={isLoading}
-					ref={nameRef}
-				/>
-
-				{nameErrors && (
-					<div>
-						{nameErrors.map((err) => (
-							<h3
-								className="my-1 text-red-300"
-								key={err.message}
-							>
-								{err.message}
-							</h3>
-						))}
-					</div>
-				)}
+				<div className="relative">
+					<input
+						type="text"
+						placeholder="Job Name"
+						defaultValue={job.name}
+						className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pr-10"
+						disabled={isLoading}
+						ref={nameRef}
+						onChange={(e) =>
+							setFieldDirty(
+								"name",
+								e.target.value.trim() !==
+									originalsRef.current.name
+							)
+						}
+						onBlur={() =>
+							revertIfBlank(
+								nameRef.current,
+								originalsRef.current.name,
+								"name"
+							)
+						}
+					/>
+					{dirty.name && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() =>
+								undoToOriginal(
+									nameRef.current,
+									originalsRef.current.name,
+									"name"
+								)
+							}
+							className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
+				</div>
+				{errors?.issues
+					.filter((err) => err.path[0] === "name")
+					.map((err) => (
+						<p
+							key={err.message}
+							className="text-red-300 text-sm mt-1"
+						>
+							{err.message}
+						</p>
+					))}
 
 				<p className="mb-1 mt-3 hover:color-accent">Client</p>
 				<div className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-800/50 text-zinc-400">
@@ -351,50 +560,79 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 				</p>
 
 				<p className="mb-1 mt-3 hover:color-accent">Description *</p>
-				<textarea
-					placeholder="Job Description"
-					defaultValue={job.description}
-					className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none"
-					disabled={isLoading}
-					ref={descRef}
-				></textarea>
-
-				{descriptionErrors && (
-					<div>
-						{descriptionErrors.map((err) => (
-							<h3
-								className="my-1 text-red-300"
-								key={err.message}
-							>
-								{err.message}
-							</h3>
-						))}
-					</div>
-				)}
+				<div className="relative">
+					<textarea
+						placeholder="Job Description"
+						defaultValue={job.description}
+						className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none pr-10"
+						disabled={isLoading}
+						ref={descRef}
+						onChange={(e) =>
+							setFieldDirty(
+								"description",
+								e.target.value.trim() !==
+									originalsRef.current
+										.description
+							)
+						}
+						onBlur={() =>
+							revertIfBlank(
+								descRef.current,
+								originalsRef.current.description,
+								"description"
+							)
+						}
+					></textarea>
+					{dirty.description && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() =>
+								undoToOriginal(
+									descRef.current,
+									originalsRef.current
+										.description,
+									"description"
+								)
+							}
+							className="absolute right-2 top-2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
+				</div>
+				{errors?.issues
+					.filter((err) => err.path[0] === "description")
+					.map((err) => (
+						<p
+							key={err.message}
+							className="text-red-300 text-sm mt-1"
+						>
+							{err.message}
+						</p>
+					))}
 
 				<p className="mb-1 mt-3 hover:color-accent">Address *</p>
-				<AddressForm handleChange={handleChangeAddress} />
-				{geoData?.address && (
-					<p className="text-xs text-zinc-400 mt-1">
-						Current: {geoData.address}
-					</p>
-				)}
-
-				{addressErrors && (
-					<div>
-						{addressErrors.map((err) => (
-							<h3
-								className="my-1 text-red-300"
-								key={err.message}
-							>
-								{err.message}
-							</h3>
-						))}
-					</div>
-				)}
+				<AddressForm
+					mode="edit"
+					originalValue={originalsRef.current.address}
+					originalCoords={originalsRef.current.coords}
+					handleChange={handleChangeAddress}
+					handleClear={handleClearAddress}
+				/>
+				{errors?.issues
+					.filter((err) => err.path[0] === "address")
+					.map((err) => (
+						<p
+							key={err.message}
+							className="text-red-300 text-sm mt-1"
+						>
+							{err.message}
+						</p>
+					))}
 
 				<p className="mb-1 mt-3 hover:color-accent">Priority</p>
-				<div className="border border-zinc-800 rounded-sm">
+				<div className="relative border border-zinc-800 rounded-sm">
 					<Dropdown
 						refToApply={priorityRef}
 						defaultValue={job.priority}
@@ -411,7 +649,30 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 								))}
 							</>
 						}
+						onChange={(val) =>
+							setFieldDirty(
+								"priority",
+								val !==
+									originalsRef.current
+										.priority
+							)
+						}
 					/>
+					{dirty.priority && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() => {
+								if (priorityRef.current)
+									priorityRef.current.value =
+										originalsRef.current.priority;
+								setFieldDirty("priority", false);
+							}}
+							className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
 				</div>
 
 				{/* Line Items Section */}
@@ -465,7 +726,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 								</div>
 
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-									<div>
+									<div className="relative">
 										<input
 											type="text"
 											placeholder="Item name *"
@@ -483,14 +744,42 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 														.value
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"name"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
 										/>
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:name`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"name"
+														)
+													}
+													className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div>
+									<div className="relative">
 										<select
 											value={
 												item.item_type
@@ -506,10 +795,16 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 														.value
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"item_type"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10 appearance-none"
 										>
 											<option value="">
 												Type
@@ -539,9 +834,32 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												)
 											)}
 										</select>
+
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:item_type`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"item_type"
+														)
+													}
+													className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div className="md:col-span-2">
+									<div className="md:col-span-2 relative">
 										<input
 											type="text"
 											placeholder="Description (optional)"
@@ -559,14 +877,42 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 														.value
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"description"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
 										/>
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:description`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"description"
+														)
+													}
+													className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div>
+									<div className="relative">
 										<label className="text-xs text-zinc-400 mb-1 block">
 											Quantity
 										</label>
@@ -591,14 +937,42 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 														0
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"quantity"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
 										/>
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:quantity`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"quantity"
+														)
+													}
+													className="absolute right-2 top-[30px] text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div>
+									<div className="relative">
 										<label className="text-xs text-zinc-400 mb-1 block">
 											Unit Price
 										</label>
@@ -627,11 +1001,39 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 															0
 													)
 												}
+												onBlur={() =>
+													revertLineItemIfBlank(
+														item.id,
+														"unit_price"
+													)
+												}
 												disabled={
 													isLoading
 												}
-												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
+												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6 pr-10"
 											/>
+											{!item.isNew &&
+												lineItemDirty[
+													`li:${item.id}:unit_price`
+												] && (
+													<button
+														type="button"
+														title="Undo"
+														onClick={() =>
+															undoLineItemField(
+																item.id,
+																"unit_price"
+															)
+														}
+														className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+													>
+														<RotateCcw
+															size={
+																16
+															}
+														/>
+													</button>
+												)}
 										</div>
 									</div>
 
@@ -673,7 +1075,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 					</div>
 
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-						<div>
+						<div className="relative">
 							<label className="text-xs text-zinc-400 mb-1 block">
 								Tax Rate (%)
 							</label>
@@ -684,20 +1086,47 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 								max="100"
 								placeholder="0.00"
 								value={taxRate}
-								onChange={(e) =>
-									setTaxRate(
+								onChange={(e) => {
+									const next =
 										parseFloat(
 											e.target
 												.value
-										) || 0
-									)
-								}
-								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm"
+										) || 0;
+									setTaxRate(next);
+									setFieldDirty(
+										"taxRate",
+										next !==
+											originalsRef
+												.current
+												.taxRate
+									);
+								}}
+								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm pr-10"
 								disabled={isLoading}
 							/>
+							{dirty.taxRate && (
+								<button
+									type="button"
+									title="Undo"
+									onClick={() => {
+										setTaxRate(
+											originalsRef
+												.current
+												.taxRate
+										);
+										setFieldDirty(
+											"taxRate",
+											false
+										);
+									}}
+									className="absolute right-2 top-[30px] text-zinc-400 hover:text-white transition-colors"
+								>
+									<RotateCcw size={16} />
+								</button>
+							)}
 						</div>
 
-						<div>
+						<div className="relative">
 							<label className="text-xs text-zinc-400 mb-1 block">
 								Discount
 							</label>
@@ -717,17 +1146,30 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 										value={
 											discountValue
 										}
-										onChange={(e) =>
-											setDiscountValue(
+										onChange={(e) => {
+											const next =
 												parseFloat(
 													e
 														.target
 														.value
 												) ||
-													0
-											)
-										}
-										className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm ${
+												0;
+											setDiscountValue(
+												next
+											);
+											setFieldDirty(
+												"discountValue",
+												next !==
+													originalsRef
+														.current
+														.discountValue ||
+													discountType !==
+														originalsRef
+															.current
+															.discountType
+											);
+										}}
+										className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm pr-10 ${
 											discountType ===
 											"amount"
 												? "pl-6"
@@ -737,21 +1179,65 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 									/>
 									{discountType ===
 										"percent" && (
-										<span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+										<span className="absolute right-8 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
 											%
 										</span>
 									)}
+
+									{dirty.discountValue && (
+										<button
+											type="button"
+											title="Undo"
+											onClick={() => {
+												setDiscountType(
+													originalsRef
+														.current
+														.discountType
+												);
+												setDiscountValue(
+													originalsRef
+														.current
+														.discountValue
+												);
+												setFieldDirty(
+													"discountValue",
+													false
+												);
+											}}
+											className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+										>
+											<RotateCcw
+												size={
+													16
+												}
+											/>
+										</button>
+									)}
 								</div>
+
 								<button
 									type="button"
-									onClick={() =>
-										setDiscountType(
+									onClick={() => {
+										const next =
 											discountType ===
-												"amount"
+											"amount"
 												? "percent"
-												: "amount"
-										)
-									}
+												: "amount";
+										setDiscountType(
+											next
+										);
+										setFieldDirty(
+											"discountValue",
+											discountValue !==
+												originalsRef
+													.current
+													.discountValue ||
+												next !==
+													originalsRef
+														.current
+														.discountType
+										);
+									}}
 									disabled={isLoading}
 									className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 text-white text-xs font-medium rounded-sm transition-colors min-w-[45px]"
 								>
@@ -843,6 +1329,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 							? "Saving..."
 							: "Save Changes"}
 					</button>
+
 					<button
 						type="button"
 						onClick={handleDelete}

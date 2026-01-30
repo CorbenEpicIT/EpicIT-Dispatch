@@ -1,6 +1,6 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import Button from "../ui/Button";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
 import {
@@ -32,6 +32,25 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
 	const { data: clients } = useAllClientsQuery();
+
+	const resetForm = () => {
+		if (titleRef.current) titleRef.current.value = "";
+		if (descRef.current) descRef.current.value = "";
+		if (sourceRef.current) sourceRef.current.value = "";
+		if (sourceReferenceRef.current) sourceReferenceRef.current.value = "";
+		if (requiresQuoteRef.current) requiresQuoteRef.current.checked = false;
+		if (estimatedValueRef.current) estimatedValueRef.current.value = "";
+		setGeoData(undefined);
+
+		setErrors(null);
+	};
+
+	useEffect(() => {
+		if (!isModalOpen) {
+			resetForm();
+			setIsLoading(false);
+		}
+	}, [isModalOpen]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData(() => ({
@@ -122,16 +141,7 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 			await createRequest(newRequest);
 
 			setIsLoading(false);
-
-			// Reset form values before closing
-			if (titleRef.current) titleRef.current.value = "";
-			if (descRef.current) descRef.current.value = "";
-			if (sourceRef.current) sourceRef.current.value = "";
-			if (sourceReferenceRef.current) sourceReferenceRef.current.value = "";
-			if (requiresQuoteRef.current) requiresQuoteRef.current.checked = false;
-			if (estimatedValueRef.current) estimatedValueRef.current.value = "";
-			setGeoData(undefined);
-
+			resetForm();
 			setIsModalOpen(false);
 		}
 	};
@@ -271,7 +281,10 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 					<>
 						<div
 							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
-							onClick={() => setIsModalOpen(false)}
+							onClick={() => {
+								resetForm();
+								setIsModalOpen(false);
+							}}
 						>
 							<Button label="Cancel" />
 						</div>
@@ -293,7 +306,10 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		<FullPopup
 			content={content}
 			isModalOpen={isModalOpen}
-			onClose={() => setIsModalOpen(false)}
+			onClose={() => {
+				resetForm();
+				setIsModalOpen(false);
+			}}
 		/>
 	);
 };

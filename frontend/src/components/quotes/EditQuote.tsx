@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from "react";
-import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
 import {
 	QuotePriorityValues,
@@ -13,7 +12,7 @@ import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import DatePicker from "../ui/DatePicker";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, RotateCcw } from "lucide-react";
 import {
 	useUpdateQuoteMutation,
 	useDeleteQuoteMutation,
@@ -39,8 +38,8 @@ interface LineItem {
 	unit_price: number;
 	item_type: LineItemType | "";
 	total: number;
-	isNew?: boolean; // Flag for newly added items
-	isDeleted?: boolean; // Flag for items to delete
+	isNew?: boolean;
+	isDeleted?: boolean;
 }
 
 const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
@@ -54,9 +53,9 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 	const titleRef = useRef<HTMLInputElement>(null);
 	const descRef = useRef<HTMLTextAreaElement>(null);
 	const priorityRef = useRef<HTMLSelectElement>(null);
+
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [isLoading, setIsLoading] = useState(false);
-	const [errors, setErrors] = useState<ZodError | null>(null);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
 
 	const [validUntilDate, setValidUntilDate] = useState<Date | null>(null);
@@ -67,13 +66,78 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 	const [discountValue, setDiscountValue] = useState<number>(0);
 	const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
+	// Originals + dirty tracking
+	const originalsRef = useRef({
+		title: "",
+		description: "",
+		priority: "Low" as (typeof QuotePriorityValues)[number],
+		address: "",
+		coords: undefined as any,
+		taxRate: 0,
+		discountType: "amount" as "percent" | "amount",
+		discountValue: 0,
+		validUntilDate: null as Date | null,
+		expiresAtDate: null as Date | null,
+	});
+
+	const [dirty, setDirty] = useState<Record<string, boolean>>({});
+	const setFieldDirty = (key: string, isDirty: boolean) => {
+		setDirty((prev) => {
+			if (prev[key] === isDirty) return prev;
+			return { ...prev, [key]: isDirty };
+		});
+	};
+
+	const revertIfBlank = (
+		el: HTMLInputElement | HTMLTextAreaElement | null,
+		original: string,
+		key: string
+	) => {
+		if (!el) return;
+		if (el.value.trim() === "") {
+			el.value = original;
+			setFieldDirty(key, false);
+		}
+	};
+
+	const undoToOriginal = (
+		el: HTMLInputElement | HTMLTextAreaElement | null,
+		original: string,
+		key: string
+	) => {
+		if (!el) return;
+		el.value = original;
+		setFieldDirty(key, false);
+	};
+
+	// Line item originals (for undo + blank-on-blur revert)
+	const lineItemOriginalsRef = useRef<
+		Record<
+			string,
+			{
+				name: string;
+				description: string;
+				quantity: number;
+				unit_price: number;
+				item_type: LineItemType | "";
+			}
+		>
+	>({});
+	const [lineItemDirty, setLineItemDirty] = useState<Record<string, boolean>>({});
+	const setLineItemDirtyKey = (key: string, isDirty: boolean) => {
+		setLineItemDirty((prev) => {
+			if (prev[key] === isDirty) return prev;
+			return { ...prev, [key]: isDirty };
+		});
+	};
+
 	// Initialize form data when modal opens
 	useEffect(() => {
 		if (isModalOpen && quote) {
 			const initialLineItems: LineItem[] =
 				quote.line_items?.map((item) => ({
-					id: crypto.randomUUID(), // Client-side ID for React
-					quote_line_item_id: item.id, // Server ID for updates
+					id: crypto.randomUUID(),
+					quote_line_item_id: item.id,
 					name: item.name,
 					description: item.description || "",
 					quantity: Number(item.quantity),
@@ -86,18 +150,33 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 			setLineItems(initialLineItems);
 
-			setTaxRate(Number(quote.tax_rate) * 100); // Convert decimal to percentage
+			// seed per-line-item originals
+			const liOriginals: typeof lineItemOriginalsRef.current = {};
+			for (const li of initialLineItems) {
+				liOriginals[li.id] = {
+					name: li.name,
+					description: li.description,
+					quantity: li.quantity,
+					unit_price: li.unit_price,
+					item_type: li.item_type,
+				};
+			}
+			lineItemOriginalsRef.current = liOriginals;
+			setLineItemDirty({});
+
+			// tax/discount init
+			const initialTaxRate = Number(quote.tax_rate) * 100;
+			setTaxRate(initialTaxRate);
 
 			if (quote.discount_type && quote.discount_value) {
 				setDiscountType(quote.discount_type);
 				setDiscountValue(Number(quote.discount_value));
 			} else if (quote.discount_amount && quote.discount_amount > 0) {
-				// Fallback: try to infer if it was a percentage
 				const subtotal = quote.subtotal ? Number(quote.subtotal) : 0;
 				const discountAmount = Number(quote.discount_amount);
-				const possiblePercent = (discountAmount / subtotal) * 100;
+				const possiblePercent =
+					subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
 
-				// If it's a clean percentage (like 10%, 15%, 20%), assume percentage
 				if (possiblePercent % 5 === 0 && possiblePercent <= 100) {
 					setDiscountType("percent");
 					setDiscountValue(possiblePercent);
@@ -110,17 +189,52 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 				setDiscountValue(0);
 			}
 
-			setValidUntilDate(quote.valid_until ? new Date(quote.valid_until) : null);
-			setExpiresAtDate(quote.expires_at ? new Date(quote.expires_at) : null);
+			const vud = quote.valid_until ? new Date(quote.valid_until) : null;
+			const exd = quote.expires_at ? new Date(quote.expires_at) : null;
+
+			setValidUntilDate(vud);
+			setExpiresAtDate(exd);
 
 			if (quote.address) {
 				setGeoData({
 					address: quote.address,
 					coords: quote.coords || undefined,
 				} as GeocodeResult);
+			} else {
+				setGeoData(undefined);
 			}
 
+			// seed quote-level originals
+			originalsRef.current = {
+				title: quote.title ?? "",
+				description: quote.description ?? "",
+				priority: quote.priority,
+				address: quote.address ?? "",
+				coords: quote.coords,
+				taxRate: initialTaxRate,
+				discountType:
+					quote.discount_type && quote.discount_value
+						? quote.discount_type
+						: quote.discount_amount && quote.discount_amount > 0
+							? discountType
+							: "amount",
+				discountValue:
+					quote.discount_type && quote.discount_value
+						? Number(quote.discount_value)
+						: quote.discount_amount && quote.discount_amount > 0
+							? discountValue
+							: 0,
+				validUntilDate: vud,
+				expiresAtDate: exd,
+			};
+
+			setDirty({});
 			setDeleteConfirm(false);
+
+			// ensure refs show correct values (uncontrolled inputs)
+			if (titleRef.current) titleRef.current.value = quote.title ?? "";
+			if (descRef.current) descRef.current.value = quote.description ?? "";
+			if (priorityRef.current) priorityRef.current.value = quote.priority;
 		}
 	}, [isModalOpen, quote]);
 
@@ -129,13 +243,18 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			address: result.address,
 			coords: result.coords,
 		}));
+		setFieldDirty(
+			"address",
+			(result.address || "") !== (originalsRef.current.address || "")
+		);
 	};
 
 	const addNewLineItem = () => {
+		const id = crypto.randomUUID();
 		setLineItems([
 			...lineItems,
 			{
-				id: crypto.randomUUID(),
+				id,
 				name: "",
 				description: "",
 				quantity: 1,
@@ -161,14 +280,101 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			lineItems.map((item) => {
 				if (item.id === id) {
 					const updated = { ...item, [field]: value };
-					// Recalculate total for this line item
+
 					if (field === "quantity" || field === "unit_price") {
 						updated.total =
 							Number(updated.quantity) *
 							Number(updated.unit_price);
 					}
+
+					const orig = lineItemOriginalsRef.current[id];
+					if (orig && !item.isNew) {
+						const dirtyKey = `li:${id}:${String(field)}`;
+						const isDirty =
+							field === "quantity" ||
+							field === "unit_price"
+								? Number(value) !==
+									Number((orig as any)[field])
+								: String(value) !==
+									String(
+										(orig as any)[
+											field
+										] ?? ""
+									);
+						setLineItemDirtyKey(dirtyKey, isDirty);
+					}
+
 					return updated;
 				}
+				return item;
+			})
+		);
+	};
+
+	const undoLineItemField = (id: string, field: keyof LineItem) => {
+		const orig = lineItemOriginalsRef.current[id];
+		if (!orig) return;
+
+		setLineItems((prev) =>
+			prev.map((item) => {
+				if (item.id !== id) return item;
+				const updated = { ...item, [field]: (orig as any)[field] };
+
+				if (field === "quantity" || field === "unit_price") {
+					updated.total =
+						Number(updated.quantity) *
+						Number(updated.unit_price);
+				}
+				return updated;
+			})
+		);
+
+		setLineItemDirtyKey(`li:${id}:${String(field)}`, false);
+	};
+
+	const revertLineItemIfBlank = (id: string, field: keyof LineItem) => {
+		const orig = lineItemOriginalsRef.current[id];
+		if (!orig) return;
+
+		setLineItems((prev) =>
+			prev.map((item) => {
+				if (item.id !== id || item.isNew) return item;
+
+				const v = (item as any)[field];
+				if (field === "quantity" || field === "unit_price") {
+					if (
+						v === "" ||
+						v === null ||
+						v === undefined ||
+						Number.isNaN(Number(v))
+					) {
+						const updated = {
+							...item,
+							[field]: (orig as any)[field],
+						};
+						updated.total =
+							Number(updated.quantity) *
+							Number(updated.unit_price);
+						setLineItemDirtyKey(
+							`li:${id}:${String(field)}`,
+							false
+						);
+						return updated;
+					}
+				} else {
+					if (String(v ?? "").trim() === "") {
+						const updated = {
+							...item,
+							[field]: (orig as any)[field],
+						};
+						setLineItemDirtyKey(
+							`li:${id}:${String(field)}`,
+							false
+						);
+						return updated;
+					}
+				}
+
 				return item;
 			})
 		);
@@ -202,6 +408,13 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 	const invokeUpdate = async () => {
 		if (titleRef.current && descRef.current && priorityRef.current && !isLoading) {
+			revertIfBlank(titleRef.current, originalsRef.current.title, "title");
+			revertIfBlank(
+				descRef.current,
+				originalsRef.current.description,
+				"description"
+			);
+
 			const titleValue = titleRef.current.value.trim();
 			const descValue = descRef.current.value.trim();
 			const priorityValue = priorityRef.current.value.trim();
@@ -236,13 +449,11 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			};
 
 			const parseResult = UpdateQuoteSchema.safeParse(updates);
-
 			if (!parseResult.success) {
-				setErrors(parseResult.error);
+				console.error("Validation errors:", parseResult.error);
 				return;
 			}
 
-			setErrors(null);
 			setIsLoading(true);
 
 			try {
@@ -251,7 +462,6 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					data: updates,
 				});
 
-				// Handle line items
 				for (const item of lineItems) {
 					if (item.isDeleted && item.quote_line_item_id) {
 						await deleteLineItem.mutateAsync({
@@ -259,7 +469,6 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							lineItemId: item.quote_line_item_id,
 						});
 					} else if (item.isNew) {
-						// Add new line item - convert to API format
 						await addLineItem.mutateAsync({
 							quoteId: quote.id,
 							data: {
@@ -277,7 +486,6 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							},
 						});
 					} else if (item.quote_line_item_id) {
-						// Update existing line item
 						const updateData: UpdateQuoteLineItemInput = {
 							name: item.name,
 							description: item.description || undefined,
@@ -305,16 +513,6 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		}
 	};
 
-	let titleErrors;
-	let addressErrors;
-	let descriptionErrors;
-
-	if (errors) {
-		titleErrors = errors.issues.filter((err) => err.path[0] == "title");
-		addressErrors = errors.issues.filter((err) => err.path[0] == "address");
-		descriptionErrors = errors.issues.filter((err) => err.path[0] == "description");
-	}
-
 	const content = (
 		<div
 			className="max-h-[85vh] overflow-y-auto pl-1"
@@ -324,12 +522,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			}}
 		>
 			<style>{`
-				.max-h-\\[85vh\\]::-webkit-scrollbar {
-					width: 8px;
-				}
-				.max-h-\\[85vh\\]::-webkit-scrollbar-track {
-					background: transparent;
-				}
+				.max-h-\\[85vh\\]::-webkit-scrollbar { width: 8px; }
+				.max-h-\\[85vh\\]::-webkit-scrollbar-track { background: transparent; }
 				.max-h-\\[85vh\\]::-webkit-scrollbar-thumb {
 					background-color: rgb(63 63 70);
 					border-radius: 4px;
@@ -343,27 +537,46 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 				<h2 className="text-2xl font-bold mb-4">Edit Quote</h2>
 
 				<p className="mb-1 hover:color-accent">Title *</p>
-				<input
-					type="text"
-					placeholder="Quote Title"
-					defaultValue={quote.title}
-					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
-					disabled={isLoading}
-					ref={titleRef}
-				/>
-
-				{titleErrors && (
-					<div>
-						{titleErrors.map((err) => (
-							<h3
-								className="my-1 text-red-300"
-								key={err.message}
-							>
-								{err.message}
-							</h3>
-						))}
-					</div>
-				)}
+				<div className="relative">
+					<input
+						type="text"
+						placeholder="Quote Title"
+						defaultValue={quote.title}
+						className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pr-10"
+						disabled={isLoading}
+						ref={titleRef}
+						onChange={(e) =>
+							setFieldDirty(
+								"title",
+								e.target.value.trim() !==
+									originalsRef.current.title
+							)
+						}
+						onBlur={() =>
+							revertIfBlank(
+								titleRef.current,
+								originalsRef.current.title,
+								"title"
+							)
+						}
+					/>
+					{dirty.title && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() =>
+								undoToOriginal(
+									titleRef.current,
+									originalsRef.current.title,
+									"title"
+								)
+							}
+							className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
+				</div>
 
 				<p className="mb-1 mt-3 hover:color-accent">Client</p>
 				<div className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-800/50 text-zinc-400">
@@ -374,62 +587,67 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 				</p>
 
 				<p className="mb-1 mt-3 hover:color-accent">Description *</p>
-				<textarea
-					placeholder="Quote Description"
-					defaultValue={quote.description}
-					className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none"
-					disabled={isLoading}
-					ref={descRef}
-				></textarea>
-
-				{descriptionErrors && (
-					<div>
-						{descriptionErrors.map((err) => (
-							<h3
-								className="my-1 text-red-300"
-								key={err.message}
-							>
-								{err.message}
-							</h3>
-						))}
-					</div>
-				)}
+				<div className="relative">
+					<textarea
+						placeholder="Quote Description"
+						defaultValue={quote.description}
+						className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none pr-10"
+						disabled={isLoading}
+						ref={descRef}
+						onChange={(e) =>
+							setFieldDirty(
+								"description",
+								e.target.value.trim() !==
+									originalsRef.current
+										.description
+							)
+						}
+						onBlur={() =>
+							revertIfBlank(
+								descRef.current,
+								originalsRef.current.description,
+								"description"
+							)
+						}
+					></textarea>
+					{dirty.description && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() =>
+								undoToOriginal(
+									descRef.current,
+									originalsRef.current
+										.description,
+									"description"
+								)
+							}
+							className="absolute right-2 top-2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
+				</div>
 
 				<p className="mb-1 mt-3 hover:color-accent">Address *</p>
-				<AddressForm handleChange={handleChangeAddress} />
-				{geoData?.address && (
-					<p className="text-xs text-zinc-400 mt-1">
-						Current: {geoData.address}
-					</p>
-				)}
-
-				{addressErrors && (
-					<div>
-						{addressErrors.map((err) => (
-							<h3
-								className="my-1 text-red-300"
-								key={err.message}
-							>
-								{err.message}
-							</h3>
-						))}
-					</div>
-				)}
+				<AddressForm
+					mode="edit"
+					originalValue={originalsRef.current.address}
+					originalCoords={originalsRef.current.coords}
+					handleChange={handleChangeAddress}
+				/>
 
 				<p className="mb-1 mt-3 hover:color-accent">Priority</p>
-				<div className="border border-zinc-800 rounded-sm">
+				<div className="relative border border-zinc-800 rounded-sm">
 					<Dropdown
 						refToApply={priorityRef}
+						defaultValue={quote.priority}
 						entries={
 							<>
 								{QuotePriorityValues.map((v) => (
 									<option
 										key={v}
 										value={v}
-										selected={
-											v ===
-											quote.priority
-										}
 										className="text-black"
 									>
 										{v}
@@ -437,7 +655,30 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 								))}
 							</>
 						}
+						onChange={(val) =>
+							setFieldDirty(
+								"priority",
+								val !==
+									originalsRef.current
+										.priority
+							)
+						}
 					/>
+					{dirty.priority && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() => {
+								if (priorityRef.current)
+									priorityRef.current.value =
+										originalsRef.current.priority;
+								setFieldDirty("priority", false);
+							}}
+							className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
 				</div>
 
 				{/* Line Items Section */}
@@ -491,7 +732,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 								</div>
 
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-									<div>
+									<div className="relative">
 										<input
 											type="text"
 											placeholder="Item name *"
@@ -509,14 +750,42 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 														.value
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"name"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
 										/>
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:name`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"name"
+														)
+													}
+													className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div>
+									<div className="relative">
 										<select
 											value={
 												item.item_type
@@ -532,10 +801,16 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 														.value
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"item_type"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10 appearance-none"
 										>
 											<option value="">
 												Type
@@ -565,9 +840,32 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												)
 											)}
 										</select>
+
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:item_type`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"item_type"
+														)
+													}
+													className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div className="md:col-span-2">
+									<div className="md:col-span-2 relative">
 										<input
 											type="text"
 											placeholder="Description (optional)"
@@ -585,14 +883,42 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 														.value
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"description"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
 										/>
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:description`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"description"
+														)
+													}
+													className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div>
+									<div className="relative">
 										<label className="text-xs text-zinc-400 mb-1 block">
 											Quantity
 										</label>
@@ -617,14 +943,42 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 														0
 												)
 											}
+											onBlur={() =>
+												revertLineItemIfBlank(
+													item.id,
+													"quantity"
+												)
+											}
 											disabled={
 												isLoading
 											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
 										/>
+										{!item.isNew &&
+											lineItemDirty[
+												`li:${item.id}:quantity`
+											] && (
+												<button
+													type="button"
+													title="Undo"
+													onClick={() =>
+														undoLineItemField(
+															item.id,
+															"quantity"
+														)
+													}
+													className="absolute right-2 top-[30px] text-zinc-400 hover:text-white transition-colors"
+												>
+													<RotateCcw
+														size={
+															16
+														}
+													/>
+												</button>
+											)}
 									</div>
 
-									<div>
+									<div className="relative">
 										<label className="text-xs text-zinc-400 mb-1 block">
 											Unit Price
 										</label>
@@ -653,11 +1007,39 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 															0
 													)
 												}
+												onBlur={() =>
+													revertLineItemIfBlank(
+														item.id,
+														"unit_price"
+													)
+												}
 												disabled={
 													isLoading
 												}
-												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
+												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6 pr-10"
 											/>
+											{!item.isNew &&
+												lineItemDirty[
+													`li:${item.id}:unit_price`
+												] && (
+													<button
+														type="button"
+														title="Undo"
+														onClick={() =>
+															undoLineItemField(
+																item.id,
+																"unit_price"
+															)
+														}
+														className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+													>
+														<RotateCcw
+															size={
+																16
+															}
+														/>
+													</button>
+												)}
 										</div>
 									</div>
 
@@ -699,7 +1081,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					</div>
 
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-						<div>
+						<div className="relative">
 							<label className="text-xs text-zinc-400 mb-1 block">
 								Tax Rate (%)
 							</label>
@@ -710,20 +1092,47 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 								max="100"
 								placeholder="0.00"
 								value={taxRate}
-								onChange={(e) =>
-									setTaxRate(
+								onChange={(e) => {
+									const next =
 										parseFloat(
 											e.target
 												.value
-										) || 0
-									)
-								}
-								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm"
+										) || 0;
+									setTaxRate(next);
+									setFieldDirty(
+										"taxRate",
+										next !==
+											originalsRef
+												.current
+												.taxRate
+									);
+								}}
+								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm pr-10"
 								disabled={isLoading}
 							/>
+							{dirty.taxRate && (
+								<button
+									type="button"
+									title="Undo"
+									onClick={() => {
+										setTaxRate(
+											originalsRef
+												.current
+												.taxRate
+										);
+										setFieldDirty(
+											"taxRate",
+											false
+										);
+									}}
+									className="absolute right-2 top-[30px] text-zinc-400 hover:text-white transition-colors"
+								>
+									<RotateCcw size={16} />
+								</button>
+							)}
 						</div>
 
-						<div>
+						<div className="relative">
 							<label className="text-xs text-zinc-400 mb-1 block">
 								Discount
 							</label>
@@ -743,17 +1152,30 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 										value={
 											discountValue
 										}
-										onChange={(e) =>
-											setDiscountValue(
+										onChange={(e) => {
+											const next =
 												parseFloat(
 													e
 														.target
 														.value
 												) ||
-													0
-											)
-										}
-										className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm ${
+												0;
+											setDiscountValue(
+												next
+											);
+											setFieldDirty(
+												"discountValue",
+												next !==
+													originalsRef
+														.current
+														.discountValue ||
+													discountType !==
+														originalsRef
+															.current
+															.discountType
+											);
+										}}
+										className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm pr-10 ${
 											discountType ===
 											"amount"
 												? "pl-6"
@@ -763,21 +1185,65 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 									/>
 									{discountType ===
 										"percent" && (
-										<span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+										<span className="absolute right-8 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
 											%
 										</span>
 									)}
+
+									{dirty.discountValue && (
+										<button
+											type="button"
+											title="Undo"
+											onClick={() => {
+												setDiscountType(
+													originalsRef
+														.current
+														.discountType
+												);
+												setDiscountValue(
+													originalsRef
+														.current
+														.discountValue
+												);
+												setFieldDirty(
+													"discountValue",
+													false
+												);
+											}}
+											className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+										>
+											<RotateCcw
+												size={
+													16
+												}
+											/>
+										</button>
+									)}
 								</div>
+
 								<button
 									type="button"
-									onClick={() =>
-										setDiscountType(
+									onClick={() => {
+										const next =
 											discountType ===
-												"amount"
+											"amount"
 												? "percent"
-												: "amount"
-										)
-									}
+												: "amount";
+										setDiscountType(
+											next
+										);
+										setFieldDirty(
+											"discountValue",
+											discountValue !==
+												originalsRef
+													.current
+													.discountValue ||
+												next !==
+													originalsRef
+														.current
+														.discountType
+										);
+									}}
 									disabled={isLoading}
 									className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 text-white text-xs font-medium rounded-sm transition-colors min-w-[45px]"
 								>
@@ -821,8 +1287,20 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							Valid Until (Optional)
 						</p>
 						<DatePicker
+							mode="edit"
+							originalValue={
+								originalsRef.current.validUntilDate
+							}
 							value={validUntilDate}
-							onChange={setValidUntilDate}
+							onChange={(d) => {
+								setValidUntilDate(d);
+								setFieldDirty(
+									"validUntilDate",
+									(d?.getTime() || null) !==
+										(originalsRef.current.validUntilDate?.getTime() ||
+											null)
+								);
+							}}
 							align="left"
 						/>
 					</div>
@@ -832,8 +1310,20 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							Expires At (Optional)
 						</p>
 						<DatePicker
+							mode="edit"
+							originalValue={
+								originalsRef.current.expiresAtDate
+							}
 							value={expiresAtDate}
-							onChange={setExpiresAtDate}
+							onChange={(d) => {
+								setExpiresAtDate(d);
+								setFieldDirty(
+									"expiresAtDate",
+									(d?.getTime() || null) !==
+										(originalsRef.current.expiresAtDate?.getTime() ||
+											null)
+								);
+							}}
 							align="right"
 						/>
 					</div>
@@ -850,6 +1340,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							? "Saving..."
 							: "Save Changes"}
 					</button>
+
 					<button
 						type="button"
 						onClick={handleDelete}
