@@ -33,7 +33,8 @@ export default function ConvertToJob({
 			: undefined
 	);
 	const [isLoading, setIsLoading] = useState(false);
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [nameError, setNameError] = useState<string | null>(null);
+	const [addressError, setAddressError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (isModalOpen && priorityRef.current) {
@@ -51,6 +52,21 @@ export default function ConvertToJob({
 			address: result.address,
 			coords: result.coords,
 		}));
+		// Clear address error when valid address is selected
+		setAddressError(null);
+	};
+
+	const handleClearAddress = () => {
+		// In edit mode, revert to original if it exists
+		if (request.address || request.coords) {
+			setGeoData({
+				address: request.address || "",
+				coords: request.coords,
+			});
+		} else {
+			setGeoData(undefined);
+		}
+		setAddressError(null);
 	};
 
 	const priorityEntries = (
@@ -74,17 +90,27 @@ export default function ConvertToJob({
 				| "Urgent"
 				| "Emergency";
 
+			// Reset errors
+			setNameError(null);
+			setAddressError(null);
+
+			// Validate all fields
+			let hasError = false;
+
 			if (!nameValue) {
-				setErrorMessage("Job name is required");
-				return;
+				setNameError("Job name is required");
+				hasError = true;
 			}
 
 			if (!geoData?.address) {
-				setErrorMessage("Job address is required");
+				setAddressError("Job address is required");
+				hasError = true;
+			}
+
+			if (hasError) {
 				return;
 			}
 
-			setErrorMessage(null);
 			setIsLoading(true);
 
 			try {
@@ -92,8 +118,8 @@ export default function ConvertToJob({
 					name: nameValue,
 					client_id: request.client_id,
 					request_id: request.id,
-					address: geoData.address,
-					coords: geoData.coords || { lat: 0, lon: 0 },
+					address: geoData!.address,
+					coords: geoData!.coords || { lat: 0, lon: 0 },
 					description: descValue,
 					priority: priorityValue,
 					status: "Unscheduled",
@@ -105,11 +131,13 @@ export default function ConvertToJob({
 				if (nameRef.current) nameRef.current.value = "";
 				if (descRef.current) descRef.current.value = "";
 				setGeoData(undefined);
+				setNameError(null);
+				setAddressError(null);
 
 				setIsModalOpen(false);
 			} catch (error) {
 				console.error("Failed to convert request to job:", error);
-				setErrorMessage(
+				setNameError(
 					error instanceof Error
 						? error.message
 						: "Failed to convert request to job"
@@ -124,12 +152,6 @@ export default function ConvertToJob({
 		<>
 			<h2 className="text-2xl font-bold mb-4">Convert to Job</h2>
 
-			{errorMessage && (
-				<div className="p-3 mb-4 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
-					{errorMessage}
-				</div>
-			)}
-
 			<p className="mb-1 hover:color-accent">Job Name *</p>
 			<input
 				type="text"
@@ -138,7 +160,9 @@ export default function ConvertToJob({
 				disabled={isLoading}
 				ref={nameRef}
 				defaultValue={request.title}
+				onChange={() => setNameError(null)}
 			/>
+			{nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
 
 			<p className="mb-1 mt-3 hover:color-accent">Description</p>
 			<textarea
@@ -150,11 +174,15 @@ export default function ConvertToJob({
 			/>
 
 			<p className="mb-1 mt-3 hover:color-accent">Job Address *</p>
-			<AddressForm handleChange={handleChangeAddress} />
-			{geoData?.address && (
-				<p className="text-xs text-zinc-400 mt-1">
-					Current: {geoData.address}
-				</p>
+			<AddressForm
+				mode={request.address ? "edit" : "create"}
+				originalValue={request.address || ""}
+				originalCoords={request.coords}
+				handleChange={handleChangeAddress}
+				handleClear={handleClearAddress}
+			/>
+			{addressError && (
+				<p className="text-red-500 text-sm mt-1">{addressError}</p>
 			)}
 
 			<p className="mb-1 mt-3 hover:color-accent">Priority</p>

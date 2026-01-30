@@ -1,6 +1,6 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import Button from "../ui/Button";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
 import {
@@ -46,13 +46,32 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	const [taxRate, setTaxRate] = useState<number>(0);
 	const [discountType, setDiscountType] = useState<"percent" | "amount">("amount");
 	const [discountValue, setDiscountValue] = useState<number>(0);
-	const [lineItems, setLineItems] = useState<LineItem[]>([]); // ← Start with empty array
+	const [lineItems, setLineItems] = useState<LineItem[]>([]);
+
+	// Reset form state when modal closes/opens
+	useEffect(() => {
+		if (!isModalOpen) {
+			setGeoData(undefined);
+			setTaxRate(0);
+			setDiscountType("amount");
+			setDiscountValue(0);
+			setLineItems([]);
+			setErrors(null);
+
+			if (nameRef.current) nameRef.current.value = "";
+			if (descRef.current) descRef.current.value = "";
+		}
+	}, [isModalOpen]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData(() => ({
 			address: result.address,
 			coords: result.coords,
 		}));
+	};
+
+	const handleClearAddress = () => {
+		setGeoData(undefined);
 	};
 
 	const addLineItem = () => {
@@ -71,7 +90,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	};
 
 	const removeLineItem = (id: string) => {
-		setLineItems(lineItems.filter((item) => item.id !== id)); // ← Allow removing all items
+		setLineItems(lineItems.filter((item) => item.id !== id));
 	};
 
 	const updateLineItem = (id: string, field: keyof LineItem, value: string | number) => {
@@ -183,7 +202,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 				line_items:
 					preparedLineItems.length > 0
 						? preparedLineItems
-						: undefined, // ← Only include if there are items
+						: undefined,
 			};
 
 			const parseResult = CreateJobSchema.safeParse(newJob);
@@ -200,21 +219,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 			await createJob(newJob);
 
 			setIsLoading(false);
-
-			// Reset form values before closing
-			if (nameRef.current) nameRef.current.value = "";
-			if (descRef.current) descRef.current.value = "";
-			setGeoData(undefined);
-			setTaxRate(0);
-			setDiscountType("amount");
-			setDiscountValue(0);
-			setLineItems([]); // ← Reset to empty array
-
 			setIsModalOpen(false);
 		}
 	};
 
-	// Error display component - SAME AS CreateRecurringPlan
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
@@ -286,7 +294,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 				<ErrorDisplay path="description" />
 
 				<p className="mb-1 mt-3 hover:color-accent">Address *</p>
-				<AddressForm handleChange={handleChangeAddress} />
+				<AddressForm
+					handleChange={handleChangeAddress}
+					handleClear={handleClearAddress}
+				/>
 				<ErrorDisplay path="address" />
 				<ErrorDisplay path="coords" />
 

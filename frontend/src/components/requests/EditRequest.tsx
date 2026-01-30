@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { ZodError } from "zod";
-import { Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Trash2, RotateCcw } from "lucide-react";
 import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
 import FullPopup from "../ui/FullPopup";
 import { useUpdateRequestMutation, useDeleteRequestMutation } from "../../hooks/useRequests";
 import {
@@ -15,7 +15,6 @@ import {
 import type { GeocodeResult } from "../../types/location";
 import AddressForm from "../ui/AddressForm";
 import Dropdown from "../ui/Dropdown";
-import { useNavigate } from "react-router-dom";
 
 interface EditRequestProps {
 	isModalOpen: boolean;
@@ -44,32 +43,127 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
 	const [showCancellationReason, setShowCancellationReason] = useState(false);
 
-	// Reset form data when modal opens with new request
+	const originalsRef = useRef({
+		title: "",
+		description: "",
+		source: "",
+		source_reference: "",
+		estimated_value: "",
+		cancellation_reason: "",
+		priority: "Low" as (typeof RequestPriorityValues)[number],
+		status: RequestStatusValues[0] as (typeof RequestStatusValues)[number],
+		requires_quote: false,
+		address: "",
+		coords: undefined as { lat: number; lon: number } | undefined,
+	});
+
+	const [dirty, setDirty] = useState<Record<string, boolean>>({});
+
+	const setFieldDirty = (key: string, isDirty: boolean) => {
+		setDirty((prev) => {
+			if (prev[key] === isDirty) return prev;
+			return { ...prev, [key]: isDirty };
+		});
+	};
+
+	const revertIfBlank = (
+		el: HTMLInputElement | HTMLTextAreaElement | null,
+		original: string,
+		key: string
+	) => {
+		if (!el) return;
+		const v = el.value.trim();
+		if (v === "") {
+			el.value = original;
+			setFieldDirty(key, false);
+		}
+	};
+
+	const undoToOriginal = (
+		el: HTMLInputElement | HTMLTextAreaElement | null,
+		original: string,
+		key: string
+	) => {
+		if (!el) return;
+		el.value = original;
+		setFieldDirty(key, false);
+	};
+
 	useEffect(() => {
 		if (isModalOpen) {
+			originalsRef.current = {
+				title: request.title ?? "",
+				description: request.description ?? "",
+				source: request.source ?? "",
+				source_reference: request.source_reference ?? "",
+				estimated_value:
+					request.estimated_value !== null &&
+					request.estimated_value !== undefined
+						? String(request.estimated_value)
+						: "",
+				cancellation_reason: request.cancellation_reason ?? "",
+				priority: request.priority,
+				status: request.status,
+				requires_quote: !!request.requires_quote,
+				address: request.address ?? "",
+				coords: request.coords,
+			};
+
+			setDirty({});
+			setErrors(null);
+
 			setGeoData(
-				request.address && request.coords
-					? {
-							address: request.address,
-							coords: request.coords,
-						}
+				request.address || request.coords
+					? { address: request.address || "", coords: request.coords }
 					: undefined
 			);
 			setShowCancellationReason(request.status === "Cancelled");
 			setDeleteConfirm(false);
-			setErrors(null);
+
+			if (titleRef.current) titleRef.current.value = originalsRef.current.title;
+			if (descRef.current)
+				descRef.current.value = originalsRef.current.description;
+			if (sourceRef.current)
+				sourceRef.current.value = originalsRef.current.source;
+			if (sourceReferenceRef.current)
+				sourceReferenceRef.current.value =
+					originalsRef.current.source_reference;
+			if (estimatedValueRef.current)
+				estimatedValueRef.current.value =
+					originalsRef.current.estimated_value;
+			if (cancellationReasonRef.current)
+				cancellationReasonRef.current.value =
+					originalsRef.current.cancellation_reason;
+			if (requiresQuoteRef.current)
+				requiresQuoteRef.current.checked =
+					originalsRef.current.requires_quote;
+
+			if (priorityRef.current)
+				priorityRef.current.value = originalsRef.current.priority;
+			if (statusRef.current)
+				statusRef.current.value = originalsRef.current.status;
 		}
 	}, [isModalOpen, request]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData(() => ({
-			address: result.address,
-			coords: result.coords,
-		}));
+		setGeoData(() => ({ address: result.address, coords: result.coords }));
+		setFieldDirty(
+			"address",
+			(result.address || "") !== (originalsRef.current.address || "")
+		);
 	};
 
-	const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-		setShowCancellationReason(e.target.value === "Cancelled");
+	const handleClearAddress = () => {
+		// In edit mode, revert to original if it exists
+		if (request.address || request.coords) {
+			setGeoData({
+				address: request.address || "",
+				coords: request.coords,
+			});
+		} else {
+			setGeoData(undefined);
+		}
+		setFieldDirty("address", false);
 	};
 
 	const handleUpdate = async () => {
@@ -80,6 +174,31 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 			statusRef.current &&
 			!isLoading
 		) {
+			revertIfBlank(titleRef.current, originalsRef.current.title, "title");
+			revertIfBlank(
+				descRef.current,
+				originalsRef.current.description,
+				"description"
+			);
+			revertIfBlank(sourceRef.current, originalsRef.current.source, "source");
+			revertIfBlank(
+				sourceReferenceRef.current,
+				originalsRef.current.source_reference,
+				"source_reference"
+			);
+			revertIfBlank(
+				estimatedValueRef.current,
+				originalsRef.current.estimated_value,
+				"estimated_value"
+			);
+			if (showCancellationReason) {
+				revertIfBlank(
+					cancellationReasonRef.current,
+					originalsRef.current.cancellation_reason,
+					"cancellation_reason"
+				);
+			}
+
 			const titleValue = titleRef.current.value.trim();
 			const descValue = descRef.current.value.trim();
 			const priorityValue = priorityRef.current.value.trim();
@@ -117,7 +236,6 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 			};
 
 			const parseResult = UpdateRequestSchema.safeParse(updates);
-
 			if (!parseResult.success) {
 				setErrors(parseResult.error);
 				console.error("Validation errors:", parseResult.error);
@@ -128,11 +246,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 			setIsLoading(true);
 
 			try {
-				await updateRequest.mutateAsync({
-					id: request.id,
-					data: updates,
-				});
-
+				await updateRequest.mutateAsync({ id: request.id, data: updates });
 				setIsLoading(false);
 				setIsModalOpen(false);
 			} catch (error) {
@@ -160,7 +274,6 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 		}
 	};
 
-	// Error display component
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
@@ -201,15 +314,46 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 			<h2 className="text-2xl font-bold mb-4">Edit Request</h2>
 
 			<p className="mb-1 hover:color-accent">Title *</p>
-			<input
-				type="text"
-				placeholder="Request Title"
-				defaultValue={request.title}
-				className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
-				disabled={isLoading}
-				ref={titleRef}
-			/>
-			<ErrorDisplay path="title" />
+			<div className="relative">
+				<input
+					type="text"
+					placeholder="Request Title"
+					defaultValue={request.title}
+					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pr-10"
+					disabled={isLoading}
+					ref={titleRef}
+					onChange={(e) =>
+						setFieldDirty(
+							"title",
+							e.target.value.trim() !==
+								originalsRef.current.title
+						)
+					}
+					onBlur={() =>
+						revertIfBlank(
+							titleRef.current,
+							originalsRef.current.title,
+							"title"
+						)
+					}
+				/>
+				{dirty.title && (
+					<button
+						type="button"
+						title="Undo"
+						onClick={() =>
+							undoToOriginal(
+								titleRef.current,
+								originalsRef.current.title,
+								"title"
+							)
+						}
+						className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+					>
+						<RotateCcw size={16} />
+					</button>
+				)}
+			</div>
 
 			<p className="mb-1 mt-3 hover:color-accent">Client</p>
 			<div className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-800/50 text-zinc-400">
@@ -220,53 +364,102 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 			</p>
 
 			<p className="mb-1 mt-3 hover:color-accent">Description *</p>
-			<textarea
-				placeholder="Request Description"
-				defaultValue={request.description}
-				className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none"
-				disabled={isLoading}
-				ref={descRef}
-			></textarea>
-			<ErrorDisplay path="description" />
+			<div className="relative">
+				<textarea
+					placeholder="Request Description"
+					defaultValue={request.description}
+					className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none pr-10"
+					disabled={isLoading}
+					ref={descRef}
+					onChange={(e) =>
+						setFieldDirty(
+							"description",
+							e.target.value.trim() !==
+								originalsRef.current.description
+						)
+					}
+					onBlur={() =>
+						revertIfBlank(
+							descRef.current,
+							originalsRef.current.description,
+							"description"
+						)
+					}
+				></textarea>
+				{dirty.description && (
+					<button
+						type="button"
+						title="Undo"
+						onClick={() =>
+							undoToOriginal(
+								descRef.current,
+								originalsRef.current.description,
+								"description"
+							)
+						}
+						className="absolute right-2 top-2 text-zinc-400 hover:text-white transition-colors"
+					>
+						<RotateCcw size={16} />
+					</button>
+				)}
+			</div>
 
 			<p className="mb-1 mt-3 hover:color-accent">Address (Optional)</p>
-			<AddressForm handleChange={handleChangeAddress} />
-			{geoData?.address && (
-				<p className="text-xs text-zinc-400 mt-1">
-					Current: {geoData.address}
-				</p>
-			)}
+			<AddressForm
+				mode={request.address ? "edit" : "create"}
+				originalValue={request.address || ""}
+				originalCoords={request.coords}
+				handleChange={handleChangeAddress}
+				handleClear={handleClearAddress}
+			/>
 			<ErrorDisplay path="address" />
 			<ErrorDisplay path="coords" />
+			<div>
+				<p className="mb-1 hover:color-accent">Priority *</p>
 
-			<div className="grid grid-cols-2 gap-4 mt-3">
-				<div>
-					<p className="mb-1 hover:color-accent">Priority *</p>
-					<div className="border border-zinc-800 rounded-sm">
-						<Dropdown
-							refToApply={priorityRef}
-							defaultValue={request.priority}
-							entries={priorityEntries}
-						/>
-					</div>
-					<ErrorDisplay path="priority" />
-				</div>
+				<div className="relative border border-zinc-800 rounded-sm">
+					<Dropdown
+						refToApply={priorityRef}
+						defaultValue={request.priority}
+						entries={
+							<>
+								{RequestPriorityValues.map((v) => (
+									<option
+										key={v}
+										value={v}
+										className="text-black"
+									>
+										{v}
+									</option>
+								))}
+							</>
+						}
+						onChange={(val) =>
+							setFieldDirty(
+								"priority",
+								val !==
+									originalsRef.current
+										.priority
+							)
+						}
+					/>
 
-				<div>
-					<p className="mb-1 hover:color-accent">Status *</p>
-					<div className="border border-zinc-800 rounded-sm">
-						<Dropdown
-							refToApply={statusRef}
-							defaultValue={request.status}
-							entries={statusEntries}
-							onChange={(value) => {
-								setShowCancellationReason(
-									value === "Cancelled"
-								);
+					{dirty.priority && (
+						<button
+							type="button"
+							title="Undo"
+							onClick={() => {
+								if (priorityRef.current) {
+									priorityRef.current.value =
+										originalsRef.current.priority;
+								}
+								setFieldDirty("priority", false);
 							}}
-						/>
-					</div>
-					<ErrorDisplay path="status" />
+							className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+						>
+							<RotateCcw size={16} />
+						</button>
+					)}
 				</div>
 			</div>
 
@@ -275,37 +468,140 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 					<p className="mb-1 hover:color-accent">
 						Cancellation Reason
 					</p>
-					<textarea
-						placeholder="Reason for cancellation..."
-						defaultValue={request.cancellation_reason || ""}
-						className="border border-zinc-800 p-2 w-full h-20 rounded-sm bg-zinc-900 text-white resize-none"
-						disabled={isLoading}
-						ref={cancellationReasonRef}
-					></textarea>
+					<div className="relative">
+						<textarea
+							placeholder="Reason for cancellation..."
+							defaultValue={
+								request.cancellation_reason || ""
+							}
+							className="border border-zinc-800 p-2 w-full h-20 rounded-sm bg-zinc-900 text-white resize-none pr-10"
+							disabled={isLoading}
+							ref={cancellationReasonRef}
+							onChange={(e) =>
+								setFieldDirty(
+									"cancellation_reason",
+									e.target.value.trim() !==
+										originalsRef.current
+											.cancellation_reason
+								)
+							}
+							onBlur={() =>
+								revertIfBlank(
+									cancellationReasonRef.current,
+									originalsRef.current
+										.cancellation_reason,
+									"cancellation_reason"
+								)
+							}
+						></textarea>
+						{dirty.cancellation_reason && (
+							<button
+								type="button"
+								title="Undo"
+								onClick={() =>
+									undoToOriginal(
+										cancellationReasonRef.current,
+										originalsRef.current
+											.cancellation_reason,
+										"cancellation_reason"
+									)
+								}
+								className="absolute right-2 top-2 text-zinc-400 hover:text-white transition-colors"
+							>
+								<RotateCcw size={16} />
+							</button>
+						)}
+					</div>
 					<ErrorDisplay path="cancellation_reason" />
 				</div>
 			)}
 
 			<p className="mb-1 mt-3 hover:color-accent">Source (Optional)</p>
-			<input
-				type="text"
-				placeholder="e.g., Phone Call, Website, Email"
-				defaultValue={request.source || ""}
-				className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
-				disabled={isLoading}
-				ref={sourceRef}
-			/>
+			<div className="relative">
+				<input
+					type="text"
+					placeholder="e.g., Phone Call, Website, Email"
+					defaultValue={request.source || ""}
+					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pr-10"
+					disabled={isLoading}
+					ref={sourceRef}
+					onChange={(e) =>
+						setFieldDirty(
+							"source",
+							e.target.value.trim() !==
+								originalsRef.current.source
+						)
+					}
+					onBlur={() =>
+						revertIfBlank(
+							sourceRef.current,
+							originalsRef.current.source,
+							"source"
+						)
+					}
+				/>
+				{dirty.source && (
+					<button
+						type="button"
+						title="Undo"
+						onClick={() =>
+							undoToOriginal(
+								sourceRef.current,
+								originalsRef.current.source,
+								"source"
+							)
+						}
+						className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+					>
+						<RotateCcw size={16} />
+					</button>
+				)}
+			</div>
 			<ErrorDisplay path="source" />
 
 			<p className="mb-1 mt-3 hover:color-accent">Source Reference (Optional)</p>
-			<input
-				type="text"
-				placeholder="e.g., Ticket #12345, Email ID"
-				defaultValue={request.source_reference || ""}
-				className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
-				disabled={isLoading}
-				ref={sourceReferenceRef}
-			/>
+			<div className="relative">
+				<input
+					type="text"
+					placeholder="e.g., Ticket #12345, Email ID"
+					defaultValue={request.source_reference || ""}
+					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pr-10"
+					disabled={isLoading}
+					ref={sourceReferenceRef}
+					onChange={(e) =>
+						setFieldDirty(
+							"source_reference",
+							e.target.value.trim() !==
+								originalsRef.current
+									.source_reference
+						)
+					}
+					onBlur={() =>
+						revertIfBlank(
+							sourceReferenceRef.current,
+							originalsRef.current.source_reference,
+							"source_reference"
+						)
+					}
+				/>
+				{dirty.source_reference && (
+					<button
+						type="button"
+						title="Undo"
+						onClick={() =>
+							undoToOriginal(
+								sourceReferenceRef.current,
+								originalsRef.current
+									.source_reference,
+								"source_reference"
+							)
+						}
+						className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+					>
+						<RotateCcw size={16} />
+					</button>
+				)}
+			</div>
 			<ErrorDisplay path="source_reference" />
 
 			<div className="mt-3 flex items-center gap-2">
@@ -316,10 +612,34 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 					className="w-4 h-4 rounded border-zinc-800"
 					disabled={isLoading}
 					ref={requiresQuoteRef}
+					onChange={(e) =>
+						setFieldDirty(
+							"requires_quote",
+							e.target.checked !==
+								originalsRef.current.requires_quote
+						)
+					}
 				/>
 				<label htmlFor="requires_quote" className="text-sm cursor-pointer">
 					Requires Quote
 				</label>
+
+				{dirty.requires_quote && (
+					<button
+						type="button"
+						title="Undo"
+						onClick={() => {
+							if (requiresQuoteRef.current) {
+								requiresQuoteRef.current.checked =
+									originalsRef.current.requires_quote;
+							}
+							setFieldDirty("requires_quote", false);
+						}}
+						className="ml-1 text-zinc-400 hover:text-white transition-colors"
+					>
+						<RotateCcw size={16} />
+					</button>
+				)}
 			</div>
 
 			<p className="mb-1 mt-3 hover:color-accent">Estimated Value (Optional)</p>
@@ -333,10 +653,41 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 					min="0"
 					placeholder="0.00"
 					defaultValue={request.estimated_value || ""}
-					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pl-7"
+					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white pl-7 pr-10"
 					disabled={isLoading}
 					ref={estimatedValueRef}
+					onChange={(e) =>
+						setFieldDirty(
+							"estimated_value",
+							e.target.value.trim() !==
+								originalsRef.current.estimated_value
+						)
+					}
+					onBlur={() =>
+						revertIfBlank(
+							estimatedValueRef.current,
+							originalsRef.current.estimated_value,
+							"estimated_value"
+						)
+					}
 				/>
+				{dirty.estimated_value && (
+					<button
+						type="button"
+						title="Undo"
+						onClick={() =>
+							undoToOriginal(
+								estimatedValueRef.current,
+								originalsRef.current
+									.estimated_value,
+								"estimated_value"
+							)
+						}
+						className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+					>
+						<RotateCcw size={16} />
+					</button>
+				)}
 			</div>
 			<ErrorDisplay path="estimated_value" />
 

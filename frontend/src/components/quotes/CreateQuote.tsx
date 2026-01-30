@@ -1,6 +1,6 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import Button from "../ui/Button";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
 import {
@@ -63,11 +63,49 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		},
 	]);
 
+	const resetForm = () => {
+		if (titleRef.current) titleRef.current.value = "";
+		if (descRef.current) descRef.current.value = "";
+		setGeoData(undefined);
+
+		setTaxRate(0);
+		setDiscountType("amount");
+		setDiscountValue(0);
+
+		setValidUntilDate(null);
+		setExpiresAtDate(null);
+
+		setLineItems([
+			{
+				id: crypto.randomUUID(),
+				name: "",
+				description: "",
+				quantity: 1,
+				unit_price: 0,
+				item_type: "",
+				total: 0,
+			},
+		]);
+
+		setErrors(null);
+	};
+
+	useEffect(() => {
+		if (!isModalOpen) {
+			resetForm();
+			setIsLoading(false);
+		}
+	}, [isModalOpen]);
+
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData(() => ({
 			address: result.address,
 			coords: result.coords,
 		}));
+	};
+
+	const handleClearAddress = () => {
+		setGeoData(undefined);
 	};
 
 	const addLineItem = () => {
@@ -185,7 +223,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 					| "Urgent"
 					| "Emergency",
 				subtotal,
-				tax_rate: taxRate / 100, // Store as decimal
+				tax_rate: taxRate / 100,
 				tax_amount: taxAmount,
 				discount_type: discountType,
 				discount_value: discountValue,
@@ -212,33 +250,11 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 			await createQuote(newQuote);
 
 			setIsLoading(false);
-
-			// Reset form values before closing
-			if (titleRef.current) titleRef.current.value = "";
-			if (descRef.current) descRef.current.value = "";
-			setGeoData(undefined);
-			setTaxRate(0);
-			setDiscountType("amount");
-			setDiscountValue(0);
-			setValidUntilDate(null);
-			setExpiresAtDate(null);
-			setLineItems([
-				{
-					id: crypto.randomUUID(),
-					name: "",
-					description: "",
-					quantity: 1,
-					unit_price: 0,
-					item_type: "",
-					total: 0,
-				},
-			]);
-
+			resetForm();
 			setIsModalOpen(false);
 		}
 	};
 
-	// Error display component - SAME AS CreateJob
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
@@ -310,7 +326,11 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 				<ErrorDisplay path="description" />
 
 				<p className="mb-1 mt-3 hover:color-accent">Address *</p>
-				<AddressForm handleChange={handleChangeAddress} />
+				<AddressForm
+					mode="create"
+					handleChange={handleChangeAddress}
+					handleClear={handleClearAddress}
+				/>
 				<ErrorDisplay path="address" />
 				<ErrorDisplay path="coords" />
 
@@ -701,6 +721,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							Valid Until (Optional)
 						</p>
 						<DatePicker
+							mode="create"
 							value={validUntilDate}
 							onChange={setValidUntilDate}
 							align="left"
@@ -712,6 +733,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							Expires At (Optional)
 						</p>
 						<DatePicker
+							mode="create"
 							value={expiresAtDate}
 							onChange={setExpiresAtDate}
 							align="right"
@@ -726,9 +748,10 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 						<>
 							<div
 								className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
-								onClick={() =>
-									setIsModalOpen(false)
-								}
+								onClick={() => {
+									resetForm();
+									setIsModalOpen(false);
+								}}
 							>
 								<Button label="Cancel" />
 							</div>
@@ -751,7 +774,10 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		<FullPopup
 			content={content}
 			isModalOpen={isModalOpen}
-			onClose={() => setIsModalOpen(false)}
+			onClose={() => {
+				resetForm();
+				setIsModalOpen(false);
+			}}
 		/>
 	);
 };

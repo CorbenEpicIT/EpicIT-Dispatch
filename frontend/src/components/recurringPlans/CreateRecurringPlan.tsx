@@ -1,6 +1,5 @@
 import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
 import {
@@ -33,6 +32,7 @@ interface CreateRecurringPlanProps {
 	setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
+// Local UI-only interface for form state
 interface LineItem {
 	id: string;
 	name: string;
@@ -66,17 +66,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	const [endDate, setEndDate] = useState<Date | null>(null);
 
 	const [autoInvoice, setAutoInvoice] = useState<boolean>(false);
-	const [lineItems, setLineItems] = useState<LineItem[]>([
-		{
-			id: crypto.randomUUID(),
-			name: "",
-			description: "",
-			quantity: 1,
-			unit_price: 0,
-			item_type: "",
-			total: 0,
-		},
-	]);
+	const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
 	const [frequency, setFrequency] = useState<RecurringFrequency>("daily");
 	const [interval, setInterval] = useState<number>(1);
@@ -115,6 +105,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		}));
 	};
 
+	const handleClearAddress = () => {
+		setGeoData(undefined);
+	};
+
 	const addLineItem = () => {
 		setLineItems([
 			...lineItems,
@@ -131,9 +125,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	};
 
 	const removeLineItem = (id: string) => {
-		if (lineItems.length > 1) {
-			setLineItems(lineItems.filter((item) => item.id !== id));
-		}
+		setLineItems(lineItems.filter((item) => item.id !== id));
 	};
 
 	const updateLineItem = (id: string, field: keyof LineItem, value: string | number) => {
@@ -153,6 +145,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		);
 	};
 
+	// Recurring Rule management
 	const toggleWeekday = (weekday: Weekday) => {
 		setSelectedWeekdays((prev) =>
 			prev.includes(weekday)
@@ -161,6 +154,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		);
 	};
 
+	// Helper to format time as HH:MM
 	const formatTimeString = (date: Date | null): string | null => {
 		if (!date) return null;
 		const hours = date.getHours().toString().padStart(2, "0");
@@ -194,20 +188,21 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			const startsAtValue = startDate.toISOString();
 			const endsAtValue = endDate ? endDate.toISOString() : undefined;
 
-			const validLineItems = lineItems.filter((item) => item.name.trim() !== "");
-			const preparedLineItems =
-				validLineItems.length > 0
-					? validLineItems.map((item, index) => ({
-							name: item.name,
-							description: item.description || undefined,
-							quantity: Number(item.quantity),
-							unit_price: Number(item.unit_price),
-							item_type: (item.item_type || undefined) as
-								| LineItemType
-								| undefined,
-							sort_order: index,
-						}))
-					: [];
+			// Filter out empty line items
+			const validLineItems = lineItems.filter(
+				(item) => item.name.trim() !== "" && item.quantity > 0
+			);
+
+			const preparedLineItems = validLineItems.map((item, index) => ({
+				name: item.name,
+				description: item.description || undefined,
+				quantity: Number(item.quantity),
+				unit_price: Number(item.unit_price),
+				item_type: (item.item_type || undefined) as
+					| LineItemType
+					| undefined,
+				sort_order: index,
+			}));
 
 			const preparedRule = {
 				frequency: frequency,
@@ -282,6 +277,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			try {
 				await createMutation.mutateAsync(newRecurringPlan);
 
+				// Reset form
 				if (nameRef.current) nameRef.current.value = "";
 				if (descRef.current) descRef.current.value = "";
 				if (generationWindowRef.current)
@@ -291,23 +287,14 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 				setStartDate(new Date());
 				setEndDate(null);
 				setAutoInvoice(false);
-				setLineItems([
-					{
-						id: crypto.randomUUID(),
-						name: "",
-						description: "",
-						quantity: 1,
-						unit_price: 0,
-						item_type: "",
-						total: 0,
-					},
-				]);
-				setFrequency("weekly");
+				setLineItems([]);
+				setFrequency("daily");
 				setInterval(1);
 				setSelectedWeekdays([]);
 				setMonthDay("");
 				setMonth("");
 
+				// Reset constraints
 				setArrivalConstraint("anytime");
 				setFinishConstraint("when_done");
 				const resetTime = new Date();
@@ -328,7 +315,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		}
 	};
 
-	// Error display component
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
@@ -348,19 +334,20 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		clients && clients.length ? (
 			<>
 				{clients.map((c) => (
-					<option value={c.id} key={c.id}>
+					<option value={c.id} key={c.id} className="text-black">
 						{c.name}
 					</option>
 				))}
 			</>
 		) : (
-			<option disabled selected value={""}>
+			<option disabled selected value={""} className="text-black">
 				No clients found
 			</option>
 		);
 
 	const content = (
 		<div className="flex flex-col h-full">
+			{/* Scrollable content */}
 			<div
 				ref={scrollContainerRef}
 				className="flex-1 overflow-y-auto pr-2 pl-1"
@@ -409,13 +396,12 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 							<label className="text-sm text-zinc-300 mb-1 block">
 								Client *
 							</label>
-							<Dropdown
-								refToApply={clientRef}
-								entries={dropdownEntries}
-								disabled={isLoading}
-								required
-								aria-label="Select client"
-							/>
+							<div className="border border-zinc-700 rounded-sm">
+								<Dropdown
+									refToApply={clientRef}
+									entries={dropdownEntries}
+								/>
+							</div>
 							<ErrorDisplay path="client_id" />
 						</div>
 
@@ -437,7 +423,9 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								Address *
 							</label>
 							<AddressForm
+								mode="create"
 								handleChange={handleChangeAddress}
+								handleClear={handleClearAddress}
 							/>
 							<ErrorDisplay path="address" />
 							<ErrorDisplay path="coords" />
@@ -445,37 +433,41 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 						<div>
 							<label className="text-sm text-zinc-300 mb-1 block">
-								Priority *
+								Priority
 							</label>
-							<Dropdown
-								refToApply={priorityRef}
-								entries={
-									<>
-										{JobPriorityValues.map(
-											(v) => (
-												<option
-													key={
-														v
-													}
-													value={
-														v
-													}
-												>
-													{
-														v
-													}
-												</option>
-											)
-										)}
-									</>
-								}
-								disabled={isLoading}
-								aria-label="Select priority"
-							/>
+							<div className="border border-zinc-700 rounded-sm">
+								<Dropdown
+									refToApply={priorityRef}
+									entries={
+										<>
+											{JobPriorityValues.map(
+												(
+													v
+												) => (
+													<option
+														key={
+															v
+														}
+														value={
+															v
+														}
+														className="text-black"
+													>
+														{
+															v
+														}
+													</option>
+												)
+											)}
+										</>
+									}
+								/>
+							</div>
 							<ErrorDisplay path="priority" />
 						</div>
 					</div>
 
+					{/* SECTION 2: Schedule Configuration */}
 					<div id="schedule-config" className="scroll-mt-4">
 						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
 							<h3 className="text-lg font-semibold mb-4">
@@ -488,6 +480,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										Start Date *
 									</label>
 									<DatePicker
+										mode="create"
 										value={startDate}
 										onChange={(date) =>
 											setStartDate(
@@ -505,6 +498,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										End Date (Optional)
 									</label>
 									<DatePicker
+										mode="create"
 										value={endDate}
 										onChange={
 											setEndDate
@@ -553,6 +547,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						</div>
 					</div>
 
+					{/* SECTION 3: Recurring Rule */}
 					<div id="recurring-rule" className="scroll-mt-4">
 						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
 							<h3 className="text-lg font-semibold mb-4">
@@ -567,51 +562,48 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										<label className="text-sm text-zinc-300 mb-1 block">
 											Frequency *
 										</label>
-										<Dropdown
-											refToApply={
-												frequencyRef
-											}
-											entries={
-												<>
-													{RecurringFrequencyValues.map(
-														(
-															freq
-														) => (
-															<option
-																key={
-																	freq
-																}
-																value={
-																	freq
-																}
-															>
-																{freq
-																	.charAt(
-																		0
-																	)
-																	.toUpperCase() +
-																	freq.slice(
-																		1
-																	)}
-															</option>
-														)
-													)}
-												</>
-											}
-											disabled={
-												isLoading
-											}
-											onChange={(
-												value
-											) =>
-												setFrequency(
-													value as RecurringFrequency
-												)
-											}
-											required
-											aria-label="Select frequency"
-										/>
-										<ErrorDisplay path="rule.frequency" />
+										<div className="border border-zinc-700 rounded-sm">
+											<Dropdown
+												refToApply={
+													frequencyRef
+												}
+												entries={
+													<>
+														{RecurringFrequencyValues.map(
+															(
+																freq
+															) => (
+																<option
+																	key={
+																		freq
+																	}
+																	value={
+																		freq
+																	}
+																	className="text-black"
+																>
+																	{freq
+																		.charAt(
+																			0
+																		)
+																		.toUpperCase() +
+																		freq.slice(
+																			1
+																		)}
+																</option>
+															)
+														)}
+													</>
+												}
+												onChange={(
+													value
+												) =>
+													setFrequency(
+														value as RecurringFrequency
+													)
+												}
+											/>
+										</div>
 									</div>
 
 									<div>
@@ -672,10 +664,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 																: ""}
 											</span>
 										</div>
-										<ErrorDisplay path="rule.interval" />
 									</div>
 								</div>
 
+								{/* Weekly - Weekday Selection */}
 								{frequency === "weekly" && (
 									<div>
 										<label className="text-sm text-zinc-300 mb-2 block">
@@ -714,10 +706,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 												)
 											)}
 										</div>
-										<ErrorDisplay path="rule.by_weekday" />
 									</div>
 								)}
 
+								{/* Monthly - Day Selection */}
 								{frequency === "monthly" && (
 									<div>
 										<label className="text-sm text-zinc-300 mb-1 block">
@@ -752,10 +744,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white"
 											placeholder="1-31"
 										/>
-										<ErrorDisplay path="rule.by_month_day" />
 									</div>
 								)}
 
+								{/* Yearly - Month and Day Selection */}
 								{frequency === "yearly" && (
 									<div className="grid grid-cols-2 gap-3">
 										<div>
@@ -763,66 +755,62 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 												Month
 												*
 											</label>
-											<Dropdown
-												refToApply={
-													monthRef
-												}
-												entries={
-													<>
-														{[
-															"January",
-															"February",
-															"March",
-															"April",
-															"May",
-															"June",
-															"July",
-															"August",
-															"September",
-															"October",
-															"November",
-															"December",
-														].map(
-															(
-																m,
-																i
-															) => (
-																<option
-																	key={
-																		i
-																	}
-																	value={
-																		i +
-																		1
-																	}
-																>
-																	{
-																		m
-																	}
-																</option>
-															)
-														)}
-													</>
-												}
-												disabled={
-													isLoading
-												}
-												onChange={(
-													value
-												) =>
-													setMonth(
-														value
-															? parseInt(
-																	value
+											<div className="border border-zinc-700 rounded-sm">
+												<Dropdown
+													refToApply={
+														monthRef
+													}
+													entries={
+														<>
+															{[
+																"January",
+																"February",
+																"March",
+																"April",
+																"May",
+																"June",
+																"July",
+																"August",
+																"September",
+																"October",
+																"November",
+																"December",
+															].map(
+																(
+																	m,
+																	i
+																) => (
+																	<option
+																		key={
+																			i
+																		}
+																		value={
+																			i +
+																			1
+																		}
+																		className="text-black"
+																	>
+																		{
+																			m
+																		}
+																	</option>
 																)
-															: ""
-													)
-												}
-												placeholder="Select month"
-												required
-												aria-label="Select month"
-											/>
-											<ErrorDisplay path="rule.by_month" />
+															)}
+														</>
+													}
+													onChange={(
+														value
+													) =>
+														setMonth(
+															value
+																? parseInt(
+																		value
+																	)
+																: ""
+														)
+													}
+												/>
+											</div>
 										</div>
 
 										<div>
@@ -830,7 +818,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 												Day
 												of
 												Month
-												*
 											</label>
 											<input
 												type="number"
@@ -860,7 +847,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white"
 												placeholder="1-31"
 											/>
-											<ErrorDisplay path="rule.by_month_day" />
 										</div>
 									</div>
 								)}
@@ -868,6 +854,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						</div>
 					</div>
 
+					{/* SECTION 4: Time Constraints */}
 					<div id="time-constraints" className="scroll-mt-4">
 						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
 							<h3 className="text-lg font-semibold mb-4">
@@ -875,9 +862,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 							</h3>
 
 							<div className="space-y-4">
+								{/* Arrival Constraint */}
 								<div>
 									<label className="text-sm text-zinc-300 mb-2 block">
-										Arrival *
+										Arrival
 									</label>
 									<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 										<div>
@@ -925,23 +913,19 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 													)
 												)}
 											</select>
-											<ErrorDisplay path="rule.arrival_constraint" />
 										</div>
 
 										<div className="space-y-2">
 											{arrivalConstraint ===
 												"at" && (
-												<>
-													<TimePicker
-														value={
-															arrivalTime
-														}
-														onChange={
-															setArrivalTime
-														}
-													/>
-													<ErrorDisplay path="rule.arrival_time" />
-												</>
+												<TimePicker
+													value={
+														arrivalTime
+													}
+													onChange={
+														setArrivalTime
+													}
+												/>
 											)}
 
 											{arrivalConstraint ===
@@ -955,7 +939,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 															setArrivalWindowStart
 														}
 													/>
-													<ErrorDisplay path="rule.arrival_window_start" />
 													<TimePicker
 														value={
 															arrivalWindowEnd
@@ -964,31 +947,28 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 															setArrivalWindowEnd
 														}
 													/>
-													<ErrorDisplay path="rule.arrival_window_end" />
 												</>
 											)}
 
 											{arrivalConstraint ===
 												"by" && (
-												<>
-													<TimePicker
-														value={
-															arrivalWindowEnd
-														}
-														onChange={
-															setArrivalWindowEnd
-														}
-													/>
-													<ErrorDisplay path="rule.arrival_window_end" />
-												</>
+												<TimePicker
+													value={
+														arrivalWindowEnd
+													}
+													onChange={
+														setArrivalWindowEnd
+													}
+												/>
 											)}
 										</div>
 									</div>
 								</div>
 
+								{/* Finish Constraint */}
 								<div>
 									<label className="text-sm text-zinc-300 mb-2 block">
-										Finish *
+										Finish
 									</label>
 									<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 										<div>
@@ -1033,7 +1013,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 													)
 												)}
 											</select>
-											<ErrorDisplay path="rule.finish_constraint" />
 										</div>
 
 										<div>
@@ -1041,17 +1020,14 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 												"at" ||
 												finishConstraint ===
 													"by") && (
-												<>
-													<TimePicker
-														value={
-															finishTime
-														}
-														onChange={
-															setFinishTime
-														}
-													/>
-													<ErrorDisplay path="rule.finish_time" />
-												</>
+												<TimePicker
+													value={
+														finishTime
+													}
+													onChange={
+														setFinishTime
+													}
+												/>
 											)}
 										</div>
 									</div>
@@ -1060,9 +1036,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						</div>
 					</div>
 
+					{/* SECTION 5: Line Items */}
 					<div id="line-items" className="scroll-mt-4">
 						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
-							<div className="flex items-center justify-between mb-4">
+							<div className="flex items-center justify-between mb-3">
 								<h3 className="text-lg font-semibold">
 									Line Items
 								</h3>
@@ -1079,253 +1056,256 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 							<ErrorDisplay path="line_items" />
 
-							<div className="space-y-3">
-								{lineItems.map((item, index) => (
-									<div
-										key={item.id}
-										className="p-3 bg-zinc-900 rounded-lg border border-zinc-700"
-									>
-										<div className="flex items-start justify-between mb-2">
-											<span className="text-sm text-zinc-400">
-												Item{" "}
-												{index +
-													1}
-											</span>
-											<button
-												type="button"
-												onClick={() =>
-													removeLineItem(
-														item.id
-													)
+							{lineItems.length === 0 ? (
+								<p></p>
+							) : (
+								<div className="space-y-3">
+									{lineItems.map(
+										(item, index) => (
+											<div
+												key={
+													item.id
 												}
-												disabled={
-													lineItems.length ===
-														1 ||
-													isLoading
-												}
-												className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
+												className="p-3 bg-zinc-900 rounded-lg border border-zinc-700"
 											>
-												<Trash2
-													size={
-														16
-													}
-												/>
-											</button>
-										</div>
-
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-											<div>
-												<input
-													type="text"
-													placeholder="Item name *"
-													value={
-														item.name
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"name",
-															e
-																.target
-																.value
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-												/>
-											</div>
-
-											<div>
-												<select
-													value={
-														item.item_type
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"item_type",
-															e
-																.target
-																.value
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="appearance-none w-full h-full p-2 bg-zinc-800 text-white border border-zinc-700 rounded-sm outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors"
-												>
-													<option
-														value=""
-														disabled
-														hidden
-													>
-														Type
-														(optional)
-													</option>
-													{LineItemTypeValues.map(
-														(
-															type
-														) => (
-															<option
-																key={
-																	type
-																}
-																value={
-																	type
-																}
-															>
-																{type
-																	.charAt(
-																		0
-																	)
-																	.toUpperCase() +
-																	type.slice(
-																		1
-																	)}
-															</option>
-														)
-													)}
-												</select>
-											</div>
-
-											<div className="md:col-span-2">
-												<input
-													type="text"
-													placeholder="Description (optional)"
-													value={
-														item.description
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"description",
-															e
-																.target
-																.value
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-												/>
-											</div>
-
-											<div>
-												<label className="text-xs text-zinc-400 mb-1 block">
-													Quantity
-													*
-												</label>
-												<input
-													type="number"
-													min="0.01"
-													step="0.01"
-													value={
-														item.quantity
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"quantity",
-															parseFloat(
-																e
-																	.target
-																	.value
-															) ||
-																0
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-												/>
-											</div>
-
-											<div>
-												<label className="text-xs text-zinc-400 mb-1 block">
-													Unit
-													Price
-													*
-												</label>
-												<div className="relative">
-													<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-														$
+												<div className="flex items-start justify-between mb-2">
+													<span className="text-sm text-zinc-400">
+														Item{" "}
+														{index +
+															1}
 													</span>
-													<input
-														type="number"
-														min="0"
-														step="0.01"
-														value={
-															item.unit_price
-														}
-														onChange={(
-															e
-														) =>
-															updateLineItem(
-																item.id,
-																"unit_price",
-																parseFloat(
-																	e
-																		.target
-																		.value
-																) ||
-																	0
+													<button
+														type="button"
+														onClick={() =>
+															removeLineItem(
+																item.id
 															)
 														}
 														disabled={
 															isLoading
 														}
-														className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
-													/>
+														className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
+													>
+														<Trash2
+															size={
+																16
+															}
+														/>
+													</button>
+												</div>
+
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+													<div>
+														<input
+															type="text"
+															placeholder="Item name"
+															value={
+																item.name
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"name",
+																	e
+																		.target
+																		.value
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														/>
+													</div>
+
+													<div>
+														<select
+															value={
+																item.item_type
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"item_type",
+																	e
+																		.target
+																		.value
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														>
+															<option value="">
+																Type
+																(optional)
+															</option>
+															{LineItemTypeValues.map(
+																(
+																	type
+																) => (
+																	<option
+																		key={
+																			type
+																		}
+																		value={
+																			type
+																		}
+																	>
+																		{type
+																			.charAt(
+																				0
+																			)
+																			.toUpperCase() +
+																			type.slice(
+																				1
+																			)}
+																	</option>
+																)
+															)}
+														</select>
+													</div>
+
+													<div className="md:col-span-2">
+														<input
+															type="text"
+															placeholder="Description (optional)"
+															value={
+																item.description
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"description",
+																	e
+																		.target
+																		.value
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														/>
+													</div>
+
+													<div>
+														<label className="text-xs text-zinc-400 mb-1 block">
+															Quantity
+														</label>
+														<input
+															type="number"
+															min="0.01"
+															step="0.01"
+															value={
+																item.quantity
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"quantity",
+																	parseFloat(
+																		e
+																			.target
+																			.value
+																	) ||
+																		0
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														/>
+													</div>
+
+													<div>
+														<label className="text-xs text-zinc-400 mb-1 block">
+															Unit
+															Price
+														</label>
+														<div className="relative">
+															<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+																$
+															</span>
+															<input
+																type="number"
+																min="0"
+																step="0.01"
+																value={
+																	item.unit_price
+																}
+																onChange={(
+																	e
+																) =>
+																	updateLineItem(
+																		item.id,
+																		"unit_price",
+																		parseFloat(
+																			e
+																				.target
+																				.value
+																		) ||
+																			0
+																	)
+																}
+																disabled={
+																	isLoading
+																}
+																className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
+															/>
+														</div>
+													</div>
+
+													<div className="md:col-span-2">
+														<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
+															<span className="text-sm text-zinc-400">
+																Line
+																Total:
+															</span>
+															<span className="text-sm font-semibold text-white">
+																$
+																{item.total.toFixed(
+																	2
+																)}
+															</span>
+														</div>
+													</div>
 												</div>
 											</div>
-
-											<div className="md:col-span-2">
-												<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
-													<span className="text-sm text-zinc-400">
-														Line
-														Total:
-													</span>
-													<span className="text-sm font-semibold text-white">
-														$
-														{item.total.toFixed(
-															2
-														)}
-													</span>
-												</div>
-											</div>
-										</div>
-									</div>
-								))}
-							</div>
-
-							<div className="mt-3 pt-3 border-t border-zinc-700">
-								<div className="flex items-center justify-between text-lg font-bold">
-									<span className="text-white">
-										Subtotal:
-									</span>
-									<span className="text-green-400">
-										$
-										{subtotal.toFixed(
-											2
-										)}
-									</span>
+										)
+									)}
 								</div>
-							</div>
+							)}
+
+							{lineItems.length > 0 && (
+								<div className="mt-3 pt-3 border-t border-zinc-700">
+									<div className="flex items-center justify-between text-lg font-bold">
+										<span className="text-white">
+											Subtotal:
+										</span>
+										<span className="text-green-400">
+											$
+											{subtotal.toFixed(
+												2
+											)}
+										</span>
+									</div>
+								</div>
+							)}
 						</div>
 					</div>
 
+					{/* SECTION 6: Billing Configuration */}
 					<div id="billing" className="scroll-mt-4">
 						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
 							<h3 className="text-lg font-semibold mb-4">
@@ -1337,40 +1317,40 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 									<label className="text-sm text-zinc-300 mb-1 block">
 										Billing Mode *
 									</label>
-									<Dropdown
-										refToApply={
-											billingModeRef
-										}
-										entries={
-											<>
-												{BillingModeValues.map(
-													(
-														v
-													) => (
-														<option
-															key={
-																v
-															}
-															value={
-																v
-															}
-														>
-															{v ===
-															"per_visit"
-																? "Per Visit"
-																: v ===
-																	  "subscription"
-																	? "Subscription"
-																	: "None"}
-														</option>
-													)
-												)}
-											</>
-										}
-										disabled={isLoading}
-										required
-										aria-label="Select billing mode"
-									/>
+									<div className="border border-zinc-700 rounded-sm">
+										<Dropdown
+											refToApply={
+												billingModeRef
+											}
+											entries={
+												<>
+													{BillingModeValues.map(
+														(
+															v
+														) => (
+															<option
+																key={
+																	v
+																}
+																value={
+																	v
+																}
+																className="text-black"
+															>
+																{v ===
+																"per_visit"
+																	? "Per Visit"
+																	: v ===
+																		  "subscription"
+																		? "Subscription"
+																		: "None"}
+															</option>
+														)
+													)}
+												</>
+											}
+										/>
+									</div>
 									<ErrorDisplay path="billing_mode" />
 								</div>
 
@@ -1378,40 +1358,40 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 									<label className="text-sm text-zinc-300 mb-1 block">
 										Invoice Timing *
 									</label>
-									<Dropdown
-										refToApply={
-											invoiceTimingRef
-										}
-										entries={
-											<>
-												{InvoiceTimingValues.map(
-													(
-														v
-													) => (
-														<option
-															key={
-																v
-															}
-															value={
-																v
-															}
-														>
-															{v ===
-															"on_completion"
-																? "On Completion"
-																: v ===
-																	  "on_schedule_date"
-																	? "On Schedule Date"
-																	: "Manual"}
-														</option>
-													)
-												)}
-											</>
-										}
-										disabled={isLoading}
-										required
-										aria-label="Select invoice timing"
-									/>
+									<div className="border border-zinc-700 rounded-sm">
+										<Dropdown
+											refToApply={
+												invoiceTimingRef
+											}
+											entries={
+												<>
+													{InvoiceTimingValues.map(
+														(
+															v
+														) => (
+															<option
+																key={
+																	v
+																}
+																value={
+																	v
+																}
+																className="text-black"
+															>
+																{v ===
+																"on_completion"
+																	? "On Completion"
+																	: v ===
+																		  "on_schedule_date"
+																		? "On Schedule Date"
+																		: "Manual"}
+															</option>
+														)
+													)}
+												</>
+											}
+										/>
+									</div>
 									<ErrorDisplay path="invoice_timing" />
 								</div>
 
