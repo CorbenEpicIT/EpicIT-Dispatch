@@ -101,7 +101,7 @@ export const createRecurringPlanSchema = z
 					sort_order: z.number().int().min(0).optional(),
 				}),
 			)
-			.min(1, "At least one line item is required"),
+			.optional(),
 	})
 	.refine(
 		(data) => {
@@ -231,12 +231,14 @@ export const createRecurringPlanSchema = z
 			arrival_window_end: data.rule.arrival_window_end || undefined,
 			finish_time: data.rule.finish_time || undefined,
 		},
-		line_items: data.line_items.map((item, idx) => ({
-			...item,
-			description: item.description || undefined,
-			item_type: item.item_type || undefined,
-			sort_order: item.sort_order ?? idx,
-		})),
+		line_items: data.line_items
+			? data.line_items.map((item, idx) => ({
+					...item,
+					description: item.description || undefined,
+					item_type: item.item_type || undefined,
+					sort_order: item.sort_order ?? idx,
+				}))
+			: undefined,
 	}));
 
 export const updateRecurringPlanSchema = z

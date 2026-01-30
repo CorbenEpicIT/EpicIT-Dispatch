@@ -64,7 +64,7 @@ export const createQuoteSchema = z
 						.optional()
 						.nullable(),
 					sort_order: z.number().int().optional().default(0),
-				})
+				}),
 			)
 			.optional(),
 	})
@@ -143,7 +143,7 @@ export const updateQuoteSchema = z
 						.optional()
 						.nullable(),
 					sort_order: z.number().int().optional(),
-				})
+				}),
 			)
 			.optional(),
 	})
@@ -155,8 +155,8 @@ export const updateQuoteSchema = z
 		coords: data.coords || undefined,
 		discount_type: data.discount_type || undefined,
 		discount_value: data.discount_value || undefined,
-		valid_until: data.valid_until || undefined,
-		expires_at: data.expires_at || undefined,
+		valid_until: data.valid_until === "" ? undefined : data.valid_until,
+		expires_at: data.expires_at === "" ? undefined : data.expires_at,
 		rejection_reason: data.rejection_reason || undefined,
 		line_items: data.line_items || undefined,
 	}));

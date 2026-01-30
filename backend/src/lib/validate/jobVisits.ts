@@ -46,18 +46,6 @@ export const createJobVisitSchema = z
 			.regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format")
 			.optional()
 			.nullable(),
-
-		status: z
-			.enum([
-				"Scheduled",
-				"Driving",
-				"OnSite",
-				"InProgress",
-				"Delayed",
-				"Completed",
-				"Cancelled",
-			])
-			.default("Scheduled"),
 		tech_ids: z.array(z.string().uuid("Invalid technician ID")).optional(),
 	})
 	.refine(
@@ -207,6 +195,7 @@ export const updateJobVisitSchema = z
 				"Driving",
 				"OnSite",
 				"InProgress",
+				"Paused",
 				"Delayed",
 				"Completed",
 				"Cancelled",

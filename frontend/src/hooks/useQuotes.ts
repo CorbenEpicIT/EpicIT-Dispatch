@@ -91,16 +91,13 @@ export const useCreateQuoteMutation = () => {
 	return useMutation({
 		mutationFn: (input: CreateQuoteInput) => createQuote(input),
 		onSuccess: (newQuote) => {
-			// Invalidate quote lists
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
-			// Invalidate client-specific quotes if applicable
 			if (newQuote.client_id) {
 				queryClient.invalidateQueries({
 					queryKey: ["clients", newQuote.client_id, "quotes"],
 				});
 
-				//  Invalidate client queries
 				queryClient.invalidateQueries({
 					queryKey: ["clients", newQuote.client_id],
 				});
@@ -109,24 +106,20 @@ export const useCreateQuoteMutation = () => {
 				});
 			}
 
-			// Invalidate request-specific quotes if applicable
 			if (newQuote.request_id) {
 				queryClient.invalidateQueries({
 					queryKey: ["requests", newQuote.request_id, "quotes"],
 				});
 
-				// Invalidate the specific request
 				queryClient.invalidateQueries({
 					queryKey: ["requests", newQuote.request_id],
 				});
 
-				// Invalidate request list
 				queryClient.invalidateQueries({
 					queryKey: ["requests"],
 				});
 			}
 
-			// Set the new quote in cache
 			queryClient.setQueryData(["quotes", newQuote.id], newQuote);
 		},
 	});
@@ -139,24 +132,20 @@ export const useUpdateQuoteMutation = () => {
 		mutationFn: ({ id, data }: { id: string; data: UpdateQuoteInput }) =>
 			updateQuote(id, data),
 		onSuccess: (updatedQuote) => {
-			// Invalidate all quotes (catches list and all details)
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
-			// Invalidate client-specific quotes
 			if (updatedQuote.client_id) {
 				queryClient.invalidateQueries({
 					queryKey: ["clients", updatedQuote.client_id, "quotes"],
 				});
 			}
 
-			// Invalidate request-specific quotes if applicable
 			if (updatedQuote.request_id) {
 				queryClient.invalidateQueries({
 					queryKey: ["requests", updatedQuote.request_id, "quotes"],
 				});
 			}
 
-			// Update the specific quote in cache
 			queryClient.setQueryData(["quotes", updatedQuote.id], updatedQuote);
 		},
 	});
@@ -169,10 +158,8 @@ export const useDeleteQuoteMutation = () => {
 		mutationFn: ({ id, hardDelete }: { id: string; hardDelete?: boolean }) =>
 			deleteQuote(id, hardDelete),
 		onSuccess: (_, variables) => {
-			// Invalidate all quote-related queries
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
-			// Remove the deleted quote from cache
 			queryClient.removeQueries({ queryKey: ["quotes", variables.id] });
 		},
 	});
@@ -244,10 +231,8 @@ export const useReviseQuoteMutation = () => {
 	return useMutation({
 		mutationFn: (id: string) => reviseQuote(id),
 		onSuccess: (newQuote) => {
-			// Invalidate all quotes
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
-			// Invalidate client quotes
 			if (newQuote.client_id) {
 				queryClient.invalidateQueries({
 					queryKey: ["clients", newQuote.client_id, "quotes"],
@@ -268,7 +253,6 @@ export const useReviseQuoteMutation = () => {
 				});
 			}
 
-			// Set the new quote in cache
 			queryClient.setQueryData(["quotes", newQuote.id], newQuote);
 		},
 	});
@@ -290,7 +274,6 @@ export const useAddLineItemMutation = () => {
 			data: CreateQuoteLineItemInput;
 		}) => addLineItem(quoteId, data),
 		onSuccess: (_, variables) => {
-			// Invalidate the quote to refresh line items
 			queryClient.invalidateQueries({
 				queryKey: ["quotes", variables.quoteId],
 			});

@@ -54,6 +54,7 @@ enum visit_status {
   Driving
   OnSite
   InProgress
+  Paused
   Delayed
   Completed
   Cancelled
@@ -104,9 +105,9 @@ enum recurring_plan_status {
 }
 
 enum billing_mode {
-  per_visit      // Bill after each visit completion
-  subscription   // Bill on fixed schedule regardless of visits
-  none           // No billing (warranty, internal, etc.)
+  per_visit      
+  subscription   
+  none          
 }
 
 enum invoice_timing {
@@ -116,11 +117,11 @@ enum invoice_timing {
 }
 
 enum occurrence_status {
-  planned      // Scheduled but not yet generated as job_visit
-  generated    // job_visit created
-  skipped      // Manually skipped
-  cancelled    // Cancelled
-  completed    // Visit completed
+  planned 
+  generated 
+  skipped     
+  cancelled   
+  completed   
 }
 
 enum recurring_frequency {
