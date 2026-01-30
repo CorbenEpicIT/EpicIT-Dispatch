@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { DayPicker } from "react-day-picker";
-import { Calendar, X } from "lucide-react";
+import { Calendar, X, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import "react-day-picker/dist/style.css";
 
 type DatePickerProps = {
 	value: Date | null;
-	onChange: (date: Date) => void;
+	onChange: (date: Date | null) => void;
 	disabled?: boolean;
-	optional?: boolean;
+	mode?: "create" | "edit";
+	originalValue?: Date | null;
+	onClear?: () => void;
 	align?: "left" | "right";
 };
 
@@ -16,7 +18,9 @@ export default function DatePicker({
 	value,
 	onChange,
 	disabled,
-	optional = false,
+	mode = "create",
+	originalValue,
+	onClear,
 	align = "left",
 }: DatePickerProps) {
 	const [open, setOpen] = useState(false);
@@ -31,7 +35,10 @@ export default function DatePicker({
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const calendarRef = useRef<HTMLDivElement>(null);
-	const displayValue = value || new Date();
+
+	const isEdit = mode === "edit";
+	const hasOriginal = originalValue !== undefined && originalValue !== null;
+	const isDirty = isEdit && hasOriginal && value?.getTime() !== originalValue?.getTime();
 
 	useEffect(() => {
 		if (!open) {
@@ -46,7 +53,6 @@ export default function DatePicker({
 		requestAnimationFrame(() => setReady(true));
 	}, [open, align]);
 
-	/* ---------- close on outside click  ------------ */
 	useEffect(() => {
 		if (!open) return;
 		const handler = (e: MouseEvent) => {
@@ -58,7 +64,6 @@ export default function DatePicker({
 		return () => document.removeEventListener("click", handler, true);
 	}, [open]);
 
-	/* ---------- close on Escape / scroll -------------------- */
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
 		const onScroll = () => setOpen(false);
@@ -70,7 +75,21 @@ export default function DatePicker({
 		};
 	}, [open]);
 
-	/* ---------- popup classes ------------------------------- */
+	const handleClear = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		onChange(null);
+		onClear?.();
+		setOpen(false);
+	};
+
+	const handleUndo = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		if (originalValue !== undefined) {
+			onChange(originalValue);
+			setOpen(false);
+		}
+	};
+
 	const popupClasses = `
     absolute z-50 bg-zinc-950 border border-zinc-700
     rounded-sm shadow-xl p-0.5
@@ -78,9 +97,6 @@ export default function DatePicker({
     ${position.horizontal === "left" ? "left-0" : "right-0"}
   `;
 
-	/* ================================================================== */
-	/*                           RENDER                                   */
-	/* ================================================================== */
 	return (
 		<div className="relative w-full">
 			<style>{`
@@ -130,7 +146,7 @@ export default function DatePicker({
           color: #e4e4e7;
         }
         .date-picker-dark .rdp-nav_button:hover { background-color: #27272a; }
-`}</style>
+      `}</style>
 
 			<button
 				ref={buttonRef}
@@ -141,27 +157,31 @@ export default function DatePicker({
                    hover:border-zinc-600 focus:border-blue-500 focus:outline-none transition-colors
                    disabled:opacity-60 disabled:cursor-not-allowed"
 			>
-				<span
-					className={
-						optional && !value ? "text-zinc-500" : "text-white"
-					}
-				>
-					{optional && !value
-						? "Select date..."
-						: format(displayValue, "MMMM dd, yyyy")}
+				<span className={!value ? "text-zinc-500" : "text-white"}>
+					{!value ? "Select date..." : format(value, "MMMM dd, yyyy")}
 				</span>
+
 				<div className="flex items-center gap-1">
-					{optional && value && !disabled && (
+					{isEdit && isDirty && !disabled && (
 						<span
-							onClick={(e) => {
-								e.stopPropagation();
-								onChange(new Date());
-							}}
+							onClick={handleUndo}
+							title="Undo"
+							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
+						>
+							<RotateCcw className="h-3 w-3 text-zinc-400 hover:text-white" />
+						</span>
+					)}
+
+					{value && !disabled && (
+						<span
+							onClick={handleClear}
+							title="Clear"
 							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
 							<X className="h-3 w-3 text-zinc-400 hover:text-white" />
 						</span>
 					)}
+
 					<Calendar className="h-4 w-4 text-white opacity-50" />
 				</div>
 			</button>
@@ -170,12 +190,10 @@ export default function DatePicker({
 				<div ref={calendarRef} className={popupClasses}>
 					<DayPicker
 						mode="single"
-						selected={displayValue}
+						selected={value || undefined}
 						onSelect={(date) => {
-							if (date) {
-								onChange(date);
-								setOpen(false);
-							}
+							onChange(date ?? null);
+							setOpen(false);
 						}}
 						className="date-picker-dark"
 					/>
