@@ -1314,6 +1314,20 @@ export const rescheduleOccurrence = async (
 			? new Date(parsed.new_end_at)
 			: occurrence.occurrence_end_at;
 
+		const conflictingOccurrence = await db.recurring_occurrence.findFirst({
+			where: {
+				recurring_plan_id: occurrence.recurring_plan_id,
+				occurrence_start_at: newStartDate,
+				id: { not: occurrenceId },
+			},
+		});
+
+		if (conflictingOccurrence) {
+			return {
+				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
+			};
+		}
+
 		const updated = await db.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
@@ -1350,13 +1364,25 @@ export const rescheduleOccurrence = async (
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
+			console.error("Reschedule occurrence validation error:", e.issues);
 			return {
 				err: `Validation failed: ${e.issues
 					.map((err) => err.message)
 					.join(", ")}`,
 			};
 		}
+
+		if (e instanceof Error && "code" in e && (e as any).code === "P2002") {
+			console.error("Unique constraint violation:", e);
+			return {
+				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
+			};
+		}
+
 		console.error("Reschedule occurrence error:", e);
+		if (e instanceof Error) {
+			return { err: e.message };
+		}
 		return { err: "Internal server error" };
 	}
 };

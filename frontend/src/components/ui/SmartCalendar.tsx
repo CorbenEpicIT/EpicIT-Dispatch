@@ -13,7 +13,6 @@ import {
 	useGenerateVisitFromOccurrenceMutation,
 } from "../../hooks/useRecurringPlans";
 import type { ToolbarInput } from "@fullcalendar/core/index.js";
-import "./SmartCalendar.css";
 
 interface SmartCalendarProps {
 	jobs: Job[];
@@ -42,6 +41,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
 	const [showVisits, setShowVisits] = useState(true);
 	const [showOccurrences, setShowOccurrences] = useState(true);
+	const [calendarKey, setCalendarKey] = useState(0); // Used to force re-render (for occurrence badges)
 	const popupRef = useRef<HTMLDivElement>(null);
 	const visitsRootRef = useRef<ReturnType<typeof createRoot> | null>(null);
 	const occurrencesRootRef = useRef<ReturnType<typeof createRoot> | null>(null);
@@ -60,6 +60,11 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		document.addEventListener("mousedown", handleMouseDown);
 		return () => document.removeEventListener("mousedown", handleMouseDown);
 	}, []);
+
+	// Occurrence badges update when data changes
+	useEffect(() => {
+		setCalendarKey((prev) => prev + 1);
+	}, [jobs]);
 
 	// Update button renders when state changes
 	useEffect(() => {
@@ -293,6 +298,178 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	return (
 		<div className="relative">
 			<style>{`
+	/* ============================================================================ */
+	/* CALENDAR BASE STYLING */
+	/* ============================================================================ */
+	
+	/* Base calendar background */
+	.fc {
+		background-color: var(--main); 
+		color: #e4e4e7; /* zinc-200 text */
+	}
+
+	/* Calendar header (month title and nav buttons) */
+	.fc-toolbar-title {
+		color: #f4f4f5; /* zinc-100 */
+		font-size: 1.25rem;
+		font-weight: 600;
+	}
+
+	.fc-button {
+		background: #27272a !important; /* zinc-800 */
+		border: 1px solid #3f3f46 !important;
+		color: #e4e4e7 !important;
+		border-radius: 6px !important;
+		padding: 4px 10px !important;
+		transition: all 0.2s ease-in-out;
+	}
+
+	.fc-button:hover {
+		background: #3f3f46 !important;
+	}
+
+	/* Remove any global white background or wrapper borders */
+	.fc-scrollgrid {
+		background-color: var(--main) !important;
+		border: none !important;
+	}
+
+	/* The combined header+body container */
+	.fc-scrollgrid-section.fc-scrollgrid-section-header {
+		border: none !important;
+	}
+
+	/* Lock weekdays column in place */
+	.fc-scrollgrid-section.fc-scrollgrid-section-header th {
+		position: static !important;
+		top: auto !important;
+		z-index: auto !important;
+	}
+
+	.fc-scrollgrid-section.fc-scrollgrid-section-body {
+		background-color: var(--main) !important;
+		border: none !important;
+		border-radius: 0.75rem !important;
+		overflow: hidden;
+		margin-top: 0 !important;
+	}
+
+	/* Weekday header row */
+	.fc-theme-standard th {
+		background-color: var(--main) !important;
+		border: none !important;
+		border-bottom: 1px solid #3f3f46 !important;
+		color: #e4e4e7;
+		font-weight: 500;
+		padding: 0.5rem 0;
+	}
+
+	/* Ensure header table doesn't draw borders */
+	.fc-scrollgrid-section.fc-scrollgrid-section-header table,
+	.fc-scrollgrid-section.fc-scrollgrid-section-header thead,
+	.fc-scrollgrid-section.fc-scrollgrid-section-header tr {
+		border: none !important;
+		background-color: #1f1f22 !important;
+	}
+
+	/* Day grid cells */
+	.fc-theme-standard td {
+		background-color: var(--main); 
+		border: 1px solid #38383d;
+		border-bottom: none !important;
+	}
+
+	/* Remove outer outline */
+	.fc-theme-standard td:first-child,
+	.fc-theme-standard th:first-child {
+		border-left: none !important;
+	}
+	.fc-theme-standard td:last-child,
+	.fc-theme-standard th:last-child {
+		border-right: none !important;
+	}
+
+	/* Event block styling */
+	.fc-event {
+		background-color: #3b82f6;
+		border: none;
+		border-radius: 4px;
+		color: white;
+		padding: 2px 4px;
+		font-size: 0.75rem;
+		transition: background-color 0.2s ease;
+	}
+	.fc-event:hover {
+		background-color: #2563eb;
+	}
+
+	/* Scrollable days when many events */
+	.fc-daygrid-day-events {
+		max-height: 120px;
+		overflow-y: auto;
+	}
+
+	/* The outer grid wrapper */
+	.fc-daygrid {
+		border: none !important;
+	}
+
+	/* Apply border around visible month days area */
+	.fc-daygrid-body {
+		border-left: 1px solid #3f3f46 !important;
+		border-right: 1px solid #3f3f46 !important;
+		border-bottom: 1px solid #3f3f46 !important;
+		border-top: none !important;
+		border-radius: 0 0 0.75rem 0.75rem !important;
+		overflow: hidden;
+		background-color: var(--main) !important;
+	}
+
+	.fc-daygrid-body table {
+		border-radius: 0 0 0.75rem 0.75rem !important;
+		overflow: hidden;
+	}
+
+	/* Today highlight */
+	.fc-day-today {
+		background-color: #27272a !important;
+	}
+
+	/* Custom toolbar styling */
+	.fc .fc-toolbar-chunk .fc-jobsTitle-button {
+		background: none !important;
+		border: none !important;
+		box-shadow: none !important;
+		padding: 0 !important;
+		margin: 0 !important;
+		color: #f4f4f5 !important;
+		font-size: 1.25rem !important;
+		font-weight: 600 !important;
+		text-transform: none !important;
+		cursor: default !important;
+	}
+
+	.fc .fc-toolbar {
+		align-items: center !important;
+	}
+
+	/* ============================================================================ */
+	/* NEXT MONTH DAYS STYLING (dimmed events) */
+	/* ============================================================================ */
+	
+	/* Dim events in next month's preview days */
+	.fc-day-other .fc-event {
+		opacity: 0.4 !important;
+	}
+
+	.fc-day-other .fc-event:hover {
+		opacity: 0.5 !important;
+	}
+
+	/* ============================================================================ */
+	/* EVENT TYPE STYLING */
+	/* ============================================================================ */
+
 	/* Solid events (visits) */
 	.event-solid .fc-event {
 		border-style: solid !important;
@@ -308,6 +485,18 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		opacity: 1;
 	}
 
+	/* Dashed events in next month - extra dimming */
+	.fc-day-other .event-dashed .fc-event {
+		opacity: 0.3 !important;
+	}
+
+	.fc-day-other .event-dashed .fc-event:hover {
+		opacity: 0.4 !important;
+	}
+
+	/* ============================================================================ */
+	/* OCCURRENCE BADGE STYLING */
+	/* ============================================================================ */
 	/* Day cell badges for occurrence count */
 	.fc-daygrid-day-top {
 		position: relative;
@@ -316,8 +505,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		gap: 4px !important;
 	}
 
-	/* Occurrence badge styling */
-	/* Occurrence badge styling */
+	/* Occurrence badge */
 	.occurrence-badge {
 		position: relative;
 		display: inline-flex;
@@ -334,14 +522,14 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		flex-shrink: 0;
 	}
 
-	/* CHANGE: default tooltip = centered above the badge */
+	/* Tooltip appears BELOW the badge - default centered */
 	.occurrence-badge:hover::after {
 		content: attr(data-tooltip);
 		position: absolute;
-		bottom: 100%;
+		top: 100%;
 		left: 50%;
 		transform: translateX(-50%);
-		margin-bottom: 4px;
+		margin-top: 4px;
 
 		padding: 4px 8px;
 		background-color: rgb(24 24 27);
@@ -356,21 +544,33 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		pointer-events: none;
 	}
 
-	/* CHANGE: when near RIGHT edge, anchor tooltip to the badge's right side (shifts left, stays above badge) */
+	/* Rightmost column: shift tooltip toward center (left) to prevent overflow */
+	.occurrence-badge.occ-tip-rightmost:hover::after {
+		left: 50%;
+		transform: translateX(-75%); /* Shift significantly left toward center */
+	}
+
+	/* When near RIGHT edge (viewport), anchor to badge's right side */
 	.occurrence-badge.occ-tip-right:hover::after {
 		left: auto;
 		right: 0;
 		transform: none;
 	}
 
-	/* CHANGE: when near LEFT edge, anchor tooltip to the badge's left side (stays above badge) */
+	/* When near LEFT edge (viewport), anchor to badge's left side */
 	.occurrence-badge.occ-tip-left:hover::after {
 		left: 0;
 		transform: none;
 	}
+
+	/* HIDE tooltip for badges in next month's preview days */
+	.fc-day-other .occurrence-badge:hover::after {
+		display: none !important;
+	}
 `}</style>
 
 			<FullCalendar
+				key={calendarKey}
 				plugins={[dayGridPlugin, interactionPlugin]}
 				initialView={view === "week" ? "dayGridWeek" : "dayGridMonth"}
 				headerToolbar={{
@@ -484,6 +684,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 					const eventId = info.event.id;
 					const newDate = info.event.start;
 					const eventType = info.event.extendedProps.type;
+					const fcEvent = info.event;
 
 					if (!newDate) {
 						info.revert();
@@ -581,6 +782,28 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 									new_end_at: newEnd.toISOString(),
 								},
 							});
+
+							fcEvent.setStart(newStart);
+							fcEvent.setEnd(newEnd);
+
+							// Update the extended props with new dates so popup shows correct info
+							const updatedData = {
+								...occurrence,
+								occurrence_start_at:
+									newStart.toISOString(),
+								occurrence_end_at:
+									newEnd.toISOString(),
+							};
+							fcEvent.setExtendedProp(
+								"data",
+								updatedData
+							);
+
+							// Update the title to reflect new time
+							fcEvent.setProp(
+								"title",
+								`${formatTime(newStart)} ${occurrence.job_obj.name} (recurring)`
+							);
 						}
 					} catch (err) {
 						console.error("Failed to update event date", err);
@@ -635,45 +858,72 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 							`${count} pending occurrence${count !== 1 ? "s" : ""}`
 						);
 
-						// On hover, detect if we're near the viewport edges and flip tooltip alignment
+						const dayOfWeek = arg.date.getDay();
+						const isRightmostColumn = dayOfWeek === 6; // Saturday is last column
+
+						// Also check if it's the last visible column (in case of custom views)
+						const allDayCells =
+							arg.el.parentElement?.parentElement?.querySelectorAll(
+								".fc-daygrid-day"
+							) || [];
+						let isLastVisibleColumn = false;
+						if (allDayCells.length > 0) {
+							const lastCell =
+								allDayCells[allDayCells.length - 1];
+							isLastVisibleColumn = arg.el === lastCell;
+						}
+
+						// Apply rightmost class if in rightmost column
+						if (isRightmostColumn || isLastVisibleColumn) {
+							badge.classList.add("occ-tip-rightmost");
+						}
+
+						// On hover, detect if we're near the viewport edges for additional adjustment
 						const handleEnter = () => {
-							// Clear prior alignment
+							// Remove edge-based classes first
 							badge.classList.remove(
 								"occ-tip-left",
 								"occ-tip-right"
 							);
 
 							const rect = badge.getBoundingClientRect();
-
-							// Estimate tooltip width so we can keep it on-screen (pseudo-element can't be measured directly)
-							const EST_TOOLTIP_WIDTH = 220; // tweakable
+							const EST_TOOLTIP_WIDTH = 220;
 							const PAD = 10;
 
-							const idealLeft =
-								rect.left +
-								rect.width / 2 -
+							const badgeCenterX =
+								rect.left + rect.width / 2;
+							const tooltipLeft =
+								badgeCenterX -
 								EST_TOOLTIP_WIDTH / 2;
-							const idealRight =
-								rect.left +
-								rect.width / 2 +
+							const tooltipRight =
+								badgeCenterX +
 								EST_TOOLTIP_WIDTH / 2;
 
-							// If tooltip would overflow right edge, anchor to badge right (shifts tooltip left)
-							if (idealRight > window.innerWidth - PAD) {
-								badge.classList.add(
-									"occ-tip-right"
-								);
-								return;
-							}
+							// Only add edge classes if not already handled by rightmost column logic
+							if (
+								!badge.classList.contains(
+									"occ-tip-rightmost"
+								)
+							) {
+								if (
+									tooltipRight >
+									window.innerWidth - PAD
+								) {
+									badge.classList.add(
+										"occ-tip-right"
+									);
+									return;
+								}
 
-							// If tooltip would overflow left edge, anchor to badge left
-							if (idealLeft < PAD) {
-								badge.classList.add("occ-tip-left");
+								if (tooltipLeft < PAD) {
+									badge.classList.add(
+										"occ-tip-left"
+									);
+								}
 							}
 						};
 
 						const handleLeave = () => {
-							// Cleanup so next hover recalculates correctly
 							badge.classList.remove(
 								"occ-tip-left",
 								"occ-tip-right"
@@ -686,7 +936,6 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 						const dayTop =
 							arg.el.querySelector(".fc-daygrid-day-top");
 						if (dayTop) {
-							//Keep date first, then badge
 							dayTop.appendChild(badge);
 						}
 					}

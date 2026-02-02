@@ -108,6 +108,7 @@ export const useUpdateRecurringPlanMutation = (): UseMutationResult<
 
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
+			// If rule or line_items were updated, invalidate  related occurrences
 			if (variables.updates.rule || variables.updates.line_items) {
 				await queryClient.invalidateQueries({
 					queryKey: ["jobs", variables.jobId, "occurrences"],
@@ -298,6 +299,21 @@ export const useSkipOccurrenceMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs", jobId, "occurrences"],
 			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "recurringPlan"],
+			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["recurringPlans"],
+			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs"],
+			});
+		},
+		onError: (error) => {
+			console.error("Skip occurrence mutation error:", error);
 		},
 	});
 };
@@ -318,6 +334,21 @@ export const useRescheduleOccurrenceMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs", jobId, "occurrences"],
 			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "recurringPlan"],
+			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["recurringPlans"],
+			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs"],
+			});
+		},
+		onError: (error) => {
+			console.error("Reschedule occurrence mutation error:", error);
 		},
 	});
 };
@@ -332,12 +363,14 @@ export const useBulkSkipOccurrencesMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.bulkSkipOccurrences,
 		onSuccess: async () => {
-			// Invalidate all occurrence queries since we don't know which plans were affected
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs"],
 				predicate: (query) => query.queryKey.includes("occurrences"),
 			});
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
+		},
+		onError: (error) => {
+			console.error("Bulk skip occurrences mutation error:", error);
 		},
 	});
 };
@@ -372,6 +405,9 @@ export const useGenerateVisitFromOccurrenceMutation = (): UseMutationResult<
 					queryKey: ["jobVisits", result.visit_id],
 				});
 			}
+		},
+		onError: (error) => {
+			console.error("Generate visit mutation error:", error);
 		},
 	});
 };
