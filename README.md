@@ -20,3 +20,8 @@
 2. `npm run build`
 3. `npx prisma migrate dev`
 4. `npm run start`
+
+### Frontend Testing (/frontend)
+
+1. Run Frontend & Backend
+2. `npm run test:e2e:ui` or `npm run test:e2e`

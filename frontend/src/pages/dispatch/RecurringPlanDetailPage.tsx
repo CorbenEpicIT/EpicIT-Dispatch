@@ -305,6 +305,7 @@ export default function RecurringPlanDetailPage() {
 					{/* Actions Menu */}
 					<div className="relative" ref={menuRef}>
 						<button
+							data-testid="recurring-plan-actions-menu"
 							onClick={() =>
 								setShowActionsMenu(!showActionsMenu)
 							}
