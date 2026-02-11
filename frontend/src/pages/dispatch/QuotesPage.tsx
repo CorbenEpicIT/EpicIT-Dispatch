@@ -20,6 +20,7 @@ export default function QuotesPage() {
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
 	const requestFilter = queryParams.get("request");
+	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
@@ -42,6 +43,10 @@ export default function QuotesPage() {
 
 		if (requestFilter) {
 			filtered = filtered.filter((q) => q.request_id === requestFilter);
+		}
+
+		if (statusFilter) {
+			filtered = filtered.filter((q) => q.status === statusFilter);
 		}
 
 		if (activeSearch) {
@@ -98,7 +103,7 @@ export default function QuotesPage() {
 					...rest
 				}) => rest
 			);
-	}, [quotes, searchInput, searchFilter, clientFilter, requestFilter]);
+	}, [quotes, searchInput, searchFilter, clientFilter, requestFilter, statusFilter]);
 
 	const handleSearchSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -114,7 +119,7 @@ export default function QuotesPage() {
 		navigate(`/dispatch/quotes?${newParams.toString()}`);
 	};
 
-	const removeFilter = (filterType: "client" | "request" | "search") => {
+	const removeFilter = (filterType: "client" | "request" | "status" | "search") => {
 		const newParams = new URLSearchParams(location.search);
 		newParams.delete(filterType);
 
@@ -132,7 +137,7 @@ export default function QuotesPage() {
 		navigate("/dispatch/quotes");
 	};
 
-	const hasFilters = clientFilter || requestFilter || searchFilter;
+	const hasFilters = clientFilter || requestFilter || statusFilter || searchFilter;
 
 	return (
 		<div className="text-white">
@@ -227,6 +232,32 @@ export default function QuotesPage() {
 										}
 										className="text-green-300 hover:text-white transition-colors"
 										aria-label="Remove request filter"
+									>
+										<X size={14} />
+									</button>
+								</div>
+							)}
+
+							{/* Status Filter Chip */}
+							{statusFilter && (
+								<div className="flex items-center gap-2 px-3 py-1.5 bg-amber-600/20 border border-amber-500/30 rounded-md">
+									<span className="text-sm text-amber-300">
+										Status:{" "}
+										<span className="font-medium text-white">
+											{QuoteStatusLabels[
+												statusFilter as keyof typeof QuoteStatusLabels
+											] ||
+												statusFilter}
+										</span>
+									</span>
+									<button
+										onClick={() =>
+											removeFilter(
+												"status"
+											)
+										}
+										className="text-amber-300 hover:text-white transition-colors"
+										aria-label="Remove status filter"
 									>
 										<X size={14} />
 									</button>

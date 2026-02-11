@@ -23,6 +23,7 @@ export default function RequestsPage() {
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
+	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
@@ -40,6 +41,10 @@ export default function RequestsPage() {
 
 		if (clientFilter) {
 			filtered = requests.filter((r) => r.client_id === clientFilter);
+		}
+
+		if (statusFilter) {
+			filtered = filtered.filter((r) => r.status === statusFilter);
 		}
 
 		if (activeSearch) {
@@ -96,7 +101,7 @@ export default function RequestsPage() {
 				);
 			})
 			.map(({ _rawStatus, _rawPriority, ...rest }) => rest);
-	}, [requests, searchInput, searchFilter, clientFilter]);
+	}, [requests, searchInput, searchFilter, clientFilter, statusFilter]);
 
 	const handleSearchSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -112,7 +117,7 @@ export default function RequestsPage() {
 		navigate(`/dispatch/requests?${newParams.toString()}`);
 	};
 
-	const removeFilter = (filterType: "client" | "search") => {
+	const removeFilter = (filterType: "client" | "status" | "search") => {
 		const newParams = new URLSearchParams(location.search);
 		newParams.delete(filterType);
 
@@ -130,7 +135,7 @@ export default function RequestsPage() {
 		navigate("/dispatch/requests");
 	};
 
-	const hasFilters = clientFilter || searchFilter;
+	const hasFilters = clientFilter || statusFilter || searchFilter;
 
 	return (
 		<div className="text-white">
@@ -201,6 +206,32 @@ export default function RequestsPage() {
 										}
 										className="text-blue-300 hover:text-white transition-colors"
 										aria-label="Remove client filter"
+									>
+										<X size={14} />
+									</button>
+								</div>
+							)}
+
+							{/* Status Filter Chip */}
+							{statusFilter && (
+								<div className="flex items-center gap-2 px-3 py-1.5 bg-green-600/20 border border-green-500/30 rounded-md">
+									<span className="text-sm text-green-300">
+										Status:{" "}
+										<span className="font-medium text-white">
+											{RequestStatusLabels[
+												statusFilter as keyof typeof RequestStatusLabels
+											] ||
+												statusFilter}
+										</span>
+									</span>
+									<button
+										onClick={() =>
+											removeFilter(
+												"status"
+											)
+										}
+										className="text-green-300 hover:text-white transition-colors"
+										aria-label="Remove status filter"
 									>
 										<X size={14} />
 									</button>

@@ -99,7 +99,14 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		mode: "edit",
 	});
 
-	const wizard = useStepWizard<Step>({
+	const {
+		currentStep,
+		visitedSteps,
+		goNext,
+		goBack,
+		goToStep,
+		reset: resetWizard,
+	} = useStepWizard<Step>({
 		totalSteps: 4 as Step,
 		initialStep: 1 as Step,
 	});
@@ -163,10 +170,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		[validateStep1, validateStep2, validateStep3]
 	);
 
-	const canGoNext = useMemo(
-		() => validateStep(wizard.currentStep),
-		[validateStep, wizard.currentStep]
-	);
+	const canGoNext = useMemo(() => validateStep(currentStep), [validateStep, currentStep]);
 
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
@@ -179,9 +183,12 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		[validateStep]
 	);
 
+	// Destructure lineItems methods to avoid dependency issues
+	const { setLineItems } = lineItems;
+
 	useEffect(() => {
 		if (isModalOpen && visit) {
-			wizard.reset();
+			resetWizard();
 
 			const visitStart = new Date(visit.scheduled_start_at);
 			const base = new Date(visitStart);
@@ -213,7 +220,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 					isDeleted: false,
 				})) || [];
 
-			lineItems.setLineItems(initialLineItems);
+			setLineItems(initialLineItems);
 
 			setTimeConstraintsState({
 				arrivalConstraint: visit.arrival_constraint || "anytime",
@@ -232,7 +239,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 			setSelectedTechIds(visit.visit_techs.map((vt) => vt.tech_id));
 			setErrors(null);
 		}
-	}, [isModalOpen, visit, wizard, lineItems, setOriginals]);
+	}, [isModalOpen, visit, resetWizard, setOriginals, setLineItems]);
 
 	const handleTechSelection = useCallback((techId: string) => {
 		setSelectedTechIds((prev) =>
@@ -244,17 +251,17 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 	const handleNext = useCallback(() => {
 		if (canGoNext) {
-			wizard.goNext();
+			goNext();
 		}
-	}, [canGoNext, wizard]);
+	}, [canGoNext, goNext]);
 
 	const handleGoToStep = useCallback(
 		(step: Step) => {
 			if (canGoToStep(step)) {
-				wizard.goToStep(step);
+				goToStep(step);
 			}
 		},
-		[canGoToStep, wizard]
+		[canGoToStep, goToStep]
 	);
 
 	const buildScheduledDates = useCallback(() => {
@@ -374,7 +381,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 			setErrors(parsed.error);
 			console.error("Validation errors:", parsed.error);
 			const errorStep = routeErrorToStep(parsed.error);
-			if (errorStep) wizard.goToStep(errorStep);
+			if (errorStep) goToStep(errorStep);
 			return;
 		}
 
@@ -443,7 +450,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		updateVisit,
 		assignTechs,
 		setIsModalOpen,
-		wizard,
+		goToStep,
 	]);
 
 	const ErrorDisplay = useCallback(
@@ -465,7 +472,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 	);
 
 	const stepContent = useMemo(() => {
-		switch (wizard.currentStep) {
+		switch (currentStep) {
 			case 1:
 				return (
 					<div className="space-y-3">
@@ -709,7 +716,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 				return null;
 		}
 	}, [
-		wizard.currentStep,
+		currentStep,
 		getValue,
 		updateField,
 		undoField,
@@ -728,15 +735,15 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		<FormWizardContainer
 			title="Edit Job Visit"
 			steps={STEPS}
-			currentStep={wizard.currentStep}
-			visitedSteps={wizard.visitedSteps}
+			currentStep={currentStep}
+			visitedSteps={visitedSteps}
 			isLoading={isLoading}
 			isOpen={isModalOpen}
 			onClose={() => setIsModalOpen(false)}
 			canGoToStep={canGoToStep}
 			onStepClick={handleGoToStep}
 			onNext={handleNext}
-			onBack={wizard.goBack}
+			onBack={goBack}
 			onSubmit={invokeSave}
 			canGoNext={canGoNext}
 			submitLabel="Save Changes"
