@@ -50,6 +50,8 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	const { mutateAsync: rescheduleOccurrence } = useRescheduleOccurrenceMutation();
 	const { mutateAsync: generateVisit } = useGenerateVisitFromOccurrenceMutation();
 
+	const calendarRef = useRef<FullCalendar>(null);
+
 	// Close popup on outside click
 	useEffect(() => {
 		function handleMouseDown(e: MouseEvent) {
@@ -60,6 +62,17 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		document.addEventListener("mousedown", handleMouseDown);
 		return () => document.removeEventListener("mousedown", handleMouseDown);
 	}, []);
+
+	// Force calendar to recalculate layout after render (fixes rightmost column alignment)
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			if (calendarRef.current) {
+				const calendarApi = calendarRef.current.getApi();
+				calendarApi.updateSize();
+			}
+		}, 100);
+		return () => clearTimeout(timer);
+	}, [showVisits, showOccurrences, view, calendarKey]);
 
 	// Occurrence badges update when data changes
 	useEffect(() => {
@@ -223,53 +236,86 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		return parts.join(", ");
 	}
 
-	// Create calendar events from visits
+	// Create calendar events from visits - sorted by time
 	const visitEvents = showVisits
-		? allVisits.map((visit) => {
-				const startDate = new Date(visit.scheduled_start_at);
-				const dateStr = startDate.toISOString().split("T")[0];
+		? allVisits
+				.sort((a, b) => {
+					const timeA = new Date(a.scheduled_start_at).getTime();
+					const timeB = new Date(b.scheduled_start_at).getTime();
+					return timeA - timeB;
+				})
+				.map((visit) => {
+					const startDate = new Date(visit.scheduled_start_at);
+					const dateStr = startDate.toISOString().split("T")[0];
 
-				return {
-					id: `visit-${visit.id}`,
-					title: `${formatTime(visit.scheduled_start_at)} ${visit.name || visit.job_obj.name}`,
-					start: dateStr,
-					allDay: true,
-					backgroundColor: getStatusColor(visit.status),
-					borderColor: getPriorityColor(visit.job_obj.priority),
-					borderWidth: 2,
-					classNames: ["event-solid"],
-					extendedProps: {
-						type: "visit",
-						data: visit,
-					},
-				};
-			})
+					return {
+						id: `visit-${visit.id}`,
+						title: `${formatTime(visit.scheduled_start_at)} ${visit.name || visit.job_obj.name}`,
+						start: dateStr,
+						allDay: true,
+						backgroundColor: getStatusColor(visit.status),
+						borderColor: getPriorityColor(
+							visit.job_obj.priority
+						),
+						borderWidth: 2,
+						classNames: ["event-solid"],
+						extendedProps: {
+							type: "visit",
+							data: visit,
+							// Lower order number = appears first (visits before occurrences)
+							order: 0,
+							timeSort: new Date(
+								visit.scheduled_start_at
+							).getTime(),
+						},
+					};
+				})
 		: [];
 
-	// Create calendar events from occurrences (dashed style)
+	// Create calendar events from occurrences - sorted by time (dashed style)
 	const occurrenceEvents = showOccurrences
-		? allOccurrences.map((occurrence) => {
-				const startDate = new Date(occurrence.occurrence_start_at);
-				const dateStr = startDate.toISOString().split("T")[0];
+		? allOccurrences
+				.sort((a, b) => {
+					const timeA = new Date(a.occurrence_start_at).getTime();
+					const timeB = new Date(b.occurrence_start_at).getTime();
+					return timeA - timeB;
+				})
+				.map((occurrence) => {
+					const startDate = new Date(occurrence.occurrence_start_at);
+					const dateStr = startDate.toISOString().split("T")[0];
 
-				return {
-					id: `occurrence-${occurrence.id}`,
-					title: `${formatTime(occurrence.occurrence_start_at)} ${occurrence.job_obj.name} (recurring)`,
-					start: dateStr,
-					allDay: true,
-					backgroundColor: "#6b7280",
-					borderColor: getPriorityColor(occurrence.job_obj.priority),
-					borderWidth: 2,
-					classNames: ["event-dashed"],
-					extendedProps: {
-						type: "occurrence",
-						data: occurrence,
-					},
-				};
-			})
+					return {
+						id: `occurrence-${occurrence.id}`,
+						title: `${formatTime(occurrence.occurrence_start_at)} ${occurrence.job_obj.name} (recurring)`,
+						start: dateStr,
+						allDay: true,
+						backgroundColor: "#6b7280",
+						borderColor: getPriorityColor(
+							occurrence.job_obj.priority
+						),
+						borderWidth: 2,
+						classNames: ["event-dashed"],
+						extendedProps: {
+							type: "occurrence",
+							data: occurrence,
+							// Higher order number = appears after (occurrences after visits)
+							order: 1,
+							timeSort: new Date(
+								occurrence.occurrence_start_at
+							).getTime(),
+						},
+					};
+				})
 		: [];
 
-	const events = [...visitEvents, ...occurrenceEvents];
+	const events = [...visitEvents, ...occurrenceEvents].sort((a, b) => {
+		// First sort by order (visits before occurrences)
+		if (a.extendedProps.order !== b.extendedProps.order) {
+			return a.extendedProps.order - b.extendedProps.order;
+		}
+		// Then sort by time within the same order group
+		return a.extendedProps.timeSort - b.extendedProps.timeSort;
+	});
 
 	// Count occurrences per day for badge display
 	const occurrenceCountByDay = allOccurrences.reduce(
@@ -298,6 +344,34 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	return (
 		<div className="relative">
 			<style>{`
+	/* ============================================================================ */
+	/* SCROLLBAR STYLING - Grey without background */
+	/* ============================================================================ */
+	
+	/* Custom scrollbar for day cells - Webkit browsers */
+	.fc-daygrid-day-events::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.fc-daygrid-day-events::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.fc-daygrid-day-events::-webkit-scrollbar-thumb {
+		background: #52525b; /* zinc-600 - grey */
+		border-radius: 3px;
+	}
+
+	.fc-daygrid-day-events::-webkit-scrollbar-thumb:hover {
+		background: #71717a; /* zinc-500 - lighter grey on hover */
+	}
+
+	/* Firefox scrollbar */
+	.fc-daygrid-day-events {
+		scrollbar-width: thin;
+		scrollbar-color: #52525b transparent;
+	}
+
 	/* ============================================================================ */
 	/* CALENDAR BASE STYLING */
 	/* ============================================================================ */
@@ -389,6 +463,15 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		border-right: none !important;
 	}
 
+	/* Fix rightmost column overflow in month view */
+	.fc-daygrid-day-frame {
+		overflow: hidden;
+	}
+
+	.fc-daygrid-day-top {
+		padding-right: 4px; /* Add padding to prevent date number from touching edge */
+	}
+
 	/* Event block styling */
 	.fc-event {
 		background-color: #3b82f6;
@@ -398,15 +481,24 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		padding: 2px 4px;
 		font-size: 0.75rem;
 		transition: background-color 0.2s ease;
+		margin-bottom: 2px !important; /* Add spacing between events */
+		border: 1px solid rgba(0, 0, 0, 0.2) !important; /* Subtle border for separation */
 	}
 	.fc-event:hover {
 		background-color: #2563eb;
+		border-color: rgba(0, 0, 0, 0.3) !important; /* Slightly darker border on hover */
+	}
+
+	/* Ensure the last event doesn't have bottom margin */
+	.fc-daygrid-event:last-child {
+		margin-bottom: 0 !important;
 	}
 
 	/* Scrollable days when many events */
 	.fc-daygrid-day-events {
 		max-height: 120px;
 		overflow-y: auto;
+		padding-right: 2px; /* Space for scrollbar */
 	}
 
 	/* The outer grid wrapper */
@@ -570,6 +662,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 `}</style>
 
 			<FullCalendar
+				ref={calendarRef}
 				key={calendarKey}
 				plugins={[dayGridPlugin, interactionPlugin]}
 				initialView={view === "week" ? "dayGridWeek" : "dayGridMonth"}
@@ -587,6 +680,8 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 				editable={true}
 				eventStartEditable={true}
 				eventDurationEditable={false}
+				// Event ordering: visits (order 0) before occurrences (order 1), then by time
+				eventOrder="order,timeSort"
 				viewDidMount={() => {
 					let centerChunk = document.querySelector(
 						".fc-toolbar-chunk:nth-child(2)"
