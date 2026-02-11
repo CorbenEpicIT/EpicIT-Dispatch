@@ -35,11 +35,6 @@ export const QuoteStatusValues = [
 
 export type QuoteStatus = (typeof QuoteStatusValues)[number];
 
-export type QuotePriority = Priority;
-export const QuotePriorityValues = PriorityValues;
-export const QuotePriorityLabels = PriorityLabels;
-export const QuotePriorityColors = PriorityColors;
-
 export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 	Draft: "Draft",
 	Sent: "Sent",
@@ -96,7 +91,7 @@ export interface Quote {
 	status: QuoteStatus;
 	address: string;
 	coords: Coordinates | null;
-	priority: QuotePriority;
+	priority: Priority;
 	is_active: boolean;
 	version: number;
 	previous_quote_id: string | null;
@@ -109,7 +104,6 @@ export interface Quote {
 	discount_amount: number;
 	total: number;
 
-	// Timestamps
 	created_at: Date;
 	updated_at: Date;
 	sent_at: Date | null;
@@ -139,7 +133,7 @@ export interface CreateQuoteInput {
 	description?: string;
 	address?: string;
 	coords?: Coordinates;
-	priority: QuotePriority;
+	priority: Priority;
 	status?: QuoteStatus;
 	subtotal?: number;
 	tax_rate?: number;
@@ -159,7 +153,7 @@ export interface UpdateQuoteInput {
 	description?: string;
 	address?: string;
 	coords?: Coordinates;
-	priority?: QuotePriority;
+	priority?: Priority;
 	status?: QuoteStatus;
 	subtotal?: number;
 	tax_rate?: number;

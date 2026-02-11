@@ -283,7 +283,6 @@ export default function JobsPage() {
 				});
 			}
 
-			// Sort jobs
 			return jobsData
 				.sort((a, b) => {
 					// Sort by status
@@ -594,12 +593,10 @@ export default function JobsPage() {
 					errListener={fetchError}
 					onRowClick={(row) => {
 						if (viewMode === "templates") {
-							// Templates view: navigate to recurring plan detail page
 							navigate(
 								`/dispatch/recurring-plans/${row.id}`
 							);
 						} else {
-							// Jobs view: navigate to job detail page (both one-time and recurring jobs)
 							navigate(`/dispatch/jobs/${row.id}`);
 						}
 					}}
@@ -616,6 +613,8 @@ export default function JobsPage() {
 						throw new Error(
 							"Job creation failed: no ID returned"
 						);
+
+					navigate(`/dispatch/jobs/${newJob.id}`);
 
 					return newJob.id;
 				}}

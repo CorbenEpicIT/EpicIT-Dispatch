@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 import {
 	ChevronLeft,
 	Edit2,
@@ -16,11 +17,14 @@ import {
 	Briefcase,
 	DollarSign,
 	ChevronRight,
+	MoreVertical,
+	Trash2,
 } from "lucide-react";
 import {
 	useJobByIdQuery,
 	useJobVisitsByJobIdQuery,
 	useCreateJobVisitMutation,
+	useDeleteJobMutation,
 } from "../../hooks/useJobs";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import Card from "../../components/ui/Card";
@@ -28,7 +32,6 @@ import EditJob from "../../components/jobs/EditJob";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
 import {
 	JobStatusColors,
-	JobPriorityColors,
 	VisitStatusColors,
 	type VisitStatus,
 	type JobLineItem,
@@ -40,9 +43,9 @@ import {
 } from "../../types/recurringPlans";
 import { QuoteStatusColors } from "../../types/quotes";
 import { RequestStatusColors } from "../../types/requests";
-import { getGenericStatusColor } from "../../types/common";
+import { getGenericStatusColor, PriorityColors } from "../../types/common";
 import type { ClientContact } from "../../types/clients";
-import { useState } from "react";
+
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
 
 export default function JobDetailPage() {
@@ -53,6 +56,45 @@ export default function JobDetailPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isCreateVisitModalOpen, setIsCreateVisitModalOpen] = useState(false);
 	const { mutateAsync: createJobVisitMutation } = useCreateJobVisitMutation();
+
+	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+	const [deleteConfirm, setDeleteConfirm] = useState(false);
+	const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+	const deleteJobMutation = useDeleteJobMutation();
+
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (
+				optionsMenuRef.current &&
+				!optionsMenuRef.current.contains(event.target as Node)
+			) {
+				setIsOptionsMenuOpen(false);
+				setDeleteConfirm(false);
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, []);
+
+	const handleDeleteJob = async () => {
+		if (!jobId) return;
+
+		// First click arms the confirmation
+		if (!deleteConfirm) {
+			setDeleteConfirm(true);
+			return;
+		}
+
+		try {
+			await deleteJobMutation.mutateAsync(jobId);
+			setIsOptionsMenuOpen(false);
+			navigate("/dispatch/jobs");
+		} catch (error) {
+			console.error("Failed to delete job:", error);
+		}
+	};
 
 	if (isLoading) {
 		return (
@@ -83,7 +125,6 @@ export default function JobDetailPage() {
 	const lineItems: JobLineItem[] = job.line_items || [];
 	const hasLineItems = lineItems.length > 0;
 
-	// Helper to format visit time constraints
 	const formatVisitTimeConstraints = (visit: (typeof visits)[0]): string => {
 		const {
 			arrival_constraint,
@@ -130,37 +171,105 @@ export default function JobDetailPage() {
 		<div className="text-white space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
-				<h1 className="text-3xl font-bold text-white">{job.name}</h1>
+				<div>
+					<h1 className="text-3xl font-bold text-white mb-2">
+						{job.name}
+					</h1>
+					<p className="text-zinc-400 text-sm">
+						{new Date(job.created_at).toLocaleDateString(
+							"en-US",
+							{
+								year: "numeric",
+								month: "short",
+								day: "numeric",
+							}
+						)}
+					</p>
+				</div>
 
-				<span
-					className={`justify-self-end inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
-						JobStatusColors[job.status] ||
-						"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
-					}`}
-				>
-					{job.status}
-				</span>
+				<div className="justify-self-end flex items-center gap-3">
+					<span
+						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
+							JobStatusColors[job.status] ||
+							"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+						}`}
+					>
+						{job.status}
+					</span>
+
+					{/* Options Menu */}
+					<div className="relative" ref={optionsMenuRef}>
+						<button
+							onClick={() => {
+								setIsOptionsMenuOpen((v) => !v);
+								setDeleteConfirm(false);
+							}}
+							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+						>
+							<MoreVertical size={20} />
+						</button>
+
+						{isOptionsMenuOpen && (
+							<div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+								<div className="py-1">
+									<button
+										onClick={() => {
+											setIsEditModalOpen(
+												true
+											);
+											setIsOptionsMenuOpen(
+												false
+											);
+											setDeleteConfirm(
+												false
+											);
+										}}
+										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+									>
+										<Edit2 size={16} />
+										Edit Job
+									</button>
+
+									<div className="my-1 border-t border-zinc-800" />
+
+									{/* Delete Button (QuoteDetailPage-style confirm) */}
+									<button
+										onClick={
+											handleDeleteJob
+										}
+										onMouseLeave={() =>
+											setDeleteConfirm(
+												false
+											)
+										}
+										disabled={
+											deleteJobMutation.isPending
+										}
+										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+											deleteConfirm
+												? "bg-red-600 hover:bg-red-700 text-white"
+												: "text-red-400 hover:bg-zinc-800 hover:text-red-300"
+										} disabled:opacity-50 disabled:cursor-not-allowed`}
+									>
+										<Trash2 size={16} />
+										{deleteJobMutation.isPending
+											? "Deleting..."
+											: deleteConfirm
+												? "Click Again to Confirm"
+												: "Delete Job"}
+									</button>
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
 			</div>
 
 			{/* Job Information (2/3) and Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				{/* Job Information - 2/3 width */}
 				<div className="lg:col-span-2">
-					<Card
-						title="Job Information"
-						headerAction={
-							<button
-								onClick={() =>
-									setIsEditModalOpen(true)
-								}
-								className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-							>
-								<Edit2 size={14} />
-								Edit
-							</button>
-						}
-						className="h-full"
-					>
+					<Card title="Job Information" className="h-full">
 						<div className="space-y-4">
 							<div>
 								<h3 className="text-zinc-400 text-sm mb-1">
@@ -192,7 +301,7 @@ export default function JobDetailPage() {
 									</h3>
 									<p
 										className={`font-medium capitalize ${
-											JobPriorityColors[
+											PriorityColors[
 												job
 													.priority
 											]

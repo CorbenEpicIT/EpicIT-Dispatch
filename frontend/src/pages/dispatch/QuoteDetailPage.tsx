@@ -12,8 +12,9 @@ import {
 	User,
 	Mail,
 	Phone,
+	Trash2,
 } from "lucide-react";
-import { useQuoteByIdQuery } from "../../hooks/useQuotes";
+import { useQuoteByIdQuery, useDeleteQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import { QuoteStatusColors } from "../../types/quotes";
 import type { QuoteStatus } from "../../types/quotes";
@@ -29,16 +30,19 @@ export default function QuoteDetailPage() {
 	const navigate = useNavigate();
 	const { data: quote, isLoading } = useQuoteByIdQuery(quoteId!);
 	const { mutateAsync: createJob } = useCreateJobMutation();
+	const deleteQuote = useDeleteQuoteMutation();
 
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isConvertToJobModalOpen, setIsConvertToJobModalOpen] = useState(false);
+	const [deleteConfirm, setDeleteConfirm] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		function handleClickOutside(event: MouseEvent) {
 			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
 				setShowActionsMenu(false);
+				setDeleteConfirm(false);
 			}
 		}
 
@@ -95,6 +99,23 @@ export default function QuoteDetailPage() {
 		setIsConvertToJobModalOpen(true);
 	};
 
+	const handleDelete = async () => {
+		if (!deleteConfirm) {
+			setDeleteConfirm(true);
+			return;
+		}
+
+		try {
+			await deleteQuote.mutateAsync({
+				id: quote.id,
+				hardDelete: false,
+			});
+			navigate("/dispatch/quotes");
+		} catch (error) {
+			console.error("Failed to delete quote:", error);
+		}
+	};
+
 	return (
 		<div className="text-white space-y-6">
 			{/* Header */}
@@ -125,9 +146,12 @@ export default function QuoteDetailPage() {
 					{/* Actions Menu */}
 					<div className="relative" ref={menuRef}>
 						<button
-							onClick={() =>
-								setShowActionsMenu(!showActionsMenu)
-							}
+							onClick={() => {
+								setShowActionsMenu(
+									!showActionsMenu
+								);
+								setDeleteConfirm(false);
+							}}
 							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
 						>
 							<MoreVertical size={20} />
@@ -179,12 +203,44 @@ export default function QuoteDetailPage() {
 											? "Job Already Created"
 											: "Convert to Job"}
 									</button>
+
+									{/* Divider */}
+									<div className="my-1 border-t border-zinc-800"></div>
+
+									{/* Delete Button */}
+									<button
+										onClick={
+											handleDelete
+										}
+										onMouseLeave={() =>
+											setDeleteConfirm(
+												false
+											)
+										}
+										disabled={
+											deleteQuote.isPending
+										}
+										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+											deleteConfirm
+												? "bg-red-600 hover:bg-red-700 text-white"
+												: "text-red-400 hover:bg-zinc-800 hover:text-red-300"
+										} disabled:opacity-50 disabled:cursor-not-allowed`}
+									>
+										<Trash2 size={16} />
+										{deleteQuote.isPending
+											? "Deleting..."
+											: deleteConfirm
+												? "Click Again to Confirm"
+												: "Delete Quote"}
+									</button>
 								</div>
 							</div>
 						)}
 					</div>
 				</div>
 			</div>
+
+			{/* ... rest of the component stays exactly the same ... */}
 
 			{/* Quote Information (2/3) and Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

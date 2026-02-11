@@ -1,78 +1,88 @@
 import type { JSX } from "react";
 
 interface FullPopupProps {
-  content: JSX.Element;
-  isModalOpen: boolean;
-  onClose: () => void;
-  size?: "md" | "lg" | "xl";
-  hasBackground?: boolean;
+	content: JSX.Element;
+	isModalOpen: boolean;
+	onClose: () => void;
+	size?: "md" | "lg" | "xl";
+	hasBackground?: boolean;
 }
 
 const FullPopup = ({
-  content,
-  isModalOpen,
-  onClose,
-  size = "md",
-  hasBackground = true,
+	content,
+	isModalOpen,
+	onClose,
+	size = "md",
+	hasBackground = true,
 }: FullPopupProps) => {
-  let baseClassPanel =
-    "transition-all fixed inset-0 z-[5000] flex items-center justify-center ";
-  let baseClassBackground =
-    "transition-all fixed inset-0 z-[4000] bg-black ";
+	let baseClassPanel =
+		"transition-all duration-300 fixed inset-0 z-[5000] flex items-center justify-center ";
+	let baseClassBackground = "transition-all duration-300 fixed inset-0 z-[4000] bg-black ";
 
-  if (isModalOpen) {
-    baseClassPanel += "opacity-100 pointer-events-auto";
-    baseClassBackground += "opacity-50 pointer-events-auto";
-  } else {
-    baseClassPanel += "opacity-0 pointer-events-none";
-    baseClassBackground += "opacity-0 pointer-events-none";
-  }
+	if (isModalOpen) {
+		baseClassPanel += "opacity-100 pointer-events-auto";
+		baseClassBackground += "opacity-50 pointer-events-auto";
+	} else {
+		baseClassPanel += "opacity-0 pointer-events-none";
+		baseClassBackground += "opacity-0 pointer-events-none";
+	}
 
-  let baseClassInset =
-    "scrollbar-hide transition-all bg-zinc-900 p-5 rounded-lg shadow-xl max-h-[90vh] overflow-y-auto ";
+	let baseClassInset =
+		"scrollbar-hide transition-all duration-300 bg-zinc-900 p-5 rounded-lg shadow-xl max-h-[90vh] overflow-y-auto ";
 
-  switch (size) {
-    case "md":
-      baseClassInset += "w-11/12 md:w-1/2 lg:w-1/3";
-      break;
-    case "lg":
-      baseClassInset += "w-11/12 md:w-4/5 lg:w-2/3";
-      break;
-    case "xl":
-      baseClassInset += "w-11/12 md:w-4/5 lg:w-5/6";
-      break;
-  }
+	switch (size) {
+		case "md":
+			// Minimum width ensures title + stepwizard fit inline (~600px)
+			// Small: nearly fullscreen with margin
+			// Medium+: fluid with min/max constraints
+			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(600px,55vw,640px)]";
+			break;
+		case "lg":
+			// Minimum width ~800px for comfortable inline display
+			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(800px,75vw,1000px)]";
+			break;
+		case "xl":
+			// Minimum width ~900px
+			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(900px,85vw,1400px)]";
+			break;
+	}
 
-  if (!isModalOpen) {
-    // Don’t render content at all when closed (optional but nice)
-    return (
-      <>
-        {hasBackground && <div className={baseClassBackground} />}
-        <div className={baseClassPanel}></div>
-      </>
-    );
-  }
+	const handlePanelMouseDown = (e: React.MouseEvent) => {
+		const target = e.target as HTMLElement;
+		const isMapboxElement =
+			target.closest(".mapboxgl-ctrl-geocoder") ||
+			target.closest(".suggestions-wrapper") ||
+			target.closest(".mapbox-gl-geocoder") ||
+			target.classList.contains("mapboxgl-ctrl-geocoder--suggestion");
 
-  return (
-    <>
-      {hasBackground && (
-        <div
-          className={baseClassBackground}
-          onMouseDown={onClose} // mousedown starting on backdrop closes
-        />
-      )}
+		if (!isMapboxElement) {
+			onClose();
+		}
+	};
 
-      <div
-        className={baseClassPanel}
-        onMouseDown={onClose} // mousedown starting anywhere outside inner box closes
-      >
-        <div
-          className={baseClassInset}
-          onMouseDown={(e) => e.stopPropagation()} // mousedown starting inside does NOT close
-        >
-          {content}
-        </div>
-        <style>{`
+	if (!isModalOpen) {
+		return (
+			<>
+				{hasBackground && <div className={baseClassBackground} />}
+				<div className={baseClassPanel}></div>
+			</>
+		);
+	}
+
+	return (
+		<>
+			{hasBackground && (
+				<div className={baseClassBackground} onMouseDown={onClose} />
+			)}
+
+			<div className={baseClassPanel} onMouseDown={handlePanelMouseDown}>
+				<div
+					className={baseClassInset}
+					onMouseDown={(e) => e.stopPropagation()}
+				>
+					{content}
+				</div>
+				<style>{`
           .scrollbar-hide::-webkit-scrollbar {
             display: none;
           }
@@ -81,10 +91,9 @@ const FullPopup = ({
             scrollbar-width: none;
           }
         `}</style>
-      </div>
-    </>
-    
-  );
+			</div>
+		</>
+	);
 };
 
 export default FullPopup;

@@ -1,20 +1,26 @@
-import { useRef, useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
-import FullPopup from "../ui/FullPopup";
 import {
-	JobPriorityValues,
 	UpdateJobSchema,
 	type Job,
 	type UpdateJobInput,
 	type UpdateJobLineItemInput,
 } from "../../types/jobs";
-import { LineItemTypeValues, type LineItemType } from "../../types/common";
+import { type EditableLineItem, type Priority, PriorityValues } from "../../types/common";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
-import { Plus, Trash2 } from "lucide-react";
-import { useUpdateJobMutation, useDeleteJobMutation } from "../../hooks/useJobs";
-import { useNavigate } from "react-router-dom";
+import { useUpdateJobMutation } from "../../hooks/useJobs";
+import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import LineItemsSection from "../ui/forms/LineItemsSection";
+import FinancialSummary from "../ui/forms/FinancialSummary";
+import { UndoButton, UndoButtonTop } from "../ui/forms/UndoButton";
+import { useStepWizard } from "../../hooks/forms/useStepWizard";
+import { useLineItems } from "../../hooks/forms/useLineItems";
+import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
+import { useDirtyTracking } from "../../hooks/forms/useDirtyTracking";
+
+type Step = 1 | 2 | 3;
 
 interface EditJobProps {
 	isModalOpen: boolean;
@@ -22,263 +28,277 @@ interface EditJobProps {
 	job: Job;
 }
 
-// Local UI-only interface for form state
-interface LineItem {
-	id: string; // For React key (client-side ID or DB ID)
-	name: string;
-	description: string;
-	quantity: number;
-	unit_price: number;
-	item_type: LineItemType | "";
-	total: number;
-	isNew?: boolean; // Flag for newly added items
-	isDeleted?: boolean; // Flag for items to delete
-}
+const STEPS = [
+	{ id: 1 as Step, label: "Basics" },
+	{ id: 2 as Step, label: "Line Items" },
+	{ id: 3 as Step, label: "Finalize" },
+];
+
+const PRIORITY_ENTRIES = (
+	<>
+		{PriorityValues.map((v) => (
+			<option key={v} value={v}>
+				{v.charAt(0).toUpperCase() + v.slice(1)}
+			</option>
+		))}
+	</>
+);
 
 const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
-	const navigate = useNavigate();
 	const updateJob = useUpdateJobMutation();
-	const deleteJob = useDeleteJobMutation();
-
-	const nameRef = useRef<HTMLInputElement>(null);
-	const descRef = useRef<HTMLTextAreaElement>(null);
-	const priorityRef = useRef<HTMLSelectElement>(null);
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
-	const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-	const [taxRate, setTaxRate] = useState<number>(0);
-	const [discountType, setDiscountType] = useState<"percent" | "amount">("amount");
-	const [discountValue, setDiscountValue] = useState<number>(0);
-	const [lineItems, setLineItems] = useState<LineItem[]>([]);
+	type FormFields = {
+		name: string;
+		description: string;
+		priority: Priority;
+	};
 
-	// Initialize form data when modal opens
+	const { fields, updateField, undoField, setOriginals, isDirty, getValue } =
+		useDirtyTracking<FormFields>({
+			name: "",
+			description: "",
+			priority: "Medium",
+		});
+
+	// Shared hooks
+	const {
+		activeLineItems,
+		addLineItem: addLineItemToState,
+		removeLineItem: removeLineItemFromState,
+		updateLineItem: updateLineItemInState,
+		subtotal,
+		setLineItems,
+		dirtyLineItemFields,
+		undoLineItemField,
+		clearLineItemField,
+	} = useLineItems({
+		minItems: 1,
+		mode: "edit",
+	});
+
+	const {
+		taxRate,
+		setTaxRate,
+		taxAmount,
+		discountType,
+		setDiscountType,
+		discountValue,
+		setDiscountValue,
+		discountAmount,
+		total: estimatedTotal,
+		isTaxDirty,
+		isDiscountDirty,
+		undoTax,
+		undoDiscount,
+	} = useFinancialCalculations(subtotal, {
+		initialTaxRate: job.tax_rate ? Number(job.tax_rate) * 100 : 0,
+		initialDiscountType: job.discount_type || "amount",
+		initialDiscountValue: job.discount_value ? Number(job.discount_value) : 0,
+	});
+
+	const validateStep1 = useCallback((): boolean => {
+		return !!(
+			getValue("name").trim() &&
+			getValue("description").trim() &&
+			geoData?.address
+		);
+	}, [getValue, geoData]);
+
+	const validateStep2 = useCallback((): boolean => {
+		const hasAnyData = activeLineItems.some(
+			(item) => item.name.trim() || item.quantity !== 1 || item.unit_price !== 0
+		);
+		if (!hasAnyData) return true;
+		return activeLineItems.every(
+			(item) =>
+				!item.name.trim() ||
+				(item.name.trim() && item.quantity > 0 && item.unit_price >= 0)
+		);
+	}, [activeLineItems]);
+
+	const validateStep = useCallback(
+		(step: Step): boolean => {
+			switch (step) {
+				case 1:
+					return validateStep1();
+				case 2:
+					return validateStep2();
+				case 3:
+					return true;
+				default:
+					return true;
+			}
+		},
+		[validateStep1, validateStep2]
+	);
+
+	const {
+		currentStep,
+		visitedSteps,
+		goNext,
+		goBack,
+		goToStep,
+		reset: resetWizard,
+	} = useStepWizard<Step>({
+		totalSteps: 3 as Step,
+		initialStep: 1 as Step,
+	});
+
+	const canGoNext = validateStep(currentStep);
+
+	const canGoToStep = useCallback(
+		(targetStep: Step): boolean => {
+			if (targetStep <= currentStep) return true;
+
+			for (let step = 1; step < targetStep; step++) {
+				if (!validateStep(step as Step)) {
+					return false;
+				}
+			}
+			return true;
+		},
+		[currentStep, validateStep]
+	);
+
 	useEffect(() => {
 		if (isModalOpen && job) {
-			const existingLineItems = job.line_items || [];
+			resetWizard();
 
-			if (existingLineItems.length > 0) {
-				const loadedLineItems: LineItem[] = existingLineItems.map(
-					(item) => ({
-						id: item.id || crypto.randomUUID(), // Use DB ID or generate temp ID
-						name: item.name || "",
-						description: item.description || "",
-						quantity: Number(item.quantity) || 1,
-						unit_price: Number(item.unit_price) || 0,
-						item_type: (item.item_type as LineItemType) || "",
-						total: Number(item.total) || 0,
-						isNew: false,
-						isDeleted: false,
-					})
-				);
-				setLineItems(loadedLineItems);
-			} else {
-				// Start with one empty item if no existing items
-				setLineItems([
-					{
-						id: crypto.randomUUID(),
-						name: "",
-						description: "",
-						quantity: 1,
-						unit_price: 0,
-						item_type: "",
-						total: 0,
-						isNew: true,
-						isDeleted: false,
-					},
-				]);
+			// Set originals for dirty tracking
+			const initialOriginals: FormFields = {
+				name: job.name ?? "",
+				description: job.description ?? "",
+				priority: job.priority as Priority,
+			};
+
+			setOriginals(initialOriginals);
+
+			const initialLineItems: EditableLineItem[] =
+				job.line_items?.map((item) => ({
+					id: crypto.randomUUID(),
+					entity_line_item_id: item.id,
+					name: item.name,
+					description: item.description || "",
+					quantity: Number(item.quantity),
+					unit_price: Number(item.unit_price),
+					item_type: item.item_type || "",
+					total: Number(item.total),
+					isNew: false,
+					isDeleted: false,
+				})) || [];
+
+			// If no existing line items, add one empty template
+			if (initialLineItems.length === 0) {
+				initialLineItems.push({
+					id: crypto.randomUUID(),
+					entity_line_item_id: undefined,
+					name: "",
+					description: "",
+					quantity: 1,
+					unit_price: 0,
+					item_type: "",
+					total: 0,
+					isNew: true,
+					isDeleted: false,
+				});
 			}
 
-			if (job.tax_rate !== undefined && job.tax_rate !== null) {
-				setTaxRate(Number(job.tax_rate) * 100); // Convert decimal to percentage
-			}
-
-			if (job.discount_type && job.discount_value) {
-				setDiscountType(job.discount_type);
-				setDiscountValue(Number(job.discount_value));
-			} else if (job.discount_amount && job.discount_amount > 0) {
-				// Fallback: try to infer if it was a percentage
-				const subtotal = job.subtotal ? Number(job.subtotal) : 0;
-				const discountAmount = Number(job.discount_amount);
-				const possiblePercent = (discountAmount / subtotal) * 100;
-
-				if (possiblePercent % 5 === 0 && possiblePercent <= 100) {
-					setDiscountType("percent");
-					setDiscountValue(possiblePercent);
-				} else {
-					setDiscountType("amount");
-					setDiscountValue(discountAmount);
-				}
-			} else {
-				setDiscountType("amount");
-				setDiscountValue(0);
-			}
+			setLineItems(initialLineItems);
 
 			if (job.address) {
 				setGeoData({
 					address: job.address,
-					coords: job.coords,
+					coords: job.coords || undefined,
 				} as GeocodeResult);
-			}
-
-			setDeleteConfirm(false);
-		}
-	}, [isModalOpen, job]);
-
-	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData(() => ({
-			address: result.address,
-			coords: result.coords,
-		}));
-	};
-
-	const addNewLineItem = () => {
-		setLineItems([
-			...lineItems,
-			{
-				id: crypto.randomUUID(),
-				name: "",
-				description: "",
-				quantity: 1,
-				unit_price: 0,
-				item_type: "",
-				total: 0,
-				isNew: true,
-				isDeleted: false,
-			},
-		]);
-	};
-
-	const removeLineItem = (id: string) => {
-		setLineItems(
-			lineItems.map((item) =>
-				item.id === id ? { ...item, isDeleted: true } : item
-			)
-		);
-	};
-
-	const updateLineItemField = (id: string, field: keyof LineItem, value: string | number) => {
-		setLineItems(
-			lineItems.map((item) => {
-				if (item.id === id) {
-					const updated = { ...item, [field]: value };
-					if (field === "quantity" || field === "unit_price") {
-						updated.total =
-							Number(updated.quantity) *
-							Number(updated.unit_price);
-					}
-					return updated;
-				}
-				return item;
-			})
-		);
-	};
-
-	// Calculate totals with reactive state
-	const activeLineItems = lineItems.filter((item) => !item.isDeleted);
-	const subtotal = activeLineItems.reduce((sum, item) => sum + item.total, 0);
-	const taxAmount = subtotal * (taxRate / 100);
-	const discountAmount =
-		discountType === "percent" ? subtotal * (discountValue / 100) : discountValue;
-	const estimatedTotal = subtotal + taxAmount - discountAmount;
-
-	const handleDelete = async () => {
-		if (!deleteConfirm) {
-			setDeleteConfirm(true);
-			return;
-		}
-
-		try {
-			await deleteJob.mutateAsync(job.id);
-			setIsModalOpen(false);
-			navigate("/dispatch/jobs");
-		} catch (error) {
-			console.error("Failed to delete job:", error);
-		}
-	};
-
-	const invokeUpdate = async () => {
-		if (nameRef.current && descRef.current && priorityRef.current && !isLoading) {
-			const nameValue = nameRef.current.value.trim();
-			const descValue = descRef.current.value.trim();
-			const priorityValue = priorityRef.current.value.trim();
-
-			// Filter line items to only include valid ones (not soft-deleted, with name and quantity)
-			const validLineItems = activeLineItems.filter(
-				(item) => item.name.trim() !== "" && item.quantity > 0
-			);
-
-			// Convert to API format
-			const preparedLineItems: UpdateJobLineItemInput[] = validLineItems.map(
-				(item) => ({
-					id: item.isNew ? undefined : item.id, // No id = create new, has id = update existing
-					name: item.name,
-					description: item.description || undefined,
-					quantity: item.quantity,
-					unit_price: item.unit_price,
-					total: item.total,
-					item_type: (item.item_type || undefined) as
-						| LineItemType
-						| undefined,
-				})
-			);
-
-			// Only include changed fields to minimize payload
-			const updates: UpdateJobInput = {
-				name: nameValue !== job.name ? nameValue : undefined,
-				description: descValue !== job.description ? descValue : undefined,
-				address:
-					geoData?.address !== job.address
-						? geoData?.address
-						: undefined,
-				coords:
-					geoData?.coords !== job.coords
-						? geoData?.coords || undefined
-						: undefined,
-				priority: priorityValue as
-					| "Low"
-					| "Medium"
-					| "High"
-					| "Urgent"
-					| "Emergency",
-				subtotal,
-				tax_rate: taxRate / 100, // Store as decimal
-				tax_amount: taxAmount,
-				discount_type: discountType,
-				discount_value: discountValue,
-				discount_amount: discountAmount,
-				estimated_total: estimatedTotal,
-				line_items: preparedLineItems.length > 0 ? preparedLineItems : [],
-			};
-
-			const parseResult = UpdateJobSchema.safeParse(updates);
-
-			if (!parseResult.success) {
-				setErrors(parseResult.error);
-				console.error("Validation errors:", parseResult.error);
-				return;
+			} else {
+				setGeoData(undefined);
 			}
 
 			setErrors(null);
-			setIsLoading(true);
+		}
+	}, [isModalOpen, job, resetWizard, setLineItems, setOriginals]);
 
-			try {
-				await updateJob.mutateAsync({
-					id: job.id,
-					updates: updates,
-				});
+	const handleChangeAddress = (result: GeocodeResult) => {
+		setGeoData({
+			address: result.address,
+			coords: result.coords,
+		});
+	};
 
-				setIsLoading(false);
-				setIsModalOpen(false);
-			} catch (error) {
-				console.error("Failed to update job:", error);
-				setIsLoading(false);
-			}
+	const handleClearAddress = () => {
+		setGeoData(undefined);
+	};
+
+	const invokeUpdate = async () => {
+		if (isLoading) return;
+
+		// Filter out empty line items before submission
+		const nonEmptyLineItems = activeLineItems.filter((item) => {
+			const hasData =
+				item.name.trim() ||
+				item.description?.trim() ||
+				item.quantity !== 1 ||
+				item.unit_price !== 0 ||
+				item.item_type;
+			return hasData;
+		});
+
+		// If all line items are empty, send empty array (optional field)
+		const lineItemUpdates: UpdateJobLineItemInput[] = nonEmptyLineItems.map((item) => {
+			const li = item as EditableLineItem;
+			return {
+				id: li.entity_line_item_id,
+				name: item.name.trim(),
+				description: item.description?.trim() || undefined,
+				quantity: Number(item.quantity),
+				unit_price: Number(item.unit_price),
+				total: Number(item.total),
+				item_type: (item.item_type || undefined) as any,
+			};
+		});
+
+		const updates: UpdateJobInput = {
+			name: getValue("name") !== job.name ? getValue("name") : undefined,
+			description:
+				getValue("description") !== job.description
+					? getValue("description")
+					: undefined,
+			address: geoData?.address !== job.address ? geoData?.address : undefined,
+			coords: geoData?.coords !== job.coords ? geoData?.coords : undefined,
+			priority: getValue("priority") as Priority,
+			subtotal,
+			tax_rate: taxRate / 100,
+			tax_amount: taxAmount,
+			discount_type: discountType,
+			discount_value: discountValue,
+			discount_amount: discountAmount,
+			estimated_total: estimatedTotal,
+			line_items: lineItemUpdates.length > 0 ? lineItemUpdates : undefined,
+		};
+
+		const parseResult = UpdateJobSchema.safeParse(updates);
+		if (!parseResult.success) {
+			setErrors(parseResult.error);
+			console.error("Validation errors:", parseResult.error);
+			return;
+		}
+
+		setErrors(null);
+		setIsLoading(true);
+
+		try {
+			await updateJob.mutateAsync({ id: job.id, updates });
+			setIsLoading(false);
+			setIsModalOpen(false);
+		} catch (error) {
+			console.error("Failed to update job:", error);
+			setIsLoading(false);
 		}
 	};
 
-	// Error display component - SAME AS CreateJob
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
@@ -294,554 +314,307 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		);
 	};
 
-	const content = (
-		<div
-			className="max-h-[85vh] overflow-y-auto pl-1"
-			style={{
-				scrollbarWidth: "thin",
-				scrollbarColor: "rgb(63 63 70) transparent",
-			}}
-		>
-			<style>{`
-				.max-h-\\[85vh\\]::-webkit-scrollbar {
-					width: 8px;
-				}
-				.max-h-\\[85vh\\]::-webkit-scrollbar-track {
-					background: transparent;
-				}
-				.max-h-\\[85vh\\]::-webkit-scrollbar-thumb {
-					background-color: rgb(63 63 70);
-					border-radius: 4px;
-				}
-				.max-h-\\[85vh\\]::-webkit-scrollbar-thumb:hover {
-					background-color: rgb(82 82 91);
-				}
-			`}</style>
-
-			<div className="pr-2">
-				<h2 className="text-2xl font-bold mb-4">Edit Job</h2>
-
-				<p className="mb-1 hover:color-accent">Job Name *</p>
-				<input
-					type="text"
-					placeholder="Job Name"
-					defaultValue={job.name}
-					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
-					disabled={isLoading}
-					ref={nameRef}
-				/>
-				<ErrorDisplay path="name" />
-
-				<p className="mb-1 mt-3 hover:color-accent">Client</p>
-				<div className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-800/50 text-zinc-400">
-					{job.client?.name || "Unknown Client"}
-				</div>
-				<p className="text-xs text-zinc-500 mt-1">
-					Client assignment cannot be changed
-				</p>
-
-				<p className="mb-1 mt-3 hover:color-accent">Description *</p>
-				<textarea
-					placeholder="Job Description"
-					defaultValue={job.description}
-					className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none"
-					disabled={isLoading}
-					ref={descRef}
-				></textarea>
-				<ErrorDisplay path="description" />
-
-				<p className="mb-1 mt-3 hover:color-accent">Address *</p>
-				<AddressForm handleChange={handleChangeAddress} />
-				{geoData?.address && (
-					<p className="text-xs text-zinc-400 mt-1">
-						Current: {geoData.address}
-					</p>
-				)}
-				<ErrorDisplay path="address" />
-				<ErrorDisplay path="coords" />
-
-				<p className="mb-1 mt-3 hover:color-accent">Priority</p>
-				<div className="border border-zinc-800 rounded-sm">
-					<Dropdown
-						refToApply={priorityRef}
-						defaultValue={job.priority}
-						entries={
-							<>
-								{JobPriorityValues.map((v) => (
-									<option
-										key={v}
-										value={v}
-										className="text-black"
-									>
-										{v}
-									</option>
-								))}
-							</>
-						}
-					/>
-				</div>
-				<ErrorDisplay path="priority" />
-
-				{/* Line Items Section */}
-				<div className="mt-4 p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-					<div className="flex items-center justify-between mb-3">
-						<h3 className="text-lg font-semibold">
-							Line Items *
-						</h3>
-						<button
-							type="button"
-							onClick={addNewLineItem}
-							disabled={isLoading}
-							className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded-md text-sm font-medium transition-colors"
-						>
-							<Plus size={16} />
-							Add Item
-						</button>
-					</div>
-
-					<ErrorDisplay path="line_items" />
-
+	const stepContent = useMemo(() => {
+		switch (currentStep) {
+			case 1:
+				return (
 					<div className="space-y-3">
-						{activeLineItems.map((item, index) => (
-							<div
-								key={item.id}
-								className="p-3 bg-zinc-900 rounded-lg border border-zinc-700"
-							>
-								<div className="flex items-start justify-between mb-2">
-									<span className="text-sm text-zinc-400">
-										Item {index + 1}
-										{item.isNew && (
-											<span className="ml-2 text-xs text-blue-400">
-												(New)
-											</span>
-										)}
-									</span>
-									<button
-										type="button"
-										onClick={() =>
-											removeLineItem(
-												item.id
-											)
-										}
-										disabled={
-											activeLineItems.length ===
-												1 ||
-											isLoading
-										}
-										className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
-									>
-										<Trash2 size={16} />
-									</button>
-								</div>
-
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-									<div>
-										<input
-											type="text"
-											placeholder="Item name *"
-											value={
-												item.name
-											}
-											onChange={(
-												e
-											) =>
-												updateLineItemField(
-													item.id,
-													"name",
-													e
-														.target
-														.value
-												)
-											}
-											disabled={
-												isLoading
-											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-										/>
-									</div>
-
-									<div>
-										<select
-											value={
-												item.item_type
-											}
-											onChange={(
-												e
-											) =>
-												updateLineItemField(
-													item.id,
-													"item_type",
-													e
-														.target
-														.value
-												)
-											}
-											disabled={
-												isLoading
-											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-										>
-											<option value="">
-												Type
-												(optional)
-											</option>
-											{LineItemTypeValues.map(
-												(
-													type
-												) => (
-													<option
-														key={
-															type
-														}
-														value={
-															type
-														}
-													>
-														{type
-															.charAt(
-																0
-															)
-															.toUpperCase() +
-															type.slice(
-																1
-															)}
-													</option>
-												)
-											)}
-										</select>
-									</div>
-
-									<div className="md:col-span-2">
-										<input
-											type="text"
-											placeholder="Description (optional)"
-											value={
-												item.description
-											}
-											onChange={(
-												e
-											) =>
-												updateLineItemField(
-													item.id,
-													"description",
-													e
-														.target
-														.value
-												)
-											}
-											disabled={
-												isLoading
-											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-										/>
-									</div>
-
-									<div>
-										<label className="text-xs text-zinc-400 mb-1 block">
-											Quantity
-										</label>
-										<input
-											type="number"
-											min="0.01"
-											step="0.01"
-											value={
-												item.quantity
-											}
-											onChange={(
-												e
-											) =>
-												updateLineItemField(
-													item.id,
-													"quantity",
-													parseFloat(
-														e
-															.target
-															.value
-													) ||
-														0
-												)
-											}
-											disabled={
-												isLoading
-											}
-											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-										/>
-									</div>
-
-									<div>
-										<label className="text-xs text-zinc-400 mb-1 block">
-											Unit Price
-										</label>
-										<div className="relative">
-											<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-												$
-											</span>
-											<input
-												type="number"
-												min="0"
-												step="0.01"
-												value={
-													item.unit_price
-												}
-												onChange={(
-													e
-												) =>
-													updateLineItemField(
-														item.id,
-														"unit_price",
-														parseFloat(
-															e
-																.target
-																.value
-														) ||
-															0
-													)
-												}
-												disabled={
-													isLoading
-												}
-												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
-											/>
-										</div>
-									</div>
-
-									<div className="md:col-span-2">
-										<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
-											<span className="text-sm text-zinc-400">
-												Line
-												Total:
-											</span>
-											<span className="text-sm font-semibold text-white">
-												$
-												{item.total.toFixed(
-													2
-												)}
-											</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						))}
-					</div>
-				</div>
-
-				{/* Financial Summary */}
-				<div className="mt-4 p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-					<h3 className="text-lg font-semibold mb-3">
-						Financial Summary
-					</h3>
-
-					<div className="space-y-2 mb-3 pb-3 border-b border-zinc-700">
-						<div className="flex items-center justify-between text-sm">
-							<span className="text-zinc-400">
-								Subtotal:
-							</span>
-							<span className="font-semibold text-white">
-								${subtotal.toFixed(2)}
-							</span>
-						</div>
-					</div>
-
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+						{/* Name */}
 						<div>
-							<label className="text-xs text-zinc-400 mb-1 block">
-								Tax Rate (%)
+							<label className="block mb-1 text-sm text-zinc-300">
+								Job Name *
 							</label>
-							<input
-								type="number"
-								step="0.01"
-								min="0"
-								max="100"
-								placeholder="0.00"
-								value={taxRate}
-								onChange={(e) =>
-									setTaxRate(
-										parseFloat(
+							<div className="relative">
+								<input
+									type="text"
+									placeholder="Job Name"
+									value={getValue("name")}
+									onChange={(e) =>
+										updateField(
+											"name",
 											e.target
 												.value
-										) || 0
-									)
-								}
-								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm"
-								disabled={isLoading}
-							/>
+										)
+									}
+									className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									disabled={isLoading}
+								/>
+								<UndoButton
+									show={isDirty("name")}
+									onUndo={() =>
+										undoField("name")
+									}
+									disabled={isLoading}
+								/>
+							</div>
+							<ErrorDisplay path="name" />
 						</div>
 
-						<div>
-							<label className="text-xs text-zinc-400 mb-1 block">
-								Discount
-							</label>
-							<div className="flex gap-1">
-								<div className="relative flex-1">
-									{discountType ===
-										"amount" && (
-										<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-											$
-										</span>
-									)}
-									<input
-										type="number"
-										step="0.01"
-										min="0"
-										placeholder="0.00"
-										value={
-											discountValue
+						{/* Client and Priority Row */}
+						<div className="grid grid-cols-2 gap-3">
+							<div>
+								<label className="block mb-1 text-sm text-zinc-300">
+									Client
+								</label>
+								<div className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-800/50 text-zinc-400">
+									{job.client?.name ||
+										"Unknown Client"}
+								</div>
+								<p className="text-xs text-zinc-500 mt-1">
+									Client assignment cannot be
+									changed
+								</p>
+							</div>
+
+							<div>
+								<label className="block mb-1 text-sm text-zinc-300">
+									Priority
+								</label>
+								<div className="relative">
+									<Dropdown
+										entries={
+											PRIORITY_ENTRIES
 										}
-										onChange={(e) =>
-											setDiscountValue(
-												parseFloat(
-													e
-														.target
-														.value
-												) ||
-													0
+										value={getValue(
+											"priority"
+										)}
+										onChange={(
+											newValue
+										) =>
+											updateField(
+												"priority",
+												newValue as Priority
 											)
 										}
-										className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm ${
-											discountType ===
-											"amount"
-												? "pl-6"
-												: ""
-										}`}
+										disabled={isLoading}
+										error={errors?.issues.some(
+											(e) =>
+												e
+													.path[0] ===
+												"priority"
+										)}
+									/>
+									<UndoButton
+										show={isDirty(
+											"priority"
+										)}
+										onUndo={() =>
+											undoField(
+												"priority"
+											)
+										}
+										position="right-9"
 										disabled={isLoading}
 									/>
-									{discountType ===
-										"percent" && (
-										<span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-											%
-										</span>
-									)}
 								</div>
-								<button
-									type="button"
-									onClick={() =>
-										setDiscountType(
-											discountType ===
-												"amount"
-												? "percent"
-												: "amount"
+								<ErrorDisplay path="priority" />
+							</div>
+						</div>
+
+						{/* Description */}
+						<div>
+							<label className="block mb-1 text-sm text-zinc-300">
+								Description *
+							</label>
+							<div className="relative">
+								<textarea
+									placeholder="Job Description"
+									value={getValue(
+										"description"
+									)}
+									onChange={(e) =>
+										updateField(
+											"description",
+											e.target
+												.value
+										)
+									}
+									className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									disabled={isLoading}
+								/>
+								<UndoButtonTop
+									show={isDirty(
+										"description"
+									)}
+									onUndo={() =>
+										undoField(
+											"description"
 										)
 									}
 									disabled={isLoading}
-									className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 text-white text-xs font-medium rounded-sm transition-colors min-w-[45px]"
-								>
-									{discountType === "amount"
-										? "$"
-										: "%"}
-								</button>
+								/>
 							</div>
+							<ErrorDisplay path="description" />
+						</div>
+
+						{/* Address */}
+						<div className="relative z-10">
+							<label className="block mb-1 text-sm text-zinc-300">
+								Address *
+							</label>
+							<AddressForm
+								mode="edit"
+								originalValue={job.address || ""}
+								originalCoords={job.coords}
+								dropdownPosition="above"
+								handleChange={handleChangeAddress}
+								handleClear={handleClearAddress}
+							/>
+							<ErrorDisplay path="address" />
+							<ErrorDisplay path="coords" />
 						</div>
 					</div>
+				);
 
-					<div className="space-y-2 pt-3 border-t border-zinc-700">
-						<div className="flex items-center justify-between text-sm">
-							<span className="text-zinc-400">
-								Tax Amount:
-							</span>
-							<span className="text-white">
-								${taxAmount.toFixed(2)}
-							</span>
-						</div>
-						<div className="flex items-center justify-between text-sm">
-							<span className="text-zinc-400">
-								Discount Amount:
-							</span>
-							<span className="text-white">
-								-${discountAmount.toFixed(2)}
-							</span>
-						</div>
-						<div className="flex items-center justify-between text-lg font-bold pt-2 border-t border-zinc-700">
-							<span className="text-white">
-								Estimated Total:
-							</span>
-							<span className="text-green-400">
-								${estimatedTotal.toFixed(2)}
-							</span>
-						</div>
+			case 2:
+				return (
+					<div className="space-y-3">
+						<ErrorDisplay path="line_items" />
+						<LineItemsSection
+							lineItems={activeLineItems}
+							isLoading={isLoading}
+							onAdd={addLineItemToState}
+							onRemove={removeLineItemFromState}
+							onUpdate={updateLineItemInState}
+							subtotal={subtotal}
+							required={false}
+							minItems={1}
+							dirtyFields={dirtyLineItemFields}
+							onUndo={undoLineItemField}
+							onClear={clearLineItemField}
+						/>
 					</div>
+				);
 
-					{job.actual_total && (
-						<div className="mt-3 pt-3 border-t border-zinc-700">
-							<div className="flex items-center justify-between text-lg font-bold">
-								<span className="text-white">
-									Actual Total:
-								</span>
-								<span className="text-blue-400">
-									$
-									{Number(
-										job.actual_total
-									).toFixed(2)}
-								</span>
-							</div>
-							<div className="flex items-center justify-between text-sm mt-1">
-								<span className="text-zinc-400">
-									Variance:
-								</span>
-								<span
-									className={`font-semibold ${
-										Number(
-											job.actual_total
-										) > estimatedTotal
-											? "text-red-400"
-											: "text-green-400"
-									}`}
-								>
-									{Number(job.actual_total) >
-									estimatedTotal
-										? "+"
-										: ""}
-									$
-									{(
-										Number(
-											job.actual_total
-										) - estimatedTotal
-									).toFixed(2)}
-								</span>
-							</div>
-						</div>
-					)}
-				</div>
+			case 3:
+				return (
+					<div className="space-y-3 mt-2">
+						<FinancialSummary
+							subtotal={subtotal}
+							taxRate={taxRate}
+							taxAmount={taxAmount}
+							discountType={discountType}
+							discountValue={discountValue}
+							discountAmount={discountAmount}
+							total={estimatedTotal}
+							isLoading={isLoading}
+							onTaxRateChange={setTaxRate}
+							onDiscountTypeChange={setDiscountType}
+							onDiscountValueChange={setDiscountValue}
+							totalLabel="Estimated Total"
+							isTaxDirty={isTaxDirty}
+							isDiscountDirty={isDiscountDirty}
+							onTaxUndo={undoTax}
+							onDiscountUndo={undoDiscount}
+						/>
 
-				<div className="flex gap-3 pt-4 mt-4 border-t border-zinc-700">
-					<button
-						type="button"
-						onClick={invokeUpdate}
-						disabled={isLoading || updateJob.isPending}
-						className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors"
-					>
-						{isLoading || updateJob.isPending
-							? "Saving..."
-							: "Save Changes"}
-					</button>
-					<button
-						type="button"
-						onClick={handleDelete}
-						onMouseLeave={() => setDeleteConfirm(false)}
-						disabled={isLoading || deleteJob.isPending}
-						className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-							deleteConfirm
-								? "bg-red-600 hover:bg-red-700 text-white"
-								: "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-						} disabled:opacity-50 disabled:cursor-not-allowed`}
-					>
-						<Trash2 size={16} />
-						{isLoading || deleteJob.isPending
-							? "Deleting..."
-							: deleteConfirm
-								? "Confirm Delete"
-								: "Delete"}
-					</button>
-				</div>
-			</div>
-		</div>
-	);
+						{job.actual_total !== null &&
+							job.actual_total !== undefined && (
+								<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+									<div className="flex items-center justify-between text-sm">
+										<span className="text-zinc-400">
+											Actual
+											Total:
+										</span>
+										<span className="text-blue-400 font-semibold tabular-nums">
+											$
+											{Number(
+												job.actual_total
+											).toFixed(
+												2
+											)}
+										</span>
+									</div>
+
+									<div className="flex items-center justify-between text-sm mt-2 pt-2 border-t border-zinc-700">
+										<span className="text-zinc-400">
+											Variance:
+										</span>
+										<span
+											className={`font-semibold tabular-nums ${
+												Number(
+													job.actual_total
+												) >
+												estimatedTotal
+													? "text-red-400"
+													: "text-green-400"
+											}`}
+										>
+											{Number(
+												job.actual_total
+											) >
+											estimatedTotal
+												? "+"
+												: ""}
+											$
+											{(
+												Number(
+													job.actual_total
+												) -
+												estimatedTotal
+											).toFixed(
+												2
+											)}
+										</span>
+									</div>
+								</div>
+							)}
+					</div>
+				);
+
+			default:
+				return null;
+		}
+	}, [
+		currentStep,
+		getValue,
+		updateField,
+		undoField,
+		isDirty,
+		isLoading,
+		errors,
+		job,
+		geoData,
+		activeLineItems,
+		addLineItemToState,
+		removeLineItemFromState,
+		updateLineItemInState,
+		subtotal,
+		dirtyLineItemFields,
+		undoLineItemField,
+		clearLineItemField,
+		taxRate,
+		taxAmount,
+		discountType,
+		discountValue,
+		discountAmount,
+		estimatedTotal,
+		isTaxDirty,
+		isDiscountDirty,
+		undoTax,
+		undoDiscount,
+	]);
 
 	return (
-		<FullPopup
-			content={content}
-			isModalOpen={isModalOpen}
+		<FormWizardContainer<Step>
+			title="Edit Job"
+			steps={STEPS}
+			currentStep={currentStep}
+			visitedSteps={visitedSteps}
+			isLoading={isLoading}
+			isOpen={isModalOpen}
 			onClose={() => setIsModalOpen(false)}
-		/>
+			canGoToStep={canGoToStep}
+			onStepClick={goToStep}
+			onNext={goNext}
+			onBack={goBack}
+			onSubmit={invokeUpdate}
+			canGoNext={canGoNext}
+			submitLabel="Save Changes"
+			isEditMode={true}
+		>
+			{stepContent}
+		</FormWizardContainer>
 	);
 };
 

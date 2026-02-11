@@ -1,12 +1,8 @@
 import AdaptableTable from "../../components/AdaptableTable";
 import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
 import { useClientByIdQuery } from "../../hooks/useClients";
-import {
-	RequestStatusValues,
-	RequestStatusLabels,
-	RequestPriorityLabels,
-	type Request,
-} from "../../types/requests";
+import { RequestStatusValues, RequestStatusLabels, type Request } from "../../types/requests";
+import { PriorityLabels } from "../../types/common";
 import { useState, useMemo, useEffect } from "react";
 import { Search, Plus, MoreVertical, X } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -72,7 +68,7 @@ export default function RequestsPage() {
 					client: r.client?.name || "Unknown Client",
 					title: r.title,
 					property: r.address || "No address",
-					priority: RequestPriorityLabels[r.priority] || r.priority,
+					priority: PriorityLabels[r.priority] || r.priority,
 					created: formatDate(r.created_at),
 					status: RequestStatusLabels[r.status] || r.status,
 					_rawStatus: r.status, // Keep raw status for sorting
