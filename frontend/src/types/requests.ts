@@ -21,11 +21,6 @@ export const RequestStatusValues = [
 
 export type RequestStatus = (typeof RequestStatusValues)[number];
 
-export type RequestPriority = Priority;
-export const RequestPriorityValues = PriorityValues;
-export const RequestPriorityLabels = PriorityLabels;
-export const RequestPriorityColors = PriorityColors;
-
 export const RequestStatusLabels: Record<RequestStatus, string> = {
 	New: "New",
 	Reviewing: "Reviewing",
@@ -59,7 +54,7 @@ export interface Request {
 	description: string;
 	address: string | null;
 	coords: Coordinates;
-	priority: RequestPriority;
+	priority: Priority;
 	status: RequestStatus;
 	requires_quote: boolean;
 	estimated_value: number | null;
@@ -82,7 +77,7 @@ export interface CreateRequestInput {
 	description: string;
 	address?: string;
 	coords?: Coordinates;
-	priority?: RequestPriority;
+	priority?: Priority;
 	requires_quote?: boolean;
 	estimated_value?: number | null;
 	source?: string | null;
@@ -94,7 +89,7 @@ export interface UpdateRequestInput {
 	description?: string;
 	address?: string;
 	coords?: Coordinates;
-	priority?: RequestPriority;
+	priority?: Priority;
 	status?: RequestStatus;
 	requires_quote?: boolean;
 	estimated_value?: number | null;

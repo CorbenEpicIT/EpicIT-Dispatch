@@ -2,7 +2,8 @@ import LoadSvg from "../../assets/icons/loading.svg?react";
 import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
-import { QuotePriorityValues, type CreateQuoteInput } from "../../types/quotes";
+import { type CreateQuoteInput } from "../../types/quotes";
+import { PriorityValues } from "../../types/common";
 import type { Request } from "../../types/requests";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
@@ -51,7 +52,6 @@ export default function ConvertToQuote({
 	};
 
 	const handleClearAddress = () => {
-		// In edit mode, revert to original if it exists
 		if (request.address || request.coords) {
 			setGeoData({
 				address: request.address || "",
@@ -64,7 +64,7 @@ export default function ConvertToQuote({
 
 	const priorityEntries = (
 		<>
-			{QuotePriorityValues.map((v) => (
+			{PriorityValues.map((v) => (
 				<option key={v} value={v} className="text-black">
 					{v}
 				</option>

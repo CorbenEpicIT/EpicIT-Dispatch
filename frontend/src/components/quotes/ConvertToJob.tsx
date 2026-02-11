@@ -2,7 +2,8 @@ import LoadSvg from "../../assets/icons/loading.svg?react";
 import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
-import { JobPriorityValues, type CreateJobInput } from "../../types/jobs";
+import { type CreateJobInput } from "../../types/jobs";
+import { PriorityValues } from "../../types/common";
 import type { Quote } from "../../types/quotes";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
@@ -33,7 +34,7 @@ export default function ConvertToJob({
 	const originalsRef = useRef({
 		name: "",
 		description: "",
-		priority: "Medium" as (typeof JobPriorityValues)[number],
+		priority: "Medium" as (typeof PriorityValues)[number],
 		address: "",
 		coords: undefined as any,
 	});
@@ -74,10 +75,10 @@ export default function ConvertToJob({
 		const initialName = quote.title ?? "";
 		const initialDesc = quote.description ?? "";
 		const initialPriority = (
-			JobPriorityValues.includes(quote.priority as any)
+			PriorityValues.includes(quote.priority as any)
 				? (quote.priority as any)
 				: "Medium"
-		) as (typeof JobPriorityValues)[number];
+		) as (typeof PriorityValues)[number];
 
 		const initialAddress = quote.address ?? "";
 		const initialCoords = quote.coords ?? undefined;
@@ -139,7 +140,7 @@ export default function ConvertToJob({
 
 	const priorityEntries = (
 		<>
-			{JobPriorityValues.map((v) => (
+			{PriorityValues.map((v) => (
 				<option key={v} value={v} className="text-black">
 					{v}
 				</option>

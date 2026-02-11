@@ -394,7 +394,6 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 
 			const jobNumber = await generateJobNumber();
 
-			// Create the job
 			const job = await tx.job.create({
 				data: {
 					job_number: jobNumber,
@@ -472,11 +471,48 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 			return tx.job.findUnique({
 				where: { id: job.id },
 				include: {
-					client: true,
-					request: true,
+					client: {
+						select: {
+							id: true,
+							name: true,
+							address: true,
+							coords: true,
+							is_active: true,
+							contacts: {
+								where: {
+									is_primary: true,
+								},
+								include: {
+									contact: {
+										select: {
+											id: true,
+											name: true,
+											email: true,
+											phone: true,
+											title: true,
+										},
+									},
+								},
+								take: 1,
+							},
+						},
+					},
+					request: {
+						select: {
+							id: true,
+							title: true,
+							status: true,
+							created_at: true,
+						},
+					},
 					quote: {
-						include: {
-							line_items: true,
+						select: {
+							id: true,
+							quote_number: true,
+							title: true,
+							status: true,
+							total: true,
+							created_at: true,
 						},
 					},
 					visits: {
@@ -484,10 +520,35 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 							visit_techs: {
 								include: { tech: true },
 							},
+							notes: true,
 						},
 					},
 					line_items: true,
-					notes: true,
+					notes: {
+						include: {
+							creator_tech: {
+								select: { id: true, name: true, email: true },
+							},
+							creator_dispatcher: {
+								select: { id: true, name: true, email: true },
+							},
+							last_editor_tech: {
+								select: { id: true, name: true, email: true },
+							},
+							last_editor_dispatcher: {
+								select: { id: true, name: true, email: true },
+							},
+							visit: {
+								select: {
+									id: true,
+									scheduled_start_at: true,
+									scheduled_end_at: true,
+									status: true,
+								},
+							},
+						},
+						orderBy: { created_at: "desc" },
+					},
 				},
 			});
 		});
@@ -662,7 +723,6 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 									},
 								});
 
-								// Log line_item update with changes
 								await logActivity({
 									event_type: "job_line_item.updated",
 									action: "updated",
@@ -696,7 +756,6 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 							},
 						});
 
-						// Log line_item creation
 						await logActivity({
 							event_type: "job_line_item.created",
 							action: "created",
@@ -791,7 +850,6 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 				},
 			});
 
-			// Log job changes
 			if (Object.keys(changes).length > 0) {
 				await logActivity({
 					event_type: "job.updated",
