@@ -13,8 +13,9 @@ import {
 	Mail,
 	Globe,
 	ArrowRight,
+	RotateCcw,
 } from "lucide-react";
-import { useRequestByIdQuery } from "../../hooks/useRequests";
+import { useRequestByIdQuery, useUpdateRequestMutation } from "../../hooks/useRequests";
 import { useCreateQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import Card from "../../components/ui/Card";
@@ -28,6 +29,7 @@ export default function RequestDetailPage() {
 	const { requestId } = useParams<{ requestId: string }>();
 	const navigate = useNavigate();
 	const { data: request, isLoading } = useRequestByIdQuery(requestId!);
+	const { mutateAsync: updateRequest } = useUpdateRequestMutation();
 	const { mutateAsync: createQuote } = useCreateQuoteMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
 
@@ -35,7 +37,30 @@ export default function RequestDetailPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isConvertToQuoteModalOpen, setIsConvertToQuoteModalOpen] = useState(false);
 	const [isConvertToJobModalOpen, setIsConvertToJobModalOpen] = useState(false);
+	const [hasManualStatusChange, setHasManualStatusChange] = useState(false);
+	const [hasAutoUpdated, setHasAutoUpdated] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+
+	// Safeguarded auto-update: New → Reviewing after 10 seconds
+	// BUT: Skip if user manually changed the status or already auto-updated
+	useEffect(() => {
+		if (!request || request.status !== "New" || hasManualStatusChange || hasAutoUpdated)
+			return;
+
+		const timeoutId = setTimeout(() => {
+			if (!hasManualStatusChange && !hasAutoUpdated) {
+				setHasAutoUpdated(true);
+				updateRequest({
+					id: request.id,
+					data: { status: "Reviewing" },
+				});
+			}
+		}, 5000); // Always wait 5 seconds from page open
+
+		return () => {
+			clearTimeout(timeoutId);
+		};
+	}, [request?.id, request?.status, hasManualStatusChange, hasAutoUpdated, updateRequest]);
 
 	useEffect(() => {
 		function handleClickOutside(event: MouseEvent) {
@@ -83,8 +108,6 @@ export default function RequestDetailPage() {
 				return "bg-blue-500/20 text-blue-400 border-blue-500/30";
 			case "Reviewing":
 				return "bg-purple-500/20 text-purple-400 border-purple-500/30";
-			case "NeedsQuote":
-				return "bg-orange-500/20 text-orange-400 border-orange-500/30";
 			case "Quoted":
 				return "bg-amber-500/20 text-amber-400 border-amber-500/30";
 			case "QuoteApproved":
@@ -153,6 +176,15 @@ export default function RequestDetailPage() {
 		setIsConvertToJobModalOpen(true);
 	};
 
+	const handleResetToNew = async () => {
+		setShowActionsMenu(false);
+		setHasManualStatusChange(true); // Mark as manually changed
+		await updateRequest({
+			id: request.id,
+			data: { status: "New" },
+		});
+	};
+
 	return (
 		<div className="text-white space-y-6">
 			{/* Header */}
@@ -211,6 +243,29 @@ export default function RequestDetailPage() {
 										/>
 										Convert to Job
 									</button>
+
+									{/* Reset to New - Only show for Reviewing status */}
+									{request.status ===
+										"Reviewing" && (
+										<>
+											<div className="border-t border-zinc-800 my-1"></div>
+											<button
+												onClick={
+													handleResetToNew
+												}
+												className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 text-zinc-400"
+											>
+												<RotateCcw
+													size={
+														16
+													}
+												/>
+												Reset
+												to
+												New
+											</button>
+										</>
+									)}
 								</div>
 							</div>
 						)}

@@ -164,7 +164,7 @@ export const insertRequest = async (req: Request, context?: UserContext) => {
 				description: parsed.description,
 				priority: parsed.priority,
 				address: parsed.address,
-				status: "New",
+				status: parsed.status || "New",
 
 				...(parsed.coords && { coords: parsed.coords }),
 				...(parsed.requires_quote !== undefined && {
@@ -197,8 +197,8 @@ export const insertRequest = async (req: Request, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					title: { old: null, new: request.title },
@@ -326,8 +326,8 @@ export const updateRequest = async (req: Request, context?: UserContext) => {
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -389,8 +389,8 @@ export const deleteRequest = async (id: string, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					title: { old: existing.title, new: null },
@@ -467,7 +467,7 @@ export const getRequestNoteById = async (requestId: string, noteId: string) => {
 export const insertRequestNote = async (
 	requestId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = createRequestNoteSchema.parse(data);
@@ -514,8 +514,8 @@ export const insertRequestNote = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					content: { old: null, new: parsed.content },
@@ -546,7 +546,7 @@ export const updateRequestNote = async (
 	requestId: string,
 	noteId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRequestNoteSchema.parse(data);
@@ -613,8 +613,8 @@ export const updateRequestNote = async (
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -642,7 +642,7 @@ export const updateRequestNote = async (
 export const deleteRequestNote = async (
 	requestId: string,
 	noteId: string,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const existing = await db.request_note.findFirst({
@@ -665,8 +665,8 @@ export const deleteRequestNote = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					content: { old: existing.content, new: null },

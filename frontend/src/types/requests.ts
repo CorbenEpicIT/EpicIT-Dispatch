@@ -11,7 +11,6 @@ import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
 export const RequestStatusValues = [
 	"New",
 	"Reviewing",
-	"NeedsQuote",
 	"Quoted",
 	"QuoteApproved",
 	"QuoteRejected",
@@ -24,7 +23,6 @@ export type RequestStatus = (typeof RequestStatusValues)[number];
 export const RequestStatusLabels: Record<RequestStatus, string> = {
 	New: "New",
 	Reviewing: "Reviewing",
-	NeedsQuote: "Needs Quote",
 	Quoted: "Quoted",
 	QuoteApproved: "Quote Approved",
 	QuoteRejected: "Quote Rejected",
@@ -35,7 +33,6 @@ export const RequestStatusLabels: Record<RequestStatus, string> = {
 export const RequestStatusColors: Record<RequestStatus, string> = {
 	New: "bg-blue-600/20 text-blue-400 border-blue-700",
 	Reviewing: "bg-yellow-600/20 text-yellow-400 border-yellow-700",
-	NeedsQuote: "bg-orange-600/20 text-orange-400 border-orange-700",
 	Quoted: "bg-purple-600/20 text-purple-400 border-purple-700",
 	QuoteApproved: "bg-green-600/20 text-green-400 border-green-700",
 	QuoteRejected: "bg-red-600/20 text-red-400 border-red-700",
@@ -78,6 +75,7 @@ export interface CreateRequestInput {
 	address?: string;
 	coords?: Coordinates;
 	priority?: Priority;
+	status?: RequestStatus;
 	requires_quote?: boolean;
 	estimated_value?: number | null;
 	source?: string | null;
@@ -103,6 +101,7 @@ export const CreateRequestSchema = z.object({
 	title: z.string().min(1, "Title is required"),
 	description: z.string().min(1, "Description is required"),
 	priority: z.enum(PriorityValues).default("Medium"),
+	status: z.enum(RequestStatusValues).optional(),
 	requires_quote: z.boolean().default(false),
 	estimated_value: z.number().min(0).optional().nullable(),
 	source: z.string().optional().or(z.literal("")).nullable(),

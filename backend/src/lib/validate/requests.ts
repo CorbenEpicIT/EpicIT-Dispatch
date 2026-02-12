@@ -21,6 +21,17 @@ export const createRequestSchema = z.object({
 		.optional(),
 	requires_quote: z.boolean().default(false),
 	estimated_value: z.number().min(0).optional().nullable(),
+	status: z
+		.enum([
+			"New",
+			"Reviewing",
+			"Quoted",
+			"QuoteApproved",
+			"QuoteRejected",
+			"ConvertedToJob",
+			"Cancelled",
+		])
+		.optional(),
 	source: z
 		.string()
 		.optional()
@@ -58,7 +69,6 @@ export const updateRequestSchema = z
 			.enum([
 				"New",
 				"Reviewing",
-				"NeedsQuote",
 				"Quoted",
 				"QuoteApproved",
 				"QuoteRejected",
@@ -100,7 +110,7 @@ export const updateRequestSchema = z
 			data.source !== undefined ||
 			data.source_reference !== undefined ||
 			data.cancellation_reason !== undefined,
-		{ message: "At least one field must be provided for update" }
+		{ message: "At least one field must be provided for update" },
 	);
 
 export const createRequestNoteSchema = z.object({

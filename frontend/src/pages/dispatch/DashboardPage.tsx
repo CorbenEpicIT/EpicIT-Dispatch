@@ -33,18 +33,15 @@ import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurring
 export default function DashboardPage() {
 	const navigate = useNavigate();
 
-	// Modal states for quick actions
 	const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
 	const [isCreateQuoteModalOpen, setIsCreateQuoteModalOpen] = useState(false);
 	const [isCreateJobModalOpen, setIsCreateJobModalOpen] = useState(false);
 	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
 
-	// Mutations
 	const { mutateAsync: createRequest } = useCreateRequestMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
 	const { mutateAsync: createQuote } = useCreateQuoteMutation();
 
-	// Data fetching
 	const { data: jobs = [], error: jobsError } = useAllJobsQuery();
 	const { data: requests = [] } = useAllRequestsQuery();
 	const { data: quotes = [] } = useAllQuotesQuery();
@@ -75,7 +72,6 @@ export default function DashboardPage() {
 		};
 	}, [jobs]);
 
-	// Technician status calculations
 	const technicianStats = useMemo(() => {
 		const online = allTechnicians.filter(
 			(t) => t.status === "Available" || t.status === "Busy"
@@ -94,11 +90,10 @@ export default function DashboardPage() {
 		};
 	}, [allTechnicians]);
 
-	// Workflow pipeline counts
 	const pipelineCounts = useMemo(
 		() => ({
 			newRequests: requests.filter((r) => r.status === "New").length,
-			needsQuote: requests.filter((r) => r.status === "NeedsQuote").length,
+			reviewing: requests.filter((r) => r.status === "Reviewing").length,
 			quoted: requests.filter((r) => r.status === "Quoted").length,
 			pendingApproval: quotes.filter(
 				(q) => q.status === "Sent" || q.status === "Viewed"
@@ -121,7 +116,6 @@ export default function DashboardPage() {
 		[requests, quotes, jobs]
 	);
 
-	// Active technicians with visit details
 	const activeTechnicians = useMemo(() => {
 		return allTechnicians
 			.filter((t) => t.status !== "Offline")
@@ -381,7 +375,7 @@ export default function DashboardPage() {
 							<div
 								onClick={() =>
 									navigate(
-										"/dispatch/requests?status=NeedsQuote"
+										"/dispatch/requests?status=Reviewing"
 									)
 								}
 								className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
@@ -399,7 +393,7 @@ export default function DashboardPage() {
 										</span>
 										<span className="text-sm font-bold text-amber-400">
 											{
-												pipelineCounts.needsQuote
+												pipelineCounts.reviewing
 											}
 										</span>
 									</div>
@@ -407,7 +401,7 @@ export default function DashboardPage() {
 										<div
 											className="bg-amber-500 h-1.5 rounded-full"
 											style={{
-												width: `${Math.min(pipelineCounts.needsQuote * 10, 100)}%`,
+												width: `${Math.min(pipelineCounts.reviewing * 10, 100)}%`,
 											}}
 										/>
 									</div>
