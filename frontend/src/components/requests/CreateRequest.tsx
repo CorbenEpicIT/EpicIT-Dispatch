@@ -98,6 +98,7 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 			coords: geoData?.coords,
 			description: description.trim(),
 			priority: priority as Priority,
+			status: "Reviewing", // Default to Reviewing for dispatcher-created requests
 			source: source.trim() || null,
 			source_reference: sourceReference.trim() || null,
 			requires_quote: requiresQuote,
