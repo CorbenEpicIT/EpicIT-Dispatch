@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { createPortal } from "react-dom";
 
 interface FullPopupProps {
 	content: JSX.Element;
@@ -28,21 +29,16 @@ const FullPopup = ({
 	}
 
 	let baseClassInset =
-		"scrollbar-hide transition-all duration-300 bg-zinc-900 p-5 rounded-lg shadow-xl max-h-[90vh] overflow-y-auto ";
+		"scrollbar-hide transition-all duration-300 bg-zinc-900 p-5 rounded-lg shadow-xl max-h-[90vh] overflow-y-auto text-white ";
 
 	switch (size) {
 		case "md":
-			// Minimum width ensures title + stepwizard fit inline (~600px)
-			// Small: nearly fullscreen with margin
-			// Medium+: fluid with min/max constraints
 			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(600px,55vw,640px)]";
 			break;
 		case "lg":
-			// Minimum width ~800px for comfortable inline display
 			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(800px,75vw,1000px)]";
 			break;
 		case "xl":
-			// Minimum width ~900px
 			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(900px,85vw,1400px)]";
 			break;
 	}
@@ -69,7 +65,7 @@ const FullPopup = ({
 		);
 	}
 
-	return (
+	return createPortal(
 		<>
 			{hasBackground && (
 				<div className={baseClassBackground} onMouseDown={onClose} />
@@ -92,7 +88,8 @@ const FullPopup = ({
           }
         `}</style>
 			</div>
-		</>
+		</>,
+		document.body
 	);
 };
 

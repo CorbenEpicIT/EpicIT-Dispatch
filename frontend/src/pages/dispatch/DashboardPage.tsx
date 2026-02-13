@@ -671,11 +671,11 @@ export default function DashboardPage() {
 					</Card>
 				</div>
 
-				{/* Right Column - Field Force (lg:col-span-3) */}
+				{/* Right Column */}
 				<div className="lg:col-span-3 space-y-6">
 					{/* Technician Status */}
 					<Card
-						title="Field Force"
+						title="Technicians"
 						headerAction={
 							<button
 								onClick={() =>

@@ -125,11 +125,6 @@ export default function DispatchLayout() {
 						label="Settings"
 					/>
 				</nav>
-
-				<div className="border-t border-zinc-900 p-4 text-sm text-gray-400">
-					Logged in as{" "}
-					<span className="text-gray-200">{user?.name}</span>
-				</div>
 			</aside>
 
 			<div className="flex flex-col flex-1 overflow-hidden">
@@ -176,8 +171,10 @@ export default function DispatchLayout() {
 					</div>
 				</header>
 
-				<main className="flex-1 overflow-y-auto p-6 bg-zinc-950">
-					<Outlet />
+				<main className="flex-1 overflow-y-auto bg-zinc-950 relative">
+					<div className="p-6 min-h-full">
+						<Outlet />
+					</div>
 				</main>
 			</div>
 		</div>
