@@ -1,5 +1,16 @@
-import { useState, useEffect, useRef } from "react";
-import { Plus, Edit2, Trash2, X, Search, Link as LinkIcon } from "lucide-react";
+import { useState, useEffect, useCallback, memo, useMemo, useRef } from "react";
+import {
+	Plus,
+	Edit2,
+	Trash2,
+	X,
+	Search,
+	Link as LinkIcon,
+	User,
+	Mail,
+	Phone,
+	Building2,
+} from "lucide-react";
 import Card from "../ui/Card";
 import type {
 	ClientContactLink,
@@ -22,32 +33,431 @@ interface ContactManagerProps {
 	clientId: string;
 }
 
-type FormMode = "create" | "link";
+type FormMode = "create" | "link" | null;
+
+interface ContactFormData {
+	name: string;
+	email: string;
+	phone: string;
+	company: string;
+	title: string;
+	relationship: string;
+}
+
+interface FieldErrors {
+	name?: string;
+	email?: string;
+	phone?: string;
+	relationship?: string;
+	primary?: string;
+	billing?: string;
+	general?: string;
+}
+
+const EMPTY_FORM_DATA: ContactFormData = {
+	name: "",
+	email: "",
+	phone: "",
+	relationship: "",
+	company: "",
+	title: "",
+};
+
+// Extracted ContactForm component
+interface ContactFormProps {
+	formMode: FormMode;
+	editingContactId: string | null;
+	formData: ContactFormData;
+	fieldErrors: FieldErrors;
+	isPrimary: boolean;
+	isBilling: boolean;
+	shouldDisablePrimary: boolean;
+	shouldDisableBilling: boolean;
+	searchQuery: string;
+	searchResults?: Contact[];
+	isSearching: boolean;
+	showSearchResults: boolean;
+	selectedContact: Contact | null;
+	isPending: boolean;
+	submitLabel: string;
+	onSubmit: (e: React.FormEvent) => void;
+	onCancel: () => void;
+	onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+	onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+	onSelectContact: (contact: Contact) => void;
+	onPrimaryChange: (checked: boolean) => void;
+	onBillingChange: (checked: boolean) => void;
+	onCloseSearch: () => void;
+}
+
+const ContactForm = memo(function ContactForm({
+	formMode,
+	editingContactId,
+	formData,
+	fieldErrors,
+	isPrimary,
+	isBilling,
+	shouldDisablePrimary,
+	shouldDisableBilling,
+	searchQuery,
+	searchResults,
+	isSearching,
+	showSearchResults,
+	selectedContact,
+	isPending,
+	submitLabel,
+	onSubmit,
+	onCancel,
+	onChange,
+	onSearchChange,
+	onSelectContact,
+	onPrimaryChange,
+	onBillingChange,
+	onCloseSearch,
+}: ContactFormProps) {
+	const searchContainerRef = useRef<HTMLDivElement>(null);
+
+	// Close search results on click outside
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (
+				searchContainerRef.current &&
+				!searchContainerRef.current.contains(event.target as Node)
+			) {
+				onCloseSearch();
+			}
+		};
+		if (showSearchResults) {
+			document.addEventListener("mousedown", handleClickOutside);
+		}
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [showSearchResults, onCloseSearch]);
+
+	return (
+		<form onSubmit={onSubmit} className="space-y-3 min-w-0" noValidate>
+			{fieldErrors.general && (
+				<div className="p-2 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">
+					{fieldErrors.general}
+				</div>
+			)}
+
+			{formMode === "link" && (
+				<div ref={searchContainerRef} className="relative z-50">
+					<Search
+						size={14}
+						className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
+					/>
+					<input
+						type="text"
+						placeholder="Search contacts..."
+						value={searchQuery}
+						onChange={onSearchChange}
+						aria-autocomplete="list"
+						aria-controls="search-results"
+						aria-expanded={showSearchResults}
+						role="combobox"
+						className="w-full pl-9 pr-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
+						autoComplete="off"
+					/>
+
+					{/* Search Results Dropdown - Absolute positioning within relative container */}
+					{showSearchResults && (
+						<div
+							id="search-results"
+							role="listbox"
+							className="absolute z-50 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded shadow-lg max-h-60 overflow-y-auto"
+						>
+							{isSearching ? (
+								<div className="p-3 text-xs text-zinc-400">
+									Searching...
+								</div>
+							) : searchResults?.length ? (
+								searchResults.map((contact) => (
+									<button
+										key={contact.id}
+										type="button"
+										role="option"
+										onClick={() =>
+											onSelectContact(
+												contact
+											)
+										}
+										className="w-full px-3 py-2.5 text-left hover:bg-zinc-800 border-b border-zinc-800 last:border-b-0 transition-colors"
+									>
+										<div className="text-sm text-white font-medium">
+											{
+												contact.name
+											}
+										</div>
+										<div className="text-xs text-zinc-400 truncate mt-0.5">
+											{[
+												contact.email,
+												contact.phone,
+												contact.company,
+											]
+												.filter(
+													Boolean
+												)
+												.join(
+													" • "
+												)}
+										</div>
+									</button>
+								))
+							) : (
+								<div className="p-3 text-xs text-zinc-400">
+									No contacts found
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			)}
+
+			{(formMode === "create" || editingContactId) && (
+				<div className="min-w-0">
+					<input
+						type="text"
+						name="name"
+						placeholder="Full name *"
+						value={formData.name}
+						onChange={onChange}
+						className={`w-full px-3 py-2 bg-zinc-900 border rounded text-sm text-white focus:outline-none ${
+							fieldErrors.name
+								? "border-red-500 focus:border-red-500"
+								: "border-zinc-700 focus:border-blue-500"
+						}`}
+					/>
+					{fieldErrors.name && (
+						<p className="mt-1 text-xs text-red-400">
+							{fieldErrors.name}
+						</p>
+					)}
+				</div>
+			)}
+
+			{((formMode === "link" && selectedContact) ||
+				formMode === "create" ||
+				editingContactId) && (
+				<>
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+						<div className="min-w-0">
+							<input
+								type="email"
+								name="email"
+								placeholder="Email"
+								value={formData.email}
+								onChange={onChange}
+								disabled={
+									formMode === "link" &&
+									!!selectedContact
+								}
+								className={`w-full px-3 py-2 bg-zinc-900 border rounded text-sm text-white disabled:opacity-50 focus:outline-none ${
+									fieldErrors.email
+										? "border-red-500 focus:border-red-500"
+										: "border-zinc-700 focus:border-blue-500"
+								}`}
+							/>
+							{fieldErrors.email && (
+								<p className="mt-1 text-xs text-red-400">
+									{fieldErrors.email}
+								</p>
+							)}
+						</div>
+						<div className="min-w-0">
+							<input
+								type="tel"
+								name="phone"
+								placeholder="Phone"
+								value={formData.phone}
+								onChange={onChange}
+								disabled={
+									formMode === "link" &&
+									!!selectedContact
+								}
+								className={`w-full px-3 py-2 bg-zinc-900 border rounded text-sm text-white disabled:opacity-50 focus:outline-none ${
+									fieldErrors.phone
+										? "border-red-500 focus:border-red-500"
+										: "border-zinc-700 focus:border-blue-500"
+								}`}
+							/>
+							{fieldErrors.phone && (
+								<p className="mt-1 text-xs text-red-400">
+									{fieldErrors.phone}
+								</p>
+							)}
+						</div>
+					</div>
+
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+						<input
+							type="text"
+							name="company"
+							placeholder="Company"
+							value={formData.company}
+							onChange={onChange}
+							disabled={
+								formMode === "link" &&
+								!!selectedContact
+							}
+							className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm text-white disabled:opacity-50 focus:outline-none focus:border-blue-500"
+						/>
+						<input
+							type="text"
+							name="title"
+							placeholder="Job title"
+							value={formData.title}
+							onChange={onChange}
+							disabled={
+								formMode === "link" &&
+								!!selectedContact
+							}
+							className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm text-white disabled:opacity-50 focus:outline-none focus:border-blue-500"
+						/>
+					</div>
+
+					<div className="min-w-0">
+						<input
+							type="text"
+							name="relationship"
+							placeholder="Relationship * (e.g., Owner)"
+							value={formData.relationship}
+							onChange={onChange}
+							className={`w-full px-3 py-2 bg-zinc-900 border rounded text-sm text-white focus:outline-none ${
+								fieldErrors.relationship
+									? "border-red-500 focus:border-red-500"
+									: "border-zinc-700 focus:border-blue-500"
+							}`}
+						/>
+						{fieldErrors.relationship && (
+							<p className="mt-1 text-xs text-red-400">
+								{fieldErrors.relationship}
+							</p>
+						)}
+					</div>
+
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+						<div className="min-w-0">
+							<label
+								className={`flex items-center gap-2 px-3 py-2 bg-zinc-900 border rounded text-xs ${
+									fieldErrors.primary
+										? "border-red-500"
+										: shouldDisablePrimary
+											? "border-zinc-800 opacity-50"
+											: "border-zinc-700 cursor-pointer hover:border-zinc-600"
+								}`}
+							>
+								<input
+									type="checkbox"
+									checked={isPrimary}
+									onChange={(e) =>
+										onPrimaryChange(
+											e.target
+												.checked
+										)
+									}
+									disabled={
+										shouldDisablePrimary
+									}
+									className="w-3.5 h-3.5 rounded bg-zinc-800 border-zinc-600 text-yellow-500 flex-shrink-0"
+								/>
+								<span
+									className={
+										shouldDisablePrimary
+											? "text-zinc-600"
+											: "text-zinc-300"
+									}
+								>
+									Primary Contact
+								</span>
+							</label>
+							{fieldErrors.primary && (
+								<p className="mt-1 text-xs text-red-400">
+									{fieldErrors.primary}
+								</p>
+							)}
+						</div>
+						<div className="min-w-0">
+							<label
+								className={`flex items-center gap-2 px-3 py-2 bg-zinc-900 border rounded text-xs ${
+									fieldErrors.billing
+										? "border-red-500"
+										: shouldDisableBilling
+											? "border-zinc-800 opacity-50"
+											: "border-zinc-700 cursor-pointer hover:border-zinc-600"
+								}`}
+							>
+								<input
+									type="checkbox"
+									checked={isBilling}
+									onChange={(e) =>
+										onBillingChange(
+											e.target
+												.checked
+										)
+									}
+									disabled={
+										shouldDisableBilling
+									}
+									className="w-3.5 h-3.5 rounded bg-zinc-800 border-zinc-600 text-emerald-500 flex-shrink-0"
+								/>
+								<span
+									className={
+										shouldDisableBilling
+											? "text-zinc-600"
+											: "text-zinc-300"
+									}
+								>
+									Billing Contact
+								</span>
+							</label>
+							{fieldErrors.billing && (
+								<p className="mt-1 text-xs text-red-400">
+									{fieldErrors.billing}
+								</p>
+							)}
+						</div>
+					</div>
+
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={onCancel}
+							className="flex-1 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded text-sm font-medium transition-colors"
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							disabled={
+								isPending ||
+								(formMode === "link" &&
+									!selectedContact)
+							}
+							className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
+						>
+							{isPending ? "Saving..." : submitLabel}
+						</button>
+					</div>
+				</>
+			)}
+		</form>
+	);
+});
 
 export default function ContactManager({ clientId }: ContactManagerProps) {
-	const formRef = useRef<HTMLDivElement>(null);
-	const [isAdding, setIsAdding] = useState(false);
-	const [formMode, setFormMode] = useState<FormMode>("create");
-	const [editingId, setEditingId] = useState<string | null>(null);
-	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
-	const [formData, setFormData] = useState<CreateContactInput | UpdateContactInput>({
-		name: "",
-		email: "",
-		phone: "",
-		relationship: "",
-		company: "",
-		title: "",
-	});
+	const [formMode, setFormMode] = useState<FormMode>(null);
+	const [editingContactId, setEditingContactId] = useState<string | null>(null);
+	const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+	const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+	const [formData, setFormData] = useState<ContactFormData>(EMPTY_FORM_DATA);
 	const [isPrimary, setIsPrimary] = useState(false);
 	const [isBilling, setIsBilling] = useState(false);
-
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 	const [showSearchResults, setShowSearchResults] = useState(false);
-	const { data: contactLinks, isLoading } = useClientContactsQuery(clientId);
 
-	// Search query (only enabled when in link mode and searching)
+	const { data: contactLinks, isLoading } = useClientContactsQuery(clientId);
 	const { data: searchResults, isLoading: isSearching } = useSearchContactsQuery(
 		searchQuery,
 		clientId,
@@ -60,764 +470,626 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 	const unlinkContact = useUnlinkContactFromClientMutation();
 	const linkContact = useLinkContactMutation();
 
-	const resetForm = () => {
-		setFormData({
-			name: "",
-			email: "",
-			phone: "",
-			relationship: "",
-			company: "",
-			title: "",
-		});
+	const resetForm = useCallback(() => {
+		setFormMode(null);
+		setEditingContactId(null);
+		setFormData(EMPTY_FORM_DATA);
 		setIsPrimary(false);
 		setIsBilling(false);
-		setIsAdding(false);
-		setFormMode("create");
-		setEditingId(null);
-		setErrorMessage(null);
+		setFieldErrors({});
 		setSearchQuery("");
 		setSelectedContact(null);
 		setShowSearchResults(false);
-	};
+		setConfirmingDeleteId(null);
+	}, []);
 
-	useEffect(() => {
-		const handleClickOutside = (event: MouseEvent) => {
-			if (formRef.current && !formRef.current.contains(event.target as Node)) {
-				resetForm();
+	const openCreateForm = useCallback(() => {
+		resetForm();
+		setFormMode("create");
+	}, [resetForm]);
+
+	const openLinkForm = useCallback(() => {
+		resetForm();
+		setFormMode("link");
+	}, [resetForm]);
+
+	const openEditForm = useCallback(
+		(contactLink: ClientContactLink) => {
+			const contact = contactLink.contact;
+			if (!contact) return;
+
+			resetForm();
+			setEditingContactId(contact.id);
+			setFormMode("create");
+			setFormData({
+				name: contact.name,
+				email: contact.email || "",
+				phone: contact.phone || "",
+				company: contact.company || "",
+				title: contact.title || "",
+				relationship: contactLink.relationship,
+			});
+			setIsPrimary(contactLink.is_primary || false);
+			setIsBilling(contactLink.is_billing || false);
+		},
+		[resetForm]
+	);
+
+	const closeSearchResults = useCallback(() => {
+		setShowSearchResults(false);
+	}, []);
+
+	const validateForm = useCallback(
+		(existingLinks: ClientContactLink[] | undefined): boolean => {
+			const errors: FieldErrors = {};
+
+			if (!formData.name.trim()) {
+				errors.name = "Name is required";
+			} else if (formData.name.trim().length < 2) {
+				errors.name = "Name must be at least 2 characters";
 			}
-		};
 
-		if (isAdding) {
-			document.addEventListener("mousedown", handleClickOutside);
-		}
+			if (formData.email?.trim()) {
+				const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+				if (!emailRegex.test(formData.email)) {
+					errors.email = "Please enter a valid email address";
+				}
+			}
 
-		return () => {
-			document.removeEventListener("mousedown", handleClickOutside);
-		};
-	}, [isAdding]);
+			if (formData.phone?.trim()) {
+				const phoneDigits = formData.phone.replace(/\D/g, "");
+				if (phoneDigits.length < 10) {
+					errors.phone = "Phone number must be at least 10 digits";
+				}
+			}
 
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		setErrorMessage(null);
+			if (!formData.relationship.trim()) {
+				errors.relationship = "Relationship is required";
+			}
 
-		if (formMode === "link" && !selectedContact) {
-			setErrorMessage("Please select a contact to link");
-			return;
-		}
-
-		// Client gets one primary and one billing contact
-		const otherPrimaryExists = contactLinks?.some(
-			(link) => link.is_primary && link.contact?.id !== editingId
-		);
-		const otherBillingExists = contactLinks?.some(
-			(link) => link.is_billing && link.contact?.id !== editingId
-		);
-		if (isPrimary && otherPrimaryExists) {
-			setErrorMessage(
-				editingId
-					? "Another contact is already set as primary. Please remove the primary status from that contact first."
-					: "A primary contact already exists. Please edit the existing primary contact or remove its primary status first."
+			const otherPrimaryExists = existingLinks?.some(
+				(link) => link.is_primary && link.contact?.id !== editingContactId
 			);
-			return;
-		}
-		if (isBilling && otherBillingExists) {
-			setErrorMessage(
-				editingId
-					? "Another contact is already set as billing. Please remove the billing status from that contact first."
-					: "A billing contact already exists. Please edit the existing billing contact or remove its billing status first."
+			const otherBillingExists = existingLinks?.some(
+				(link) => link.is_billing && link.contact?.id !== editingContactId
 			);
-			return;
-		}
 
-		try {
-			if (formMode === "link" && selectedContact) {
-				await linkContact.mutateAsync({
-					clientId,
-					data: {
-						contact_id: selectedContact.id,
-						relationship: formData.relationship || "contact",
-						is_primary: isPrimary,
-						is_billing: isBilling,
-					},
-				});
-			} else if (editingId) {
-				await updateContact.mutateAsync({
-					contactId: editingId,
-					data: {
+			if (isPrimary && otherPrimaryExists) {
+				errors.primary = "Another contact is already set as primary";
+			}
+			if (isBilling && otherBillingExists) {
+				errors.billing = "Another contact is already set as billing";
+			}
+
+			setFieldErrors(errors);
+			return Object.keys(errors).length === 0;
+		},
+		[formData, isPrimary, isBilling, editingContactId]
+	);
+
+	const handleSubmit = useCallback(
+		async (e: React.FormEvent) => {
+			e.preventDefault();
+
+			if (!validateForm(contactLinks)) {
+				return;
+			}
+
+			try {
+				if (formMode === "link" && selectedContact) {
+					await linkContact.mutateAsync({
+						clientId,
+						data: {
+							contact_id: selectedContact.id,
+							relationship:
+								formData.relationship || "contact",
+							is_primary: isPrimary,
+							is_billing: isBilling,
+						},
+					});
+				} else if (editingContactId) {
+					await updateContact.mutateAsync({
+						contactId: editingContactId,
+						data: {
+							name: formData.name,
+							email: formData.email,
+							phone: formData.phone,
+							company: formData.company,
+							title: formData.title,
+						} as UpdateContactInput,
+					});
+					await updateRelationship.mutateAsync({
+						clientId,
+						contactId: editingContactId,
+						data: {
+							relationship: formData.relationship,
+							is_primary: isPrimary,
+							is_billing: isBilling,
+						} as UpdateClientContactInput,
+					});
+				} else {
+					await createContact.mutateAsync({
 						name: formData.name,
 						email: formData.email,
 						phone: formData.phone,
 						company: formData.company,
 						title: formData.title,
-					} as UpdateContactInput,
-				});
-
-				await updateRelationship.mutateAsync({
-					clientId,
-					contactId: editingId,
-					data: {
-						relationship: formData.relationship,
+						client_id: clientId,
+						relationship: formData.relationship || "contact",
 						is_primary: isPrimary,
 						is_billing: isBilling,
-					} as UpdateClientContactInput,
-				});
-			} else {
-				await createContact.mutateAsync({
-					name: formData.name || "",
-					email: formData.email || "",
-					phone: formData.phone || "",
-					company: formData.company || "",
-					title: formData.title || "",
-					// Auto-link to client during creation
-					client_id: clientId,
-					relationship: formData.relationship || "contact",
-					is_primary: isPrimary,
-					is_billing: isBilling,
-				} as CreateContactInput);
+					} as CreateContactInput);
+				}
+				resetForm();
+			} catch (error) {
+				const errorMsg =
+					error instanceof Error
+						? error.message
+						: "Failed to save contact";
+				setFieldErrors({ general: errorMsg });
 			}
-			resetForm();
-		} catch (error) {
-			console.error("Failed to save contact:", error);
-			const errorMsg =
-				error instanceof Error ? error.message : "Failed to save contact";
-			setErrorMessage(errorMsg);
-		}
-	};
+		},
+		[
+			formMode,
+			selectedContact,
+			editingContactId,
+			formData,
+			isPrimary,
+			isBilling,
+			clientId,
+			contactLinks,
+			validateForm,
+			resetForm,
+			linkContact,
+			updateContact,
+			updateRelationship,
+			createContact,
+		]
+	);
 
-	const handleEdit = (contactLink: ClientContactLink) => {
-		const contact = contactLink.contact;
-		if (!contact) return;
-
-		setFormData({
-			name: contact.name,
-			email: contact.email || "",
-			phone: contact.phone || "",
-			company: contact.company || "",
-			title: contact.title || "",
-			relationship: contactLink.relationship,
-		});
-		setIsPrimary(contactLink.is_primary || false);
-		setIsBilling(contactLink.is_billing || false);
-		setEditingId(contact.id);
-		setFormMode("create");
-		setIsAdding(true);
-	};
-
-	const handleUnlink = async (contactLink: ClientContactLink) => {
-		if (!contactLink.contact) return;
-
-		if (deleteConfirmId !== contactLink.contact.id) {
-			setDeleteConfirmId(contactLink.contact.id);
-			return;
-		}
-
-		try {
+	const handleUnlink = useCallback(
+		async (contactLink: ClientContactLink) => {
+			if (!contactLink.contact) return;
 			await unlinkContact.mutateAsync({
 				clientId,
 				contactId: contactLink.contact.id,
 			});
-			setDeleteConfirmId(null);
-		} catch (error) {
-			console.error("Failed to unlink contact:", error);
-		}
-	};
+		},
+		[clientId, unlinkContact]
+	);
 
-	const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-		setFormData((prev) => ({
-			...prev,
-			[e.target.name]: e.target.value,
-		}));
-	};
+	const handleDeleteClick = useCallback(
+		(contactId: string, contactLink: ClientContactLink) => {
+			if (confirmingDeleteId === contactId) {
+				handleUnlink(contactLink);
+				setConfirmingDeleteId(null);
+			} else {
+				setConfirmingDeleteId(contactId);
+				// Auto-clear after 3 seconds
+				setTimeout(() => setConfirmingDeleteId(null), 3000);
+			}
+		},
+		[confirmingDeleteId, handleUnlink]
+	);
 
-	const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const value = e.target.value;
-		setSearchQuery(value);
-		setShowSearchResults(value.length >= 2);
-		if (selectedContact) {
-			setSelectedContact(null);
-			setFormData({
-				name: "",
-				email: "",
-				phone: "",
-				relationship: "",
-				company: "",
-				title: "",
-			});
-		}
-	};
+	const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+		const { name, value } = e.target;
+		setFormData((prev) => ({ ...prev, [name]: value }));
+		setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+	}, []);
 
-	const handleSelectContact = (contact: Contact) => {
+	const handleSearchChange = useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			const value = e.target.value;
+			setSearchQuery(value);
+			setShowSearchResults(value.length >= 2);
+			if (selectedContact) {
+				setSelectedContact(null);
+				setFormData(EMPTY_FORM_DATA);
+			}
+		},
+		[selectedContact]
+	);
+
+	const handleSelectContact = useCallback((contact: Contact) => {
 		setSelectedContact(contact);
 		setSearchQuery(contact.name);
 		setShowSearchResults(false);
-		// Pre-fill form with contact data (read-only)
 		setFormData({
 			name: contact.name,
 			email: contact.email || "",
 			phone: contact.phone || "",
 			company: contact.company || "",
 			title: contact.title || "",
-			relationship: "", // User must set this
+			relationship: "",
 		});
-	};
+	}, []);
+
+	const handlePrimaryChange = useCallback((checked: boolean) => {
+		setIsPrimary(checked);
+		setFieldErrors((prev) => ({ ...prev, primary: undefined }));
+	}, []);
+
+	const handleBillingChange = useCallback((checked: boolean) => {
+		setIsBilling(checked);
+		setFieldErrors((prev) => ({ ...prev, billing: undefined }));
+	}, []);
+
+	const shouldDisablePrimary = useMemo(
+		() =>
+			contactLinks?.some(
+				(link) => link.is_primary && link.contact?.id !== editingContactId
+			) || false,
+		[contactLinks, editingContactId]
+	);
+
+	const shouldDisableBilling = useMemo(
+		() =>
+			contactLinks?.some(
+				(link) => link.is_billing && link.contact?.id !== editingContactId
+			) || false,
+		[contactLinks, editingContactId]
+	);
+
+	const sortedContactLinks = useMemo(() => {
+		if (!contactLinks) return [];
+		return [...contactLinks].sort((a, b) => {
+			if (a.is_primary && !b.is_primary) return -1;
+			if (!a.is_primary && b.is_primary) return 1;
+			if (a.is_billing && !b.is_billing) return -1;
+			if (!a.is_billing && b.is_billing) return 1;
+			return 0;
+		});
+	}, [contactLinks]);
 
 	if (isLoading) {
 		return (
 			<Card title="Contacts">
-				<div className="text-zinc-400">Loading contacts...</div>
+				<div className="text-zinc-400 text-sm py-4">
+					Loading contacts...
+				</div>
 			</Card>
 		);
 	}
 
-	// Disable checkbox if another contact is already primary/billing
-	const shouldDisablePrimary =
-		contactLinks?.some((link) => link.is_primary && link.contact?.id !== editingId) ||
-		false;
-
-	const shouldDisableBilling =
-		contactLinks?.some((link) => link.is_billing && link.contact?.id !== editingId) ||
-		false;
-
 	return (
 		<Card
 			title="Contacts"
+			className="min-w-0"
 			headerAction={
-				<div className="flex gap-2">
-					<button
-						onClick={() => {
-							setFormMode("link");
-							setIsAdding(true);
-						}}
-						className="flex items-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors"
-					>
-						<LinkIcon size={14} />
-						Link Existing
-					</button>
-					<button
-						onClick={() => {
-							setFormMode("create");
-							setIsAdding(true);
-						}}
-						className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-					>
-						<Plus size={14} />
-						Add Contact
-					</button>
-				</div>
+				!formMode && (
+					<div className="flex gap-2">
+						<button
+							onClick={openLinkForm}
+							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded text-xs font-medium transition-colors whitespace-nowrap"
+						>
+							<LinkIcon size={12} />
+							<span className="hidden sm:inline">
+								Link
+							</span>
+						</button>
+						<button
+							onClick={openCreateForm}
+							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap"
+						>
+							<Plus size={12} />
+							<span className="hidden sm:inline">
+								Add
+							</span>
+						</button>
+					</div>
+				)
 			}
-			className="h-fit"
 		>
-			<div className="space-y-4">
-				{isAdding && (
-					<div
-						ref={formRef}
-						className="p-4 bg-zinc-800 rounded-lg border border-zinc-700"
-					>
-						<div className="flex justify-between items-center mb-4">
-							<h3 className="text-white font-semibold">
-								{editingId
-									? "Edit Contact"
-									: formMode === "link"
-										? "Link Existing Contact"
-										: "New Contact"}
+			<div className="space-y-2 min-w-0">
+				{/* Add Form - Appears at top when adding new contact */}
+				{formMode && !editingContactId && (
+					<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 relative min-w-0">
+						<div className="flex justify-between items-center mb-3">
+							<h3 className="text-sm font-semibold text-white">
+								{formMode === "link"
+									? "Link Contact"
+									: "New Contact"}
 							</h3>
 							<button
 								onClick={resetForm}
-								className="text-zinc-400 hover:text-white transition-colors"
+								className="text-zinc-400 hover:text-white"
 							>
-								<X size={20} />
+								<X size={16} />
 							</button>
 						</div>
-
-						{errorMessage && (
-							<div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
-								{errorMessage}
-							</div>
-						)}
-
-						<form onSubmit={handleSubmit} className="space-y-3">
-							{/* Search bar in link mode */}
-							{formMode === "link" && !editingId && (
-								<div className="relative">
-									<div className="relative">
-										<Search
-											size={16}
-											className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-										/>
-										<input
-											type="text"
-											placeholder="* Search contact by name, email, or phone..."
-											value={
-												searchQuery
-											}
-											onChange={
-												handleSearchChange
-											}
-											className="w-full pl-10 pr-3 py-2 bg-zinc-900 border-2 border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-											required
-											autoComplete="off"
-										/>
-									</div>
-
-									{/* Search Results Dropdown */}
-									{showSearchResults && (
-										<div className="absolute z-10 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-											{isSearching ? (
-												<div className="p-3 text-sm text-zinc-400">
-													Searching...
-												</div>
-											) : searchResults &&
-											  searchResults.length >
-													0 ? (
-												searchResults.map(
-													(
-														contact
-													) => (
-														<button
-															key={
-																contact.id
-															}
-															type="button"
-															onClick={() =>
-																handleSelectContact(
-																	contact
-																)
-															}
-															className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-b-0"
-														>
-															<div className="text-white text-sm font-medium">
-																{
-																	contact.name
-																}
-															</div>
-															<div className="flex gap-3 text-xs text-zinc-400 mt-1">
-																{contact.email && (
-																	<span>
-																		{
-																			contact.email
-																		}
-																	</span>
-																)}
-																{contact.phone && (
-																	<span>
-																		{
-																			contact.phone
-																		}
-																	</span>
-																)}
-																{contact.company && (
-																	<span>
-																		{
-																			contact.company
-																		}
-																	</span>
-																)}
-															</div>
-														</button>
-													)
-												)
-											) : (
-												<div className="p-3 text-sm text-zinc-400">
-													No
-													contacts
-													found
-												</div>
-											)}
-										</div>
-									)}
-								</div>
-							)}
-
-							{/* Name field - only in create/edit mode */}
-							{(formMode === "create" || editingId) && (
-								<div>
-									<input
-										type="text"
-										name="name"
-										placeholder="* Name"
-										value={
-											formData.name
-										}
-										onChange={
-											handleChange
-										}
-										className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-										required
-									/>
-								</div>
-							)}
-
-							{/* Contact details - shown after selection in link mode or always in create/edit */}
-							{((formMode === "link" &&
-								selectedContact) ||
-								formMode === "create" ||
-								editingId) && (
-								<>
-									<div className="grid grid-cols-2 gap-3">
-										<input
-											type="email"
-											name="email"
-											placeholder="Email"
-											value={
-												formData.email
-											}
-											onChange={
-												handleChange
-											}
-											className="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-											disabled={
-												formMode ===
-													"link" &&
-												!!selectedContact
-											}
-										/>
-										<input
-											type="tel"
-											name="phone"
-											placeholder="Phone"
-											value={
-												formData.phone
-											}
-											onChange={
-												handleChange
-											}
-											className="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-											disabled={
-												formMode ===
-													"link" &&
-												!!selectedContact
-											}
-										/>
-									</div>
-									<div className="grid grid-cols-2 gap-3">
-										<input
-											type="text"
-											name="company"
-											placeholder="Company"
-											value={
-												formData.company
-											}
-											onChange={
-												handleChange
-											}
-											className="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-											disabled={
-												formMode ===
-													"link" &&
-												!!selectedContact
-											}
-										/>
-										<input
-											type="text"
-											name="title"
-											placeholder="Title"
-											value={
-												formData.title
-											}
-											onChange={
-												handleChange
-											}
-											className="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-											disabled={
-												formMode ===
-													"link" &&
-												!!selectedContact
-											}
-										/>
-									</div>
-
-									{/* Relationship and Primary/Billing*/}
-									<div className="grid grid-cols-2 gap-3">
-										<div>
-											<input
-												type="text"
-												name="relationship"
-												placeholder="* Relationship (e.g., Owner, Manager)"
-												value={
-													formData.relationship
-												}
-												onChange={
-													handleChange
-												}
-												className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-												required
-											/>
-										</div>
-
-										{/* Primary and Billing Checkboxes */}
-										<div className="flex gap-2">
-											<label
-												className={`flex-1 flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md transition-colors ${
-													shouldDisablePrimary
-														? "cursor-not-allowed opacity-60"
-														: "cursor-pointer hover:border-zinc-600"
-												}`}
-											>
-												<input
-													type="checkbox"
-													checked={
-														isPrimary
-													}
-													onChange={(
-														e
-													) =>
-														setIsPrimary(
-															e
-																.target
-																.checked
-														)
-													}
-													disabled={
-														shouldDisablePrimary
-													}
-													className="w-4 h-4 rounded bg-zinc-800 border-zinc-600 text-blue-600 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-												/>
-												<span
-													className={`text-sm ${shouldDisablePrimary ? "text-zinc-500" : "text-white"}`}
-												>
-													Primary
-												</span>
-											</label>
-
-											<label
-												className={`flex-1 flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md transition-colors ${
-													shouldDisableBilling
-														? "cursor-not-allowed opacity-60"
-														: "cursor-pointer hover:border-zinc-600"
-												}`}
-											>
-												<input
-													type="checkbox"
-													checked={
-														isBilling
-													}
-													onChange={(
-														e
-													) =>
-														setIsBilling(
-															e
-																.target
-																.checked
-														)
-													}
-													disabled={
-														shouldDisableBilling
-													}
-													className="w-4 h-4 rounded bg-zinc-800 border-zinc-600 text-blue-600 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-												/>
-												<span
-													className={`text-sm ${shouldDisableBilling ? "text-zinc-500" : "text-white"}`}
-												>
-													Billing
-												</span>
-											</label>
-										</div>
-									</div>
-
-									{(shouldDisablePrimary ||
-										shouldDisableBilling) && (
-										<div className="text-xs text-amber-400 space-y-1">
-											{shouldDisablePrimary && (
-												<p>
-													*
-													A
-													primary
-													contact
-													already
-													exists
-													for
-													this
-													client
-												</p>
-											)}
-											{shouldDisableBilling && (
-												<p>
-													*
-													A
-													billing
-													contact
-													already
-													exists
-													for
-													this
-													client
-												</p>
-											)}
-										</div>
-									)}
-
-									<button
-										type="submit"
-										disabled={
-											createContact.isPending ||
-											updateContact.isPending ||
-											linkContact.isPending ||
-											(formMode ===
-												"link" &&
-												!selectedContact)
-										}
-										className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
-									>
-										{createContact.isPending ||
-										updateContact.isPending ||
-										linkContact.isPending
-											? "Saving..."
-											: editingId
-												? "Update Contact"
-												: formMode ===
-													  "link"
-													? "Link Contact"
-													: "Add Contact"}
-									</button>
-								</>
-							)}
-						</form>
+						<ContactForm
+							formMode={formMode}
+							editingContactId={editingContactId}
+							formData={formData}
+							fieldErrors={fieldErrors}
+							isPrimary={isPrimary}
+							isBilling={isBilling}
+							shouldDisablePrimary={shouldDisablePrimary}
+							shouldDisableBilling={shouldDisableBilling}
+							searchQuery={searchQuery}
+							searchResults={searchResults}
+							isSearching={isSearching}
+							showSearchResults={showSearchResults}
+							selectedContact={selectedContact}
+							isPending={
+								createContact.isPending ||
+								linkContact.isPending
+							}
+							submitLabel={
+								formMode === "link"
+									? "Link Contact"
+									: "Add Contact"
+							}
+							onSubmit={handleSubmit}
+							onCancel={resetForm}
+							onChange={handleChange}
+							onSearchChange={handleSearchChange}
+							onSelectContact={handleSelectContact}
+							onPrimaryChange={handlePrimaryChange}
+							onBillingChange={handleBillingChange}
+							onCloseSearch={closeSearchResults}
+						/>
 					</div>
 				)}
 
-				<div className="space-y-3">
-					{contactLinks && contactLinks.length > 0 ? (
-						<div className="flex flex-wrap gap-4">
-							{contactLinks.map((contactLink) => {
-								const contact = contactLink.contact;
-								if (!contact) return null;
+				{/* Contact List - CSS Grid for even spacing */}
+				{sortedContactLinks.length > 0 ? (
+					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 xl:flex xl:flex-col xl:gap-3">
+						{sortedContactLinks.map((contactLink) => {
+							const contact = contactLink.contact;
+							if (!contact) return null;
 
+							// Edit form replaces this contact card
+							if (editingContactId === contact.id) {
 								return (
 									<div
 										key={contact.id}
-										className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 group hover:border-zinc-600 transition-colors flex-shrink-0 w-[320px]"
+										className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 relative min-w-0 xl:w-full"
 									>
-										<div className="flex justify-between items-start mb-2">
-											<div className="flex-1">
-												<div className="flex items-center gap-2 mb-1">
-													<h3 className="text-white font-semibold">
-														{
-															contact.name
-														}
-													</h3>
-													{contactLink.is_primary && (
-														<span className="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded">
-															Primary
-														</span>
-													)}
-													{contactLink.is_billing && (
-														<span className="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded">
-															Billing
-														</span>
-													)}
-												</div>
-												{contact.title && (
-													<p className="text-xs text-zinc-400">
-														{
-															contact.title
-														}
-													</p>
-												)}
-											</div>
-											<div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-												<button
-													onClick={() =>
-														handleEdit(
-															contactLink
-														)
-													}
-													className="text-zinc-400 hover:text-blue-400 transition-colors"
-													title="Edit contact"
-												>
-													<Edit2
-														size={
-															16
-														}
-													/>
-												</button>
-												<button
-													onClick={() =>
-														handleUnlink(
-															contactLink
-														)
-													}
-													onMouseLeave={() =>
-														setDeleteConfirmId(
-															null
-														)
-													}
-													className={`transition-colors ${
-														deleteConfirmId ===
-														contact.id
-															? "text-red-500 hover:text-red-600"
-															: "text-zinc-400 hover:text-red-400"
-													}`}
-													title={
-														deleteConfirmId ===
-														contact.id
-															? "Click again to confirm unlink"
-															: "Unlink contact from client"
-													}
-												>
-													<Trash2
-														size={
-															16
-														}
-														className={
-															deleteConfirmId ===
-															contact.id
-																? "fill-red-500"
-																: ""
-														}
-													/>
-												</button>
-											</div>
-										</div>
-
-										{/* Relationship badge */}
-										<span className="inline-block text-xs text-zinc-400 bg-zinc-700 px-2 py-1 rounded mb-2">
-											{
-												contactLink.relationship
-											}
-										</span>
-
-										{/* Company if present */}
-										{contact.company && (
-											<p className="text-sm text-zinc-400 mb-2">
-												{
-													contact.company
+										<div className="flex justify-between items-center mb-3">
+											<h3 className="text-sm font-semibold text-white">
+												Edit
+												Contact
+											</h3>
+											<button
+												onClick={
+													resetForm
 												}
-											</p>
-										)}
-
-										{/* Contact info */}
-										<div className="space-y-1">
-											{contact.email && (
-												<p className="text-sm text-zinc-300">
-													<span className="text-zinc-500">
-														Email:
-													</span>{" "}
-													{
-														contact.email
+												className="text-zinc-400 hover:text-white"
+											>
+												<X
+													size={
+														16
 													}
-												</p>
+												/>
+											</button>
+										</div>
+										<ContactForm
+											formMode={
+												formMode
+											}
+											editingContactId={
+												editingContactId
+											}
+											formData={
+												formData
+											}
+											fieldErrors={
+												fieldErrors
+											}
+											isPrimary={
+												isPrimary
+											}
+											isBilling={
+												isBilling
+											}
+											shouldDisablePrimary={
+												shouldDisablePrimary
+											}
+											shouldDisableBilling={
+												shouldDisableBilling
+											}
+											searchQuery={
+												searchQuery
+											}
+											searchResults={
+												searchResults
+											}
+											isSearching={
+												isSearching
+											}
+											showSearchResults={
+												showSearchResults
+											}
+											selectedContact={
+												selectedContact
+											}
+											isPending={
+												updateContact.isPending
+											}
+											submitLabel="Update Contact"
+											onSubmit={
+												handleSubmit
+											}
+											onCancel={
+												resetForm
+											}
+											onChange={
+												handleChange
+											}
+											onSearchChange={
+												handleSearchChange
+											}
+											onSelectContact={
+												handleSelectContact
+											}
+											onPrimaryChange={
+												handlePrimaryChange
+											}
+											onBillingChange={
+												handleBillingChange
+											}
+											onCloseSearch={
+												closeSearchResults
+											}
+										/>
+									</div>
+								);
+							}
+
+							// Display contact card - Grid layout for even spacing, flex for sidebar
+							return (
+								<div
+									key={contact.id}
+									className="flex items-start gap-3 px-4 py-4 bg-zinc-800/30 hover:bg-zinc-800/50 rounded-lg border border-zinc-800/50 hover:border-zinc-700 transition-all group min-w-0 xl:w-full"
+								>
+									<div className="flex-1 min-w-0">
+										<div className="flex items-center gap-2 flex-wrap mb-2">
+											<span className="text-base font-medium text-white truncate">
+												{
+													contact.name
+												}
+											</span>
+											{contactLink.is_primary && (
+												<span className="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded flex-shrink-0">
+													Primary
+												</span>
+											)}
+											{contactLink.is_billing && (
+												<span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded flex-shrink-0">
+													Billing
+												</span>
+											)}
+										</div>
+										<div className="flex items-center gap-2 text-sm text-zinc-500 mb-3 flex-wrap">
+											<span className="bg-zinc-800 px-2 py-0.5 rounded text-xs">
+												{
+													contactLink.relationship
+												}
+											</span>
+											{contact.title && (
+												<span className="truncate">
+													{
+														contact.title
+													}
+												</span>
+											)}
+										</div>
+										<div className="space-y-1.5 text-sm">
+											{contact.email && (
+												<div className="flex items-center gap-2 text-zinc-400">
+													<Mail
+														size={
+															12
+														}
+														className="flex-shrink-0"
+													/>
+													<span className="truncate">
+														{
+															contact.email
+														}
+													</span>
+												</div>
 											)}
 											{contact.phone && (
-												<p className="text-sm text-zinc-300">
-													<span className="text-zinc-500">
-														Phone:
-													</span>{" "}
-													{
-														contact.phone
-													}
-												</p>
+												<div className="flex items-center gap-2 text-zinc-400">
+													<Phone
+														size={
+															12
+														}
+														className="flex-shrink-0"
+													/>
+													<span>
+														{
+															contact.phone
+														}
+													</span>
+												</div>
+											)}
+											{contact.company && (
+												<div className="flex items-center gap-2 text-zinc-500">
+													<Building2
+														size={
+															12
+														}
+														className="flex-shrink-0"
+													/>
+													<span className="truncate">
+														{
+															contact.company
+														}
+													</span>
+												</div>
 											)}
 										</div>
 									</div>
-								);
-							})}
-						</div>
-					) : (
-						<p className="text-zinc-400 text-sm">
-							No contacts available
+
+									<div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+										<button
+											onClick={() =>
+												openEditForm(
+													contactLink
+												)
+											}
+											className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-zinc-700 rounded transition-colors"
+											title="Edit"
+										>
+											<Edit2
+												size={
+													16
+												}
+											/>
+										</button>
+										<button
+											onClick={() =>
+												handleDeleteClick(
+													contact.id,
+													contactLink
+												)
+											}
+											className={`p-2 rounded transition-colors ${
+												confirmingDeleteId ===
+												contact.id
+													? "text-red-400 bg-red-500/10 animate-pulse"
+													: "text-zinc-400 hover:text-red-400 hover:bg-zinc-700"
+											}`}
+											title={
+												confirmingDeleteId ===
+												contact.id
+													? "Click to confirm"
+													: "Remove"
+											}
+										>
+											<Trash2
+												size={
+													16
+												}
+												className={
+													confirmingDeleteId ===
+													contact.id
+														? "fill-red-400"
+														: ""
+												}
+											/>
+										</button>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				) : !formMode ? (
+					<div className="text-center py-8 text-zinc-500">
+						<User
+							size={32}
+							className="mx-auto mb-2 opacity-30"
+						/>
+						<p className="text-sm">No contacts linked</p>
+						<p className="text-xs mt-1">
+							Add or link a contact to get started
 						</p>
-					)}
-				</div>
+					</div>
+				) : null}
 			</div>
 		</Card>
 	);

@@ -1,13 +1,11 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	Users,
 	Clock,
 	MapPin,
 	CheckCircle2,
 	AlertCircle,
 	Calendar,
-	TrendingUp,
 	Activity,
 	ChevronRight,
 	ArrowUpRight,
@@ -48,7 +46,6 @@ export default function DashboardPage() {
 	const { data: recurringPlans = [] } = useAllRecurringPlansQuery();
 	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
 
-	// Memoized calculations for performance
 	const stats = useMemo(() => {
 		const today = new Date();
 		const todayVisits = jobs
@@ -171,777 +168,658 @@ export default function DashboardPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 md:p-6">
-			{/* Header Section - Simple Title */}
-			<div className="mb-6">
-				<h1 className="text-2xl font-bold text-white tracking-tight">
-					Dispatch Dashboard
-				</h1>
-				<p className="text-sm text-zinc-400 mt-1">
-					{new Date().toLocaleDateString("en-US", {
-						weekday: "long",
-						month: "long",
-						day: "numeric",
-					})}
-				</p>
-			</div>
-
-			{/* Week Schedule Calendar - TOP OF PAGE */}
-			<Card className="mb-6 !p-0">
-				<div className="p-4 h-[300px]">
-					{jobsError ? (
-						<div className="flex items-center justify-center h-full">
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle
-									size={16}
-									className="text-red-400"
-								/>
-								<p className="text-sm text-red-400">
-									Failed to load calendar data
-								</p>
-							</div>
-						</div>
-					) : (
-						<SmartCalendar
-							jobs={jobs}
-							view="week"
-							toolbar={{
-								left: "title",
-								center: "",
-								right: "today prev,next",
-							}}
-						/>
-					)}
+		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
+			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
+				{/* Header Section */}
+				<div className="mb-5">
+					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+						Dispatch Dashboard
+					</h1>
+					<p className="text-sm text-zinc-400 mt-1">
+						{new Date().toLocaleDateString("en-US", {
+							weekday: "long",
+							month: "long",
+							day: "numeric",
+						})}
+					</p>
 				</div>
-			</Card>
 
-			{/* KPI Cards - With titles in header */}
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-				<Card
-					title="Total Revenue - todo"
-					headerAction={
-						<div className="flex items-center gap-2">
-							<div className="p-1.5 bg-emerald-500/10 rounded-md">
-								<DollarSign
-									size={16}
-									className="text-emerald-400"
-								/>
+				{/* Week Schedule Calendar */}
+				<Card className="mb-5 !p-0">
+					<div className="p-4 h-[250px] sm:h-[280px] lg:h-[300px]">
+						{jobsError ? (
+							<div className="flex items-center justify-center h-full">
+								<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+									<AlertCircle
+										size={16}
+										className="text-red-400"
+									/>
+									<p className="text-sm text-red-400">
+										Failed to load
+										calendar data
+									</p>
+								</div>
 							</div>
-							<span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-full">
-								<ArrowUpRight size={12} />+
-								{stats.weeklyGrowth}%
-							</span>
-						</div>
-					}
-				>
-					<div className="text-2xl font-bold text-white">
-						${stats.totalRevenue.toLocaleString()}
-					</div>
-					<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
-						All time revenue
-					</div>
-				</Card>
-
-				<Card
-					title="Completed Today"
-					headerAction={
-						<div className="flex items-center gap-2">
-							<div className="p-1.5 bg-blue-500/10 rounded-md">
-								<CheckCircle2
-									size={16}
-									className="text-blue-400"
-								/>
-							</div>
-							<span
-								className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-									stats.completionRate >= 90
-										? "text-emerald-400 bg-emerald-400/10"
-										: "text-amber-400 bg-amber-400/10"
-								}`}
-							>
-								{stats.completionRate.toFixed(0)}%
-							</span>
-						</div>
-					}
-				>
-					<div className="text-2xl font-bold text-white">
-						{pipelineCounts.completedToday}
-					</div>
-					<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
-						Visits completed
-					</div>
-				</Card>
-
-				<Card
-					title="Technicians Online"
-					headerAction={
-						<div className="flex items-center gap-2">
-							<div className="p-1.5 bg-amber-500/10 rounded-md">
-								<Activity
-									size={16}
-									className="text-amber-400"
-								/>
-							</div>
-							<span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-1 rounded-full">
-								{pipelineCounts.inProgress} active
-							</span>
-						</div>
-					}
-				>
-					<div className="text-2xl font-bold text-white">
-						{technicianStats.online}
-					</div>
-					<div className="mt-2 flex items-center gap-3 text-xs">
-						<span className="flex items-center gap-1 text-emerald-400">
-							<span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-							{technicianStats.available} available
-						</span>
-						<span className="flex items-center gap-1 text-amber-400">
-							<span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-							{technicianStats.busy} busy
-						</span>
-					</div>
-				</Card>
-
-				<Card
-					title="Avg Response Time - todo"
-					headerAction={
-						<div className="p-1.5 bg-purple-500/10 rounded-md">
-							<Timer
-								size={16}
-								className="text-purple-400"
+						) : (
+							<SmartCalendar
+								jobs={jobs}
+								view="week"
+								toolbar={{
+									left: "title",
+									center: "",
+									right: "today prev,next",
+								}}
 							/>
-						</div>
-					}
-				>
-					<div className="text-2xl font-bold text-white">
-						{stats.avgResponseTime}h
-					</div>
-					<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
-						From request to quote
+						)}
 					</div>
 				</Card>
-			</div>
 
-			{/* Main Content Grid */}
-			<div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-				{/* Left Column - Operations Pipeline (lg:col-span-3) */}
-				<div className="lg:col-span-3 space-y-6">
-					{/* Workflow Pipeline */}
-					<Card title="Operations Pipeline">
-						<div className="space-y-1">
-							{/* New Requests */}
-							<div
-								onClick={() =>
-									navigate(
-										"/dispatch/requests?status=New"
-									)
-								}
-								className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
-							>
-								<div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20 group-hover:border-blue-500/40 transition-colors">
-									<Phone
-										size={18}
-										className="text-blue-400"
-									/>
-								</div>
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center justify-between mb-0.5">
-										<span className="text-sm font-medium text-zinc-200">
-											New Requests
-										</span>
-										<span className="text-sm font-bold text-blue-400">
-											{
-												pipelineCounts.newRequests
-											}
-										</span>
-									</div>
-									<div className="w-full bg-zinc-800 rounded-full h-1.5">
-										<div
-											className="bg-blue-500 h-1.5 rounded-full"
-											style={{
-												width: `${Math.min(pipelineCounts.newRequests * 10, 100)}%`,
-											}}
-										/>
-									</div>
-								</div>
-								<ChevronRight
-									size={16}
-									className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
-								/>
-							</div>
-
-							{/* Needs Quote */}
-							<div
-								onClick={() =>
-									navigate(
-										"/dispatch/requests?status=Reviewing"
-									)
-								}
-								className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
-							>
-								<div className="flex-shrink-0 w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20 group-hover:border-amber-500/40 transition-colors">
-									<FileText
-										size={18}
-										className="text-amber-400"
-									/>
-								</div>
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center justify-between mb-0.5">
-										<span className="text-sm font-medium text-zinc-200">
-											Needs Quote
-										</span>
-										<span className="text-sm font-bold text-amber-400">
-											{
-												pipelineCounts.reviewing
-											}
-										</span>
-									</div>
-									<div className="w-full bg-zinc-800 rounded-full h-1.5">
-										<div
-											className="bg-amber-500 h-1.5 rounded-full"
-											style={{
-												width: `${Math.min(pipelineCounts.reviewing * 10, 100)}%`,
-											}}
-										/>
-									</div>
-								</div>
-								<ChevronRight
-									size={16}
-									className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
-								/>
-							</div>
-
-							{/* Pending Approval */}
-							<div
-								onClick={() =>
-									navigate(
-										"/dispatch/quotes?status=Sent"
-									)
-								}
-								className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
-							>
-								<div className="flex-shrink-0 w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20 group-hover:border-purple-500/40 transition-colors">
-									<Clock
-										size={18}
-										className="text-purple-400"
-									/>
-								</div>
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center justify-between mb-0.5">
-										<span className="text-sm font-medium text-zinc-200">
-											Pending
-											Approval
-										</span>
-										<span className="text-sm font-bold text-purple-400">
-											{
-												pipelineCounts.pendingApproval
-											}
-										</span>
-									</div>
-									<div className="w-full bg-zinc-800 rounded-full h-1.5">
-										<div
-											className="bg-purple-500 h-1.5 rounded-full"
-											style={{
-												width: `${Math.min(pipelineCounts.pendingApproval * 10, 100)}%`,
-											}}
-										/>
-									</div>
-								</div>
-								<ChevronRight
-									size={16}
-									className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
-								/>
-							</div>
-
-							{/* Approved - Ready to Schedule */}
-							<div
-								onClick={() =>
-									navigate(
-										"/dispatch/quotes?status=Approved"
-									)
-								}
-								className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
-							>
-								<div className="flex-shrink-0 w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover:border-emerald-500/40 transition-colors">
-									<CheckCircle2
-										size={18}
+				{/* KPI Cards */}
+				<div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
+					<Card
+						title="Total Revenue - todo"
+						headerAction={
+							<div className="flex items-center gap-2">
+								<div className="p-1.5 bg-emerald-500/10 rounded-md">
+									<DollarSign
+										size={16}
 										className="text-emerald-400"
 									/>
 								</div>
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center justify-between mb-0.5">
-										<span className="text-sm font-medium text-zinc-200">
-											Approved
-											Quotes
-										</span>
-										<span className="text-sm font-bold text-emerald-400">
-											{
-												pipelineCounts.approved
-											}
-										</span>
-									</div>
-									<div className="w-full bg-zinc-800 rounded-full h-1.5">
-										<div
-											className="bg-emerald-500 h-1.5 rounded-full"
-											style={{
-												width: `${Math.min(pipelineCounts.approved * 10, 100)}%`,
-											}}
-										/>
-									</div>
-								</div>
-								<ChevronRight
-									size={16}
-									className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
-								/>
+								<span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-full">
+									<ArrowUpRight size={12} />+
+									{stats.weeklyGrowth}%
+								</span>
 							</div>
-
-							{/* Unscheduled Jobs */}
-							<div
-								onClick={() =>
-									navigate(
-										"/dispatch/jobs?status=Unscheduled"
-									)
-								}
-								className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
-							>
-								<div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20 group-hover:border-orange-500/40 transition-colors">
-									<Calendar
-										size={18}
-										className="text-orange-400"
-									/>
-								</div>
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center justify-between mb-0.5">
-										<span className="text-sm font-medium text-zinc-200">
-											Unscheduled
-										</span>
-										<span className="text-sm font-bold text-orange-400">
-											{
-												pipelineCounts.unscheduled
-											}
-										</span>
-									</div>
-									<div className="w-full bg-zinc-800 rounded-full h-1.5">
-										<div
-											className="bg-orange-500 h-1.5 rounded-full"
-											style={{
-												width: `${Math.min(pipelineCounts.unscheduled * 10, 100)}%`,
-											}}
-										/>
-									</div>
-								</div>
-								<ChevronRight
-									size={16}
-									className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
-								/>
-							</div>
-						</div>
-					</Card>
-
-					{/* Recurring Plans Summary */}
-					<Card title="Recurring Plans">
-						<div className="flex items-center justify-between mb-3">
-							<span className="text-sm text-zinc-400">
-								Active Plans
-							</span>
-							<span className="text-lg font-bold text-white">
-								{
-									recurringPlans.filter(
-										(p) =>
-											p.status ===
-											"Active"
-									).length
-								}
-							</span>
-						</div>
-						<div className="flex items-center justify-between mb-3">
-							<span className="text-sm text-zinc-400">
-								Paused
-							</span>
-							<span className="text-sm font-bold text-zinc-300">
-								{
-									recurringPlans.filter(
-										(p) =>
-											p.status ===
-											"Paused"
-									).length
-								}
-							</span>
-						</div>
-						<div className="pt-3 border-t border-zinc-800">
-							<button
-								onClick={() =>
-									navigate(
-										"/dispatch/jobs?view=templates"
-									)
-								}
-								className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
-							>
-								Manage Plans
-								<ChevronRight size={12} />
-							</button>
-						</div>
-					</Card>
-				</div>
-
-				{/* Center Column - Live Activity (lg:col-span-6) */}
-				<div className="lg:col-span-6">
-					<Card title="Live Activity Feed -todo" className="h-full">
-						<div className="space-y-3">
-							{[
-								{
-									type: "visit_completed",
-									message: "Job #1024 completed by Mike R.",
-									time: "2 min ago",
-									icon: CheckCircle2,
-									color: "text-emerald-400",
-									bg: "bg-emerald-500/10",
-								},
-								{
-									type: "quote_approved",
-									message: "Quote #2041 approved by Acme Corp",
-									time: "15 min ago",
-									icon: FileText,
-									color: "text-blue-400",
-									bg: "bg-blue-500/10",
-								},
-								{
-									type: "tech_checkin",
-									message: "Sarah L. checked in for Job #1025",
-									time: "32 min ago",
-									icon: MapPin,
-									color: "text-amber-400",
-									bg: "bg-amber-500/10",
-								},
-								{
-									type: "request_urgent",
-									message: "Urgent request received from Downtown Properties",
-									time: "1 hr ago",
-									icon: AlertCircle,
-									color: "text-red-400",
-									bg: "bg-red-500/10",
-								},
-								{
-									type: "visit_completed",
-									message: "Job #1023 completed by John D.",
-									time: "2 hr ago",
-									icon: CheckCircle2,
-									color: "text-emerald-400",
-									bg: "bg-emerald-500/10",
-								},
-								{
-									type: "quote_sent",
-									message: "Quote #2040 sent to Westside Apartments",
-									time: "3 hr ago",
-									icon: FileText,
-									color: "text-purple-400",
-									bg: "bg-purple-500/10",
-								},
-							].map((activity, idx) => (
-								<div
-									key={idx}
-									className="flex items-start gap-3 p-3 rounded-lg hover:bg-zinc-800/30 transition-colors cursor-pointer group"
-								>
-									<div
-										className={`flex-shrink-0 w-8 h-8 rounded-lg ${activity.bg} flex items-center justify-center`}
-									>
-										<activity.icon
-											size={14}
-											className={
-												activity.color
-											}
-										/>
-									</div>
-									<div className="flex-1 min-w-0">
-										<p className="text-sm text-zinc-200 group-hover:text-white transition-colors">
-											{
-												activity.message
-											}
-										</p>
-										<p className="text-xs text-zinc-500 mt-0.5">
-											{
-												activity.time
-											}
-										</p>
-									</div>
-								</div>
-							))}
-						</div>
-					</Card>
-				</div>
-
-				{/* Right Column */}
-				<div className="lg:col-span-3 space-y-6">
-					{/* Technician Status */}
-					<Card
-						title="Technicians"
-						headerAction={
-							<button
-								onClick={() =>
-									navigate(
-										"/dispatch/technicians"
-									)
-								}
-								className="text-xs font-medium text-zinc-400 hover:text-white px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
-							>
-								View All
-							</button>
 						}
 					>
-						<div className="mb-4 pb-4 border-b border-zinc-800">
-							<p className="text-xs text-zinc-500">
-								{technicianStats.online} of{" "}
-								{technicianStats.total} online
-							</p>
+						<div className="text-xl sm:text-2xl font-bold text-white">
+							${stats.totalRevenue.toLocaleString()}
 						</div>
+						<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
+							All time revenue
+						</div>
+					</Card>
 
-						{techsError ? (
-							<div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle
-									size={14}
-									className="text-red-400"
-								/>
-								<p className="text-xs text-red-400">
-									Failed to load technicians
-								</p>
-							</div>
-						) : activeTechnicians.length === 0 ? (
-							<div className="py-8 text-center">
-								<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
-									<Clock
-										size={20}
-										className="text-zinc-500"
+					<Card
+						title="Completed Today"
+						headerAction={
+							<div className="flex items-center gap-2">
+								<div className="p-1.5 bg-blue-500/10 rounded-md">
+									<CheckCircle2
+										size={16}
+										className="text-blue-400"
 									/>
 								</div>
-								<p className="text-sm text-zinc-400">
-									No technicians online
-								</p>
+								<span
+									className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
+										stats.completionRate >=
+										90
+											? "text-emerald-400 bg-emerald-400/10"
+											: "text-amber-400 bg-amber-400/10"
+									}`}
+								>
+									{stats.completionRate.toFixed(
+										0
+									)}
+									%
+								</span>
 							</div>
-						) : (
-							<div className="space-y-3">
-								{activeTechnicians
-									.slice(0, 8)
-									.map((tech) => (
+						}
+					>
+						<div className="text-xl sm:text-2xl font-bold text-white">
+							{pipelineCounts.completedToday}
+						</div>
+						<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
+							Visits completed
+						</div>
+					</Card>
+
+					<Card
+						title="Technicians Online"
+						headerAction={
+							<div className="flex items-center gap-2">
+								<div className="p-1.5 bg-amber-500/10 rounded-md">
+									<Activity
+										size={16}
+										className="text-amber-400"
+									/>
+								</div>
+								<span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-1 rounded-full">
+									{pipelineCounts.inProgress}{" "}
+									active
+								</span>
+							</div>
+						}
+					>
+						<div className="text-xl sm:text-2xl font-bold text-white">
+							{technicianStats.online}
+						</div>
+						<div className="mt-2 flex items-center gap-3 text-xs">
+							<span className="flex items-center gap-1 text-emerald-400">
+								<span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+								{technicianStats.available}{" "}
+								available
+							</span>
+							<span className="flex items-center gap-1 text-amber-400">
+								<span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+								{technicianStats.busy} busy
+							</span>
+						</div>
+					</Card>
+
+					<Card
+						title="Avg Response Time - todo"
+						headerAction={
+							<div className="p-1.5 bg-purple-500/10 rounded-md">
+								<Timer
+									size={16}
+									className="text-purple-400"
+								/>
+							</div>
+						}
+					>
+						<div className="text-xl sm:text-2xl font-bold text-white">
+							{stats.avgResponseTime}h
+						</div>
+						<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
+							From request to quote
+						</div>
+					</Card>
+				</div>
+
+				{/* Main Content Grid */}
+				<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
+					{/* Left Column - Operations Pipeline */}
+					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+						<Card title="Operations Pipeline">
+							<div className="space-y-1">
+								{[
+									{
+										label: "New Requests",
+										count: pipelineCounts.newRequests,
+										icon: Phone,
+										color: "blue",
+										path: "/dispatch/requests?status=New",
+									},
+									{
+										label: "Needs Quote",
+										count: pipelineCounts.reviewing,
+										icon: FileText,
+										color: "amber",
+										path: "/dispatch/requests?status=Reviewing",
+									},
+									{
+										label: "Pending Approval",
+										count: pipelineCounts.pendingApproval,
+										icon: Clock,
+										color: "purple",
+										path: "/dispatch/quotes?status=Sent",
+									},
+									{
+										label: "Approved Quotes",
+										count: pipelineCounts.approved,
+										icon: CheckCircle2,
+										color: "emerald",
+										path: "/dispatch/quotes?status=Approved",
+									},
+									{
+										label: "Unscheduled",
+										count: pipelineCounts.unscheduled,
+										icon: Calendar,
+										color: "orange",
+										path: "/dispatch/jobs?status=Unscheduled",
+									},
+								].map((item) => (
+									<div
+										key={item.label}
+										onClick={() =>
+											navigate(
+												item.path
+											)
+										}
+										className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
+									>
 										<div
-											key={
-												tech.id
-											}
-											onClick={() =>
-												navigate(
-													`/dispatch/technicians/${tech.id}`
-												)
-											}
-											className="group flex items-start gap-3 p-3 rounded-lg hover:bg-zinc-800/30 cursor-pointer transition-all"
+											className={`flex-shrink-0 w-10 h-10 rounded-lg bg-${item.color}-500/10 flex items-center justify-center border border-${item.color}-500/20 group-hover:border-${item.color}-500/40 transition-colors`}
 										>
-											<div className="relative flex-shrink-0">
-												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm">
-													{tech.name
-														.charAt(
-															0
-														)
-														.toUpperCase()}
-												</div>
+											<item.icon
+												size={
+													18
+												}
+												className={`text-${item.color}-400`}
+											/>
+										</div>
+										<div className="flex-1 min-w-0">
+											<div className="flex items-center justify-between mb-0.5">
+												<span className="text-sm font-medium text-zinc-200 truncate">
+													{
+														item.label
+													}
+												</span>
+												<span
+													className={`text-sm font-bold text-${item.color}-400 ml-2`}
+												>
+													{
+														item.count
+													}
+												</span>
+											</div>
+											<div className="w-full bg-zinc-800 rounded-full h-1.5">
 												<div
-													className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${getStatusColor(tech.status)} rounded-full border-2 border-zinc-900`}
+													className={`bg-${item.color}-500 h-1.5 rounded-full`}
+													style={{
+														width: `${Math.min(item.count * 10, 100)}%`,
+													}}
 												/>
 											</div>
-											<div className="flex-1 min-w-0">
-												<div className="flex items-center justify-between mb-0.5">
-													<h4 className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
-														{
-															tech.name
-														}
-													</h4>
-													<span
-														className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-															tech.status ===
-															"Available"
-																? "bg-emerald-500/10 text-emerald-400"
-																: "bg-amber-500/10 text-amber-400"
-														}`}
-													>
-														{tech.status ===
-														"Available"
-															? "Available"
-															: "Busy"}
-													</span>
-												</div>
-												<p className="text-xs text-zinc-500 truncate mb-2">
-													{
-														tech.title
-													}
-												</p>
-
-												{tech.currentVisit ? (
-													<div className="flex items-center gap-2 text-xs">
-														<span className="flex items-center gap-1 text-amber-400">
-															<Activity
-																size={
-																	12
-																}
-															/>
-															On
-															Job
-														</span>
-														<span className="text-zinc-600">
-															•
-														</span>
-														<span className="text-zinc-400 truncate">
-															{tech
-																.currentVisit
-																.job
-																?.name ||
-																"Unknown"}
-														</span>
-													</div>
-												) : tech.nextVisit ? (
-													<div className="flex items-center gap-2 text-xs">
-														<span className="flex items-center gap-1 text-blue-400">
-															<Clock
-																size={
-																	12
-																}
-															/>
-															Next:{" "}
-															{new Date(
-																tech
-																	.nextVisit
-																	.scheduled_start_at
-															).toLocaleTimeString(
-																"en-US",
-																{
-																	hour: "numeric",
-																	minute: "2-digit",
-																}
-															)}
-														</span>
-													</div>
-												) : (
-													<div className="flex items-center gap-1 text-xs text-emerald-400">
-														<CheckCircle2
-															size={
-																12
-															}
-														/>
-														<span>
-															No
-															active
-															visits
-														</span>
-													</div>
-												)}
-											</div>
 										</div>
-									))}
+										<ChevronRight
+											size={16}
+											className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
+										/>
+									</div>
+								))}
 							</div>
-						)}
+						</Card>
 
-						{activeTechnicians.length > 8 && (
-							<div className="mt-4 pt-4 border-t border-zinc-800 text-center">
+						<Card title="Recurring Plans">
+							<div className="flex items-center justify-between mb-3">
+								<span className="text-sm text-zinc-400">
+									Active Plans
+								</span>
+								<span className="text-lg font-bold text-white">
+									{
+										recurringPlans.filter(
+											(p) =>
+												p.status ===
+												"Active"
+										).length
+									}
+								</span>
+							</div>
+							<div className="flex items-center justify-between mb-3">
+								<span className="text-sm text-zinc-400">
+									Paused
+								</span>
+								<span className="text-sm font-bold text-zinc-300">
+									{
+										recurringPlans.filter(
+											(p) =>
+												p.status ===
+												"Paused"
+										).length
+									}
+								</span>
+							</div>
+							<div className="pt-3 border-t border-zinc-800">
+								<button
+									onClick={() =>
+										navigate(
+											"/dispatch/jobs?view=templates"
+										)
+									}
+									className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+								>
+									Manage Plans
+									<ChevronRight size={12} />
+								</button>
+							</div>
+						</Card>
+					</div>
+
+					{/* Center Column */}
+					<div className="min-w-0">
+						<Card
+							title="Live Activity Feed -todo"
+							className="h-full"
+						>
+							<div className="space-y-2">
+								{[
+									{
+										type: "visit_completed",
+										message: "Job #1024 completed by Mike R.",
+										time: "2 min ago",
+										icon: CheckCircle2,
+										color: "text-emerald-400",
+										bg: "bg-emerald-500/10",
+									},
+									{
+										type: "quote_approved",
+										message: "Quote #2041 approved by Acme Corp",
+										time: "15 min ago",
+										icon: FileText,
+										color: "text-blue-400",
+										bg: "bg-blue-500/10",
+									},
+									{
+										type: "tech_checkin",
+										message: "Sarah L. checked in for Job #1025",
+										time: "32 min ago",
+										icon: MapPin,
+										color: "text-amber-400",
+										bg: "bg-amber-500/10",
+									},
+									{
+										type: "request_urgent",
+										message: "Urgent request received from Downtown Properties",
+										time: "1 hr ago",
+										icon: AlertCircle,
+										color: "text-red-400",
+										bg: "bg-red-500/10",
+									},
+									{
+										type: "visit_completed",
+										message: "Job #1023 completed by John D.",
+										time: "2 hr ago",
+										icon: CheckCircle2,
+										color: "text-emerald-400",
+										bg: "bg-emerald-500/10",
+									},
+									{
+										type: "quote_sent",
+										message: "Quote #2040 sent to Westside Apartments",
+										time: "3 hr ago",
+										icon: FileText,
+										color: "text-purple-400",
+										bg: "bg-purple-500/10",
+									},
+								].map((activity, idx) => (
+									<div
+										key={idx}
+										className="flex items-start gap-3 p-3 rounded-lg hover:bg-zinc-800/30 transition-colors cursor-pointer group"
+									>
+										<div
+											className={`flex-shrink-0 w-8 h-8 rounded-lg ${activity.bg} flex items-center justify-center`}
+										>
+											<activity.icon
+												size={
+													14
+												}
+												className={
+													activity.color
+												}
+											/>
+										</div>
+										<div className="flex-1 min-w-0">
+											<p className="text-sm text-zinc-200 group-hover:text-white transition-colors break-words">
+												{
+													activity.message
+												}
+											</p>
+											<p className="text-xs text-zinc-500 mt-0.5">
+												{
+													activity.time
+												}
+											</p>
+										</div>
+									</div>
+								))}
+							</div>
+						</Card>
+					</div>
+
+					{/* Right Column */}
+					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+						<Card
+							title="Technicians"
+							headerAction={
 								<button
 									onClick={() =>
 										navigate(
 											"/dispatch/technicians"
 										)
 									}
-									className="text-xs text-zinc-400 hover:text-white font-medium"
+									className="text-xs font-medium text-zinc-400 hover:text-white px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
 								>
-									+
-									{activeTechnicians.length -
-										8}{" "}
-									more technicians
+									View All
 								</button>
+							}
+						>
+							<div className="mb-4 pb-4 border-b border-zinc-800">
+								<p className="text-xs text-zinc-500">
+									{technicianStats.online} of{" "}
+									{technicianStats.total}{" "}
+									online
+								</p>
 							</div>
-						)}
-					</Card>
 
-					{/* Quick Actions */}
-					<Card title="Quick Actions">
-						<div className="grid grid-cols-2 gap-2">
-							<button
-								onClick={() =>
-									setIsCreateRequestModalOpen(
-										true
-									)
-								}
-								className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
-							>
-								<Phone
-									size={16}
-									className="text-blue-400 mb-2"
-								/>
-								<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
-									New Request
+							{techsError ? (
+								<div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+									<AlertCircle
+										size={14}
+										className="text-red-400"
+									/>
+									<p className="text-xs text-red-400">
+										Failed to load
+										technicians
+									</p>
 								</div>
-							</button>
-							<button
-								onClick={() =>
-									setIsCreateQuoteModalOpen(
-										true
-									)
-								}
-								className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
-							>
-								<FileText
-									size={16}
-									className="text-amber-400 mb-2"
-								/>
-								<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
-									Create Quote
+							) : activeTechnicians.length === 0 ? (
+								<div className="py-8 text-center">
+									<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
+										<Clock
+											size={20}
+											className="text-zinc-500"
+										/>
+									</div>
+									<p className="text-sm text-zinc-400">
+										No technicians
+										online
+									</p>
 								</div>
-							</button>
-							<button
-								onClick={() =>
-									setIsCreateJobModalOpen(
-										true
-									)
-								}
-								className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
-							>
-								<Briefcase
-									size={16}
-									className="text-emerald-400 mb-2"
-								/>
-								<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
-									Create Job
+							) : (
+								<div className="space-y-2">
+									{activeTechnicians
+										.slice(0, 8)
+										.map((tech) => (
+											<div
+												key={
+													tech.id
+												}
+												onClick={() =>
+													navigate(
+														`/dispatch/technicians/${tech.id}`
+													)
+												}
+												className="group flex items-start gap-3 p-2.5 rounded-lg hover:bg-zinc-800/30 cursor-pointer transition-all"
+											>
+												<div className="relative flex-shrink-0">
+													<div className="w-9 h-9 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm">
+														{tech.name
+															.charAt(
+																0
+															)
+															.toUpperCase()}
+													</div>
+													<div
+														className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${getStatusColor(tech.status)} rounded-full border-2 border-zinc-900`}
+													/>
+												</div>
+												<div className="flex-1 min-w-0">
+													<div className="flex items-center justify-between mb-0.5">
+														<h4 className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
+															{
+																tech.name
+															}
+														</h4>
+														<span
+															className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ml-2 ${
+																tech.status ===
+																"Available"
+																	? "bg-emerald-500/10 text-emerald-400"
+																	: "bg-amber-500/10 text-amber-400"
+															}`}
+														>
+															{tech.status ===
+															"Available"
+																? "Avail"
+																: "Busy"}
+														</span>
+													</div>
+													<p className="text-xs text-zinc-500 truncate mb-1.5">
+														{
+															tech.title
+														}
+													</p>
+
+													{tech.currentVisit ? (
+														<div className="flex items-center gap-2 text-xs">
+															<span className="flex items-center gap-1 text-amber-400">
+																<Activity
+																	size={
+																		12
+																	}
+																/>
+																On
+																Job
+															</span>
+															<span className="text-zinc-600">
+																•
+															</span>
+															<span className="text-zinc-400 truncate">
+																{tech
+																	.currentVisit
+																	.job
+																	?.name ||
+																	"Unknown"}
+															</span>
+														</div>
+													) : tech.nextVisit ? (
+														<div className="flex items-center gap-2 text-xs">
+															<span className="flex items-center gap-1 text-blue-400">
+																<Clock
+																	size={
+																		12
+																	}
+																/>
+																Next:{" "}
+																{new Date(
+																	tech
+																		.nextVisit
+																		.scheduled_start_at
+																).toLocaleTimeString(
+																	"en-US",
+																	{
+																		hour: "numeric",
+																		minute: "2-digit",
+																	}
+																)}
+															</span>
+														</div>
+													) : (
+														<div className="flex items-center gap-1 text-xs text-emerald-400">
+															<CheckCircle2
+																size={
+																	12
+																}
+															/>
+															<span>
+																No
+																active
+																visits
+															</span>
+														</div>
+													)}
+												</div>
+											</div>
+										))}
 								</div>
-							</button>
-							<button
-								onClick={() =>
-									navigate(
-										"/dispatch/schedule"
-									)
-								}
-								className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
-							>
-								<Calendar
-									size={16}
-									className="text-purple-400 mb-2"
-								/>
-								<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
-									Schedule
+							)}
+
+							{activeTechnicians.length > 8 && (
+								<div className="mt-4 pt-4 border-t border-zinc-800 text-center">
+									<button
+										onClick={() =>
+											navigate(
+												"/dispatch/technicians"
+											)
+										}
+										className="text-xs text-zinc-400 hover:text-white font-medium"
+									>
+										+
+										{activeTechnicians.length -
+											8}{" "}
+										more technicians
+									</button>
 								</div>
-							</button>
-						</div>
-					</Card>
+							)}
+						</Card>
+
+						<Card title="Quick Actions">
+							<div className="grid grid-cols-2 gap-2">
+								{[
+									{
+										label: "New Request",
+										icon: Phone,
+										color: "text-blue-400",
+										action: () =>
+											setIsCreateRequestModalOpen(
+												true
+											),
+									},
+									{
+										label: "Create Quote",
+										icon: FileText,
+										color: "text-amber-400",
+										action: () =>
+											setIsCreateQuoteModalOpen(
+												true
+											),
+									},
+									{
+										label: "Create Job",
+										icon: Briefcase,
+										color: "text-emerald-400",
+										action: () =>
+											setIsCreateJobModalOpen(
+												true
+											),
+									},
+									{
+										label: "Schedule",
+										icon: Calendar,
+										color: "text-purple-400",
+										action: () =>
+											navigate(
+												"/dispatch/schedule"
+											),
+									},
+								].map((action) => (
+									<button
+										key={action.label}
+										onClick={
+											action.action
+										}
+										className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
+									>
+										<action.icon
+											size={16}
+											className={`${action.color} mb-2`}
+										/>
+										<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
+											{
+												action.label
+											}
+										</div>
+									</button>
+								))}
+							</div>
+						</Card>
+					</div>
 				</div>
 			</div>
 
-			{/* Modals for Quick Actions */}
 			<CreateRequest
 				isModalOpen={isCreateRequestModalOpen}
 				setIsModalOpen={setIsCreateRequestModalOpen}
 				createRequest={async (input) => {
 					const newRequest = await createRequest(input);
-
 					if (!newRequest?.id)
 						throw new Error(
 							"Request creation failed: no ID returned"
 						);
-
 					navigate(`/dispatch/requests/${newRequest.id}`);
-
 					return newRequest.id;
 				}}
 			/>
@@ -951,14 +829,11 @@ export default function DashboardPage() {
 				setIsModalOpen={setIsCreateJobModalOpen}
 				createJob={async (input) => {
 					const newJob = await createJob(input);
-
 					if (!newJob?.id)
 						throw new Error(
 							"Job creation failed: no ID returned"
 						);
-
 					navigate(`/dispatch/jobs/${newJob.id}`);
-
 					return newJob.id;
 				}}
 			/>
@@ -968,14 +843,11 @@ export default function DashboardPage() {
 				setIsModalOpen={setIsCreateQuoteModalOpen}
 				createQuote={async (input) => {
 					const newQuote = await createQuote(input);
-
 					if (!newQuote?.id)
 						throw new Error(
 							"Quote creation failed: no ID returned"
 						);
-
 					navigate(`/dispatch/quotes/${newQuote.id}`);
-
 					return newQuote.id;
 				}}
 			/>

@@ -3,7 +3,6 @@ import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect } from "react";
 import {
 	House,
-	Quote,
 	Calendar,
 	Users,
 	FileText,
@@ -13,8 +12,9 @@ import {
 	Search,
 	Package,
 	Map,
-	Import,
 	ArrowLeft,
+	Phone,
+	Briefcase,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 
@@ -76,17 +76,17 @@ export default function DispatchLayout() {
 					/>
 					<SideNavItem
 						to="/dispatch/requests"
-						icon={<Import size={ICON_SIZE} />}
+						icon={<Phone size={ICON_SIZE} />}
 						label="Requests"
 					/>
 					<SideNavItem
 						to="/dispatch/quotes"
-						icon={<Quote size={ICON_SIZE} />}
+						icon={<FileText size={ICON_SIZE} />}
 						label="Quotes"
 					/>
 					<SideNavItem
 						to="/dispatch/jobs"
-						icon={<FileText size={ICON_SIZE} />}
+						icon={<Briefcase size={ICON_SIZE} />}
 						label="Jobs"
 					/>
 					<SideNavItem

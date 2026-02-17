@@ -121,6 +121,7 @@ export interface JobSummary extends JobReference {
 	client_id: string;
 	address: string;
 	priority: string;
+	actual_total?: number | null;
 }
 
 // ============================================================================

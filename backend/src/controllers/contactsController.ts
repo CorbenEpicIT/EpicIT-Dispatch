@@ -147,8 +147,8 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: null, new: contact.name },
@@ -191,7 +191,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 export const updateContact = async (
 	contactId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateContactSchema.parse(data);
@@ -275,8 +275,8 @@ export const updateContact = async (
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -311,7 +311,7 @@ export const updateContact = async (
 
 export const deleteContact = async (
 	contactId: string,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const existing = await db.contact.findUnique({
@@ -341,8 +341,8 @@ export const deleteContact = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: existing.name, new: null },
@@ -373,7 +373,7 @@ export const linkContactToClient = async (
 	contactId: string,
 	clientId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = linkContactSchema.parse(data);
@@ -430,8 +430,8 @@ export const linkContactToClient = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					linked_to_client: { old: null, new: clientId },
@@ -462,7 +462,7 @@ export const updateClientContact = async (
 	contactId: string,
 	clientId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateClientContactSchema.parse(data);
@@ -516,8 +516,8 @@ export const updateClientContact = async (
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -544,7 +544,7 @@ export const updateClientContact = async (
 export const unlinkContactFromClient = async (
 	contactId: string,
 	clientId: string,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const existing = await db.client_contact.findUnique({
@@ -578,8 +578,8 @@ export const unlinkContactFromClient = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					unlinked_from_client: { old: clientId, new: null },
@@ -597,7 +597,7 @@ export const unlinkContactFromClient = async (
 
 export const searchContacts = async (
 	query: string,
-	excludeClientId?: string
+	excludeClientId?: string,
 ) => {
 	try {
 		if (!query || query.trim().length < 2) {

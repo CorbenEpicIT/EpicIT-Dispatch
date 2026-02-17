@@ -1,11 +1,6 @@
 import z from "zod";
-import type {
-	JobPriority,
-	JobStatus,
-	VisitStatus,
-	ArrivalConstraint,
-	FinishConstraint,
-} from "./jobs";
+import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint } from "./jobs";
+import type { Priority } from "./common";
 import type { Coordinates } from "./location";
 import type { JobVisit } from "./jobs";
 
@@ -52,7 +47,7 @@ export interface VisitTechnician {
 			description: string;
 			status: JobStatus;
 			address: string;
-			priority: JobPriority;
+			priority: Priority;
 			created_at: Date;
 			client_id: string;
 			client: {
