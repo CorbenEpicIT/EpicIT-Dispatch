@@ -8,6 +8,7 @@ import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface CreateRequestProps {
 	isModalOpen: boolean;
@@ -19,7 +20,7 @@ const PRIORITY_ENTRIES = (
 	<>
 		{PriorityValues.map((v) => (
 			<option key={v} value={v} className="text-black">
-				{v}
+				{v.charAt(0).toUpperCase() + v.slice(1)}
 			</option>
 		))}
 	</>
@@ -37,6 +38,7 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 	const [sourceReference, setSourceReference] = useState("");
 	const [requiresQuote, setRequiresQuote] = useState(false);
 	const [estimatedValue, setEstimatedValue] = useState("");
+	const [showAdditional, setShowAdditional] = useState(false);
 
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
@@ -52,6 +54,7 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		setSourceReference("");
 		setRequiresQuote(false);
 		setEstimatedValue("");
+		setShowAdditional(false);
 		setErrors(null);
 	}, []);
 
@@ -62,16 +65,17 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		}
 	}, [isModalOpen, resetForm]);
 
+	useEffect(() => {
+		if (!source.trim()) {
+			setSourceReference("");
+		}
+	}, [source]);
+
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData({
-			address: result.address,
-			coords: result.coords,
-		});
+		setGeoData({ address: result.address, coords: result.coords });
 	};
 
-	const handleClearAddress = () => {
-		setGeoData(undefined);
-	};
+	const handleClearAddress = () => setGeoData(undefined);
 
 	const clientDropdownEntries = useMemo(() => {
 		if (clients && clients.length) {
@@ -98,7 +102,7 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 			coords: geoData?.coords,
 			description: description.trim(),
 			priority: priority as Priority,
-			status: "Reviewing", // Default to Reviewing for dispatcher-created requests
+			status: "Reviewing",
 			source: source.trim() || null,
 			source_reference: sourceReference.trim() || null,
 			requires_quote: requiresQuote,
@@ -133,9 +137,9 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 		if (fieldErrors.length === 0) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -147,12 +151,21 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		return !!(title.trim() && clientId.trim() && description.trim() && priority);
 	}, [title, clientId, description, priority]);
 
+	const additionalPreviewTags = useMemo(() => {
+		const tags: string[] = [];
+		if (source.trim()) tags.push(source.trim());
+		if (sourceReference.trim()) tags.push(sourceReference.trim());
+		if (requiresQuote) tags.push("Req. Quote");
+		if (estimatedValue) tags.push(`$${estimatedValue}`);
+		return tags;
+	}, [source, sourceReference, requiresQuote, estimatedValue]);
+
 	const formContent = useMemo(
 		() => (
-			<div className="space-y-3">
+			<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
 				{/* Title */}
-				<div>
-					<label className="block mb-1 text-sm text-zinc-300">
+				<div className="min-w-0">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Title *
 					</label>
 					<input
@@ -160,16 +173,16 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 						placeholder="Request Title"
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
-						className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 					<ErrorDisplay path="title" />
 				</div>
 
 				{/* Client and Priority Row */}
-				<div className="grid grid-cols-2 gap-3">
-					<div>
-						<label className="block mb-1 text-sm text-zinc-300">
+				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+					<div className="min-w-0">
+						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 							Client *
 						</label>
 						<Dropdown
@@ -187,8 +200,8 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 						<ErrorDisplay path="client_id" />
 					</div>
 
-					<div>
-						<label className="block mb-1 text-sm text-zinc-300">
+					<div className="min-w-0">
+						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 							Priority
 						</label>
 						<Dropdown
@@ -208,115 +221,198 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 				</div>
 
 				{/* Description */}
-				<div>
-					<label className="block mb-1 text-sm text-zinc-300">
+				<div className="min-w-0">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Description *
 					</label>
 					<textarea
 						placeholder="Request Description"
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 					<ErrorDisplay path="description" />
 				</div>
 
 				{/* Address */}
-				<div className="relative z-10">
-					<label className="block mb-1 text-sm text-zinc-300">
+				<div className="relative min-w-0" style={{ zIndex: 50 }}>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Address (Optional)
 					</label>
-					<AddressForm
-						mode={geoData ? "edit" : "create"}
-						originalValue={geoData?.address || ""}
-						originalCoords={geoData?.coords}
-						dropdownPosition="above"
-						handleChange={handleChangeAddress}
-						handleClear={handleClearAddress}
-					/>
+					<div className="relative">
+						<AddressForm
+							mode={geoData ? "edit" : "create"}
+							originalValue={geoData?.address || ""}
+							originalCoords={geoData?.coords}
+							dropdownPosition="above"
+							handleChange={handleChangeAddress}
+							handleClear={handleClearAddress}
+						/>
+					</div>
 					<ErrorDisplay path="address" />
 					<ErrorDisplay path="coords" />
 				</div>
 
-				{/* Source and Source Reference Row */}
-				<div className="grid grid-cols-2 gap-3">
-					<div>
-						<label className="block mb-1 text-sm text-zinc-300">
-							Source (Optional)
-						</label>
-						<input
-							type="text"
-							placeholder="e.g., Phone Call, Website"
-							value={source}
-							onChange={(e) => setSource(e.target.value)}
-							className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
-							disabled={isLoading}
-						/>
-					</div>
+				{/* Additional Details Toggle */}
+				<div className="min-w-0">
+					<button
+						type="button"
+						onClick={() => setShowAdditional((v) => !v)}
+						disabled={isLoading}
+						className="w-full flex items-center justify-between px-2.5 py-1.5 rounded border border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 transition-colors text-xs font-medium text-zinc-400 uppercase tracking-wider disabled:opacity-50"
+					>
+						<span className="flex items-center gap-2">
+							Additional Optional Details
+							{!showAdditional &&
+								additionalPreviewTags.length >
+									0 && (
+									<span className="flex items-center gap-1 normal-case">
+										{additionalPreviewTags.map(
+											(
+												tag,
+												i
+											) => (
+												<span
+													key={
+														i
+													}
+													className="px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 text-[10px] font-normal tracking-normal"
+												>
+													{
+														tag
+													}
+												</span>
+											)
+										)}
+									</span>
+								)}
+						</span>
+						{showAdditional ? (
+							<ChevronUp size={14} />
+						) : (
+							<ChevronDown size={14} />
+						)}
+					</button>
 
-					<div>
-						<label className="block mb-1 text-sm text-zinc-300">
-							Source Reference (Optional)
-						</label>
-						<input
-							type="text"
-							placeholder="e.g., Ticket #12345"
-							value={sourceReference}
-							onChange={(e) =>
-								setSourceReference(e.target.value)
-							}
-							className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
-							disabled={isLoading}
-						/>
-					</div>
-				</div>
+					{showAdditional && (
+						<div className="mt-2 space-y-2 lg:space-y-3 pl-0.5">
+							{/* Source + Source Reference — half width, inline */}
+							<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+								<div className="min-w-0">
+									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+										Source
+									</label>
+									<input
+										type="text"
+										placeholder="e.g., Phone Call, Website"
+										value={source}
+										onChange={(e) =>
+											setSource(
+												e
+													.target
+													.value
+											)
+										}
+										className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+										disabled={isLoading}
+									/>
+								</div>
 
-				{/* Requires Quote and Estimated Value Row */}
-				<div className="grid grid-cols-2 gap-3">
-					<div className="flex items-center pt-6">
-						<input
-							type="checkbox"
-							id="requires_quote"
-							checked={requiresQuote}
-							onChange={(e) =>
-								setRequiresQuote(e.target.checked)
-							}
-							className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer"
-							disabled={isLoading}
-						/>
-						<label
-							htmlFor="requires_quote"
-							className="ml-2 text-sm text-zinc-300 cursor-pointer"
-						>
-							Requires Quote
-						</label>
-					</div>
+								{source.trim() ? (
+									<div className="min-w-0">
+										<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+											Source
+											Reference
+										</label>
+										<input
+											type="text"
+											placeholder="e.g., Ticket #12345"
+											value={
+												sourceReference
+											}
+											onChange={(
+												e
+											) =>
+												setSourceReference(
+													e
+														.target
+														.value
+												)
+											}
+											className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+											disabled={
+												isLoading
+											}
+										/>
+									</div>
+								) : (
+									<div className="min-w-0" />
+								)}
+							</div>
 
-					<div>
-						<label className="block mb-1 text-sm text-zinc-300">
-							Estimated Value (Optional)
-						</label>
-						<div className="relative">
-							<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-								$
-							</span>
-							<input
-								type="number"
-								step="0.01"
-								min="0"
-								placeholder="0.00"
-								value={estimatedValue}
-								onChange={(e) =>
-									setEstimatedValue(
-										e.target.value
-									)
-								}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors pl-6"
-								disabled={isLoading}
-							/>
+							{/* Estimated Value (left) + Requires Quote (right) */}
+							<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+								<div className="min-w-0">
+									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+										Estimated Value
+									</label>
+									<div className="relative">
+										<span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+											$
+										</span>
+										<input
+											type="number"
+											step="0.01"
+											min="0"
+											placeholder="0.00"
+											value={
+												estimatedValue
+											}
+											onChange={(
+												e
+											) =>
+												setEstimatedValue(
+													e
+														.target
+														.value
+												)
+											}
+											className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pl-7 min-w-0"
+											disabled={
+												isLoading
+											}
+										/>
+									</div>
+								</div>
+
+								<div className="flex items-end pb-1.5 lg:pb-3.5 min-w-0">
+									<input
+										type="checkbox"
+										id="requires_quote"
+										checked={
+											requiresQuote
+										}
+										onChange={(e) =>
+											setRequiresQuote(
+												e
+													.target
+													.checked
+											)
+										}
+										className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer"
+										disabled={isLoading}
+									/>
+									<label
+										htmlFor="requires_quote"
+										className="ml-2 text-xs lg:text-sm text-zinc-400 cursor-pointer"
+									>
+										Requires Quote
+									</label>
+								</div>
+							</div>
 						</div>
-					</div>
+					)}
 				</div>
 			</div>
 		),
@@ -330,6 +426,8 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 			sourceReference,
 			requiresQuote,
 			estimatedValue,
+			showAdditional,
+			additionalPreviewTags,
 			isLoading,
 			clientDropdownEntries,
 			errors,

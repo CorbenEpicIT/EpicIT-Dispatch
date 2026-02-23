@@ -63,7 +63,6 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			priority: "Medium",
 		});
 
-	// Shared hooks
 	const {
 		activeLineItems,
 		addLineItem: addLineItemToState,
@@ -93,6 +92,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
+		setOriginals: setFinancialOriginals,
 	} = useFinancialCalculations(subtotal, {
 		initialTaxRate: job.tax_rate ? Number(job.tax_rate) * 100 : 0,
 		initialDiscountType: job.discount_type || "amount",
@@ -152,11 +152,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
 			if (targetStep <= currentStep) return true;
-
 			for (let step = 1; step < targetStep; step++) {
-				if (!validateStep(step as Step)) {
-					return false;
-				}
+				if (!validateStep(step as Step)) return false;
 			}
 			return true;
 		},
@@ -167,13 +164,11 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		if (isModalOpen && job) {
 			resetWizard();
 
-			// Set originals for dirty tracking
 			const initialOriginals: FormFields = {
 				name: job.name ?? "",
 				description: job.description ?? "",
 				priority: job.priority as Priority,
 			};
-
 			setOriginals(initialOriginals);
 
 			const initialLineItems: EditableLineItem[] =
@@ -190,7 +185,6 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 					isDeleted: false,
 				})) || [];
 
-			// If no existing line items, add one empty template
 			if (initialLineItems.length === 0) {
 				initialLineItems.push({
 					id: crypto.randomUUID(),
@@ -218,35 +212,34 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			}
 
 			setErrors(null);
+
+			setFinancialOriginals(
+				job.tax_rate ? Number(job.tax_rate) * 100 : 0,
+				job.discount_type ?? "amount",
+				job.discount_value ? Number(job.discount_value) : 0
+			);
 		}
-	}, [isModalOpen, job, resetWizard, setLineItems, setOriginals]);
+	}, [isModalOpen, job, resetWizard, setLineItems, setOriginals, setFinancialOriginals]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData({
-			address: result.address,
-			coords: result.coords,
-		});
+		setGeoData({ address: result.address, coords: result.coords });
 	};
 
-	const handleClearAddress = () => {
-		setGeoData(undefined);
-	};
+	const handleClearAddress = () => setGeoData(undefined);
 
 	const invokeUpdate = async () => {
 		if (isLoading) return;
 
-		// Filter out empty line items before submission
 		const nonEmptyLineItems = activeLineItems.filter((item) => {
-			const hasData =
+			return (
 				item.name.trim() ||
 				item.description?.trim() ||
 				item.quantity !== 1 ||
 				item.unit_price !== 0 ||
-				item.item_type;
-			return hasData;
+				item.item_type
+			);
 		});
 
-		// If all line items are empty, send empty array (optional field)
 		const lineItemUpdates: UpdateJobLineItemInput[] = nonEmptyLineItems.map((item) => {
 			const li = item as EditableLineItem;
 			return {
@@ -304,9 +297,9 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 		if (fieldErrors.length === 0) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -318,10 +311,10 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
 						{/* Name */}
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Job Name *
 							</label>
 							<div className="relative">
@@ -336,7 +329,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -351,23 +344,22 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 						</div>
 
 						{/* Client and Priority Row */}
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Client
 								</label>
-								<div className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-800/50 text-zinc-400">
+								<div className="border border-zinc-700 px-2.5 pt-1.5 pb-1 w-full rounded bg-zinc-800/50 text-zinc-400 text-sm">
 									{job.client?.name ||
 										"Unknown Client"}
 								</div>
-								<p className="text-xs text-zinc-500 mt-1">
-									Client assignment cannot be
-									changed
+								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+									Client cannot be changed
 								</p>
 							</div>
 
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Priority
 								</label>
 								<div className="relative">
@@ -412,8 +404,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 						</div>
 
 						{/* Description */}
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description *
 							</label>
 							<div className="relative">
@@ -429,7 +421,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -448,18 +440,32 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 						</div>
 
 						{/* Address */}
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Address *
 							</label>
-							<AddressForm
-								mode="edit"
-								originalValue={job.address || ""}
-								originalCoords={job.coords}
-								dropdownPosition="above"
-								handleChange={handleChangeAddress}
-								handleClear={handleClearAddress}
-							/>
+							<div className="relative">
+								<AddressForm
+									mode="edit"
+									originalValue={
+										job.address || ""
+									}
+									originalCoords={
+										job.coords ||
+										geoData?.coords
+									}
+									dropdownPosition="above"
+									handleChange={
+										handleChangeAddress
+									}
+									handleClear={
+										handleClearAddress
+									}
+								/>
+							</div>
 							<ErrorDisplay path="address" />
 							<ErrorDisplay path="coords" />
 						</div>
@@ -468,7 +474,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 
 			case 2:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
@@ -488,7 +494,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 
 			case 3:
 				return (
-					<div className="space-y-3 mt-2">
+					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						<FinancialSummary
 							subtotal={subtotal}
 							taxRate={taxRate}
@@ -510,8 +516,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 
 						{job.actual_total !== null &&
 							job.actual_total !== undefined && (
-								<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-									<div className="flex items-center justify-between text-sm">
+								<div className="p-3 lg:p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+									<div className="flex items-center justify-between text-sm lg:text-base">
 										<span className="text-zinc-400">
 											Actual
 											Total:
@@ -525,8 +531,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 											)}
 										</span>
 									</div>
-
-									<div className="flex items-center justify-between text-sm mt-2 pt-2 border-t border-zinc-700">
+									<div className="flex items-center justify-between text-sm lg:text-base mt-2 pt-2 border-t border-zinc-700">
 										<span className="text-zinc-400">
 											Variance:
 										</span>

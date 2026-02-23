@@ -16,14 +16,12 @@ import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 
 import LineItemsSection from "../ui/forms/LineItemsSection";
-import FinancialSummary from "../ui/forms/FinancialSummary";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import { BillingConfiguration } from "../ui/forms/BillingConfiguration";
 import { ScheduleConfiguration } from "../ui/forms/ScheduleConfiguration";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
-import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -43,8 +41,8 @@ interface CreateRecurringPlanProps {
 const PRIORITY_ENTRIES = (
 	<>
 		{PriorityValues.map((v) => (
-			<option key={v} value={v} className="text-black">
-				{v}
+			<option key={v} value={v}>
+				{v.charAt(0).toUpperCase() + v.slice(1)}
 			</option>
 		))}
 	</>
@@ -112,23 +110,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		mode: "create",
 	});
 
-	const {
-		taxRate,
-		setTaxRate,
-		taxAmount,
-		discountType,
-		setDiscountType,
-		discountValue,
-		setDiscountValue,
-		discountAmount,
-		total,
-		reset: resetFinancials,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
-	} = useFinancialCalculations(subtotal);
-
 	const validateStep1 = useCallback((): boolean => {
 		return !!(
 			name.trim() &&
@@ -142,7 +123,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	const validateStep2 = useCallback((): boolean => {
 		if (!scheduleState) return false;
 
-		// Frequency-specific validation
 		if (
 			scheduleState.frequency === "weekly" &&
 			scheduleState.selectedWeekdays.length === 0
@@ -274,9 +254,8 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		setInvoiceTiming("on_completion");
 		setAutoInvoice(false);
 		resetLineItems();
-		resetFinancials();
 		setErrors(null);
-	}, [resetWizard, resetLineItems, resetFinancials]);
+	}, [resetWizard, resetLineItems]);
 
 	useEffect(() => {
 		if (!isModalOpen) {
@@ -479,9 +458,9 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 		if (fieldErrors.length === 0) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -493,9 +472,9 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Plan Name *
 							</label>
 							<input
@@ -505,15 +484,15 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								onChange={(e) =>
 									setName(e.target.value)
 								}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="name" />
 						</div>
 
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Client *
 								</label>
 								<Dropdown
@@ -538,8 +517,8 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								<ErrorDisplay path="client_id" />
 							</div>
 
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Priority
 								</label>
 								<Dropdown
@@ -563,8 +542,8 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 							</div>
 						</div>
 
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description *
 							</label>
 							<textarea
@@ -575,26 +554,42 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										e.target.value
 									)
 								}
-								className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
 						</div>
 
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Address *
 							</label>
-							<AddressForm
-								mode={geoData ? "edit" : "create"}
-								originalValue={
-									geoData?.address || ""
-								}
-								originalCoords={geoData?.coords}
-								dropdownPosition="above"
-								handleChange={handleChangeAddress}
-								handleClear={handleClearAddress}
-							/>
+							<div className="relative">
+								<AddressForm
+									mode={
+										geoData
+											? "edit"
+											: "create"
+									}
+									originalValue={
+										geoData?.address ||
+										""
+									}
+									originalCoords={
+										geoData?.coords
+									}
+									dropdownPosition="above"
+									handleChange={
+										handleChangeAddress
+									}
+									handleClear={
+										handleClearAddress
+									}
+								/>
+							</div>
 							<ErrorDisplay path="address" />
 							<ErrorDisplay path="coords" />
 						</div>
@@ -670,7 +665,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 			case 3:
 				return (
-					<div className="space-y-3 pt-2">
+					<div className="space-y-2 lg:space-y-3 min-w-0 pt-2">
 						<TimeConstraints
 							mode="create"
 							onStateChange={setTimeConstraintsState}
@@ -681,7 +676,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 			case 4:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
@@ -701,26 +696,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 			case 5:
 				return (
-					<div className="space-y-3 mt-2">
-						<FinancialSummary
-							subtotal={subtotal}
-							taxRate={taxRate}
-							taxAmount={taxAmount}
-							discountType={discountType}
-							discountValue={discountValue}
-							discountAmount={discountAmount}
-							total={total}
-							isLoading={isLoading}
-							onTaxRateChange={setTaxRate}
-							onDiscountTypeChange={setDiscountType}
-							onDiscountValueChange={setDiscountValue}
-							totalLabel="Estimated Total"
-							isTaxDirty={isTaxDirty}
-							isDiscountDirty={isDiscountDirty}
-							onTaxUndo={undoTax}
-							onDiscountUndo={undoDiscount}
-						/>
-
+					<div className="space-y-2 min-w-0">
 						<BillingConfiguration
 							mode="create"
 							billingMode={billingMode}
@@ -734,7 +710,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						/>
 					</div>
 				);
-
 			default:
 				return null;
 		}
@@ -759,16 +734,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-		taxRate,
-		taxAmount,
-		discountType,
-		discountValue,
-		discountAmount,
-		total,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
 		billingMode,
 		invoiceTiming,
 		autoInvoice,

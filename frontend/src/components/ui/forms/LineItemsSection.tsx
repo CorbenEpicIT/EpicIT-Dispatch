@@ -32,12 +32,12 @@ const LineItemsSection = ({
 	const canRemove = lineItems.length > minItems;
 
 	return (
-		<div className="space-y-3">
+		<div className="space-y-2 lg:space-y-3">
 			<div className="flex items-center justify-between">
-				<h3 className="text-lg font-semibold text-white">
+				<h3 className="text-xs lg:text-sm font-semibold text-white uppercase tracking-wider">
 					Line Items {required && "*"}
 				</h3>
-				<div className="text-sm text-zinc-400">
+				<div className="text-xs lg:text-sm text-zinc-400">
 					Subtotal:{" "}
 					<span className="text-white font-semibold">
 						${subtotal.toFixed(2)}
@@ -45,7 +45,7 @@ const LineItemsSection = ({
 				</div>
 			</div>
 
-			<div className="space-y-3">
+			<div className="space-y-2 lg:space-y-3">
 				{lineItems.map((item, index) => (
 					<LineItemCard
 						key={item.id}
@@ -66,9 +66,9 @@ const LineItemsSection = ({
 				type="button"
 				onClick={onAdd}
 				disabled={isLoading}
-				className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded-md text-sm font-medium transition-colors"
+				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded text-xs lg:text-sm font-medium transition-colors"
 			>
-				<Plus size={16} />
+				<Plus size={14} />
 				Add Item
 			</button>
 		</div>

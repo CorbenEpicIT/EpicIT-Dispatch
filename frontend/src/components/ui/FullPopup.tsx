@@ -16,30 +16,26 @@ const FullPopup = ({
 	size = "md",
 	hasBackground = true,
 }: FullPopupProps) => {
-	let baseClassPanel =
-		"transition-all duration-300 fixed inset-0 z-[5000] flex items-center justify-center ";
-	let baseClassBackground = "transition-all duration-300 fixed inset-0 z-[4000] bg-black ";
+	const backdropClass =
+		"transition-opacity duration-300 fixed inset-0 z-[4000] bg-black " +
+		(isModalOpen ? "opacity-50 pointer-events-auto" : "opacity-0 pointer-events-none");
 
-	if (isModalOpen) {
-		baseClassPanel += "opacity-100 pointer-events-auto";
-		baseClassBackground += "opacity-50 pointer-events-auto";
-	} else {
-		baseClassPanel += "opacity-0 pointer-events-none";
-		baseClassBackground += "opacity-0 pointer-events-none";
-	}
+	const panelClass =
+		"fixed inset-0 z-[5000] flex items-center justify-center max-h-screen " +
+		(isModalOpen ? "pointer-events-auto" : "pointer-events-none");
 
-	let baseClassInset =
-		"scrollbar-hide transition-all duration-300 bg-zinc-900 p-5 rounded-lg shadow-xl max-h-[90vh] overflow-y-auto text-white ";
+	let insetClass =
+		"scrollbar-hide bg-zinc-900 rounded-lg shadow-xl max-h-[92vh] min-h-0 text-white overflow-hidden flex flex-col ";
 
 	switch (size) {
 		case "md":
-			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(600px,55vw,640px)]";
+			insetClass += "w-[calc(100%-2rem)] sm:w-[clamp(600px,55vw,640px)]";
 			break;
 		case "lg":
-			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(800px,75vw,1000px)]";
+			insetClass += "w-[calc(100%-2rem)] sm:w-[clamp(800px,75vw,1000px)]";
 			break;
 		case "xl":
-			baseClassInset += "w-[calc(100%-2rem)] sm:w-[clamp(900px,85vw,1400px)]";
+			insetClass += "w-[calc(100%-2rem)] sm:w-[clamp(900px,85vw,1400px)]";
 			break;
 	}
 
@@ -59,35 +55,27 @@ const FullPopup = ({
 	if (!isModalOpen) {
 		return (
 			<>
-				{hasBackground && <div className={baseClassBackground} />}
-				<div className={baseClassPanel}></div>
+				{hasBackground && <div className={backdropClass} />}
+				<div className={panelClass} />
 			</>
 		);
 	}
 
 	return createPortal(
 		<>
-			{hasBackground && (
-				<div className={baseClassBackground} onMouseDown={onClose} />
-			)}
-
-			<div className={baseClassPanel} onMouseDown={handlePanelMouseDown}>
+			{hasBackground && <div className={backdropClass} onMouseDown={onClose} />}
+			<div className={panelClass} onMouseDown={handlePanelMouseDown}>
 				<div
-					className={baseClassInset}
+					className={insetClass}
 					onMouseDown={(e) => e.stopPropagation()}
 				>
 					{content}
 				</div>
-				<style>{`
-          .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-          }
-          .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-          }
-        `}</style>
 			</div>
+			<style>{`
+				.scrollbar-hide::-webkit-scrollbar { display: none; }
+				.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+			`}</style>
 		</>,
 		document.body
 	);

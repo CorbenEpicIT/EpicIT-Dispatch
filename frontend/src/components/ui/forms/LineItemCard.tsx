@@ -28,20 +28,19 @@ const LineItemCard = memo(
 		onClear,
 	}: LineItemCardProps) => {
 		const isDirty = (field: string) => dirtyFields[`li:${item.id}:${field}`];
-
 		const showUndo = (field: keyof BaseLineItem) => !!onUndo && isDirty(field);
-
 		const showClear = (field: keyof BaseLineItem, value: string) =>
 			!!onClear && value.trim().length > 0;
 
 		return (
-			<div className="p-3 bg-zinc-900 rounded-lg border border-zinc-700">
-				<div className="flex items-start justify-between mb-2">
-					<span className="text-sm text-zinc-400">
+			<div className="p-2.5 lg:p-3 bg-zinc-800 rounded border border-zinc-700">
+				{/* Header */}
+				<div className="flex items-center justify-between mb-2">
+					<span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Item {index + 1}
 						{"isNew" in item && item.isNew ? (
-							<span className="ml-2 text-xs text-blue-400">
-								(New)
+							<span className="ml-2 text-blue-400 normal-case font-normal tracking-normal">
+								(new!)
 							</span>
 						) : null}
 					</span>
@@ -51,13 +50,13 @@ const LineItemCard = memo(
 						disabled={!canRemove || isLoading}
 						className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
 					>
-						<Trash2 size={16} />
+						<Trash2 size={14} />
 					</button>
 				</div>
 
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+				<div className="grid grid-cols-2 gap-2 min-w-0">
 					{/* Name */}
-					<div className="relative">
+					<div className="relative min-w-0">
 						<input
 							type="text"
 							placeholder="Item name *"
@@ -70,7 +69,7 @@ const LineItemCard = memo(
 								)
 							}
 							disabled={isLoading}
-							className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
+							className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base pr-8 min-w-0"
 						/>
 						{showUndo("name") && (
 							<button
@@ -81,13 +80,13 @@ const LineItemCard = memo(
 								}
 								className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
 							>
-								<RotateCcw size={16} />
+								<RotateCcw size={14} />
 							</button>
 						)}
 					</div>
 
 					{/* Type */}
-					<div className="relative">
+					<div className="relative min-w-0">
 						<Dropdown
 							entries={LineItemTypeValues.map((type) => (
 								<option key={type} value={type}>
@@ -117,7 +116,7 @@ const LineItemCard = memo(
 								}
 								className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors z-10"
 							>
-								<RotateCcw size={16} />
+								<RotateCcw size={14} />
 							</button>
 						) : showClear("item_type", item.item_type) ? (
 							<button
@@ -131,13 +130,13 @@ const LineItemCard = memo(
 								}
 								className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-red-400 transition-colors z-10"
 							>
-								<X size={16} />
+								<X size={14} />
 							</button>
 						) : null}
 					</div>
 
 					{/* Description */}
-					<div className="md:col-span-2 relative">
+					<div className="col-span-2 relative min-w-0">
 						<input
 							type="text"
 							placeholder="Description (optional)"
@@ -150,7 +149,7 @@ const LineItemCard = memo(
 								)
 							}
 							disabled={isLoading}
-							className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
+							className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base pr-8 min-w-0"
 						/>
 						{showUndo("description") ? (
 							<button
@@ -164,7 +163,7 @@ const LineItemCard = memo(
 								}
 								className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
 							>
-								<RotateCcw size={16} />
+								<RotateCcw size={14} />
 							</button>
 						) : showClear("description", item.description) ? (
 							<button
@@ -178,14 +177,14 @@ const LineItemCard = memo(
 								}
 								className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-red-400 transition-colors"
 							>
-								<X size={16} />
+								<X size={14} />
 							</button>
 						) : null}
 					</div>
 
 					{/* Quantity */}
-					<div className="relative">
-						<label className="text-xs text-zinc-400 mb-1 block">
+					<div className="relative min-w-0">
+						<label className="block mb-0.5 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
 							Quantity
 						</label>
 						<input
@@ -203,7 +202,7 @@ const LineItemCard = memo(
 								)
 							}
 							disabled={isLoading}
-							className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pr-10"
+							className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base pr-8 min-w-0"
 						/>
 						{showUndo("quantity") && (
 							<button
@@ -212,20 +211,20 @@ const LineItemCard = memo(
 								onClick={() =>
 									onUndo!(item.id, "quantity")
 								}
-								className="absolute right-2 top-[30px] text-zinc-400 hover:text-white transition-colors"
+								className="absolute right-2 bottom-0 top-auto translate-y-0 pb-1.5 lg:pb-2 text-zinc-400 hover:text-white transition-colors"
 							>
-								<RotateCcw size={16} />
+								<RotateCcw size={14} />
 							</button>
 						)}
 					</div>
 
 					{/* Unit Price */}
-					<div className="relative">
-						<label className="text-xs text-zinc-400 mb-1 block">
+					<div className="relative min-w-0">
+						<label className="block mb-0.5 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
 							Unit Price
 						</label>
-						<div className="relative">
-							<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+						<div className="relative min-w-0">
+							<span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
 								$
 							</span>
 							<input
@@ -244,7 +243,7 @@ const LineItemCard = memo(
 									)
 								}
 								disabled={isLoading}
-								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6 pr-10"
+								className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base pl-6 pr-8 min-w-0"
 							/>
 							{showUndo("unit_price") && (
 								<button
@@ -258,19 +257,19 @@ const LineItemCard = memo(
 									}
 									className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
 								>
-									<RotateCcw size={16} />
+									<RotateCcw size={14} />
 								</button>
 							)}
 						</div>
 					</div>
 
 					{/* Line Total */}
-					<div className="md:col-span-2">
-						<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
-							<span className="text-sm text-zinc-400">
+					<div className="col-span-2">
+						<div className="flex items-center justify-between px-2.5 h-[34px] bg-zinc-900 rounded border border-zinc-700">
+							<span className="text-xs text-zinc-400">
 								Line Total:
 							</span>
-							<span className="text-sm font-semibold text-white">
+							<span className="text-xs lg:text-sm font-semibold text-white">
 								${item.total.toFixed(2)}
 							</span>
 						</div>

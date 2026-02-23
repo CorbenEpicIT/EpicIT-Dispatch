@@ -14,7 +14,6 @@ import {
 	useAssignTechniciansToVisitMutation,
 } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
-
 import {
 	CreateJobVisitSchema,
 	type CreateJobVisitInput,
@@ -89,15 +88,10 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 	const [selectedTechIds, setSelectedTechIds] = useState<string[]>([]);
 	const [errors, setErrors] = useState<ZodError | null>(null);
-
 	const [timeConstraintsState, setTimeConstraintsState] =
 		useState<TimeConstraintsState | null>(null);
 
-	// Shared hooks
-	const lineItems = useLineItems({
-		minItems: 1,
-		mode: "edit",
-	});
+	const lineItems = useLineItems({ minItems: 1, mode: "edit" });
 
 	const {
 		currentStep,
@@ -106,10 +100,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		goBack,
 		goToStep,
 		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 4 as Step,
-		initialStep: 1 as Step,
-	});
+	} = useStepWizard<Step>({ totalSteps: 4 as Step, initialStep: 1 as Step });
 
 	const validateStep1 = useCallback((): boolean => {
 		return !!(getValue("name").trim() && getValue("startDate"));
@@ -117,7 +108,6 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 	const validateStep2 = useCallback((): boolean => {
 		if (!timeConstraintsState) return true;
-
 		const arrivalOk =
 			timeConstraintsState.arrivalConstraint === "anytime" ||
 			(timeConstraintsState.arrivalConstraint === "at" &&
@@ -127,20 +117,17 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 				!!timeConstraintsState.arrivalWindowEnd) ||
 			(timeConstraintsState.arrivalConstraint === "by" &&
 				!!timeConstraintsState.arrivalWindowEnd);
-
 		const finishOk =
 			timeConstraintsState.finishConstraint === "when_done" ||
 			((timeConstraintsState.finishConstraint === "at" ||
 				timeConstraintsState.finishConstraint === "by") &&
 				!!timeConstraintsState.finishTime);
-
 		const windowOrderOk =
 			timeConstraintsState.arrivalConstraint !== "between" ||
 			!timeConstraintsState.arrivalWindowStart ||
 			!timeConstraintsState.arrivalWindowEnd ||
 			timeConstraintsState.arrivalWindowEnd.getTime() >
 				timeConstraintsState.arrivalWindowStart.getTime();
-
 		return arrivalOk && finishOk && windowOrderOk;
 	}, [timeConstraintsState]);
 
@@ -183,7 +170,6 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		[validateStep]
 	);
 
-	// Destructure lineItems methods to avoid dependency issues
 	const { setLineItems } = lineItems;
 
 	useEffect(() => {
@@ -197,28 +183,42 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 			const fallbackEnd = new Date(base);
 			fallbackEnd.setHours(17, 0, 0, 0);
 
-			// Set originals for dirty tracking
-			const initialOriginals: FormFields = {
+			setOriginals({
 				name: visit.name ?? "",
 				description: visit.description ?? "",
 				startDate: new Date(visit.scheduled_start_at),
-			};
+			});
 
-			setOriginals(initialOriginals);
-
-			const initialLineItems: EditableLineItem[] =
-				visit.line_items?.map((item) => ({
-					id: crypto.randomUUID(),
-					entity_line_item_id: item.id,
-					name: item.name,
-					description: item.description || "",
-					quantity: Number(item.quantity),
-					unit_price: Number(item.unit_price),
-					item_type: (item.item_type || "") as LineItemType | "",
-					total: Number(item.total),
-					isNew: false,
-					isDeleted: false,
-				})) || [];
+			// Seed existing items or a blank template row if none
+			const initialLineItems: EditableLineItem[] = visit.line_items?.length
+				? visit.line_items.map((item) => ({
+						id: crypto.randomUUID(),
+						entity_line_item_id: item.id,
+						name: item.name,
+						description: item.description || "",
+						quantity: Number(item.quantity),
+						unit_price: Number(item.unit_price),
+						item_type: (item.item_type || "") as
+							| LineItemType
+							| "",
+						total: Number(item.total),
+						isNew: false,
+						isDeleted: false,
+					}))
+				: [
+						{
+							id: crypto.randomUUID(),
+							entity_line_item_id: undefined,
+							name: "",
+							description: "",
+							quantity: 1,
+							unit_price: 0,
+							item_type: "" as LineItemType | "",
+							total: 0,
+							isNew: true,
+							isDeleted: false,
+						},
+					];
 
 			setLineItems(initialLineItems);
 
@@ -250,16 +250,12 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 	}, []);
 
 	const handleNext = useCallback(() => {
-		if (canGoNext) {
-			goNext();
-		}
+		if (canGoNext) goNext();
 	}, [canGoNext, goNext]);
 
 	const handleGoToStep = useCallback(
 		(step: Step) => {
-			if (canGoToStep(step)) {
-				goToStep(step);
-			}
+			if (canGoToStep(step)) goToStep(step);
 		},
 		[canGoToStep, goToStep]
 	);
@@ -459,9 +455,12 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 			const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 			if (fieldErrors.length === 0) return null;
 			return (
-				<div className="mt-1 space-y-1">
+				<div className="mt-0.5">
 					{fieldErrors.map((err, idx) => (
-						<p key={idx} className="text-red-300 text-sm">
+						<p
+							key={idx}
+							className="text-red-300 text-xs leading-tight"
+						>
 							{err.message}
 						</p>
 					))}
@@ -475,9 +474,9 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Visit Name *
 							</label>
 							<div className="relative">
@@ -492,7 +491,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 										)
 									}
 									disabled={isLoading}
-									className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
 								/>
 								<UndoButton
 									show={isDirty("name")}
@@ -505,8 +504,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							<ErrorDisplay path="name" />
 						</div>
 
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description (Optional)
 							</label>
 							<div className="relative">
@@ -522,7 +521,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 										)
 									}
 									disabled={isLoading}
-									className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
 								/>
 								<UndoButtonTop
 									show={isDirty(
@@ -539,8 +538,11 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							<ErrorDisplay path="description" />
 						</div>
 
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Visit Date *
 							</label>
 							<DatePicker
@@ -569,7 +571,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 			case 2:
 				return (
-					<div className="space-y-3 pt-2">
+					<div className="space-y-2 lg:space-y-3 min-w-0 ">
 						<TimeConstraints
 							mode="edit"
 							initialArrivalConstraint={
@@ -608,7 +610,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 			case 3:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={lineItems.activeLineItems}
@@ -618,28 +620,24 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							onUpdate={lineItems.updateLineItem}
 							subtotal={lineItems.subtotal}
 							required={false}
-							minItems={0}
+							minItems={1}
 							dirtyFields={lineItems.dirtyLineItemFields}
 							onUndo={lineItems.undoLineItemField}
 							onClear={lineItems.clearLineItemField}
 						/>
-						<p className="text-xs text-zinc-500">
-							Only line items with a name are saved.
-							Changes in unnamed rows are ignored.
-						</p>
 					</div>
 				);
 
 			case 4:
 				return (
-					<div className="space-y-3">
-						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-							<h3 className="text-lg font-semibold mb-4">
+					<div className="space-y-2 lg:space-y-3 min-w-0">
+						<div className="p-3 lg:p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+							<h3 className="text-base lg:text-lg font-semibold mb-3 lg:mb-4 text-white">
 								Assign Technicians
 							</h3>
 							<div className="border border-zinc-700 rounded-md p-3 max-h-56 overflow-y-auto bg-zinc-900">
 								{technicians?.length ? (
-									<div className="space-y-2">
+									<div className="space-y-1 lg:space-y-2">
 										{technicians.map(
 											(tech) => (
 												<label
@@ -663,7 +661,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 														}
 														className="w-4 h-4 accent-blue-600"
 													/>
-													<span className="text-white text-sm flex-1">
+													<span className="text-white text-sm lg:text-base flex-1">
 														{
 															tech.name
 														}{" "}
@@ -699,7 +697,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 								)}
 							</div>
 							{selectedTechIds.length > 0 && (
-								<p className="text-sm text-zinc-400 mt-2">
+								<p className="text-xs lg:text-sm text-zinc-400 mt-2">
 									{selectedTechIds.length}{" "}
 									technician
 									{selectedTechIds.length > 1

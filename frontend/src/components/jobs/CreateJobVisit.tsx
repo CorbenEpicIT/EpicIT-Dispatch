@@ -183,16 +183,12 @@ const CreateJobVisit = ({
 	}, [isModalOpen, preselectedTechId]);
 
 	const handleNext = useCallback(() => {
-		if (canGoNext) {
-			wizard.goNext();
-		}
+		if (canGoNext) wizard.goNext();
 	}, [canGoNext, wizard]);
 
 	const handleGoToStep = useCallback(
 		(step: Step) => {
-			if (canGoToStep(step)) {
-				wizard.goToStep(step);
-			}
+			if (canGoToStep(step)) wizard.goToStep(step);
 		},
 		[canGoToStep, wizard]
 	);
@@ -343,9 +339,12 @@ const CreateJobVisit = ({
 			const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 			if (!fieldErrors.length) return null;
 			return (
-				<div className="mt-1 space-y-1">
+				<div className="mt-0.5">
 					{fieldErrors.map((err, idx) => (
-						<p key={idx} className="text-red-300 text-sm">
+						<p
+							key={idx}
+							className="text-red-300 text-xs leading-tight"
+						>
 							{err.message}
 						</p>
 					))}
@@ -359,17 +358,18 @@ const CreateJobVisit = ({
 		switch (wizard.currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
 						{preselectedTechId && (
 							<div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-md">
-								<p className="text-sm text-blue-300">
+								<p className="text-xs font-medium text-blue-300">
 									Creating visit with
 									pre-selected technician
 								</p>
 							</div>
 						)}
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Visit Name *
 							</label>
 							<input
@@ -380,12 +380,13 @@ const CreateJobVisit = ({
 									setName(e.target.value)
 								}
 								disabled={isLoading}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 							/>
 							<ErrorDisplay path="name" />
 						</div>
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description (Optional)
 							</label>
 							<textarea
@@ -397,12 +398,16 @@ const CreateJobVisit = ({
 									)
 								}
 								disabled={isLoading}
-								className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 							/>
 							<ErrorDisplay path="description" />
 						</div>
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Visit Date *
 							</label>
 							<DatePicker
@@ -420,7 +425,7 @@ const CreateJobVisit = ({
 
 			case 2:
 				return (
-					<div className="space-y-3 pt-2">
+					<div className="space-y-2 lg:space-y-3 min-w-0 pt-2">
 						<TimeConstraints
 							mode="create"
 							onStateChange={setTimeConstraintsState}
@@ -437,7 +442,7 @@ const CreateJobVisit = ({
 
 			case 3:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={lineItems.activeLineItems}
@@ -457,14 +462,14 @@ const CreateJobVisit = ({
 
 			case 4:
 				return (
-					<div className="space-y-3">
-						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-							<h3 className="text-lg font-semibold mb-4">
+					<div className="space-y-2 lg:space-y-3 min-w-0">
+						<div className="p-3 lg:p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+							<h3 className="text-base lg:text-lg font-semibold mb-3 lg:mb-4 text-white">
 								Assign Technicians
 							</h3>
 							<div className="border border-zinc-700 rounded-md p-3 max-h-56 overflow-y-auto bg-zinc-900">
 								{technicians?.length ? (
-									<div className="space-y-2">
+									<div className="space-y-1 lg:space-y-2">
 										{technicians.map(
 											(tech) => (
 												<label
@@ -488,7 +493,7 @@ const CreateJobVisit = ({
 														}
 														className="w-4 h-4 accent-blue-600"
 													/>
-													<span className="text-white text-sm flex-1">
+													<span className="text-white text-sm lg:text-base flex-1">
 														{
 															tech.name
 														}{" "}
@@ -524,7 +529,7 @@ const CreateJobVisit = ({
 								)}
 							</div>
 							{selectedTechIds.length > 0 && (
-								<p className="text-sm text-zinc-400 mt-2">
+								<p className="text-xs lg:text-sm text-zinc-400 mt-2">
 									{selectedTechIds.length}{" "}
 									technician
 									{selectedTechIds.length > 1

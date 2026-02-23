@@ -105,51 +105,64 @@ export default function DatePicker({
 		<div className="relative w-full">
 			<style>{`
         .date-picker-dark {
-          --rdp-accent-color: #3b82f6;
-          --rdp-background-color: #18181b;
-          --rdp-accent-background-color: #1e40af;
-          color: #e4e4e7;
-          border-radius: 4px;
-          pointer-events: auto !important;
-          overscroll-behavior: contain;
-        }
-        .date-picker-dark .rdp-month_caption {
-          color: #e4e4e7;
-          font-weight: 600;
-          padding: 0 0 0 0.8rem;
-          margin-bottom: 0.25rem;
-          font-size: 1rem;
-        }
-        .date-picker-dark .rdp-weekdays { padding: 0 0.25rem; }
-        .date-picker-dark .rdp-weekday {
-          color: #a1a1aa;
-          font-size: 0.7rem;
-          padding: 0.05rem 0.25rem;
-        }
-        .date-picker-dark .rdp-day_button {
-          padding: 0.15rem;
-          border-radius: 3px;
-          font-size: 0.8rem;
-          line-height: 1rem;
-        }
-        .date-picker-dark .rdp-day_button:hover:not([disabled]):not(.rdp-day_selected) {
-          background-color: #27272a;
-        }
-        .date-picker-dark .rdp-day_button.rdp-day_selected {
-          background-color: #3b82f6;
-          color: white;
-        }
-        .date-picker-dark .rdp-day_button.rdp-day_today:not(.rdp-day_selected) {
-          color: #3b82f6;
-          font-weight: 600;
-        }
-        .date-picker-dark .rdp-day_button:disabled { opacity: 0.25; }
-        .date-picker-dark .rdp-nav_button {
-          padding: 0.2rem;
-          border-radius: 4px;
-          color: #e4e4e7;
-        }
-        .date-picker-dark .rdp-nav_button:hover { background-color: #27272a; }
+  --rdp-accent-color: #3b82f6;
+  --rdp-background-color: #18181b;
+  --rdp-accent-background-color: #1e40af;
+  color: #e4e4e7;
+  border-radius: 4px;
+  pointer-events: auto !important;
+  overscroll-behavior: contain;
+  font-size: 0.75rem;
+}
+.date-picker-dark .rdp-month_caption {
+  color: #e4e4e7;
+  font-weight: 600;
+  padding: 0 0 0 0.5rem;
+  margin-bottom: 0.15rem;
+  font-size: 0.8rem;
+}
+.date-picker-dark .rdp-weekdays { padding: 0 0.1rem; }
+.date-picker-dark .rdp-weekday {
+  color: #a1a1aa;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.1rem;
+  width: 1.8rem;
+}
+.date-picker-dark .rdp-day {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+.date-picker-dark .rdp-day_button {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  line-height: 1rem;
+}
+.date-picker-dark .rdp-day_button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: #27272a;
+}
+.date-picker-dark .rdp-day_button.rdp-day_selected {
+  background-color: #3b82f6;
+  color: white;
+}
+.date-picker-dark .rdp-day_button.rdp-day_today:not(.rdp-day_selected) {
+  color: #3b82f6;
+  font-weight: 600;
+}
+.date-picker-dark .rdp-day_button:disabled { opacity: 0.25; }
+.date-picker-dark .rdp-nav_button {
+  padding: 0.15rem;
+  border-radius: 4px;
+  color: #e4e4e7;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+.date-picker-dark .rdp-nav_button:hover { background-color: #27272a; }
+.date-picker-dark .rdp-months { padding: 0.25rem; }
+.date-picker-dark .rdp-month { width: 100%; }
+.date-picker-dark .rdp-caption_label { font-size: 0.8rem; }
       `}</style>
 
 			<button
@@ -157,9 +170,9 @@ export default function DatePicker({
 				type="button"
 				disabled={disabled}
 				onClick={() => setOpen((o) => !o)}
-				className="border border-zinc-700 bg-zinc-900 p-2 w-full rounded-sm text-left flex items-center justify-between
-                   hover:border-zinc-600 focus:border-blue-500 focus:outline-none transition-colors
-                   disabled:opacity-60 disabled:cursor-not-allowed"
+				className="border border-zinc-700 bg-zinc-900 px-2.5 h-[34px] w-full rounded text-left
+					flex items-center justify-between hover:border-zinc-600 focus:border-blue-500 focus:outline-none
+					transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-sm lg:text-base"
 			>
 				<span className={!value ? "text-zinc-500" : "text-white"}>
 					{!value ? "Select date..." : format(value, "MMMM dd, yyyy")}

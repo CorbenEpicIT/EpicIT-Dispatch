@@ -104,10 +104,11 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
+		setOriginals: setFinancialOriginals,
 	} = useFinancialCalculations(subtotal, {
-		initialTaxRate: quote.tax_rate ? Number(quote.tax_rate) * 100 : 0,
-		initialDiscountType: quote.discount_type || "amount",
-		initialDiscountValue: quote.discount_value ? Number(quote.discount_value) : 0,
+		initialTaxRate: 0,
+		initialDiscountType: "amount",
+		initialDiscountValue: 0,
 	});
 
 	const [validUntilDate, setValidUntilDate] = useState<Date | null>(null);
@@ -216,8 +217,14 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			}
 
 			setErrors(null);
+
+			setFinancialOriginals(
+				quote.tax_rate ? Number(quote.tax_rate) * 100 : 0,
+				quote.discount_type ?? "amount",
+				quote.discount_value ? Number(quote.discount_value) : 0
+			);
 		}
-	}, [isModalOpen, quote, resetWizard, setLineItems, setOriginals]);
+	}, [isModalOpen, quote, resetWizard, setLineItems, setOriginals, setFinancialOriginals]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData({
@@ -320,9 +327,9 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 		if (fieldErrors.length === 0) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -334,10 +341,10 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
+					<div className="space-y-2 min-w-0">
 						{/* Title */}
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Title *
 							</label>
 							<div className="relative">
@@ -352,7 +359,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1 w-full rounded bg-zinc-900 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -367,23 +374,22 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						</div>
 
 						{/* Client and Priority Row */}
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 min-w-0">
+							<div className="min-w-0">
+								<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Client
 								</label>
-								<div className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-800/50 text-zinc-400">
+								<div className="border border-zinc-700 px-2.5 pt-1.5 pb-1 w-full rounded bg-zinc-800/50 text-zinc-400 text-sm">
 									{quote.client?.name ||
 										"Unknown Client"}
 								</div>
-								<p className="text-xs text-zinc-500 mt-1">
-									Client assignment cannot be
-									changed
+								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+									Client cannot be changed
 								</p>
 							</div>
 
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Priority
 								</label>
 								<div className="relative">
@@ -428,8 +434,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						</div>
 
 						{/* Description */}
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description *
 							</label>
 							<div className="relative">
@@ -445,7 +451,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1 w-full h-14 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -464,18 +470,31 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						</div>
 
 						{/* Address */}
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Address *
 							</label>
-							<AddressForm
-								mode="edit"
-								originalValue={quote.address || ""}
-								originalCoords={geoData?.coords}
-								dropdownPosition="above"
-								handleChange={handleChangeAddress}
-								handleClear={handleClearAddress}
-							/>
+							<div className="relative">
+								<AddressForm
+									mode="edit"
+									originalValue={
+										quote.address || ""
+									}
+									originalCoords={
+										geoData?.coords
+									}
+									dropdownPosition="above"
+									handleChange={
+										handleChangeAddress
+									}
+									handleClear={
+										handleClearAddress
+									}
+								/>
+							</div>
 							<ErrorDisplay path="address" />
 							<ErrorDisplay path="coords" />
 						</div>
@@ -484,7 +503,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 			case 2:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
@@ -504,7 +523,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 			case 3:
 				return (
-					<div className="space-y-3">
+					<div className="space-y-3 min-w-0">
 						<FinancialSummary
 							subtotal={subtotal}
 							taxRate={taxRate}
@@ -524,9 +543,9 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							onDiscountUndo={undoDiscount}
 						/>
 
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div>
-								<p className="mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2">
+							<div className="min-w-0">
+								<p className="mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Valid Until (Optional)
 								</p>
 								<DatePicker
@@ -545,8 +564,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 								/>
 							</div>
 
-							<div>
-								<p className="mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<p className="mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Expires At (Optional)
 								</p>
 								<DatePicker

@@ -23,7 +23,6 @@ import AddressForm from "../ui/AddressForm";
 
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
-import FinancialSummary from "../ui/forms/FinancialSummary";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import { BillingConfiguration } from "../ui/forms/BillingConfiguration";
 import { ScheduleConfiguration } from "../ui/forms/ScheduleConfiguration";
@@ -31,7 +30,6 @@ import { UndoButton, UndoButtonTop } from "../ui/forms/UndoButton";
 
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
-import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useDirtyTracking } from "../../hooks/forms/useDirtyTracking";
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -121,11 +119,9 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [errors, setErrors] = useState<ZodError | null>(null);
 	const [timezone] = useState<string>("America/Chicago");
-
 	const [timeConstraintsState, setTimeConstraintsState] =
 		useState<TimeConstraintsState | null>(null);
 
-	// Shared hooks
 	const {
 		activeLineItems,
 		addLineItem,
@@ -136,30 +132,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-	} = useLineItems({
-		minItems: 0,
-		mode: "edit",
-	});
-
-	const {
-		taxRate,
-		setTaxRate,
-		taxAmount,
-		discountType,
-		setDiscountType,
-		discountValue,
-		setDiscountValue,
-		discountAmount,
-		total,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
-	} = useFinancialCalculations(subtotal, {
-		initialTaxRate: 0,
-		initialDiscountType: "amount",
-		initialDiscountValue: 0,
-	});
+	} = useLineItems({ minItems: 0, mode: "edit" });
 
 	const validateStep1 = useCallback((): boolean => {
 		return !!(
@@ -176,20 +149,14 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		const selectedWeekdays = getValue("selectedWeekdays");
 		const monthDay = getValue("monthDay");
 		const month = getValue("month");
-		const generationWindow = getValue("generationWindow");
-		const minAdvance = getValue("minAdvance");
-
-		// Frequency-specific validation
 		if (frequency === "weekly" && selectedWeekdays.length === 0) return false;
 		if (frequency === "monthly" && monthDay === "") return false;
 		if (frequency === "yearly" && (month === "" || monthDay === "")) return false;
-
-		return generationWindow > 0 && minAdvance >= 0;
+		return getValue("generationWindow") > 0 && getValue("minAdvance") >= 0;
 	}, [getValue]);
 
 	const validateStep3 = useCallback((): boolean => {
 		if (!timeConstraintsState) return true;
-
 		const arrivalOk =
 			timeConstraintsState.arrivalConstraint === "anytime" ||
 			(timeConstraintsState.arrivalConstraint === "at" &&
@@ -199,20 +166,17 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 				!!timeConstraintsState.arrivalWindowEnd) ||
 			(timeConstraintsState.arrivalConstraint === "by" &&
 				!!timeConstraintsState.arrivalWindowEnd);
-
 		const finishOk =
 			timeConstraintsState.finishConstraint === "when_done" ||
 			((timeConstraintsState.finishConstraint === "at" ||
 				timeConstraintsState.finishConstraint === "by") &&
 				!!timeConstraintsState.finishTime);
-
 		const windowOrderOk =
 			timeConstraintsState.arrivalConstraint !== "between" ||
 			!timeConstraintsState.arrivalWindowStart ||
 			!timeConstraintsState.arrivalWindowEnd ||
 			timeConstraintsState.arrivalWindowEnd.getTime() >
 				timeConstraintsState.arrivalWindowStart.getTime();
-
 		return arrivalOk && finishOk && windowOrderOk;
 	}, [timeConstraintsState]);
 
@@ -224,9 +188,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			const hasType = (item.item_type?.trim?.() ?? "") !== "";
 			return hasAnyText || hasAnyNumbers || hasType;
 		});
-
 		if (meaningfulItems.length === 0) return true;
-
 		return meaningfulItems.every(
 			(item) =>
 				item.name.trim() &&
@@ -262,58 +224,46 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		goBack,
 		goToStep,
 		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 5 as Step,
-		initialStep: 1 as Step,
-	});
+	} = useStepWizard<Step>({ totalSteps: 5 as Step, initialStep: 1 as Step });
 
 	const canGoNext = validateStep(currentStep);
 
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
 			if (targetStep <= currentStep) return true;
-
 			for (let step = 1; step < targetStep; step++) {
-				if (!validateStep(step as Step)) {
-					return false;
-				}
+				if (!validateStep(step as Step)) return false;
 			}
 			return true;
 		},
 		[currentStep, validateStep]
 	);
-	// Type-safe wrappers for ScheduleConfiguration (string -> keyof FormFields)
+
 	const isDirtyString = useCallback(
-		(field: string): boolean => {
-			return isDirty(field as keyof FormFields);
-		},
+		(field: string): boolean => isDirty(field as keyof FormFields),
 		[isDirty]
 	);
 
 	const undoFieldString = useCallback(
-		(field: string): void => {
-			undoField(field as keyof FormFields);
-		},
+		(field: string): void => undoField(field as keyof FormFields),
 		[undoField]
 	);
 
-	// Initialize form data when modal opens
 	useEffect(() => {
 		if (isModalOpen && plan) {
 			resetWizard();
 
-			const ruleData =
-				plan.rules && plan.rules.length > 0
-					? plan.rules[0]
-					: {
-							frequency: "daily" as RecurringFrequency,
-							interval: 1,
-							by_weekday: [],
-							by_month_day: null,
-							by_month: null,
-						};
+			const ruleData = plan.rules?.length
+				? plan.rules[0]
+				: {
+						frequency: "daily" as RecurringFrequency,
+						interval: 1,
+						by_weekday: [],
+						by_month_day: null,
+						by_month: null,
+					};
 
-			const initialOriginals: FormFields = {
+			setOriginals({
 				name: plan.name ?? "",
 				description: plan.description ?? "",
 				priority: plan.priority as Priority,
@@ -332,21 +282,19 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 				billingMode: plan.billing_mode,
 				invoiceTiming: plan.invoice_timing,
 				autoInvoice: plan.auto_invoice || false,
-			};
+			});
 
-			setOriginals(initialOriginals);
 			setClientId(plan.client_id);
+			setGeoData(
+				plan.address
+					? ({
+							address: plan.address,
+							coords: plan.coords || undefined,
+						} as GeocodeResult)
+					: undefined
+			);
 
-			if (plan.address) {
-				setGeoData({
-					address: plan.address,
-					coords: plan.coords || undefined,
-				} as GeocodeResult);
-			} else {
-				setGeoData(undefined);
-			}
-
-			const initialLineItems: EditableLineItem[] =
+			setLineItems(
 				plan.line_items?.map((item) => ({
 					id: crypto.randomUUID(),
 					entity_line_item_id: item.id,
@@ -358,67 +306,50 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 					total: Number(item.quantity) * Number(item.unit_price),
 					isNew: false,
 					isDeleted: false,
-				})) || [];
+				})) || []
+			);
 
-			setLineItems(initialLineItems);
-
-			if (plan.rules && plan.rules.length > 0) {
-				const rule = plan.rules[0];
-				setTimeConstraintsState({
-					arrivalConstraint: (rule.arrival_constraint ||
-						"anytime") as ArrivalConstraint,
-					finishConstraint: (rule.finish_constraint ||
-						"when_done") as FinishConstraint,
-					arrivalTime: parseHHMMToDate(rule.arrival_time),
-					arrivalWindowStart: parseHHMMToDate(
-						rule.arrival_window_start
-					),
-					arrivalWindowEnd: parseHHMMToDate(rule.arrival_window_end),
-					finishTime: parseHHMMToDate(rule.finish_time),
-				});
-			} else {
-				setTimeConstraintsState({
-					arrivalConstraint: "anytime",
-					finishConstraint: "when_done",
-					arrivalTime: null,
-					arrivalWindowStart: null,
-					arrivalWindowEnd: null,
-					finishTime: null,
-				});
-			}
+			const rule = plan.rules?.[0];
+			setTimeConstraintsState({
+				arrivalConstraint: (rule?.arrival_constraint ||
+					"anytime") as ArrivalConstraint,
+				finishConstraint: (rule?.finish_constraint ||
+					"when_done") as FinishConstraint,
+				arrivalTime: parseHHMMToDate(rule?.arrival_time),
+				arrivalWindowStart: parseHHMMToDate(rule?.arrival_window_start),
+				arrivalWindowEnd: parseHHMMToDate(rule?.arrival_window_end),
+				finishTime: parseHHMMToDate(rule?.finish_time),
+			});
 
 			setErrors(null);
 		}
 	}, [isModalOpen, plan, resetWizard, setLineItems, setOriginals]);
 
-	const handleChangeAddress = (result: GeocodeResult) => {
+	const handleChangeAddress = (result: GeocodeResult) =>
 		setGeoData({ address: result.address, coords: result.coords });
-	};
 
-	const handleClearAddress = () => {
-		setGeoData(undefined);
-	};
+	const handleClearAddress = () => setGeoData(undefined);
 
 	const toggleWeekday = useCallback(
 		(weekday: Weekday) => {
 			const current = getValue("selectedWeekdays");
-			const newWeekdays = current.includes(weekday)
-				? current.filter((d) => d !== weekday)
-				: [...current, weekday];
-			updateField("selectedWeekdays", newWeekdays);
+			updateField(
+				"selectedWeekdays",
+				current.includes(weekday)
+					? current.filter((d) => d !== weekday)
+					: [...current, weekday]
+			);
 		},
 		[getValue, updateField]
 	);
 
 	const formatTimeString = (date: Date | null): string | null => {
 		if (!date) return null;
-		const hours = date.getHours().toString().padStart(2, "0");
-		const minutes = date.getMinutes().toString().padStart(2, "0");
-		return `${hours}:${minutes}`;
+		return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 	};
 
 	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
+		if (clients?.length) {
 			return clients.map((c) => (
 				<option value={c.id} key={c.id}>
 					{c.name}
@@ -435,18 +366,18 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 	const invokeUpdate = async () => {
 		if (isLoading) return;
 
-		const validLineItems = activeLineItems.filter(
-			(item) => item.name.trim() !== "" && item.quantity > 0
-		);
-
-		const preparedLineItems = validLineItems.map((item, index) => ({
-			name: item.name,
-			description: item.description || undefined,
-			quantity: Number(item.quantity),
-			unit_price: Number(item.unit_price),
-			item_type: (item.item_type || undefined) as LineItemType | undefined,
-			sort_order: index,
-		}));
+		const preparedLineItems = activeLineItems
+			.filter((item) => item.name.trim() !== "" && item.quantity > 0)
+			.map((item, index) => ({
+				name: item.name,
+				description: item.description || undefined,
+				quantity: Number(item.quantity),
+				unit_price: Number(item.unit_price),
+				item_type: (item.item_type || undefined) as
+					| LineItemType
+					| undefined,
+				sort_order: index,
+			}));
 
 		const preparedRule = {
 			frequency: getValue("frequency"),
@@ -464,25 +395,25 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			finish_constraint: timeConstraintsState?.finishConstraint || "when_done",
 			arrival_time:
 				timeConstraintsState?.arrivalConstraint === "at"
-					? formatTimeString(timeConstraintsState?.arrivalTime)
+					? formatTimeString(timeConstraintsState.arrivalTime)
 					: null,
 			arrival_window_start:
 				timeConstraintsState?.arrivalConstraint === "between"
-					? formatTimeString(timeConstraintsState?.arrivalWindowStart)
+					? formatTimeString(timeConstraintsState.arrivalWindowStart)
 					: null,
 			arrival_window_end:
 				timeConstraintsState?.arrivalConstraint === "between" ||
 				timeConstraintsState?.arrivalConstraint === "by"
-					? formatTimeString(timeConstraintsState?.arrivalWindowEnd)
+					? formatTimeString(timeConstraintsState.arrivalWindowEnd)
 					: null,
 			finish_time:
 				timeConstraintsState?.finishConstraint === "at" ||
 				timeConstraintsState?.finishConstraint === "by"
-					? formatTimeString(timeConstraintsState?.finishTime)
+					? formatTimeString(timeConstraintsState.finishTime)
 					: null,
 		};
 
-		const updatedRecurringPlan: UpdateRecurringPlanInput = {
+		const updatedPlan: UpdateRecurringPlanInput = {
 			name: getValue("name").trim(),
 			address: geoData?.address || "",
 			coords: geoData?.coords,
@@ -492,7 +423,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			ends_at: getValue("endDate")
 				? getValue("endDate")!.toISOString()
 				: undefined,
-			timezone: timezone,
+			timezone,
 			generation_window_days: Number(getValue("generationWindow")),
 			min_advance_days: Number(getValue("minAdvance")),
 			billing_mode: getValue("billingMode"),
@@ -502,12 +433,10 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			line_items: preparedLineItems,
 		};
 
-		const parseResult = UpdateRecurringPlanSchema.safeParse(updatedRecurringPlan);
-
+		const parseResult = UpdateRecurringPlanSchema.safeParse(updatedPlan);
 		if (!parseResult.success) {
 			setErrors(parseResult.error);
 			console.error("Validation errors:", parseResult.error);
-
 			const errorPaths = parseResult.error.issues.map((i) => i.path[0]);
 			if (
 				errorPaths.some((p) =>
@@ -520,9 +449,9 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 						"priority",
 					].includes(String(p))
 				)
-			) {
+			)
 				goToStep(1 as Step);
-			} else if (
+			else if (
 				errorPaths.some((p) =>
 					[
 						"starts_at",
@@ -532,9 +461,9 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 					].includes(String(p))
 				) ||
 				errorPaths.includes("rule")
-			) {
+			)
 				goToStep(2 as Step);
-			} else if (
+			else if (
 				errorPaths.some((p) =>
 					[
 						"arrival_constraint",
@@ -545,61 +474,64 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 						"finish_time",
 					].includes(String(p))
 				)
-			) {
+			)
 				goToStep(3 as Step);
-			} else if (errorPaths.includes("line_items")) {
-				goToStep(4 as Step);
-			} else if (
+			else if (errorPaths.includes("line_items")) goToStep(4 as Step);
+			else if (
 				errorPaths.some((p) =>
 					["billing_mode", "invoice_timing", "auto_invoice"].includes(
 						String(p)
 					)
 				)
-			) {
+			)
 				goToStep(5 as Step);
-			}
 			return;
 		}
 
 		setErrors(null);
-
 		try {
 			await updateMutation.mutateAsync({
 				jobId: plan.job_container?.id || plan.id,
-				updates: updatedRecurringPlan,
+				updates: updatedPlan,
 			});
-
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to update recurring plan:", error);
 		}
 	};
 
-	const ErrorDisplay = ({ path }: { path: string }) => {
-		if (!errors) return null;
-		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
-		if (fieldErrors.length === 0) return null;
-		return (
-			<div className="mt-1 space-y-1">
-				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
-						{err.message}
-					</p>
-				))}
-			</div>
-		);
-	};
+	const ErrorDisplay = useCallback(
+		({ path }: { path: string }) => {
+			if (!errors) return null;
+			const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
+			if (fieldErrors.length === 0) return null;
+			return (
+				<div className="mt-0.5">
+					{fieldErrors.map((err, idx) => (
+						<p
+							key={idx}
+							className="text-red-300 text-xs leading-tight"
+						>
+							{err.message}
+						</p>
+					))}
+				</div>
+			);
+		},
+		[errors]
+	);
 
 	const stepContent = useMemo(() => {
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						{/* Name */}
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Plan Name *
 							</label>
-							<div className="relative">
+							<div className="relative min-w-0">
 								<input
 									type="text"
 									placeholder="Plan Name"
@@ -611,7 +543,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 												.value
 										)
 									}
-									className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-8 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -625,12 +557,13 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 							<ErrorDisplay path="name" />
 						</div>
 
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						{/* Client + Priority */}
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Client
 								</label>
-								<div className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-800/50 text-zinc-400">
+								<div className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-800/50 text-zinc-400 text-sm flex items-center min-w-0 truncate">
 									{plan.client?.name ||
 										clients?.find(
 											(c) =>
@@ -639,17 +572,16 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 										)?.name ||
 										"Unknown Client"}
 								</div>
-								<p className="text-xs text-zinc-500 mt-1">
-									Client assignment cannot be
-									changed
+								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+									Client cannot be changed
 								</p>
 							</div>
 
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Priority
 								</label>
-								<div className="relative">
+								<div className="relative min-w-0">
 									<Dropdown
 										entries={
 											PRIORITY_ENTRIES
@@ -657,12 +589,10 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 										value={getValue(
 											"priority"
 										)}
-										onChange={(
-											newValue
-										) =>
+										onChange={(v) =>
 											updateField(
 												"priority",
-												newValue as Priority
+												v as Priority
 											)
 										}
 										disabled={isLoading}
@@ -690,11 +620,12 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 							</div>
 						</div>
 
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						{/* Description */}
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description *
 							</label>
-							<div className="relative">
+							<div className="relative min-w-0">
 								<textarea
 									placeholder="Plan Description"
 									value={getValue(
@@ -707,7 +638,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 												.value
 										)
 									}
-									className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10"
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-8 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -725,8 +656,12 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 							<ErrorDisplay path="description" />
 						</div>
 
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+						{/* Address */}
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Address *
 							</label>
 							<AddressForm
@@ -792,7 +727,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 
 			case 3:
 				return (
-					<div className="space-y-3 pt-2">
+					<div className="space-y-2 lg:space-y-3 min-w-0 pt-2">
 						<TimeConstraints
 							mode="edit"
 							initialArrivalConstraint={
@@ -825,7 +760,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 
 			case 4:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
@@ -845,26 +780,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 
 			case 5:
 				return (
-					<div className="space-y-3 mt-2">
-						<FinancialSummary
-							subtotal={subtotal}
-							taxRate={taxRate}
-							taxAmount={taxAmount}
-							discountType={discountType}
-							discountValue={discountValue}
-							discountAmount={discountAmount}
-							total={total}
-							isLoading={isLoading}
-							onTaxRateChange={setTaxRate}
-							onDiscountTypeChange={setDiscountType}
-							onDiscountValueChange={setDiscountValue}
-							totalLabel="Estimated Total"
-							isTaxDirty={isTaxDirty}
-							isDiscountDirty={isDiscountDirty}
-							onTaxUndo={undoTax}
-							onDiscountUndo={undoDiscount}
-						/>
-
+					<div className="space-y-2 min-w-0">
 						<BillingConfiguration
 							mode="edit"
 							billingMode={getValue("billingMode")}
@@ -915,16 +831,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-		taxRate,
-		taxAmount,
-		discountType,
-		discountValue,
-		discountAmount,
-		total,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
+		ErrorDisplay,
 	]);
 
 	return (
