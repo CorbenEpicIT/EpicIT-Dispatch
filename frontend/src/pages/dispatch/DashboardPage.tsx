@@ -8,12 +8,9 @@ import {
 	Calendar,
 	Activity,
 	ChevronRight,
-	ArrowUpRight,
 	Briefcase,
 	FileText,
 	Phone,
-	DollarSign,
-	Timer,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import SmartCalendar from "../../components/ui/SmartCalendar";
@@ -45,29 +42,6 @@ export default function DashboardPage() {
 	const { data: quotes = [] } = useAllQuotesQuery();
 	const { data: recurringPlans = [] } = useAllRecurringPlansQuery();
 	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
-
-	const stats = useMemo(() => {
-		const today = new Date();
-		const todayVisits = jobs
-			.flatMap((j) => j.visits || [])
-			.filter((v) => {
-				const visitDate = new Date(v.scheduled_start_at);
-				return visitDate.toDateString() === today.toDateString();
-			});
-
-		const completedToday = todayVisits.filter((v) => v.status === "Completed").length;
-		const totalToday = todayVisits.length;
-
-		return {
-			totalRevenue: jobs.reduce(
-				(sum, j) => sum + (Number(j.actual_total) || 0),
-				0
-			),
-			weeklyGrowth: 12.5,
-			completionRate: totalToday > 0 ? (completedToday / totalToday) * 100 : 0,
-			avgResponseTime: 2.4,
-		};
-	}, [jobs]);
 
 	const technicianStats = useMemo(() => {
 		const online = allTechnicians.filter(
@@ -214,120 +188,6 @@ export default function DashboardPage() {
 					</div>
 				</Card>
 
-				{/* KPI Cards */}
-				<div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
-					<Card
-						title="Total Revenue - todo"
-						headerAction={
-							<div className="flex items-center gap-2">
-								<div className="p-1.5 bg-emerald-500/10 rounded-md">
-									<DollarSign
-										size={16}
-										className="text-emerald-400"
-									/>
-								</div>
-								<span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-full">
-									<ArrowUpRight size={12} />+
-									{stats.weeklyGrowth}%
-								</span>
-							</div>
-						}
-					>
-						<div className="text-xl sm:text-2xl font-bold text-white">
-							${stats.totalRevenue.toLocaleString()}
-						</div>
-						<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
-							All time revenue
-						</div>
-					</Card>
-
-					<Card
-						title="Completed Today"
-						headerAction={
-							<div className="flex items-center gap-2">
-								<div className="p-1.5 bg-blue-500/10 rounded-md">
-									<CheckCircle2
-										size={16}
-										className="text-blue-400"
-									/>
-								</div>
-								<span
-									className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-										stats.completionRate >=
-										90
-											? "text-emerald-400 bg-emerald-400/10"
-											: "text-amber-400 bg-amber-400/10"
-									}`}
-								>
-									{stats.completionRate.toFixed(
-										0
-									)}
-									%
-								</span>
-							</div>
-						}
-					>
-						<div className="text-xl sm:text-2xl font-bold text-white">
-							{pipelineCounts.completedToday}
-						</div>
-						<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
-							Visits completed
-						</div>
-					</Card>
-
-					<Card
-						title="Technicians Online"
-						headerAction={
-							<div className="flex items-center gap-2">
-								<div className="p-1.5 bg-amber-500/10 rounded-md">
-									<Activity
-										size={16}
-										className="text-amber-400"
-									/>
-								</div>
-								<span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-1 rounded-full">
-									{pipelineCounts.inProgress}{" "}
-									active
-								</span>
-							</div>
-						}
-					>
-						<div className="text-xl sm:text-2xl font-bold text-white">
-							{technicianStats.online}
-						</div>
-						<div className="mt-2 flex items-center gap-3 text-xs">
-							<span className="flex items-center gap-1 text-emerald-400">
-								<span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-								{technicianStats.available}{" "}
-								available
-							</span>
-							<span className="flex items-center gap-1 text-amber-400">
-								<span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-								{technicianStats.busy} busy
-							</span>
-						</div>
-					</Card>
-
-					<Card
-						title="Avg Response Time - todo"
-						headerAction={
-							<div className="p-1.5 bg-purple-500/10 rounded-md">
-								<Timer
-									size={16}
-									className="text-purple-400"
-								/>
-							</div>
-						}
-					>
-						<div className="text-xl sm:text-2xl font-bold text-white">
-							{stats.avgResponseTime}h
-						</div>
-						<div className="text-xs text-zinc-500 font-medium uppercase tracking-wide mt-1">
-							From request to quote
-						</div>
-					</Card>
-				</div>
-
 				{/* Main Content Grid */}
 				<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
 					{/* Left Column - Operations Pipeline */}
@@ -340,6 +200,12 @@ export default function DashboardPage() {
 										count: pipelineCounts.newRequests,
 										icon: Phone,
 										color: "blue",
+										bg: "bg-blue-500/10",
+										border: "border-blue-500/20",
+										hoverBorder:
+											"group-hover:border-blue-500/40",
+										text: "text-blue-400",
+										progress: "bg-blue-500",
 										path: "/dispatch/requests?status=New",
 									},
 									{
@@ -347,6 +213,12 @@ export default function DashboardPage() {
 										count: pipelineCounts.reviewing,
 										icon: FileText,
 										color: "amber",
+										bg: "bg-amber-500/10",
+										border: "border-amber-500/20",
+										hoverBorder:
+											"group-hover:border-amber-500/40",
+										text: "text-amber-400",
+										progress: "bg-amber-500",
 										path: "/dispatch/requests?status=Reviewing",
 									},
 									{
@@ -354,6 +226,12 @@ export default function DashboardPage() {
 										count: pipelineCounts.pendingApproval,
 										icon: Clock,
 										color: "purple",
+										bg: "bg-purple-500/10",
+										border: "border-purple-500/20",
+										hoverBorder:
+											"group-hover:border-purple-500/40",
+										text: "text-purple-400",
+										progress: "bg-purple-500",
 										path: "/dispatch/quotes?status=Sent",
 									},
 									{
@@ -361,6 +239,12 @@ export default function DashboardPage() {
 										count: pipelineCounts.approved,
 										icon: CheckCircle2,
 										color: "emerald",
+										bg: "bg-emerald-500/10",
+										border: "border-emerald-500/20",
+										hoverBorder:
+											"group-hover:border-emerald-500/40",
+										text: "text-emerald-400",
+										progress: "bg-emerald-500",
 										path: "/dispatch/quotes?status=Approved",
 									},
 									{
@@ -368,6 +252,12 @@ export default function DashboardPage() {
 										count: pipelineCounts.unscheduled,
 										icon: Calendar,
 										color: "orange",
+										bg: "bg-orange-500/10",
+										border: "border-orange-500/20",
+										hoverBorder:
+											"group-hover:border-orange-500/40",
+										text: "text-orange-400",
+										progress: "bg-orange-500",
 										path: "/dispatch/jobs?status=Unscheduled",
 									},
 								].map((item) => (
@@ -381,13 +271,15 @@ export default function DashboardPage() {
 										className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
 									>
 										<div
-											className={`flex-shrink-0 w-10 h-10 rounded-lg bg-${item.color}-500/10 flex items-center justify-center border border-${item.color}-500/20 group-hover:border-${item.color}-500/40 transition-colors`}
+											className={`flex-shrink-0 w-10 h-10 rounded-lg ${item.bg} flex items-center justify-center border ${item.border} ${item.hoverBorder} transition-colors`}
 										>
 											<item.icon
 												size={
 													18
 												}
-												className={`text-${item.color}-400`}
+												className={
+													item.text
+												}
 											/>
 										</div>
 										<div className="flex-1 min-w-0">
@@ -398,7 +290,7 @@ export default function DashboardPage() {
 													}
 												</span>
 												<span
-													className={`text-sm font-bold text-${item.color}-400 ml-2`}
+													className={`text-sm font-bold ${item.text} ml-2`}
 												>
 													{
 														item.count
@@ -407,7 +299,7 @@ export default function DashboardPage() {
 											</div>
 											<div className="w-full bg-zinc-800 rounded-full h-1.5">
 												<div
-													className={`bg-${item.color}-500 h-1.5 rounded-full`}
+													className={`${item.progress} h-1.5 rounded-full`}
 													style={{
 														width: `${Math.min(item.count * 10, 100)}%`,
 													}}
