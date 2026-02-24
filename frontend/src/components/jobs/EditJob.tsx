@@ -476,6 +476,21 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		}
 	};
 
+	let nameErrors;
+	let addressErrors;
+	let descriptionErrors;
+	let lineItemErrors;
+
+	if (errors) {
+		nameErrors = errors.issues.filter((err) => err.path[0] === "name");
+		addressErrors = errors.issues.filter((err) => err.path[0] === "address");
+		descriptionErrors = errors.issues.filter((err) => err.path[0] === "description");
+		lineItemErrors = errors.issues.filter((err) => err.path[0] === "line_items");
+	}
+
+	// bandaid for unused var
+	console.log(lineItemErrors);
+
 	const content = (
 		<div
 			className="max-h-[85vh] overflow-y-auto pl-1"

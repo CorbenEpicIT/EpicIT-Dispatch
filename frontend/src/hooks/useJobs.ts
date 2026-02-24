@@ -106,7 +106,7 @@ export const useDeleteJobMutation = (): UseMutationResult<
 
 	return useMutation({
 		mutationFn: jobApi.deleteJob,
-		onSuccess: async (data, jobId) => {
+		onSuccess: async (_, jobId) => {
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 			await queryClient.invalidateQueries({ queryKey: ["clients"] });
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });

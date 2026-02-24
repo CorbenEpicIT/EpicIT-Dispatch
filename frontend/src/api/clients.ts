@@ -8,7 +8,6 @@ import type {
 	ClientContactLink,
 	CreateContactInput,
 	UpdateContactInput,
-	LinkContactInput,
 	UpdateClientContactInput,
 	ClientNote,
 	CreateClientNoteInput,

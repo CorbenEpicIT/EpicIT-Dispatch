@@ -16,7 +16,7 @@ import Card from "../../components/ui/Card";
 import SmartCalendar from "../../components/ui/SmartCalendar";
 import { useAllJobsQuery } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
-import type { Technician, TechnicianWithVisits } from "../../types/technicians";
+import type { TechnicianWithVisits } from "../../types/technicians";
 import type { JobVisit } from "../../types/jobs";
 
 export default function DashboardPage() {
@@ -90,18 +90,18 @@ export default function DashboardPage() {
 		}
 	};
 
-	const getTimeOnClock = (lastLogin: Date | string) => {
-		const now = new Date();
-		const loginTime = new Date(lastLogin);
-		const diffMs = now.getTime() - loginTime.getTime();
-		const diffHours = Math.floor(diffMs / 3600000);
-		const diffMins = Math.floor((diffMs % 3600000) / 60000);
+	// const getTimeOnClock = (lastLogin: Date | string) => {
+	// 	const now = new Date();
+	// 	const loginTime = new Date(lastLogin);
+	// 	const diffMs = now.getTime() - loginTime.getTime();
+	// 	const diffHours = Math.floor(diffMs / 3600000);
+	// 	const diffMins = Math.floor((diffMs % 3600000) / 60000);
 
-		if (diffHours > 0) return `${diffHours}h ${diffMins}m`;
-		return `${diffMins}m`;
-	};
+	// 	if (diffHours > 0) return `${diffHours}h ${diffMins}m`;
+	// 	return `${diffMins}m`;
+	// };
 
-	const getCurrentVisit = (tech: Technician & { activeVisits: any[] }) => {
+	const getCurrentVisit = (tech: TechnicianWithVisits) => {
 		if (tech.activeVisits.length === 0) return null;
 		return tech.activeVisits[0];
 	};

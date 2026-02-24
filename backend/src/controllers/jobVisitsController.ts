@@ -283,7 +283,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 
 export const updateJobVisit = async (req: Request, context?: UserContext) => {
 	try {
-		const id = req.params.id;
+		const id = req.params.id as string;
 		const parsed = updateJobVisitSchema.parse(req.body);
 
 		const existingVisit = await db.job_visit.findUnique({

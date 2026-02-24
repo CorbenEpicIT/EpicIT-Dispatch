@@ -20,7 +20,6 @@ import {
 	ExternalLink,
 	MoreVertical,
 	ChevronRight,
-	ChevronDown,
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
@@ -49,7 +48,7 @@ import {
 	type OccurrenceStatus,
 } from "../../types/recurringPlans";
 import { PriorityColors } from "../../types/common";
-import { formatCurrency, formatDateTime } from "../../util/util";
+import { formatCurrency } from "../../util/util";
 import type { ClientContact } from "../../types/clients";
 
 export default function RecurringPlanDetailPage() {
@@ -64,11 +63,8 @@ export default function RecurringPlanDetailPage() {
 
 	const jobContainerId = plan?.job_container?.id;
 
-	const {
-		data: occurrences = [],
-		isLoading: occurrencesLoading,
-		error: occurrencesError,
-	} = useOccurrencesByJobIdQuery(jobContainerId || "");
+	const { data: occurrences = [], isLoading: occurrencesLoading } =
+		useOccurrencesByJobIdQuery(jobContainerId || "");
 
 	const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -99,7 +95,7 @@ export default function RecurringPlanDetailPage() {
 		}
 	}, [showActionsMenu]);
 
-	const { upcomingOccurrences, pastOccurrences, sortedOccurrences } = useMemo(() => {
+	const { upcomingOccurrences, pastOccurrences } = useMemo(() => {
 		if (!occurrences || occurrences.length === 0) {
 			return {
 				upcomingOccurrences: [],

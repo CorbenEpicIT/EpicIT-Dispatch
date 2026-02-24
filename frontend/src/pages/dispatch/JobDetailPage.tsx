@@ -1,6 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
 import {
-	ChevronLeft,
 	Edit2,
 	User,
 	Calendar,
@@ -33,11 +32,6 @@ import {
 	type VisitStatus,
 	type JobLineItem,
 } from "../../types/jobs";
-import {
-	ArrivalConstraintLabels,
-	FinishConstraintLabels,
-	formatScheduleConstraints,
-} from "../../types/recurringPlans";
 import { QuoteStatusColors } from "../../types/quotes";
 import { RequestStatusColors } from "../../types/requests";
 import { getGenericStatusColor } from "../../types/common";

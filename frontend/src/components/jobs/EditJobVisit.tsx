@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import {
 	useUpdateJobVisitMutation,
 	useDeleteJobVisitMutation,
@@ -29,12 +29,7 @@ interface EditJobVisitProps {
 	jobId: string;
 }
 
-export default function EditJobVisit({
-	isModalOpen,
-	setIsModalOpen,
-	visit,
-	jobId,
-}: EditJobVisitProps) {
+export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: EditJobVisitProps) {
 	const updateVisit = useUpdateJobVisitMutation();
 	const deleteVisit = useDeleteJobVisitMutation();
 	const assignTechs = useAssignTechniciansToVisitMutation();

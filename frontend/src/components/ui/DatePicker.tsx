@@ -6,7 +6,7 @@ import "react-day-picker/dist/style.css";
 
 type DatePickerProps = {
 	value: Date | null;
-	onChange: (date: Date | null) => void;
+	onChange: (date: Date) => void;
 	disabled?: boolean;
 	mode?: "create" | "edit";
 	originalValue?: Date | null;
@@ -174,8 +174,10 @@ export default function DatePicker({
 
 					{value && !disabled && (
 						<span
-							onClick={handleClear}
-							title="Clear"
+							onClick={(e) => {
+								e.stopPropagation();
+								onChange(new Date());
+							}}
 							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
 							<X className="h-3 w-3 text-zinc-400 hover:text-white" />

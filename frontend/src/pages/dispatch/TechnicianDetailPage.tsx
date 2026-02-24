@@ -36,7 +36,7 @@ export default function TechnicianDetailsPage() {
 
 	const visitTechs = technician.visit_techs ?? [];
 
-	const currentVisit = visitTechs.find((vt) => vt.visit.status === "InProgress");
+	// const currentVisit = visitTechs.find((vt) => vt.visit.status === "InProgress");
 
 	const recentVisits = visitTechs.slice(0, 5);
 

@@ -22,7 +22,6 @@ import {
 	getQuoteStatistics,
 } from "../api/quotes";
 import type {
-	Quote,
 	CreateQuoteInput,
 	UpdateQuoteInput,
 	CreateQuoteLineItemInput,

@@ -1,11 +1,5 @@
 import z from "zod";
-import type {
-	JobPriority,
-	JobStatus,
-	VisitStatus,
-	ArrivalConstraint,
-	FinishConstraint,
-} from "./jobs";
+import type { JobPriority, JobStatus, VisitStatus } from "./jobs";
 import type { Coordinates } from "./location";
 import type { JobVisit } from "./jobs";
 
@@ -33,9 +27,7 @@ export interface VisitTechnician {
 	visit: {
 		id: string;
 		job_id: string;
-
-		arrival_constraint: ArrivalConstraint;
-		finish_constraint: FinishConstraint;
+		schedule_type: string;
 		scheduled_start_at: Date;
 		scheduled_end_at: Date;
 		arrival_time?: string | null; // HH:MM
