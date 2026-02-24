@@ -1,10 +1,8 @@
-import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
-import { useRef, useState } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
-import FullPopup from "../ui/FullPopup";
-import DatePicker from "../ui/DatePicker";
 import { CreateTechnicianSchema, type CreateTechnicianInput } from "../../types/technicians";
+import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import DatePicker from "../ui/DatePicker";
 
 interface CreateTechnicianProps {
 	isModalOpen: boolean;
@@ -12,207 +10,200 @@ interface CreateTechnicianProps {
 	createTechnician: (input: CreateTechnicianInput) => Promise<string>;
 }
 
+const INPUT =
+	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+
 const CreateTechnician = ({
 	isModalOpen,
 	setIsModalOpen,
 	createTechnician,
 }: CreateTechnicianProps) => {
-	const nameRef = useRef<HTMLInputElement>(null);
-	const emailRef = useRef<HTMLInputElement>(null);
-	const phoneRef = useRef<HTMLInputElement>(null);
-	const passwordRef = useRef<HTMLInputElement>(null);
-	const titleRef = useRef<HTMLInputElement>(null);
-	const descriptionRef = useRef<HTMLTextAreaElement>(null);
-	const statusRef = useRef<HTMLSelectElement>(null);
+	const [name, setName] = useState("");
+	const [email, setEmail] = useState("");
+	const [phone, setPhone] = useState("");
+	const [title, setTitle] = useState("");
+	const [description, setDescription] = useState("");
+	const [status] = useState<CreateTechnicianInput["status"]>("Available");
 	const [hireDate, setHireDate] = useState<Date>(new Date());
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
 
-	const invokeCreate = async () => {
-		if (
-			nameRef.current &&
-			emailRef.current &&
-			phoneRef.current &&
-			passwordRef.current &&
-			titleRef.current &&
-			descriptionRef.current &&
-			statusRef.current &&
-			!isLoading
-		) {
-			const newTechnician: CreateTechnicianInput = {
-				name: nameRef.current.value.trim(),
-				email: emailRef.current.value.trim(),
-				phone: phoneRef.current.value.trim(),
-				password: passwordRef.current.value.trim(),
-				title: titleRef.current.value.trim(),
-				description: descriptionRef.current.value.trim(),
-				status: statusRef.current.value as CreateTechnicianInput["status"],
-				hire_date: hireDate,
-			};
+	const resetForm = useCallback(() => {
+		setName("");
+		setEmail("");
+		setPhone("");
+		setTitle("");
+		setDescription("");
+		setHireDate(new Date());
+		setErrors(null);
+	}, []);
 
-			const parseResult = CreateTechnicianSchema.safeParse(newTechnician);
-
-			if (!parseResult.success) {
-				setErrors(parseResult.error);
-				return;
-			}
-
-			setErrors(null);
-			setIsLoading(true);
-
-			await createTechnician(newTechnician);
-
+	useEffect(() => {
+		if (!isModalOpen) {
+			resetForm();
 			setIsLoading(false);
+		}
+	}, [isModalOpen, resetForm]);
+
+	const invokeCreate = async () => {
+		if (isLoading) return;
+
+		const newTechnician: CreateTechnicianInput = {
+			name: name.trim(),
+			email: email.trim(),
+			phone: phone.trim(),
+			password: "Password",
+			title: title.trim(),
+			description: description.trim(),
+			status,
+			hire_date: hireDate,
+		};
+
+		const parseResult = CreateTechnicianSchema.safeParse(newTechnician);
+		if (!parseResult.success) {
+			setErrors(parseResult.error);
+			return;
+		}
+
+		setErrors(null);
+		setIsLoading(true);
+		try {
+			await createTechnician(newTechnician);
 			setIsModalOpen(false);
+			resetForm();
+		} catch (error) {
+			console.error("Failed to create technician:", error);
+		} finally {
+			setIsLoading(false);
 		}
 	};
 
-	let nameErrors, emailErrors, phoneErrors, passwordErrors, titleErrors;
-	if (errors) {
-		nameErrors = errors.issues.filter((err) => err.path[0] == "name");
-		emailErrors = errors.issues.filter((err) => err.path[0] == "email");
-		phoneErrors = errors.issues.filter((err) => err.path[0] == "phone");
-		passwordErrors = errors.issues.filter((err) => err.path[0] == "password");
-		titleErrors = errors.issues.filter((err) => err.path[0] == "title");
-	}
-
-	const content = (
-		<>
-			<h2 className="text-2xl font-bold mb-4">Create New Technician</h2>
-
-			<p className="mb-1 hover:color-accent">Name</p>
-			<input
-				type="text"
-				placeholder="Full Name"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={nameRef}
-			/>
-			{nameErrors &&
-				nameErrors.map((err) => (
-					<h3 key={err.message} className="my-1 text-red-300">
+	const ErrorDisplay = ({ path }: { path: string }) => {
+		if (!errors) return null;
+		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
+		if (fieldErrors.length === 0) return null;
+		return (
+			<div className="mt-0.5">
+				{fieldErrors.map((err, idx) => (
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
-					</h3>
+					</p>
 				))}
+			</div>
+		);
+	};
 
-			<p className="mb-1 mt-3 hover:color-accent">Email</p>
-			<input
-				type="email"
-				placeholder="email@example.com"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={emailRef}
-			/>
-			{emailErrors &&
-				emailErrors.map((err) => (
-					<h3 key={err.message} className="my-1 text-red-300">
-						{err.message}
-					</h3>
-				))}
+	const isFormValid = useMemo(
+		() => !!(name.trim() && email.trim() && phone.trim() && title.trim()),
+		[name, email, phone, title]
+	);
 
-			<p className="mb-1 mt-3 hover:color-accent">Phone</p>
-			<input
-				type="tel"
-				placeholder="(555) 123-4567"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={phoneRef}
-			/>
-			{phoneErrors &&
-				phoneErrors.map((err) => (
-					<h3 key={err.message} className="my-1 text-red-300">
-						{err.message}
-					</h3>
-				))}
-
-			<p className="mb-1 mt-3 hover:color-accent">Password</p>
-			<input
-				type="password"
-				placeholder="Minimum 8 characters"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={passwordRef}
-			/>
-			{passwordErrors &&
-				passwordErrors.map((err) => (
-					<h3 key={err.message} className="my-1 text-red-300">
-						{err.message}
-					</h3>
-				))}
-
-			<p className="mb-1 mt-3 hover:color-accent">Title</p>
-			<input
-				type="text"
-				placeholder="e.g. Senior Technician"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={titleRef}
-			/>
-			{titleErrors &&
-				titleErrors.map((err) => (
-					<h3 key={err.message} className="my-1 text-red-300">
-						{err.message}
-					</h3>
-				))}
-
-			<p className="mb-1 mt-3 hover:color-accent">Description</p>
-			<textarea
-				placeholder="Brief description or notes..."
-				className="border border-zinc-800 p-2 w-full rounded-sm h-20 resize-none"
-				disabled={isLoading}
-				ref={descriptionRef}
-			/>
-
-			<div className="grid grid-cols-2 gap-4 mt-3">
-				<div>
-					<p className="mb-1 hover:color-accent">Status</p>
-					<select
-						className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
+	const formContent = useMemo(
+		() => (
+			<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+				{/* Name */}
+				<div className="min-w-0">
+					<label className={LABEL}>Full Name *</label>
+					<input
+						type="text"
+						placeholder="Full Name"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						className={INPUT}
 						disabled={isLoading}
-						ref={statusRef}
-						defaultValue="Offline"
-					>
-						<option value="Offline">Offline</option>
-						<option value="Available">Available</option>
-						<option value="Busy">Busy</option>
-						<option value="Break">Break</option>
-					</select>
+					/>
+					<ErrorDisplay path="name" />
 				</div>
-				<div>
-					<p className="mb-1 hover:color-accent">Hire Date</p>
-					<DatePicker value={hireDate} onChange={setHireDate} />
-				</div>
-			</div>
 
-			<div className="transition-all flex justify-end space-x-2 mt-4">
-				{isLoading ? (
-					<LoadSvg className="w-10 h-10" />
-				) : (
-					<>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
-							onClick={() => setIsModalOpen(false)}
-						>
-							<Button label="Cancel" />
-						</div>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all font-bold"
-							onClick={invokeCreate}
-						>
-							<Button label="Create" />
-						</div>
-					</>
-				)}
+				{/* Email + Phone */}
+				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+					<div className="min-w-0">
+						<label className={LABEL}>Email *</label>
+						<input
+							type="email"
+							placeholder="email@example.com"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
+						<ErrorDisplay path="email" />
+					</div>
+					<div className="min-w-0">
+						<label className={LABEL}>Phone *</label>
+						<input
+							type="tel"
+							placeholder="(555) 123-4567"
+							value={phone}
+							onChange={(e) => setPhone(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
+						<ErrorDisplay path="phone" />
+					</div>
+				</div>
+
+				{/* Title */}
+				<div className="min-w-0">
+					<label className={LABEL}>Title *</label>
+					<input
+						type="text"
+						placeholder="e.g. Senior Technician"
+						value={title}
+						onChange={(e) => setTitle(e.target.value)}
+						className={INPUT}
+						disabled={isLoading}
+					/>
+					<ErrorDisplay path="title" />
+				</div>
+
+				{/* Description */}
+				<div className="min-w-0">
+					<label className={LABEL}>Description</label>
+					<textarea
+						placeholder="Brief description or notes..."
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+						disabled={isLoading}
+					/>
+				</div>
+
+				{/* Hire Date — half width */}
+				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+					<div className="min-w-0">
+						<label className={LABEL}>Hire Date</label>
+						<DatePicker
+							value={hireDate}
+							onChange={(d) =>
+								setHireDate(d ?? new Date())
+							}
+							disabled={isLoading}
+							required
+						/>
+					</div>
+				</div>
 			</div>
-		</>
+		),
+		[name, email, phone, title, description, hireDate, isLoading, errors]
 	);
 
 	return (
-		<FullPopup
-			content={content}
-			isModalOpen={isModalOpen}
+		<FormWizardContainer
+			title="Create Technician"
+			steps={[]}
+			currentStep={1}
+			visitedSteps={new Set([1])}
+			isLoading={isLoading}
+			isOpen={isModalOpen}
 			onClose={() => setIsModalOpen(false)}
-		/>
+			onSubmit={invokeCreate}
+			canGoNext={isFormValid}
+			submitLabel="Create Technician"
+		>
+			{formContent}
+		</FormWizardContainer>
 	);
 };
 

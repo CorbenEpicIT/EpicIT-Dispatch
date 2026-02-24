@@ -39,7 +39,6 @@ export function FormWizardContainer<T extends number>({
 	canGoNext,
 	submitLabel,
 	children,
-	isEditMode = false,
 }: FormWizardContainerProps<T>) {
 	const scrollbarStyles = useMemo(
 		() => `
@@ -51,26 +50,41 @@ export function FormWizardContainer<T extends number>({
 		[]
 	);
 
-	const isNoSteps = steps.length === 0;
-	const isInlineLayout = steps.length > 0 && steps.length <= 3; // 3 steps: title + stepwizard inline
-	const isStackedLayout = steps.length >= 4; // 4+ steps: title on top, stepwizard beneath
-
 	const isFirstStep = currentStep === (1 as T);
-	const isLastStep = currentStep === steps[steps.length - 1]?.id;
+	const isLastStep = !steps.length || currentStep === steps[steps.length - 1]?.id;
 
-	const sharedStepWizard = (
-		<StepWizard
-			steps={steps}
-			currentStep={currentStep}
-			visitedSteps={visitedSteps}
-			isLoading={isLoading}
-			canGoToStep={canGoToStep}
-			onStepClick={onStepClick}
-			showNavigation={false}
-		/>
+	// ≤3 steps (or no steps): title + wizard side-by-side
+	// 4+ steps: title above wizard
+	const stacked = steps.length >= 4;
+
+	const header = (
+		<div
+			className={`px-4 sm:px-5 pt-4 pb-3 flex-shrink-0 ${
+				stacked
+					? "space-y-2"
+					: "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
+			}`}
+		>
+			<h2 className="text-lg sm:text-xl font-bold text-white whitespace-nowrap flex-shrink-0">
+				{title}
+			</h2>
+			{steps.length > 0 && (
+				<div className={stacked ? "w-full" : "flex-1 sm:max-w-[60%]"}>
+					<StepWizard
+						steps={steps}
+						currentStep={currentStep}
+						visitedSteps={visitedSteps}
+						isLoading={isLoading}
+						canGoToStep={canGoToStep}
+						onStepClick={onStepClick}
+						showNavigation={false}
+					/>
+				</div>
+			)}
+		</div>
 	);
 
-	const sharedFooter = (
+	const footer = (
 		<div className="flex items-center justify-between px-4 py-3 border-t border-zinc-700 bg-zinc-900/50 flex-shrink-0">
 			<div>
 				{!isFirstStep && onBack && (
@@ -129,62 +143,16 @@ export function FormWizardContainer<T extends number>({
 			isModalOpen={isOpen}
 			onClose={onClose}
 			content={
-				<div className="flex flex-col min-h-0 max-h-[92vh] ">
+				<div className="flex flex-col h-full min-h-0">
 					<style>{scrollbarStyles}</style>
-
-					{isNoSteps && (
-						<>
-							<div className="px-4 pt-4 pb-2 flex-shrink-0">
-								<h2 className="text-xl font-bold text-white whitespace-nowrap">
-									{title}
-								</h2>
-							</div>
-							<div className="border-t border-zinc-700 mx-4 flex-shrink-0" />
-							<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 py-3">
-								{children}
-							</div>
-							{sharedFooter}
-						</>
-					)}
-
-					{isInlineLayout && (
-						<>
-							{/* Header: title + step wizard inline */}
-							<div className="px-4 pt-4 pb-2 flex-shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-								<h2 className="text-xl font-bold text-white whitespace-nowrap">
-									{title}
-								</h2>
-								<div className="flex-1 sm:max-w-[60%]">
-									{sharedStepWizard}
-								</div>
-							</div>
-							<div className="border-t border-zinc-700 mx-4 flex-shrink-0" />
-							<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 py-3">
-								{children}
-							</div>
-							{sharedFooter}
-						</>
-					)}
-
-					{isStackedLayout && (
-						<>
-							{/* Header: title on its own row */}
-							<div className="px-4 pt-4 pb-2 flex-shrink-0">
-								<h2 className="text-xl font-bold text-white">
-									{title}
-								</h2>
-							</div>
-							{/* Step wizard beneath title */}
-							<div className="px-4 pb-2 flex-shrink-0">
-								{sharedStepWizard}
-							</div>
-							<div className="border-t border-zinc-700 mx-4 flex-shrink-0" />
-							<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 py-3">
-								{children}
-							</div>
-							{sharedFooter}
-						</>
-					)}
+					{header}
+					<div className="border-t border-zinc-700 mx-4 flex-shrink-0" />
+					<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+						<div className="px-4 py-3 sm:px-5 sm:py-4">
+							{children}
+						</div>
+					</div>
+					{footer}
 				</div>
 			}
 		/>
