@@ -4,15 +4,22 @@ import {
 	CreateJobSchema,
 	type CreateJobInput,
 	type CreateJobLineItemInput,
+	JobStatusColors,
 } from "../../types/jobs";
 import { type LineItemType, type Priority, PriorityValues } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
+import { useAllJobsQuery } from "../../hooks/useJobs";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import FinancialSummary from "../ui/forms/FinancialSummary";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+} from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
@@ -35,7 +42,7 @@ const PRIORITY_ENTRIES = (
 	<>
 		{PriorityValues.map((v) => (
 			<option key={v} value={v} className="text-black">
-				{v}
+				{v.charAt(0).toUpperCase() + v.slice(1)}
 			</option>
 		))}
 	</>
@@ -50,14 +57,18 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
-	const { data: clients } = useAllClientsQuery();
 
-	// Shared hooks
+	const [showTemplateSearch, setShowTemplateSearch] = useState(false);
+
+	const { data: clients } = useAllClientsQuery();
+	const { data: allJobs = [] } = useAllJobsQuery();
+
 	const {
 		activeLineItems,
 		addLineItem,
 		removeLineItem,
 		updateLineItem,
+		seedLineItems,
 		subtotal,
 		resetLineItems,
 		dirtyLineItemFields,
@@ -79,11 +90,21 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		discountAmount,
 		total,
 		reset: resetFinancials,
+		setOriginals: setFinancialOriginals,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
 	} = useFinancialCalculations(subtotal);
+
+	const {
+		currentStep,
+		visitedSteps,
+		goNext,
+		goBack,
+		goToStep,
+		reset: resetWizard,
+	} = useStepWizard<Step>({ totalSteps: 3 as Step, initialStep: 1 as Step });
 
 	const validateStep1 = useCallback((): boolean => {
 		return !!(
@@ -103,9 +124,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 			const hasType = (item.item_type?.trim?.() ?? "") !== "";
 			return hasAnyText || hasAnyNumbers || hasType;
 		});
-
 		if (meaningfulItems.length === 0) return true;
-
 		return meaningfulItems.every(
 			(item) =>
 				item.name.trim() &&
@@ -130,18 +149,6 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		[validateStep1, validateStep2]
 	);
 
-	const {
-		currentStep,
-		visitedSteps,
-		goNext,
-		goBack,
-		goToStep,
-		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 3 as Step,
-		initialStep: 1 as Step,
-	});
-
 	const canGoNext = validateStep(currentStep);
 
 	const canGoToStep = useCallback(
@@ -165,6 +172,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		resetLineItems();
 		resetFinancials();
 		setErrors(null);
+		setShowTemplateSearch(false);
 	}, [resetWizard, resetLineItems, resetFinancials]);
 
 	useEffect(() => {
@@ -174,14 +182,86 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		}
 	}, [isModalOpen, resetForm]);
 
-	const handleChangeAddress = (result: GeocodeResult) => {
+	const handleChangeAddress = (result: GeocodeResult) =>
 		setGeoData({ address: result.address, coords: result.coords });
-	};
-
 	const handleClearAddress = () => setGeoData(undefined);
 
+	const handleSelectTemplate = useCallback(
+		(jobId: string) => {
+			const source = allJobs.find((j) => j.id === jobId);
+			if (!source) return;
+
+			// Pre-fill basics
+			setName(source.name);
+			setDescription(source.description);
+			setPriority(source.priority as Priority);
+			if (source.address && source.coords) {
+				setGeoData({ address: source.address, coords: source.coords });
+			} else if (source.address) {
+				setGeoData({ address: source.address, coords: { lat: 0, lon: 0 } });
+			}
+
+			// Pre-fill line items
+			if (source.line_items?.length) {
+				seedLineItems(
+					source.line_items.map((li) => ({
+						name: li.name,
+						description: li.description ?? "",
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						item_type: li.item_type ?? "",
+					}))
+				);
+			} else {
+				resetLineItems();
+			}
+
+			// Pre-fill financials
+			setFinancialOriginals(
+				(source.tax_rate ?? 0) * 100,
+				source.discount_type ?? "amount",
+				source.discount_value ?? 0
+			);
+
+			setShowTemplateSearch(false);
+			goToStep(1 as Step);
+		},
+		[allJobs, seedLineItems, resetLineItems, setFinancialOriginals, goToStep]
+	);
+
+	const templateResults = useMemo((): TemplateSearchResult[] => {
+		return allJobs
+			.filter((j) => j.status !== "Cancelled")
+			.map((j) => ({
+				id: j.id,
+				title: j.name,
+				subtitle: j.job_number,
+				detail: j.description
+					? j.description.slice(0, 80) +
+						(j.description.length > 80 ? "…" : "")
+					: undefined,
+				badge: j.status,
+				badgeColor: JobStatusColors[
+					j.status as keyof typeof JobStatusColors
+				],
+				value:
+					j.estimated_total != null
+						? `$${Number(j.estimated_total).toFixed(2)}`
+						: undefined,
+				createdAt: new Date(j.created_at).toISOString(),
+				clientId: j.client_id,
+				clientName: j.client?.name,
+			}));
+	}, [allJobs]);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
+
+	// ── Client dropdown ────────────────────────────────────────────────────
 	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
+		if (clients?.length) {
 			return clients.map((c) => (
 				<option value={c.id} key={c.id}>
 					{c.name}
@@ -195,10 +275,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		);
 	}, [clients]);
 
+	// ── Submit ─────────────────────────────────────────────────────────────
 	const invokeCreate = async () => {
 		if (isLoading) return;
 
-		// Convert active line items into API shape (ignore empty items if any exist)
 		const preparedLineItems: CreateJobLineItemInput[] = activeLineItems
 			.filter((li) => li.name.trim() !== "" && li.quantity > 0)
 			.map((item) => ({
@@ -234,7 +314,6 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		if (!parseResult.success) {
 			setErrors(parseResult.error);
 			console.error("Validation errors:", parseResult.error);
-
 			const errorPaths = parseResult.error.issues.map((i) => i.path[0]);
 			if (
 				errorPaths.some((p) =>
@@ -274,9 +353,9 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
 		if (fieldErrors.length === 0) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -285,12 +364,23 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	};
 
 	const stepContent = useMemo(() => {
+		if (showTemplateSearch) {
+			return (
+				<TemplateSearch
+					results={templateResults}
+					clients={templateClients}
+					onSelect={handleSelectTemplate}
+					onClose={() => setShowTemplateSearch(false)}
+				/>
+			);
+		}
+
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Job Name *
 							</label>
 							<input
@@ -300,15 +390,15 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 								onChange={(e) =>
 									setName(e.target.value)
 								}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="name" />
 						</div>
 
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Client *
 								</label>
 								<Dropdown
@@ -333,8 +423,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 								<ErrorDisplay path="client_id" />
 							</div>
 
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Priority *
 								</label>
 								<Dropdown
@@ -358,8 +448,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							</div>
 						</div>
 
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description *
 							</label>
 							<textarea
@@ -370,26 +460,42 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 										e.target.value
 									)
 								}
-								className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
 						</div>
 
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Address *
 							</label>
-							<AddressForm
-								mode={geoData ? "edit" : "create"}
-								originalValue={
-									geoData?.address || ""
-								}
-								originalCoords={geoData?.coords}
-								dropdownPosition="above"
-								handleChange={handleChangeAddress}
-								handleClear={handleClearAddress}
-							/>
+							<div className="relative">
+								<AddressForm
+									mode={
+										geoData
+											? "edit"
+											: "create"
+									}
+									originalValue={
+										geoData?.address ||
+										""
+									}
+									originalCoords={
+										geoData?.coords
+									}
+									dropdownPosition="above"
+									handleChange={
+										handleChangeAddress
+									}
+									handleClear={
+										handleClearAddress
+									}
+								/>
+							</div>
 							<ErrorDisplay path="address" />
 							<ErrorDisplay path="coords" />
 						</div>
@@ -398,7 +504,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 			case 2:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
@@ -418,7 +524,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 			case 3:
 				return (
-					<div className="space-y-3 mt-2">
+					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						<FinancialSummary
 							subtotal={subtotal}
 							taxRate={taxRate}
@@ -444,6 +550,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 				return null;
 		}
 	}, [
+		showTemplateSearch,
+		templateResults,
+		templateClients,
+		handleSelectTemplate,
 		currentStep,
 		name,
 		clientId,
@@ -489,6 +599,9 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext}
 			submitLabel="Create Job"
+			onStartFromExisting={() => setShowTemplateSearch((v) => !v)}
+			hideStartFromExisting={showTemplateSearch}
+			fullHeightContent={showTemplateSearch}
 		>
 			{stepContent}
 		</FormWizardContainer>

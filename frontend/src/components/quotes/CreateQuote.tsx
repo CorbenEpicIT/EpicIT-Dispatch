@@ -7,6 +7,7 @@ import {
 	type CreateQuoteLineItemInput,
 } from "../../types/quotes";
 import { useAllClientsQuery } from "../../hooks/useClients";
+import { useAllQuotesQuery } from "../../hooks/useQuotes";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
@@ -15,9 +16,15 @@ import { type Priority, PriorityValues } from "../../types/common";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import FinancialSummary from "../ui/forms/FinancialSummary";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+} from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
+import { QuoteStatusColors } from "../../types/quotes";
 
 type Step = 1 | 2 | 3;
 
@@ -43,8 +50,13 @@ const PRIORITY_ENTRIES = (
 	</>
 );
 
+const INPUT =
+	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+
 const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuoteProps) => {
 	const navigate = useNavigate();
+
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
 	const [clientId, setClientId] = useState("");
@@ -52,25 +64,26 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [validUntilDate, setValidUntilDate] = useState<Date | null>(null);
 	const [expiresAtDate, setExpiresAtDate] = useState<Date | null>(null);
-
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
+
+	const [showTemplateSearch, setShowTemplateSearch] = useState(false);
+
 	const { data: clients } = useAllClientsQuery();
+	const { data: allQuotes = [] } = useAllQuotesQuery();
 
 	const {
 		activeLineItems,
 		addLineItem,
 		removeLineItem,
 		updateLineItem,
+		seedLineItems,
 		subtotal,
 		resetLineItems,
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-	} = useLineItems({
-		minItems: 1,
-		mode: "create",
-	});
+	} = useLineItems({ minItems: 1, mode: "create" });
 
 	const {
 		taxRate,
@@ -83,42 +96,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		discountAmount,
 		total,
 		reset: resetFinancials,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
+		setOriginals: setFinancialOriginals,
 	} = useFinancialCalculations(subtotal);
-
-	const validateStep1 = useCallback((): boolean => {
-		return !!(
-			title.trim() &&
-			clientId.trim() &&
-			description.trim() &&
-			geoData?.address
-		);
-	}, [title, clientId, description, geoData]);
-
-	const validateStep2 = useCallback((): boolean => {
-		return activeLineItems.every(
-			(item) => item.name.trim() && item.quantity > 0 && item.unit_price >= 0
-		);
-	}, [activeLineItems]);
-
-	const validateStep = useCallback(
-		(step: Step): boolean => {
-			switch (step) {
-				case 1:
-					return validateStep1();
-				case 2:
-					return validateStep2();
-				case 3:
-					return true;
-				default:
-					return true;
-			}
-		},
-		[validateStep1, validateStep2]
-	);
 
 	const {
 		currentStep,
@@ -127,10 +106,32 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		goBack,
 		goToStep,
 		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 3 as Step,
-		initialStep: 1 as Step,
-	});
+	} = useStepWizard<Step>({ totalSteps: 3 as Step, initialStep: 1 as Step });
+
+	const validateStep1 = useCallback(
+		() => !!(title.trim() && clientId.trim() && description.trim() && geoData?.address),
+		[title, clientId, description, geoData]
+	);
+
+	const validateStep2 = useCallback(
+		() =>
+			activeLineItems.every(
+				(item) =>
+					item.name.trim() &&
+					item.quantity > 0 &&
+					item.unit_price >= 0
+			),
+		[activeLineItems]
+	);
+
+	const validateStep = useCallback(
+		(step: Step): boolean => {
+			if (step === 1) return validateStep1();
+			if (step === 2) return validateStep2();
+			return true;
+		},
+		[validateStep1, validateStep2]
+	);
 
 	const canGoNext = validateStep(currentStep);
 
@@ -157,6 +158,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		resetLineItems();
 		resetFinancials();
 		setErrors(null);
+		setShowTemplateSearch(false);
 	}, [resetWizard, resetLineItems, resetFinancials]);
 
 	useEffect(() => {
@@ -166,19 +168,85 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		}
 	}, [isModalOpen, resetForm]);
 
-	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData({
-			address: result.address,
-			coords: result.coords,
-		});
-	};
+	const handleChangeAddress = (result: GeocodeResult) =>
+		setGeoData({ address: result.address, coords: result.coords });
+	const handleClearAddress = () => setGeoData(undefined);
 
-	const handleClearAddress = () => {
-		setGeoData(undefined);
-	};
+	const handleSelectTemplate = useCallback(
+		(quoteId: string) => {
+			const source = allQuotes.find((q) => q.id === quoteId);
+			if (!source) return;
+
+			// Pre-fill basics
+			setTitle(source.title);
+			setDescription(source.description);
+			setPriority(source.priority as Priority);
+			if (source.address && source.coords) {
+				setGeoData({ address: source.address, coords: source.coords });
+			} else if (source.address) {
+				setGeoData({ address: source.address, coords: { lat: 0, lon: 0 } });
+			}
+
+			// Pre-fill line items
+			if (source.line_items?.length) {
+				seedLineItems(
+					source.line_items.map((li) => ({
+						name: li.name,
+						description: li.description ?? "",
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						item_type: li.item_type ?? "",
+					}))
+				);
+			} else {
+				resetLineItems();
+			}
+
+			// Pre-fill financials
+			setFinancialOriginals(
+				(source.tax_rate ?? 0) * 100,
+				source.discount_type ?? "amount",
+				source.discount_value ?? 0
+			);
+
+			setShowTemplateSearch(false);
+			goToStep(1 as Step);
+		},
+		[allQuotes, seedLineItems, resetLineItems, setFinancialOriginals, goToStep]
+	);
+
+	const templateResults = useMemo((): TemplateSearchResult[] => {
+		return allQuotes
+			.filter((q) => q.is_active)
+			.map((q) => ({
+				id: q.id,
+				title: q.title,
+				subtitle: q.quote_number,
+				detail: q.description
+					? q.description.slice(0, 80) +
+						(q.description.length > 80 ? "…" : "")
+					: undefined,
+				badge: q.status,
+				badgeColor: QuoteStatusColors[
+					q.status as keyof typeof QuoteStatusColors
+				],
+				value:
+					q.total != null
+						? `$${Number(q.total).toFixed(2)}`
+						: undefined,
+				createdAt: new Date(q.created_at).toISOString(),
+				clientId: q.client_id,
+				clientName: q.client?.name,
+			}));
+	}, [allQuotes]);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
 
 	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
+		if (clients?.length) {
 			return clients.map((c) => (
 				<option value={c.id} key={c.id}>
 					{c.name}
@@ -227,10 +295,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		};
 
 		const parseResult = CreateQuoteSchema.safeParse(newQuote);
-
 		if (!parseResult.success) {
 			setErrors(parseResult.error);
-			console.error("Validation errors:", parseResult.error);
 			const errorPaths = parseResult.error.issues.map((i) => i.path[0]);
 			if (
 				errorPaths.some((p) =>
@@ -253,7 +319,6 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 
 		setErrors(null);
 		setIsLoading(true);
-
 		try {
 			const quoteId = await createQuote(newQuote);
 			setIsModalOpen(false);
@@ -269,11 +334,11 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
-		if (fieldErrors.length === 0) return null;
+		if (!fieldErrors.length) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -282,14 +347,23 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 	};
 
 	const stepContent = useMemo(() => {
+		if (showTemplateSearch) {
+			return (
+				<TemplateSearch
+					results={templateResults}
+					clients={templateClients}
+					onSelect={handleSelectTemplate}
+					onClose={() => setShowTemplateSearch(false)}
+				/>
+			);
+		}
+
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
-								Title *
-							</label>
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						<div className="min-w-0">
+							<label className={LABEL}>Title *</label>
 							<input
 								type="text"
 								placeholder="Quote Title"
@@ -297,15 +371,15 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 								onChange={(e) =>
 									setTitle(e.target.value)
 								}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+								className={INPUT}
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="title" />
 						</div>
 
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className={LABEL}>
 									Client *
 								</label>
 								<Dropdown
@@ -313,11 +387,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 										clientDropdownEntries
 									}
 									value={clientId}
-									onChange={(newValue) =>
-										setClientId(
-											newValue
-										)
-									}
+									onChange={setClientId}
 									placeholder="Select client"
 									disabled={isLoading}
 									error={errors?.issues.some(
@@ -329,20 +399,19 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 								/>
 								<ErrorDisplay path="client_id" />
 							</div>
-
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className={LABEL}>
 									Priority
 								</label>
 								<Dropdown
 									entries={PRIORITY_ENTRIES}
 									value={priority}
-									onChange={(newValue) =>
+									onChange={(v) =>
 										setPriority(
-											newValue as Priority
+											v as Priority
 										)
 									}
-									defaultValue="medium"
+									defaultValue="Medium"
 									disabled={isLoading}
 									error={errors?.issues.some(
 										(e) =>
@@ -355,8 +424,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							</div>
 						</div>
 
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className={LABEL}>
 								Description *
 							</label>
 							<textarea
@@ -367,16 +436,17 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 										e.target.value
 									)
 								}
-								className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
 						</div>
 
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
-								Address *
-							</label>
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className={LABEL}>Address *</label>
 							<AddressForm
 								mode={geoData ? "edit" : "create"}
 								originalValue={
@@ -395,7 +465,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 
 			case 2:
 				return (
-					<div className="space-y-3">
+					<div className="space-y-2 min-w-0 pt-2">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
@@ -415,7 +485,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 
 			case 3:
 				return (
-					<div className="space-y-3 mt-2">
+					<div className="space-y-3 min-w-0 pt-2">
 						<FinancialSummary
 							subtotal={subtotal}
 							taxRate={taxRate}
@@ -425,21 +495,17 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							discountAmount={discountAmount}
 							total={total}
 							isLoading={isLoading}
+							mode="create"
 							onTaxRateChange={setTaxRate}
 							onDiscountTypeChange={setDiscountType}
 							onDiscountValueChange={setDiscountValue}
 							totalLabel="Total"
-							isTaxDirty={isTaxDirty}
-							isDiscountDirty={isDiscountDirty}
-							onTaxUndo={undoTax}
-							onDiscountUndo={undoDiscount}
 						/>
-
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div>
-								<p className="mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className={LABEL}>
 									Valid Until (Optional)
-								</p>
+								</label>
 								<DatePicker
 									mode="create"
 									value={validUntilDate}
@@ -448,11 +514,10 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 									position="above"
 								/>
 							</div>
-
-							<div>
-								<p className="mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className={LABEL}>
 									Expires At (Optional)
-								</p>
+								</label>
 								<DatePicker
 									mode="create"
 									value={expiresAtDate}
@@ -469,6 +534,10 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 				return null;
 		}
 	}, [
+		showTemplateSearch,
+		templateResults,
+		templateClients,
+		handleSelectTemplate,
 		currentStep,
 		title,
 		clientId,
@@ -494,10 +563,6 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		total,
 		validUntilDate,
 		expiresAtDate,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
 	]);
 
 	return (
@@ -516,6 +581,9 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext}
 			submitLabel="Create Quote"
+			onStartFromExisting={() => setShowTemplateSearch((v) => !v)}
+			hideStartFromExisting={showTemplateSearch}
+			fullHeightContent={showTemplateSearch}
 		>
 			{stepContent}
 		</FormWizardContainer>

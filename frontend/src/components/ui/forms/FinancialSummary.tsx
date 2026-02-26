@@ -14,6 +14,8 @@ interface FinancialSummaryProps {
 	onDiscountTypeChange: (type: "percent" | "amount") => void;
 	onDiscountValueChange: (value: number) => void;
 	totalLabel?: string;
+
+	mode?: "create" | "edit";
 	isTaxDirty?: boolean;
 	isDiscountDirty?: boolean;
 	onTaxUndo?: () => void;
@@ -33,6 +35,7 @@ const FinancialSummary = ({
 	onDiscountTypeChange,
 	onDiscountValueChange,
 	totalLabel = "Total Amount",
+	mode = "create",
 	isTaxDirty = false,
 	isDiscountDirty = false,
 	onTaxUndo,
@@ -41,7 +44,9 @@ const FinancialSummary = ({
 	const [taxDisplay, setTaxDisplay] = useState(String(taxRate));
 	const [discountDisplay, setDiscountDisplay] = useState(String(discountValue));
 
-	// Sync local state with props
+	const showDirty = mode === "edit";
+
+	// Sync display state when props change externally (undo, reset, template pre-fill)
 	useEffect(() => {
 		setTaxDisplay(String(taxRate));
 	}, [taxRate]);
@@ -62,9 +67,12 @@ const FinancialSummary = ({
 		if (val !== "") onDiscountValueChange(parseFloat(val) || 0);
 	};
 
+	const taxRowDirty = showDirty && isTaxDirty;
+	const discountRowDirty = showDirty && isDiscountDirty;
+
 	return (
 		<div className="relative w-full bg-zinc-900 rounded-lg border border-zinc-700 shadow-xl overflow-hidden">
-			{/* Loading Overlay */}
+			{/* Loading overlay */}
 			{isLoading && (
 				<div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
 					<div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -73,11 +81,9 @@ const FinancialSummary = ({
 
 			{/* Header */}
 			<div className="flex items-center justify-between px-3 py-2 bg-zinc-800 border-b border-zinc-700">
-				<div className="flex items-center gap-2">
-					<h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">
-						Financial Summary
-					</h3>
-				</div>
+				<h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">
+					Financial Summary
+				</h3>
 				<div className="text-right">
 					<span className="text-[10px] text-zinc-500 uppercase font-semibold block leading-none">
 						Subtotal
@@ -92,7 +98,11 @@ const FinancialSummary = ({
 			<div className="p-2 space-y-2">
 				{/* Tax Row */}
 				<div
-					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${isTaxDirty ? "bg-blue-500/5 border-l-2 border-l-blue-500" : "hover:bg-zinc-800/30"}`}
+					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
+						taxRowDirty
+							? "bg-blue-500/5 border-l-2 border-l-blue-500"
+							: "hover:bg-zinc-800/30"
+					}`}
 				>
 					<div className="flex items-center gap-3 flex-1">
 						<div className="relative flex items-center">
@@ -126,24 +136,22 @@ const FinancialSummary = ({
 								%
 							</span>
 						</div>
-
 						<div className="flex flex-col">
 							<span className="text-xs font-medium text-zinc-300">
 								Tax Rate
 							</span>
-							{isTaxDirty && (
-								<span className="text-[10px] text-blue-400 font-medium animate-pulse">
-									Unsaved changes
+							{taxRowDirty && (
+								<span className="text-[10px] text-blue-400 font-medium">
+									Modified
 								</span>
 							)}
 						</div>
 					</div>
-
 					<div className="flex items-center gap-3">
 						<span className="text-sm font-mono text-zinc-300 tabular-nums w-20 text-right">
 							${taxAmount.toFixed(2)}
 						</span>
-						{isTaxDirty && onTaxUndo && (
+						{taxRowDirty && onTaxUndo && (
 							<button
 								type="button"
 								onClick={onTaxUndo}
@@ -158,11 +166,14 @@ const FinancialSummary = ({
 
 				{/* Discount Row */}
 				<div
-					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${isDiscountDirty ? "bg-blue-500/5 border-l-2 border-l-blue-500" : "hover:bg-zinc-800/30"}`}
+					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
+						discountRowDirty
+							? "bg-blue-500/5 border-l-2 border-l-blue-500"
+							: "hover:bg-zinc-800/30"
+					}`}
 				>
 					<div className="flex items-center gap-3 flex-1">
 						<div className="flex items-center bg-zinc-950 rounded border border-zinc-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all h-7">
-							{/* Toggle Type Button */}
 							<button
 								type="button"
 								onClick={() =>
@@ -180,7 +191,6 @@ const FinancialSummary = ({
 									? "$"
 									: "%"}
 							</button>
-
 							<input
 								type="number"
 								step="0.01"
@@ -208,24 +218,22 @@ const FinancialSummary = ({
 								disabled={isLoading}
 							/>
 						</div>
-
 						<div className="flex flex-col">
 							<span className="text-xs font-medium text-zinc-300">
 								Discount
 							</span>
-							{isDiscountDirty && (
-								<span className="text-[10px] text-blue-400 font-medium animate-pulse">
-									Unsaved changes
+							{discountRowDirty && (
+								<span className="text-[10px] text-blue-400 font-medium">
+									Modified
 								</span>
 							)}
 						</div>
 					</div>
-
 					<div className="flex items-center gap-3">
 						<span className="text-sm font-mono text-emerald-400/90 tabular-nums w-20 text-right">
 							-${discountAmount.toFixed(2)}
 						</span>
-						{isDiscountDirty && onDiscountUndo && (
+						{discountRowDirty && onDiscountUndo && (
 							<button
 								type="button"
 								onClick={onDiscountUndo}
@@ -244,11 +252,9 @@ const FinancialSummary = ({
 				<span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
 					{totalLabel}
 				</span>
-				<div className="flex items-center gap-2">
-					<span className="text-lg font-bold text-white font-mono tabular-nums tracking-tight">
-						${total.toFixed(2)}
-					</span>
-				</div>
+				<span className="text-lg font-bold text-white font-mono tabular-nums tracking-tight">
+					${total.toFixed(2)}
+				</span>
 			</div>
 		</div>
 	);

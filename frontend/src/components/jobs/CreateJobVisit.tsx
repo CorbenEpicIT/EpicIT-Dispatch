@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
-import { CreateJobVisitSchema, type CreateJobVisitInput, type JobVisit } from "../../types/jobs";
+import {
+	CreateJobVisitSchema,
+	type CreateJobVisitInput,
+	type JobVisit,
+	VisitStatusColors,
+} from "../../types/jobs";
 import { type LineItemType } from "../../types/common";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
+import { useAllJobVisitsQuery } from "../../hooks/useJobs";
+import { useAllClientsQuery } from "../../hooks/useClients";
 import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -10,6 +17,12 @@ import LineItemsSection from "../ui/forms/LineItemsSection";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import { createStepRouter } from "../../hooks/forms/useZodStepRouting";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+	type TemplateSearchScopeToggle,
+} from "../ui/forms/TemplateSearch";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -58,7 +71,12 @@ const CreateJobVisit = ({
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
 
+	const [showTemplateSearch, setShowTemplateSearch] = useState(false);
+	const [visitScope, setVisitScope] = useState<"this-job" | "any-job">("this-job");
+
 	const { data: technicians } = useAllTechniciansQuery();
+	const { data: allVisits = [] } = useAllJobVisitsQuery();
+	const { data: clients } = useAllClientsQuery();
 
 	const [timeConstraintsState, setTimeConstraintsState] =
 		useState<TimeConstraintsState | null>(null);
@@ -170,6 +188,8 @@ const CreateJobVisit = ({
 			setSelectedTechIds([]);
 			setTimeConstraintsState(null);
 			setErrors(null);
+			setShowTemplateSearch(false);
+			setVisitScope("this-job");
 			wizard.reset();
 			lineItems.resetLineItems();
 			setIsLoading(false);
@@ -192,6 +212,84 @@ const CreateJobVisit = ({
 		},
 		[canGoToStep, wizard]
 	);
+
+	const handleTemplateSelect = useCallback(
+		(visitId: string) => {
+			const source = allVisits.find((v) => v.id === visitId);
+			if (!source) return;
+
+			// Pre-fill name and description
+			setName(source.name ?? "");
+			setDescription(source.description ?? "");
+
+			// Pre-fill line items atomically
+			if (source.line_items?.length) {
+				lineItems.seedLineItems(
+					source.line_items.map((li) => ({
+						name: li.name,
+						description: li.description ?? "",
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						item_type: li.item_type ?? "",
+					}))
+				);
+			} else {
+				lineItems.resetLineItems();
+			}
+			// Time constraints and tech assignments intentionally NOT copied
+			setShowTemplateSearch(false);
+			wizard.goToStep(1 as Step);
+		},
+		[allVisits, lineItems, wizard]
+	);
+
+	const templateResults = useMemo((): TemplateSearchResult[] => {
+		const source =
+			visitScope === "this-job"
+				? allVisits.filter((v) => v.job_id === jobId)
+				: allVisits;
+
+		return source
+			.filter((v) => v.status !== "Cancelled")
+			.map((v) => ({
+				id: v.id,
+				title: v.name ?? "",
+				subtitle:
+					visitScope === "any-job" && v.job?.job_number
+						? v.job.job_number
+						: undefined,
+				detail: v.description
+					? v.description.slice(0, 80) +
+						(v.description.length > 80 ? "…" : "")
+					: undefined,
+				badge: v.status,
+				badgeColor: VisitStatusColors[
+					v.status as keyof typeof VisitStatusColors
+				],
+				createdAt:
+					v.created_at != null
+						? new Date(v.created_at).toISOString()
+						: undefined,
+			}));
+	}, [allVisits, visitScope, jobId]);
+
+	const scopeToggle: TemplateSearchScopeToggle = useMemo(
+		() => ({
+			thisLabel: "This Job",
+			anyLabel: "Any Job",
+			isThisScope: visitScope === "this-job",
+			onToggle: () =>
+				setVisitScope((prev) =>
+					prev === "this-job" ? "any-job" : "this-job"
+				),
+		}),
+		[visitScope]
+	);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
 
 	const invokeCreate = useCallback(async () => {
 		if (isLoading) return;
@@ -355,6 +453,21 @@ const CreateJobVisit = ({
 	);
 
 	const stepContent = useMemo(() => {
+		if (showTemplateSearch) {
+			return (
+				<TemplateSearch
+					heading="Start from existing visit"
+					placeholder="Search by name or description..."
+					results={templateResults}
+					clients={templateClients}
+					isLoading={false}
+					onSelect={handleTemplateSelect}
+					onClose={() => setShowTemplateSearch(false)}
+					scopeToggle={scopeToggle}
+				/>
+			);
+		}
+
 		switch (wizard.currentStep) {
 			case 1:
 				return (
@@ -546,6 +659,11 @@ const CreateJobVisit = ({
 				return null;
 		}
 	}, [
+		showTemplateSearch,
+		templateResults,
+		templateClients,
+		handleTemplateSelect,
+		scopeToggle,
 		wizard.currentStep,
 		preselectedTechId,
 		name,
@@ -576,6 +694,9 @@ const CreateJobVisit = ({
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext}
 			submitLabel="Create Visit"
+			fullHeightContent={showTemplateSearch}
+			onStartFromExisting={() => setShowTemplateSearch((v) => !v)}
+			hideStartFromExisting={showTemplateSearch}
 		>
 			{stepContent}
 		</FormWizardContainer>

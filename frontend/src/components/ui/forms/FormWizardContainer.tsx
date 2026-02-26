@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import FullPopup from "../FullPopup";
 import StepWizard from "./StepWizard";
 import type { FormStep } from "../../../types/common";
@@ -21,6 +21,11 @@ interface FormWizardContainerProps<T extends number> {
 	submitLabel?: string;
 	children: React.ReactNode;
 	isEditMode?: boolean;
+	//Next 4: Template search handling
+	fullHeightContent?: boolean;
+	onStartFromExisting?: () => void;
+	startFromExistingLabel?: string;
+	hideStartFromExisting?: boolean;
 }
 
 export function FormWizardContainer<T extends number>({
@@ -39,6 +44,10 @@ export function FormWizardContainer<T extends number>({
 	canGoNext,
 	submitLabel,
 	children,
+	onStartFromExisting,
+	startFromExistingLabel = "Start from existing",
+	hideStartFromExisting = false,
+	fullHeightContent = false,
 }: FormWizardContainerProps<T>) {
 	const scrollbarStyles = useMemo(
 		() => `
@@ -85,8 +94,8 @@ export function FormWizardContainer<T extends number>({
 	);
 
 	const footer = (
-		<div className="flex items-center justify-between px-4 py-3 border-t border-zinc-700 bg-zinc-900/50 flex-shrink-0">
-			<div>
+		<div className="flex items-center justify-between px-4 pt-3 pb-4 border-t border-zinc-700 bg-zinc-900 flex-shrink-0">
+			<div className="flex-1 flex justify-start">
 				{!isFirstStep && onBack && (
 					<button
 						type="button"
@@ -99,7 +108,22 @@ export function FormWizardContainer<T extends number>({
 					</button>
 				)}
 			</div>
-			<div className="flex items-center gap-2">
+
+			<div className="flex-1 flex justify-center">
+				{onStartFromExisting && !hideStartFromExisting && (
+					<button
+						type="button"
+						onClick={onStartFromExisting}
+						disabled={isLoading}
+						className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 rounded transition-colors disabled:opacity-50"
+					>
+						<History size={13} />
+						{startFromExistingLabel}
+					</button>
+				)}
+			</div>
+
+			<div className="flex-1 flex justify-end items-center gap-2">
 				<button
 					type="button"
 					onClick={onClose}
@@ -143,14 +167,22 @@ export function FormWizardContainer<T extends number>({
 			isModalOpen={isOpen}
 			onClose={onClose}
 			content={
-				<div className="flex flex-col h-full min-h-0">
+				<div className="flex flex-col min-h-0 flex-1">
 					<style>{scrollbarStyles}</style>
 					{header}
 					<div className="border-t border-zinc-700 mx-4 flex-shrink-0" />
-					<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
-						<div className="px-4 py-3 sm:px-5 sm:py-4">
-							{children}
-						</div>
+					<div
+						className={`flex-1 min-h-0 ${fullHeightContent ? "flex flex-col" : "overflow-y-auto overflow-x-hidden custom-scrollbar"}`}
+					>
+						{fullHeightContent ? (
+							<div className="px-4 sm:px-5 pt-3 sm:pt-4 flex flex-col min-h-0">
+								{children}
+							</div>
+						) : (
+							<div className="px-4 pt-3 sm:px-5 sm:pt-4 pb-4">
+								{children}
+							</div>
+						)}
 					</div>
 					{footer}
 				</div>
