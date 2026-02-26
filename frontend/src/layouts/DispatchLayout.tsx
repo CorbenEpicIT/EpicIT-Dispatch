@@ -30,26 +30,28 @@ export default function DispatchLayout() {
 	}, [location.pathname]);
 
 	const handleBack = () => {
-		// If user has navigated within the app, use browser back
-		if (navigationCount.current > 1) {
-			navigate(-1);
-		} else {
-			// Otherwise, go to a sensible default based on current page
-			const path = location.pathname;
+		const path = location.pathname;
 
-			if (path.includes("/technicians/")) {
-				navigate("/dispatch/technicians");
-			} else if (path.includes("/clients/")) {
-				navigate("/dispatch/clients");
-			} else if (path.includes("/jobs/")) {
-				navigate("/dispatch/jobs");
-			} else if (path.includes("/quotes/")) {
-				navigate("/dispatch/quotes");
-			} else if (path.includes("/inventory/")) {
-				navigate("/dispatch/inventory");
-			} else {
-				navigate("/dispatch");
-			}
+		// Only use browser back if we've navigated internally more than once
+		// AND the history stack has a safe entry to return to
+		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+		if (navigationCount.current > 1 && historyIdx > 0) {
+			navigate(-1);
+			return;
+		}
+
+		if (path.includes("/technicians/")) {
+			navigate("/dispatch/technicians");
+		} else if (path.includes("/clients/")) {
+			navigate("/dispatch/clients");
+		} else if (path.includes("/jobs/")) {
+			navigate("/dispatch/jobs");
+		} else if (path.includes("/quotes/")) {
+			navigate("/dispatch/quotes");
+		} else if (path.includes("/inventory/")) {
+			navigate("/dispatch/inventory");
+		} else {
+			navigate("/dispatch");
 		}
 	};
 
