@@ -66,19 +66,9 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	const [endDate, setEndDate] = useState<Date | null>(null);
 
 	const [autoInvoice, setAutoInvoice] = useState<boolean>(false);
-	const [lineItems, setLineItems] = useState<LineItem[]>([
-		{
-			id: crypto.randomUUID(),
-			name: "",
-			description: "",
-			quantity: 1,
-			unit_price: 0,
-			item_type: "",
-			total: 0,
-		},
-	]);
+	const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
-	const [frequency, setFrequency] = useState<RecurringFrequency>("weekly");
+	const [frequency, setFrequency] = useState<RecurringFrequency>("daily");
 	const [interval, setInterval] = useState<number>(1);
 	const [selectedWeekdays, setSelectedWeekdays] = useState<Weekday[]>([]);
 	const [monthDay, setMonthDay] = useState<number | "">("");
@@ -115,6 +105,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		}));
 	};
 
+	const handleClearAddress = () => {
+		setGeoData(undefined);
+	};
+
 	const addLineItem = () => {
 		setLineItems([
 			...lineItems,
@@ -131,9 +125,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	};
 
 	const removeLineItem = (id: string) => {
-		if (lineItems.length > 1) {
-			setLineItems(lineItems.filter((item) => item.id !== id));
-		}
+		setLineItems(lineItems.filter((item) => item.id !== id));
 	};
 
 	const updateLineItem = (id: string, field: keyof LineItem, value: string | number) => {
@@ -193,22 +185,15 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			const billingModeValue = billingModeRef.current.value.trim();
 			const invoiceTimingValue = invoiceTimingRef.current.value.trim();
 
-			if (!geoData?.address || !geoData?.coords) {
-				setErrors({
-					issues: [
-						{
-							path: ["address"],
-							message: "Address with coordinates is required",
-						},
-					],
-				} as any);
-				return;
-			}
-
 			const startsAtValue = startDate.toISOString();
 			const endsAtValue = endDate ? endDate.toISOString() : undefined;
 
-			const preparedLineItems = lineItems.map((item, index) => ({
+			// Filter out empty line items
+			const validLineItems = lineItems.filter(
+				(item) => item.name.trim() !== "" && item.quantity > 0
+			);
+
+			const preparedLineItems = validLineItems.map((item, index) => ({
 				name: item.name,
 				description: item.description || undefined,
 				quantity: Number(item.quantity),
@@ -251,8 +236,8 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			const newRecurringPlan: CreateRecurringPlanInput = {
 				name: nameValue,
 				client_id: clientValue,
-				address: geoData.address,
-				coords: geoData.coords,
+				address: geoData?.address || "",
+				coords: geoData?.coords,
 				description: descValue,
 				priority: priorityValue as
 					| "Low"
@@ -302,18 +287,8 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 				setStartDate(new Date());
 				setEndDate(null);
 				setAutoInvoice(false);
-				setLineItems([
-					{
-						id: crypto.randomUUID(),
-						name: "",
-						description: "",
-						quantity: 1,
-						unit_price: 0,
-						item_type: "",
-						total: 0,
-					},
-				]);
-				setFrequency("weekly");
+				setLineItems([]);
+				setFrequency("daily");
 				setInterval(1);
 				setSelectedWeekdays([]);
 				setMonthDay("");
@@ -340,35 +315,32 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		}
 	};
 
-	// Error extraction
-	let nameErrors,
-		addressErrors,
-		clientErrors,
-		descriptionErrors,
-		lineItemErrors,
-		ruleErrors,
-		startsAtErrors;
-	if (errors) {
-		nameErrors = errors.issues.filter((err) => err.path[0] === "name");
-		addressErrors = errors.issues.filter((err) => err.path[0] === "address");
-		clientErrors = errors.issues.filter((err) => err.path[0] === "client_id");
-		descriptionErrors = errors.issues.filter((err) => err.path[0] === "description");
-		lineItemErrors = errors.issues.filter((err) => err.path[0] === "line_items");
-		ruleErrors = errors.issues.filter((err) => err.path[0] === "rule");
-		startsAtErrors = errors.issues.filter((err) => err.path[0] === "starts_at");
-	}
+	const ErrorDisplay = ({ path }: { path: string }) => {
+		if (!errors) return null;
+		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
+		if (fieldErrors.length === 0) return null;
+		return (
+			<div className="mt-1 space-y-1">
+				{fieldErrors.map((err, idx) => (
+					<p key={idx} className="text-red-300 text-sm">
+						{err.message}
+					</p>
+				))}
+			</div>
+		);
+	};
 
 	const dropdownEntries =
 		clients && clients.length ? (
 			<>
 				{clients.map((c) => (
-					<option value={c.id} key={c.id}>
+					<option value={c.id} key={c.id} className="text-black">
 						{c.name}
 					</option>
 				))}
 			</>
 		) : (
-			<option disabled selected value={""}>
+			<option disabled selected value={""} className="text-black">
 				No clients found
 			</option>
 		);
@@ -417,37 +389,20 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								disabled={isLoading}
 								ref={nameRef}
 							/>
-							{nameErrors &&
-								nameErrors.map((err) => (
-									<p
-										key={err.message}
-										className="mt-1 text-red-300 text-sm"
-									>
-										{err.message}
-									</p>
-								))}
+							<ErrorDisplay path="name" />
 						</div>
 
 						<div>
 							<label className="text-sm text-zinc-300 mb-1 block">
 								Client *
 							</label>
-							<Dropdown
-								refToApply={clientRef}
-								entries={dropdownEntries}
-								disabled={isLoading}
-								required
-								aria-label="Select client"
-							/>
-							{clientErrors &&
-								clientErrors.map((err) => (
-									<p
-										key={err.message}
-										className="mt-1 text-red-300 text-sm"
-									>
-										{err.message}
-									</p>
-								))}
+							<div className="border border-zinc-700 rounded-sm">
+								<Dropdown
+									refToApply={clientRef}
+									entries={dropdownEntries}
+								/>
+							</div>
+							<ErrorDisplay path="client_id" />
 						</div>
 
 						<div>
@@ -460,15 +415,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								disabled={isLoading}
 								ref={descRef}
 							/>
-							{descriptionErrors &&
-								descriptionErrors.map((err) => (
-									<p
-										key={err.message}
-										className="mt-1 text-red-300 text-sm"
-									>
-										{err.message}
-									</p>
-								))}
+							<ErrorDisplay path="description" />
 						</div>
 
 						<div>
@@ -476,48 +423,47 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								Address *
 							</label>
 							<AddressForm
+								mode="create"
 								handleChange={handleChangeAddress}
+								handleClear={handleClearAddress}
 							/>
-							{addressErrors &&
-								addressErrors.map((err) => (
-									<p
-										key={err.message}
-										className="mt-1 text-red-300 text-sm"
-									>
-										{err.message}
-									</p>
-								))}
+							<ErrorDisplay path="address" />
+							<ErrorDisplay path="coords" />
 						</div>
 
 						<div>
 							<label className="text-sm text-zinc-300 mb-1 block">
 								Priority
 							</label>
-							<Dropdown
-								refToApply={priorityRef}
-								entries={
-									<>
-										{JobPriorityValues.map(
-											(v) => (
-												<option
-													key={
-														v
-													}
-													value={
-														v
-													}
-												>
-													{
-														v
-													}
-												</option>
-											)
-										)}
-									</>
-								}
-								disabled={isLoading}
-								aria-label="Select priority"
-							/>
+							<div className="border border-zinc-700 rounded-sm">
+								<Dropdown
+									refToApply={priorityRef}
+									entries={
+										<>
+											{JobPriorityValues.map(
+												(
+													v
+												) => (
+													<option
+														key={
+															v
+														}
+														value={
+															v
+														}
+														className="text-black"
+													>
+														{
+															v
+														}
+													</option>
+												)
+											)}
+										</>
+									}
+								/>
+							</div>
+							<ErrorDisplay path="priority" />
 						</div>
 					</div>
 
@@ -534,6 +480,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										Start Date *
 									</label>
 									<DatePicker
+										mode="create"
 										value={startDate}
 										onChange={(date) =>
 											setStartDate(
@@ -543,21 +490,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										}
 										align="left"
 									/>
-									{startsAtErrors &&
-										startsAtErrors.map(
-											(err) => (
-												<p
-													key={
-														err.message
-													}
-													className="mt-1 text-red-300 text-xs"
-												>
-													{
-														err.message
-													}
-												</p>
-											)
-										)}
+									<ErrorDisplay path="starts_at" />
 								</div>
 
 								<div>
@@ -565,12 +498,14 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										End Date (Optional)
 									</label>
 									<DatePicker
+										mode="create"
 										value={endDate}
 										onChange={
 											setEndDate
 										}
 										align="right"
 									/>
+									<ErrorDisplay path="ends_at" />
 								</div>
 
 								<div>
@@ -589,6 +524,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										}
 										defaultValue="30"
 									/>
+									<ErrorDisplay path="generation_window_days" />
 								</div>
 
 								<div>
@@ -605,6 +541,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										ref={minAdvanceRef}
 										defaultValue="1"
 									/>
+									<ErrorDisplay path="min_advance_days" />
 								</div>
 							</div>
 						</div>
@@ -617,15 +554,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								Recurring Schedule *
 							</h3>
 
-							{ruleErrors &&
-								ruleErrors.map((err) => (
-									<p
-										key={err.message}
-										className="mb-3 text-red-300"
-									>
-										{err.message}
-									</p>
-								))}
+							<ErrorDisplay path="rule" />
 
 							<div className="space-y-3">
 								<div className="grid grid-cols-2 gap-3">
@@ -633,50 +562,48 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										<label className="text-sm text-zinc-300 mb-1 block">
 											Frequency *
 										</label>
-										<Dropdown
-											refToApply={
-												frequencyRef
-											}
-											entries={
-												<>
-													{RecurringFrequencyValues.map(
-														(
-															freq
-														) => (
-															<option
-																key={
-																	freq
-																}
-																value={
-																	freq
-																}
-															>
-																{freq
-																	.charAt(
-																		0
-																	)
-																	.toUpperCase() +
-																	freq.slice(
-																		1
-																	)}
-															</option>
-														)
-													)}
-												</>
-											}
-											disabled={
-												isLoading
-											}
-											onChange={(
-												value
-											) =>
-												setFrequency(
-													value as RecurringFrequency
-												)
-											}
-											required
-											aria-label="Select frequency"
-										/>
+										<div className="border border-zinc-700 rounded-sm">
+											<Dropdown
+												refToApply={
+													frequencyRef
+												}
+												entries={
+													<>
+														{RecurringFrequencyValues.map(
+															(
+																freq
+															) => (
+																<option
+																	key={
+																		freq
+																	}
+																	value={
+																		freq
+																	}
+																	className="text-black"
+																>
+																	{freq
+																		.charAt(
+																			0
+																		)
+																		.toUpperCase() +
+																		freq.slice(
+																			1
+																		)}
+																</option>
+															)
+														)}
+													</>
+												}
+												onChange={(
+													value
+												) =>
+													setFrequency(
+														value as RecurringFrequency
+													)
+												}
+											/>
+										</div>
 									</div>
 
 									<div>
@@ -828,65 +755,62 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 												Month
 												*
 											</label>
-											<Dropdown
-												refToApply={
-													monthRef
-												}
-												entries={
-													<>
-														{[
-															"January",
-															"February",
-															"March",
-															"April",
-															"May",
-															"June",
-															"July",
-															"August",
-															"September",
-															"October",
-															"November",
-															"December",
-														].map(
-															(
-																m,
-																i
-															) => (
-																<option
-																	key={
-																		i
-																	}
-																	value={
-																		i +
-																		1
-																	}
-																>
-																	{
-																		m
-																	}
-																</option>
-															)
-														)}
-													</>
-												}
-												disabled={
-													isLoading
-												}
-												onChange={(
-													value
-												) =>
-													setMonth(
-														value
-															? parseInt(
-																	value
+											<div className="border border-zinc-700 rounded-sm">
+												<Dropdown
+													refToApply={
+														monthRef
+													}
+													entries={
+														<>
+															{[
+																"January",
+																"February",
+																"March",
+																"April",
+																"May",
+																"June",
+																"July",
+																"August",
+																"September",
+																"October",
+																"November",
+																"December",
+															].map(
+																(
+																	m,
+																	i
+																) => (
+																	<option
+																		key={
+																			i
+																		}
+																		value={
+																			i +
+																			1
+																		}
+																		className="text-black"
+																	>
+																		{
+																			m
+																		}
+																	</option>
 																)
-															: ""
-													)
-												}
-												placeholder="Select month"
-												required
-												aria-label="Select month"
-											/>
+															)}
+														</>
+													}
+													onChange={(
+														value
+													) =>
+														setMonth(
+															value
+																? parseInt(
+																		value
+																	)
+																: ""
+														)
+													}
+												/>
+											</div>
 										</div>
 
 										<div>
@@ -1115,7 +1039,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 					{/* SECTION 5: Line Items */}
 					<div id="line-items" className="scroll-mt-4">
 						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
-							<div className="flex items-center justify-between mb-4">
+							<div className="flex items-center justify-between mb-3">
 								<h3 className="text-lg font-semibold">
 									Line Items
 								</h3>
@@ -1130,258 +1054,254 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								</button>
 							</div>
 
-							{lineItemErrors &&
-								lineItemErrors.map((err) => (
-									<p
-										key={err.message}
-										className="mb-3 text-red-300"
-									>
-										{err.message}
-									</p>
-								))}
+							<ErrorDisplay path="line_items" />
 
-							<div className="space-y-3">
-								{lineItems.map((item, index) => (
-									<div
-										key={item.id}
-										className="p-3 bg-zinc-900 rounded-lg border border-zinc-700"
-									>
-										<div className="flex items-start justify-between mb-2">
-											<span className="text-sm text-zinc-400">
-												Item{" "}
-												{index +
-													1}
-											</span>
-											<button
-												type="button"
-												onClick={() =>
-													removeLineItem(
-														item.id
-													)
+							{lineItems.length === 0 ? (
+								<p></p>
+							) : (
+								<div className="space-y-3">
+									{lineItems.map(
+										(item, index) => (
+											<div
+												key={
+													item.id
 												}
-												disabled={
-													lineItems.length ===
-														1 ||
-													isLoading
-												}
-												className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
+												className="p-3 bg-zinc-900 rounded-lg border border-zinc-700"
 											>
-												<Trash2
-													size={
-														16
-													}
-												/>
-											</button>
-										</div>
-
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-											<div>
-												<input
-													type="text"
-													placeholder="Item name"
-													value={
-														item.name
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"name",
-															e
-																.target
-																.value
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-												/>
-											</div>
-
-											<div>
-												<select
-													value={
-														item.item_type
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"item_type",
-															e
-																.target
-																.value
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="appearance-none w-full h-full p-2 bg-zinc-800 text-white border border-zinc-700 rounded-sm outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors"
-												>
-													<option
-														value=""
-														disabled
-														hidden
-													>
-														Type
-														(optional)
-													</option>
-													{LineItemTypeValues.map(
-														(
-															type
-														) => (
-															<option
-																key={
-																	type
-																}
-																value={
-																	type
-																}
-															>
-																{type
-																	.charAt(
-																		0
-																	)
-																	.toUpperCase() +
-																	type.slice(
-																		1
-																	)}
-															</option>
-														)
-													)}
-												</select>
-											</div>
-
-											<div className="md:col-span-2">
-												<input
-													type="text"
-													placeholder="Description (optional)"
-													value={
-														item.description
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"description",
-															e
-																.target
-																.value
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-												/>
-											</div>
-
-											<div>
-												<label className="text-xs text-zinc-400 mb-1 block">
-													Quantity
-												</label>
-												<input
-													type="number"
-													min="0.01"
-													step="0.01"
-													value={
-														item.quantity
-													}
-													onChange={(
-														e
-													) =>
-														updateLineItem(
-															item.id,
-															"quantity",
-															parseFloat(
-																e
-																	.target
-																	.value
-															) ||
-																0
-														)
-													}
-													disabled={
-														isLoading
-													}
-													className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
-												/>
-											</div>
-
-											<div>
-												<label className="text-xs text-zinc-400 mb-1 block">
-													Unit
-													Price
-												</label>
-												<div className="relative">
-													<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-														$
+												<div className="flex items-start justify-between mb-2">
+													<span className="text-sm text-zinc-400">
+														Item{" "}
+														{index +
+															1}
 													</span>
-													<input
-														type="number"
-														min="0"
-														step="0.01"
-														value={
-															item.unit_price
-														}
-														onChange={(
-															e
-														) =>
-															updateLineItem(
-																item.id,
-																"unit_price",
-																parseFloat(
-																	e
-																		.target
-																		.value
-																) ||
-																	0
+													<button
+														type="button"
+														onClick={() =>
+															removeLineItem(
+																item.id
 															)
 														}
 														disabled={
 															isLoading
 														}
-														className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
-													/>
+														className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
+													>
+														<Trash2
+															size={
+																16
+															}
+														/>
+													</button>
+												</div>
+
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+													<div>
+														<input
+															type="text"
+															placeholder="Item name"
+															value={
+																item.name
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"name",
+																	e
+																		.target
+																		.value
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														/>
+													</div>
+
+													<div>
+														<select
+															value={
+																item.item_type
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"item_type",
+																	e
+																		.target
+																		.value
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														>
+															<option value="">
+																Type
+																(optional)
+															</option>
+															{LineItemTypeValues.map(
+																(
+																	type
+																) => (
+																	<option
+																		key={
+																			type
+																		}
+																		value={
+																			type
+																		}
+																	>
+																		{type
+																			.charAt(
+																				0
+																			)
+																			.toUpperCase() +
+																			type.slice(
+																				1
+																			)}
+																	</option>
+																)
+															)}
+														</select>
+													</div>
+
+													<div className="md:col-span-2">
+														<input
+															type="text"
+															placeholder="Description (optional)"
+															value={
+																item.description
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"description",
+																	e
+																		.target
+																		.value
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														/>
+													</div>
+
+													<div>
+														<label className="text-xs text-zinc-400 mb-1 block">
+															Quantity
+														</label>
+														<input
+															type="number"
+															min="0.01"
+															step="0.01"
+															value={
+																item.quantity
+															}
+															onChange={(
+																e
+															) =>
+																updateLineItem(
+																	item.id,
+																	"quantity",
+																	parseFloat(
+																		e
+																			.target
+																			.value
+																	) ||
+																		0
+																)
+															}
+															disabled={
+																isLoading
+															}
+															className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+														/>
+													</div>
+
+													<div>
+														<label className="text-xs text-zinc-400 mb-1 block">
+															Unit
+															Price
+														</label>
+														<div className="relative">
+															<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+																$
+															</span>
+															<input
+																type="number"
+																min="0"
+																step="0.01"
+																value={
+																	item.unit_price
+																}
+																onChange={(
+																	e
+																) =>
+																	updateLineItem(
+																		item.id,
+																		"unit_price",
+																		parseFloat(
+																			e
+																				.target
+																				.value
+																		) ||
+																			0
+																	)
+																}
+																disabled={
+																	isLoading
+																}
+																className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
+															/>
+														</div>
+													</div>
+
+													<div className="md:col-span-2">
+														<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
+															<span className="text-sm text-zinc-400">
+																Line
+																Total:
+															</span>
+															<span className="text-sm font-semibold text-white">
+																$
+																{item.total.toFixed(
+																	2
+																)}
+															</span>
+														</div>
+													</div>
 												</div>
 											</div>
-
-											<div className="md:col-span-2">
-												<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
-													<span className="text-sm text-zinc-400">
-														Line
-														Total:
-													</span>
-													<span className="text-sm font-semibold text-white">
-														$
-														{item.total.toFixed(
-															2
-														)}
-													</span>
-												</div>
-											</div>
-										</div>
-									</div>
-								))}
-							</div>
-
-							<div className="mt-3 pt-3 border-t border-zinc-700">
-								<div className="flex items-center justify-between text-lg font-bold">
-									<span className="text-white">
-										Subtotal:
-									</span>
-									<span className="text-green-400">
-										$
-										{subtotal.toFixed(
-											2
-										)}
-									</span>
+										)
+									)}
 								</div>
-							</div>
+							)}
+
+							{lineItems.length > 0 && (
+								<div className="mt-3 pt-3 border-t border-zinc-700">
+									<div className="flex items-center justify-between text-lg font-bold">
+										<span className="text-white">
+											Subtotal:
+										</span>
+										<span className="text-green-400">
+											$
+											{subtotal.toFixed(
+												2
+											)}
+										</span>
+									</div>
+								</div>
+							)}
 						</div>
 					</div>
 
@@ -1397,80 +1317,82 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 									<label className="text-sm text-zinc-300 mb-1 block">
 										Billing Mode *
 									</label>
-									<Dropdown
-										refToApply={
-											billingModeRef
-										}
-										entries={
-											<>
-												{BillingModeValues.map(
-													(
-														v
-													) => (
-														<option
-															key={
-																v
-															}
-															value={
-																v
-															}
-														>
-															{v ===
-															"per_visit"
-																? "Per Visit"
-																: v ===
-																	  "subscription"
-																	? "Subscription"
-																	: "None"}
-														</option>
-													)
-												)}
-											</>
-										}
-										disabled={isLoading}
-										required
-										aria-label="Select billing mode"
-									/>
+									<div className="border border-zinc-700 rounded-sm">
+										<Dropdown
+											refToApply={
+												billingModeRef
+											}
+											entries={
+												<>
+													{BillingModeValues.map(
+														(
+															v
+														) => (
+															<option
+																key={
+																	v
+																}
+																value={
+																	v
+																}
+																className="text-black"
+															>
+																{v ===
+																"per_visit"
+																	? "Per Visit"
+																	: v ===
+																		  "subscription"
+																		? "Subscription"
+																		: "None"}
+															</option>
+														)
+													)}
+												</>
+											}
+										/>
+									</div>
+									<ErrorDisplay path="billing_mode" />
 								</div>
 
 								<div>
 									<label className="text-sm text-zinc-300 mb-1 block">
 										Invoice Timing *
 									</label>
-									<Dropdown
-										refToApply={
-											invoiceTimingRef
-										}
-										entries={
-											<>
-												{InvoiceTimingValues.map(
-													(
-														v
-													) => (
-														<option
-															key={
-																v
-															}
-															value={
-																v
-															}
-														>
-															{v ===
-															"on_completion"
-																? "On Completion"
-																: v ===
-																	  "on_schedule_date"
-																	? "On Schedule Date"
-																	: "Manual"}
-														</option>
-													)
-												)}
-											</>
-										}
-										disabled={isLoading}
-										required
-										aria-label="Select invoice timing"
-									/>
+									<div className="border border-zinc-700 rounded-sm">
+										<Dropdown
+											refToApply={
+												invoiceTimingRef
+											}
+											entries={
+												<>
+													{InvoiceTimingValues.map(
+														(
+															v
+														) => (
+															<option
+																key={
+																	v
+																}
+																value={
+																	v
+																}
+																className="text-black"
+															>
+																{v ===
+																"on_completion"
+																	? "On Completion"
+																	: v ===
+																		  "on_schedule_date"
+																		? "On Schedule Date"
+																		: "Manual"}
+															</option>
+														)
+													)}
+												</>
+											}
+										/>
+									</div>
+									<ErrorDisplay path="invoice_timing" />
 								</div>
 
 								<div className="md:col-span-2">

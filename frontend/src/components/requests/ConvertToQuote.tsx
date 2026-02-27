@@ -35,9 +35,8 @@ export default function ConvertToQuote({
 			: undefined
 	);
 	const [isLoading, setIsLoading] = useState(false);
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [titleError, setTitleError] = useState<string | null>(null);
 
-	// Set initial priority value when modal opens
 	useEffect(() => {
 		if (isModalOpen && priorityRef.current) {
 			priorityRef.current.value = "Medium";
@@ -49,6 +48,18 @@ export default function ConvertToQuote({
 			address: result.address,
 			coords: result.coords,
 		}));
+	};
+
+	const handleClearAddress = () => {
+		// In edit mode, revert to original if it exists
+		if (request.address || request.coords) {
+			setGeoData({
+				address: request.address || "",
+				coords: request.coords,
+			});
+		} else {
+			setGeoData(undefined);
+		}
 	};
 
 	const priorityEntries = (
@@ -72,12 +83,14 @@ export default function ConvertToQuote({
 			const validUntilValue = validUntilRef.current?.value || undefined;
 			const expiresAtValue = expiresAtRef.current?.value || undefined;
 
+			// Reset errors
+			setTitleError(null);
+
 			if (!titleValue) {
-				setErrorMessage("Quote title is required");
+				setTitleError("Quote title is required");
 				return;
 			}
 
-			setErrorMessage(null);
 			setIsLoading(true);
 
 			try {
@@ -112,11 +125,12 @@ export default function ConvertToQuote({
 				if (validUntilRef.current) validUntilRef.current.value = "";
 				if (expiresAtRef.current) expiresAtRef.current.value = "";
 				setGeoData(undefined);
+				setTitleError(null);
 
 				setIsModalOpen(false);
 			} catch (error) {
 				console.error("Failed to convert request to quote:", error);
-				setErrorMessage(
+				setTitleError(
 					error instanceof Error
 						? error.message
 						: "Failed to convert request to quote"
@@ -131,12 +145,6 @@ export default function ConvertToQuote({
 		<>
 			<h2 className="text-2xl font-bold mb-4">Convert to Quote</h2>
 
-			{errorMessage && (
-				<div className="p-3 mb-4 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
-					{errorMessage}
-				</div>
-			)}
-
 			<p className="mb-1 hover:color-accent">Quote Title *</p>
 			<input
 				type="text"
@@ -145,7 +153,9 @@ export default function ConvertToQuote({
 				disabled={isLoading}
 				ref={titleRef}
 				defaultValue={request.title}
+				onChange={() => setTitleError(null)}
 			/>
+			{titleError && <p className="text-red-500 text-sm mt-1">{titleError}</p>}
 
 			<p className="mb-1 mt-3 hover:color-accent">Description</p>
 			<textarea
@@ -157,12 +167,13 @@ export default function ConvertToQuote({
 			/>
 
 			<p className="mb-1 mt-3 hover:color-accent">Property Address</p>
-			<AddressForm handleChange={handleChangeAddress} />
-			{geoData?.address && (
-				<p className="text-xs text-zinc-400 mt-1">
-					Current: {geoData.address}
-				</p>
-			)}
+			<AddressForm
+				mode={request.address ? "edit" : "create"}
+				originalValue={request.address || ""}
+				originalCoords={request.coords}
+				handleChange={handleChangeAddress}
+				handleClear={handleClearAddress}
+			/>
 
 			<p className="mb-1 mt-3 hover:color-accent">Priority</p>
 			<div className="border border-zinc-800 rounded-sm">

@@ -30,8 +30,11 @@ export interface VisitTechnician {
 		schedule_type: string;
 		scheduled_start_at: Date;
 		scheduled_end_at: Date;
-		arrival_window_start?: Date | null;
-		arrival_window_end?: Date | null;
+		arrival_time?: string | null; // HH:MM
+		arrival_window_start?: string | null; // HH:MM
+		arrival_window_end?: string | null; // HH:MM
+		finish_time?: string | null; // HH:MM
+
 		actual_start_at?: Date | null;
 		actual_end_at?: Date | null;
 		status: VisitStatus;

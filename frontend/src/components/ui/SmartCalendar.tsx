@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import interactionPlugin from "@fullcalendar/interaction";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -15,6 +16,17 @@ interface SmartCalendarProps {
 interface VisitWithJob extends JobVisit {
 	job_obj: Job;
 }
+
+interface OccurrenceWithPlan extends RecurringOccurrence {
+	plan: RecurringPlan;
+	job_obj: Job;
+}
+
+type CalendarEvent = {
+	id: string;
+	type: "visit" | "occurrence";
+	data: VisitWithJob | OccurrenceWithPlan;
+};
 
 export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProps) {
 	const [selectedVisit, setSelectedVisit] = useState<VisitWithJob | null>(null);

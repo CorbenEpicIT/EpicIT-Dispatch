@@ -500,17 +500,19 @@ export const insertRecurringPlan = async (
 			}
 
 			// Create template line items
-			await tx.recurring_plan_line_item.createMany({
-				data: parsed.line_items.map((item) => ({
-					recurring_plan_id: plan.id,
-					name: item.name,
-					description: item.description || null,
-					quantity: item.quantity,
-					unit_price: item.unit_price,
-					item_type: item.item_type,
-					sort_order: item.sort_order!,
-				})),
-			});
+			if (parsed.line_items && parsed.line_items.length > 0) {
+				await tx.recurring_plan_line_item.createMany({
+					data: parsed.line_items.map((item, idx) => ({
+						recurring_plan_id: plan.id,
+						name: item.name,
+						description: item.description ?? null,
+						quantity: item.quantity,
+						unit_price: item.unit_price,
+						item_type: item.item_type ?? null,
+						sort_order: item.sort_order ?? idx,
+					})),
+				});
+			}
 
 			// Generate initial occurrences
 			await generateOccurrencesForPlan(
@@ -525,7 +527,6 @@ export const insertRecurringPlan = async (
 				data: { last_activity: new Date() },
 			});
 
-			// Log activity
 			await logActivity({
 				event_type: "recurring_plan.created",
 				action: "created",
@@ -542,6 +543,10 @@ export const insertRecurringPlan = async (
 					client_id: { old: null, new: plan.client_id },
 					status: { old: null, new: plan.status },
 					job_id: { old: null, new: job.id },
+					line_items_count: {
+						old: null,
+						new: parsed.line_items?.length ?? 0,
+					},
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -793,22 +798,28 @@ export const updateRecurringPlan = async (
 
 			// Update job container if relevant fields changed
 			if (
-				parsed.name ||
-				parsed.description ||
-				parsed.address ||
-				parsed.coords ||
-				parsed.priority
+				parsed.name !== undefined ||
+				parsed.description !== undefined ||
+				parsed.address !== undefined ||
+				parsed.coords !== undefined ||
+				parsed.priority !== undefined
 			) {
 				await tx.job.update({
 					where: { id: jobId },
 					data: {
-						...(parsed.name && { name: parsed.name }),
-						...(parsed.description && {
+						...(parsed.name !== undefined && { name: parsed.name }),
+						...(parsed.description !== undefined && {
 							description: parsed.description,
 						}),
-						...(parsed.address && { address: parsed.address }),
-						...(parsed.coords && { coords: parsed.coords }),
-						...(parsed.priority && { priority: parsed.priority }),
+						...(parsed.address !== undefined && {
+							address: parsed.address,
+						}),
+						...(parsed.coords !== undefined && {
+							coords: parsed.coords,
+						}),
+						...(parsed.priority !== undefined && {
+							priority: parsed.priority,
+						}),
 					},
 				});
 			}
@@ -958,8 +969,8 @@ export const updateRecurringPlanLineItems = async (
 							description: item.description || null,
 							quantity: item.quantity,
 							unit_price: item.unit_price,
-							item_type: item.item_type,
-							sort_order: item.sort_order,
+							item_type: item.item_type ?? null,
+							sort_order: item.sort_order ?? 0,
 						},
 					});
 				} else {
@@ -970,7 +981,7 @@ export const updateRecurringPlanLineItems = async (
 							description: item.description || null,
 							quantity: item.quantity,
 							unit_price: item.unit_price,
-							item_type: item.item_type,
+							item_type: item.item_type ?? null,
 							sort_order: item.sort_order ?? 0,
 						},
 					});
@@ -1303,6 +1314,20 @@ export const rescheduleOccurrence = async (
 			? new Date(parsed.new_end_at)
 			: occurrence.occurrence_end_at;
 
+		const conflictingOccurrence = await db.recurring_occurrence.findFirst({
+			where: {
+				recurring_plan_id: occurrence.recurring_plan_id,
+				occurrence_start_at: newStartDate,
+				id: { not: occurrenceId },
+			},
+		});
+
+		if (conflictingOccurrence) {
+			return {
+				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
+			};
+		}
+
 		const updated = await db.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
@@ -1339,13 +1364,25 @@ export const rescheduleOccurrence = async (
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
+			console.error("Reschedule occurrence validation error:", e.issues);
 			return {
 				err: `Validation failed: ${e.issues
 					.map((err) => err.message)
 					.join(", ")}`,
 			};
 		}
+
+		if (e instanceof Error && "code" in e && (e as any).code === "P2002") {
+			console.error("Unique constraint violation:", e);
+			return {
+				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
+			};
+		}
+
 		console.error("Reschedule occurrence error:", e);
+		if (e instanceof Error) {
+			return { err: e.message };
+		}
 		return { err: "Internal server error" };
 	}
 };

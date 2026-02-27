@@ -115,8 +115,8 @@ export const CreateRequestSchema = z.object({
 });
 
 export const UpdateRequestSchema = z.object({
-	title: z.string().min(1).optional(),
-	description: z.string().min(1).optional(),
+	title: z.string().min(1, "Title is required").optional(),
+	description: z.string().min(1, "Description is required").optional(),
 	priority: z.enum(PriorityValues).optional(),
 	status: z.enum(RequestStatusValues).optional(),
 	requires_quote: z.boolean().optional(),
