@@ -1,25 +1,21 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import LoadSvg from "../../assets/icons/loading.svg?react";
+import Button from "../ui/Button";
+import { useRef, useState, useEffect } from "react";
 import type { ZodError } from "zod";
+import FullPopup from "../ui/FullPopup";
 import {
+	QuotePriorityValues,
 	CreateQuoteSchema,
 	type CreateQuoteInput,
 	type CreateQuoteLineItemInput,
 } from "../../types/quotes";
+import { LineItemTypeValues, type LineItemType } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import DatePicker from "../ui/DatePicker";
-import { type Priority, PriorityValues } from "../../types/common";
-import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
-import LineItemsSection from "../ui/forms/LineItemsSection";
-import FinancialSummary from "../ui/forms/FinancialSummary";
-import { useStepWizard } from "../../hooks/forms/useStepWizard";
-import { useLineItems } from "../../hooks/forms/useLineItems";
-import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
-
-type Step = 1 | 2 | 3;
+import { Plus, Trash2 } from "lucide-react";
 
 interface CreateQuoteProps {
 	isModalOpen: boolean;
@@ -27,242 +23,235 @@ interface CreateQuoteProps {
 	createQuote: (input: CreateQuoteInput) => Promise<string>;
 }
 
-const STEPS = [
-	{ id: 1 as Step, label: "Basics" },
-	{ id: 2 as Step, label: "Line Items" },
-	{ id: 3 as Step, label: "Finalize" },
-];
-
-const PRIORITY_ENTRIES = (
-	<>
-		{PriorityValues.map((v) => (
-			<option key={v} value={v} className="text-black">
-				{v.charAt(0).toUpperCase() + v.slice(1)}
-			</option>
-		))}
-	</>
-);
+// Local UI-only interface for form state
+interface LineItem {
+	id: string;
+	name: string;
+	description: string;
+	quantity: number;
+	unit_price: number;
+	item_type: LineItemType | "";
+	total: number;
+}
 
 const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuoteProps) => {
-	const navigate = useNavigate();
-	const [title, setTitle] = useState("");
-	const [description, setDescription] = useState("");
-	const [clientId, setClientId] = useState("");
-	const [priority, setPriority] = useState<Priority>("Medium");
+	const titleRef = useRef<HTMLInputElement>(null);
+	const descRef = useRef<HTMLTextAreaElement>(null);
+	const clientRef = useRef<HTMLSelectElement>(null);
+	const priorityRef = useRef<HTMLSelectElement>(null);
 	const [geoData, setGeoData] = useState<GeocodeResult>();
-	const [validUntilDate, setValidUntilDate] = useState<Date | null>(null);
-	const [expiresAtDate, setExpiresAtDate] = useState<Date | null>(null);
-
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
 	const { data: clients } = useAllClientsQuery();
 
-	const {
-		activeLineItems,
-		addLineItem,
-		removeLineItem,
-		updateLineItem,
-		subtotal,
-		resetLineItems,
-		dirtyLineItemFields,
-		undoLineItemField,
-		clearLineItemField,
-	} = useLineItems({
-		minItems: 1,
-		mode: "create",
-	});
+	const [validUntilDate, setValidUntilDate] = useState<Date | null>(null);
+	const [expiresAtDate, setExpiresAtDate] = useState<Date | null>(null);
 
-	const {
-		taxRate,
-		setTaxRate,
-		taxAmount,
-		discountType,
-		setDiscountType,
-		discountValue,
-		setDiscountValue,
-		discountAmount,
-		total,
-		reset: resetFinancials,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
-	} = useFinancialCalculations(subtotal);
+	const [taxRate, setTaxRate] = useState<number>(0);
+	const [discountType, setDiscountType] = useState<"percent" | "amount">("amount");
+	const [discountValue, setDiscountValue] = useState<number>(0);
 
-	const validateStep1 = useCallback((): boolean => {
-		return !!(
-			title.trim() &&
-			clientId.trim() &&
-			description.trim() &&
-			geoData?.address
-		);
-	}, [title, clientId, description, geoData]);
-
-	const validateStep2 = useCallback((): boolean => {
-		return activeLineItems.every(
-			(item) => item.name.trim() && item.quantity > 0 && item.unit_price >= 0
-		);
-	}, [activeLineItems]);
-
-	const validateStep = useCallback(
-		(step: Step): boolean => {
-			switch (step) {
-				case 1:
-					return validateStep1();
-				case 2:
-					return validateStep2();
-				case 3:
-					return true;
-				default:
-					return true;
-			}
+	const [lineItems, setLineItems] = useState<LineItem[]>([
+		{
+			id: crypto.randomUUID(),
+			name: "",
+			description: "",
+			quantity: 1,
+			unit_price: 0,
+			item_type: "",
+			total: 0,
 		},
-		[validateStep1, validateStep2]
-	);
+	]);
 
-	const {
-		currentStep,
-		visitedSteps,
-		goNext,
-		goBack,
-		goToStep,
-		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 3 as Step,
-		initialStep: 1 as Step,
-	});
-
-	const canGoNext = validateStep(currentStep);
-
-	const canGoToStep = useCallback(
-		(targetStep: Step): boolean => {
-			if (targetStep === currentStep) return true;
-			if (visitedSteps.has(targetStep)) return true;
-			if (targetStep === currentStep + 1 && validateStep(currentStep))
-				return true;
-			return false;
-		},
-		[currentStep, visitedSteps, validateStep]
-	);
-
-	const resetForm = useCallback(() => {
-		resetWizard();
-		setTitle("");
-		setDescription("");
-		setClientId("");
-		setPriority("Medium");
+	const resetForm = () => {
+		if (titleRef.current) titleRef.current.value = "";
+		if (descRef.current) descRef.current.value = "";
 		setGeoData(undefined);
+
+		setTaxRate(0);
+		setDiscountType("amount");
+		setDiscountValue(0);
+
 		setValidUntilDate(null);
 		setExpiresAtDate(null);
-		resetLineItems();
-		resetFinancials();
+
+		setLineItems([
+			{
+				id: crypto.randomUUID(),
+				name: "",
+				description: "",
+				quantity: 1,
+				unit_price: 0,
+				item_type: "",
+				total: 0,
+			},
+		]);
+
 		setErrors(null);
-	}, [resetWizard, resetLineItems, resetFinancials]);
+	};
 
 	useEffect(() => {
 		if (!isModalOpen) {
 			resetForm();
 			setIsLoading(false);
 		}
-	}, [isModalOpen, resetForm]);
+	}, [isModalOpen]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData({
+		setGeoData(() => ({
 			address: result.address,
 			coords: result.coords,
-		});
+		}));
 	};
 
 	const handleClearAddress = () => {
 		setGeoData(undefined);
 	};
 
-	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
-			return clients.map((c) => (
-				<option value={c.id} key={c.id}>
-					{c.name}
-				</option>
-			));
+	const addLineItem = () => {
+		setLineItems([
+			...lineItems,
+			{
+				id: crypto.randomUUID(),
+				name: "",
+				description: "",
+				quantity: 1,
+				unit_price: 0,
+				item_type: "",
+				total: 0,
+			},
+		]);
+	};
+
+	const removeLineItem = (id: string) => {
+		if (lineItems.length > 1) {
+			setLineItems(lineItems.filter((item) => item.id !== id));
 		}
-		return (
-			<option disabled value="">
-				No clients found
-			</option>
-		);
-	}, [clients]);
+	};
 
-	const invokeCreate = async () => {
-		if (isLoading) return;
-
-		const preparedLineItems: CreateQuoteLineItemInput[] = activeLineItems.map(
-			(item, index) => ({
-				name: item.name,
-				description: item.description || undefined,
-				quantity: Number(item.quantity),
-				unit_price: Number(item.unit_price),
-				total: item.total,
-				item_type: item.item_type || undefined,
-				sort_order: index,
+	const updateLineItem = (id: string, field: keyof LineItem, value: string | number) => {
+		setLineItems(
+			lineItems.map((item) => {
+				if (item.id === id) {
+					const updated = { ...item, [field]: value };
+					if (field === "quantity" || field === "unit_price") {
+						updated.total =
+							Number(updated.quantity) *
+							Number(updated.unit_price);
+					}
+					return updated;
+				}
+				return item;
 			})
 		);
+	};
 
-		const newQuote: CreateQuoteInput = {
-			title: title.trim(),
-			client_id: clientId.trim(),
-			address: geoData?.address || "",
-			coords: geoData?.coords,
-			description: description.trim(),
-			priority: priority as Priority,
-			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
-			discount_type: discountType,
-			discount_value: discountValue,
-			discount_amount: discountAmount,
-			total,
-			valid_until: validUntilDate ? validUntilDate.toISOString() : undefined,
-			expires_at: expiresAtDate ? expiresAtDate.toISOString() : undefined,
-			line_items: preparedLineItems,
-		};
+	const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
+	const taxAmount = subtotal * (taxRate / 100);
+	const discountAmount =
+		discountType === "percent" ? subtotal * (discountValue / 100) : discountValue;
+	const total = subtotal + taxAmount - discountAmount;
 
-		const parseResult = CreateQuoteSchema.safeParse(newQuote);
+	let dropdownEntries;
+	if (clients && clients.length) {
+		dropdownEntries = (
+			<>
+				{clients.map((c) => (
+					<option value={c.id} key={c.id} className="text-black">
+						{c.name}
+					</option>
+				))}
+			</>
+		);
+	} else {
+		dropdownEntries = (
+			<>
+				<option disabled selected value={""} className="text-black">
+					No clients found
+				</option>
+			</>
+		);
+	}
 
-		if (!parseResult.success) {
-			setErrors(parseResult.error);
-			console.error("Validation errors:", parseResult.error);
-			const errorPaths = parseResult.error.issues.map((i) => i.path[0]);
-			if (
-				errorPaths.some((p) =>
-					[
-						"title",
-						"client_id",
-						"description",
-						"address",
-						"coords",
-						"priority",
-					].includes(String(p))
-				)
-			) {
-				goToStep(1 as Step);
-			} else if (errorPaths.includes("line_items")) {
-				goToStep(2 as Step);
+	const priorityEntries = (
+		<>
+			{QuotePriorityValues.map((v) => (
+				<option key={v} value={v} className="text-black">
+					{v}
+				</option>
+			))}
+		</>
+	);
+
+	const invokeCreate = async () => {
+		if (
+			titleRef.current &&
+			clientRef.current &&
+			descRef.current &&
+			priorityRef.current &&
+			!isLoading
+		) {
+			const titleValue = titleRef.current.value.trim();
+			const clientValue = clientRef.current.value.trim();
+			const descValue = descRef.current.value.trim();
+			const priorityValue = priorityRef.current.value.trim();
+
+			const preparedLineItems: CreateQuoteLineItemInput[] = lineItems.map(
+				(item, index) => ({
+					name: item.name,
+					description: item.description || undefined,
+					quantity: Number(item.quantity),
+					unit_price: Number(item.unit_price),
+					total: item.total,
+					item_type: (item.item_type || undefined) as
+						| LineItemType
+						| undefined,
+					sort_order: index,
+				})
+			);
+
+			const newQuote: CreateQuoteInput = {
+				title: titleValue,
+				client_id: clientValue,
+				address: geoData?.address || "",
+				coords: geoData?.coords,
+				description: descValue,
+				priority: priorityValue as
+					| "Low"
+					| "Medium"
+					| "High"
+					| "Urgent"
+					| "Emergency",
+				subtotal,
+				tax_rate: taxRate / 100,
+				tax_amount: taxAmount,
+				discount_type: discountType,
+				discount_value: discountValue,
+				discount_amount: discountAmount,
+				total,
+				valid_until: validUntilDate
+					? validUntilDate.toISOString()
+					: undefined,
+				expires_at: expiresAtDate ? expiresAtDate.toISOString() : undefined,
+				line_items: preparedLineItems,
+			};
+
+			const parseResult = CreateQuoteSchema.safeParse(newQuote);
+
+			if (!parseResult.success) {
+				setErrors(parseResult.error);
+				console.error("Validation errors:", parseResult.error);
+				return;
 			}
-			return;
-		}
 
-		setErrors(null);
-		setIsLoading(true);
+			setErrors(null);
+			setIsLoading(true);
 
-		try {
-			const quoteId = await createQuote(newQuote);
-			setIsModalOpen(false);
-			resetForm();
-			navigate(`/dispatch/quotes/${quoteId}`);
-		} catch (error) {
-			console.error("Failed to create quote:", error);
-		} finally {
+			await createQuote(newQuote);
+
 			setIsLoading(false);
+			resetForm();
+			setIsModalOpen(false);
 		}
 	};
 
@@ -281,244 +270,515 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		);
 	};
 
-	const stepContent = useMemo(() => {
-		switch (currentStep) {
-			case 1:
-				return (
+	const content = (
+		<div
+			className="max-h-[85vh] overflow-y-auto pr-2 pl-1"
+			style={{
+				scrollbarWidth: "thin",
+				scrollbarColor: "rgb(63 63 70) transparent",
+			}}
+		>
+			<style>{`
+                .max-h-\\[85vh\\]::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .max-h-\\[85vh\\]::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .max-h-\\[85vh\\]::-webkit-scrollbar-thumb {
+                    background-color: rgb(63 63 70);
+                    border-radius: 4px;
+                }
+                .max-h-\\[85vh\\]::-webkit-scrollbar-thumb:hover {
+                    background-color: rgb(82 82 91);
+                }
+            `}</style>
+
+			<div className="pr-1">
+				<h2 className="text-2xl font-bold mb-4">Create New Quote</h2>
+
+				<p className="mb-1 hover:color-accent">Title *</p>
+				<input
+					type="text"
+					placeholder="Quote Title"
+					className="border border-zinc-800 p-2 w-full rounded-sm bg-zinc-900 text-white"
+					disabled={isLoading}
+					ref={titleRef}
+				/>
+				<ErrorDisplay path="title" />
+
+				<p className="mb-1 mt-3 hover:color-accent">Client *</p>
+				<div className="border border-zinc-800 rounded-sm">
+					<Dropdown
+						refToApply={clientRef}
+						entries={dropdownEntries}
+					/>
+				</div>
+				<ErrorDisplay path="client_id" />
+
+				<p className="mb-1 mt-3 hover:color-accent">Description *</p>
+				<textarea
+					placeholder="Quote Description"
+					className="border border-zinc-800 p-2 w-full h-24 rounded-sm bg-zinc-900 text-white resize-none"
+					disabled={isLoading}
+					ref={descRef}
+				></textarea>
+				<ErrorDisplay path="description" />
+
+				<p className="mb-1 mt-3 hover:color-accent">Address *</p>
+				<AddressForm
+					mode="create"
+					handleChange={handleChangeAddress}
+					handleClear={handleClearAddress}
+				/>
+				<ErrorDisplay path="address" />
+				<ErrorDisplay path="coords" />
+
+				<p className="mb-1 mt-3 hover:color-accent">Priority</p>
+				<div className="border border-zinc-800 rounded-sm">
+					<Dropdown
+						refToApply={priorityRef}
+						entries={priorityEntries}
+					/>
+				</div>
+				<ErrorDisplay path="priority" />
+
+				{/* Line Items Section */}
+				<div className="mt-4 p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+					<div className="flex items-center justify-between mb-3">
+						<h3 className="text-lg font-semibold">
+							Line Items *
+						</h3>
+						<button
+							type="button"
+							onClick={addLineItem}
+							disabled={isLoading}
+							className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded-md text-sm font-medium transition-colors"
+						>
+							<Plus size={16} />
+							Add Item
+						</button>
+					</div>
+
+					<ErrorDisplay path="line_items" />
+
 					<div className="space-y-3">
+						{lineItems.map((item, index) => (
+							<div
+								key={item.id}
+								className="p-3 bg-zinc-900 rounded-lg border border-zinc-700"
+							>
+								<div className="flex items-start justify-between mb-2">
+									<span className="text-sm text-zinc-400">
+										Item {index + 1}
+									</span>
+									<button
+										type="button"
+										onClick={() =>
+											removeLineItem(
+												item.id
+											)
+										}
+										disabled={
+											lineItems.length ===
+												1 ||
+											isLoading
+										}
+										className="text-red-400 hover:text-red-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
+									>
+										<Trash2 size={16} />
+									</button>
+								</div>
+
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+									<div>
+										<input
+											type="text"
+											placeholder="Item name *"
+											value={
+												item.name
+											}
+											onChange={(
+												e
+											) =>
+												updateLineItem(
+													item.id,
+													"name",
+													e
+														.target
+														.value
+												)
+											}
+											disabled={
+												isLoading
+											}
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+										/>
+									</div>
+
+									<div>
+										<select
+											value={
+												item.item_type
+											}
+											onChange={(
+												e
+											) =>
+												updateLineItem(
+													item.id,
+													"item_type",
+													e
+														.target
+														.value
+												)
+											}
+											disabled={
+												isLoading
+											}
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+										>
+											<option value="">
+												Type
+												(optional)
+											</option>
+											{LineItemTypeValues.map(
+												(
+													type
+												) => (
+													<option
+														key={
+															type
+														}
+														value={
+															type
+														}
+													>
+														{type
+															.charAt(
+																0
+															)
+															.toUpperCase() +
+															type.slice(
+																1
+															)}
+													</option>
+												)
+											)}
+										</select>
+									</div>
+
+									<div className="md:col-span-2">
+										<input
+											type="text"
+											placeholder="Description (optional)"
+											value={
+												item.description
+											}
+											onChange={(
+												e
+											) =>
+												updateLineItem(
+													item.id,
+													"description",
+													e
+														.target
+														.value
+												)
+											}
+											disabled={
+												isLoading
+											}
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+										/>
+									</div>
+
+									<div>
+										<label className="text-xs text-zinc-400 mb-1 block">
+											Quantity
+										</label>
+										<input
+											type="number"
+											min="0.01"
+											step="0.01"
+											value={
+												item.quantity
+											}
+											onChange={(
+												e
+											) =>
+												updateLineItem(
+													item.id,
+													"quantity",
+													parseFloat(
+														e
+															.target
+															.value
+													) ||
+														0
+												)
+											}
+											disabled={
+												isLoading
+											}
+											className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm"
+										/>
+									</div>
+
+									<div>
+										<label className="text-xs text-zinc-400 mb-1 block">
+											Unit Price
+										</label>
+										<div className="relative">
+											<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+												$
+											</span>
+											<input
+												type="number"
+												min="0"
+												step="0.01"
+												value={
+													item.unit_price
+												}
+												onChange={(
+													e
+												) =>
+													updateLineItem(
+														item.id,
+														"unit_price",
+														parseFloat(
+															e
+																.target
+																.value
+														) ||
+															0
+													)
+												}
+												disabled={
+													isLoading
+												}
+												className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-800 text-white text-sm pl-6"
+											/>
+										</div>
+									</div>
+
+									<div className="md:col-span-2">
+										<div className="flex items-center justify-between p-2 bg-zinc-800 rounded border border-zinc-700">
+											<span className="text-sm text-zinc-400">
+												Line
+												Total:
+											</span>
+											<span className="text-sm font-semibold text-white">
+												$
+												{item.total.toFixed(
+													2
+												)}
+											</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+
+				{/* Financial Summary */}
+				<div className="mt-4 p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+					<h3 className="text-lg font-semibold mb-3">
+						Financial Summary
+					</h3>
+
+					<div className="space-y-2 mb-3 pb-3 border-b border-zinc-700">
+						<div className="flex items-center justify-between text-sm">
+							<span className="text-zinc-400">
+								Subtotal:
+							</span>
+							<span className="font-semibold text-white">
+								${subtotal.toFixed(2)}
+							</span>
+						</div>
+					</div>
+
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
 						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
-								Title *
+							<label className="text-xs text-zinc-400 mb-1 block">
+								Tax Rate (%)
 							</label>
 							<input
-								type="text"
-								placeholder="Quote Title"
-								value={title}
+								type="number"
+								step="0.01"
+								min="0"
+								max="100"
+								placeholder="0.00"
+								value={taxRate}
 								onChange={(e) =>
-									setTitle(e.target.value)
+									setTaxRate(
+										parseFloat(
+											e.target
+												.value
+										) || 0
+									)
 								}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+								className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm"
 								disabled={isLoading}
 							/>
-							<ErrorDisplay path="title" />
-						</div>
-
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
-									Client *
-								</label>
-								<Dropdown
-									entries={
-										clientDropdownEntries
-									}
-									value={clientId}
-									onChange={(newValue) =>
-										setClientId(
-											newValue
-										)
-									}
-									placeholder="Select client"
-									disabled={isLoading}
-									error={errors?.issues.some(
-										(e) =>
-											e
-												.path[0] ===
-											"client_id"
-									)}
-								/>
-								<ErrorDisplay path="client_id" />
-							</div>
-
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
-									Priority
-								</label>
-								<Dropdown
-									entries={PRIORITY_ENTRIES}
-									value={priority}
-									onChange={(newValue) =>
-										setPriority(
-											newValue as Priority
-										)
-									}
-									defaultValue="medium"
-									disabled={isLoading}
-									error={errors?.issues.some(
-										(e) =>
-											e
-												.path[0] ===
-											"priority"
-									)}
-								/>
-								<ErrorDisplay path="priority" />
-							</div>
 						</div>
 
 						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
-								Description *
+							<label className="text-xs text-zinc-400 mb-1 block">
+								Discount
 							</label>
-							<textarea
-								placeholder="Quote Description"
-								value={description}
-								onChange={(e) =>
-									setDescription(
-										e.target.value
-									)
-								}
-								className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
-								disabled={isLoading}
-							/>
-							<ErrorDisplay path="description" />
-						</div>
-
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
-								Address *
-							</label>
-							<AddressForm
-								mode={geoData ? "edit" : "create"}
-								originalValue={
-									geoData?.address || ""
-								}
-								originalCoords={geoData?.coords}
-								dropdownPosition="above"
-								handleChange={handleChangeAddress}
-								handleClear={handleClearAddress}
-							/>
-							<ErrorDisplay path="address" />
-							<ErrorDisplay path="coords" />
-						</div>
-					</div>
-				);
-
-			case 2:
-				return (
-					<div className="space-y-3">
-						<ErrorDisplay path="line_items" />
-						<LineItemsSection
-							lineItems={activeLineItems}
-							isLoading={isLoading}
-							onAdd={addLineItem}
-							onRemove={removeLineItem}
-							onUpdate={updateLineItem}
-							subtotal={subtotal}
-							required
-							minItems={1}
-							dirtyFields={dirtyLineItemFields}
-							onUndo={undoLineItemField}
-							onClear={clearLineItemField}
-						/>
-					</div>
-				);
-
-			case 3:
-				return (
-					<div className="space-y-3 mt-2">
-						<FinancialSummary
-							subtotal={subtotal}
-							taxRate={taxRate}
-							taxAmount={taxAmount}
-							discountType={discountType}
-							discountValue={discountValue}
-							discountAmount={discountAmount}
-							total={total}
-							isLoading={isLoading}
-							onTaxRateChange={setTaxRate}
-							onDiscountTypeChange={setDiscountType}
-							onDiscountValueChange={setDiscountValue}
-							totalLabel="Total"
-							isTaxDirty={isTaxDirty}
-							isDiscountDirty={isDiscountDirty}
-							onTaxUndo={undoTax}
-							onDiscountUndo={undoDiscount}
-						/>
-
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div>
-								<p className="mb-1 text-sm text-zinc-300">
-									Valid Until (Optional)
-								</p>
-								<DatePicker
-									mode="create"
-									value={validUntilDate}
-									onChange={setValidUntilDate}
-									align="right"
-									position="above"
-								/>
-							</div>
-
-							<div>
-								<p className="mb-1 text-sm text-zinc-300">
-									Expires At (Optional)
-								</p>
-								<DatePicker
-									mode="create"
-									value={expiresAtDate}
-									onChange={setExpiresAtDate}
-									align="right"
-									position="above"
-								/>
+							<div className="flex gap-1">
+								<div className="relative flex-1">
+									{discountType ===
+										"amount" && (
+										<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+											$
+										</span>
+									)}
+									<input
+										type="number"
+										step="0.01"
+										min="0"
+										placeholder="0.00"
+										value={
+											discountValue
+										}
+										onChange={(e) =>
+											setDiscountValue(
+												parseFloat(
+													e
+														.target
+														.value
+												) ||
+													0
+											)
+										}
+										className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm ${
+											discountType ===
+											"amount"
+												? "pl-6"
+												: ""
+										}`}
+										disabled={isLoading}
+									/>
+									{discountType ===
+										"percent" && (
+										<span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+											%
+										</span>
+									)}
+								</div>
+								<button
+									type="button"
+									onClick={() =>
+										setDiscountType(
+											discountType ===
+												"amount"
+												? "percent"
+												: "amount"
+										)
+									}
+									disabled={isLoading}
+									className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 text-white text-xs font-medium rounded-sm transition-colors min-w-[45px]"
+								>
+									{discountType === "amount"
+										? "$"
+										: "%"}
+								</button>
 							</div>
 						</div>
 					</div>
-				);
 
-			default:
-				return null;
-		}
-	}, [
-		currentStep,
-		title,
-		clientId,
-		priority,
-		description,
-		isLoading,
-		clientDropdownEntries,
-		geoData,
-		errors,
-		activeLineItems,
-		addLineItem,
-		removeLineItem,
-		updateLineItem,
-		subtotal,
-		dirtyLineItemFields,
-		undoLineItemField,
-		clearLineItemField,
-		taxRate,
-		taxAmount,
-		discountType,
-		discountValue,
-		discountAmount,
-		total,
-		validUntilDate,
-		expiresAtDate,
-		isTaxDirty,
-		isDiscountDirty,
-		undoTax,
-		undoDiscount,
-	]);
+					<div className="space-y-2 pt-3 border-t border-zinc-700">
+						<div className="flex items-center justify-between text-sm">
+							<span className="text-zinc-400">
+								Tax Amount:
+							</span>
+							<span className="text-white">
+								${taxAmount.toFixed(2)}
+							</span>
+						</div>
+						<div className="flex items-center justify-between text-sm">
+							<span className="text-zinc-400">
+								Discount Amount:
+							</span>
+							<span className="text-white">
+								-${discountAmount.toFixed(2)}
+							</span>
+						</div>
+						<div className="flex items-center justify-between text-lg font-bold pt-2 border-t border-zinc-700">
+							<span className="text-white">Total:</span>
+							<span className="text-green-400">
+								${total.toFixed(2)}
+							</span>
+						</div>
+					</div>
+				</div>
+
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+					<div>
+						<p className="mb-1 text-sm hover:color-accent">
+							Valid Until (Optional)
+						</p>
+						<DatePicker
+							mode="create"
+							value={validUntilDate}
+							onChange={setValidUntilDate}
+							align="left"
+						/>
+					</div>
+
+					<div>
+						<p className="mb-1 text-sm hover:color-accent">
+							Expires At (Optional)
+						</p>
+						<DatePicker
+							mode="create"
+							value={expiresAtDate}
+							onChange={setExpiresAtDate}
+							align="right"
+						/>
+					</div>
+				</div>
+
+				<div className="transition-all flex justify-end space-x-2 mt-4 pt-4 border-t border-zinc-700">
+					{isLoading ? (
+						<LoadSvg className="w-10 h-10" />
+					) : (
+						<>
+							<div
+								className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
+								onClick={() => {
+									resetForm();
+									setIsModalOpen(false);
+								}}
+							>
+								<Button label="Cancel" />
+							</div>
+							<div
+								className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all font-bold"
+								onClick={() => {
+									invokeCreate();
+								}}
+							>
+								<Button label="Create Quote" />
+							</div>
+						</>
+					)}
+				</div>
+			</div>
+		</div>
+	);
 
 	return (
-		<FormWizardContainer<Step>
-			title="Create Quote"
-			steps={STEPS}
-			currentStep={currentStep}
-			visitedSteps={visitedSteps}
-			isLoading={isLoading}
-			isOpen={isModalOpen}
-			onClose={() => setIsModalOpen(false)}
-			canGoToStep={canGoToStep}
-			onStepClick={goToStep}
-			onNext={goNext}
-			onBack={goBack}
-			onSubmit={invokeCreate}
-			canGoNext={canGoNext}
-			submitLabel="Create Quote"
-		>
-			{stepContent}
-		</FormWizardContainer>
+		<FullPopup
+			content={content}
+			isModalOpen={isModalOpen}
+			onClose={() => {
+				resetForm();
+				setIsModalOpen(false);
+			}}
+		/>
 	);
 };
 

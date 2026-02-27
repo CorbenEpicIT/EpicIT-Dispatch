@@ -1,14 +1,8 @@
 import z from "zod";
-import type { ClientSummary, ClientWithPrimaryContact } from "./clients";
+import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
-import type {
-	Priority,
-	BaseNote,
-	LineItemType,
-	DispatcherReference,
-	TechReference,
-} from "./common";
-import { PriorityValues, PriorityLabels, PriorityColors, LineItemTypeValues } from "./common";
+import type { Priority, BaseNote, LineItemType, DispatcherReference } from "./common";
+import { PriorityValues, LineItemTypeValues } from "./common";
 import type { JobSummary, VisitReference } from "./jobs";
 
 // ============================================================================
@@ -150,7 +144,6 @@ export interface RecurringRule {
 	by_month_day?: number | null;
 	by_month?: number | null;
 
-	// Constraint-based scheduling fields
 	arrival_constraint: ArrivalConstraint;
 	finish_constraint: FinishConstraint;
 	arrival_time?: string | null; // HH:MM format
@@ -228,7 +221,6 @@ export interface RecurringPlan {
 	updated_at: Date | string;
 	created_by_dispatcher_id?: string | null;
 
-	// Relations
 	client?: ClientWithPrimaryContact;
 	job_container?: JobSummary | null;
 	created_by_dispatcher?: DispatcherReference | null;
@@ -285,19 +277,16 @@ export const CreateRecurringPlanSchema = z
 			.optional(),
 		priority: z.enum(PriorityValues).default("Medium"),
 
-		// Plan timing
 		starts_at: z.string().datetime("Invalid start date"),
 		ends_at: z.string().datetime("Invalid end date").optional().nullable(),
 		timezone: z.string().default("America/Chicago"),
 		generation_window_days: z.number().int().min(1).max(365).default(90),
 		min_advance_days: z.number().int().min(1).max(90).default(14),
 
-		// Billing configuration
 		billing_mode: z.enum(BillingModeValues).default("per_visit"),
 		invoice_timing: z.enum(InvoiceTimingValues).default("on_completion"),
 		auto_invoice: z.boolean().default(false),
 
-		// Schedule rule - constraint-based schema
 		rule: z.object({
 			frequency: z.enum(RecurringFrequencyValues),
 			interval: z.number().int().min(1).max(365).default(1),
@@ -305,7 +294,6 @@ export const CreateRecurringPlanSchema = z
 			by_month_day: z.number().int().min(1).max(31).optional().nullable(),
 			by_month: z.number().int().min(1).max(12).optional().nullable(),
 
-			// Constraint-based fields
 			arrival_constraint: z.enum(ArrivalConstraintValues),
 			finish_constraint: z.enum(FinishConstraintValues),
 			arrival_time: z
@@ -330,7 +318,6 @@ export const CreateRecurringPlanSchema = z
 				.nullable(),
 		}),
 
-		// Template line items
 		line_items: z
 			.array(
 				z.object({
@@ -344,7 +331,7 @@ export const CreateRecurringPlanSchema = z
 					sort_order: z.number().int().min(0).optional(),
 				})
 			)
-			.min(1, "At least one line item is required"),
+			.optional(),
 	})
 	.refine(
 		(data) => {
@@ -478,7 +465,6 @@ export const UpdateRecurringPlanSchema = z
 		auto_invoice: z.boolean().optional(),
 		status: z.enum(RecurringPlanStatusValues).optional(),
 
-		// Optional rule for updates - constraint-based schema
 		rule: z
 			.object({
 				frequency: z.enum(RecurringFrequencyValues),
@@ -487,7 +473,6 @@ export const UpdateRecurringPlanSchema = z
 				by_month_day: z.number().int().min(1).max(31).optional().nullable(),
 				by_month: z.number().int().min(1).max(12).optional().nullable(),
 
-				// Constraint-based fields
 				arrival_constraint: z.enum(ArrivalConstraintValues),
 				finish_constraint: z.enum(FinishConstraintValues),
 				arrival_time: z
@@ -513,7 +498,6 @@ export const UpdateRecurringPlanSchema = z
 			})
 			.optional(),
 
-		// Optional line items for updates
 		line_items: z
 			.array(
 				z.object({

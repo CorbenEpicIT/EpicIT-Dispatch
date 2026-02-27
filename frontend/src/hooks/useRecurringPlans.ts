@@ -66,16 +66,13 @@ export const useCreateRecurringPlanMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.createRecurringPlan,
 		onSuccess: async (newPlan: RecurringPlan) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate clients
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", newPlan.client_id],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["clients"] });
 
-			// Invalidate jobs
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
 			if (newPlan.job_container?.id) {
@@ -102,20 +99,16 @@ export const useUpdateRecurringPlanMutation = (): UseMutationResult<
 		mutationFn: ({ jobId, updates }) =>
 			recurringPlanApi.updateRecurringPlan(jobId, updates),
 		onSuccess: async (updatedPlan, variables) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate clients
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", updatedPlan.client_id],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["clients"] });
 
-			// Invalidate jobs
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-			// If rule or line_items were updated, invalidate occurrences
-			// since future occurrences should reflect the new template
+			// If rule or line_items were updated, invalidate  related occurrences
 			if (variables.updates.rule || variables.updates.line_items) {
 				await queryClient.invalidateQueries({
 					queryKey: ["jobs", variables.jobId, "occurrences"],
@@ -145,10 +138,8 @@ export const useUpdateRecurringPlanLineItemsMutation = (): UseMutationResult<
 		mutationFn: ({ jobId, updates }) =>
 			recurringPlanApi.updateRecurringPlanLineItems(jobId, updates),
 		onSuccess: async (updatedPlan, variables) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate occurrences since line items changed
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs", variables.jobId, "occurrences"],
 			});
@@ -179,13 +170,10 @@ export const usePauseRecurringPlanMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.pauseRecurringPlan,
 		onSuccess: async (updatedPlan, jobId) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate jobs
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-			// Update caches
 			queryClient.setQueryData(["jobs", jobId, "recurringPlan"], updatedPlan);
 			queryClient.setQueryData(["recurringPlans", updatedPlan.id], updatedPlan);
 		},
@@ -202,13 +190,10 @@ export const useResumeRecurringPlanMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.resumeRecurringPlan,
 		onSuccess: async (updatedPlan, jobId) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate jobs
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-			// Update caches
 			queryClient.setQueryData(["jobs", jobId, "recurringPlan"], updatedPlan);
 			queryClient.setQueryData(["recurringPlans", updatedPlan.id], updatedPlan);
 		},
@@ -225,18 +210,14 @@ export const useCancelRecurringPlanMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.cancelRecurringPlan,
 		onSuccess: async (updatedPlan, jobId) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate jobs
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-			// Invalidate occurrences since they're cancelled
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs", jobId, "occurrences"],
 			});
 
-			// Update caches
 			queryClient.setQueryData(["jobs", jobId, "recurringPlan"], updatedPlan);
 			queryClient.setQueryData(["recurringPlans", updatedPlan.id], updatedPlan);
 		},
@@ -253,13 +234,10 @@ export const useCompleteRecurringPlanMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.completeRecurringPlan,
 		onSuccess: async (updatedPlan, jobId) => {
-			// Invalidate recurring plans
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
 
-			// Invalidate jobs
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-			// Update caches
 			queryClient.setQueryData(["jobs", jobId, "recurringPlan"], updatedPlan);
 			queryClient.setQueryData(["recurringPlans", updatedPlan.id], updatedPlan);
 		},
@@ -308,38 +286,34 @@ export const useGenerateOccurrencesMutation = (): UseMutationResult<
 export const useSkipOccurrenceMutation = (): UseMutationResult<
 	RecurringOccurrence,
 	Error,
-	{ occurrenceId: string; input: SkipOccurrenceInput }
+	{ occurrenceId: string; jobId: string; input: SkipOccurrenceInput }
 > => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
 		mutationFn: ({ occurrenceId, input }) =>
 			recurringPlanApi.skipOccurrence(occurrenceId, input),
-		onSuccess: async (updatedOccurrence) => {
-			const jobQueries = queryClient.getQueriesData<RecurringOccurrence[]>({
-				queryKey: ["jobs"],
+		onSuccess: async (_, variables) => {
+			const { jobId } = variables;
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "occurrences"],
 			});
 
-			let jobId: string | undefined;
-			for (const [key, occurrences] of jobQueries) {
-				if (occurrences?.some((occ) => occ.id === updatedOccurrence.id)) {
-					jobId = key[1] as string;
-					break;
-				}
-			}
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "recurringPlan"],
+			});
 
-			if (jobId) {
-				await queryClient.invalidateQueries({
-					queryKey: ["jobs", jobId, "occurrences"],
-				});
-			} else {
-				// Fallback: invalidate all
-				await queryClient.invalidateQueries({
-					queryKey: ["jobs"],
-					predicate: (query) =>
-						query.queryKey.includes("occurrences"),
-				});
-			}
+			await queryClient.invalidateQueries({
+				queryKey: ["recurringPlans"],
+			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs"],
+			});
+		},
+		onError: (error) => {
+			console.error("Skip occurrence mutation error:", error);
 		},
 	});
 };
@@ -347,41 +321,34 @@ export const useSkipOccurrenceMutation = (): UseMutationResult<
 export const useRescheduleOccurrenceMutation = (): UseMutationResult<
 	RecurringOccurrence,
 	Error,
-	{ occurrenceId: string; input: RescheduleOccurrenceInput }
+	{ occurrenceId: string; jobId: string; input: RescheduleOccurrenceInput }
 > => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
 		mutationFn: ({ occurrenceId, input }) =>
 			recurringPlanApi.rescheduleOccurrence(occurrenceId, input),
-		onSuccess: async (updatedOccurrence) => {
-			const jobQueries = queryClient.getQueriesData<RecurringOccurrence[]>({
-				queryKey: ["jobs"],
+		onSuccess: async (_, variables) => {
+			const { jobId } = variables;
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "occurrences"],
 			});
 
-			// Find which job this occurrence belongs to
-			let jobId: string | undefined;
-			for (const [key, occurrences] of jobQueries) {
-				if (occurrences?.some((occ) => occ.id === updatedOccurrence.id)) {
-					// Extract jobId from query key like ["jobs", "job-id", "occurrences"]
-					jobId = key[1] as string;
-					break;
-				}
-			}
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "recurringPlan"],
+			});
 
-			// Invalidate occurrence queries
-			if (jobId) {
-				await queryClient.invalidateQueries({
-					queryKey: ["jobs", jobId, "occurrences"],
-				});
-			} else {
-				// Fallback: invalidate all
-				await queryClient.invalidateQueries({
-					queryKey: ["jobs"],
-					predicate: (query) =>
-						query.queryKey.includes("occurrences"),
-				});
-			}
+			await queryClient.invalidateQueries({
+				queryKey: ["recurringPlans"],
+			});
+
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs"],
+			});
+		},
+		onError: (error) => {
+			console.error("Reschedule occurrence mutation error:", error);
 		},
 	});
 };
@@ -396,12 +363,14 @@ export const useBulkSkipOccurrencesMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: recurringPlanApi.bulkSkipOccurrences,
 		onSuccess: async () => {
-			// Invalidate all occurrence queries since we don't know which plans were affected
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs"],
 				predicate: (query) => query.queryKey.includes("occurrences"),
 			});
 			await queryClient.invalidateQueries({ queryKey: ["recurringPlans"] });
+		},
+		onError: (error) => {
+			console.error("Bulk skip occurrences mutation error:", error);
 		},
 	});
 };
@@ -409,48 +378,36 @@ export const useBulkSkipOccurrencesMutation = (): UseMutationResult<
 export const useGenerateVisitFromOccurrenceMutation = (): UseMutationResult<
 	VisitGenerationResult,
 	Error,
-	string
+	{ occurrenceId: string; jobId: string }
 > => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: recurringPlanApi.generateVisitFromOccurrence,
-		onSuccess: async (result) => {
-			// Find the job ID from the occurrence
-			const occurrenceQueries = queryClient.getQueriesData<RecurringOccurrence[]>(
-				{
-					queryKey: ["jobs"],
-				}
-			);
+		mutationFn: ({ occurrenceId }) =>
+			recurringPlanApi.generateVisitFromOccurrence(occurrenceId),
+		onSuccess: async (result, variables) => {
+			const { jobId } = variables;
 
-			// Find which job this occurrence belongs to
-			let jobId: string | undefined;
-			for (const [key, occurrences] of occurrenceQueries) {
-				if (occurrences?.some((occ) => occ.id === result.occurrence_id)) {
-					// Extract jobId from query key like ["jobs", "job-id", "occurrences"]
-					jobId = key[1] as string;
-					break;
-				}
-			}
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "occurrences"],
+			});
 
-			// Invalidate occurrence queries for this specific job
-			if (jobId) {
-				await queryClient.invalidateQueries({
-					queryKey: ["jobs", jobId, "occurrences"],
-				});
-				await queryClient.invalidateQueries({
-					queryKey: ["jobs", jobId, "visits"],
-				});
-			}
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", jobId, "visits"],
+			});
 
-			// Invalidate job visits since a new visit was created
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-			// Invalidate the specific visit
-			await queryClient.invalidateQueries({
-				queryKey: ["jobVisits", result.visit_id],
-			});
+			if (result.visit_id) {
+				await queryClient.invalidateQueries({
+					queryKey: ["jobVisits", result.visit_id],
+				});
+			}
+		},
+		onError: (error) => {
+			console.error("Generate visit mutation error:", error);
 		},
 	});
 };

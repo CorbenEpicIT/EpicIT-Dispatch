@@ -2,8 +2,7 @@ import LoadSvg from "../../assets/icons/loading.svg?react";
 import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
-import { PriorityValues } from "../../types/common";
-import { type CreateJobInput } from "../../types/jobs";
+import { JobPriorityValues, type CreateJobInput } from "../../types/jobs";
 import type { Request } from "../../types/requests";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
@@ -40,7 +39,7 @@ export default function ConvertToJob({
 	useEffect(() => {
 		if (isModalOpen && priorityRef.current) {
 			const requestPriority = request.priority;
-			if (PriorityValues.includes(requestPriority as any)) {
+			if (JobPriorityValues.includes(requestPriority as any)) {
 				priorityRef.current.value = requestPriority;
 			} else {
 				priorityRef.current.value = "Medium";
@@ -53,6 +52,7 @@ export default function ConvertToJob({
 			address: result.address,
 			coords: result.coords,
 		}));
+		// Clear address error when valid address is selected
 		setAddressError(null);
 	};
 
@@ -71,7 +71,7 @@ export default function ConvertToJob({
 
 	const priorityEntries = (
 		<>
-			{PriorityValues.map((v) => (
+			{JobPriorityValues.map((v) => (
 				<option key={v} value={v} className="text-black">
 					{v}
 				</option>
@@ -133,6 +133,7 @@ export default function ConvertToJob({
 				setGeoData(undefined);
 				setNameError(null);
 				setAddressError(null);
+
 				setIsModalOpen(false);
 			} catch (error) {
 				console.error("Failed to convert request to job:", error);

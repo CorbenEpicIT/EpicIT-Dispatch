@@ -6,30 +6,32 @@ import "react-day-picker/dist/style.css";
 
 type DatePickerProps = {
 	value: Date | null;
-	onChange: (date: Date | null) => void;
-	required?: boolean;
+	onChange: (date: Date) => void;
 	disabled?: boolean;
 	mode?: "create" | "edit";
 	originalValue?: Date | null;
 	onClear?: () => void;
 	align?: "left" | "right";
-	position?: "above" | "below" | "auto";
 };
 
 export default function DatePicker({
 	value,
 	onChange,
-	required = false,
 	disabled,
 	mode = "create",
 	originalValue,
 	onClear,
 	align = "left",
-	position = "auto",
 }: DatePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [ready, setReady] = useState(false);
-	const [calculatedPosition, setCalculatedPosition] = useState<"above" | "below">("below");
+	const [position, setPosition] = useState<{
+		horizontal: "left" | "right";
+		vertical: "below" | "above";
+	}>({
+		horizontal: align,
+		vertical: "below",
+	});
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const calendarRef = useRef<HTMLDivElement>(null);
@@ -43,17 +45,13 @@ export default function DatePicker({
 			setReady(false);
 			return;
 		}
-
-		if (position === "auto") {
-			// Calculate based on available space
-			const CAL_H = 350;
-			const rect = buttonRef.current!.getBoundingClientRect();
-			const hasSpaceBelow = window.innerHeight - rect.bottom >= CAL_H;
-			setCalculatedPosition(hasSpaceBelow ? "below" : "above");
-		}
-
+		const CAL_H = 350;
+		const rect = buttonRef.current!.getBoundingClientRect();
+		const vertical: "below" | "above" =
+			window.innerHeight - rect.bottom >= CAL_H ? "below" : "above";
+		setPosition({ horizontal: align, vertical });
 		requestAnimationFrame(() => setReady(true));
-	}, [open, position]);
+	}, [open, align]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -92,13 +90,11 @@ export default function DatePicker({
 		}
 	};
 
-	const finalPosition = position === "auto" ? calculatedPosition : position;
-
 	const popupClasses = `
     absolute z-50 bg-zinc-950 border border-zinc-700
     rounded-sm shadow-xl p-0.5
-    ${finalPosition === "above" ? "bottom-full mb-1" : "top-full mt-1"}
-    ${align === "left" ? "left-0" : "right-0"}
+    ${position.vertical === "above" ? "bottom-full mb-1" : "top-full mt-1"}
+    ${position.horizontal === "left" ? "left-0" : "right-0"}
   `;
 
 	return (
@@ -166,7 +162,6 @@ export default function DatePicker({
 				</span>
 
 				<div className="flex items-center gap-1">
-					{/* Undo: shown when editing and dirty (regardless of required) */}
 					{isEdit && isDirty && !disabled && (
 						<span
 							onClick={handleUndo}
@@ -177,11 +172,12 @@ export default function DatePicker({
 						</span>
 					)}
 
-					{/* Clear: shown when NOT required, has value, and not disabled */}
-					{!required && value && !disabled && (
+					{value && !disabled && (
 						<span
-							onClick={handleClear}
-							title="Clear"
+							onClick={(e) => {
+								e.stopPropagation();
+								onChange(new Date());
+							}}
 							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
 							<X className="h-3 w-3 text-zinc-400 hover:text-white" />

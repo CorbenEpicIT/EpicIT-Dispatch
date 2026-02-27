@@ -5,9 +5,9 @@ import {
 	type UseMutationResult,
 	type UseQueryResult,
 } from "@tanstack/react-query";
-import type { 
-	Technician, 
-	CreateTechnicianInput, 
+import type {
+	Technician,
+	CreateTechnicianInput,
 	UpdateTechnicianInput,
 } from "../types/technicians";
 import * as technicianApi from "../api/technicians";
@@ -35,8 +35,8 @@ export const useTechnicianByIdQuery = (
 };
 
 export const useCreateTechnicianMutation = (): UseMutationResult<
-	Technician, 
-	Error, 
+	Technician,
+	Error,
 	CreateTechnicianInput
 > => {
 	const queryClient = useQueryClient();
@@ -65,7 +65,10 @@ export const useUpdateTechnicianMutation = (): UseMutationResult<
 			technicianApi.updateTechnician(id, data),
 		onSuccess: (updatedTechnician: Technician) => {
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
-			queryClient.setQueryData(["technicians", updatedTechnician.id], updatedTechnician);
+			queryClient.setQueryData(
+				["technicians", updatedTechnician.id],
+				updatedTechnician
+			);
 		},
 		onError: (error: Error) => {
 			console.error(`Failed to update technician:`, error.message);
@@ -87,7 +90,7 @@ export const useDeleteTechnicianMutation = (): UseMutationResult<
 				queryKey: ["technicians", deletedId],
 			});
 		},
-		onSuccess: (data, deletedId) => {
+		onSuccess: (_, deletedId) => {
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			queryClient.removeQueries({ queryKey: ["technicians", deletedId] });
 		},

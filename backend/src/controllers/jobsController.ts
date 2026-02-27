@@ -78,6 +78,24 @@ export const getAllJobs = async () => {
 					},
 				},
 			},
+			recurring_plan: {
+				include: {
+					rules: {
+						include: {
+							by_weekday: true,
+						},
+					},
+					occurrences: {
+						where: {
+							occurrence_start_at: {
+								gte: new Date(), // Only future occurrences
+							},
+							status: "planned", // Only planned ones
+						},
+						orderBy: { occurrence_start_at: "asc" },
+					},
+				},
+			},
 			line_items: true,
 		},
 		orderBy: { created_at: "desc" },

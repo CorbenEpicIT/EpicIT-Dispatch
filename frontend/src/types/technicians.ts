@@ -1,5 +1,5 @@
 import z from "zod";
-import type { JobPriority, JobStatus, ScheduleType, VisitStatus } from "./jobs";
+import type { JobPriority, JobStatus, VisitStatus } from "./jobs";
 import type { Coordinates } from "./location";
 import type { JobVisit } from "./jobs";
 
@@ -27,11 +27,14 @@ export interface VisitTechnician {
 	visit: {
 		id: string;
 		job_id: string;
-		schedule_type: ScheduleType;
+		schedule_type: string;
 		scheduled_start_at: Date;
 		scheduled_end_at: Date;
-		arrival_window_start?: Date | null;
-		arrival_window_end?: Date | null;
+		arrival_time?: string | null; // HH:MM
+		arrival_window_start?: string | null; // HH:MM
+		arrival_window_end?: string | null; // HH:MM
+		finish_time?: string | null; // HH:MM
+
 		actual_start_at?: Date | null;
 		actual_end_at?: Date | null;
 		status: VisitStatus;
@@ -71,11 +74,11 @@ export interface Technician {
 	hire_date: Date;
 	last_login: Date;
 	visit_techs?: VisitTechnician[];
-	logs?: any[];
-	created_client_notes?: any[];
-	last_edited_client_notes?: any[];
-	created_job_notes?: any[];
-	last_edited_job_notes?: any[];
+	logs?: unknown[];
+	created_client_notes?: unknown[];
+	last_edited_client_notes?: unknown[];
+	created_job_notes?: unknown[];
+	last_edited_job_notes?: unknown[];
 }
 
 export interface CreateTechnicianInput {

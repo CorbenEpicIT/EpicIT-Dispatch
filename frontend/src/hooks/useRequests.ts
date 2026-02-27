@@ -62,21 +62,17 @@ export const useCreateRequestMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: requestApi.createRequest,
 		onSuccess: (newRequest: Request) => {
-			// Invalidate all requests list
 			queryClient.invalidateQueries({ queryKey: ["requests"] });
 
-			// Invalidate client-specific requests
 			queryClient.invalidateQueries({
 				queryKey: ["clients", newRequest.client_id, "requests"],
 			});
 
-			// Invalidate clients
 			queryClient.invalidateQueries({
 				queryKey: ["clients", newRequest.client_id],
 			});
 			queryClient.invalidateQueries({ queryKey: ["clients"] });
 
-			// Set individual request cache
 			queryClient.setQueryData(["requests", newRequest.id], newRequest);
 		},
 		onError: (error) => {
@@ -96,21 +92,17 @@ export const useUpdateRequestMutation = (): UseMutationResult<
 		mutationFn: ({ id, data }: { id: string; data: UpdateRequestInput }) =>
 			requestApi.updateRequest(id, data),
 		onSuccess: (updatedRequest: Request) => {
-			// Invalidate all requests
 			queryClient.invalidateQueries({ queryKey: ["requests"] });
 
-			// Invalidate client-specific requests
 			queryClient.invalidateQueries({
 				queryKey: ["clients", updatedRequest.client_id, "requests"],
 			});
 
-			// Invalidate clients
 			queryClient.invalidateQueries({
 				queryKey: ["clients", updatedRequest.client_id],
 			});
 			queryClient.invalidateQueries({ queryKey: ["clients"] });
 
-			// Update the specific request in cache
 			queryClient.setQueryData(["requests", updatedRequest.id], updatedRequest);
 		},
 		onError: (error: Error) => {
@@ -129,13 +121,11 @@ export const useDeleteRequestMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ id }: { id: string; clientId?: string }) =>
 			requestApi.deleteRequest(id),
-		onSuccess: (data, variables) => {
+		onSuccess: (_, variables) => {
 			const { id: deletedId, clientId } = variables;
 
-			// Invalidate all requests
 			queryClient.invalidateQueries({ queryKey: ["requests"] });
 
-			// Invalidate client-specific requests if clientId provided
 			if (clientId) {
 				queryClient.invalidateQueries({
 					queryKey: ["clients", clientId, "requests"],
@@ -145,10 +135,8 @@ export const useDeleteRequestMutation = (): UseMutationResult<
 				});
 			}
 
-			// Invalidate all clients
 			queryClient.invalidateQueries({ queryKey: ["clients"] });
 
-			// Remove the deleted request from cache
 			queryClient.removeQueries({ queryKey: ["requests", deletedId] });
 		},
 		onError: (error: Error) => {
@@ -266,17 +254,14 @@ export const useDeleteRequestNoteMutation = (): UseMutationResult<
 		mutationFn: ({ requestId, noteId }: { requestId: string; noteId: string }) =>
 			requestApi.deleteRequestNote(requestId, noteId),
 		onSuccess: async (_, variables) => {
-			// Invalidate request (includes notes in detail view)
 			await queryClient.invalidateQueries({
 				queryKey: ["requests", variables.requestId],
 			});
 
-			// Invalidate notes list
 			await queryClient.invalidateQueries({
 				queryKey: ["requests", variables.requestId, "notes"],
 			});
 
-			// Remove individual note cache
 			queryClient.removeQueries({
 				queryKey: [
 					"requests",

@@ -194,8 +194,6 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 					arrival_window_start: parsed.arrival_window_start ?? null,
 					arrival_window_end: parsed.arrival_window_end ?? null,
 					finish_time: parsed.finish_time ?? null,
-
-					status: parsed.status,
 				},
 			});
 
@@ -209,7 +207,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 				});
 			}
 
-			if (parsed.status === "Scheduled" && job.status === "Unscheduled") {
+			if (job.status === "Unscheduled") {
 				await tx.job.update({
 					where: { id: parsed.job_id },
 					data: { status: "Scheduled" },
@@ -285,7 +283,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 
 export const updateJobVisit = async (req: Request, context?: UserContext) => {
 	try {
-		const id = req.params.id;
+		const id = req.params.id as string;
 		const parsed = updateJobVisitSchema.parse(req.body);
 
 		const existingVisit = await db.job_visit.findUnique({
@@ -352,9 +350,6 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 					}),
 					...(parsed.actual_end_at !== undefined && {
 						actual_end_at: parsed.actual_end_at,
-					}),
-					...(parsed.status !== undefined && {
-						status: parsed.status,
 					}),
 				},
 				include: {

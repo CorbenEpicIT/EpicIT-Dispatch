@@ -1,14 +1,10 @@
 import { useParams, useNavigate } from "react-router-dom";
 import {
-	ChevronLeft,
 	Edit2,
 	User,
-	Calendar,
-	MapPin,
 	Clock,
 	Users,
 	DollarSign,
-	FileText,
 	CheckCircle2,
 	XCircle,
 	Pause,
@@ -20,7 +16,6 @@ import {
 import { useState, useRef, useEffect } from "react";
 import {
 	useJobVisitByIdQuery,
-	useUpdateJobVisitMutation,
 	useStartJobVisitMutation,
 	usePauseJobVisitMutation,
 	useResumeJobVisitMutation,
@@ -32,7 +27,6 @@ import Card from "../../components/ui/Card";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
-import { ArrivalConstraintLabels, FinishConstraintLabels } from "../../types/recurringPlans";
 import type { ClientContact } from "../../types/clients";
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
 
@@ -45,7 +39,6 @@ export default function JobVisitDetailPage() {
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
-	const updateVisitMutation = useUpdateJobVisitMutation();
 	const startVisitMutation = useStartJobVisitMutation();
 	const pauseVisitMutation = usePauseJobVisitMutation();
 	const resumeVisitMutation = useResumeJobVisitMutation();
