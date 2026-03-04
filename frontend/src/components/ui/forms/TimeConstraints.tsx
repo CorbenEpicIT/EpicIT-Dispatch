@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import TimePicker from "../TimePicker";
 import { ArrivalConstraintValues, FinishConstraintValues } from "../../../types/recurringPlans";
 import type { ArrivalConstraint, FinishConstraint } from "../../../types/recurringPlans";
@@ -18,6 +18,7 @@ export interface TimeConstraintsState {
 interface TimeConstraintsProps {
 	mode?: "create" | "edit";
 	isLoading?: boolean;
+	resetKey?: number;
 	initialArrivalConstraint?: ArrivalConstraint;
 	initialFinishConstraint?: FinishConstraint;
 	initialArrivalTime?: Date | null;
@@ -30,6 +31,7 @@ interface TimeConstraintsProps {
 const TimeConstraints = ({
 	mode = "create",
 	isLoading = false,
+	resetKey,
 	initialArrivalConstraint,
 	initialFinishConstraint,
 	initialArrivalTime,
@@ -65,6 +67,7 @@ const TimeConstraints = ({
 		undoFinishTime,
 	} = useTimeConstraints({
 		mode,
+		resetKey,
 		initialArrivalConstraint,
 		initialFinishConstraint,
 		initialArrivalTime,
@@ -73,17 +76,45 @@ const TimeConstraints = ({
 		initialFinishTime,
 	});
 
+	// Use a ref for onStateChange so the effect never needs it as a dep,
+	// preventing infinite loops when the parent passes an inline function.
+	const onStateChangeRef = useRef(onStateChange);
 	useEffect(() => {
-		if (onStateChange) {
-			onStateChange({
-				arrivalConstraint,
-				finishConstraint,
-				arrivalTime,
-				arrivalWindowStart,
-				arrivalWindowEnd,
-				finishTime,
-			});
+		onStateChangeRef.current = onStateChange;
+	});
+
+	// isMounted guard: skip the initial fire so markDirty isn't called on mount.
+	// isResetting guard: skip fires caused by a resetKey change (draft load / form reset)
+	// so that loading a draft doesn't immediately mark the form dirty.
+	const isMounted = useRef(false);
+	const isResetting = useRef(false);
+	const prevResetKeyForGuard = useRef(resetKey);
+
+	// Arm the suppression flag when resetKey changes — must be declared BEFORE the
+	// state-change effect so React runs it first in the same flush.
+	useEffect(() => {
+		if (resetKey === prevResetKeyForGuard.current) return;
+		prevResetKeyForGuard.current = resetKey;
+		isResetting.current = true;
+	}, [resetKey]);
+
+	useEffect(() => {
+		if (!isMounted.current) {
+			isMounted.current = true;
+			return;
 		}
+		if (isResetting.current) {
+			isResetting.current = false;
+			return;
+		}
+		onStateChangeRef.current?.({
+			arrivalConstraint,
+			finishConstraint,
+			arrivalTime,
+			arrivalWindowStart,
+			arrivalWindowEnd,
+			finishTime,
+		});
 	}, [
 		arrivalConstraint,
 		finishConstraint,
@@ -91,7 +122,7 @@ const TimeConstraints = ({
 		arrivalWindowStart,
 		arrivalWindowEnd,
 		finishTime,
-		onStateChange,
+		// onStateChange intentionally excluded — accessed via ref to avoid loop
 	]);
 
 	const showUndo = mode === "edit";
@@ -229,7 +260,6 @@ const TimeConstraints = ({
 										)}
 									</div>
 								</div>
-
 								<div className="space-y-1 min-w-0">
 									<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 										End Time

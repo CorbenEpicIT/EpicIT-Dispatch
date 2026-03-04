@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ZodError } from "zod";
 import {
@@ -7,14 +7,25 @@ import {
 	type RecurringFrequency,
 	type Weekday,
 } from "../../types/recurringPlans";
-import { type LineItemType, PriorityValues, type Priority } from "../../types/common";
-
+import {
+	type LineItemType,
+	type BaseLineItem,
+	PriorityValues,
+	type Priority,
+} from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import { useCreateRecurringPlanMutation } from "../../hooks/useRecurringPlans";
+import {
+	useDraftsByTypeQuery,
+	useCreateDraftMutation,
+	useUpdateDraftMutation,
+	useDeleteDraftMutation,
+} from "../../hooks/forms/useDrafts";
+import { getDraft } from "../../api/drafts";
+import type { DraftSummary } from "../../types/drafts";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
-
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import { BillingConfiguration } from "../ui/forms/BillingConfiguration";
@@ -22,6 +33,11 @@ import { ScheduleConfiguration } from "../ui/forms/ScheduleConfiguration";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+} from "../ui/forms/TemplateSearch";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -50,16 +66,15 @@ const PRIORITY_ENTRIES = (
 
 const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPlanProps) => {
 	const navigate = useNavigate();
+
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [clientId, setClientId] = useState("");
 	const [priority, setPriority] = useState<Priority>("Medium");
 	const [geoData, setGeoData] = useState<GeocodeResult>();
-
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
-	const { data: clients } = useAllClientsQuery();
-	const createMutation = useCreateRecurringPlanMutation();
+	const [timezone] = useState<string>("America/Chicago");
 
 	const [scheduleState, setScheduleState] = useState<{
 		startDate: Date;
@@ -85,7 +100,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 	const [timeConstraintsState, setTimeConstraintsState] =
 		useState<TimeConstraintsState | null>(null);
-
+	const [constraintSeed, setConstraintSeed] = useState<
+		Partial<TimeConstraintsState> & { key: number }
+	>({ key: 1 });
+	const constraintResetKeyRef = useRef(1); // always incrementing — never reuse a value
 	const [billingMode, setBillingMode] = useState<"per_visit" | "subscription" | "none">(
 		"per_visit"
 	);
@@ -93,7 +111,21 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		"on_completion" | "on_schedule_date" | "manual"
 	>("on_completion");
 	const [autoInvoice, setAutoInvoice] = useState<boolean>(false);
-	const [timezone] = useState<string>("America/Chicago");
+
+	const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false);
+	const [sourceClientFilter, setSourceClientFilter] = useState("");
+
+	const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+	const [isDirty, setIsDirty] = useState(false);
+
+	const { data: clients } = useAllClientsQuery();
+	const createMutation = useCreateRecurringPlanMutation();
+	const { data: drafts = [] } = useDraftsByTypeQuery("recurring_plan");
+	const createDraftMutation = useCreateDraftMutation();
+	const updateDraftMutation = useUpdateDraftMutation();
+	const deleteDraftMutation = useDeleteDraftMutation();
+
+	const markDirty = useCallback(() => setIsDirty(true), []);
 
 	const {
 		activeLineItems,
@@ -105,24 +137,50 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-	} = useLineItems({
-		minItems: 0,
-		mode: "create",
-	});
+		seedLineItems,
+	} = useLineItems({ minItems: 0, mode: "create" });
+	const dirtyAddLineItem = useCallback(() => {
+		addLineItem();
+		markDirty();
+	}, [addLineItem, markDirty]);
+	const dirtyRemoveLineItem = useCallback(
+		(id: string) => {
+			removeLineItem(id);
+			markDirty();
+		},
+		[removeLineItem, markDirty]
+	);
+	const dirtyUpdateLineItem = useCallback(
+		(id: string, field: keyof BaseLineItem, value: string | number) => {
+			updateLineItem(id, field, value);
+			markDirty();
+		},
+		[updateLineItem, markDirty]
+	);
 
-	const validateStep1 = useCallback((): boolean => {
-		return !!(
-			name.trim() &&
-			clientId.trim() &&
-			description.trim() &&
-			geoData?.address &&
-			priority
-		);
-	}, [name, clientId, description, geoData, priority]);
+	const {
+		currentStep,
+		visitedSteps,
+		goNext,
+		goBack,
+		goToStep,
+		reset: resetWizard,
+	} = useStepWizard<Step>({ totalSteps: 5 as Step, initialStep: 1 as Step });
+
+	const validateStep1 = useCallback(
+		(): boolean =>
+			!!(
+				name.trim() &&
+				clientId.trim() &&
+				description.trim() &&
+				geoData?.address &&
+				priority
+			),
+		[name, clientId, description, geoData, priority]
+	);
 
 	const validateStep2 = useCallback((): boolean => {
 		if (!scheduleState) return false;
-
 		if (
 			scheduleState.frequency === "weekly" &&
 			scheduleState.selectedWeekdays.length === 0
@@ -135,13 +193,11 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			(scheduleState.month === "" || scheduleState.monthDay === "")
 		)
 			return false;
-
 		return scheduleState.generationWindow > 0 && scheduleState.minAdvance >= 0;
 	}, [scheduleState]);
 
 	const validateStep3 = useCallback((): boolean => {
 		if (!timeConstraintsState) return true;
-
 		const arrivalOk =
 			timeConstraintsState.arrivalConstraint === "anytime" ||
 			(timeConstraintsState.arrivalConstraint === "at" &&
@@ -151,35 +207,30 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 				!!timeConstraintsState.arrivalWindowEnd) ||
 			(timeConstraintsState.arrivalConstraint === "by" &&
 				!!timeConstraintsState.arrivalWindowEnd);
-
 		const finishOk =
 			timeConstraintsState.finishConstraint === "when_done" ||
 			((timeConstraintsState.finishConstraint === "at" ||
 				timeConstraintsState.finishConstraint === "by") &&
 				!!timeConstraintsState.finishTime);
-
 		const windowOrderOk =
 			timeConstraintsState.arrivalConstraint !== "between" ||
 			!timeConstraintsState.arrivalWindowStart ||
 			!timeConstraintsState.arrivalWindowEnd ||
 			timeConstraintsState.arrivalWindowEnd.getTime() >
 				timeConstraintsState.arrivalWindowStart.getTime();
-
 		return arrivalOk && finishOk && windowOrderOk;
 	}, [timeConstraintsState]);
 
 	const validateStep4 = useCallback((): boolean => {
-		const meaningfulItems = activeLineItems.filter((item) => {
-			const hasAnyText =
+		const meaningful = activeLineItems.filter((item) => {
+			const hasText =
 				item.name.trim() !== "" || (item.description?.trim() ?? "") !== "";
-			const hasAnyNumbers = Number(item.unit_price) > 0;
+			const hasNumbers = Number(item.unit_price) > 0;
 			const hasType = (item.item_type?.trim?.() ?? "") !== "";
-			return hasAnyText || hasAnyNumbers || hasType;
+			return hasText || hasNumbers || hasType;
 		});
-
-		if (meaningfulItems.length === 0) return true;
-
-		return meaningfulItems.every(
+		if (meaningful.length === 0) return true;
+		return meaningful.every(
 			(item) =>
 				item.name.trim() &&
 				Number(item.quantity) > 0 &&
@@ -198,26 +249,12 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 					return validateStep3();
 				case 4:
 					return validateStep4();
-				case 5:
-					return true;
 				default:
 					return true;
 			}
 		},
 		[validateStep1, validateStep2, validateStep3, validateStep4]
 	);
-
-	const {
-		currentStep,
-		visitedSteps,
-		goNext,
-		goBack,
-		goToStep,
-		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 5 as Step,
-		initialStep: 1 as Step,
-	});
 
 	const canGoNext = isStepValid(currentStep);
 
@@ -250,11 +287,17 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			month: "",
 		});
 		setTimeConstraintsState(null);
+		constraintResetKeyRef.current += 1;
+		setConstraintSeed({ key: constraintResetKeyRef.current }); // clear all initial* props → use defaults
 		setBillingMode("per_visit");
 		setInvoiceTiming("on_completion");
 		setAutoInvoice(false);
 		resetLineItems();
 		setErrors(null);
+		setIsDraftPanelOpen(false);
+		setSourceClientFilter("");
+		setCurrentDraftId(null);
+		setIsDirty(false);
 	}, [resetWizard, resetLineItems]);
 
 	useEffect(() => {
@@ -266,30 +309,245 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData({ address: result.address, coords: result.coords });
+		markDirty();
 	};
+	const handleClearAddress = () => setGeoData(undefined);
 
-	const handleClearAddress = () => {
-		setGeoData(undefined);
-	};
-
-	const toggleWeekday = useCallback((weekday: Weekday) => {
-		setScheduleState((prev) => {
-			const newWeekdays = prev.selectedWeekdays.includes(weekday)
-				? prev.selectedWeekdays.filter((d) => d !== weekday)
-				: [...prev.selectedWeekdays, weekday];
-			return { ...prev, selectedWeekdays: newWeekdays };
-		});
-	}, []);
+	const toggleWeekday = useCallback(
+		(weekday: Weekday) => {
+			setScheduleState((prev) => ({
+				...prev,
+				selectedWeekdays: prev.selectedWeekdays.includes(weekday)
+					? prev.selectedWeekdays.filter((d) => d !== weekday)
+					: [...prev.selectedWeekdays, weekday],
+			}));
+			markDirty();
+		},
+		[markDirty]
+	);
 
 	const formatTimeString = (date: Date | null): string | null => {
 		if (!date) return null;
-		const hours = date.getHours().toString().padStart(2, "0");
-		const minutes = date.getMinutes().toString().padStart(2, "0");
-		return `${hours}:${minutes}`;
+		return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 	};
 
+	const handleSelectDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				const draft = await getDraft(draftId);
+				const p = draft.payload as Partial<CreateRecurringPlanInput> & {
+					schedule?: typeof scheduleState;
+					line_items?: Array<{
+						name: string;
+						description?: string | null;
+						quantity: number;
+						unit_price: number;
+						item_type?: string | null;
+					}>;
+					time_constraints?: {
+						arrivalConstraint: string;
+						finishConstraint: string;
+						arrivalTime?: string | null;
+						arrivalWindowStart?: string | null;
+						arrivalWindowEnd?: string | null;
+						finishTime?: string | null;
+					};
+				};
+
+				setName(p.name || "");
+				setDescription(p.description || "");
+				setClientId(p.client_id || "");
+				setPriority((p.priority as Priority) || "Medium");
+				if (p.address)
+					setGeoData({
+						address: p.address,
+						coords: p.coords || { lat: 0, lon: 0 },
+					});
+				if (p.billing_mode) setBillingMode(p.billing_mode);
+				if (p.invoice_timing) setInvoiceTiming(p.invoice_timing);
+				if (p.auto_invoice !== undefined) setAutoInvoice(p.auto_invoice);
+
+				if (p.schedule) {
+					setScheduleState({
+						...p.schedule,
+						startDate: new Date(p.schedule.startDate),
+						endDate: p.schedule.endDate
+							? new Date(p.schedule.endDate)
+							: null,
+					});
+				}
+
+				if (p.line_items?.length) {
+					seedLineItems(
+						p.line_items.map((li) => ({
+							name: li.name,
+							description: li.description ?? "",
+							quantity: Number(li.quantity),
+							unit_price: Number(li.unit_price),
+							item_type: (li.item_type ?? "") as
+								| LineItemType
+								| "",
+						}))
+					);
+				}
+
+				if (p.time_constraints) {
+					const tc = p.time_constraints;
+					constraintResetKeyRef.current += 1;
+					setConstraintSeed({
+						key: constraintResetKeyRef.current,
+						arrivalConstraint:
+							tc.arrivalConstraint as TimeConstraintsState["arrivalConstraint"],
+						finishConstraint:
+							tc.finishConstraint as TimeConstraintsState["finishConstraint"],
+						arrivalTime: tc.arrivalTime
+							? new Date(tc.arrivalTime)
+							: null,
+						arrivalWindowStart: tc.arrivalWindowStart
+							? new Date(tc.arrivalWindowStart)
+							: null,
+						arrivalWindowEnd: tc.arrivalWindowEnd
+							? new Date(tc.arrivalWindowEnd)
+							: null,
+						finishTime: tc.finishTime
+							? new Date(tc.finishTime)
+							: null,
+					});
+				}
+
+				setCurrentDraftId(draft.id);
+				setIsDirty(false);
+				setIsDraftPanelOpen(false);
+				goToStep(1 as Step);
+			} catch (err) {
+				console.error("Failed to load draft:", err);
+			}
+		},
+		[seedLineItems, goToStep]
+	);
+
+	const handleSaveDraft = useCallback(async () => {
+		const payload: Record<string, unknown> = {
+			name,
+			description,
+			client_id: clientId,
+			priority,
+			address: geoData?.address,
+			coords: geoData?.coords,
+			billing_mode: billingMode,
+			invoice_timing: invoiceTiming,
+			auto_invoice: autoInvoice,
+			schedule: scheduleState,
+			line_items: activeLineItems.map((item) => ({
+				name: item.name,
+				description: item.description,
+				quantity: item.quantity,
+				unit_price: item.unit_price,
+				item_type: item.item_type,
+				total: item.total,
+			})),
+			time_constraints: timeConstraintsState
+				? {
+						arrivalConstraint:
+							timeConstraintsState.arrivalConstraint,
+						finishConstraint:
+							timeConstraintsState.finishConstraint,
+						arrivalTime:
+							timeConstraintsState.arrivalTime?.toISOString() ??
+							null,
+						arrivalWindowStart:
+							timeConstraintsState.arrivalWindowStart?.toISOString() ??
+							null,
+						arrivalWindowEnd:
+							timeConstraintsState.arrivalWindowEnd?.toISOString() ??
+							null,
+						finishTime:
+							timeConstraintsState.finishTime?.toISOString() ??
+							null,
+					}
+				: undefined,
+		};
+		try {
+			if (currentDraftId) {
+				await updateDraftMutation.mutateAsync({
+					id: currentDraftId,
+					input: { payload },
+				});
+			} else {
+				const draft = await createDraftMutation.mutateAsync({
+					form_type: "recurring_plan",
+					payload,
+					entity_context_id: null,
+				});
+				setCurrentDraftId(draft.id);
+			}
+			setIsDirty(false);
+		} catch (err) {
+			console.error("Failed to save draft:", err);
+		}
+	}, [
+		name,
+		description,
+		clientId,
+		priority,
+		geoData,
+		billingMode,
+		invoiceTiming,
+		autoInvoice,
+		scheduleState,
+		activeLineItems,
+		timeConstraintsState,
+		currentDraftId,
+		createDraftMutation,
+		updateDraftMutation,
+	]);
+
+	const handleDeleteDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				await deleteDraftMutation.mutateAsync(draftId);
+				if (draftId === currentDraftId) {
+					setCurrentDraftId(null);
+					setIsDirty(false);
+				}
+			} catch (err) {
+				console.error("Failed to delete draft:", err);
+			}
+		},
+		[currentDraftId, deleteDraftMutation]
+	);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
+
+	const draftResults = useMemo((): TemplateSearchResult[] => {
+		return drafts.map((d: DraftSummary) => ({
+			id: d.id,
+			title: d.label || "Untitled Draft",
+			subtitle: (() => {
+				const diff = Date.now() - new Date(d.updated_at).getTime();
+				const mins = Math.floor(diff / 60000);
+				const hrs = Math.floor(diff / 3600000);
+				const days = Math.floor(diff / 86400000);
+				if (mins < 1) return "Updated just now";
+				if (mins < 60) return `Updated ${mins}m ago`;
+				if (hrs < 24) return `Updated ${hrs}h ago`;
+				if (days < 7) return `Updated ${days}d ago`;
+				return `Updated ${new Date(d.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+			})(),
+			createdAt: d.created_at,
+			isDeletable: true,
+			clientId: d.client_id ?? undefined,
+			clientName: d.client_id
+				? templateClients.find((c) => c.id === d.client_id)?.name
+				: undefined,
+		}));
+	}, [drafts, templateClients]);
+
 	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
+		if (clients?.length) {
 			return clients.map((c) => (
 				<option value={c.id} key={c.id}>
 					{c.name}
@@ -309,7 +567,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		const validLineItems = activeLineItems.filter(
 			(item) => item.name.trim() !== "" && item.quantity > 0
 		);
-
 		const preparedLineItems = validLineItems.map((item, index) => ({
 			name: item.name,
 			description: item.description || undefined,
@@ -362,12 +619,12 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			address: geoData?.address || "",
 			coords: geoData?.coords,
 			description: description.trim(),
-			priority: priority,
+			priority,
 			starts_at: scheduleState.startDate.toISOString(),
 			ends_at: scheduleState.endDate
 				? scheduleState.endDate.toISOString()
 				: undefined,
-			timezone: timezone,
+			timezone,
 			generation_window_days: Number(scheduleState.generationWindow),
 			min_advance_days: Number(scheduleState.minAdvance),
 			billing_mode: billingMode,
@@ -378,11 +635,8 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		};
 
 		const parseResult = CreateRecurringPlanSchema.safeParse(newRecurringPlan);
-
 		if (!parseResult.success) {
 			setErrors(parseResult.error);
-			console.error("Validation errors:", parseResult.error);
-
 			const errorPaths = parseResult.error.issues.map((i) => i.path[0]);
 			if (
 				errorPaths.some((p) =>
@@ -438,10 +692,13 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 
 		setErrors(null);
 		setIsLoading(true);
-
 		try {
 			const result = await createMutation.mutateAsync(newRecurringPlan);
-
+			if (currentDraftId) {
+				await deleteDraftMutation
+					.mutateAsync(currentDraftId)
+					.catch(() => {});
+			}
 			const recurringPlanId = result?.id || result;
 			setIsModalOpen(false);
 			resetForm();
@@ -456,7 +713,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
-		if (fieldErrors.length === 0) return null;
+		if (!fieldErrors.length) return null;
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
@@ -469,6 +726,27 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 	};
 
 	const stepContent = useMemo(() => {
+		if (isDraftPanelOpen) {
+			return (
+				<TemplateSearch
+					heading="Use Draft"
+					placeholder="Search drafts by name..."
+					results={draftResults}
+					clients={templateClients}
+					onSelect={handleSelectDraft}
+					onClose={() => setIsDraftPanelOpen(false)}
+					onDelete={handleDeleteDraft}
+					isDeletingId={
+						deleteDraftMutation.isPending
+							? (deleteDraftMutation.variables as string)
+							: null
+					}
+					clientFilter={sourceClientFilter}
+					onClientFilterChange={setSourceClientFilter}
+				/>
+			);
+		}
+
 		switch (currentStep) {
 			case 1:
 				return (
@@ -481,9 +759,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								type="text"
 								placeholder="Plan Name"
 								value={name}
-								onChange={(e) =>
-									setName(e.target.value)
-								}
+								onChange={(e) => {
+									setName(e.target.value);
+									markDirty();
+								}}
 								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
@@ -500,11 +779,10 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 										clientDropdownEntries
 									}
 									value={clientId}
-									onChange={(newValue) =>
-										setClientId(
-											newValue
-										)
-									}
+									onChange={(v) => {
+										setClientId(v);
+										markDirty();
+									}}
 									placeholder="Select client"
 									disabled={isLoading}
 									error={errors?.issues.some(
@@ -516,7 +794,6 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								/>
 								<ErrorDisplay path="client_id" />
 							</div>
-
 							<div className="min-w-0">
 								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 									Priority
@@ -524,11 +801,12 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 								<Dropdown
 									entries={PRIORITY_ENTRIES}
 									value={priority}
-									onChange={(newValue) =>
+									onChange={(v) => {
 										setPriority(
-											newValue as Priority
-										)
-									}
+											v as Priority
+										);
+										markDirty();
+									}}
 									defaultValue="Medium"
 									disabled={isLoading}
 									error={errors?.issues.some(
@@ -549,11 +827,12 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 							<textarea
 								placeholder="Plan Description"
 								value={description}
-								onChange={(e) =>
+								onChange={(e) => {
 									setDescription(
 										e.target.value
-									)
-								}
+									);
+									markDirty();
+								}}
 								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
@@ -567,29 +846,16 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Address *
 							</label>
-							<div className="relative">
-								<AddressForm
-									mode={
-										geoData
-											? "edit"
-											: "create"
-									}
-									originalValue={
-										geoData?.address ||
-										""
-									}
-									originalCoords={
-										geoData?.coords
-									}
-									dropdownPosition="above"
-									handleChange={
-										handleChangeAddress
-									}
-									handleClear={
-										handleClearAddress
-									}
-								/>
-							</div>
+							<AddressForm
+								mode={geoData ? "edit" : "create"}
+								originalValue={
+									geoData?.address || ""
+								}
+								originalCoords={geoData?.coords}
+								dropdownPosition="above"
+								handleChange={handleChangeAddress}
+								handleClear={handleClearAddress}
+							/>
 							<ErrorDisplay path="address" />
 							<ErrorDisplay path="coords" />
 						</div>
@@ -609,70 +875,70 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						selectedWeekdays={scheduleState.selectedWeekdays}
 						monthDay={scheduleState.monthDay}
 						month={scheduleState.month}
-						onStartDateChange={(date) =>
-							setScheduleState((prev) => ({
-								...prev,
+						onStartDateChange={(date) => {
+							setScheduleState((p) => ({
+								...p,
 								startDate: date || new Date(),
-							}))
-						}
-						onEndDateChange={(date) =>
-							setScheduleState((prev) => ({
-								...prev,
+							}));
+							markDirty();
+						}}
+						onEndDateChange={(date) => {
+							setScheduleState((p) => ({
+								...p,
 								endDate: date,
-							}))
-						}
-						onGenerationWindowChange={(val) =>
-							setScheduleState((prev) => ({
-								...prev,
+							}));
+							markDirty();
+						}}
+						onGenerationWindowChange={(val) => {
+							setScheduleState((p) => ({
+								...p,
 								generationWindow: val,
-							}))
-						}
-						onMinAdvanceChange={(val) =>
-							setScheduleState((prev) => ({
-								...prev,
+							}));
+							markDirty();
+						}}
+						onMinAdvanceChange={(val) => {
+							setScheduleState((p) => ({
+								...p,
 								minAdvance: val,
-							}))
-						}
-						onFrequencyChange={(val) =>
-							setScheduleState((prev) => ({
-								...prev,
+							}));
+							markDirty();
+						}}
+						onFrequencyChange={(val) => {
+							setScheduleState((p) => ({
+								...p,
 								frequency: val,
-							}))
-						}
-						onIntervalChange={(val) =>
-							setScheduleState((prev) => ({
-								...prev,
+							}));
+							markDirty();
+						}}
+						onIntervalChange={(val) => {
+							setScheduleState((p) => ({
+								...p,
 								interval: val,
-							}))
-						}
+							}));
+							markDirty();
+						}}
 						onToggleWeekday={toggleWeekday}
-						onMonthDayChange={(val) =>
-							setScheduleState((prev) => ({
-								...prev,
+						onMonthDayChange={(val) => {
+							setScheduleState((p) => ({
+								...p,
 								monthDay: val,
-							}))
-						}
-						onMonthChange={(val) =>
-							setScheduleState((prev) => ({
-								...prev,
+							}));
+							markDirty();
+						}}
+						onMonthChange={(val) => {
+							setScheduleState((p) => ({
+								...p,
 								month: val,
-							}))
-						}
+							}));
+							markDirty();
+						}}
 						isLoading={isLoading}
 						errors={errors}
 					/>
 				);
 
 			case 3:
-				return (
-					<div className="space-y-2 lg:space-y-3 min-w-0 pt-2">
-						<TimeConstraints
-							mode="create"
-							onStateChange={setTimeConstraintsState}
-							isLoading={isLoading}
-						/>
-					</div>
-				);
+				return null; // Rendered outside useMemo — see hoisted TimeConstraints below
 
 			case 4:
 				return (
@@ -681,9 +947,9 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						<LineItemsSection
 							lineItems={activeLineItems}
 							isLoading={isLoading}
-							onAdd={addLineItem}
-							onRemove={removeLineItem}
-							onUpdate={updateLineItem}
+							onAdd={dirtyAddLineItem}
+							onRemove={dirtyRemoveLineItem}
+							onUpdate={dirtyUpdateLineItem}
 							subtotal={subtotal}
 							required={false}
 							minItems={0}
@@ -702,30 +968,45 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 							billingMode={billingMode}
 							invoiceTiming={invoiceTiming}
 							autoInvoice={autoInvoice}
-							onBillingModeChange={setBillingMode}
-							onInvoiceTimingChange={setInvoiceTiming}
-							onAutoInvoiceChange={setAutoInvoice}
+							onBillingModeChange={(v) => {
+								setBillingMode(v);
+								markDirty();
+							}}
+							onInvoiceTimingChange={(v) => {
+								setInvoiceTiming(v);
+								markDirty();
+							}}
+							onAutoInvoiceChange={(v) => {
+								setAutoInvoice(v);
+								markDirty();
+							}}
 							isLoading={isLoading}
 							errors={errors}
 						/>
 					</div>
 				);
+
 			default:
 				return null;
 		}
 	}, [
+		isDraftPanelOpen,
+		draftResults,
+		templateClients,
+		handleSelectDraft,
+		handleDeleteDraft,
+		sourceClientFilter,
 		currentStep,
 		name,
 		clientId,
 		priority,
 		description,
-		geoData,
 		isLoading,
 		clientDropdownEntries,
+		geoData,
 		errors,
 		scheduleState,
 		toggleWeekday,
-		timeConstraintsState,
 		activeLineItems,
 		addLineItem,
 		removeLineItem,
@@ -737,7 +1018,41 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		billingMode,
 		invoiceTiming,
 		autoInvoice,
+		markDirty,
 	]);
+
+	// ── Hoisted TimeConstraints — must not remount on state change ───────────
+	// Rendered outside useMemo with display:none toggling to preserve isMounted ref.
+	const handleTimeConstraintsChange = useCallback(
+		(s: TimeConstraintsState) => {
+			setTimeConstraintsState(s);
+			markDirty();
+		},
+		[markDirty]
+	);
+
+	const hoistedTimeConstraints = (
+		<div
+			className="space-y-2 lg:space-y-3 min-w-0 pt-2"
+			style={{
+				display:
+					!isDraftPanelOpen && currentStep === 3 ? undefined : "none",
+			}}
+		>
+			<TimeConstraints
+				mode="create"
+				resetKey={constraintSeed.key}
+				onStateChange={handleTimeConstraintsChange}
+				isLoading={isLoading}
+				initialArrivalConstraint={constraintSeed.arrivalConstraint}
+				initialFinishConstraint={constraintSeed.finishConstraint}
+				initialArrivalTime={constraintSeed.arrivalTime}
+				initialArrivalWindowStart={constraintSeed.arrivalWindowStart}
+				initialArrivalWindowEnd={constraintSeed.arrivalWindowEnd}
+				initialFinishTime={constraintSeed.finishTime}
+			/>
+		</div>
+	);
 
 	return (
 		<FormWizardContainer<Step>
@@ -754,9 +1069,39 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			onBack={goBack}
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext}
-			submitLabel="Create Recurring Plan"
+			submitLabel="Create Plan"
+			isSourceSearchOpen={isDraftPanelOpen}
+			sourceMode="draft"
+			onSourceModeChange={() => {}}
+			draftsOnly
+			draftCount={drafts.length}
+			onStartFromExisting={() => setIsDraftPanelOpen(true)}
+			startFromExistingLabel="Use Draft"
+			hideStartFromExisting={isDraftPanelOpen}
+			fullHeightContent={isDraftPanelOpen}
+			onCloseSourceSearch={() => setIsDraftPanelOpen(false)}
+			onSaveDraft={handleSaveDraft}
+			canSaveDraft={
+				isDirty &&
+				!!(
+					name.trim() ||
+					description.trim() ||
+					clientId ||
+					geoData?.address ||
+					activeLineItems.some(
+						(i) =>
+							i.name.trim() ||
+							i.quantity > 0 ||
+							i.unit_price > 0
+					)
+				)
+			}
+			isSavingDraft={
+				createDraftMutation.isPending || updateDraftMutation.isPending
+			}
 		>
 			{stepContent}
+			{hoistedTimeConstraints}
 		</FormWizardContainer>
 	);
 };

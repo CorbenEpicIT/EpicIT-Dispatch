@@ -1,9 +1,5 @@
-import { useState, useMemo } from "react";
-import { Search, X, BookOpen, ChevronRight, Users } from "lucide-react";
-
-// ============================================================================
-// TYPES
-// ============================================================================
+import { useState, useMemo, useCallback } from "react";
+import { Search, X, BookOpen, ChevronRight, Users, Trash2 } from "lucide-react";
 
 export interface TemplateSearchClient {
 	id: string;
@@ -21,6 +17,8 @@ export interface TemplateSearchResult {
 	createdAt?: string;
 	clientId?: string;
 	clientName?: string;
+	/** When true, a delete button is rendered on this row */
+	isDeletable?: boolean;
 }
 
 export interface TemplateSearchScopeToggle {
@@ -38,8 +36,60 @@ interface TemplateSearchProps {
 	isLoading?: boolean;
 	onSelect: (id: string) => void;
 	onClose: () => void;
-	//for client-scoped entities (jobvisit)
+	onDelete?: (id: string) => void;
+	isDeletingId?: string | null;
 	scopeToggle?: TemplateSearchScopeToggle;
+	clientFilter?: string;
+	onClientFilterChange?: (clientId: string) => void;
+}
+
+function DeleteButton({
+	id,
+	onDelete,
+	isDeleting,
+}: {
+	id: string;
+	onDelete: (id: string) => void;
+	isDeleting: boolean;
+}) {
+	const [armed, setArmed] = useState(false);
+
+	const handleClick = useCallback(
+		(e: React.MouseEvent) => {
+			e.stopPropagation(); // don't trigger row select
+			if (armed) {
+				onDelete(id);
+				setArmed(false);
+			} else {
+				setArmed(true);
+			}
+		},
+		[armed, id, onDelete]
+	);
+
+	const handleBlur = useCallback(() => {
+		// Small delay so a rapid second click still lands before reset
+		setTimeout(() => setArmed(false), 150);
+	}, []);
+
+	return (
+		<button
+			type="button"
+			onClick={handleClick}
+			onBlur={handleBlur}
+			disabled={isDeleting}
+			title={armed ? "Click again to confirm delete" : "Delete draft"}
+			className={`flex-shrink-0 flex items-center justify-center w-6 h-6 rounded transition-colors ${
+				isDeleting
+					? "text-zinc-600 cursor-not-allowed"
+					: armed
+						? "text-red-400 bg-red-500/15 border border-red-500/40 hover:bg-red-500/25"
+						: "text-zinc-500 hover:text-red-400 hover:bg-zinc-700 border border-transparent"
+			}`}
+		>
+			<Trash2 size={12} className={isDeleting ? "animate-pulse" : ""} />
+		</button>
+	);
 }
 
 export function TemplateSearch({
@@ -50,11 +100,31 @@ export function TemplateSearch({
 	isLoading = false,
 	onSelect,
 	onClose,
+	onDelete,
+	isDeletingId = null,
 	scopeToggle,
+	clientFilter: controlledClientFilter,
+	onClientFilterChange,
 }: TemplateSearchProps) {
 	const [query, setQuery] = useState("");
 	const [clientQuery, setClientQuery] = useState("");
-	const [clientFilter, setClientFilter] = useState<string>("");
+
+	// Uncontrolled fallback — used when parent does not pass clientFilter props
+	const [internalClientFilter, setInternalClientFilter] = useState("");
+
+	const isControlled =
+		controlledClientFilter !== undefined && onClientFilterChange !== undefined;
+	const clientFilter = isControlled ? controlledClientFilter : internalClientFilter;
+	const setClientFilter = useCallback(
+		(id: string) => {
+			if (isControlled) {
+				onClientFilterChange!(id);
+			} else {
+				setInternalClientFilter(id);
+			}
+		},
+		[isControlled, onClientFilterChange]
+	);
 
 	const filteredClients = useMemo(() => {
 		const q = clientQuery.toLowerCase().trim();
@@ -88,8 +158,9 @@ export function TemplateSearch({
 
 	return (
 		<div className="flex flex-col">
+			{/* ── Header ── */}
 			<div className="flex-shrink-0 space-y-2 pb-2 border-b border-zinc-800">
-				{/* heading + close button */}
+				{/* Row 1: heading */}
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2 min-w-0">
 						<div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
@@ -105,19 +176,10 @@ export function TemplateSearch({
 							— select one to pre-fill the form
 						</span>
 					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="flex items-center gap-1.5 flex-shrink-0 ml-3 px-2.5 py-1 rounded text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 transition-colors"
-					>
-						<X size={12} />
-						Close search
-					</button>
 				</div>
 
-				{/* main search + optional scope toggle + optional client filter */}
+				{/* Row 2: search + scope toggle + client filter */}
 				<div className="flex gap-2">
-					{/* Main search input */}
 					<div className="relative flex-1 min-w-0">
 						<Search
 							size={14}
@@ -142,7 +204,6 @@ export function TemplateSearch({
 						)}
 					</div>
 
-					{/* Scope toggle — only visible for job-visit context */}
 					{scopeToggle && (
 						<button
 							type="button"
@@ -164,7 +225,6 @@ export function TemplateSearch({
 						</button>
 					)}
 
-					{/* Client filter — hidden when scoped to this-job, visible when any-job */}
 					{clients.length > 0 &&
 						(!scopeToggle || !scopeToggle.isThisScope) && (
 							<div className="relative flex-shrink-0 w-44">
@@ -264,8 +324,8 @@ export function TemplateSearch({
 				</div>
 			</div>
 
-			{/* ── Results — grows naturally, scrolls only when content exceeds modal max-h ── */}
-			<div className="overflow-y-auto custom-scrollbar space-y-1 pt-2 max-h-[55vh]">
+			{/* ── Results ── */}
+			<div className="overflow-y-auto custom-scrollbar space-y-1 pt-2 pb-2 max-h-[55vh]">
 				{isLoading ? (
 					<div className="flex items-center justify-center py-10 text-zinc-500 text-sm">
 						Loading...
@@ -278,83 +338,106 @@ export function TemplateSearch({
 						</p>
 						<p className="text-xs text-zinc-600 mt-1">
 							{query || clientFilter
-								? "Try adjusting your search or client filter"
+								? "Try adjusting your search or filter"
 								: "No existing entries to use as a template"}
 						</p>
 					</div>
 				) : (
 					filtered.map((r) => (
-						<button
+						<div
 							key={r.id}
-							type="button"
-							onClick={() => onSelect(r.id)}
-							className="group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent hover:border-zinc-700 hover:bg-zinc-800/60 transition-all text-left"
+							className="group flex items-center gap-2 px-3 py-2.5 rounded-lg border border-transparent hover:border-zinc-700 hover:bg-zinc-800/60 transition-all"
 						>
-							<div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0 group-hover:border-zinc-600 transition-colors">
-								<BookOpen
-									size={14}
-									className="text-zinc-400"
-								/>
-							</div>
-							<div className="flex-1 min-w-0">
-								<div className="flex items-center gap-2 mb-0.5">
-									<span className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
-										{r.title}
-									</span>
-									{r.subtitle && (
-										<span className="text-[10px] text-zinc-500 flex-shrink-0 font-mono">
-											{r.subtitle}
-										</span>
-									)}
+							{/* Main clickable area */}
+							<button
+								type="button"
+								onClick={() => onSelect(r.id)}
+								className="flex items-center gap-3 flex-1 min-w-0 text-left"
+							>
+								<div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0 group-hover:border-zinc-600 transition-colors">
+									<BookOpen
+										size={14}
+										className="text-zinc-400"
+									/>
 								</div>
-								<div className="flex items-center gap-3 text-xs text-zinc-500">
-									{r.clientName && (
-										<span className="truncate max-w-[140px]">
-											{
-												r.clientName
-											}
+								<div className="flex-1 min-w-0">
+									<div className="flex items-center gap-2 mb-0.5">
+										<span className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
+											{r.title}
 										</span>
-									)}
-									{r.detail && (
-										<span className="truncate max-w-[180px] text-zinc-600">
-											{r.detail}
-										</span>
-									)}
-									{r.createdAt && (
-										<span className="flex-shrink-0 tabular-nums">
-											{new Date(
-												r.createdAt
-											).toLocaleDateString(
-												"en-US",
+										{r.subtitle && (
+											<span className="text-[10px] text-zinc-500 flex-shrink-0 font-mono">
 												{
-													month: "short",
-													day: "numeric",
-													year: "numeric",
+													r.subtitle
 												}
-											)}
+											</span>
+										)}
+									</div>
+									<div className="flex items-center gap-3 text-xs text-zinc-500">
+										{r.clientName && (
+											<span className="truncate max-w-[140px]">
+												{
+													r.clientName
+												}
+											</span>
+										)}
+										{r.detail && (
+											<span className="truncate max-w-[180px] text-zinc-600">
+												{
+													r.detail
+												}
+											</span>
+										)}
+										{r.createdAt && (
+											<span className="flex-shrink-0 tabular-nums">
+												{new Date(
+													r.createdAt
+												).toLocaleDateString(
+													"en-US",
+													{
+														month: "short",
+														day: "numeric",
+														year: "numeric",
+													}
+												)}
+											</span>
+										)}
+									</div>
+								</div>
+								<div className="flex items-center gap-2 flex-shrink-0">
+									{r.value && (
+										<span className="text-sm font-semibold text-white tabular-nums font-mono">
+											{r.value}
 										</span>
 									)}
+									{r.badge && (
+										<span
+											className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+												r.badgeColor ||
+												"bg-zinc-700/50 text-zinc-400 border-zinc-600"
+											}`}
+										>
+											{r.badge}
+										</span>
+									)}
+									<ChevronRight
+										size={14}
+										className="text-zinc-600 group-hover:text-zinc-400 transition-colors"
+									/>
 								</div>
-							</div>
-							<div className="flex items-center gap-2 flex-shrink-0">
-								{r.value && (
-									<span className="text-sm font-semibold text-white tabular-nums font-mono">
-										{r.value}
-									</span>
-								)}
-								{r.badge && (
-									<span
-										className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${r.badgeColor || "bg-zinc-700/50 text-zinc-400 border-zinc-600"}`}
-									>
-										{r.badge}
-									</span>
-								)}
-								<ChevronRight
-									size={14}
-									className="text-zinc-600 group-hover:text-zinc-400 transition-colors"
+							</button>
+
+							{r.isDeletable && onDelete && (
+								<DeleteButton
+									id={r.id}
+									onDelete={onDelete}
+									isDeleting={
+										isDeletingId ===
+										r.id
+									}
 								/>
-							</div>
-						</button>
+							)}
+						</div>
 					))
 				)}
 			</div>
