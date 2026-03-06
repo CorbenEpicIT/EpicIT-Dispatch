@@ -6,11 +6,10 @@ import "react-day-picker/dist/style.css";
 
 type DatePickerProps = {
 	value: Date | null;
-	onChange: (date: Date) => void;
+	onChange: (date: Date | null) => void;
 	disabled?: boolean;
 	mode?: "create" | "edit";
 	originalValue?: Date | null;
-	onClear?: () => void;
 	align?: "left" | "right";
 };
 
@@ -20,7 +19,6 @@ export default function DatePicker({
 	disabled,
 	mode = "create",
 	originalValue,
-	onClear,
 	align = "left",
 }: DatePickerProps) {
 	const [open, setOpen] = useState(false);
@@ -74,13 +72,6 @@ export default function DatePicker({
 			window.removeEventListener("scroll", onScroll, true);
 		};
 	}, [open]);
-
-	const handleClear = (e: React.MouseEvent) => {
-		e.stopPropagation();
-		onChange(null);
-		onClear?.();
-		setOpen(false);
-	};
 
 	const handleUndo = (e: React.MouseEvent) => {
 		e.stopPropagation();

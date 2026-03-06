@@ -216,7 +216,12 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 						</div>
 						<div>
 							<p className="mb-1">Hire Date</p>
-							<DatePicker value={hireDate} onChange={setHireDate} />
+							<DatePicker
+								value={hireDate}
+								onChange={(date) =>
+									setHireDate(date ?? new Date())
+								}
+							/>
 						</div>
 					</div>
 

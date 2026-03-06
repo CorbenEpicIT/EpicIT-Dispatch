@@ -80,7 +80,7 @@ const AddressForm = ({
 	useEffect(() => {
 		if (!isEdit || !geocoderRef.current) return;
 
-		const handleFocusOut = (e: FocusEvent) => {
+		const handleFocusOut = () => {
 			const container = geocoderRef.current;
 			if (!container) return;
 

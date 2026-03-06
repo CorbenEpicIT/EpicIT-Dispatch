@@ -180,7 +180,10 @@ const CreateTechnician = ({
 				</div>
 				<div>
 					<p className="mb-1 hover:color-accent">Hire Date</p>
-					<DatePicker value={hireDate} onChange={setHireDate} />
+					<DatePicker
+						value={hireDate}
+						onChange={(date) => setHireDate(date ?? new Date())}
+					/>
 				</div>
 			</div>
 

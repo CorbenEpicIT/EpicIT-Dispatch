@@ -289,25 +289,25 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 		);
 	};
 
-	const priorityEntries = (
-		<>
-			{RequestPriorityValues.map((v) => (
-				<option key={v} value={v} className="text-black">
-					{v}
-				</option>
-			))}
-		</>
-	);
+	// const priorityEntries = (
+	// 	<>
+	// 		{RequestPriorityValues.map((v) => (
+	// 			<option key={v} value={v} className="text-black">
+	// 				{v}
+	// 			</option>
+	// 		))}
+	// 	</>
+	// );
 
-	const statusEntries = (
-		<>
-			{RequestStatusValues.map((v) => (
-				<option key={v} value={v} className="text-black">
-					{v}
-				</option>
-			))}
-		</>
-	);
+	// const statusEntries = (
+	// 	<>
+	// 		{RequestStatusValues.map((v) => (
+	// 			<option key={v} value={v} className="text-black">
+	// 				{v}
+	// 			</option>
+	// 		))}
+	// 	</>
+	// );
 
 	const content = (
 		<>
