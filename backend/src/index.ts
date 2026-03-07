@@ -102,6 +102,16 @@ import {
 	updateInventoryThreshold,
 } from "./controllers/inventoryController.js";
 import {
+	getOverviewMetrics,
+	getRevenueYTD,
+	getRevenueByJobType,
+	getUnscheduledRevenue,
+	getQuotePipeline,
+	getArrivalPerformance,
+} from "./controllers/reportsController.js";
+import * as draftsController from "./controllers/draftsController.js";
+
+import {
 	login,
 	register,
 	logout, 
@@ -246,6 +256,115 @@ if (!port) {
 	console.warn("No port configured. Defaulting...");
 	port = "3000";
 }
+
+// ============================================
+// DRAFT ROUTES
+// ============================================
+
+app.get("/drafts", async (req, res, next) => {
+	try {
+		const result = await draftsController.getAllDrafts(req);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(
+			createSuccessResponse(result.items, {
+				count: result.items!.length,
+			}),
+		);
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/drafts/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const result = await draftsController.getDraftById(id);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/drafts", async (req, res, next) => {
+	try {
+		const result = await draftsController.insertDraft(req);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.put("/drafts/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const result = await draftsController.updateDraft(id, req);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/drafts/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const result = await draftsController.deleteDraft(id);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
+		}
+
+		res.status(200).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
 
 // ============================================
 // REQUEST ROUTES
@@ -2360,18 +2479,6 @@ app.patch("/inventory/:id/threshold", async (req, res, next) => {
 	} catch (err) {
 		next(err);
 	}
-});
-
-// ============================================
-// Authentication Routes
-// ============================================
-
-app.post("/login", async (req, res, next) => {
-	console.log(req.body);
-
-	let response = await login(req.body.email, req.body.password, req.body.role);
-	
-	return res.json(response);
 });
 
 // ============================================

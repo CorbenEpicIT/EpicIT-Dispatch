@@ -140,6 +140,14 @@ enum weekday {
   SU
 }
 
+enum form_draft_type {
+  request
+  quote
+  job
+  job_visit
+  recurring_plan
+}
+
 
 model organization {
   id   String @id @default(uuid())
@@ -156,6 +164,7 @@ model organization {
   quotes                quote[]
   jobs                  job[]
   recurring_plans       recurring_plan[]
+  form_drafts           form_draft[]
 
   client_notes          client_note[]
   request_notes         request_note[]
@@ -775,6 +784,29 @@ model recurring_plan_note {
   last_editor_dispatcher dispatcher? @relation("RecurringPlanNoteEditor", fields: [last_editor_dispatcher_id], references: [id])
   
   @@index([recurring_plan_id])
+}
+
+// ============================================================================
+// FORM DRAFTS
+// ============================================================================
+
+model form_draft {
+  id               String          @id @default(uuid())
+  organization_id  String?
+  organization     organization?   @relation(fields: [organization_id], references: [id])
+
+  form_type        form_draft_type
+  label            String          // Derived display name, stored at save time
+  payload          Json            // Full form state — opaque to backend, typed on frontend
+  entity_context_id String?        // Parent entity id: job_id for job_visit, request_id for quote, etc.
+
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+
+  @@index([form_type])
+  @@index([organization_id, form_type])
+  @@index([entity_context_id])
+  @@index([updated_at])
 }
 
 

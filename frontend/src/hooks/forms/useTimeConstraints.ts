@@ -66,46 +66,77 @@ export const useTimeConstraints = (
 		initialFinishTime,
 	} = options;
 
-	const defaultsRef = useRef({
+	// Compute resolved defaults — prefer provided initial values over hardcoded fallbacks
+	const resolvedDefaults = {
 		arrivalConstraint: (initialArrivalConstraint ?? "at") as ArrivalConstraint,
 		finishConstraint: (initialFinishConstraint ?? "when_done") as FinishConstraint,
-		arrivalTime: initialArrivalTime ?? makeTime(9),
-		arrivalWindowStart: initialArrivalWindowStart ?? makeTime(9),
-		arrivalWindowEnd: initialArrivalWindowEnd ?? makeTime(17),
-		finishTime: initialFinishTime ?? makeTime(17),
-	});
+		arrivalTime: initialArrivalTime !== undefined ? initialArrivalTime : makeTime(9),
+		arrivalWindowStart:
+			initialArrivalWindowStart !== undefined
+				? initialArrivalWindowStart
+				: makeTime(9),
+		arrivalWindowEnd:
+			initialArrivalWindowEnd !== undefined
+				? initialArrivalWindowEnd
+				: makeTime(17),
+		finishTime: initialFinishTime !== undefined ? initialFinishTime : makeTime(17),
+	};
 
-	const originalsRef = useRef({
-		arrivalConstraint: defaultsRef.current.arrivalConstraint,
-		finishConstraint: defaultsRef.current.finishConstraint,
-		arrivalTime: defaultsRef.current.arrivalTime,
-		arrivalWindowStart: defaultsRef.current.arrivalWindowStart,
-		arrivalWindowEnd: defaultsRef.current.arrivalWindowEnd,
-		finishTime: defaultsRef.current.finishTime,
-	});
+	const defaultsRef = useRef(resolvedDefaults);
+	const originalsRef = useRef(resolvedDefaults);
 
+	const [arrivalConstraint, setArrivalConstraint] = useState<ArrivalConstraint>(
+		resolvedDefaults.arrivalConstraint
+	);
+	const [finishConstraint, setFinishConstraint] = useState<FinishConstraint>(
+		resolvedDefaults.finishConstraint
+	);
+	const [arrivalTime, setArrivalTime] = useState<Date | null>(resolvedDefaults.arrivalTime);
+	const [arrivalWindowStart, setArrivalWindowStart] = useState<Date | null>(
+		resolvedDefaults.arrivalWindowStart
+	);
+	const [arrivalWindowEnd, setArrivalWindowEnd] = useState<Date | null>(
+		resolvedDefaults.arrivalWindowEnd
+	);
+	const [finishTime, setFinishTime] = useState<Date | null>(resolvedDefaults.finishTime);
+
+	// When resetKey changes, re-sync all state from latest initial props.
+	// This is the mechanism for external resets (e.g. loading a draft).
+	const prevResetKeyRef = useRef(resetKey);
 	useEffect(() => {
-		if (!resetKey) return;
+		if (resetKey === undefined || resetKey === prevResetKeyRef.current) return;
+		prevResetKeyRef.current = resetKey;
 
-		defaultsRef.current = {
-			arrivalConstraint: (initialArrivalConstraint ??
-				defaultsRef.current.arrivalConstraint) as ArrivalConstraint,
+		const next = {
+			arrivalConstraint: (initialArrivalConstraint ?? "at") as ArrivalConstraint,
 			finishConstraint: (initialFinishConstraint ??
-				defaultsRef.current.finishConstraint) as FinishConstraint,
-			arrivalTime: initialArrivalTime ?? defaultsRef.current.arrivalTime,
+				"when_done") as FinishConstraint,
+			arrivalTime:
+				initialArrivalTime !== undefined ? initialArrivalTime : makeTime(9),
 			arrivalWindowStart:
-				initialArrivalWindowStart ?? defaultsRef.current.arrivalWindowStart,
+				initialArrivalWindowStart !== undefined
+					? initialArrivalWindowStart
+					: makeTime(9),
 			arrivalWindowEnd:
-				initialArrivalWindowEnd ?? defaultsRef.current.arrivalWindowEnd,
-			finishTime: initialFinishTime ?? defaultsRef.current.finishTime,
+				initialArrivalWindowEnd !== undefined
+					? initialArrivalWindowEnd
+					: makeTime(17),
+			finishTime:
+				initialFinishTime !== undefined ? initialFinishTime : makeTime(17),
 		};
 
-		if (mode === "edit") {
-			originalsRef.current = { ...defaultsRef.current };
-		}
+		defaultsRef.current = next;
+		if (mode === "edit") originalsRef.current = next;
+
+		setArrivalConstraint(next.arrivalConstraint);
+		setFinishConstraint(next.finishConstraint);
+		setArrivalTime(next.arrivalTime);
+		setArrivalWindowStart(next.arrivalWindowStart);
+		setArrivalWindowEnd(next.arrivalWindowEnd);
+		setFinishTime(next.finishTime);
 	}, [
-		mode,
 		resetKey,
+		mode,
 		initialArrivalConstraint,
 		initialFinishConstraint,
 		initialArrivalTime,
@@ -113,23 +144,6 @@ export const useTimeConstraints = (
 		initialArrivalWindowEnd,
 		initialFinishTime,
 	]);
-
-	const [arrivalConstraint, setArrivalConstraint] = useState<ArrivalConstraint>(
-		defaultsRef.current.arrivalConstraint
-	);
-	const [finishConstraint, setFinishConstraint] = useState<FinishConstraint>(
-		defaultsRef.current.finishConstraint
-	);
-	const [arrivalTime, setArrivalTime] = useState<Date | null>(
-		defaultsRef.current.arrivalTime
-	);
-	const [arrivalWindowStart, setArrivalWindowStart] = useState<Date | null>(
-		defaultsRef.current.arrivalWindowStart
-	);
-	const [arrivalWindowEnd, setArrivalWindowEnd] = useState<Date | null>(
-		defaultsRef.current.arrivalWindowEnd
-	);
-	const [finishTime, setFinishTime] = useState<Date | null>(defaultsRef.current.finishTime);
 
 	const baseline = mode === "edit" ? originalsRef.current : defaultsRef.current;
 

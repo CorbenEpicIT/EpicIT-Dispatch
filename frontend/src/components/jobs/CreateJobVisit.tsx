@@ -1,8 +1,23 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import type { ZodError } from "zod";
-import { CreateJobVisitSchema, type CreateJobVisitInput, type JobVisit } from "../../types/jobs";
-import { type LineItemType } from "../../types/common";
+import {
+	CreateJobVisitSchema,
+	type CreateJobVisitInput,
+	type JobVisit,
+	VisitStatusColors,
+} from "../../types/jobs";
+import { type LineItemType, type BaseLineItem } from "../../types/common";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
+import { useAllJobVisitsQuery } from "../../hooks/useJobs";
+import { useAllClientsQuery } from "../../hooks/useClients";
+import {
+	useDraftsByTypeQuery,
+	useCreateDraftMutation,
+	useUpdateDraftMutation,
+	useDeleteDraftMutation,
+} from "../../hooks/forms/useDrafts";
+import { getDraft } from "../../api/drafts";
+import type { DraftSummary, SourceType } from "../../types/drafts";
 import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -10,6 +25,12 @@ import LineItemsSection from "../ui/forms/LineItemsSection";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import { createStepRouter } from "../../hooks/forms/useZodStepRouting";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+	type TemplateSearchScopeToggle,
+} from "../ui/forms/TemplateSearch";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -55,27 +76,69 @@ const CreateJobVisit = ({
 	const [description, setDescription] = useState("");
 	const [startDate, setStartDate] = useState<Date>(new Date());
 	const [selectedTechIds, setSelectedTechIds] = useState<string[]>([]);
+	const [timeConstraintsState, setTimeConstraintsState] =
+		useState<TimeConstraintsState | null>(null);
+	const [constraintSeed, setConstraintSeed] = useState<
+		Partial<TimeConstraintsState> & { key: number }
+	>({ key: 1 });
+	const constraintResetKeyRef = useRef(1); // always incrementing — never reuse a value
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
 
-	const { data: technicians } = useAllTechniciansQuery();
+	const [sourceMode, setSourceMode] = useState<SourceType | null>(null);
+	const [sourceClientFilter, setSourceClientFilter] = useState("");
+	const [visitScope, setVisitScope] = useState<"this-job" | "any-job">("this-job");
 
-	const [timeConstraintsState, setTimeConstraintsState] =
-		useState<TimeConstraintsState | null>(null);
+	const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+	const [isDirty, setIsDirty] = useState(false);
+
+	const { data: technicians } = useAllTechniciansQuery();
+	const { data: allVisits = [] } = useAllJobVisitsQuery();
+	const { data: clients } = useAllClientsQuery();
+	const { data: drafts = [] } = useDraftsByTypeQuery("job_visit", jobId);
+	const createDraftMutation = useCreateDraftMutation();
+	const updateDraftMutation = useUpdateDraftMutation();
+	const deleteDraftMutation = useDeleteDraftMutation();
+
+	const isSourceSearchOpen = sourceMode !== null;
+
+	const markDirty = useCallback(() => setIsDirty(true), []);
+	const handleTimeConstraintsChange = useCallback(
+		(s: TimeConstraintsState) => {
+			setTimeConstraintsState(s);
+			markDirty();
+		},
+		[markDirty]
+	);
 
 	const lineItems = useLineItems({ minItems: 1, mode: "create" });
-	const wizard = useStepWizard<Step>({
-		totalSteps: 4 as Step,
-		initialStep: 1 as Step,
-	});
+	const dirtyAddLineItem = useCallback(() => {
+		lineItems.addLineItem();
+		markDirty();
+	}, [lineItems, markDirty]);
+	const dirtyRemoveLineItem = useCallback(
+		(id: string) => {
+			lineItems.removeLineItem(id);
+			markDirty();
+		},
+		[lineItems, markDirty]
+	);
+	const dirtyUpdateLineItem = useCallback(
+		(id: string, field: keyof BaseLineItem, value: string | number) => {
+			lineItems.updateLineItem(id, field, value);
+			markDirty();
+		},
+		[lineItems, markDirty]
+	);
+	const wizard = useStepWizard<Step>({ totalSteps: 4 as Step, initialStep: 1 as Step });
 
-	const validateStep1 = useCallback((): boolean => {
-		return !!(name.trim() && startDate);
-	}, [name, startDate]);
+	const validateStep1 = useCallback(
+		(): boolean => !!(name.trim() && startDate),
+		[name, startDate]
+	);
 
 	const validateStep2 = useCallback((): boolean => {
 		if (!timeConstraintsState) return true;
-
 		const arrivalOk =
 			timeConstraintsState.arrivalConstraint === "anytime" ||
 			(timeConstraintsState.arrivalConstraint === "at" &&
@@ -85,32 +148,29 @@ const CreateJobVisit = ({
 				!!timeConstraintsState.arrivalWindowEnd) ||
 			(timeConstraintsState.arrivalConstraint === "by" &&
 				!!timeConstraintsState.arrivalWindowEnd);
-
 		const finishOk =
 			timeConstraintsState.finishConstraint === "when_done" ||
 			((timeConstraintsState.finishConstraint === "at" ||
 				timeConstraintsState.finishConstraint === "by") &&
 				!!timeConstraintsState.finishTime);
-
 		const windowOrderOk =
 			timeConstraintsState.arrivalConstraint !== "between" ||
 			!timeConstraintsState.arrivalWindowStart ||
 			!timeConstraintsState.arrivalWindowEnd ||
 			timeConstraintsState.arrivalWindowEnd.getTime() >
 				timeConstraintsState.arrivalWindowStart.getTime();
-
 		return arrivalOk && finishOk && windowOrderOk;
 	}, [timeConstraintsState]);
 
 	const validateStep3 = useCallback((): boolean => {
-		const meaningfulItems = lineItems.activeLineItems.filter((item) => {
-			const hasAnyText = item.name.trim() || item.description?.trim();
-			const hasAnyNumbers = item.unit_price > 0;
+		const meaningful = lineItems.activeLineItems.filter((item) => {
+			const hasText = item.name.trim() || item.description?.trim();
+			const hasNumbers = item.unit_price > 0;
 			const hasType = item.item_type?.trim();
-			return hasAnyText || hasAnyNumbers || hasType;
+			return hasText || hasNumbers || hasType;
 		});
-		if (meaningfulItems.length === 0) return true;
-		return meaningfulItems.every(
+		if (meaningful.length === 0) return true;
+		return meaningful.every(
 			(item) => item.name.trim() && item.quantity > 0 && item.unit_price >= 0
 		);
 	}, [lineItems.activeLineItems]);
@@ -124,8 +184,6 @@ const CreateJobVisit = ({
 					return validateStep2();
 				case 3:
 					return validateStep3();
-				case 4:
-					return true;
 				default:
 					return true;
 			}
@@ -140,27 +198,17 @@ const CreateJobVisit = ({
 
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
-			if (targetStep === 1) return true;
-			for (let step = 1; step < targetStep; step++) {
-				if (!validateStep(step as Step)) return false;
-			}
-			return true;
+			if (targetStep === wizard.currentStep) return true;
+			if (wizard.visitedSteps.has(targetStep)) return true;
+			if (
+				targetStep === wizard.currentStep + 1 &&
+				validateStep(wizard.currentStep)
+			)
+				return true;
+			return false;
 		},
-		[validateStep]
+		[wizard.currentStep, wizard.visitedSteps, validateStep]
 	);
-
-	const formatTimeString = useCallback((date: Date | null): string | null => {
-		if (!date) return null;
-		return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
-	}, []);
-
-	const handleTechSelection = useCallback((techId: string) => {
-		setSelectedTechIds((prev) =>
-			prev.includes(techId)
-				? prev.filter((id) => id !== techId)
-				: [...prev, techId]
-		);
-	}, []);
 
 	useEffect(() => {
 		if (!isModalOpen) {
@@ -169,7 +217,14 @@ const CreateJobVisit = ({
 			setStartDate(new Date());
 			setSelectedTechIds([]);
 			setTimeConstraintsState(null);
+			constraintResetKeyRef.current += 1;
+			setConstraintSeed({ key: constraintResetKeyRef.current });
 			setErrors(null);
+			setSourceMode(null);
+			setSourceClientFilter("");
+			setVisitScope("this-job");
+			setCurrentDraftId(null);
+			setIsDirty(false);
 			wizard.reset();
 			lineItems.resetLineItems();
 			setIsLoading(false);
@@ -182,6 +237,23 @@ const CreateJobVisit = ({
 		}
 	}, [isModalOpen, preselectedTechId]);
 
+	const formatTimeString = useCallback((date: Date | null): string | null => {
+		if (!date) return null;
+		return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+	}, []);
+
+	const handleTechSelection = useCallback(
+		(techId: string) => {
+			setSelectedTechIds((prev) =>
+				prev.includes(techId)
+					? prev.filter((id) => id !== techId)
+					: [...prev, techId]
+			);
+			markDirty();
+		},
+		[markDirty]
+	);
+
 	const handleNext = useCallback(() => {
 		if (canGoNext) wizard.goNext();
 	}, [canGoNext, wizard]);
@@ -192,6 +264,269 @@ const CreateJobVisit = ({
 		},
 		[canGoToStep, wizard]
 	);
+
+	const handleTemplateSelect = useCallback(
+		(visitId: string) => {
+			const source = allVisits.find((v) => v.id === visitId);
+			if (!source) return;
+
+			setName(source.name ?? "");
+			setDescription(source.description ?? "");
+
+			if (source.line_items?.length) {
+				lineItems.seedLineItems(
+					source.line_items.map((li) => ({
+						name: li.name,
+						description: li.description ?? "",
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						item_type: (li.item_type ?? "") as
+							| LineItemType
+							| "",
+					}))
+				);
+			} else {
+				lineItems.resetLineItems();
+			}
+			// Time constraints and tech assignments intentionally NOT copied
+
+			setCurrentDraftId(null);
+			setIsDirty(true); // pre-filled — allow saving as draft
+			setSourceMode(null);
+			constraintResetKeyRef.current += 1;
+			setConstraintSeed({ key: constraintResetKeyRef.current }); // clear all initial* props → use defaults
+			wizard.goToStep(1 as Step);
+		},
+		[allVisits, lineItems, wizard]
+	);
+
+	const handleSelectDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				const draft = await getDraft(draftId);
+				const p = draft.payload as Partial<CreateJobVisitInput> & {
+					line_items?: Array<{
+						name: string;
+						description?: string | null;
+						quantity: number;
+						unit_price: number;
+						item_type?: string | null;
+					}>;
+					time_constraints?: {
+						arrivalConstraint: string;
+						finishConstraint: string;
+						arrivalTime?: string | null;
+						arrivalWindowStart?: string | null;
+						arrivalWindowEnd?: string | null;
+						finishTime?: string | null;
+					};
+					tech_ids?: string[];
+				};
+
+				setName(p.name || "");
+				setDescription(p.description || "");
+
+				if (p.line_items?.length) {
+					lineItems.seedLineItems(
+						p.line_items.map((li) => ({
+							name: li.name,
+							description: li.description ?? "",
+							quantity: Number(li.quantity),
+							unit_price: Number(li.unit_price),
+							item_type: (li.item_type ?? "") as
+								| LineItemType
+								| "",
+						}))
+					);
+				}
+
+				if (p.time_constraints) {
+					const tc = p.time_constraints;
+					constraintResetKeyRef.current += 1;
+					setConstraintSeed({
+						key: constraintResetKeyRef.current,
+						arrivalConstraint:
+							tc.arrivalConstraint as TimeConstraintsState["arrivalConstraint"],
+						finishConstraint:
+							tc.finishConstraint as TimeConstraintsState["finishConstraint"],
+						arrivalTime: tc.arrivalTime
+							? new Date(tc.arrivalTime)
+							: null,
+						arrivalWindowStart: tc.arrivalWindowStart
+							? new Date(tc.arrivalWindowStart)
+							: null,
+						arrivalWindowEnd: tc.arrivalWindowEnd
+							? new Date(tc.arrivalWindowEnd)
+							: null,
+						finishTime: tc.finishTime
+							? new Date(tc.finishTime)
+							: null,
+					});
+				}
+				// Tech ids — restore if present, but don't override a preselectedTechId
+				if (p.tech_ids?.length && !preselectedTechId) {
+					setSelectedTechIds(p.tech_ids);
+				}
+
+				setCurrentDraftId(draft.id);
+				setIsDirty(false);
+				setSourceMode(null);
+				wizard.goToStep(1 as Step);
+			} catch (err) {
+				console.error("Failed to load draft:", err);
+			}
+		},
+		[lineItems, wizard]
+	);
+
+	const handleSaveDraft = useCallback(async () => {
+		const payload: Record<string, unknown> = {
+			name,
+			description,
+			job_id: jobId,
+			line_items: lineItems.activeLineItems.map((item) => ({
+				name: item.name,
+				description: item.description,
+				quantity: item.quantity,
+				unit_price: item.unit_price,
+				item_type: item.item_type,
+				total: item.total,
+			})),
+			time_constraints: timeConstraintsState
+				? {
+						arrivalConstraint:
+							timeConstraintsState.arrivalConstraint,
+						finishConstraint:
+							timeConstraintsState.finishConstraint,
+						arrivalTime:
+							timeConstraintsState.arrivalTime?.toISOString() ??
+							null,
+						arrivalWindowStart:
+							timeConstraintsState.arrivalWindowStart?.toISOString() ??
+							null,
+						arrivalWindowEnd:
+							timeConstraintsState.arrivalWindowEnd?.toISOString() ??
+							null,
+						finishTime:
+							timeConstraintsState.finishTime?.toISOString() ??
+							null,
+					}
+				: undefined,
+			tech_ids: selectedTechIds,
+		};
+		try {
+			if (currentDraftId) {
+				await updateDraftMutation.mutateAsync({
+					id: currentDraftId,
+					input: { payload },
+				});
+			} else {
+				const draft = await createDraftMutation.mutateAsync({
+					form_type: "job_visit",
+					payload,
+					entity_context_id: jobId,
+				});
+				setCurrentDraftId(draft.id);
+			}
+			setIsDirty(false);
+		} catch (err) {
+			console.error("Failed to save draft:", err);
+		}
+	}, [
+		name,
+		description,
+		jobId,
+		lineItems.activeLineItems,
+		timeConstraintsState,
+		selectedTechIds,
+		currentDraftId,
+		createDraftMutation,
+		updateDraftMutation,
+	]);
+
+	const handleDeleteDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				await deleteDraftMutation.mutateAsync(draftId);
+				if (draftId === currentDraftId) {
+					setCurrentDraftId(null);
+					setIsDirty(false);
+				}
+			} catch (err) {
+				console.error("Failed to delete draft:", err);
+			}
+		},
+		[currentDraftId, deleteDraftMutation]
+	);
+
+	const templateResults = useMemo((): TemplateSearchResult[] => {
+		const source =
+			visitScope === "this-job"
+				? allVisits.filter((v) => v.job_id === jobId)
+				: allVisits;
+
+		return source
+			.filter((v) => v.status !== "Cancelled")
+			.map((v) => ({
+				id: v.id,
+				title: v.name ?? "",
+				subtitle:
+					visitScope === "any-job" && v.job?.job_number
+						? v.job.job_number
+						: undefined,
+				detail: v.description
+					? v.description.slice(0, 80) +
+						(v.description.length > 80 ? "…" : "")
+					: undefined,
+				badge: v.status,
+				badgeColor: VisitStatusColors[
+					v.status as keyof typeof VisitStatusColors
+				],
+				createdAt:
+					v.created_at != null
+						? new Date(v.created_at).toISOString()
+						: undefined,
+			}));
+	}, [allVisits, visitScope, jobId]);
+
+	const scopeToggle: TemplateSearchScopeToggle = useMemo(
+		() => ({
+			thisLabel: "This Job",
+			anyLabel: "Any Job",
+			isThisScope: visitScope === "this-job",
+			onToggle: () =>
+				setVisitScope((prev) =>
+					prev === "this-job" ? "any-job" : "this-job"
+				),
+		}),
+		[visitScope]
+	);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
+
+	const draftResults = useMemo((): TemplateSearchResult[] => {
+		return drafts.map((d: DraftSummary) => ({
+			id: d.id,
+			title: d.label || "Untitled Draft",
+			subtitle: (() => {
+				const diff = Date.now() - new Date(d.updated_at).getTime();
+				const mins = Math.floor(diff / 60000);
+				const hrs = Math.floor(diff / 3600000);
+				const days = Math.floor(diff / 86400000);
+				if (mins < 1) return "Updated just now";
+				if (mins < 60) return `Updated ${mins}m ago`;
+				if (hrs < 24) return `Updated ${hrs}h ago`;
+				if (days < 7) return `Updated ${days}d ago`;
+				return `Updated ${new Date(d.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+			})(),
+			createdAt: d.created_at,
+			isDeletable: true,
+			// Visits don't have client — no clientId/clientName needed
+		}));
+	}, [drafts]);
 
 	const invokeCreate = useCallback(async () => {
 		if (isLoading) return;
@@ -308,9 +643,13 @@ const CreateJobVisit = ({
 
 		setErrors(null);
 		setIsLoading(true);
-
 		try {
 			const created = await createVisit(newVisit);
+			if (currentDraftId) {
+				await deleteDraftMutation
+					.mutateAsync(currentDraftId)
+					.catch(() => {});
+			}
 			onSuccess?.(created) ?? setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to create visit:", error);
@@ -331,6 +670,8 @@ const CreateJobVisit = ({
 		onSuccess,
 		setIsModalOpen,
 		wizard,
+		currentDraftId,
+		deleteDraftMutation,
 	]);
 
 	const ErrorDisplay = useCallback(
@@ -355,6 +696,42 @@ const CreateJobVisit = ({
 	);
 
 	const stepContent = useMemo(() => {
+		if (isSourceSearchOpen) {
+			if (sourceMode === "draft") {
+				return (
+					<TemplateSearch
+						heading="Use Draft"
+						placeholder="Search drafts by name..."
+						results={draftResults}
+						clients={[]}
+						onSelect={handleSelectDraft}
+						onClose={() => setSourceMode(null)}
+						onDelete={handleDeleteDraft}
+						isDeletingId={
+							deleteDraftMutation.isPending
+								? (deleteDraftMutation.variables as string)
+								: null
+						}
+						clientFilter={sourceClientFilter}
+						onClientFilterChange={setSourceClientFilter}
+					/>
+				);
+			}
+			return (
+				<TemplateSearch
+					heading="Start from existing visit"
+					placeholder="Search by name or description..."
+					results={templateResults}
+					clients={templateClients}
+					onSelect={handleTemplateSelect}
+					onClose={() => setSourceMode(null)}
+					scopeToggle={scopeToggle}
+					clientFilter={sourceClientFilter}
+					onClientFilterChange={setSourceClientFilter}
+				/>
+			);
+		}
+
 		switch (wizard.currentStep) {
 			case 1:
 				return (
@@ -367,7 +744,6 @@ const CreateJobVisit = ({
 								</p>
 							</div>
 						)}
-
 						<div className="min-w-0">
 							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Visit Name *
@@ -376,15 +752,15 @@ const CreateJobVisit = ({
 								type="text"
 								placeholder="e.g., Initial Assessment, Follow-up Visit"
 								value={name}
-								onChange={(e) =>
-									setName(e.target.value)
-								}
+								onChange={(e) => {
+									setName(e.target.value);
+									markDirty();
+								}}
 								disabled={isLoading}
 								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 							/>
 							<ErrorDisplay path="name" />
 						</div>
-
 						<div className="min-w-0">
 							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 								Description (Optional)
@@ -392,17 +768,17 @@ const CreateJobVisit = ({
 							<textarea
 								placeholder="Describe what will be done during this visit..."
 								value={description}
-								onChange={(e) =>
+								onChange={(e) => {
 									setDescription(
 										e.target.value
-									)
-								}
+									);
+									markDirty();
+								}}
 								disabled={isLoading}
 								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 							/>
 							<ErrorDisplay path="description" />
 						</div>
-
 						<div
 							className="relative min-w-0"
 							style={{ zIndex: 50 }}
@@ -412,11 +788,12 @@ const CreateJobVisit = ({
 							</label>
 							<DatePicker
 								value={startDate}
-								onChange={(d) =>
+								onChange={(d) => {
 									setStartDate(
 										d || new Date()
-									)
-								}
+									);
+									markDirty();
+								}}
 								position="above"
 							/>
 						</div>
@@ -426,11 +803,7 @@ const CreateJobVisit = ({
 			case 2:
 				return (
 					<div className="space-y-2 lg:space-y-3 min-w-0 pt-2">
-						<TimeConstraints
-							mode="create"
-							onStateChange={setTimeConstraintsState}
-							isLoading={isLoading}
-						/>
+						{/* TimeConstraints rendered outside useMemo — see hoisted instance below */}
 						<ErrorDisplay path="arrival_constraint" />
 						<ErrorDisplay path="arrival_time" />
 						<ErrorDisplay path="arrival_window_start" />
@@ -447,9 +820,9 @@ const CreateJobVisit = ({
 						<LineItemsSection
 							lineItems={lineItems.activeLineItems}
 							isLoading={isLoading}
-							onAdd={lineItems.addLineItem}
-							onRemove={lineItems.removeLineItem}
-							onUpdate={lineItems.updateLineItem}
+							onAdd={dirtyAddLineItem}
+							onRemove={dirtyRemoveLineItem}
+							onUpdate={dirtyUpdateLineItem}
 							subtotal={lineItems.subtotal}
 							required={false}
 							minItems={0}
@@ -546,6 +919,16 @@ const CreateJobVisit = ({
 				return null;
 		}
 	}, [
+		isSourceSearchOpen,
+		sourceMode,
+		draftResults,
+		handleSelectDraft,
+		handleDeleteDraft,
+		sourceClientFilter,
+		templateResults,
+		templateClients,
+		handleTemplateSelect,
+		scopeToggle,
 		wizard.currentStep,
 		preselectedTechId,
 		name,
@@ -558,7 +941,34 @@ const CreateJobVisit = ({
 		selectedTechIds,
 		handleTechSelection,
 		ErrorDisplay,
+		markDirty,
 	]);
+
+	// ── Hoisted TimeConstraints — stable instance, toggled via display:none ─
+	const hoistedTimeConstraints = (
+		<div
+			className="space-y-2 lg:space-y-3 min-w-0 pt-2"
+			style={{
+				display:
+					!isSourceSearchOpen && wizard.currentStep === 2
+						? undefined
+						: "none",
+			}}
+		>
+			<TimeConstraints
+				mode="create"
+				resetKey={constraintSeed.key}
+				onStateChange={handleTimeConstraintsChange}
+				isLoading={isLoading}
+				initialArrivalConstraint={constraintSeed.arrivalConstraint}
+				initialFinishConstraint={constraintSeed.finishConstraint}
+				initialArrivalTime={constraintSeed.arrivalTime}
+				initialArrivalWindowStart={constraintSeed.arrivalWindowStart}
+				initialArrivalWindowEnd={constraintSeed.arrivalWindowEnd}
+				initialFinishTime={constraintSeed.finishTime}
+			/>
+		</div>
+	);
 
 	return (
 		<FormWizardContainer
@@ -576,8 +986,35 @@ const CreateJobVisit = ({
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext}
 			submitLabel="Create Visit"
+			isSourceSearchOpen={isSourceSearchOpen}
+			sourceMode={sourceMode || "existing"}
+			onSourceModeChange={(mode) => setSourceMode(mode)}
+			draftCount={drafts.length}
+			onStartFromExisting={() => setSourceMode("existing")}
+			hideStartFromExisting={isSourceSearchOpen}
+			fullHeightContent={isSourceSearchOpen}
+			onCloseSourceSearch={() => setSourceMode(null)}
+			onSaveDraft={handleSaveDraft}
+			canSaveDraft={
+				isDirty &&
+				!!(
+					name.trim() ||
+					description.trim() ||
+					selectedTechIds.length > 0 ||
+					lineItems.activeLineItems.some(
+						(i) =>
+							i.name.trim() ||
+							i.quantity > 0 ||
+							i.unit_price > 0
+					)
+				)
+			}
+			isSavingDraft={
+				createDraftMutation.isPending || updateDraftMutation.isPending
+			}
 		>
 			{stepContent}
+			{hoistedTimeConstraints}
 		</FormWizardContainer>
 	);
 };

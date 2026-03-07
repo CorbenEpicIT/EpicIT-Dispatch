@@ -4,10 +4,23 @@ import type { ZodError } from "zod";
 import { CreateRequestSchema, type CreateRequestInput } from "../../types/requests";
 import { type Priority, PriorityValues } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
+import {
+	useDraftsByTypeQuery,
+	useCreateDraftMutation,
+	useUpdateDraftMutation,
+	useDeleteDraftMutation,
+} from "../../hooks/forms/useDrafts";
+import { getDraft } from "../../api/drafts";
+import type { DraftSummary, SourceType } from "../../types/drafts";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+} from "../ui/forms/TemplateSearch";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface CreateRequestProps {
@@ -39,10 +52,24 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 	const [requiresQuote, setRequiresQuote] = useState(false);
 	const [estimatedValue, setEstimatedValue] = useState("");
 	const [showAdditional, setShowAdditional] = useState(false);
-
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
+
+	const [sourceMode, setSourceMode] = useState<SourceType | null>(null);
+	const [sourceClientFilter, setSourceClientFilter] = useState("");
+
+	const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+	const [isDirty, setIsDirty] = useState(false);
+
 	const { data: clients } = useAllClientsQuery();
+	const { data: drafts = [] } = useDraftsByTypeQuery("request");
+	const createDraftMutation = useCreateDraftMutation();
+	const updateDraftMutation = useUpdateDraftMutation();
+	const deleteDraftMutation = useDeleteDraftMutation();
+
+	const isSourceSearchOpen = sourceMode !== null;
+
+	const markDirty = useCallback(() => setIsDirty(true), []);
 
 	const resetForm = useCallback(() => {
 		setTitle("");
@@ -56,6 +83,10 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		setEstimatedValue("");
 		setShowAdditional(false);
 		setErrors(null);
+		setSourceMode(null);
+		setSourceClientFilter("");
+		setCurrentDraftId(null);
+		setIsDirty(false);
 	}, []);
 
 	useEffect(() => {
@@ -66,19 +97,149 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 	}, [isModalOpen, resetForm]);
 
 	useEffect(() => {
-		if (!source.trim()) {
-			setSourceReference("");
-		}
+		if (!source.trim()) setSourceReference("");
 	}, [source]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData({ address: result.address, coords: result.coords });
+		markDirty();
 	};
-
 	const handleClearAddress = () => setGeoData(undefined);
 
+	const handleSelectDraft = useCallback(async (draftId: string) => {
+		try {
+			const draft = await getDraft(draftId);
+			const p = draft.payload as Partial<CreateRequestInput>;
+
+			setTitle(p.title || "");
+			setDescription(p.description || "");
+			setClientId(p.client_id || "");
+			setPriority((p.priority as Priority) || "Medium");
+			if (p.address) {
+				setGeoData({
+					address: p.address,
+					coords: p.coords || { lat: 0, lon: 0 },
+				});
+			}
+			setSource(p.source || "");
+			setSourceReference(p.source_reference || "");
+			setRequiresQuote(p.requires_quote ?? false);
+			setEstimatedValue(
+				p.estimated_value != null ? String(p.estimated_value) : ""
+			);
+			if (
+				p.source ||
+				p.source_reference ||
+				p.requires_quote ||
+				p.estimated_value
+			) {
+				setShowAdditional(true);
+			}
+
+			setCurrentDraftId(draft.id);
+			setIsDirty(false);
+			setSourceMode(null);
+		} catch (err) {
+			console.error("Failed to load draft:", err);
+		}
+	}, []);
+
+	const handleSaveDraft = useCallback(async () => {
+		const payload: Record<string, unknown> = {
+			title,
+			description,
+			client_id: clientId,
+			priority,
+			address: geoData?.address,
+			coords: geoData?.coords,
+			source: source || null,
+			source_reference: sourceReference || null,
+			requires_quote: requiresQuote,
+			estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
+		};
+		try {
+			if (currentDraftId) {
+				await updateDraftMutation.mutateAsync({
+					id: currentDraftId,
+					input: { payload },
+				});
+			} else {
+				const draft = await createDraftMutation.mutateAsync({
+					form_type: "request",
+					payload,
+					entity_context_id: null,
+				});
+				setCurrentDraftId(draft.id);
+			}
+			setIsDirty(false);
+		} catch (err) {
+			console.error("Failed to save draft:", err);
+		}
+	}, [
+		title,
+		description,
+		clientId,
+		priority,
+		geoData,
+		source,
+		sourceReference,
+		requiresQuote,
+		estimatedValue,
+		currentDraftId,
+		createDraftMutation,
+		updateDraftMutation,
+	]);
+
+	const handleDeleteDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				await deleteDraftMutation.mutateAsync(draftId);
+				if (draftId === currentDraftId) {
+					setCurrentDraftId(null);
+					setIsDirty(false);
+				}
+			} catch (err) {
+				console.error("Failed to delete draft:", err);
+			}
+		},
+		[currentDraftId, deleteDraftMutation]
+	);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
+
+	const draftResults = useMemo((): TemplateSearchResult[] => {
+		return drafts.map((d: DraftSummary) => ({
+			id: d.id,
+			title: d.label || "Untitled Draft",
+			subtitle: (() => {
+				const diff = Date.now() - new Date(d.updated_at).getTime();
+				const mins = Math.floor(diff / 60000);
+				const hrs = Math.floor(diff / 3600000);
+				const days = Math.floor(diff / 86400000);
+				if (mins < 1) return "Updated just now";
+				if (mins < 60) return `Updated ${mins}m ago`;
+				if (hrs < 24) return `Updated ${hrs}h ago`;
+				if (days < 7) return `Updated ${days}d ago`;
+				return `Updated ${new Date(d.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+			})(),
+			value:
+				d.total != null && d.total !== 0
+					? `$${Number(d.total).toFixed(2)}`
+					: undefined,
+			createdAt: d.created_at,
+			isDeletable: true,
+			clientId: d.client_id ?? undefined,
+			clientName: d.client_id
+				? templateClients.find((c) => c.id === d.client_id)?.name
+				: undefined,
+		}));
+	}, [drafts, templateClients]);
+
 	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
+		if (clients?.length) {
 			return clients.map((c) => (
 				<option value={c.id} key={c.id}>
 					{c.name}
@@ -110,18 +271,20 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		};
 
 		const parseResult = CreateRequestSchema.safeParse(newRequest);
-
 		if (!parseResult.success) {
 			setErrors(parseResult.error);
-			console.error("Validation errors:", parseResult.error);
 			return;
 		}
 
 		setErrors(null);
 		setIsLoading(true);
-
 		try {
 			const requestId = await createRequest(newRequest);
+			if (currentDraftId) {
+				await deleteDraftMutation
+					.mutateAsync(currentDraftId)
+					.catch(() => {});
+			}
 			setIsModalOpen(false);
 			resetForm();
 			navigate(`/dispatch/requests/${requestId}`);
@@ -135,7 +298,7 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
-		if (fieldErrors.length === 0) return null;
+		if (!fieldErrors.length) return null;
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
@@ -147,9 +310,10 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		);
 	};
 
-	const isFormValid = useMemo(() => {
-		return !!(title.trim() && clientId.trim() && description.trim() && priority);
-	}, [title, clientId, description, priority]);
+	const isFormValid = useMemo(
+		() => !!(title.trim() && clientId.trim() && description.trim() && priority),
+		[title, clientId, description, priority]
+	);
 
 	const additionalPreviewTags = useMemo(() => {
 		const tags: string[] = [];
@@ -160,10 +324,30 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 		return tags;
 	}, [source, sourceReference, requiresQuote, estimatedValue]);
 
-	const formContent = useMemo(
-		() => (
+	const formContent = useMemo(() => {
+		if (isSourceSearchOpen) {
+			return (
+				<TemplateSearch
+					heading="Use Draft"
+					placeholder="Search drafts by name..."
+					results={draftResults}
+					clients={templateClients}
+					onSelect={handleSelectDraft}
+					onClose={() => setSourceMode(null)}
+					onDelete={handleDeleteDraft}
+					isDeletingId={
+						deleteDraftMutation.isPending
+							? (deleteDraftMutation.variables as string)
+							: null
+					}
+					clientFilter={sourceClientFilter}
+					onClientFilterChange={setSourceClientFilter}
+				/>
+			);
+		}
+
+		return (
 			<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
-				{/* Title */}
 				<div className="min-w-0">
 					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Title *
@@ -172,14 +356,16 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 						type="text"
 						placeholder="Request Title"
 						value={title}
-						onChange={(e) => setTitle(e.target.value)}
+						onChange={(e) => {
+							setTitle(e.target.value);
+							markDirty();
+						}}
 						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 					<ErrorDisplay path="title" />
 				</div>
 
-				{/* Client and Priority Row */}
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 					<div className="min-w-0">
 						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -188,9 +374,10 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 						<Dropdown
 							entries={clientDropdownEntries}
 							value={clientId}
-							onChange={(newValue) =>
-								setClientId(newValue)
-							}
+							onChange={(v) => {
+								setClientId(v);
+								markDirty();
+							}}
 							placeholder="Select client"
 							disabled={isLoading}
 							error={errors?.issues.some(
@@ -199,7 +386,6 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 						/>
 						<ErrorDisplay path="client_id" />
 					</div>
-
 					<div className="min-w-0">
 						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 							Priority
@@ -207,9 +393,10 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 						<Dropdown
 							entries={PRIORITY_ENTRIES}
 							value={priority}
-							onChange={(newValue) =>
-								setPriority(newValue as Priority)
-							}
+							onChange={(v) => {
+								setPriority(v as Priority);
+								markDirty();
+							}}
 							defaultValue="Medium"
 							disabled={isLoading}
 							error={errors?.issues.some(
@@ -220,7 +407,6 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 					</div>
 				</div>
 
-				{/* Description */}
 				<div className="min-w-0">
 					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Description *
@@ -228,28 +414,28 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 					<textarea
 						placeholder="Request Description"
 						value={description}
-						onChange={(e) => setDescription(e.target.value)}
+						onChange={(e) => {
+							setDescription(e.target.value);
+							markDirty();
+						}}
 						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 					<ErrorDisplay path="description" />
 				</div>
 
-				{/* Address */}
 				<div className="relative min-w-0" style={{ zIndex: 50 }}>
 					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
 						Address (Optional)
 					</label>
-					<div className="relative">
-						<AddressForm
-							mode={geoData ? "edit" : "create"}
-							originalValue={geoData?.address || ""}
-							originalCoords={geoData?.coords}
-							dropdownPosition="above"
-							handleChange={handleChangeAddress}
-							handleClear={handleClearAddress}
-						/>
-					</div>
+					<AddressForm
+						mode={geoData ? "edit" : "create"}
+						originalValue={geoData?.address || ""}
+						originalCoords={geoData?.coords}
+						dropdownPosition="above"
+						handleChange={handleChangeAddress}
+						handleClear={handleClearAddress}
+					/>
 					<ErrorDisplay path="address" />
 					<ErrorDisplay path="coords" />
 				</div>
@@ -297,7 +483,6 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 
 					{showAdditional && (
 						<div className="mt-2 space-y-2 lg:space-y-3 pl-0.5">
-							{/* Source + Source Reference — half width, inline */}
 							<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 								<div className="min-w-0">
 									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -307,18 +492,18 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 										type="text"
 										placeholder="e.g., Phone Call, Website"
 										value={source}
-										onChange={(e) =>
+										onChange={(e) => {
 											setSource(
 												e
 													.target
 													.value
-											)
-										}
+											);
+											markDirty();
+										}}
 										className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 										disabled={isLoading}
 									/>
 								</div>
-
 								{source.trim() ? (
 									<div className="min-w-0">
 										<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -333,13 +518,14 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 											}
 											onChange={(
 												e
-											) =>
+											) => {
 												setSourceReference(
 													e
 														.target
 														.value
-												)
-											}
+												);
+												markDirty();
+											}}
 											className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 											disabled={
 												isLoading
@@ -351,7 +537,6 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 								)}
 							</div>
 
-							{/* Estimated Value (left) + Requires Quote (right) */}
 							<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 								<div className="min-w-0">
 									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -371,13 +556,14 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 											}
 											onChange={(
 												e
-											) =>
+											) => {
 												setEstimatedValue(
 													e
 														.target
 														.value
-												)
-											}
+												);
+												markDirty();
+											}}
 											className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pl-7 min-w-0"
 											disabled={
 												isLoading
@@ -385,7 +571,6 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 										/>
 									</div>
 								</div>
-
 								<div className="flex items-end pb-1.5 lg:pb-3.5 min-w-0">
 									<input
 										type="checkbox"
@@ -393,13 +578,14 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 										checked={
 											requiresQuote
 										}
-										onChange={(e) =>
+										onChange={(e) => {
 											setRequiresQuote(
 												e
 													.target
 													.checked
-											)
-										}
+											);
+											markDirty();
+										}}
 										className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer"
 										disabled={isLoading}
 									/>
@@ -415,37 +601,71 @@ const CreateRequest = ({ isModalOpen, setIsModalOpen, createRequest }: CreateReq
 					)}
 				</div>
 			</div>
-		),
-		[
-			title,
-			clientId,
-			priority,
-			description,
-			geoData,
-			source,
-			sourceReference,
-			requiresQuote,
-			estimatedValue,
-			showAdditional,
-			additionalPreviewTags,
-			isLoading,
-			clientDropdownEntries,
-			errors,
-		]
-	);
+		);
+	}, [
+		isSourceSearchOpen,
+		draftResults,
+		templateClients,
+		handleSelectDraft,
+		handleDeleteDraft,
+		sourceClientFilter,
+		title,
+		clientId,
+		priority,
+		description,
+		isLoading,
+		clientDropdownEntries,
+		geoData,
+		errors,
+		source,
+		sourceReference,
+		requiresQuote,
+		estimatedValue,
+		showAdditional,
+		additionalPreviewTags,
+		markDirty,
+	]);
 
 	return (
 		<FormWizardContainer
 			title="Create Request"
 			steps={[]}
-			currentStep={1}
-			visitedSteps={new Set([1])}
+			currentStep={1 as never}
+			visitedSteps={new Set([1 as never])}
 			isLoading={isLoading}
 			isOpen={isModalOpen}
 			onClose={() => setIsModalOpen(false)}
 			onSubmit={invokeCreate}
 			canGoNext={isFormValid}
 			submitLabel="Create Request"
+			// Draft / source search
+			isSourceSearchOpen={isSourceSearchOpen}
+			sourceMode="draft"
+			onSourceModeChange={() => {}} // single mode — toggle not needed
+			draftsOnly
+			draftCount={drafts.length}
+			onStartFromExisting={() => setSourceMode("draft")}
+			startFromExistingLabel="Use Draft"
+			hideStartFromExisting={isSourceSearchOpen}
+			fullHeightContent={isSourceSearchOpen}
+			onCloseSourceSearch={() => setSourceMode(null)}
+			// Save draft
+			onSaveDraft={handleSaveDraft}
+			canSaveDraft={
+				isDirty &&
+				!!(
+					title.trim() ||
+					description.trim() ||
+					clientId ||
+					geoData?.address ||
+					source.trim() ||
+					estimatedValue ||
+					requiresQuote
+				)
+			}
+			isSavingDraft={
+				createDraftMutation.isPending || updateDraftMutation.isPending
+			}
 		>
 			{formContent}
 		</FormWizardContainer>

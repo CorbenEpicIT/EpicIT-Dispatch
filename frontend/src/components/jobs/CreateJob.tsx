@@ -4,15 +4,35 @@ import {
 	CreateJobSchema,
 	type CreateJobInput,
 	type CreateJobLineItemInput,
+	JobStatusColors,
 } from "../../types/jobs";
-import { type LineItemType, type Priority, PriorityValues } from "../../types/common";
+import {
+	type LineItemType,
+	type BaseLineItem,
+	type Priority,
+	PriorityValues,
+} from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
+import { useAllJobsQuery } from "../../hooks/useJobs";
+import {
+	useDraftsByTypeQuery,
+	useCreateDraftMutation,
+	useUpdateDraftMutation,
+	useDeleteDraftMutation,
+} from "../../hooks/forms/useDrafts";
+import { getDraft } from "../../api/drafts";
+import type { DraftSummary, SourceType } from "../../types/drafts";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import FinancialSummary from "../ui/forms/FinancialSummary";
+import {
+	TemplateSearch,
+	type TemplateSearchResult,
+	type TemplateSearchClient,
+} from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
@@ -35,11 +55,15 @@ const PRIORITY_ENTRIES = (
 	<>
 		{PriorityValues.map((v) => (
 			<option key={v} value={v} className="text-black">
-				{v}
+				{v.charAt(0).toUpperCase() + v.slice(1)}
 			</option>
 		))}
 	</>
 );
+
+const INPUT =
+	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
 
 const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) => {
 	const [name, setName] = useState("");
@@ -47,26 +71,36 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	const [clientId, setClientId] = useState("");
 	const [priority, setPriority] = useState<Priority>("Medium");
 	const [geoData, setGeoData] = useState<GeocodeResult>();
-
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
-	const { data: clients } = useAllClientsQuery();
 
-	// Shared hooks
+	const [sourceMode, setSourceMode] = useState<SourceType | null>(null);
+	const [sourceClientFilter, setSourceClientFilter] = useState("");
+
+	const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+	const [isDirty, setIsDirty] = useState(false);
+
+	const { data: clients } = useAllClientsQuery();
+	const { data: allJobs = [] } = useAllJobsQuery();
+	const { data: drafts = [] } = useDraftsByTypeQuery("job");
+	const createDraftMutation = useCreateDraftMutation();
+	const updateDraftMutation = useUpdateDraftMutation();
+	const deleteDraftMutation = useDeleteDraftMutation();
+
+	const isSourceSearchOpen = sourceMode !== null;
+
 	const {
 		activeLineItems,
 		addLineItem,
 		removeLineItem,
 		updateLineItem,
+		seedLineItems,
 		subtotal,
 		resetLineItems,
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-	} = useLineItems({
-		minItems: 0,
-		mode: "create",
-	});
+	} = useLineItems({ minItems: 0, mode: "create" });
 
 	const {
 		taxRate,
@@ -79,34 +113,44 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		discountAmount,
 		total,
 		reset: resetFinancials,
+		setOriginals: setFinancialOriginals,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
 	} = useFinancialCalculations(subtotal);
 
-	const validateStep1 = useCallback((): boolean => {
-		return !!(
-			name.trim() &&
-			clientId.trim() &&
-			description.trim() &&
-			geoData?.address &&
-			priority
-		);
-	}, [name, clientId, description, geoData, priority]);
+	const {
+		currentStep,
+		visitedSteps,
+		goNext,
+		goBack,
+		goToStep,
+		reset: resetWizard,
+	} = useStepWizard<Step>({ totalSteps: 3 as Step, initialStep: 1 as Step });
+
+	const validateStep1 = useCallback(
+		(): boolean =>
+			!!(
+				name.trim() &&
+				clientId.trim() &&
+				description.trim() &&
+				geoData?.address &&
+				priority
+			),
+		[name, clientId, description, geoData, priority]
+	);
 
 	const validateStep2 = useCallback((): boolean => {
-		const meaningfulItems = activeLineItems.filter((item) => {
-			const hasAnyText =
+		const meaningful = activeLineItems.filter((item) => {
+			const hasText =
 				item.name.trim() !== "" || (item.description?.trim() ?? "") !== "";
-			const hasAnyNumbers = Number(item.unit_price) > 0;
+			const hasNumbers = Number(item.unit_price) > 0;
 			const hasType = (item.item_type?.trim?.() ?? "") !== "";
-			return hasAnyText || hasAnyNumbers || hasType;
+			return hasText || hasNumbers || hasType;
 		});
-
-		if (meaningfulItems.length === 0) return true;
-
-		return meaningfulItems.every(
+		if (meaningful.length === 0) return true;
+		return meaningful.every(
 			(item) =>
 				item.name.trim() &&
 				Number(item.quantity) > 0 &&
@@ -116,31 +160,12 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 	const validateStep = useCallback(
 		(step: Step): boolean => {
-			switch (step) {
-				case 1:
-					return validateStep1();
-				case 2:
-					return validateStep2();
-				case 3:
-					return true;
-				default:
-					return true;
-			}
+			if (step === 1) return validateStep1();
+			if (step === 2) return validateStep2();
+			return true;
 		},
 		[validateStep1, validateStep2]
 	);
-
-	const {
-		currentStep,
-		visitedSteps,
-		goNext,
-		goBack,
-		goToStep,
-		reset: resetWizard,
-	} = useStepWizard<Step>({
-		totalSteps: 3 as Step,
-		initialStep: 1 as Step,
-	});
 
 	const canGoNext = validateStep(currentStep);
 
@@ -165,6 +190,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		resetLineItems();
 		resetFinancials();
 		setErrors(null);
+		setSourceMode(null);
+		setSourceClientFilter("");
+		setCurrentDraftId(null);
+		setIsDirty(false);
 	}, [resetWizard, resetLineItems, resetFinancials]);
 
 	useEffect(() => {
@@ -174,14 +203,258 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		}
 	}, [isModalOpen, resetForm]);
 
+	const markDirty = useCallback(() => setIsDirty(true), []);
+	const dirtyAddLineItem = useCallback(() => {
+		addLineItem();
+		markDirty();
+	}, [addLineItem, markDirty]);
+	const dirtyRemoveLineItem = useCallback(
+		(id: string) => {
+			removeLineItem(id);
+			markDirty();
+		},
+		[removeLineItem, markDirty]
+	);
+	const dirtyUpdateLineItem = useCallback(
+		(id: string, field: keyof BaseLineItem, value: string | number) => {
+			updateLineItem(id, field, value);
+			markDirty();
+		},
+		[updateLineItem, markDirty]
+	);
+
 	const handleChangeAddress = (result: GeocodeResult) => {
 		setGeoData({ address: result.address, coords: result.coords });
+		markDirty();
 	};
-
 	const handleClearAddress = () => setGeoData(undefined);
 
+	const handleSelectTemplate = useCallback(
+		(jobId: string) => {
+			const source = allJobs.find((j) => j.id === jobId);
+			if (!source) return;
+
+			setName(source.name);
+			setDescription(source.description);
+			setPriority(source.priority as Priority);
+			if (source.address && source.coords) {
+				setGeoData({ address: source.address, coords: source.coords });
+			} else if (source.address) {
+				setGeoData({ address: source.address, coords: { lat: 0, lon: 0 } });
+			}
+
+			if (source.line_items?.length) {
+				seedLineItems(
+					source.line_items.map((li) => ({
+						name: li.name,
+						description: li.description ?? "",
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						item_type: (li.item_type ?? "") as
+							| LineItemType
+							| "",
+					}))
+				);
+			} else {
+				resetLineItems();
+			}
+
+			setFinancialOriginals(
+				(source.tax_rate ?? 0) * 100,
+				source.discount_type ?? "amount",
+				source.discount_value ?? 0
+			);
+
+			setCurrentDraftId(null);
+			setIsDirty(true); // pre-filled — allow saving as draft
+			setSourceMode(null);
+			goToStep(1 as Step);
+		},
+		[allJobs, seedLineItems, resetLineItems, setFinancialOriginals, goToStep]
+	);
+
+	const handleSelectDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				const draft = await getDraft(draftId);
+				const p = draft.payload as Partial<CreateJobInput>;
+
+				setName(p.name || "");
+				setDescription(p.description || "");
+				setClientId(p.client_id || "");
+				setPriority((p.priority as Priority) || "Medium");
+				if (p.address) {
+					setGeoData({
+						address: p.address,
+						coords: p.coords || { lat: 0, lon: 0 },
+					});
+				}
+				if (p.line_items?.length) {
+					seedLineItems(
+						p.line_items.map((li) => ({
+							name: li.name,
+							description: li.description ?? "",
+							quantity: Number(li.quantity),
+							unit_price: Number(li.unit_price),
+							item_type: (li.item_type ?? "") as
+								| LineItemType
+								| "",
+						}))
+					);
+				}
+				if (p.tax_rate != null) {
+					setFinancialOriginals(
+						p.tax_rate * 100,
+						p.discount_type ?? "amount",
+						p.discount_value ?? 0
+					);
+				}
+
+				setCurrentDraftId(draft.id);
+				setIsDirty(false);
+				setSourceMode(null);
+				goToStep(1 as Step);
+			} catch (err) {
+				console.error("Failed to load draft:", err);
+			}
+		},
+		[seedLineItems, setFinancialOriginals, goToStep]
+	);
+
+	const handleSaveDraft = useCallback(async () => {
+		const payload: Record<string, unknown> = {
+			name,
+			description,
+			client_id: clientId,
+			priority,
+			address: geoData?.address,
+			coords: geoData?.coords,
+			line_items: activeLineItems.map((item) => ({
+				name: item.name,
+				description: item.description,
+				quantity: item.quantity,
+				unit_price: item.unit_price,
+				item_type: item.item_type,
+				total: item.total,
+			})),
+			tax_rate: taxRate / 100,
+			tax_amount: taxAmount,
+			discount_type: discountType,
+			discount_value: discountValue,
+			discount_amount: discountAmount,
+			estimated_total: total,
+		};
+		try {
+			if (currentDraftId) {
+				await updateDraftMutation.mutateAsync({
+					id: currentDraftId,
+					input: { payload },
+				});
+			} else {
+				const draft = await createDraftMutation.mutateAsync({
+					form_type: "job",
+					payload,
+					entity_context_id: null,
+				});
+				setCurrentDraftId(draft.id);
+			}
+			setIsDirty(false);
+		} catch (err) {
+			console.error("Failed to save draft:", err);
+		}
+	}, [
+		name,
+		description,
+		clientId,
+		priority,
+		geoData,
+		activeLineItems,
+		taxRate,
+		taxAmount,
+		discountType,
+		discountValue,
+		discountAmount,
+		total,
+		currentDraftId,
+		createDraftMutation,
+		updateDraftMutation,
+	]);
+
+	const handleDeleteDraft = useCallback(
+		async (draftId: string) => {
+			try {
+				await deleteDraftMutation.mutateAsync(draftId);
+				if (draftId === currentDraftId) {
+					setCurrentDraftId(null);
+					setIsDirty(false);
+				}
+			} catch (err) {
+				console.error("Failed to delete draft:", err);
+			}
+		},
+		[currentDraftId, deleteDraftMutation]
+	);
+
+	const templateResults = useMemo((): TemplateSearchResult[] => {
+		return allJobs
+			.filter((j) => j.status !== "Cancelled")
+			.map((j) => ({
+				id: j.id,
+				title: j.name,
+				subtitle: j.job_number,
+				detail: j.description
+					? j.description.slice(0, 80) +
+						(j.description.length > 80 ? "…" : "")
+					: undefined,
+				badge: j.status,
+				badgeColor: JobStatusColors[
+					j.status as keyof typeof JobStatusColors
+				],
+				value:
+					j.estimated_total != null
+						? `$${Number(j.estimated_total).toFixed(2)}`
+						: undefined,
+				createdAt: new Date(j.created_at).toISOString(),
+				clientId: j.client_id,
+				clientName: j.client?.name,
+			}));
+	}, [allJobs]);
+
+	const templateClients = useMemo((): TemplateSearchClient[] => {
+		if (!clients) return [];
+		return clients.map((c) => ({ id: c.id, name: c.name }));
+	}, [clients]);
+
+	const draftResults = useMemo((): TemplateSearchResult[] => {
+		return drafts.map((d: DraftSummary) => ({
+			id: d.id,
+			title: d.label || "Untitled Draft",
+			subtitle: (() => {
+				const diff = Date.now() - new Date(d.updated_at).getTime();
+				const mins = Math.floor(diff / 60000);
+				const hrs = Math.floor(diff / 3600000);
+				const days = Math.floor(diff / 86400000);
+				if (mins < 1) return "Updated just now";
+				if (mins < 60) return `Updated ${mins}m ago`;
+				if (hrs < 24) return `Updated ${hrs}h ago`;
+				if (days < 7) return `Updated ${days}d ago`;
+				return `Updated ${new Date(d.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+			})(),
+			value:
+				d.total != null && d.total !== 0
+					? `$${Number(d.total).toFixed(2)}`
+					: undefined,
+			createdAt: d.created_at,
+			isDeletable: true,
+			clientId: d.client_id ?? undefined,
+			clientName: d.client_id
+				? templateClients.find((c) => c.id === d.client_id)?.name
+				: undefined,
+		}));
+	}, [drafts, templateClients]);
+
 	const clientDropdownEntries = useMemo(() => {
-		if (clients && clients.length) {
+		if (clients?.length) {
 			return clients.map((c) => (
 				<option value={c.id} key={c.id}>
 					{c.name}
@@ -198,7 +471,6 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	const invokeCreate = async () => {
 		if (isLoading) return;
 
-		// Convert active line items into API shape (ignore empty items if any exist)
 		const preparedLineItems: CreateJobLineItemInput[] = activeLineItems
 			.filter((li) => li.name.trim() !== "" && li.quantity > 0)
 			.map((item) => ({
@@ -230,11 +502,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		};
 
 		const parseResult = CreateJobSchema.safeParse(newJob);
-
 		if (!parseResult.success) {
 			setErrors(parseResult.error);
-			console.error("Validation errors:", parseResult.error);
-
 			const errorPaths = parseResult.error.issues.map((i) => i.path[0]);
 			if (
 				errorPaths.some((p) =>
@@ -257,9 +526,13 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 		setErrors(null);
 		setIsLoading(true);
-
 		try {
 			await createJob(newJob);
+			if (currentDraftId) {
+				await deleteDraftMutation
+					.mutateAsync(currentDraftId)
+					.catch(() => {});
+			}
 			setIsModalOpen(false);
 			resetForm();
 		} catch (error) {
@@ -272,11 +545,11 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	const ErrorDisplay = ({ path }: { path: string }) => {
 		if (!errors) return null;
 		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
-		if (fieldErrors.length === 0) return null;
+		if (!fieldErrors.length) return null;
 		return (
-			<div className="mt-1 space-y-1">
+			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-sm">
+					<p key={idx} className="text-red-300 text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -285,30 +558,62 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 	};
 
 	const stepContent = useMemo(() => {
+		if (isSourceSearchOpen) {
+			if (sourceMode === "draft") {
+				return (
+					<TemplateSearch
+						heading="Use Draft"
+						placeholder="Search drafts by name..."
+						results={draftResults}
+						clients={templateClients}
+						onSelect={handleSelectDraft}
+						onClose={() => setSourceMode(null)}
+						onDelete={handleDeleteDraft}
+						isDeletingId={
+							deleteDraftMutation.isPending
+								? (deleteDraftMutation.variables as string)
+								: null
+						}
+						clientFilter={sourceClientFilter}
+						onClientFilterChange={setSourceClientFilter}
+					/>
+				);
+			}
+			return (
+				<TemplateSearch
+					results={templateResults}
+					clients={templateClients}
+					onSelect={handleSelectTemplate}
+					onClose={() => setSourceMode(null)}
+					clientFilter={sourceClientFilter}
+					onClientFilterChange={setSourceClientFilter}
+				/>
+			);
+		}
+
 		switch (currentStep) {
 			case 1:
 				return (
-					<div className="space-y-3">
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
-								Job Name *
-							</label>
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						<div className="min-w-0">
+							<label className={LABEL}>Job Name *</label>
 							<input
 								type="text"
 								placeholder="Job Name"
 								value={name}
-								onChange={(e) =>
-									setName(e.target.value)
-								}
-								className="border border-zinc-700 p-2 w-full rounded-md bg-zinc-900 text-white focus:border-blue-500 focus:outline-none transition-colors"
+								onChange={(e) => {
+									setName(e.target.value);
+									markDirty();
+								}}
+								className={INPUT}
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="name" />
 						</div>
 
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+							<div className="min-w-0">
+								<label className={LABEL}>
 									Client *
 								</label>
 								<Dropdown
@@ -316,11 +621,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 										clientDropdownEntries
 									}
 									value={clientId}
-									onChange={(newValue) =>
-										setClientId(
-											newValue
-										)
-									}
+									onChange={(v) => {
+										setClientId(v);
+										markDirty();
+									}}
 									placeholder="Select client"
 									disabled={isLoading}
 									error={errors?.issues.some(
@@ -332,19 +636,19 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 								/>
 								<ErrorDisplay path="client_id" />
 							</div>
-
-							<div>
-								<label className="block mb-1 text-sm text-zinc-300">
+							<div className="min-w-0">
+								<label className={LABEL}>
 									Priority *
 								</label>
 								<Dropdown
 									entries={PRIORITY_ENTRIES}
 									value={priority}
-									onChange={(newValue) =>
+									onChange={(v) => {
 										setPriority(
-											newValue as Priority
-										)
-									}
+											v as Priority
+										);
+										markDirty();
+									}}
 									defaultValue="Medium"
 									disabled={isLoading}
 									error={errors?.issues.some(
@@ -358,28 +662,30 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							</div>
 						</div>
 
-						<div>
-							<label className="block mb-1 text-sm text-zinc-300">
+						<div className="min-w-0">
+							<label className={LABEL}>
 								Description *
 							</label>
 							<textarea
 								placeholder="Job Description"
 								value={description}
-								onChange={(e) =>
+								onChange={(e) => {
 									setDescription(
 										e.target.value
-									)
-								}
-								className="border border-zinc-700 p-2 w-full h-20 rounded-md bg-zinc-900 text-white resize-none focus:border-blue-500 focus:outline-none transition-colors"
+									);
+									markDirty();
+								}}
+								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
 						</div>
 
-						<div className="relative z-10">
-							<label className="block mb-1 text-sm text-zinc-300">
-								Address *
-							</label>
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className={LABEL}>Address *</label>
 							<AddressForm
 								mode={geoData ? "edit" : "create"}
 								originalValue={
@@ -398,14 +704,14 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 			case 2:
 				return (
-					<div className="space-y-3">
+					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={activeLineItems}
 							isLoading={isLoading}
-							onAdd={addLineItem}
-							onRemove={removeLineItem}
-							onUpdate={updateLineItem}
+							onAdd={dirtyAddLineItem}
+							onRemove={dirtyRemoveLineItem}
+							onUpdate={dirtyUpdateLineItem}
 							subtotal={subtotal}
 							required={false}
 							minItems={0}
@@ -418,7 +724,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 			case 3:
 				return (
-					<div className="space-y-3 mt-2">
+					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						<FinancialSummary
 							subtotal={subtotal}
 							taxRate={taxRate}
@@ -428,9 +734,19 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							discountAmount={discountAmount}
 							total={total}
 							isLoading={isLoading}
-							onTaxRateChange={setTaxRate}
-							onDiscountTypeChange={setDiscountType}
-							onDiscountValueChange={setDiscountValue}
+							mode="create"
+							onTaxRateChange={(v) => {
+								setTaxRate(v);
+								markDirty();
+							}}
+							onDiscountTypeChange={(v) => {
+								setDiscountType(v);
+								markDirty();
+							}}
+							onDiscountValueChange={(v) => {
+								setDiscountValue(v);
+								markDirty();
+							}}
 							totalLabel="Estimated Total"
 							isTaxDirty={isTaxDirty}
 							isDiscountDirty={isDiscountDirty}
@@ -444,14 +760,23 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 				return null;
 		}
 	}, [
+		isSourceSearchOpen,
+		sourceMode,
+		draftResults,
+		templateClients,
+		handleSelectDraft,
+		handleDeleteDraft,
+		sourceClientFilter,
+		templateResults,
+		handleSelectTemplate,
 		currentStep,
 		name,
 		clientId,
 		priority,
 		description,
-		geoData,
 		isLoading,
 		clientDropdownEntries,
+		geoData,
 		errors,
 		activeLineItems,
 		addLineItem,
@@ -489,6 +814,33 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext}
 			submitLabel="Create Job"
+			isSourceSearchOpen={isSourceSearchOpen}
+			sourceMode={sourceMode || "existing"}
+			onSourceModeChange={(mode) => setSourceMode(mode)}
+			draftCount={drafts.length}
+			onStartFromExisting={() => setSourceMode("existing")}
+			hideStartFromExisting={isSourceSearchOpen}
+			fullHeightContent={isSourceSearchOpen}
+			onCloseSourceSearch={() => setSourceMode(null)}
+			onSaveDraft={handleSaveDraft}
+			canSaveDraft={
+				isDirty &&
+				!!(
+					name.trim() ||
+					description.trim() ||
+					clientId ||
+					geoData?.address ||
+					activeLineItems.some(
+						(i) =>
+							i.name.trim() ||
+							i.quantity > 0 ||
+							i.unit_price > 0
+					)
+				)
+			}
+			isSavingDraft={
+				createDraftMutation.isPending || updateDraftMutation.isPending
+			}
 		>
 			{stepContent}
 		</FormWizardContainer>
