@@ -101,8 +101,16 @@ import {
 	getLowStockInventory,
 	updateInventoryThreshold,
 } from "./controllers/inventoryController.js";
+import {
+	login,
+	register,
+	logout, 
+	checkRole,
+	checkToken
+} from "./controllers/authenticationController.js"
 import http from "http";
 import { Server } from "socket.io";
+import { required } from "zod/v4/core/util.cjs";
 
 export interface UserContext {
 	techId?: string;
@@ -148,6 +156,40 @@ const notFoundHandler = (req: Request, res: Response) => {
 		),
 	);
 };
+
+const verifyToken = (req: Request, res: Response, next: NextFunction) => {
+    if (req.method === "OPTIONS") return next();
+
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return res.status(401).json(
+        createErrorResponse(ErrorCodes.INVALID_TOKEN, "No token provided")
+    );
+
+    try {
+        req.user = checkToken(token);
+        next();
+    } catch {
+        res.status(401).json(
+            createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid or expired token")
+        );
+    }
+}
+
+const requireRole = (...roles: string[]) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+        if (!req.user) {
+            return res.status(401).json(
+                createErrorResponse(ErrorCodes.INVALID_TOKEN, "Not authenticated")
+            );
+        }
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json(
+                createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions")
+            );
+        }
+        next();
+    }
+}
 
 // ============================================
 // HELPER
@@ -209,7 +251,7 @@ if (!port) {
 // REQUEST ROUTES
 // ============================================
 
-app.get("/requests", async (req, res, next) => {
+app.get("/requests", requireRole("dispatch"), async (req, res, next) => {
 	try {
 		const requests = await getAllRequests();
 		res.json(createSuccessResponse(requests, { count: requests.length }));
@@ -1667,7 +1709,7 @@ app.post(
 // CLIENTS
 // ============================================
 
-app.get("/clients", async (req, res, next) => {
+app.get("/clients", verifyToken, async (req, res, next) => {
 	try {
 		const clients = await getAllClients();
 		res.json(createSuccessResponse(clients, { count: clients.length }));
@@ -2318,6 +2360,18 @@ app.patch("/inventory/:id/threshold", async (req, res, next) => {
 	} catch (err) {
 		next(err);
 	}
+});
+
+// ============================================
+// Authentication Routes
+// ============================================
+
+app.post("/login", async (req, res, next) => {
+	console.log(req.body);
+
+	let response = await login(req.body.email, req.body.password, req.body.role);
+	
+	return res.json(response);
 });
 
 // ============================================

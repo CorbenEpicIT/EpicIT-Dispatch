@@ -41,3 +41,6 @@ ehthumbs.db
 out/
 
 /generated/prisma
+
+# Testing server endpoints
+request.rest
