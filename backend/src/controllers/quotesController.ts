@@ -115,6 +115,7 @@ export const getQuoteById = async (quoteId: string) => {
 					name: true,
 					status: true,
 					created_at: true,
+					estimated_total: true,
 				},
 			},
 			line_items: {
@@ -319,8 +320,8 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					quote_number: { old: null, new: quote.quote_number },
@@ -406,17 +407,17 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 			if (parsed.line_items !== undefined) {
 				const incomingItems = parsed.line_items || [];
 				const existingItemIds = new Set(
-					existing.line_items.map((item) => item.id)
+					existing.line_items.map((item) => item.id),
 				);
 				const incomingItemIds = new Set(
 					incomingItems
 						.filter((item) => item.id)
-						.map((item) => item.id!)
+						.map((item) => item.id!),
 				);
 
 				// Delete items not in incoming list
 				const itemsToDelete = existing.line_items.filter(
-					(item) => !incomingItemIds.has(item.id)
+					(item) => !incomingItemIds.has(item.id),
 				);
 
 				for (const item of itemsToDelete) {
@@ -432,8 +433,8 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 						actor_type: context?.techId
 							? "technician"
 							: context?.dispatcherId
-							? "dispatcher"
-							: "system",
+								? "dispatcher"
+								: "system",
 						actor_id: context?.techId || context?.dispatcherId,
 						changes: {
 							name: { old: item.name, new: null },
@@ -449,7 +450,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 					if (item.id && existingItemIds.has(item.id)) {
 						// Update existing item
 						const existingItem = existing.line_items.find(
-							(i) => i.id === item.id
+							(i) => i.id === item.id,
 						);
 
 						if (existingItem) {
@@ -523,8 +524,8 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 									actor_type: context?.techId
 										? "technician"
 										: context?.dispatcherId
-										? "dispatcher"
-										: "system",
+											? "dispatcher"
+											: "system",
 									actor_id:
 										context?.techId ||
 										context?.dispatcherId,
@@ -557,8 +558,8 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 							actor_type: context?.techId
 								? "technician"
 								: context?.dispatcherId
-								? "dispatcher"
-								: "system",
+									? "dispatcher"
+									: "system",
 							actor_id: context?.techId || context?.dispatcherId,
 							changes: {
 								name: { old: null, new: item.name },
@@ -671,8 +672,8 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -724,8 +725,8 @@ export const deleteQuote = async (id: string, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					quote_number: { old: existing.quote_number, new: null },
@@ -779,7 +780,7 @@ export const getQuoteItemById = async (quoteId: string, itemId: string) => {
 export const insertQuoteItem = async (
 	quoteId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = createQuoteItemSchema.parse(data);
@@ -820,8 +821,8 @@ export const insertQuoteItem = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: null, new: parsed.name },
@@ -853,7 +854,7 @@ export const updateQuoteItem = async (
 	quoteId: string,
 	itemId: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateQuoteItemSchema.parse(data);
@@ -923,8 +924,8 @@ export const updateQuoteItem = async (
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -952,7 +953,7 @@ export const updateQuoteItem = async (
 export const deleteQuoteItem = async (
 	quoteId: string,
 	itemId: string,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const existing = await db.quote_line_item.findFirst({
@@ -975,8 +976,8 @@ export const deleteQuoteItem = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: existing.name, new: null },

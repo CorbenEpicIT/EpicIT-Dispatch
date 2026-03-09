@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import {
 	Edit2,
-	User,
 	Clock,
 	Users,
 	DollarSign,
@@ -10,8 +9,6 @@ import {
 	Pause,
 	Play,
 	MoreVertical,
-	Mail,
-	Phone,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -24,10 +21,10 @@ import {
 	useJobByIdQuery,
 } from "../../hooks/useJobs";
 import Card from "../../components/ui/Card";
+import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
-import type { ClientContact } from "../../types/clients";
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
 
 export default function JobVisitDetailPage() {
@@ -56,7 +53,6 @@ export default function JobVisitDetailPage() {
 				setIsOptionsMenuOpen(false);
 			}
 		};
-
 		document.addEventListener("mousedown", handleClickOutside);
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
@@ -76,10 +72,6 @@ export default function JobVisitDetailPage() {
 			</div>
 		);
 	}
-
-	const primaryContact = job?.client?.contacts?.find(
-		(cc: ClientContact) => cc.is_primary
-	)?.contact;
 
 	const handleStartVisit = async () => {
 		try {
@@ -141,7 +133,6 @@ export default function JobVisitDetailPage() {
 	const lineItems: VisitLineItem[] = visit.line_items || [];
 	const hasLineItems = lineItems.length > 0;
 
-	// Helper to format time from HH:MM to 12-hour format
 	const formatConstraintTime = (time: string | null | undefined): string => {
 		if (!time) return "";
 		const [hours, minutes] = time.split(":").map(Number);
@@ -151,7 +142,6 @@ export default function JobVisitDetailPage() {
 		return `${displayHours}${displayMinutes} ${period}`;
 	};
 
-	// Helper to format visit constraints
 	const formatVisitConstraints = (): string => {
 		const {
 			arrival_constraint,
@@ -196,40 +186,36 @@ export default function JobVisitDetailPage() {
 
 	const calculateDuration = (): number | null => {
 		if (visit.actual_start_at && visit.actual_end_at) {
-			const start = new Date(visit.actual_start_at).getTime();
-			const end = new Date(visit.actual_end_at).getTime();
-			return Math.round((end - start) / (1000 * 60)); // Convert to minutes
+			return Math.round(
+				(new Date(visit.actual_end_at).getTime() -
+					new Date(visit.actual_start_at).getTime()) /
+					(1000 * 60)
+			);
 		}
-
 		if (visit.scheduled_start_at && visit.scheduled_end_at) {
-			const start = new Date(visit.scheduled_start_at).getTime();
-			const end = new Date(visit.scheduled_end_at).getTime();
-			return Math.round((end - start) / (1000 * 60)); // Convert to minutes
+			return Math.round(
+				(new Date(visit.scheduled_end_at).getTime() -
+					new Date(visit.scheduled_start_at).getTime()) /
+					(1000 * 60)
+			);
 		}
-
 		return null;
 	};
 
-	// Format duration in hours and minutes
 	const formatDuration = (minutes: number | null): string => {
 		if (minutes === null) return "N/A";
 		const hours = Math.floor(minutes / 60);
 		const mins = minutes % 60;
-
-		if (hours === 0) {
-			return `${mins} ${mins === 1 ? "minute" : "minutes"}`;
-		} else if (mins === 0) {
-			return `${hours} ${hours === 1 ? "hour" : "hours"}`;
-		} else {
-			return `${hours} ${hours === 1 ? "hour" : "hours"} ${mins} ${mins === 1 ? "minute" : "minutes"}`;
-		}
+		if (hours === 0) return `${mins} ${mins === 1 ? "minute" : "minutes"}`;
+		if (mins === 0) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+		return `${hours} ${hours === 1 ? "hour" : "hours"} ${mins} ${mins === 1 ? "minute" : "minutes"}`;
 	};
 
 	const duration = calculateDuration();
 
 	return (
 		<div className="text-white space-y-6">
-			{/* Title and Status with Options Menu */}
+			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
 					<h1 className="text-3xl font-bold text-white mb-2">
@@ -252,7 +238,6 @@ export default function JobVisitDetailPage() {
 						{visit.status}
 					</span>
 
-					{/* Options Menu */}
 					<div className="relative" ref={optionsMenuRef}>
 						<button
 							onClick={() =>
@@ -370,7 +355,7 @@ export default function JobVisitDetailPage() {
 										visit.status ===
 											"Paused") && (
 										<>
-											<div className="border-t border-zinc-800 my-1"></div>
+											<div className="border-t border-zinc-800 my-1" />
 											<button
 												onClick={
 													handleCancelVisit
@@ -397,13 +382,11 @@ export default function JobVisitDetailPage() {
 				</div>
 			</div>
 
-			{/* Visit Information (2/3) and Client Details (1/3) */}
+			{/* Visit Information (2/3) + Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				{/* Visit Information - 2/3 width */}
 				<div className="lg:col-span-2">
 					<Card title="Visit Information" className="h-full">
 						<div className="space-y-4">
-							{/* Visit Description */}
 							{visit.description && (
 								<div>
 									<h3 className="text-zinc-400 text-sm mb-1">
@@ -440,7 +423,6 @@ export default function JobVisitDetailPage() {
 										)}
 									</p>
 
-									{/* Show constraint-specific details */}
 									{visit.arrival_constraint ===
 										"at" &&
 										visit.arrival_time && (
@@ -451,7 +433,6 @@ export default function JobVisitDetailPage() {
 												)}
 											</p>
 										)}
-
 									{visit.arrival_constraint ===
 										"between" &&
 										visit.arrival_window_start &&
@@ -468,7 +449,6 @@ export default function JobVisitDetailPage() {
 												)}
 											</p>
 										)}
-
 									{visit.arrival_constraint ===
 										"by" &&
 										visit.arrival_window_end && (
@@ -480,7 +460,6 @@ export default function JobVisitDetailPage() {
 												)}
 											</p>
 										)}
-
 									{visit.finish_constraint ===
 										"at" &&
 										visit.finish_time && (
@@ -492,7 +471,6 @@ export default function JobVisitDetailPage() {
 												)}
 											</p>
 										)}
-
 									{visit.finish_constraint ===
 										"by" &&
 										visit.finish_time && (
@@ -563,123 +541,23 @@ export default function JobVisitDetailPage() {
 					</Card>
 				</div>
 
-				{/* Client Details - 1/3 width */}
 				<div className="lg:col-span-1">
-					<Card
-						title="Client Details"
-						headerAction={
-							job?.client?.is_active !== undefined && (
-								<span
-									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-										job.client.is_active
-											? "bg-green-500/20 text-green-400 border-green-500/30"
-											: "bg-red-500/20 text-red-400 border-red-500/30"
-									}`}
-								>
-									{job.client.is_active
-										? "Active"
-										: "Inactive"}
-								</span>
-							)
-						}
-						className="h-full"
-					>
-						<div className="space-y-4">
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-2 flex items-center gap-2">
-									<User size={14} />
-									Client Name
-								</h3>
-								<p>
-									{job?.client?.name ||
-										"Unknown Client"}
-								</p>
-							</div>
-
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-1">
-									Address
-								</h3>
-								<p className="text-white text-sm break-words">
-									{job?.client?.address ||
-										"No address available"}
-								</p>
-							</div>
-
-							{/* Primary Contact */}
-							{primaryContact && (
-								<div className="pt-4 border-t border-zinc-700">
-									<div className="flex items-center justify-between mb-3">
-										<h3 className="text-zinc-400 text-sm">
-											Primary
-											Contact
-										</h3>
-										{primaryContact.title && (
-											<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
-												{
-													primaryContact.title
-												}
-											</span>
-										)}
-									</div>
-									<div className="space-y-2">
-										<p className="text-white font-medium">
-											{
-												primaryContact.name
-											}
-										</p>
-
-										{primaryContact.email && (
-											<div className="flex items-center gap-2 text-sm">
-												<Mail
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<span className="text-white truncate">
-													{
-														primaryContact.email
-													}
-												</span>
-											</div>
-										)}
-
-										{primaryContact.phone && (
-											<div className="flex items-center gap-2 text-sm">
-												<Phone
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<span className="text-white">
-													{
-														primaryContact.phone
-													}
-												</span>
-											</div>
-										)}
-									</div>
-								</div>
-							)}
-
-							<button
-								onClick={() =>
-									navigate(
-										`/dispatch/clients/${job?.client_id}`
-									)
-								}
-								className="w-full mt-4 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors"
-							>
-								View Full Client Profile
-							</button>
-						</div>
-					</Card>
+					{job ? (
+						<ClientDetailsCard
+							client_id={job.client_id}
+							client={job.client}
+						/>
+					) : (
+						<Card title="Client Details" className="h-full">
+							<p className="text-zinc-500 text-sm">
+								Loading client details...
+							</p>
+						</Card>
+					)}
 				</div>
 			</div>
 
-			{/* Visit Financial Summary - Full Width */}
+			{/* Visit Financial Summary */}
 			<Card title="Visit Financial Summary">
 				{!hasLineItems ? (
 					<div className="text-center py-8">
@@ -697,14 +575,11 @@ export default function JobVisitDetailPage() {
 					</div>
 				) : (
 					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-						{/* Left Column - Line Items Table (2/3 width) */}
 						<div className="lg:col-span-2">
 							<h3 className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-4">
 								Line Items
 							</h3>
-
 							<div className="space-y-1">
-								{/* Table Header */}
 								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
 									<div className="col-span-5">
 										Description
@@ -722,8 +597,6 @@ export default function JobVisitDetailPage() {
 										Amount
 									</div>
 								</div>
-
-								{/* Line Items */}
 								{lineItems.map((item, index) => (
 									<div
 										key={
@@ -732,7 +605,6 @@ export default function JobVisitDetailPage() {
 										}
 										className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
 									>
-										{/* Description */}
 										<div className="col-span-5 text-sm">
 											<p className="text-white font-medium">
 												{
@@ -747,8 +619,6 @@ export default function JobVisitDetailPage() {
 												</p>
 											)}
 										</div>
-
-										{/* Type Badge */}
 										<div className="col-span-1 flex items-center justify-center">
 											{item.item_type && (
 												<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
@@ -758,8 +628,6 @@ export default function JobVisitDetailPage() {
 												</span>
 											)}
 										</div>
-
-										{/* Quantity */}
 										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
 											{Number(
 												item.quantity
@@ -771,8 +639,6 @@ export default function JobVisitDetailPage() {
 												}
 											)}
 										</div>
-
-										{/* Unit Price */}
 										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
 											{formatCurrency(
 												Number(
@@ -780,8 +646,6 @@ export default function JobVisitDetailPage() {
 												)
 											)}
 										</div>
-
-										{/* Amount */}
 										<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
 											{formatCurrency(
 												Number(
@@ -794,9 +658,7 @@ export default function JobVisitDetailPage() {
 							</div>
 						</div>
 
-						{/* Right Column - Financial Breakdown (1/3 width) */}
 						<div className="lg:col-span-1 space-y-6">
-							{/* Visit Metadata */}
 							<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
 								<div className="flex justify-between text-sm">
 									<span className="text-zinc-400">
@@ -822,7 +684,6 @@ export default function JobVisitDetailPage() {
 								</div>
 							</div>
 
-							{/* Visit Total */}
 							<div className="flex items-center justify-between px-4 py-3 bg-blue-500/10 rounded-lg border-2 border-blue-500/30">
 								<div>
 									<p className="text-zinc-300 text-xs uppercase tracking-wide font-semibold mb-0.5">
@@ -849,7 +710,6 @@ export default function JobVisitDetailPage() {
 								</p>
 							</div>
 
-							{/* Info Box */}
 							<div className="px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg">
 								<p className="text-xs text-zinc-400 italic">
 									Line items represent work
@@ -861,7 +721,7 @@ export default function JobVisitDetailPage() {
 				)}
 			</Card>
 
-			{/* Assigned Technicians - Full Width */}
+			{/* Assigned Technicians */}
 			<Card
 				title="Assigned Technicians"
 				headerAction={

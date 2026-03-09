@@ -1,5 +1,3 @@
-import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
 import { PriorityValues } from "../../types/common";
@@ -27,10 +25,7 @@ export default function ConvertToJob({
 	const priorityRef = useRef<HTMLSelectElement>(null);
 	const [geoData, setGeoData] = useState<GeocodeResult | undefined>(
 		request.address || request.coords
-			? {
-					address: request.address || "",
-					coords: request.coords,
-				}
+			? { address: request.address || "", coords: request.coords }
 			: undefined
 	);
 	const [isLoading, setIsLoading] = useState(false);
@@ -49,20 +44,13 @@ export default function ConvertToJob({
 	}, [isModalOpen, request.priority]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData(() => ({
-			address: result.address,
-			coords: result.coords,
-		}));
+		setGeoData({ address: result.address, coords: result.coords });
 		setAddressError(null);
 	};
 
 	const handleClearAddress = () => {
-		// In edit mode, revert to original if it exists
 		if (request.address || request.coords) {
-			setGeoData({
-				address: request.address || "",
-				coords: request.coords,
-			});
+			setGeoData({ address: request.address || "", coords: request.coords });
 		} else {
 			setGeoData(undefined);
 		}
@@ -80,143 +68,170 @@ export default function ConvertToJob({
 	);
 
 	const invokeConvert = async () => {
-		if (nameRef.current && descRef.current && priorityRef.current && !isLoading) {
-			const nameValue = nameRef.current.value.trim();
-			const descValue = descRef.current.value.trim();
-			const priorityValue = priorityRef.current.value.trim() as
-				| "Low"
-				| "Medium"
-				| "High"
-				| "Urgent"
-				| "Emergency";
+		if (!nameRef.current || !descRef.current || !priorityRef.current || isLoading)
+			return;
 
-			// Reset errors
+		const nameValue = nameRef.current.value.trim();
+		const descValue = descRef.current.value.trim();
+		const priorityValue = priorityRef.current.value.trim() as
+			| "Low"
+			| "Medium"
+			| "High"
+			| "Urgent"
+			| "Emergency";
+
+		setNameError(null);
+		setAddressError(null);
+
+		let hasError = false;
+		if (!nameValue) {
+			setNameError("Job name is required");
+			hasError = true;
+		}
+		if (!geoData?.address) {
+			setAddressError("Job address is required");
+			hasError = true;
+		}
+		if (hasError) return;
+
+		setIsLoading(true);
+		try {
+			const jobData: CreateJobInput = {
+				name: nameValue,
+				client_id: request.client_id,
+				request_id: request.id,
+				address: geoData!.address,
+				coords: geoData!.coords || { lat: 0, lon: 0 },
+				description: descValue,
+				priority: priorityValue,
+				status: "Unscheduled",
+			};
+
+			await onConvert(jobData);
+
+			if (nameRef.current) nameRef.current.value = "";
+			if (descRef.current) descRef.current.value = "";
+			setGeoData(undefined);
 			setNameError(null);
 			setAddressError(null);
-
-			// Validate all fields
-			let hasError = false;
-
-			if (!nameValue) {
-				setNameError("Job name is required");
-				hasError = true;
-			}
-
-			if (!geoData?.address) {
-				setAddressError("Job address is required");
-				hasError = true;
-			}
-
-			if (hasError) {
-				return;
-			}
-
-			setIsLoading(true);
-
-			try {
-				const jobData: CreateJobInput = {
-					name: nameValue,
-					client_id: request.client_id,
-					request_id: request.id,
-					address: geoData!.address,
-					coords: geoData!.coords || { lat: 0, lon: 0 },
-					description: descValue,
-					priority: priorityValue,
-					status: "Unscheduled",
-				};
-
-				await onConvert(jobData);
-
-				// Reset form
-				if (nameRef.current) nameRef.current.value = "";
-				if (descRef.current) descRef.current.value = "";
-				setGeoData(undefined);
-				setNameError(null);
-				setAddressError(null);
-				setIsModalOpen(false);
-			} catch (error) {
-				console.error("Failed to convert request to job:", error);
-				setNameError(
-					error instanceof Error
-						? error.message
-						: "Failed to convert request to job"
-				);
-			} finally {
-				setIsLoading(false);
-			}
+			setIsModalOpen(false);
+		} catch (error) {
+			console.error("Failed to convert request to job:", error);
+			setNameError(
+				error instanceof Error
+					? error.message
+					: "Failed to convert request to job"
+			);
+		} finally {
+			setIsLoading(false);
 		}
 	};
 
 	const content = (
-		<>
-			<h2 className="text-2xl font-bold mb-4">Convert to Job</h2>
-
-			<p className="mb-1 hover:color-accent">Job Name *</p>
-			<input
-				type="text"
-				placeholder="Job Name"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={nameRef}
-				defaultValue={request.title}
-				onChange={() => setNameError(null)}
-			/>
-			{nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
-
-			<p className="mb-1 mt-3 hover:color-accent">Description</p>
-			<textarea
-				placeholder="Job Description"
-				className="border border-zinc-800 p-2 w-full h-24 rounded-sm"
-				disabled={isLoading}
-				ref={descRef}
-				defaultValue={request.description}
-			/>
-
-			<p className="mb-1 mt-3 hover:color-accent">Job Address *</p>
-			<AddressForm
-				mode={request.address ? "edit" : "create"}
-				originalValue={request.address || ""}
-				originalCoords={request.coords}
-				handleChange={handleChangeAddress}
-				handleClear={handleClearAddress}
-			/>
-			{addressError && (
-				<p className="text-red-500 text-sm mt-1">{addressError}</p>
-			)}
-
-			<p className="mb-1 mt-3 hover:color-accent">Priority</p>
-			<div className="border border-zinc-800 rounded-sm">
-				<Dropdown refToApply={priorityRef} entries={priorityEntries} />
+		<div className="flex flex-col min-h-0 flex-1">
+			{/* Header */}
+			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-zinc-800 flex-shrink-0">
+				<h2 className="text-lg lg:text-xl font-bold text-white">
+					Convert to Job
+				</h2>
 			</div>
 
-			<div className="p-3 mt-4 bg-amber-900/20 border border-amber-700/50 rounded-md">
-				<p className="text-xs text-amber-200">
-					Note: The job will be created in "Unscheduled" status. You
-					can create visits and assign technicians after creation.
-				</p>
+			{/* Scrollable body */}
+			<div className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 lg:py-5 space-y-3 lg:space-y-4">
+				{/* Job Name */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Job Name *
+					</label>
+					<input
+						type="text"
+						placeholder="Job Name"
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors"
+						disabled={isLoading}
+						ref={nameRef}
+						defaultValue={request.title}
+						onChange={() => setNameError(null)}
+					/>
+					{nameError && (
+						<p className="text-red-400 text-xs mt-0.5">
+							{nameError}
+						</p>
+					)}
+				</div>
+
+				{/* Description */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Description
+					</label>
+					<textarea
+						placeholder="Job Description"
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors"
+						disabled={isLoading}
+						ref={descRef}
+						defaultValue={request.description}
+					/>
+				</div>
+
+				{/* Address */}
+				<div className="relative" style={{ zIndex: 50 }}>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Job Address *
+					</label>
+					<AddressForm
+						mode={request.address ? "edit" : "create"}
+						originalValue={request.address || ""}
+						originalCoords={request.coords}
+						dropdownPosition="above"
+						handleChange={handleChangeAddress}
+						handleClear={handleClearAddress}
+					/>
+					{addressError && (
+						<p className="text-red-400 text-xs mt-0.5">
+							{addressError}
+						</p>
+					)}
+				</div>
+
+				{/* Priority */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Priority
+					</label>
+					<Dropdown
+						refToApply={priorityRef}
+						entries={priorityEntries}
+					/>
+				</div>
+
+				{/* Note */}
+				<div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-md">
+					<p className="text-xs text-amber-200">
+						Note: The job will be created in "Unscheduled"
+						status. You can create visits and assign technicians
+						after creation.
+					</p>
+				</div>
 			</div>
 
-			<div className="transition-all flex justify-end space-x-2 mt-4">
-				{isLoading ? (
-					<LoadSvg className="w-10 h-10" />
-				) : (
-					<>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
-							onClick={() => setIsModalOpen(false)}
-						>
-							<Button label="Cancel" />
-						</div>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all font-bold"
-							onClick={invokeConvert}
-						>
-							<Button label="Create Job" />
-						</div>
-					</>
-				)}
+			{/* Footer */}
+			<div className="flex items-center justify-end gap-2 px-4 lg:px-6 py-3 lg:py-4 border-t border-zinc-800 flex-shrink-0">
+				<button
+					onClick={() => setIsModalOpen(false)}
+					disabled={isLoading}
+					className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md border border-zinc-700 transition-colors disabled:opacity-50"
+				>
+					Cancel
+				</button>
+				<button
+					onClick={invokeConvert}
+					disabled={isLoading}
+					className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+				>
+					{isLoading ? "Creating..." : "Create Job"}
+				</button>
 			</div>
-		</>
+		</div>
 	);
 
 	return (

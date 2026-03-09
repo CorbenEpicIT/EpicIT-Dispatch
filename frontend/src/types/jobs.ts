@@ -25,6 +25,7 @@ import {
 	FinishConstraintValues,
 	type ArrivalConstraint,
 	type FinishConstraint,
+	type RecurringPlanStatus,
 } from "./recurringPlans";
 
 // ============================================================================
@@ -132,6 +133,13 @@ export interface VisitReference {
 	status: VisitStatus;
 }
 
+export interface RecurringPlanReference {
+	id: string;
+	name: string;
+	status: RecurringPlanStatus;
+	starts_at: Date | string;
+}
+
 export interface Job extends PricingBreakdown, ExecutionTotals {
 	id: string;
 	name: string;
@@ -156,6 +164,7 @@ export interface Job extends PricingBreakdown, ExecutionTotals {
 	client?: ClientWithPrimaryContact;
 	request?: RequestReference | null;
 	quote?: QuoteReference | null;
+	recurring_plan?: RecurringPlanReference | null;
 	visits?: JobVisit[];
 	notes?: JobNote[];
 	line_items?: JobLineItem[];
