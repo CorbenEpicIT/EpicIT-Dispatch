@@ -114,10 +114,10 @@ import * as draftsController from "./controllers/draftsController.js";
 import {
 	login,
 	register,
-	logout, 
+	logout,
 	checkRole,
-	checkToken
-} from "./controllers/authenticationController.js"
+	checkToken,
+} from "./controllers/authenticationController.js";
 import http from "http";
 import { Server } from "socket.io";
 import { required } from "zod/v4/core/util.cjs";
@@ -168,38 +168,57 @@ const notFoundHandler = (req: Request, res: Response) => {
 };
 
 const verifyToken = (req: Request, res: Response, next: NextFunction) => {
-    if (req.method === "OPTIONS") return next();
+	if (req.method === "OPTIONS") return next();
 
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json(
-        createErrorResponse(ErrorCodes.INVALID_TOKEN, "No token provided")
-    );
+	const token = req.headers.authorization?.split(" ")[1];
+	if (!token)
+		return res
+			.status(401)
+			.json(
+				createErrorResponse(
+					ErrorCodes.INVALID_TOKEN,
+					"No token provided",
+				),
+			);
 
-    try {
-        req.user = checkToken(token);
-        next();
-    } catch {
-        res.status(401).json(
-            createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid or expired token")
-        );
-    }
-}
+	try {
+		req.user = checkToken(token);
+		next();
+	} catch {
+		res.status(401).json(
+			createErrorResponse(
+				ErrorCodes.INVALID_TOKEN,
+				"Invalid or expired token",
+			),
+		);
+	}
+};
 
 const requireRole = (...roles: string[]) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-        if (!req.user) {
-            return res.status(401).json(
-                createErrorResponse(ErrorCodes.INVALID_TOKEN, "Not authenticated")
-            );
-        }
-        if (!roles.includes(req.user.role)) {
-            return res.status(403).json(
-                createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions")
-            );
-        }
-        next();
-    }
-}
+	return (req: Request, res: Response, next: NextFunction) => {
+		if (!req.user) {
+			return res
+				.status(401)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"Not authenticated",
+					),
+				);
+		}
+		if (!roles.includes(req.user.role)) {
+			return res
+				.status(403)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_CREDENTIALS,
+						"Insufficient permissions",
+					),
+				);
+		}
+		next();
+	};
+};
 
 // ============================================
 // HELPER
@@ -256,6 +275,25 @@ if (!port) {
 	console.warn("No port configured. Defaulting...");
 	port = "3000";
 }
+
+// ============================================
+// AUTH ROUTES (public — no verifyToken)
+// ============================================
+
+app.post("/login", async (req, res, next) => {
+	try {
+		const { email, password, role } = req.body;
+		const result = await login(email, password, role);
+
+		if ("error" in result) {
+			return res.status(401).json(result);
+		}
+
+		res.json(createSuccessResponse(result.data));
+	} catch (err) {
+		next(err);
+	}
+});
 
 // ============================================
 // DRAFT ROUTES
@@ -370,7 +408,8 @@ app.delete("/drafts/:id", async (req, res, next) => {
 // REQUEST ROUTES
 // ============================================
 
-app.get("/requests", requireRole("dispatch"), async (req, res, next) => {
+app.get("/requests", async (req, res, next) => {
+	// requireRole("dispatch"),           temp removal until further implementation
 	try {
 		const requests = await getAllRequests();
 		res.json(createSuccessResponse(requests, { count: requests.length }));
