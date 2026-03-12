@@ -624,6 +624,10 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 									onChange={(v) => {
 										setClientId(v);
 										markDirty();
+										const client = clients?.find((c) => c.id === v);
+										if (client?.address && Number.isFinite(client.coords?.lat) && Number.isFinite(client.coords?.lon)) {
+											setGeoData({ address: client.address, coords: { lat: client.coords.lat, lon: client.coords.lon } });
+										}
 									}}
 									placeholder="Select client"
 									disabled={isLoading}
