@@ -177,6 +177,128 @@ export function getHeadlineTotal(
 }
 
 // ============================================================================
+// SHARED FORM TYPES
+// ============================================================================
+
+// This represents the UI state of a line item, not the API model
+export interface BaseLineItem {
+	id: string; // React key for UI rendering
+	name: string;
+	description: string;
+	quantity: number;
+	unit_price: number;
+	item_type: LineItemType | "";
+	total: number;
+}
+
+//Extended line item for edit forms - tracks new/deleted items
+export interface EditableLineItem extends BaseLineItem {
+	entity_line_item_id?: string;
+	isNew?: boolean; // Marks items to be created via API
+	isDeleted?: boolean; // Marks items to be deleted via API (soft delete in UI)
+}
+
+/**
+ * Financial calculation state for forms
+ * Manages tax and discount calculations
+ */
+export interface FinancialState {
+	taxRate: number; // Stored as percentage (0-100) in UI, converted to decimal for API
+	taxAmount: number; // Calculated value
+	discountType: DiscountType;
+	discountValue: number; // Either percentage or dollar amount
+	discountAmount: number; // Calculated value
+	total: number; // Final calculated total
+}
+
+//Step wizard state for multi-step forms
+export interface StepState<T extends number> {
+	currentStep: T;
+	visitedSteps: Set<T>;
+}
+
+export type StepValidator<T extends number> = (step: T) => boolean;
+
+//Form field state for edit forms with dirty tracking
+export interface FormFieldState<T = any> {
+	isDirty: boolean;
+	originalValue: T;
+	currentValue: T;
+}
+
+//Generic step definition for step wizards
+export interface FormStep<T extends number> {
+	id: T;
+	label: string;
+}
+
+// ============================================================================
+// FORM UTILITY FUNCTIONS
+// ============================================================================
+
+//Convert tax rate from API (decimal 0-1) to UI (percentage 0-100)
+export function taxRateToPercentage(rate: number | null | undefined): number {
+	return (rate ?? 0) * 100;
+}
+
+//Convert tax rate from UI (percentage 0-100) to API (decimal 0-1)
+export function percentageToTaxRate(percentage: number): number {
+	return percentage / 100;
+}
+
+//Format currency for display
+export function formatCurrency(amount: number | null | undefined): string {
+	return `$${(amount ?? 0).toFixed(2)}`;
+}
+
+// Calculate line item total
+export function calculateLineItemTotal(quantity: number, unitPrice: number): number {
+	return Number(quantity) * Number(unitPrice);
+}
+
+//Calculate subtotal from line items
+export function calculateSubtotal(lineItems: BaseLineItem[]): number {
+	return lineItems.reduce((sum, item) => sum + item.total, 0);
+}
+
+//Calculate tax amount from subtotal and tax rate
+export function calculateTaxAmount(subtotal: number, taxRatePercentage: number): number {
+	return subtotal * (taxRatePercentage / 100);
+}
+
+// Calculate discount amount
+export function calculateDiscountAmount(
+	subtotal: number,
+	discountType: DiscountType,
+	discountValue: number
+): number {
+	return discountType === "percent" ? subtotal * (discountValue / 100) : discountValue;
+}
+
+export function calculateTotal(
+	subtotal: number,
+	taxAmount: number,
+	discountAmount: number
+): number {
+	return subtotal + taxAmount - discountAmount;
+}
+
+//Filter out soft-deleted items (for edit forms)
+export function getActiveLineItems<T extends { isDeleted?: boolean }>(items: T[]): T[] {
+	return items.filter((item) => !item.isDeleted);
+}
+
+//Check if line item is valid for submission
+export function isValidLineItem(item: BaseLineItem): boolean {
+	return item.name.trim().length > 0 && item.quantity > 0 && item.unit_price >= 0;
+}
+
+//Validate all line items in a collection
+export function areAllLineItemsValid(items: BaseLineItem[]): boolean {
+	return items.length > 0 && items.every(isValidLineItem);
+}
+
+// ============================================================================
 // (REQUEST/QUOTE/JOB) CHECKERS
 // ============================================================================
 
@@ -274,9 +396,7 @@ export function getQuoteOrigin(quote: { request_id: string | null }): QuoteOrigi
 	return "direct";
 }
 
-/**
- * Check if an entity is part of a complete workflow (Request → Quote → Job)
- */
+//Check if an entity is part of a complete workflow (Request → Quote → Job)
 export function isCompleteWorkflow(entity: {
 	request_id: string | null;
 	quote_id: string | null;

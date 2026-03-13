@@ -63,7 +63,6 @@ enum visit_status {
 enum request_status {
   New
   Reviewing
-  NeedsQuote
   Quoted
   QuoteApproved
   QuoteRejected

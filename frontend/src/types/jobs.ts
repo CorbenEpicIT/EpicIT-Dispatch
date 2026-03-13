@@ -40,11 +40,6 @@ export const JobStatusValues = [
 
 export type JobStatus = (typeof JobStatusValues)[number];
 
-export type JobPriority = Priority;
-export const JobPriorityValues = PriorityValues;
-export const JobPriorityLabels = PriorityLabels;
-export const JobPriorityColors = PriorityColors;
-
 export const JobStatusLabels: Record<JobStatus, string> = {
 	Unscheduled: "Unscheduled",
 	Scheduled: "Scheduled",
@@ -124,7 +119,7 @@ export interface JobSummary {
 	client_id: string;
 	address: string;
 	description: string;
-	priority: JobPriority;
+	priority: Priority;
 	status: JobStatus;
 }
 
@@ -144,7 +139,7 @@ export interface Job extends PricingBreakdown, ExecutionTotals {
 	address: string;
 	coords: Coordinates;
 	description: string;
-	priority: JobPriority;
+	priority: Priority;
 	status: JobStatus;
 
 	created_at: Date | string;
@@ -171,7 +166,7 @@ export interface CreateJobInput extends PricingBreakdown, ExecutionTotals {
 	address: string;
 	coords?: Coordinates;
 	description: string;
-	priority?: JobPriority;
+	priority?: Priority;
 	status?: JobStatus;
 	request_id?: string;
 	quote_id?: string;
@@ -184,7 +179,7 @@ export interface UpdateJobInput extends PricingBreakdown, ExecutionTotals {
 	address?: string;
 	coords?: Coordinates;
 	description?: string;
-	priority?: JobPriority;
+	priority?: Priority;
 	status?: JobStatus;
 
 	cancellation_reason?: string;
@@ -273,11 +268,9 @@ export interface JobVisit extends PricingBreakdown {
 	id: string;
 	job_id: string;
 
-	// NEW: Visit details
 	name?: string;
 	description?: string | null;
 
-	// Constraint-based scheduling
 	arrival_constraint: ArrivalConstraint;
 	finish_constraint: FinishConstraint;
 	scheduled_start_at: Date | string;
@@ -305,11 +298,9 @@ export interface JobVisit extends PricingBreakdown {
 export interface CreateJobVisitInput {
 	job_id: string;
 
-	// NEW: Visit details
 	name: string;
 	description?: string | null;
 
-	// Constraint-based scheduling
 	arrival_constraint: ArrivalConstraint;
 	finish_constraint: FinishConstraint;
 	scheduled_start_at: Date | string;
@@ -325,11 +316,9 @@ export interface CreateJobVisitInput {
 }
 
 export interface UpdateJobVisitInput {
-	// NEW: Visit details
 	name?: string;
 	description?: string | null;
 
-	// Constraint-based scheduling
 	arrival_constraint?: ArrivalConstraint;
 	finish_constraint?: FinishConstraint;
 	scheduled_start_at?: Date | string;

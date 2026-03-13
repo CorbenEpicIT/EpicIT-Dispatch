@@ -85,14 +85,15 @@ export const useUpdateJobMutation = (): UseMutationResult<
 
 	return useMutation({
 		mutationFn: ({ id, updates }) => jobApi.updateJob(id, updates),
-		onSuccess: async (updatedJob) => {
+		onSuccess: async (updatedJob, variables) => {
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+
+			await queryClient.invalidateQueries({ queryKey: ["jobs", variables.id] });
+
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", updatedJob.client_id],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["clients"] });
-
-			queryClient.setQueryData(["jobs", updatedJob.id], updatedJob);
 		},
 	});
 };

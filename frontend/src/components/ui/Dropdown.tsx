@@ -46,8 +46,9 @@ const Dropdown = ({
 		"w-full",
 		"h-full",
 		"p-2",
-		"bg-zinc-900",
+		"bg-zinc-800",
 		"text-white",
+		"text-sm",
 		"border-0",
 		"outline-none",
 		"focus:ring-0",
@@ -56,7 +57,7 @@ const Dropdown = ({
 		disabled && "cursor-not-allowed opacity-60",
 		error && "text-red-300",
 		"[&>option]:text-white",
-		"[&>option]:bg-zinc-900",
+		"[&>option]:bg-zinc-800",
 		className,
 	]
 		.filter(Boolean)
@@ -68,8 +69,8 @@ const Dropdown = ({
 		"border",
 		error ? "border-red-500" : "border-zinc-700",
 		"rounded-sm",
-		"bg-zinc-900",
-		"overflow-hidden", // Ensures border radius is visible on select
+		"bg-zinc-800",
+		"overflow-hidden",
 		disabled && "opacity-60",
 		"transition-colors",
 		!disabled && !error && "hover:border-zinc-600",
@@ -91,12 +92,13 @@ const Dropdown = ({
 		.filter(Boolean)
 		.join(" ");
 
+	const needsPlaceholder = placeholder && !defaultValue && !value;
+
 	return (
 		<div className={wrapperClasses}>
 			<select
 				className={selectClasses}
-				defaultValue={defaultValue}
-				value={value}
+				{...(value !== undefined ? { value } : { defaultValue })}
 				disabled={disabled}
 				ref={refToApply}
 				onChange={handleOnChange}
@@ -107,7 +109,7 @@ const Dropdown = ({
 				aria-describedby={ariaDescribedby}
 				aria-invalid={error}
 			>
-				{placeholder && (
+				{needsPlaceholder && (
 					<option value="" disabled hidden>
 						{placeholder}
 					</option>

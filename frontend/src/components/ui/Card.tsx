@@ -9,14 +9,16 @@ interface CardProps {
 
 export default function Card({ title, headerAction, children, className = "" }: CardProps) {
 	return (
-		<div className={`bg-zinc-900 border border-zinc-800 rounded-lg p-6 ${className}`}>
+		<div
+			className={`bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden ${className}`}
+		>
 			{title && (
-				<div className="flex items-center justify-between mb-6">
-					<h3 className="text-lg font-semibold text-white">{title}</h3>
+				<div className="flex items-center justify-between p-4 border-b border-zinc-800">
+					<h3 className="font-semibold text-white">{title}</h3>
 					{headerAction && <div>{headerAction}</div>}
 				</div>
 			)}
-			{children}
+			<div className="p-4">{children}</div>
 		</div>
 	);
 }

@@ -32,6 +32,7 @@ export default function JobsPage() {
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
+	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
 	const viewParam = queryParams.get("view") as ViewMode | null;
 
@@ -266,6 +267,12 @@ export default function JobsPage() {
 				);
 			}
 
+			if (statusFilter) {
+				jobsData = jobsData.filter(
+					(item) => item._rawStatus === statusFilter
+				);
+			}
+
 			if (activeSearch) {
 				jobsData = jobsData.filter((item) => {
 					const searchLower = activeSearch.toLowerCase();
@@ -283,7 +290,6 @@ export default function JobsPage() {
 				});
 			}
 
-			// Sort jobs
 			return jobsData
 				.sort((a, b) => {
 					// Sort by status
@@ -322,7 +328,7 @@ export default function JobsPage() {
 					})
 				);
 		}
-	}, [jobs, recurringPlans, searchInput, searchFilter, clientFilter, viewMode]);
+	}, [jobs, recurringPlans, searchInput, searchFilter, clientFilter, statusFilter, viewMode]);
 
 	const handleSearchSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -351,7 +357,7 @@ export default function JobsPage() {
 		navigate(`/dispatch/jobs?${newParams.toString()}`);
 	};
 
-	const removeFilter = (filterType: "client" | "search") => {
+	const removeFilter = (filterType: "client" | "status" | "search") => {
 		const newParams = new URLSearchParams(location.search);
 		newParams.delete(filterType);
 
@@ -367,7 +373,7 @@ export default function JobsPage() {
 		navigate("/dispatch/jobs");
 	};
 
-	const hasFilters = clientFilter || searchFilter;
+	const hasFilters = clientFilter || statusFilter || searchFilter;
 
 	return (
 		<div className="text-white">
@@ -534,6 +540,31 @@ export default function JobsPage() {
 								</div>
 							)}
 
+							{/* Status Filter Chip */}
+							{statusFilter && (
+								<div className="flex items-center gap-2 px-3 py-1.5 bg-orange-600/20 border border-orange-500/30 rounded-md">
+									<span className="text-sm text-orange-300">
+										Status:{" "}
+										<span className="font-medium text-white">
+											{addSpacesToCamelCase(
+												statusFilter
+											)}
+										</span>
+									</span>
+									<button
+										onClick={() =>
+											removeFilter(
+												"status"
+											)
+										}
+										className="text-orange-300 hover:text-white transition-colors"
+										aria-label="Remove status filter"
+									>
+										<X size={14} />
+									</button>
+								</div>
+							)}
+
 							{/* Search Filter Chip */}
 							{searchFilter && (
 								<div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-md">
@@ -594,12 +625,10 @@ export default function JobsPage() {
 					errListener={fetchError}
 					onRowClick={(row) => {
 						if (viewMode === "templates") {
-							// Templates view: navigate to recurring plan detail page
 							navigate(
 								`/dispatch/recurring-plans/${row.id}`
 							);
 						} else {
-							// Jobs view: navigate to job detail page (both one-time and recurring jobs)
 							navigate(`/dispatch/jobs/${row.id}`);
 						}
 					}}
@@ -616,6 +645,8 @@ export default function JobsPage() {
 						throw new Error(
 							"Job creation failed: no ID returned"
 						);
+
+					navigate(`/dispatch/jobs/${newJob.id}`);
 
 					return newJob.id;
 				}}
