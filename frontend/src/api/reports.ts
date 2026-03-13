@@ -87,9 +87,14 @@ export const getUnscheduledRevenue = async (): Promise<UnscheduledRevenueRespons
 	return response.data.data;
 };
 
-export const getQuotePipeline = async (): Promise<QuotePipelineResponse> => {
+export const getQuotePipeline = async (
+	startDate: string,
+	endDate: string,
+): Promise<QuotePipelineResponse> => {
+	const params: Record<string, string> = { startDate, endDate };
 	const response = await api.get<ApiResponse<QuotePipelineResponse>>(
 		"/reports/quote-pipeline",
+		{ params },
 	);
 
 	if (!response.data.data) {

@@ -51,10 +51,14 @@ export const useUnscheduledRevenueQuery = (): UseQueryResult<UnscheduledRevenueR
 	});
 };
 
-export const useQuotePipelineQuery = (): UseQueryResult<QuotePipelineResponse, Error> => {
+export const useQuotePipelineQuery = (
+	startDate: string,
+	endDate: string,
+): UseQueryResult<QuotePipelineResponse, Error> => {
 	return useQuery({
-		queryKey: ["reports", "quote-pipeline"],
-		queryFn: () => reportsApi.getQuotePipeline(),
+		queryKey: ["reports", "quote-pipeline", startDate, endDate],
+		queryFn: () => reportsApi.getQuotePipeline(startDate, endDate),
+		enabled: !!startDate && !!endDate,
 	});
 };
 

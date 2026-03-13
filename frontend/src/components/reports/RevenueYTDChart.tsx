@@ -114,7 +114,7 @@ export default function RevenueYTDChart({
 				</span>
 			</div>
 			<div className="flex-1 min-h-0">
-				<ResponsiveContainer width="100%" height={264}>
+				<ResponsiveContainer width="100%" aspect={3} minWidth={0}>
 					<AreaChart
 						data={chartData}
 						margin={{ top: 10, right: 10, left: 10, bottom: 0 }}

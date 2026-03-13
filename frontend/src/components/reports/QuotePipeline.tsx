@@ -97,7 +97,8 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 			</p>
 
 			{/* Open Quote Pipepline Chart */}
-			<ResponsiveContainer width="100%" height={240}>
+			<div className="min-h-[200px]">
+				<ResponsiveContainer width="100%" aspect={1} minWidth={0}>
 				<ComposedChart
 					data={chartData}
 					margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
@@ -152,6 +153,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 					</Bar>
 					</ComposedChart>
 			</ResponsiveContainer>
+			</div>
 		</Card>
 	);
 }

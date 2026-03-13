@@ -400,7 +400,7 @@ export const getArrivalPerformance = async (
 
 	const stats = result[0] || { early: 0, on_time: 0, late: 0 };
 	const total = stats.early + stats.on_time + stats.late;
-	const onTimeRate = total > 0 ? Math.round((stats.on_time / total) * 100) : 0;
+	const onTimeRate = total > 0 ? Math.round(((stats.early + stats.on_time) / total) * 100) : 0;
 
 	return {
 		early: stats.early,
@@ -415,14 +415,22 @@ export const getArrivalPerformance = async (
 // QUOTE PIPELINE
 // ============================================================================
 
-export const getQuotePipeline = async () => {
+export const getQuotePipeline = async (startDate: string, endDate: string) => {
+	const start = new Date(startDate);
+	const end   = new Date(endDate);
+	start.setUTCHours(0, 0, 0, 0);
+	end.setUTCHours(23, 59, 59, 999);
+
 	const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
 
 	const grouped = await db.quote.groupBy({
 		by: ["status"],
-		where: { status: { in: [...OPEN_STATUSES] } },
+		where: {
+			status: { in: [...OPEN_STATUSES] },
+			created_at: { gte: start, lte: end },
+		},
 		_sum: { total: true },
-		_count: { id: true },
+		_count: { _all: true },
 	});
 
 	const buckets = {
@@ -436,7 +444,7 @@ export const getQuotePipeline = async () => {
 
 	for (const group of grouped) {
 		const revenue = Number(group._sum?.total ?? 0);
-		const count = group._count?.id ?? 0;
+		const count = group._count?._all ?? 0;
 
 		buckets[group.status as keyof typeof buckets] = {
 			revenue: Math.round(revenue * 100) / 100,

@@ -32,7 +32,7 @@ function buildSlices(data: ArrivalPerformanceResponse): Slice[] {
 
 	return [
 		{ name: "Early", value: data.early, pct: pct(data.early), color: COLORS.Early },
-		{ name: "On-Time", value: data.onTime, pct: data.onTimeRate, color: COLORS["On-Time"] },
+		{ name: "On-Time", value: data.onTime, pct: pct(data.onTime), color: COLORS["On-Time"] },
 		{ name: "Late", value: data.late, pct: pct(data.late), color: COLORS.Late },
 	];
 }
@@ -73,16 +73,16 @@ export default function ArrivalPerformanceChart({
 		>
 			{/* Circle chart */}
 			<div className="relative">
-				<ResponsiveContainer width="100%" height={168}>
+				<ResponsiveContainer width="100%" aspect={2} minWidth={0}>
 					<PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
 						<Pie
 							data={slices}
 							startAngle={180}
 							endAngle={0}
 							cx="50%"
-							cy="100%"
-							outerRadius={145}
-							innerRadius={95}
+							cy="85%"
+							outerRadius="100%"
+							innerRadius="65%"
 							dataKey="value"
 							stroke="none"
 							paddingAngle={data.total > 0 ? 2 : 0}

@@ -54,7 +54,7 @@ export default function RevenueByJobTypeChart({
 				</span>
 			}
 		>
-			<div className="relative h-64">
+			<div className="relative">
 				{/* Center label */}
 				<div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
 					<div className="text-center">
@@ -67,7 +67,7 @@ export default function RevenueByJobTypeChart({
 					</div>
 				</div>
 
-				<ResponsiveContainer width="100%" height={256}>
+				<ResponsiveContainer width="100%" aspect={1} minWidth={0}>
 					<PieChart>
 						<Pie
 							data={chartData}

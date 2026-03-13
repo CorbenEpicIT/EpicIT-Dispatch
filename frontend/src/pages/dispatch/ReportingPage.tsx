@@ -63,7 +63,7 @@ export default function ReportingPage() {
 		data: quotePipeline,
 		isLoading: pipelineLoading,
 		error: pipelineError,
-	} = useQuotePipelineQuery();
+	} = useQuotePipelineQuery(startDateStr, endDateStr);
 
 	const {
 		data: arrivalPerformance,
