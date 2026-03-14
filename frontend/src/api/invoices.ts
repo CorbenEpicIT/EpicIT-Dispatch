@@ -1,0 +1,165 @@
+import { api } from "./axiosClient";
+import type { ApiResponse } from "../types/api";
+import type {
+	Invoice,
+	CreateInvoiceInput,
+	UpdateInvoiceInput,
+	InvoicePayment,
+	CreateInvoicePaymentInput,
+	InvoiceNote,
+	CreateInvoiceNoteInput,
+	UpdateInvoiceNoteInput,
+} from "../types/invoices";
+
+// ============================================================================
+// INVOICE API
+// ============================================================================
+
+export const getAllInvoices = async (): Promise<Invoice[]> => {
+	const response = await api.get<ApiResponse<Invoice[]>>("/invoices");
+	return response.data.data || [];
+};
+
+export const getInvoiceById = async (id: string): Promise<Invoice> => {
+	if (!id) throw new Error("Invoice ID is required");
+
+	const response = await api.get<ApiResponse<Invoice>>(`/invoices/${id}`);
+
+	if (!response.data.data) throw new Error("Invoice not found");
+
+	return response.data.data;
+};
+
+export const getInvoicesByClientId = async (clientId: string): Promise<Invoice[]> => {
+	const response = await api.get<ApiResponse<Invoice[]>>(`/clients/${clientId}/invoices`);
+	return response.data.data || [];
+};
+
+export const createInvoice = async (input: CreateInvoiceInput): Promise<Invoice> => {
+	const response = await api.post<ApiResponse<Invoice>>("/invoices", input);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to create invoice");
+	}
+
+	return response.data.data!;
+};
+
+export const updateInvoice = async (id: string, updates: UpdateInvoiceInput): Promise<Invoice> => {
+	const response = await api.patch<ApiResponse<Invoice>>(`/invoices/${id}`, updates);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to update invoice");
+	}
+
+	return response.data.data!;
+};
+
+export const deleteInvoice = async (id: string): Promise<{ id: string }> => {
+	const response = await api.delete<ApiResponse<{ id: string }>>(`/invoices/${id}`);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to delete invoice");
+	}
+
+	return response.data.data || { id };
+};
+
+// ============================================================================
+// PAYMENT API
+// ============================================================================
+
+export const getInvoicePayments = async (invoiceId: string): Promise<InvoicePayment[]> => {
+	const response = await api.get<ApiResponse<InvoicePayment[]>>(
+		`/invoices/${invoiceId}/payments`
+	);
+	return response.data.data || [];
+};
+
+export const createInvoicePayment = async (
+	invoiceId: string,
+	input: CreateInvoicePaymentInput
+): Promise<InvoicePayment> => {
+	const response = await api.post<ApiResponse<InvoicePayment>>(
+		`/invoices/${invoiceId}/payments`,
+		input
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to record payment");
+	}
+
+	return response.data.data!;
+};
+
+export const deleteInvoicePayment = async (
+	invoiceId: string,
+	paymentId: string
+): Promise<{ id: string }> => {
+	const response = await api.delete<ApiResponse<{ id: string }>>(
+		`/invoices/${invoiceId}/payments/${paymentId}`
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to delete payment");
+	}
+
+	return response.data.data || { id: paymentId };
+};
+
+// ============================================================================
+// NOTE API
+// ============================================================================
+
+export const getInvoiceNotes = async (invoiceId: string): Promise<InvoiceNote[]> => {
+	const response = await api.get<ApiResponse<InvoiceNote[]>>(`/invoices/${invoiceId}/notes`);
+	return response.data.data || [];
+};
+
+export const createInvoiceNote = async (
+	invoiceId: string,
+	input: CreateInvoiceNoteInput
+): Promise<InvoiceNote> => {
+	const response = await api.post<ApiResponse<InvoiceNote>>(
+		`/invoices/${invoiceId}/notes`,
+		input
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to create note");
+	}
+
+	return response.data.data!;
+};
+
+export const updateInvoiceNote = async (
+	invoiceId: string,
+	noteId: string,
+	input: UpdateInvoiceNoteInput
+): Promise<InvoiceNote> => {
+	const response = await api.put<ApiResponse<InvoiceNote>>(
+		`/invoices/${invoiceId}/notes/${noteId}`,
+		input
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to update note");
+	}
+
+	return response.data.data!;
+};
+
+export const deleteInvoiceNote = async (
+	invoiceId: string,
+	noteId: string
+): Promise<{ message: string }> => {
+	const response = await api.delete<ApiResponse<{ message: string }>>(
+		`/invoices/${invoiceId}/notes/${noteId}`
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to delete note");
+	}
+
+	return response.data.data || { message: "Note deleted successfully" };
+};

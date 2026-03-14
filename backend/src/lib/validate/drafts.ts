@@ -6,6 +6,7 @@ export const FORM_DRAFT_TYPES = [
 	"job",
 	"job_visit",
 	"recurring_plan",
+	"invoice",
 ] as const;
 
 export type FormDraftType = (typeof FORM_DRAFT_TYPES)[number];
