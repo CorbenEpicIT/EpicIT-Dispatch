@@ -10,6 +10,7 @@ import type {
 	LineItemSource,
 	PricingBreakdown,
 	ExecutionTotals,
+	DiscountType,
 } from "./common";
 import {
 	PriorityValues,
@@ -24,6 +25,7 @@ import {
 	FinishConstraintValues,
 	type ArrivalConstraint,
 	type FinishConstraint,
+	type RecurringPlanStatus,
 } from "./recurringPlans";
 
 // ============================================================================
@@ -131,6 +133,13 @@ export interface VisitReference {
 	status: VisitStatus;
 }
 
+export interface RecurringPlanReference {
+	id: string;
+	name: string;
+	status: RecurringPlanStatus;
+	starts_at: Date | string;
+}
+
 export interface Job extends PricingBreakdown, ExecutionTotals {
 	id: string;
 	name: string;
@@ -155,6 +164,7 @@ export interface Job extends PricingBreakdown, ExecutionTotals {
 	client?: ClientWithPrimaryContact;
 	request?: RequestReference | null;
 	quote?: QuoteReference | null;
+	recurring_plan?: RecurringPlanReference | null;
 	visits?: JobVisit[];
 	notes?: JobNote[];
 	line_items?: JobLineItem[];
@@ -275,7 +285,6 @@ export interface JobVisit extends PricingBreakdown {
 	finish_constraint: FinishConstraint;
 	scheduled_start_at: Date | string;
 	scheduled_end_at: Date | string;
-	schedule_type: string;
 	arrival_time?: string | null; // HH:MM
 	arrival_window_start?: string | null; // HH:MM
 	arrival_window_end?: string | null; // HH:MM

@@ -1,9 +1,46 @@
-import type { Job } from "./jobs";
 import z from "zod";
 import type { Coordinates } from "./location";
+import type { RequestSummary, QuoteSummary, JobSummary } from "./common";
 
 // ============================================================================
-// Client
+// SUMMARY TYPES
+// ============================================================================
+
+export interface RecurringPlanSummary {
+	id: string;
+	name: string;
+	status: string;
+	starts_at: Date | string;
+	created_at: Date | string;
+}
+
+export interface ClientNoteSummary {
+	id: string;
+	content: string;
+	created_at: Date | string;
+	updated_at: Date | string;
+}
+
+export interface ContactInfo {
+	id: string;
+	name: string;
+	email: string | null;
+	phone: string | null;
+	title: string | null;
+	type: string | null;
+}
+
+export interface ClientContactLink {
+	client_id: string;
+	contact_id: string;
+	relationship: string;
+	is_primary: boolean;
+	is_billing: boolean;
+	contact: Contact;
+}
+
+// ============================================================================
+// CLIENT TYPES
 // ============================================================================
 
 export interface Client {
@@ -12,11 +49,15 @@ export interface Client {
 	address: string;
 	coords: Coordinates;
 	is_active: boolean;
-	created_at: Date;
-	last_activity: Date;
-	jobs: Job[];
+	created_at: Date | string;
+	last_activity: Date | string;
+
+	jobs: JobSummary[];
+	quotes: QuoteSummary[];
+	requests: RequestSummary[];
+	recurring_plans: RecurringPlanSummary[];
 	contacts: ClientContactLink[];
-	notes: ClientNote[];
+	notes: ClientNoteSummary[];
 }
 
 export interface ClientSummary {
@@ -26,32 +67,27 @@ export interface ClientSummary {
 	is_active: boolean;
 }
 
-export interface ClientContactInfo {
-	id: string;
-	name: string;
-	email: string | null;
-	phone: string | null;
-	title: string | null;
-}
-
-export interface ClientContact {
-	is_primary: boolean;
-	contact: ClientContactInfo;
-}
-
 export interface ClientWithPrimaryContact {
 	id: string;
 	name: string;
 	address: string;
+	coords?: Coordinates;
 	is_active: boolean;
-	contacts?: ClientContact[];
+	contacts?: {
+		is_primary: boolean;
+		contact: ContactInfo;
+	}[];
 }
+
+// ============================================================================
+// CLIENT INPUT TYPES
+// ============================================================================
 
 export interface CreateClientInput {
 	name: string;
 	address: string;
-	coords?: Coordinates;
-	is_active: boolean;
+	coords: Coordinates;
+	is_active?: boolean;
 }
 
 export interface UpdateClientInput {
@@ -64,51 +100,23 @@ export interface UpdateClientInput {
 export const CreateClientSchema = z.object({
 	name: z.string().min(1, "Client name is required"),
 	address: z.string().min(1, "Address is required"),
+	coords: z.object({
+		lat: z.number(),
+		lon: z.number(),
+	}),
 	is_active: z.boolean().default(true),
 });
 
 export const UpdateClientSchema = z.object({
 	name: z.string().min(1, "Client name is required").optional(),
 	address: z.string().min(1, "Address is required").optional(),
+	coords: z
+		.object({
+			lat: z.number(),
+			lon: z.number(),
+		})
+		.optional(),
 	is_active: z.boolean().optional(),
-});
-
-// ============================================================================
-// CLIENT NOTE
-// ============================================================================
-
-export interface ClientNote {
-	id: string;
-	client_id: string;
-	content: string;
-	created_at: Date;
-	updated_at: Date;
-
-	creator_tech_id: string | null;
-	creator_dispatcher_id: string | null;
-	creator_tech?: { id: string; name: string; email: string };
-	creator_dispatcher?: { id: string; name: string; email: string };
-
-	last_editor_tech_id: string | null;
-	last_editor_dispatcher_id: string | null;
-	last_editor_tech?: { id: string; name: string; email: string };
-	last_editor_dispatcher?: { id: string; name: string; email: string };
-}
-
-export interface CreateClientNoteInput {
-	content: string;
-}
-
-export interface UpdateClientNoteInput {
-	content: string;
-}
-
-export const CreateClientNoteSchema = z.object({
-	content: z.string().min(1, "Note content is required"),
-});
-
-export const UpdateClientNoteSchema = z.object({
-	content: z.string().min(1, "Note content is required"),
 });
 
 // ============================================================================
@@ -122,25 +130,11 @@ export interface Contact {
 	phone: string | null;
 	company: string | null;
 	title: string | null;
-	type: string | null; // "customer", "vendor", "property_manager", etc.
+	type: string | null;
 	is_active: boolean;
-	created_at: Date;
-	updated_at: Date;
-
+	created_at: Date | string;
+	updated_at: Date | string;
 	client_contacts: ClientContactLink[];
-}
-
-export interface ClientContactLink {
-	client_id: string;
-	contact_id: string;
-	relationship: string; // "owner", "tenant", "manager", "emergency_contact"
-	is_primary: boolean;
-	is_billing: boolean;
-	created_at: Date;
-	updated_at: Date;
-
-	client?: Client;
-	contact?: Contact;
 }
 
 export interface CreateContactInput {
@@ -150,7 +144,6 @@ export interface CreateContactInput {
 	company?: string;
 	title?: string;
 	type?: string;
-
 	client_id?: string;
 	relationship?: string;
 	is_primary?: boolean;
@@ -162,16 +155,16 @@ export interface UpdateContactInput {
 	email?: string;
 	phone?: string;
 	company?: string;
-	relationship?: string;
 	title?: string;
 	type?: string;
 	is_active?: boolean;
 }
 
 export interface LinkContactInput {
+	contact_id: string;
 	relationship: string;
-	is_primary?: boolean;
-	is_billing?: boolean;
+	is_primary: boolean;
+	is_billing: boolean;
 }
 
 export interface UpdateClientContactInput {
@@ -187,7 +180,6 @@ export const CreateContactSchema = z.object({
 	company: z.string().optional().or(z.literal("")),
 	title: z.string().optional().or(z.literal("")),
 	type: z.string().optional().or(z.literal("")),
-
 	client_id: z.string().uuid().optional(),
 	relationship: z.string().optional(),
 	is_primary: z.boolean().optional(),
@@ -217,6 +209,7 @@ export const UpdateContactSchema = z
 	);
 
 export const LinkContactSchema = z.object({
+	contact_id: z.string().uuid("Invalid contact ID"),
 	relationship: z.string().min(1, "Relationship is required").default("contact"),
 	is_primary: z.boolean().default(false),
 	is_billing: z.boolean().default(false),
@@ -235,3 +228,41 @@ export const UpdateClientContactSchema = z
 			data.is_billing !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
+
+// ============================================================================
+// CLIENT NOTE TYPES
+// ============================================================================
+
+export interface ClientNote {
+	id: string;
+	client_id: string;
+	content: string;
+	created_at: Date | string;
+	updated_at: Date | string;
+
+	creator_tech_id: string | null;
+	creator_dispatcher_id: string | null;
+	creator_tech?: { id: string; name: string; email: string };
+	creator_dispatcher?: { id: string; name: string; email: string };
+
+	last_editor_tech_id: string | null;
+	last_editor_dispatcher_id: string | null;
+	last_editor_tech?: { id: string; name: string; email: string };
+	last_editor_dispatcher?: { id: string; name: string; email: string };
+}
+
+export interface CreateClientNoteInput {
+	content: string;
+}
+
+export interface UpdateClientNoteInput {
+	content: string;
+}
+
+export const CreateClientNoteSchema = z.object({
+	content: z.string().min(1, "Note content is required"),
+});
+
+export const UpdateClientNoteSchema = z.object({
+	content: z.string().min(1, "Note content is required"),
+});

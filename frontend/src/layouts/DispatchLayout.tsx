@@ -3,7 +3,6 @@ import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect } from "react";
 import {
 	House,
-	Quote,
 	Calendar,
 	Users,
 	FileText,
@@ -13,8 +12,9 @@ import {
 	Search,
 	Package,
 	Map,
-	Import,
 	ArrowLeft,
+	Phone,
+	Briefcase,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 
@@ -30,26 +30,28 @@ export default function DispatchLayout() {
 	}, [location.pathname]);
 
 	const handleBack = () => {
-		// If user has navigated within the app, use browser back
-		if (navigationCount.current > 1) {
-			navigate(-1);
-		} else {
-			// Otherwise, go to a sensible default based on current page
-			const path = location.pathname;
+		const path = location.pathname;
 
-			if (path.includes("/technicians/")) {
-				navigate("/dispatch/technicians");
-			} else if (path.includes("/clients/")) {
-				navigate("/dispatch/clients");
-			} else if (path.includes("/jobs/")) {
-				navigate("/dispatch/jobs");
-			} else if (path.includes("/quotes/")) {
-				navigate("/dispatch/quotes");
-			} else if (path.includes("/inventory/")) {
-				navigate("/dispatch/inventory");
-			} else {
-				navigate("/dispatch");
-			}
+		// Only use browser back if we've navigated internally more than once
+		// AND the history stack has a safe entry to return to
+		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+		if (navigationCount.current > 1 && historyIdx > 0) {
+			navigate(-1);
+			return;
+		}
+
+		if (path.includes("/technicians/")) {
+			navigate("/dispatch/technicians");
+		} else if (path.includes("/clients/")) {
+			navigate("/dispatch/clients");
+		} else if (path.includes("/jobs/")) {
+			navigate("/dispatch/jobs");
+		} else if (path.includes("/quotes/")) {
+			navigate("/dispatch/quotes");
+		} else if (path.includes("/inventory/")) {
+			navigate("/dispatch/inventory");
+		} else {
+			navigate("/dispatch");
 		}
 	};
 
@@ -76,17 +78,17 @@ export default function DispatchLayout() {
 					/>
 					<SideNavItem
 						to="/dispatch/requests"
-						icon={<Import size={ICON_SIZE} />}
+						icon={<Phone size={ICON_SIZE} />}
 						label="Requests"
 					/>
 					<SideNavItem
 						to="/dispatch/quotes"
-						icon={<Quote size={ICON_SIZE} />}
+						icon={<FileText size={ICON_SIZE} />}
 						label="Quotes"
 					/>
 					<SideNavItem
 						to="/dispatch/jobs"
-						icon={<FileText size={ICON_SIZE} />}
+						icon={<Briefcase size={ICON_SIZE} />}
 						label="Jobs"
 					/>
 					<SideNavItem
@@ -125,11 +127,6 @@ export default function DispatchLayout() {
 						label="Settings"
 					/>
 				</nav>
-
-				<div className="border-t border-zinc-900 p-4 text-sm text-gray-400">
-					Logged in as{" "}
-					<span className="text-gray-200">{user?.name}</span>
-				</div>
 			</aside>
 
 			<div className="flex flex-col flex-1 overflow-hidden">
@@ -176,8 +173,10 @@ export default function DispatchLayout() {
 					</div>
 				</header>
 
-				<main className="flex-1 overflow-y-auto p-6 bg-zinc-950">
-					<Outlet />
+				<main className="flex-1 overflow-y-auto bg-zinc-950 relative">
+					<div className="p-6 min-h-full">
+						<Outlet />
+					</div>
 				</main>
 			</div>
 		</div>

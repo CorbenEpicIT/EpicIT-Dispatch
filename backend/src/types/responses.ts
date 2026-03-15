@@ -31,6 +31,8 @@ export const ErrorCodes = {
 	INVALID_INPUT: 'INVALID_INPUT',
 	DELETE_ERROR: 'DELETE_ERROR',
 	SERVER_ERROR: 'SERVER_ERROR',
+	INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+	INVALID_TOKEN: 'INVALID_TOKEN'
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];

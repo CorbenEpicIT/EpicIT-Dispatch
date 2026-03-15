@@ -9,16 +9,15 @@ import {
 	Send,
 	CheckCircle,
 	Briefcase,
-	User,
-	Mail,
-	Phone,
 	Trash2,
+	Link2Off,
 } from "lucide-react";
 import { useQuoteByIdQuery, useDeleteQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import { QuoteStatusColors } from "../../types/quotes";
 import type { QuoteStatus } from "../../types/quotes";
 import Card from "../../components/ui/Card";
+import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditQuote from "../../components/quotes/EditQuote";
 import ConvertToJob from "../../components/quotes/ConvertToJob";
 import NoteManager from "../../components/quotes/QuoteNoteManager";
@@ -45,11 +44,8 @@ export default function QuoteDetailPage() {
 				setDeleteConfirm(false);
 			}
 		}
-
 		document.addEventListener("mousedown", handleClickOutside);
-		return () => {
-			document.removeEventListener("mousedown", handleClickOutside);
-		};
+		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
 	if (isLoading) {
@@ -68,32 +64,22 @@ export default function QuoteDetailPage() {
 		);
 	}
 
-	const primaryContact = quote.client?.contacts?.find((cc) => cc.is_primary)?.contact;
-
-	const getStatusColor = (status: string) => {
-		return (
-			QuoteStatusColors[status as QuoteStatus] ||
-			"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
-		);
-	};
+	const getStatusColor = (status: string) =>
+		QuoteStatusColors[status as QuoteStatus] ||
+		"bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
 
 	const handleEdit = () => {
 		setShowActionsMenu(false);
 		setIsEditModalOpen(true);
 	};
-
 	const handleSendToClient = () => {
 		setShowActionsMenu(false);
-		// TODO: Implement send to client functionality
 		console.log("Send to client");
 	};
-
 	const handleMarkAsApproved = () => {
 		setShowActionsMenu(false);
-		// TODO: Implement mark as approved functionality
 		console.log("Mark as approved");
 	};
-
 	const handleConvertToJob = () => {
 		setShowActionsMenu(false);
 		setIsConvertToJobModalOpen(true);
@@ -104,12 +90,8 @@ export default function QuoteDetailPage() {
 			setDeleteConfirm(true);
 			return;
 		}
-
 		try {
-			await deleteQuote.mutateAsync({
-				id: quote.id,
-				hardDelete: false,
-			});
+			await deleteQuote.mutateAsync({ id: quote.id, hardDelete: false });
 			navigate("/dispatch/quotes");
 		} catch (error) {
 			console.error("Failed to delete quote:", error);
@@ -136,14 +118,11 @@ export default function QuoteDetailPage() {
 
 				<div className="justify-self-end flex items-center gap-3">
 					<span
-						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(
-							quote.status
-						)}`}
+						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(quote.status)}`}
 					>
 						{quote.status}
 					</span>
 
-					{/* Actions Menu */}
 					<div className="relative" ref={menuRef}>
 						<button
 							onClick={() => {
@@ -164,7 +143,7 @@ export default function QuoteDetailPage() {
 										onClick={handleEdit}
 										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
 									>
-										<Edit2 size={16} />
+										<Edit2 size={16} />{" "}
 										Edit Quote
 									</button>
 									<button
@@ -173,7 +152,7 @@ export default function QuoteDetailPage() {
 										}
 										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
 									>
-										<Send size={16} />
+										<Send size={16} />{" "}
 										Send to Client
 									</button>
 									<button
@@ -184,17 +163,17 @@ export default function QuoteDetailPage() {
 									>
 										<CheckCircle
 											size={16}
-										/>
+										/>{" "}
 										Mark as Approved
 									</button>
 									<button
 										onClick={
 											handleConvertToJob
 										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
 										disabled={
 											!!quote.job
 										}
+										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										<Briefcase
 											size={16}
@@ -203,11 +182,7 @@ export default function QuoteDetailPage() {
 											? "Job Already Created"
 											: "Convert to Job"}
 									</button>
-
-									{/* Divider */}
-									<div className="my-1 border-t border-zinc-800"></div>
-
-									{/* Delete Button */}
+									<div className="my-1 border-t border-zinc-800" />
 									<button
 										onClick={
 											handleDelete
@@ -240,13 +215,10 @@ export default function QuoteDetailPage() {
 				</div>
 			</div>
 
-			{/* ... rest of the component stays exactly the same ... */}
-
-			{/* Quote Information (2/3) and Client Details (1/3) */}
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				{/* Quote Information - 2/3 width */}
+			{/* Quote Information (2/3) + Client Details (1/3) */}
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 				<div className="lg:col-span-2">
-					<Card title="Quote Information" className="h-full">
+					<Card title="Quote Information">
 						<div className="space-y-4">
 							<div>
 								<h3 className="text-zinc-400 text-sm mb-1">
@@ -261,7 +233,7 @@ export default function QuoteDetailPage() {
 							{quote.address && (
 								<div>
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
-										<MapPin size={14} />
+										<MapPin size={14} />{" "}
 										Address
 									</h3>
 									<p className="text-white break-words">
@@ -275,7 +247,7 @@ export default function QuoteDetailPage() {
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
 										<Calendar
 											size={14}
-										/>
+										/>{" "}
 										Created
 									</h3>
 									<p className="text-white">
@@ -298,7 +270,7 @@ export default function QuoteDetailPage() {
 												size={
 													14
 												}
-											/>
+											/>{" "}
 											Valid Until
 										</h3>
 										<p className="text-white">
@@ -319,151 +291,34 @@ export default function QuoteDetailPage() {
 
 							<div>
 								<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
-									<DollarSign size={14} />
+									<DollarSign size={14} />{" "}
 									Quote Total
 								</h3>
 								<p className="text-white font-medium text-2xl">
-									$
-									{Number(
-										quote.total
-									).toLocaleString("en-US", {
-										minimumFractionDigits: 2,
-										maximumFractionDigits: 2,
-									})}
+									{formatCurrency(
+										Number(quote.total)
+									)}
 								</p>
 							</div>
 						</div>
 					</Card>
 				</div>
 
-				{/* Client Details - 1/3 width */}
 				<div className="lg:col-span-1">
-					<Card
-						title="Client Details"
-						headerAction={
-							quote.client?.is_active !== undefined && (
-								<span
-									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-										quote.client
-											.is_active
-											? "bg-green-500/20 text-green-400 border-green-500/30"
-											: "bg-red-500/20 text-red-400 border-red-500/30"
-									}`}
-								>
-									{quote.client.is_active
-										? "Active"
-										: "Inactive"}
-								</span>
-							)
-						}
-						className="h-full"
-					>
-						<div className="space-y-4">
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-2 flex items-center gap-2">
-									<User size={14} />
-									Client Name
-								</h3>
-								<p>
-									{quote.client?.name ||
-										"Unknown Client"}
-								</p>
-							</div>
-
-							{quote.client?.address && (
-								<div>
-									<h3 className="text-zinc-400 text-sm mb-1">
-										Address
-									</h3>
-									<p className="text-white text-sm break-words">
-										{
-											quote.client
-												.address
-										}
-									</p>
-								</div>
-							)}
-
-							{primaryContact && (
-								<div className="pt-4 border-t border-zinc-700">
-									<div className="flex items-center justify-between mb-3">
-										<h3 className="text-zinc-400 text-sm">
-											Primary
-											Contact
-										</h3>
-										{primaryContact.title && (
-											<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
-												{
-													primaryContact.title
-												}
-											</span>
-										)}
-									</div>
-									<div className="space-y-2">
-										<p className="text-white font-medium">
-											{
-												primaryContact.name
-											}
-										</p>
-
-										{primaryContact.email && (
-											<div className="flex items-center gap-2 text-sm">
-												<Mail
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<a className="text-white truncate">
-													{
-														primaryContact.email
-													}
-												</a>
-											</div>
-										)}
-
-										{primaryContact.phone && (
-											<div className="flex items-center gap-2 text-sm">
-												<Phone
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<a className="text-white">
-													{
-														primaryContact.phone
-													}
-												</a>
-											</div>
-										)}
-									</div>
-								</div>
-							)}
-
-							<button
-								onClick={() =>
-									navigate(
-										`/dispatch/clients/${quote.client_id}`
-									)
-								}
-								className="w-full mt-4 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors"
-							>
-								View Full Client Profile
-							</button>
-						</div>
-					</Card>
+					<ClientDetailsCard
+						client_id={quote.client_id}
+						client={quote.client}
+					/>
 				</div>
 			</div>
 
+			{/* Financial Summary */}
 			<Card title="Financial Summary">
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-					{/* Left Column - Line Items Table (2/3 width) */}
 					<div className="lg:col-span-2">
 						<h3 className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-4">
 							Line Items
 						</h3>
-
 						{!quote.line_items ||
 						quote.line_items.length === 0 ? (
 							<div className="text-center py-8">
@@ -481,7 +336,6 @@ export default function QuoteDetailPage() {
 							</div>
 						) : (
 							<div className="space-y-1">
-								{/* Table Header */}
 								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
 									<div className="col-span-5">
 										Description
@@ -499,8 +353,6 @@ export default function QuoteDetailPage() {
 										Amount
 									</div>
 								</div>
-
-								{/* Line Items */}
 								{quote.line_items.map(
 									(item, index) => (
 										<div
@@ -510,7 +362,6 @@ export default function QuoteDetailPage() {
 											}
 											className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
 										>
-											{/* Description */}
 											<div className="col-span-5 text-sm">
 												<p className="text-white font-medium">
 													{
@@ -525,8 +376,6 @@ export default function QuoteDetailPage() {
 													</p>
 												)}
 											</div>
-
-											{/* Type Badge */}
 											<div className="col-span-1 flex items-center justify-center">
 												{item.item_type && (
 													<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
@@ -536,15 +385,11 @@ export default function QuoteDetailPage() {
 													</span>
 												)}
 											</div>
-
-											{/* Quantity */}
 											<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
 												{
 													item.quantity
 												}
 											</div>
-
-											{/* Unit Price */}
 											<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
 												{formatCurrency(
 													Number(
@@ -552,8 +397,6 @@ export default function QuoteDetailPage() {
 													)
 												)}
 											</div>
-
-											{/* Amount */}
 											<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
 												{formatCurrency(
 													Number(
@@ -571,9 +414,7 @@ export default function QuoteDetailPage() {
 						)}
 					</div>
 
-					{/* Right Column - Financial Breakdown (1/3 width) */}
 					<div className="lg:col-span-1 space-y-6">
-						{/* Quote Metadata */}
 						<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
 							<div className="flex justify-between text-sm">
 								<span className="text-zinc-400">
@@ -594,9 +435,7 @@ export default function QuoteDetailPage() {
 							</div>
 						</div>
 
-						{/* Financial Breakdown */}
 						<div className="space-y-3">
-							{/* Subtotal */}
 							{quote.subtotal !== null &&
 								quote.subtotal !== undefined && (
 									<div className="flex items-center justify-between text-sm">
@@ -613,7 +452,6 @@ export default function QuoteDetailPage() {
 									</div>
 								)}
 
-							{/* Tax */}
 							{quote.tax_amount !== null &&
 								quote.tax_amount !== undefined &&
 								Number(quote.tax_amount) > 0 && (
@@ -635,7 +473,6 @@ export default function QuoteDetailPage() {
 									</div>
 								)}
 
-							{/* Discount */}
 							{quote.discount_amount !== null &&
 								quote.discount_amount !==
 									undefined &&
@@ -662,10 +499,8 @@ export default function QuoteDetailPage() {
 									</div>
 								)}
 
-							{/* Divider */}
-							<div className="border-t border-zinc-700 my-2"></div>
+							<div className="border-t border-zinc-700 my-2" />
 
-							{/* Quote Total */}
 							<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
 								<div>
 									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-0.5">
@@ -686,154 +521,156 @@ export default function QuoteDetailPage() {
 				</div>
 			</Card>
 
-			{/* Related Request and Job - Half Width Layout */}
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				{/* Related Request - Half Width */}
-				<Card title="Related Request">
-					{!quote.request ? (
-						<div className="text-center py-8">
-							<FileText
-								size={40}
-								className="mx-auto text-zinc-600 mb-3"
-							/>
-							<h3 className="text-zinc-400 text-sm font-medium mb-1">
-								No Request
-							</h3>
-							<p className="text-zinc-500 text-xs">
-								This quote was not created from a
-								request.
-							</p>
-						</div>
-					) : (
-						<button
-							onClick={() =>
-								navigate(
-									`/dispatch/requests/${quote.request?.id}`
-								)
-							}
-							className="w-full p-4 bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
-						>
-							<div className="flex items-start justify-between gap-3">
-								<div className="flex-1 min-w-0">
-									<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
-										{
+			{/* Relations Row: Request + Job */}
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+				{/* Related Request */}
+				{quote.request ? (
+					<button
+						onClick={() =>
+							navigate(
+								`/dispatch/requests/${quote.request?.id}`
+							)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Request
+						</p>
+						<div className="flex items-start justify-between gap-3">
+							<div className="flex-1 min-w-0">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+									{quote.request.title}
+								</h4>
+								<div className="flex items-center gap-2 text-xs text-zinc-500 mt-2">
+									<Calendar size={12} />
+									<span>
+										{new Date(
 											quote
 												.request
-												.title
-										}
-									</h4>
-									<div className="flex items-center gap-2 text-xs text-zinc-500 mt-2">
-										<Calendar
-											size={12}
-										/>
-										<span>
-											{new Date(
-												quote
-													.request
-													.created_at
-											).toLocaleDateString(
-												"en-US",
-												{
-													month: "short",
-													day: "numeric",
-													year: "numeric",
-												}
-											)}
-										</span>
-									</div>
+												.created_at
+										).toLocaleDateString(
+											"en-US",
+											{
+												month: "short",
+												day: "numeric",
+												year: "numeric",
+											}
+										)}
+									</span>
 								</div>
-								<span
-									className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-										quote.request.status
-									)}`}
-								>
-									{quote.request.status}
-								</span>
 							</div>
-						</button>
-					)}
-				</Card>
-
-				{/* Related Job - Half Width */}
-				<Card title="Related Job">
-					{!quote.job ? (
-						<div className="text-center py-8">
-							<Briefcase
-								size={40}
-								className="mx-auto text-zinc-600 mb-3"
-							/>
-							<h3 className="text-zinc-400 text-sm font-medium mb-1">
-								No Job Created
-							</h3>
-							<p className="text-zinc-500 text-xs mb-4">
-								This quote has not been converted to
-								a job yet.
-							</p>
-							<button
-								onClick={handleConvertToJob}
-								className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors flex items-center gap-2 mx-auto"
+							<span
+								className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(quote.request.status)}`}
 							>
-								<Briefcase size={14} />
-								Convert to Job
-							</button>
+								{quote.request.status}
+							</span>
 						</div>
-					) : (
-						<button
-							onClick={() =>
-								navigate(
-									`/dispatch/jobs/${quote.job!.id}`
-								)
-							}
-							className="w-full p-4 bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
-						>
-							<div className="flex items-start justify-between gap-3">
-								<div className="flex-1 min-w-0">
-									<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
-										{
+					</button>
+				) : (
+					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Request
+						</p>
+						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+							<Link2Off size={14} />
+							<span>No request linked</span>
+						</div>
+					</div>
+				)}
+
+				{/* Related Job */}
+				{quote.job ? (
+					<button
+						onClick={() =>
+							navigate(`/dispatch/jobs/${quote.job!.id}`)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Job
+						</p>
+						<div className="flex items-start justify-between gap-3">
+							<div className="flex-1 min-w-0">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+									{quote.job.job_number}
+								</h4>
+								<p className="text-zinc-400 text-xs mb-2">
+									{quote.job.name}
+								</p>
+								<div className="flex items-center gap-2 text-xs text-zinc-500">
+									<Calendar size={12} />
+									<span>
+										{new Date(
 											quote.job
-												.job_number
-										}
-									</h4>
-									<p className="text-zinc-400 text-xs mb-2">
-										{quote.job.name}
-									</p>
-									<div className="flex items-center gap-2 text-xs text-zinc-500">
-										<Calendar
-											size={12}
-										/>
-										<span>
-											{new Date(
+												.created_at
+										).toLocaleDateString(
+											"en-US",
+											{
+												month: "short",
+												day: "numeric",
+												year: "numeric",
+											}
+										)}
+									</span>
+								</div>
+							</div>
+							<div className="flex flex-col items-end gap-2 flex-shrink-0">
+								{quote.job.estimated_total !=
+									null && (
+									<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+										{formatCurrency(
+											Number(
 												quote
 													.job
-													.created_at
-											).toLocaleDateString(
-												"en-US",
-												{
-													month: "short",
-													day: "numeric",
-													year: "numeric",
-												}
-											)}
-										</span>
-									</div>
-								</div>
+													.estimated_total
+											)
+										)}
+									</span>
+								)}
 								<span
-									className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-										quote.job.status
-									)}`}
+									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(quote.job.status)}`}
 								>
 									{quote.job.status}
 								</span>
 							</div>
-						</button>
-					)}
-				</Card>
+						</div>
+					</button>
+				) : (
+					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+						<div className="grid grid-cols-3 gap-4">
+							<div className="col-span-2 flex flex-col gap-2">
+								<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold">
+									Related Job
+								</p>
+								<div className="flex items-center gap-2 text-zinc-600 text-sm">
+									<Link2Off
+										size={14}
+										className="flex-shrink-0"
+									/>
+									<span>
+										No job created yet
+									</span>
+								</div>
+							</div>
+							<div className="col-span-1 flex items-center justify-end">
+								<button
+									onClick={(e) => {
+										e.stopPropagation();
+										handleConvertToJob();
+									}}
+									className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
+								>
+									<Briefcase size={12} />{" "}
+									Convert to Job
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 			</div>
 
-			{/* Notes - Full Width */}
 			<NoteManager quoteId={quoteId!} />
 
-			{/* Modals */}
 			{quote && (
 				<>
 					<EditQuote
@@ -841,18 +678,16 @@ export default function QuoteDetailPage() {
 						setIsModalOpen={setIsEditModalOpen}
 						quote={quote}
 					/>
-
 					<ConvertToJob
 						isModalOpen={isConvertToJobModalOpen}
 						setIsModalOpen={setIsConvertToJobModalOpen}
 						quote={quote}
 						onConvert={async (jobData) => {
 							const newJob = await createJob(jobData);
-							if (!newJob?.id) {
+							if (!newJob?.id)
 								throw new Error(
 									"Job creation failed: no ID returned"
 								);
-							}
 							navigate(`/dispatch/jobs/${newJob.id}`);
 							return newJob.id;
 						}}

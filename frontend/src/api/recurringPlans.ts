@@ -1,4 +1,4 @@
-import axios from "axios";
+import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type {
 	RecurringPlan,
@@ -17,13 +17,6 @@ import type {
 	UpdateRecurringPlanNoteInput,
 } from "../types/recurringPlans";
 
-const BASE_URL: string = import.meta.env.VITE_BACKEND_URL;
-
-if (!BASE_URL) console.warn("Failed to load backend url environment variable!");
-
-const api = axios.create({
-	baseURL: BASE_URL,
-});
 
 // ============================================
 // RECURRING PLAN API

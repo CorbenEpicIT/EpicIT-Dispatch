@@ -1,18 +1,28 @@
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./authStore";
 import { useState } from "react";
+import { loginCall } from "../api/authenticate.ts"
 
 export default function LoginPage() {
 	const { login } = useAuthStore();
 	const [role, setRole] = useState<"dispatch" | "technician">("dispatch");
 	const [name, setName] = useState("");
+	const [password, setPassword] = useState("");
 	const navigate = useNavigate();
 
-	const handleLogin = (e: React.FormEvent) => {
+	const handleLogin = async (e: React.FormEvent) => {
 		e.preventDefault();
-		login(role, name || "User");
-		if (role === "dispatch") navigate("/dispatch");
-		else navigate("/technician");
+		try {
+			const result = await loginCall({ email: name, password: password, role: role });
+			console.log(result);
+			
+			login(role, name || "User");
+			
+			if (role === "dispatch") navigate("/dispatch");
+			else navigate("/technician");
+		} catch (error) {
+			console.error("Login failed:", error);
+		}
 	};
 
 	return (
@@ -27,6 +37,13 @@ export default function LoginPage() {
 					placeholder="Name"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
+					className="w-full border rounded px-3 py-2"
+				/>
+				<input 
+					type="password"
+					placeholder="Password"
+					value={password}
+					onChange={(e)=>setPassword(e.target.value)}
 					className="w-full border rounded px-3 py-2"
 				/>
 				<select

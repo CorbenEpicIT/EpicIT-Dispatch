@@ -1,10 +1,33 @@
 import z from "zod";
-import type { JobPriority, JobStatus, VisitStatus } from "./jobs";
+import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint } from "./jobs";
+import type { Priority } from "./common";
 import type { Coordinates } from "./location";
 import type { JobVisit } from "./jobs";
 
+// ============================================================================
+// STATUS
+// ============================================================================
+
 export const TechnicianStatusValues = ["Offline", "Available", "Busy", "Break"] as const;
 export type TechnicianStatus = (typeof TechnicianStatusValues)[number];
+
+export const TechnicianStatusColors: Record<TechnicianStatus, string> = {
+	Available: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+	Busy: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+	Break: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+	Offline: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+};
+
+export const TechnicianStatusDotColors: Record<TechnicianStatus, string> = {
+	Available: "bg-emerald-500",
+	Busy: "bg-amber-500",
+	Break: "bg-blue-500",
+	Offline: "bg-zinc-500",
+};
+
+// ============================================================================
+// INTERFACES
+// ============================================================================
 
 export interface VisitTechInfo {
 	id: string;
@@ -27,13 +50,15 @@ export interface VisitTechnician {
 	visit: {
 		id: string;
 		job_id: string;
-		schedule_type: string;
+
+		arrival_constraint: ArrivalConstraint;
+		finish_constraint: FinishConstraint;
 		scheduled_start_at: Date;
 		scheduled_end_at: Date;
-		arrival_time?: string | null; // HH:MM
-		arrival_window_start?: string | null; // HH:MM
-		arrival_window_end?: string | null; // HH:MM
-		finish_time?: string | null; // HH:MM
+		arrival_time?: string | null;
+		arrival_window_start?: string | null;
+		arrival_window_end?: string | null;
+		finish_time?: string | null;
 
 		actual_start_at?: Date | null;
 		actual_end_at?: Date | null;
@@ -44,7 +69,7 @@ export interface VisitTechnician {
 			description: string;
 			status: JobStatus;
 			address: string;
-			priority: JobPriority;
+			priority: Priority;
 			created_at: Date;
 			client_id: string;
 			client: {
@@ -107,6 +132,10 @@ export interface UpdateTechnicianInput {
 	hire_date?: Date;
 	last_login?: Date;
 }
+
+// ============================================================================
+// SCHEMAS
+// ============================================================================
 
 export const CreateTechnicianSchema = z.object({
 	name: z.string().min(1, "Technician name is required"),

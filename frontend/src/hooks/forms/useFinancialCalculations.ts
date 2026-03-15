@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import type { DiscountType, FinancialState } from "../../types/common";
 
 interface UseFinancialCalculationsOptions {
-	initialTaxRate?: number; // As percentage (0-100)
+	initialTaxRate?: number;
 	initialDiscountType?: DiscountType;
 	initialDiscountValue?: number;
 }
@@ -12,6 +12,7 @@ interface UseFinancialCalculationsReturn extends FinancialState {
 	setDiscountType: (type: DiscountType) => void;
 	setDiscountValue: (value: number) => void;
 	reset: () => void;
+	setOriginals: (taxRate: number, discountType: DiscountType, discountValue: number) => void;
 	originalTaxRate: number;
 	originalDiscountType: DiscountType;
 	originalDiscountValue: number;
@@ -31,13 +32,36 @@ export const useFinancialCalculations = (
 		initialDiscountValue = 0,
 	} = options;
 
-	const [taxRate, setTaxRate] = useState<number>(initialTaxRate);
-	const [discountType, setDiscountType] = useState<DiscountType>(initialDiscountType);
-	const [discountValue, setDiscountValue] = useState<number>(initialDiscountValue);
+	const [taxRate, setTaxRateState] = useState<number>(initialTaxRate);
+	const [discountType, setDiscountTypeState] = useState<DiscountType>(initialDiscountType);
+	const [discountValue, setDiscountValueState] = useState<number>(initialDiscountValue);
 
-	const [originalTaxRate] = useState<number>(initialTaxRate);
-	const [originalDiscountType] = useState<DiscountType>(initialDiscountType);
-	const [originalDiscountValue] = useState<number>(initialDiscountValue);
+	const [originalTaxRate, setOriginalTaxRate] = useState<number>(initialTaxRate);
+	const [originalDiscountType, setOriginalDiscountType] =
+		useState<DiscountType>(initialDiscountType);
+	const [originalDiscountValue, setOriginalDiscountValue] =
+		useState<number>(initialDiscountValue);
+
+	const setTaxRate = useCallback((rate: number) => setTaxRateState(Number(rate)), []);
+	const setDiscountType = useCallback((type: DiscountType) => setDiscountTypeState(type), []);
+	const setDiscountValue = useCallback(
+		(value: number) => setDiscountValueState(Number(value)),
+		[]
+	);
+
+	const setOriginals = useCallback(
+		(taxRate: number, discountType: DiscountType, discountValue: number) => {
+			const t = Number(taxRate);
+			const v = Number(discountValue);
+			setTaxRateState(t);
+			setDiscountTypeState(discountType);
+			setDiscountValueState(v);
+			setOriginalTaxRate(t);
+			setOriginalDiscountType(discountType);
+			setOriginalDiscountValue(v);
+		},
+		[]
+	);
 
 	const isTaxDirty = useMemo(() => taxRate !== originalTaxRate, [taxRate, originalTaxRate]);
 
@@ -48,34 +72,33 @@ export const useFinancialCalculations = (
 		[discountType, discountValue, originalDiscountType, originalDiscountValue]
 	);
 
-	const taxAmount = useMemo(() => subtotal * (taxRate / 100), [subtotal, taxRate]);
-
-	const discountAmount = useMemo(
-		() =>
-			discountType === "percent"
-				? subtotal * (discountValue / 100)
-				: discountValue,
-		[subtotal, discountType, discountValue]
+	const taxAmount = useMemo(
+		() => Number(subtotal) * (Number(taxRate) / 100),
+		[subtotal, taxRate]
 	);
 
+	const discountAmount = useMemo(() => {
+		const s = Number(subtotal);
+		const v = Number(discountValue);
+		return discountType === "percent" ? s * (v / 100) : v;
+	}, [subtotal, discountType, discountValue]);
+
 	const total = useMemo(
-		() => subtotal + taxAmount - discountAmount,
+		() => Number(subtotal) + taxAmount - discountAmount,
 		[subtotal, taxAmount, discountAmount]
 	);
 
-	const undoTax = useCallback(() => {
-		setTaxRate(originalTaxRate);
-	}, [originalTaxRate]);
+	const undoTax = useCallback(() => setTaxRateState(originalTaxRate), [originalTaxRate]);
 
 	const undoDiscount = useCallback(() => {
-		setDiscountType(originalDiscountType);
-		setDiscountValue(originalDiscountValue);
+		setDiscountTypeState(originalDiscountType);
+		setDiscountValueState(originalDiscountValue);
 	}, [originalDiscountType, originalDiscountValue]);
 
 	const reset = useCallback(() => {
-		setTaxRate(initialTaxRate);
-		setDiscountType(initialDiscountType);
-		setDiscountValue(initialDiscountValue);
+		setTaxRateState(Number(initialTaxRate));
+		setDiscountTypeState(initialDiscountType);
+		setDiscountValueState(Number(initialDiscountValue));
 	}, [initialTaxRate, initialDiscountType, initialDiscountValue]);
 
 	return {
@@ -89,6 +112,7 @@ export const useFinancialCalculations = (
 		discountAmount,
 		total,
 		reset,
+		setOriginals,
 		originalTaxRate,
 		originalDiscountType,
 		originalDiscountValue,

@@ -13,24 +13,89 @@ export interface UserContext {
 	userAgent?: string;
 }
 
+const buildClientInclude = () => ({
+	jobs: {
+		select: {
+			id: true,
+			job_number: true,
+			name: true,
+			status: true,
+			created_at: true,
+			actual_total: true,
+		},
+		orderBy: { created_at: "desc" as const },
+	},
+	contacts: {
+		include: {
+			contact: {
+				select: {
+					id: true,
+					name: true,
+					email: true,
+					phone: true,
+					title: true,
+					type: true,
+				},
+			},
+		},
+	},
+	notes: {
+		select: {
+			id: true,
+			content: true,
+			created_at: true,
+			updated_at: true,
+		},
+		orderBy: { created_at: "desc" as const },
+	},
+	recurring_plans: {
+		select: {
+			id: true,
+			name: true,
+			status: true,
+			starts_at: true,
+			created_at: true,
+		},
+		orderBy: { created_at: "desc" as const },
+	},
+	requests: {
+		select: {
+			id: true,
+			title: true,
+			status: true,
+			created_at: true,
+		},
+		orderBy: { created_at: "desc" as const },
+	},
+	quotes: {
+		select: {
+			id: true,
+			quote_number: true,
+			title: true,
+			status: true,
+			total: true,
+			is_active: true,
+			created_at: true,
+		},
+		orderBy: { created_at: "desc" as const },
+	},
+});
+
+// ============================================================================
+// CLIENT CRUD
+// ============================================================================
+
 export const getAllClients = async () => {
 	return await db.client.findMany({
-		include: {
-			jobs: true,
-			contacts: true,
-			notes: true,
-		},
+		include: buildClientInclude(),
+		orderBy: { last_activity: "desc" },
 	});
 };
 
 export const getClientById = async (id: string) => {
 	return await db.client.findFirst({
 		where: { id: id },
-		include: {
-			jobs: true,
-			contacts: true,
-			notes: true,
-		},
+		include: buildClientInclude(),
 	});
 };
 
@@ -45,7 +110,7 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 					address: parsed.address,
 					coords: parsed.coords,
 					is_active: parsed.is_active ?? true,
-					last_activity: parsed.last_activity ?? new Date(),
+					last_activity: new Date(),
 				},
 			});
 
@@ -57,8 +122,8 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: null, new: client.name },
@@ -71,11 +136,7 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 
 			return tx.client.findUnique({
 				where: { id: client.id },
-				include: {
-					jobs: true,
-					contacts: true,
-					notes: true,
-				},
+				include: buildClientInclude(),
 			});
 		});
 
@@ -96,7 +157,7 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 export const updateClient = async (
 	id: string,
 	data: unknown,
-	context?: UserContext
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateClientSchema.parse(data);
@@ -140,8 +201,8 @@ export const updateClient = async (
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -151,11 +212,7 @@ export const updateClient = async (
 
 			return tx.client.findUnique({
 				where: { id: client.id },
-				include: {
-					jobs: true,
-					contacts: true,
-					notes: true,
-				},
+				include: buildClientInclude(),
 			});
 		});
 
@@ -174,10 +231,33 @@ export const updateClient = async (
 
 export const deleteClient = async (id: string, context?: UserContext) => {
 	try {
-		const existing = await db.client.findUnique({ where: { id } });
+		const existing = await db.client.findUnique({
+			where: { id },
+			include: {
+				jobs: { select: { id: true } },
+				recurring_plans: { select: { id: true } },
+				requests: { select: { id: true } },
+				quotes: { select: { id: true } },
+			},
+		});
 
 		if (!existing) {
 			return { err: "Client not found" };
+		}
+
+		if (existing.jobs.length > 0) {
+			return { err: "Cannot delete client with existing jobs" };
+		}
+		if (existing.recurring_plans.length > 0) {
+			return {
+				err: "Cannot delete client with existing recurring plans",
+			};
+		}
+		if (existing.requests.length > 0) {
+			return { err: "Cannot delete client with existing requests" };
+		}
+		if (existing.quotes.length > 0) {
+			return { err: "Cannot delete client with existing quotes" };
 		}
 
 		await db.$transaction(async (tx) => {
@@ -191,8 +271,8 @@ export const deleteClient = async (id: string, context?: UserContext) => {
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: existing.name, new: null },

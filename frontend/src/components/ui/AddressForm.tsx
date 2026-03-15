@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 
 type AddressFormMode = "create" | "edit";
+type DropdownPosition = "below" | "above";
 
 interface AddressFormProps {
 	handleChange: (result: GeocodeResult) => void;
@@ -11,6 +12,7 @@ interface AddressFormProps {
 	mode?: AddressFormMode;
 	originalValue?: string;
 	originalCoords?: { lat: number; lon: number } | undefined;
+	dropdownPosition?: DropdownPosition;
 }
 
 const AddressForm = ({
@@ -19,6 +21,7 @@ const AddressForm = ({
 	mode = "create",
 	originalValue = "",
 	originalCoords,
+	dropdownPosition = "below",
 }: AddressFormProps) => {
 	const MAPBOX_KEY = import.meta.env.VITE_MAPBOX_TOKEN;
 	if (!MAPBOX_KEY) console.error("Issue loading Mapbox public key!");
@@ -27,8 +30,8 @@ const AddressForm = ({
 	const isEdit = mode === "edit";
 
 	const [inputValue, setInputValue] = useState<string>(isEdit ? originalValue : "");
+	const lastCommittedAddress = useRef<string>("");
 
-	// Keep in sync when opening a different record in edit mode
 	useEffect(() => {
 		setInputValue(isEdit ? originalValue : "");
 	}, [isEdit, originalValue]);
@@ -47,7 +50,6 @@ const AddressForm = ({
 				'[aria-label="Clear"]',
 				".mapboxgl-ctrl-geocoder--button",
 			];
-
 			selectors.forEach((selector) => {
 				const buttons = geocoderRef.current?.querySelectorAll(selector);
 				buttons?.forEach((btn) => {
@@ -61,13 +63,8 @@ const AddressForm = ({
 		};
 
 		hideXButton();
-
 		const observer = new MutationObserver(hideXButton);
-		observer.observe(geocoderRef.current, {
-			childList: true,
-			subtree: true,
-		});
-
+		observer.observe(geocoderRef.current, { childList: true, subtree: true });
 		const timer = setTimeout(hideXButton, 100);
 
 		return () => {
@@ -76,18 +73,15 @@ const AddressForm = ({
 		};
 	}, [isEdit, originalValue]);
 
-	//Handle blur to revert when empty in edit mode
+	// Handle blur to revert when empty in edit mode
 	useEffect(() => {
 		if (!isEdit || !geocoderRef.current) return;
 
 		const handleFocusOut = () => {
 			const container = geocoderRef.current;
 			if (!container) return;
-
 			setTimeout(() => {
-				const activeElement = document.activeElement;
-				const isStillFocused = container.contains(activeElement);
-
+				const isStillFocused = container.contains(document.activeElement);
 				if (!isStillFocused && !inputValue.trim()) {
 					onEditUndo();
 				}
@@ -96,11 +90,42 @@ const AddressForm = ({
 
 		const container = geocoderRef.current;
 		container.addEventListener("focusout", handleFocusOut);
+		return () => container.removeEventListener("focusout", handleFocusOut);
+	}, [isEdit, inputValue, originalValue, originalCoords]);
+
+	useEffect(() => {
+		const styleId = "mapbox-suggestions-override";
+		if (document.getElementById(styleId)) return;
+
+		const style = document.createElement("style");
+		style.id = styleId;
+		style.textContent = `
+        /* Target by stable role/aria attributes — immune to class hashing */
+        [data-seed] [role="listbox"] {
+            max-height: 60vh !important;
+            overflow-y: auto !important;
+        }
+        [data-seed] [role="option"] {
+            font-size: 12px !important;
+            min-height: unset !important;
+            padding: 4px 8px !important;
+        }
+        [data-seed] [role="option"] > div {
+            padding: 4px 8px !important;
+            min-height: unset !important;
+            gap: 4px !important;
+        }
+        /* Hide attribution row */
+        [data-seed] [aria-hidden="true"]:last-child {
+            display: none !important;
+        }
+    `;
+		document.head.appendChild(style);
 
 		return () => {
-			container.removeEventListener("focusout", handleFocusOut);
+			document.getElementById(styleId)?.remove();
 		};
-	}, [isEdit, inputValue, originalValue, originalCoords]);
+	}, []);
 
 	const theme = {
 		variables: {
@@ -125,38 +150,81 @@ const AddressForm = ({
 			paddingFooterLabel: "0.25rem",
 		},
 		cssText: `
-			input {
-				color: #ffffff !important;
-			}
-			.mapboxgl-ctrl-geocoder--input {
-				background: transparent !important;
-			}
-		`,
+        input {
+            color: #ffffff !important;
+        }
+        .mapboxgl-ctrl-geocoder--input {
+            background: transparent !important;
+        }
+        .suggestions-wrapper {
+            max-height: 140px !important;
+            overflow: hidden !important;
+        }
+        .suggestions {
+            max-height: 140px !important;
+            overflow-y: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .suggestions > li {
+            font-size: 12px !important;
+            line-height: 1.3 !important;
+        }
+        .suggestions > li > a {
+            padding: 5px 10px !important;
+        }
+        .mapboxgl-ctrl-geocoder--powered-by {
+            display: none !important;
+        }
+    `,
 	};
 
+	const popoverOptions = useMemo(
+		() => ({
+			placement:
+				dropdownPosition === "above"
+					? ("top-start" as const)
+					: ("bottom-start" as const),
+			strategy: "absolute" as const,
+			modifiers: [
+				{ name: "flip", enabled: false },
+				{
+					name: "preventOverflow",
+					enabled: true,
+					options: { altAxis: true, tether: false, padding: 8 },
+				},
+				{
+					name: "offset",
+					enabled: true,
+					options: { offset: [0, 0] },
+				},
+			],
+		}),
+		[dropdownPosition]
+	);
+
 	const commitSelection = (address: string, coords: { lat: number; lon: number }) => {
+		lastCommittedAddress.current = address;
 		setInputValue(address);
-		handleChange({
-			address,
-			coords,
-		} as GeocodeResult);
+		handleChange({ address, coords } as GeocodeResult);
 	};
 
 	const onEditUndo = () => {
-		// Revert to original (or clear if original is blank / missing coords)
 		if (!originalValue.trim() || !originalCoords) {
 			setInputValue(originalValue || "");
 			handleClear?.();
 			return;
 		}
-
 		commitSelection(originalValue, originalCoords);
 	};
 
 	return (
 		<div
 			ref={geocoderRef}
-			className={`w-full relative ${isEdit ? "edit-mode-geocoder" : ""}`}
+			className={`w-full relative ${isEdit ? "edit-mode-geocoder" : ""} ${
+				dropdownPosition === "above" ? "geocoder-dropdown-above" : ""
+			}`}
+			style={{ overflow: "visible" }}
 		>
 			<Geocoder
 				accessToken={MAPBOX_KEY}
@@ -168,18 +236,17 @@ const AddressForm = ({
 				theme={theme}
 				value={inputValue}
 				onChange={(value) => setInputValue(value)}
+				popoverOptions={popoverOptions}
 				onRetrieve={(d) => {
 					const selectedAddress = d.properties.full_address;
 					const coords = {
 						lat: d.properties.coordinates.latitude,
 						lon: d.properties.coordinates.longitude,
 					};
-
 					commitSelection(selectedAddress, coords);
 				}}
 			/>
 
-			{/* Edit Mode: show Undo button when dirty */}
 			{mode === "edit" && isDirty && (
 				<button
 					type="button"

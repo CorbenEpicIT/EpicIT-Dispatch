@@ -10,7 +10,7 @@ interface CardProps {
 export default function Card({ title, headerAction, children, className = "" }: CardProps) {
 	return (
 		<div
-			className={`bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden ${className}`}
+			className={`bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col ${className}`}
 		>
 			{title && (
 				<div className="flex items-center justify-between p-4 border-b border-zinc-800">
@@ -18,7 +18,7 @@ export default function Card({ title, headerAction, children, className = "" }: 
 					{headerAction && <div>{headerAction}</div>}
 				</div>
 			)}
-			<div className="p-4">{children}</div>
+			<div className="p-4 flex-1 flex flex-col">{children}</div>
 		</div>
 	);
 }

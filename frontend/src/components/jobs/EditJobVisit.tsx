@@ -1,26 +1,49 @@
-import { useState, useEffect, useRef } from "react";
-import { Trash2 } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import type { ZodError } from "zod";
+import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import LineItemsSection from "../ui/forms/LineItemsSection";
+import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
+import DatePicker from "../ui/DatePicker";
+import { UndoButton, UndoButtonTop } from "../ui/forms/UndoButton";
+import { useStepWizard } from "../../hooks/forms/useStepWizard";
+import { useLineItems } from "../../hooks/forms/useLineItems";
+import { useDirtyTracking } from "../../hooks/forms/useDirtyTracking";
+import { createStepRouter } from "../../hooks/forms/useZodStepRouting";
 import {
 	useUpdateJobVisitMutation,
-	useDeleteJobVisitMutation,
 	useAssignTechniciansToVisitMutation,
 } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
-import type {
-	JobVisit,
-	UpdateJobVisitInput,
-	VisitStatus,
-	ArrivalConstraint,
-	FinishConstraint,
-} from "../../types/jobs";
 import {
-	VisitStatusValues,
-	ArrivalConstraintValues,
-	FinishConstraintValues,
+	CreateJobVisitSchema,
+	type CreateJobVisitInput,
+	type JobVisit,
+	type UpdateJobVisitInput,
 } from "../../types/jobs";
-import DatePicker from "../ui/DatePicker";
-import TimePicker from "../ui/TimePicker";
-import FullPopup from "../ui/FullPopup";
+import type { LineItemType, EditableLineItem } from "../../types/common";
+
+type Step = 1 | 2 | 3 | 4;
+
+const STEPS = [
+	{ id: 1 as Step, label: "Details" },
+	{ id: 2 as Step, label: "Constraints" },
+	{ id: 3 as Step, label: "Line Items" },
+	{ id: 4 as Step, label: "Technicians" },
+];
+
+const routeErrorToStep = createStepRouter<Step>({
+	1: ["name", "description"],
+	2: [
+		"arrival_constraint",
+		"finish_constraint",
+		"arrival_time",
+		"arrival_window_start",
+		"arrival_window_end",
+		"finish_time",
+	],
+	3: ["line_items"],
+	4: ["tech_ids"],
+});
 
 interface EditJobVisitProps {
 	isModalOpen: boolean;
@@ -29,213 +52,379 @@ interface EditJobVisitProps {
 	jobId: string;
 }
 
+const formatTimeString = (date: Date | null): string | null => {
+	if (!date) return null;
+	return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+};
+
+const parseHHMMToDate = (hhmm: string | null | undefined, baseDate: Date): Date | null => {
+	if (!hhmm) return null;
+	const [h, m] = hhmm.split(":").map(Number);
+	if (Number.isNaN(h) || Number.isNaN(m)) return null;
+	const d = new Date(baseDate);
+	d.setHours(h, m, 0, 0);
+	return d;
+};
+
 export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: EditJobVisitProps) {
 	const updateVisit = useUpdateJobVisitMutation();
-	const deleteVisit = useDeleteJobVisitMutation();
 	const assignTechs = useAssignTechniciansToVisitMutation();
 	const { data: technicians } = useAllTechniciansQuery();
 
-	const scrollContainerRef = useRef<HTMLDivElement>(null);
-	const nameRef = useRef<HTMLInputElement>(null);
-	const descRef = useRef<HTMLTextAreaElement>(null);
-	const originalStartDate = useRef<Date>(new Date(visit.scheduled_start_at));
+	const isLoading = updateVisit.isPending || assignTechs.isPending;
 
-	const [startDate, setStartDate] = useState<Date>(new Date(visit.scheduled_start_at));
-	const [status, setStatus] = useState<VisitStatus>(visit.status);
-	const [selectedTechIds, setSelectedTechIds] = useState<string[]>(
-		visit.visit_techs.map((vt) => vt.tech_id)
+	type FormFields = {
+		name: string;
+		description: string;
+		startDate: Date;
+	};
+
+	const { fields, updateField, undoField, setOriginals, isDirty, getValue } =
+		useDirtyTracking<FormFields>({
+			name: "",
+			description: "",
+			startDate: new Date(),
+		});
+
+	const [selectedTechIds, setSelectedTechIds] = useState<string[]>([]);
+	const [errors, setErrors] = useState<ZodError | null>(null);
+	const [timeConstraintsState, setTimeConstraintsState] =
+		useState<TimeConstraintsState | null>(null);
+
+	const lineItems = useLineItems({ minItems: 1, mode: "edit" });
+
+	const {
+		currentStep,
+		visitedSteps,
+		goNext,
+		goBack,
+		goToStep,
+		reset: resetWizard,
+	} = useStepWizard<Step>({ totalSteps: 4 as Step, initialStep: 1 as Step });
+
+	const validateStep1 = useCallback((): boolean => {
+		return !!(getValue("name").trim() && getValue("startDate"));
+	}, [getValue]);
+
+	const validateStep2 = useCallback((): boolean => {
+		if (!timeConstraintsState) return true;
+		const arrivalOk =
+			timeConstraintsState.arrivalConstraint === "anytime" ||
+			(timeConstraintsState.arrivalConstraint === "at" &&
+				!!timeConstraintsState.arrivalTime) ||
+			(timeConstraintsState.arrivalConstraint === "between" &&
+				!!timeConstraintsState.arrivalWindowStart &&
+				!!timeConstraintsState.arrivalWindowEnd) ||
+			(timeConstraintsState.arrivalConstraint === "by" &&
+				!!timeConstraintsState.arrivalWindowEnd);
+		const finishOk =
+			timeConstraintsState.finishConstraint === "when_done" ||
+			((timeConstraintsState.finishConstraint === "at" ||
+				timeConstraintsState.finishConstraint === "by") &&
+				!!timeConstraintsState.finishTime);
+		const windowOrderOk =
+			timeConstraintsState.arrivalConstraint !== "between" ||
+			!timeConstraintsState.arrivalWindowStart ||
+			!timeConstraintsState.arrivalWindowEnd ||
+			timeConstraintsState.arrivalWindowEnd.getTime() >
+				timeConstraintsState.arrivalWindowStart.getTime();
+		return arrivalOk && finishOk && windowOrderOk;
+	}, [timeConstraintsState]);
+
+	const validateStep3 = useCallback((): boolean => {
+		const namedItems = lineItems.activeLineItems.filter((li) => li.name.trim() !== "");
+		if (namedItems.length === 0) return true;
+		return namedItems.every(
+			(li) => Number(li.quantity) > 0 && Number(li.unit_price) >= 0
+		);
+	}, [lineItems.activeLineItems]);
+
+	const validateStep = useCallback(
+		(step: Step): boolean => {
+			switch (step) {
+				case 1:
+					return validateStep1();
+				case 2:
+					return validateStep2();
+				case 3:
+					return validateStep3();
+				case 4:
+					return true;
+				default:
+					return true;
+			}
+		},
+		[validateStep1, validateStep2, validateStep3]
 	);
-	const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-	const [arrivalConstraint, setArrivalConstraint] = useState<ArrivalConstraint>("anytime");
-	const [finishConstraint, setFinishConstraint] = useState<FinishConstraint>("when_done");
-	const [arrivalTime, setArrivalTime] = useState<Date | null>(() => {
-		const time = new Date();
-		time.setHours(9, 0, 0, 0);
-		return time;
-	});
-	const [arrivalWindowStart, setArrivalWindowStart] = useState<Date | null>(() => {
-		const time = new Date();
-		time.setHours(9, 0, 0, 0);
-		return time;
-	});
-	const [arrivalWindowEnd, setArrivalWindowEnd] = useState<Date | null>(() => {
-		const time = new Date();
-		time.setHours(17, 0, 0, 0);
-		return time;
-	});
-	const [finishTime, setFinishTime] = useState<Date | null>(() => {
-		const time = new Date();
-		time.setHours(17, 0, 0, 0);
-		return time;
-	});
+	const canGoNext = useMemo(() => validateStep(currentStep), [validateStep, currentStep]);
 
-	// Reset form data when modal opens with new visit
+	const canGoToStep = useCallback(
+		(targetStep: Step): boolean => {
+			if (targetStep === 1) return true;
+			for (let step = 1; step < targetStep; step++) {
+				if (!validateStep(step as Step)) return false;
+			}
+			return true;
+		},
+		[validateStep]
+	);
+
+	const { setLineItems } = lineItems;
+
 	useEffect(() => {
-		if (isModalOpen) {
-			const visitStartDate = new Date(visit.scheduled_start_at);
-			originalStartDate.current = visitStartDate;
+		if (isModalOpen && visit) {
+			resetWizard();
 
-			setStartDate(visitStartDate);
-			setStatus(visit.status);
+			const visitStart = new Date(visit.scheduled_start_at);
+			const base = new Date(visitStart);
+			const fallbackStart = new Date(base);
+			fallbackStart.setHours(9, 0, 0, 0);
+			const fallbackEnd = new Date(base);
+			fallbackEnd.setHours(17, 0, 0, 0);
+
+			setOriginals({
+				name: visit.name ?? "",
+				description: visit.description ?? "",
+				startDate: new Date(visit.scheduled_start_at),
+			});
+
+			// Seed existing items or a blank template row if none
+			const initialLineItems: EditableLineItem[] = visit.line_items?.length
+				? visit.line_items.map((item) => ({
+						id: crypto.randomUUID(),
+						entity_line_item_id: item.id,
+						name: item.name,
+						description: item.description || "",
+						quantity: Number(item.quantity),
+						unit_price: Number(item.unit_price),
+						item_type: (item.item_type || "") as
+							| LineItemType
+							| "",
+						total: Number(item.total),
+						isNew: false,
+						isDeleted: false,
+					}))
+				: [
+						{
+							id: crypto.randomUUID(),
+							entity_line_item_id: undefined,
+							name: "",
+							description: "",
+							quantity: 1,
+							unit_price: 0,
+							item_type: "" as LineItemType | "",
+							total: 0,
+							isNew: true,
+							isDeleted: false,
+						},
+					];
+
+			setLineItems(initialLineItems);
+
+			setTimeConstraintsState({
+				arrivalConstraint: visit.arrival_constraint || "anytime",
+				finishConstraint: visit.finish_constraint || "when_done",
+				arrivalTime:
+					parseHHMMToDate(visit.arrival_time, base) ?? fallbackStart,
+				arrivalWindowStart:
+					parseHHMMToDate(visit.arrival_window_start, base) ??
+					fallbackStart,
+				arrivalWindowEnd:
+					parseHHMMToDate(visit.arrival_window_end, base) ??
+					fallbackEnd,
+				finishTime: parseHHMMToDate(visit.finish_time, base) ?? fallbackEnd,
+			});
+
 			setSelectedTechIds(visit.visit_techs.map((vt) => vt.tech_id));
-			setDeleteConfirm(false);
-
-			if (visit.arrival_constraint) {
-				setArrivalConstraint(visit.arrival_constraint as ArrivalConstraint);
-			}
-			if (visit.finish_constraint) {
-				setFinishConstraint(visit.finish_constraint as FinishConstraint);
-			}
-
-			// Parse times from HH:MM strings
-			if (visit.arrival_time) {
-				const [hours, minutes] = visit.arrival_time.split(":").map(Number);
-				const time = new Date();
-				time.setHours(hours, minutes, 0, 0);
-				setArrivalTime(time);
-			}
-
-			if (visit.arrival_window_start) {
-				const [hours, minutes] = visit.arrival_window_start
-					.split(":")
-					.map(Number);
-				const time = new Date();
-				time.setHours(hours, minutes, 0, 0);
-				setArrivalWindowStart(time);
-			}
-
-			if (visit.arrival_window_end) {
-				const [hours, minutes] = visit.arrival_window_end
-					.split(":")
-					.map(Number);
-				const time = new Date();
-				time.setHours(hours, minutes, 0, 0);
-				setArrivalWindowEnd(time);
-			}
-
-			if (visit.finish_time) {
-				const [hours, minutes] = visit.finish_time.split(":").map(Number);
-				const time = new Date();
-				time.setHours(hours, minutes, 0, 0);
-				setFinishTime(time);
-			}
+			setErrors(null);
 		}
-	}, [isModalOpen, visit]);
+	}, [isModalOpen, visit, resetWizard, setOriginals, setLineItems]);
 
-	const handleTechSelection = (techId: string) => {
+	const handleTechSelection = useCallback((techId: string) => {
 		setSelectedTechIds((prev) =>
 			prev.includes(techId)
 				? prev.filter((id) => id !== techId)
 				: [...prev, techId]
 		);
-	};
+	}, []);
 
-	const formatTimeString = (date: Date | null): string | null => {
-		if (!date) return null;
-		const hours = date.getHours().toString().padStart(2, "0");
-		const minutes = date.getMinutes().toString().padStart(2, "0");
-		return `${hours}:${minutes}`;
-	};
+	const handleNext = useCallback(() => {
+		if (canGoNext) goNext();
+	}, [canGoNext, goNext]);
 
-	const handleSubmit = async () => {
+	const handleGoToStep = useCallback(
+		(step: Step) => {
+			if (canGoToStep(step)) goToStep(step);
+		},
+		[canGoToStep, goToStep]
+	);
+
+	const buildScheduledDates = useCallback(() => {
+		let combinedStartDate = new Date(getValue("startDate"));
+		let combinedEndDate = new Date(getValue("startDate"));
+
+		if (
+			timeConstraintsState?.arrivalConstraint === "at" &&
+			timeConstraintsState.arrivalTime
+		) {
+			combinedStartDate.setHours(
+				timeConstraintsState.arrivalTime.getHours(),
+				timeConstraintsState.arrivalTime.getMinutes(),
+				0,
+				0
+			);
+		} else if (
+			timeConstraintsState?.arrivalConstraint === "between" &&
+			timeConstraintsState.arrivalWindowStart
+		) {
+			combinedStartDate.setHours(
+				timeConstraintsState.arrivalWindowStart.getHours(),
+				timeConstraintsState.arrivalWindowStart.getMinutes(),
+				0,
+				0
+			);
+		} else if (
+			timeConstraintsState?.arrivalConstraint === "by" &&
+			timeConstraintsState.arrivalWindowEnd
+		) {
+			const deadlineMinutes =
+				timeConstraintsState.arrivalWindowEnd.getHours() * 60 +
+				timeConstraintsState.arrivalWindowEnd.getMinutes();
+			const startMinutes = Math.max(0, deadlineMinutes - 240);
+			combinedStartDate.setHours(
+				Math.floor(startMinutes / 60),
+				startMinutes % 60,
+				0,
+				0
+			);
+		} else {
+			combinedStartDate.setHours(9, 0, 0, 0);
+		}
+
+		if (
+			(timeConstraintsState?.finishConstraint === "at" ||
+				timeConstraintsState?.finishConstraint === "by") &&
+			timeConstraintsState.finishTime
+		) {
+			combinedEndDate.setHours(
+				timeConstraintsState.finishTime.getHours(),
+				timeConstraintsState.finishTime.getMinutes(),
+				0,
+				0
+			);
+		} else {
+			combinedEndDate = new Date(
+				combinedStartDate.getTime() + 2 * 60 * 60 * 1000
+			);
+		}
+
+		return { combinedStartDate, combinedEndDate };
+	}, [getValue, timeConstraintsState]);
+
+	const invokeSave = useCallback(async () => {
+		if (isLoading) return;
+
+		const { combinedStartDate, combinedEndDate } = buildScheduledDates();
+
+		const preparedLineItems = lineItems.activeLineItems
+			.filter((li) => li.name.trim() !== "")
+			.map((item, index) => ({
+				name: item.name.trim(),
+				description: item.description || undefined,
+				quantity: Number(item.quantity),
+				unit_price: Number(item.unit_price),
+				item_type: (item.item_type || undefined) as
+					| LineItemType
+					| undefined,
+				sort_order: index,
+				total: item.total,
+			}));
+
+		const candidate: CreateJobVisitInput = {
+			job_id: visit.job_id,
+			name: getValue("name").trim(),
+			description: getValue("description").trim() || undefined,
+			scheduled_start_at: combinedStartDate.toISOString(),
+			scheduled_end_at: combinedEndDate.toISOString(),
+			arrival_constraint: timeConstraintsState?.arrivalConstraint || "anytime",
+			finish_constraint: timeConstraintsState?.finishConstraint || "when_done",
+			arrival_time:
+				timeConstraintsState?.arrivalConstraint === "at"
+					? formatTimeString(timeConstraintsState.arrivalTime)
+					: null,
+			arrival_window_start:
+				timeConstraintsState?.arrivalConstraint === "between"
+					? formatTimeString(timeConstraintsState.arrivalWindowStart)
+					: null,
+			arrival_window_end:
+				timeConstraintsState?.arrivalConstraint === "between" ||
+				timeConstraintsState?.arrivalConstraint === "by"
+					? formatTimeString(timeConstraintsState.arrivalWindowEnd)
+					: null,
+			finish_time:
+				timeConstraintsState?.finishConstraint === "at" ||
+				timeConstraintsState?.finishConstraint === "by"
+					? formatTimeString(timeConstraintsState.finishTime)
+					: null,
+			status: visit.status,
+			tech_ids: selectedTechIds,
+			line_items: preparedLineItems.length ? preparedLineItems : undefined,
+		};
+
+		const parsed = CreateJobVisitSchema.safeParse(candidate);
+		if (!parsed.success) {
+			setErrors(parsed.error);
+			console.error("Validation errors:", parsed.error);
+			const errorStep = routeErrorToStep(parsed.error);
+			if (errorStep) goToStep(errorStep);
+			return;
+		}
+
+		setErrors(null);
+
+		const updates: UpdateJobVisitInput = {
+			name:
+				getValue("name").trim() !== (visit.name || "")
+					? getValue("name").trim()
+					: undefined,
+			description:
+				getValue("description").trim() !== (visit.description || "")
+					? getValue("description").trim()
+					: undefined,
+			scheduled_start_at: combinedStartDate.toISOString(),
+			scheduled_end_at: combinedEndDate.toISOString(),
+			arrival_constraint: timeConstraintsState?.arrivalConstraint || "anytime",
+			finish_constraint: timeConstraintsState?.finishConstraint || "when_done",
+			arrival_time:
+				timeConstraintsState?.arrivalConstraint === "at"
+					? formatTimeString(timeConstraintsState.arrivalTime)
+					: null,
+			arrival_window_start:
+				timeConstraintsState?.arrivalConstraint === "between"
+					? formatTimeString(timeConstraintsState.arrivalWindowStart)
+					: null,
+			arrival_window_end:
+				timeConstraintsState?.arrivalConstraint === "between" ||
+				timeConstraintsState?.arrivalConstraint === "by"
+					? formatTimeString(timeConstraintsState.arrivalWindowEnd)
+					: null,
+			finish_time:
+				timeConstraintsState?.finishConstraint === "at" ||
+				timeConstraintsState?.finishConstraint === "by"
+					? formatTimeString(timeConstraintsState.finishTime)
+					: null,
+			line_items: preparedLineItems,
+		};
+
 		try {
-			const nameValue = nameRef.current?.value.trim() || visit.name || "";
-			const descValue = descRef.current?.value.trim() || "";
+			await updateVisit.mutateAsync({ id: visit.id, data: updates });
 
-			let combinedStartDate = new Date(startDate);
-			let combinedEndDate = new Date(startDate);
-
-			if (arrivalConstraint === "at" && arrivalTime) {
-				combinedStartDate.setHours(
-					arrivalTime.getHours(),
-					arrivalTime.getMinutes(),
-					0,
-					0
-				);
-			} else if (arrivalConstraint === "between" && arrivalWindowStart) {
-				combinedStartDate.setHours(
-					arrivalWindowStart.getHours(),
-					arrivalWindowStart.getMinutes(),
-					0,
-					0
-				);
-			} else if (arrivalConstraint === "by" && arrivalWindowEnd) {
-				// Start 4 hours before deadline
-				const deadlineMinutes =
-					arrivalWindowEnd.getHours() * 60 +
-					arrivalWindowEnd.getMinutes();
-				const startMinutes = Math.max(0, deadlineMinutes - 240);
-				combinedStartDate.setHours(
-					Math.floor(startMinutes / 60),
-					startMinutes % 60,
-					0,
-					0
-				);
-			} else {
-				// anytime - default to 9 AM
-				combinedStartDate.setHours(9, 0, 0, 0);
-			}
-			if (finishConstraint === "at" && finishTime) {
-				combinedEndDate.setHours(
-					finishTime.getHours(),
-					finishTime.getMinutes(),
-					0,
-					0
-				);
-			} else if (finishConstraint === "by" && finishTime) {
-				combinedEndDate.setHours(
-					finishTime.getHours(),
-					finishTime.getMinutes(),
-					0,
-					0
-				);
-			} else {
-				// when_done - default 2 hour duration
-				combinedEndDate = new Date(
-					combinedStartDate.getTime() + 2 * 60 * 60 * 1000
-				);
-			}
-
-			const updates: UpdateJobVisitInput = {
-				name: nameValue !== visit.name ? nameValue : undefined,
-				description:
-					descValue !== (visit.description || "")
-						? descValue
-						: undefined,
-				scheduled_start_at: combinedStartDate.toISOString(),
-				scheduled_end_at: combinedEndDate.toISOString(),
-				arrival_constraint: arrivalConstraint,
-				finish_constraint: finishConstraint,
-				arrival_time:
-					arrivalConstraint === "at"
-						? formatTimeString(arrivalTime)
-						: null,
-				arrival_window_start:
-					arrivalConstraint === "between"
-						? formatTimeString(arrivalWindowStart)
-						: null,
-				arrival_window_end:
-					arrivalConstraint === "between" ||
-					arrivalConstraint === "by"
-						? formatTimeString(arrivalWindowEnd)
-						: null,
-				finish_time:
-					finishConstraint === "at" || finishConstraint === "by"
-						? formatTimeString(finishTime)
-						: null,
-				status: status,
-			};
-
-			await updateVisit.mutateAsync({
-				id: visit.id,
-				data: updates,
-			});
-
-			// Update technician assignments separately if changed
-			const originalTechIds = visit.visit_techs.map((vt) => vt.tech_id).sort();
-			const newTechIds = selectedTechIds.sort();
-			if (JSON.stringify(originalTechIds) !== JSON.stringify(newTechIds)) {
+			const originalTechIds = [
+				...visit.visit_techs.map((vt) => vt.tech_id),
+			].sort();
+			const nextTechIds = [...selectedTechIds].sort();
+			if (JSON.stringify(originalTechIds) !== JSON.stringify(nextTechIds)) {
 				await assignTechs.mutateAsync({
 					visitId: visit.id,
 					techIds: selectedTechIds,
@@ -246,364 +435,209 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		} catch (error) {
 			console.error("Failed to update visit:", error);
 		}
-	};
+	}, [
+		isLoading,
+		buildScheduledDates,
+		lineItems.activeLineItems,
+		getValue,
+		timeConstraintsState,
+		visit,
+		selectedTechIds,
+		updateVisit,
+		assignTechs,
+		setIsModalOpen,
+		goToStep,
+	]);
 
-	const handleDelete = async () => {
-		if (!deleteConfirm) {
-			setDeleteConfirm(true);
-			return;
-		}
+	const ErrorDisplay = useCallback(
+		({ path }: { path: string }) => {
+			if (!errors) return null;
+			const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
+			if (fieldErrors.length === 0) return null;
+			return (
+				<div className="mt-0.5">
+					{fieldErrors.map((err, idx) => (
+						<p
+							key={idx}
+							className="text-red-300 text-xs leading-tight"
+						>
+							{err.message}
+						</p>
+					))}
+				</div>
+			);
+		},
+		[errors]
+	);
 
-		try {
-			await deleteVisit.mutateAsync(visit.id);
-			setIsModalOpen(false);
-		} catch (error) {
-			console.error("Failed to delete visit:", error);
-		}
-	};
+	const stepContent = useMemo(() => {
+		switch (currentStep) {
+			case 1:
+				return (
+					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								Visit Name *
+							</label>
+							<div className="relative">
+								<input
+									type="text"
+									value={getValue("name")}
+									onChange={(e) =>
+										updateField(
+											"name",
+											e.target
+												.value
+										)
+									}
+									disabled={isLoading}
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+								/>
+								<UndoButton
+									show={isDirty("name")}
+									onUndo={() =>
+										undoField("name")
+									}
+									disabled={isLoading}
+								/>
+							</div>
+							<ErrorDisplay path="name" />
+						</div>
 
-	const content = (
-		<div className="flex flex-col h-full">
-			{/* Scrollable content */}
-			<div
-				ref={scrollContainerRef}
-				className="flex-1 overflow-y-auto pr-2 pl-1"
-				style={{
-					scrollbarWidth: "thin",
-					scrollbarColor: "rgb(63 63 70) transparent",
-				}}
-			>
-				<style>{`
-					.overflow-y-auto::-webkit-scrollbar {
-						width: 8px;
-					}
-					.overflow-y-auto::-webkit-scrollbar-track {
-						background: transparent;
-					}
-					.overflow-y-auto::-webkit-scrollbar-thumb {
-						background-color: rgb(63 63 70);
-						border-radius: 4px;
-					}
-					.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-						background-color: rgb(82 82 91);
-					}
-				`}</style>
-
-				<div className="pr-1">
-					<h2 className="text-2xl font-bold mb-6">Edit Visit</h2>
-
-					{/* SECTION 1: Visit Details */}
-					<div id="visit-details" className="scroll-mt-4">
-						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
-							<h3 className="text-lg font-semibold mb-4">
-								Visit Details
-							</h3>
-
-							<div className="space-y-3">
-								<div>
-									<label className="text-sm text-zinc-300 mb-1 block">
-										Visit Name *
-									</label>
-									<input
-										type="text"
-										ref={nameRef}
-										defaultValue={
-											visit.name ||
-											""
-										}
-										placeholder="e.g., Initial Assessment, Follow-up Visit"
-										disabled={
-											updateVisit.isPending
-										}
-										className="border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white"
-									/>
-								</div>
-
-								<div>
-									<label className="text-sm text-zinc-300 mb-1 block">
-										Description
-										(Optional)
-									</label>
-									<textarea
-										ref={descRef}
-										defaultValue={
-											visit.description ||
-											""
-										}
-										placeholder="Describe what will be done during this visit..."
-										disabled={
-											updateVisit.isPending
-										}
-										className="border border-zinc-700 p-2 w-full h-20 rounded-sm bg-zinc-900 text-white resize-none"
-									/>
-								</div>
-
-								<div>
-									<label className="text-sm text-zinc-300 mb-1 block">
-										Status
-									</label>
-									<select
-										value={status}
-										onChange={(e) =>
-											setStatus(
-												e
-													.target
-													.value as VisitStatus
-											)
-										}
-										disabled={
-											updateVisit.isPending
-										}
-										className="appearance-none w-full p-2 bg-zinc-900 text-white border border-zinc-700 rounded-sm outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors"
-									>
-										{VisitStatusValues.map(
-											(val) => (
-												<option
-													key={
-														val
-													}
-													value={
-														val
-													}
-												>
-													{val ===
-													"InProgress"
-														? "In Progress"
-														: val ===
-															  "OnSite"
-															? "On Site"
-															: val}
-												</option>
-											)
-										)}
-									</select>
-								</div>
-
-								<div>
-									<label className="text-sm text-zinc-300 mb-1 block">
-										Visit Date *
-									</label>
-									<DatePicker
-										value={startDate}
-										onChange={(date) =>
-											setStartDate(
-												date ||
-													originalStartDate.current
-											)
-										}
-									/>
-									{startDate.toDateString() !==
-										originalStartDate.current.toDateString() && (
-										<p className="text-xs text-blue-400 mt-1">
-											Changed from{" "}
-											{originalStartDate.current.toLocaleDateString(
-												"en-US",
-												{
-													month: "short",
-													day: "numeric",
-													year: "numeric",
-												}
-											)}
-										</p>
+						<div className="min-w-0">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								Description (Optional)
+							</label>
+							<div className="relative">
+								<textarea
+									value={getValue(
+										"description"
 									)}
-								</div>
+									onChange={(e) =>
+										updateField(
+											"description",
+											e.target
+												.value
+										)
+									}
+									disabled={isLoading}
+									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+								/>
+								<UndoButtonTop
+									show={isDirty(
+										"description"
+									)}
+									onUndo={() =>
+										undoField(
+											"description"
+										)
+									}
+									disabled={isLoading}
+								/>
 							</div>
+							<ErrorDisplay path="description" />
+						</div>
+
+						<div
+							className="relative min-w-0"
+							style={{ zIndex: 50 }}
+						>
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								Visit Date *
+							</label>
+							<DatePicker
+								mode="edit"
+								originalValue={
+									fields.startDate
+										.originalValue
+								}
+								value={getValue("startDate")}
+								position="above"
+								required={true}
+								disabled={isLoading}
+								onChange={(d) =>
+									updateField(
+										"startDate",
+										d ||
+											fields
+												.startDate
+												.originalValue
+									)
+								}
+							/>
 						</div>
 					</div>
+				);
 
-					{/* SECTION 2: Time Constraints */}
-					<div id="time-constraints" className="scroll-mt-4">
-						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
-							<h3 className="text-lg font-semibold mb-4">
-								Time Constraints
-							</h3>
-
-							<div className="space-y-4">
-								{/* Arrival Constraint */}
-								<div>
-									<label className="text-sm text-zinc-300 mb-2 block">
-										Arrival
-									</label>
-									<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-										<div>
-											<select
-												value={
-													arrivalConstraint
-												}
-												onChange={(
-													e
-												) =>
-													setArrivalConstraint(
-														e
-															.target
-															.value as ArrivalConstraint
-													)
-												}
-												disabled={
-													updateVisit.isPending
-												}
-												className="appearance-none w-full p-2 bg-zinc-900 text-white border border-zinc-700 rounded-sm outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors"
-											>
-												{ArrivalConstraintValues.map(
-													(
-														val
-													) => (
-														<option
-															key={
-																val
-															}
-															value={
-																val
-															}
-														>
-															{val ===
-															"anytime"
-																? "Anytime"
-																: val ===
-																	  "at"
-																	? "At specific time"
-																	: val ===
-																		  "between"
-																		? "Between times"
-																		: "By deadline"}
-														</option>
-													)
-												)}
-											</select>
-										</div>
-
-										<div className="space-y-2">
-											{arrivalConstraint ===
-												"at" && (
-												<TimePicker
-													value={
-														arrivalTime
-													}
-													onChange={
-														setArrivalTime
-													}
-												/>
-											)}
-
-											{arrivalConstraint ===
-												"between" && (
-												<>
-													<TimePicker
-														value={
-															arrivalWindowStart
-														}
-														onChange={
-															setArrivalWindowStart
-														}
-													/>
-													<TimePicker
-														value={
-															arrivalWindowEnd
-														}
-														onChange={
-															setArrivalWindowEnd
-														}
-													/>
-												</>
-											)}
-
-											{arrivalConstraint ===
-												"by" && (
-												<TimePicker
-													value={
-														arrivalWindowEnd
-													}
-													onChange={
-														setArrivalWindowEnd
-													}
-												/>
-											)}
-										</div>
-									</div>
-								</div>
-
-								{/* Finish Constraint */}
-								<div>
-									<label className="text-sm text-zinc-300 mb-2 block">
-										Finish
-									</label>
-									<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-										<div>
-											<select
-												value={
-													finishConstraint
-												}
-												onChange={(
-													e
-												) =>
-													setFinishConstraint(
-														e
-															.target
-															.value as FinishConstraint
-													)
-												}
-												disabled={
-													updateVisit.isPending
-												}
-												className="appearance-none w-full p-2 bg-zinc-900 text-white border border-zinc-700 rounded-sm outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors"
-											>
-												{FinishConstraintValues.map(
-													(
-														val
-													) => (
-														<option
-															key={
-																val
-															}
-															value={
-																val
-															}
-														>
-															{val ===
-															"when_done"
-																? "When done"
-																: val ===
-																	  "at"
-																	? "At specific time"
-																	: "By deadline"}
-														</option>
-													)
-												)}
-											</select>
-										</div>
-
-										<div>
-											{(finishConstraint ===
-												"at" ||
-												finishConstraint ===
-													"by") && (
-												<TimePicker
-													value={
-														finishTime
-													}
-													onChange={
-														setFinishTime
-													}
-												/>
-											)}
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
+			case 2:
+				return (
+					<div className="space-y-2 lg:space-y-3 min-w-0 ">
+						<TimeConstraints
+							mode="edit"
+							initialArrivalConstraint={
+								timeConstraintsState?.arrivalConstraint
+							}
+							initialFinishConstraint={
+								timeConstraintsState?.finishConstraint
+							}
+							initialArrivalTime={
+								timeConstraintsState?.arrivalTime ||
+								null
+							}
+							initialArrivalWindowStart={
+								timeConstraintsState?.arrivalWindowStart ||
+								null
+							}
+							initialArrivalWindowEnd={
+								timeConstraintsState?.arrivalWindowEnd ||
+								null
+							}
+							initialFinishTime={
+								timeConstraintsState?.finishTime ||
+								null
+							}
+							onStateChange={setTimeConstraintsState}
+							isLoading={isLoading}
+						/>
+						<ErrorDisplay path="arrival_constraint" />
+						<ErrorDisplay path="arrival_time" />
+						<ErrorDisplay path="arrival_window_start" />
+						<ErrorDisplay path="arrival_window_end" />
+						<ErrorDisplay path="finish_constraint" />
+						<ErrorDisplay path="finish_time" />
 					</div>
+				);
 
-					{/* SECTION 3: Assign Technicians */}
-					<div id="technicians" className="scroll-mt-4">
-						<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 mb-4">
-							<h3 className="text-lg font-semibold mb-4">
+			case 3:
+				return (
+					<div className="min-w-0 flex flex-col">
+						<ErrorDisplay path="line_items" />
+						<LineItemsSection
+							lineItems={lineItems.activeLineItems}
+							isLoading={isLoading}
+							onAdd={lineItems.addLineItem}
+							onRemove={lineItems.removeLineItem}
+							onUpdate={lineItems.updateLineItem}
+							subtotal={lineItems.subtotal}
+							required={false}
+							minItems={1}
+							dirtyFields={lineItems.dirtyLineItemFields}
+							onUndo={lineItems.undoLineItemField}
+							onClear={lineItems.clearLineItemField}
+						/>
+					</div>
+				);
+
+			case 4:
+				return (
+					<div className="space-y-2 lg:space-y-3 min-w-0">
+						<div className="p-3 lg:p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+							<h3 className="text-base lg:text-lg font-semibold mb-3 lg:mb-4 text-white">
 								Assign Technicians
 							</h3>
-
-							<div className="border border-zinc-700 rounded-sm p-3 max-h-48 overflow-y-auto bg-zinc-900">
-								{technicians &&
-								technicians.length > 0 ? (
-									<div className="space-y-2">
+							<div className="border border-zinc-700 rounded-md p-3 max-h-56 overflow-y-auto bg-zinc-900">
+								{technicians?.length ? (
+									<div className="space-y-1 lg:space-y-2">
 										{technicians.map(
 											(tech) => (
 												<label
@@ -623,11 +657,11 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 															)
 														}
 														disabled={
-															updateVisit.isPending
+															isLoading
 														}
 														className="w-4 h-4 accent-blue-600"
 													/>
-													<span className="text-white text-sm flex-1">
+													<span className="text-white text-sm lg:text-base flex-1">
 														{
 															tech.name
 														}{" "}
@@ -662,9 +696,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 									</p>
 								)}
 							</div>
-
 							{selectedTechIds.length > 0 && (
-								<p className="text-sm text-zinc-400 mt-2">
+								<p className="text-xs lg:text-sm text-zinc-400 mt-2">
 									{selectedTechIds.length}{" "}
 									technician
 									{selectedTechIds.length > 1
@@ -675,49 +708,46 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							)}
 						</div>
 					</div>
-				</div>
-			</div>
+				);
 
-			<div className="flex-shrink-0 border-t border-zinc-700 pt-3 pb-2">
-				<div className="flex gap-3">
-					<button
-						type="button"
-						onClick={handleSubmit}
-						disabled={updateVisit.isPending}
-						className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors"
-					>
-						{updateVisit.isPending
-							? "Saving..."
-							: "Save Changes"}
-					</button>
-					<button
-						type="button"
-						onClick={handleDelete}
-						onMouseLeave={() => setDeleteConfirm(false)}
-						disabled={deleteVisit.isPending}
-						className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-							deleteConfirm
-								? "bg-red-600 hover:bg-red-700 text-white"
-								: "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-						} disabled:opacity-50 disabled:cursor-not-allowed`}
-					>
-						<Trash2 size={16} />
-						{deleteVisit.isPending
-							? "Deleting..."
-							: deleteConfirm
-								? "Confirm Delete"
-								: "Delete"}
-					</button>
-				</div>
-			</div>
-		</div>
-	);
+			default:
+				return null;
+		}
+	}, [
+		currentStep,
+		getValue,
+		updateField,
+		undoField,
+		isDirty,
+		isLoading,
+		fields,
+		timeConstraintsState,
+		lineItems,
+		technicians,
+		selectedTechIds,
+		handleTechSelection,
+		ErrorDisplay,
+	]);
 
 	return (
-		<FullPopup
-			content={content}
-			isModalOpen={isModalOpen}
+		<FormWizardContainer
+			title="Edit Job Visit"
+			steps={STEPS}
+			currentStep={currentStep}
+			visitedSteps={visitedSteps}
+			isLoading={isLoading}
+			isOpen={isModalOpen}
 			onClose={() => setIsModalOpen(false)}
-		/>
+			canGoToStep={canGoToStep}
+			onStepClick={handleGoToStep}
+			onNext={handleNext}
+			onBack={goBack}
+			onSubmit={invokeSave}
+			canGoNext={canGoNext}
+			submitLabel="Save Changes"
+			isEditMode={true}
+		>
+			{stepContent}
+		</FormWizardContainer>
 	);
 }
