@@ -6,7 +6,7 @@ import { loginCall } from "../api/authenticate.ts"
 export default function LoginPage() {
 	const { login } = useAuthStore();
 	const [role, setRole] = useState<"dispatch" | "technician">("dispatch");
-	const [name, setName] = useState("");
+	const [name, setName] = useState("user");
 	const [password, setPassword] = useState("");
 	const navigate = useNavigate();
 
