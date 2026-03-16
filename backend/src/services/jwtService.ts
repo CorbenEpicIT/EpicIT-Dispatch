@@ -12,7 +12,7 @@ interface User {
     password: string;
     last_login: Date;
 }
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET ?? "demo-secret-key";
 
 export const generateAccessToken = (user: User, role: string)=>{
         if (!JWT_SECRET) {
@@ -30,7 +30,7 @@ export const generateAccessToken = (user: User, role: string)=>{
 }
 
 export const verifyToken = (token: string) => {
-    if (!JWT_SECRET){
+    if (!JWT_SECRET) {
         throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
     }
     return jwt.verify(token, JWT_SECRET) as {
