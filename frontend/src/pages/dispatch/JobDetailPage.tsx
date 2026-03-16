@@ -2,7 +2,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import {
 	Edit2,
-	User,
 	Calendar,
 	MapPin,
 	Clock,
@@ -10,14 +9,13 @@ import {
 	TrendingUp,
 	Map,
 	Plus,
-	Mail,
-	Phone,
 	FileText,
-	Briefcase,
 	DollarSign,
 	ChevronRight,
 	MoreVertical,
 	Trash2,
+	Repeat,
+	Link2Off,
 } from "lucide-react";
 import {
 	useJobByIdQuery,
@@ -27,6 +25,7 @@ import {
 } from "../../hooks/useJobs";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import Card from "../../components/ui/Card";
+import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJob from "../../components/jobs/EditJob";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
 import {
@@ -35,11 +34,10 @@ import {
 	type VisitStatus,
 	type JobLineItem,
 } from "../../types/jobs";
+import { RecurringPlanStatusColors, RecurringPlanStatusLabels } from "../../types/recurringPlans";
 import { QuoteStatusColors } from "../../types/quotes";
 import { RequestStatusColors } from "../../types/requests";
 import { getGenericStatusColor, PriorityColors } from "../../types/common";
-import type { ClientContact } from "../../types/clients";
-
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
 
 export default function JobDetailPage() {
@@ -67,20 +65,16 @@ export default function JobDetailPage() {
 				setDeleteConfirm(false);
 			}
 		};
-
 		document.addEventListener("mousedown", handleClickOutside);
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
 	const handleDeleteJob = async () => {
 		if (!jobId) return;
-
-		// First click arms the confirmation
 		if (!deleteConfirm) {
 			setDeleteConfirm(true);
 			return;
 		}
-
 		try {
 			await deleteJobMutation.mutateAsync(jobId);
 			setIsOptionsMenuOpen(false);
@@ -106,10 +100,6 @@ export default function JobDetailPage() {
 		);
 	}
 
-	const primaryContact = job.client?.contacts?.find(
-		(cc: ClientContact) => cc.is_primary
-	)?.contact;
-
 	const sortedVisits = [...visits].sort(
 		(a, b) =>
 			new Date(a.scheduled_start_at).getTime() -
@@ -118,6 +108,7 @@ export default function JobDetailPage() {
 
 	const lineItems: JobLineItem[] = job.line_items || [];
 	const hasLineItems = lineItems.length > 0;
+	const recurringPlan = job.recurring_plan ?? null;
 
 	const formatVisitTimeConstraints = (visit: (typeof visits)[0]): string => {
 		const {
@@ -191,7 +182,6 @@ export default function JobDetailPage() {
 						{job.status}
 					</span>
 
-					{/* Options Menu */}
 					<div className="relative" ref={optionsMenuRef}>
 						<button
 							onClick={() => {
@@ -223,10 +213,7 @@ export default function JobDetailPage() {
 										<Edit2 size={16} />
 										Edit Job
 									</button>
-
 									<div className="my-1 border-t border-zinc-800" />
-
-									{/* Delete Button (QuoteDetailPage-style confirm) */}
 									<button
 										onClick={
 											handleDeleteJob
@@ -259,9 +246,8 @@ export default function JobDetailPage() {
 				</div>
 			</div>
 
-			{/* Job Information (2/3) and Client Details (1/3) */}
+			{/* Job Information (2/3) + Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				{/* Job Information - 2/3 width */}
 				<div className="lg:col-span-2">
 					<Card title="Job Information" className="h-full">
 						<div className="space-y-4">
@@ -274,7 +260,6 @@ export default function JobDetailPage() {
 										"No description provided"}
 								</p>
 							</div>
-
 							<div>
 								<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
 									<MapPin size={14} />
@@ -284,7 +269,6 @@ export default function JobDetailPage() {
 									{job.address}
 								</p>
 							</div>
-
 							<div className="grid grid-cols-2 gap-4">
 								<div>
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
@@ -336,123 +320,15 @@ export default function JobDetailPage() {
 					</Card>
 				</div>
 
-				{/* Client Details - 1/3 width */}
 				<div className="lg:col-span-1">
-					<Card
-						title="Client Details"
-						headerAction={
-							job.client?.is_active !== undefined && (
-								<span
-									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-										job.client.is_active
-											? "bg-green-500/20 text-green-400 border-green-500/30"
-											: "bg-red-500/20 text-red-400 border-red-500/30"
-									}`}
-								>
-									{job.client.is_active
-										? "Active"
-										: "Inactive"}
-								</span>
-							)
-						}
-						className="h-full"
-					>
-						<div className="space-y-4">
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-2 flex items-center gap-2">
-									<User size={14} />
-									Client Name
-								</h3>
-								<p>
-									{job.client?.name ||
-										"Unknown Client"}
-								</p>
-							</div>
-
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-1">
-									Address
-								</h3>
-								<p className="text-white text-sm break-words">
-									{job.client?.address ||
-										"No address available"}
-								</p>
-							</div>
-
-							{/* Primary Contact within Client Card */}
-							{primaryContact && (
-								<div className="pt-4 border-t border-zinc-700">
-									<div className="flex items-center justify-between mb-3">
-										<h3 className="text-zinc-400 text-sm">
-											Primary
-											Contact
-										</h3>
-										{primaryContact.title && (
-											<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
-												{
-													primaryContact.title
-												}
-											</span>
-										)}
-									</div>
-									<div className="space-y-2">
-										<p className="text-white font-medium">
-											{
-												primaryContact.name
-											}
-										</p>
-
-										{primaryContact.email && (
-											<div className="flex items-center gap-2 text-sm">
-												<Mail
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<a className="text-white truncate">
-													{
-														primaryContact.email
-													}
-												</a>
-											</div>
-										)}
-
-										{primaryContact.phone && (
-											<div className="flex items-center gap-2 text-sm">
-												<Phone
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<a className="text-white">
-													{
-														primaryContact.phone
-													}
-												</a>
-											</div>
-										)}
-									</div>
-								</div>
-							)}
-
-							<button
-								onClick={() =>
-									navigate(
-										`/dispatch/clients/${job.client_id}`
-									)
-								}
-								className="w-full mt-4 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors"
-							>
-								View Full Client Profile
-							</button>
-						</div>
-					</Card>
+					<ClientDetailsCard
+						client_id={job.client_id}
+						client={job.client}
+					/>
 				</div>
 			</div>
 
-			{/* Financial Summary Card - Full Width */}
+			{/* Financial Summary */}
 			<Card title="Financial Summary">
 				{!job.estimated_total && !job.actual_total && !hasLineItems ? (
 					<div className="text-center py-8">
@@ -470,12 +346,10 @@ export default function JobDetailPage() {
 					</div>
 				) : (
 					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-						{/* Left Column - Line Items Table (2/3 width) */}
 						<div className="lg:col-span-2">
 							<h3 className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-4">
 								Line Items
 							</h3>
-
 							{!hasLineItems ? (
 								<div className="text-center py-8">
 									<FileText
@@ -493,7 +367,6 @@ export default function JobDetailPage() {
 								</div>
 							) : (
 								<div className="space-y-1">
-									{/* Table Header */}
 									<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
 										<div className="col-span-5">
 											Description
@@ -511,8 +384,6 @@ export default function JobDetailPage() {
 											Amount
 										</div>
 									</div>
-
-									{/* Line Items */}
 									{lineItems.map(
 										(
 											item: JobLineItem,
@@ -525,7 +396,6 @@ export default function JobDetailPage() {
 												}
 												className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
 											>
-												{/* Description */}
 												<div className="col-span-5 text-sm">
 													<p className="text-white font-medium">
 														{
@@ -540,8 +410,6 @@ export default function JobDetailPage() {
 														</p>
 													)}
 												</div>
-
-												{/* Type Badge */}
 												<div className="col-span-1 flex items-center justify-center">
 													{item.item_type && (
 														<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
@@ -551,8 +419,6 @@ export default function JobDetailPage() {
 														</span>
 													)}
 												</div>
-
-												{/* Quantity */}
 												<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
 													{Number(
 														item.quantity
@@ -564,8 +430,6 @@ export default function JobDetailPage() {
 														}
 													)}
 												</div>
-
-												{/* Unit Price */}
 												<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
 													{formatCurrency(
 														Number(
@@ -573,8 +437,6 @@ export default function JobDetailPage() {
 														)
 													)}
 												</div>
-
-												{/* Amount */}
 												<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
 													{formatCurrency(
 														Number(
@@ -589,9 +451,7 @@ export default function JobDetailPage() {
 							)}
 						</div>
 
-						{/* Right Column - Financial Breakdown (1/3 width) */}
 						<div className="lg:col-span-1 space-y-6">
-							{/* Job Metadata */}
 							<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
 								<div className="flex justify-between text-sm">
 									<span className="text-zinc-400">
@@ -612,9 +472,7 @@ export default function JobDetailPage() {
 								</div>
 							</div>
 
-							{/* Financial Breakdown */}
 							<div className="space-y-3">
-								{/* Estimated Total */}
 								{job.estimated_total && (
 									<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
 										<div>
@@ -637,7 +495,6 @@ export default function JobDetailPage() {
 									</div>
 								)}
 
-								{/* Actual Total */}
 								{job.actual_total && (
 									<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
 										<div>
@@ -660,13 +517,10 @@ export default function JobDetailPage() {
 									</div>
 								)}
 
-								{/* Variance - if both totals exist */}
 								{job.estimated_total &&
 									job.actual_total && (
 										<>
-											{/* Divider */}
-											<div className="border-t border-zinc-700 my-2"></div>
-
+											<div className="border-t border-zinc-700 my-2" />
 											<div
 												className={`px-4 py-3 rounded-lg border-2 ${
 													Number(
@@ -772,7 +626,6 @@ export default function JobDetailPage() {
 										</>
 									)}
 
-								{/* Status Message */}
 								{!job.actual_total &&
 									job.estimated_total &&
 									job.status !==
@@ -802,171 +655,208 @@ export default function JobDetailPage() {
 				)}
 			</Card>
 
-			{/* Related Request and Quote - Half Width Layout */}
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				{/* Related Request - Half Width */}
-				<Card title="Related Request">
-					{!job.request ? (
-						<div className="text-center py-8">
-							<Briefcase
-								size={40}
-								className="mx-auto text-zinc-600 mb-3"
-							/>
-							<h3 className="text-zinc-400 text-sm font-medium mb-1">
-								No Request
-							</h3>
-							<p className="text-zinc-500 text-xs">
-								This job was not created from a
-								request.
-							</p>
-						</div>
-					) : (
-						<button
-							onClick={() =>
-								navigate(
-									`/dispatch/requests/${job.request!.id}`
-								)
-							}
-							className="w-full p-4 bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
-						>
-							<div className="flex items-start justify-between gap-3">
-								<div className="flex-1 min-w-0">
-									<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
-										{job.request!.title}
-									</h4>
-									<div className="flex items-center gap-2 text-xs text-zinc-500 mt-2">
-										<Calendar
-											size={12}
-										/>
-										<span>
-											{new Date(
-												job
-													.request!
-													.created_at
-											).toLocaleDateString(
-												"en-US",
-												{
-													month: "short",
-													day: "numeric",
-													year: "numeric",
-												}
-											)}
-										</span>
-									</div>
+			{/* Relations Row: Request + Quote + (optional) Recurring Plan */}
+			<div
+				className={`grid grid-cols-1 gap-4 ${
+					recurringPlan ? "lg:grid-cols-3" : "lg:grid-cols-2"
+				}`}
+			>
+				{/* Request */}
+				{job.request ? (
+					<button
+						onClick={() =>
+							navigate(
+								`/dispatch/requests/${job.request!.id}`
+							)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Request
+						</p>
+						<div className="flex items-start justify-between gap-3">
+							<div className="flex-1 min-w-0">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+									{job.request.title}
+								</h4>
+								<div className="flex items-center gap-2 text-xs text-zinc-500 mt-2">
+									<Calendar size={12} />
+									<span>
+										{new Date(
+											job.request
+												.created_at
+										).toLocaleDateString(
+											"en-US",
+											{
+												month: "short",
+												day: "numeric",
+												year: "numeric",
+											}
+										)}
+									</span>
 								</div>
+							</div>
+							<span
+								className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+									RequestStatusColors[
+										job.request
+											.status as keyof typeof RequestStatusColors
+									] ||
+									getGenericStatusColor(
+										job.request.status
+									)
+								}`}
+							>
+								{job.request.status}
+							</span>
+						</div>
+					</button>
+				) : (
+					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Request
+						</p>
+						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+							<Link2Off size={14} />
+							<span>No request linked</span>
+						</div>
+					</div>
+				)}
+
+				{/* Quote */}
+				{job.quote ? (
+					<button
+						onClick={() =>
+							navigate(
+								`/dispatch/quotes/${job.quote!.id}`
+							)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Quote
+						</p>
+						<div className="flex items-start justify-between gap-3">
+							<div className="flex-1 min-w-0">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+									{job.quote.quote_number}
+								</h4>
+								<p className="text-zinc-400 text-xs mb-2">
+									{job.quote.title}
+								</p>
+								<div className="flex items-center gap-2 text-xs text-zinc-500">
+									<Calendar size={12} />
+									<span>
+										{new Date(
+											job.quote
+												.created_at
+										).toLocaleDateString(
+											"en-US",
+											{
+												month: "short",
+												day: "numeric",
+												year: "numeric",
+											}
+										)}
+									</span>
+								</div>
+							</div>
+							<div className="flex flex-col items-end gap-2 flex-shrink-0">
+								<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+									$
+									{Number(
+										job.quote.total
+									).toLocaleString("en-US", {
+										minimumFractionDigits: 2,
+										maximumFractionDigits: 2,
+									})}
+								</span>
 								<span
-									className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-										RequestStatusColors[
-											job.request!
-												.status as keyof typeof RequestStatusColors
+									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+										QuoteStatusColors[
+											job.quote
+												.status as keyof typeof QuoteStatusColors
 										] ||
 										getGenericStatusColor(
-											job.request!
+											job.quote
 												.status
 										)
 									}`}
 								>
-									{job.request!.status}
+									{job.quote.status}
 								</span>
 							</div>
-						</button>
-					)}
-				</Card>
-
-				{/* Related Quote - Half Width */}
-				<Card title="Related Quote">
-					{!job.quote ? (
-						<div className="text-center py-8">
-							<FileText
-								size={40}
-								className="mx-auto text-zinc-600 mb-3"
-							/>
-							<h3 className="text-zinc-400 text-sm font-medium mb-1">
-								No Quote
-							</h3>
-							<p className="text-zinc-500 text-xs">
-								This job was not created from a
-								quote.
-							</p>
 						</div>
-					) : (
-						<button
-							onClick={() =>
-								navigate(
-									`/dispatch/quotes/${job.quote!.id}`
-								)
-							}
-							className="w-full p-4 bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
-						>
-							<div className="flex items-start justify-between gap-3">
-								<div className="flex-1 min-w-0">
-									<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
-										{
-											job.quote!
-												.quote_number
-										}
-									</h4>
-									<p className="text-zinc-400 text-xs mb-2">
-										{job.quote!.title}
-									</p>
-									<div className="flex items-center gap-2 text-xs text-zinc-500">
-										<Calendar
-											size={12}
-										/>
-										<span>
-											{new Date(
-												job
-													.quote!
-													.created_at
-											).toLocaleDateString(
-												"en-US",
-												{
-													month: "short",
-													day: "numeric",
-													year: "numeric",
-												}
-											)}
-										</span>
-									</div>
-								</div>
-								<div className="flex flex-col items-end gap-2 flex-shrink-0">
-									<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
-										$
-										{Number(
-											job.quote!
-												.total
-										).toLocaleString(
-											"en-US",
-											{
-												minimumFractionDigits: 2,
-												maximumFractionDigits: 2,
-											}
-										)}
-									</span>
-									<span
-										className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-											QuoteStatusColors[
-												job
-													.quote!
-													.status as keyof typeof QuoteStatusColors
-											] ||
-											getGenericStatusColor(
-												job
-													.quote!
-													.status
-											)
-										}`}
-									>
-										{job.quote!.status}
-									</span>
-								</div>
+					</button>
+				) : (
+					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Quote
+						</p>
+						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+							<Link2Off size={14} />
+							<span>No quote linked</span>
+						</div>
+					</div>
+				)}
+
+				{/* Recurring Plan — only rendered when linked */}
+				{recurringPlan && (
+					<button
+						onClick={() =>
+							navigate(
+								`/dispatch/recurring-plans/${recurringPlan.id}`
+							)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all text-left group cursor-pointer"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Recurring Plan
+						</p>
+						<div className="flex items-start justify-between gap-3 mb-3">
+							<div className="flex items-center gap-2 min-w-0">
+								<Repeat
+									size={14}
+									className="text-blue-400 flex-shrink-0"
+								/>
+								<h4 className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors truncate">
+									{recurringPlan.name}
+								</h4>
 							</div>
-						</button>
-					)}
-				</Card>
+							<span
+								className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+									RecurringPlanStatusColors[
+										recurringPlan.status
+									] ||
+									"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+								}`}
+							>
+								{RecurringPlanStatusLabels[
+									recurringPlan.status
+								] || recurringPlan.status}
+							</span>
+						</div>
+						<div className="flex items-center gap-2 text-xs text-zinc-400">
+							<Calendar
+								size={12}
+								className="flex-shrink-0"
+							/>
+							<span>
+								Started{" "}
+								{new Date(
+									recurringPlan.starts_at
+								).toLocaleDateString("en-US", {
+									month: "short",
+									day: "numeric",
+									year: "numeric",
+								})}
+							</span>
+						</div>
+					</button>
+				)}
 			</div>
 
-			{/* Scheduled Visits - Full Width */}
+			{/* Scheduled Visits */}
 			<Card
 				title="Scheduled Visits"
 				headerAction={
@@ -975,7 +865,7 @@ export default function JobDetailPage() {
 							onClick={() =>
 								setIsCreateVisitModalOpen(true)
 							}
-							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors cursor-pointer"
 						>
 							<Plus size={16} />
 							Create Visit
@@ -1017,7 +907,6 @@ export default function JobDetailPage() {
 								}
 								className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 hover:border-blue-500 hover:bg-zinc-750 transition-all cursor-pointer text-left group w-fit"
 							>
-								{/* Visit Name Header */}
 								{visit.name && (
 									<h4 className="text-white font-semibold text-base mb-2 group-hover:text-blue-400 transition-colors">
 										{visit.name}
@@ -1054,7 +943,6 @@ export default function JobDetailPage() {
 								</div>
 
 								<div className="space-y-2">
-									{/* Date & Time */}
 									<div className="flex items-center gap-2 text-sm">
 										<Clock
 											size={16}
@@ -1079,7 +967,6 @@ export default function JobDetailPage() {
 										</span>
 									</div>
 
-									{/* Technicians */}
 									{visit.visit_techs &&
 										visit.visit_techs
 											.length >
@@ -1108,7 +995,6 @@ export default function JobDetailPage() {
 											</div>
 										)}
 
-									{/* Description (if exists and no name) */}
 									{visit.description &&
 										!visit.name && (
 											<div className="text-xs text-zinc-400 italic mt-2 line-clamp-2">
@@ -1118,7 +1004,6 @@ export default function JobDetailPage() {
 											</div>
 										)}
 
-									{/* Actual Times (if completed) */}
 									{visit.actual_start_at &&
 										visit.actual_end_at && (
 											<div className="mt-2 pt-2 border-t border-zinc-700 text-xs text-zinc-400">
@@ -1139,61 +1024,7 @@ export default function JobDetailPage() {
 				)}
 			</Card>
 
-			{/* Status Timeline - Full Width */}
-			<Card title="Status Timeline" className="h-fit">
-				<div className="py-8">
-					<div className="max-w-4xl mx-auto">
-						<div className="flex items-center justify-center mb-6">
-							<TrendingUp
-								size={48}
-								className="text-zinc-600"
-							/>
-						</div>
-						<h3 className="text-zinc-400 text-lg font-medium mb-2 text-center">
-							Job Timeline
-						</h3>
-						<p className="text-zinc-500 text-sm text-center max-w-2xl mx-auto mb-6">
-							Track status changes and key milestones
-							throughout the job lifecycle.
-						</p>
-						<div className="flex items-center justify-center gap-8 mt-8">
-							<div className="flex items-center gap-3">
-								<div className="w-3 h-3 rounded-full bg-green-500 flex-shrink-0"></div>
-								<div>
-									<p className="text-zinc-400 text-xs">
-										Current Status
-									</p>
-									<p className="text-white text-sm font-medium">
-										{job.status}
-									</p>
-								</div>
-							</div>
-							<div className="flex items-center gap-3">
-								<div className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0"></div>
-								<div>
-									<p className="text-zinc-400 text-xs">
-										Total Visits
-									</p>
-									<p className="text-white text-sm font-medium">
-										{visits.length}
-									</p>
-								</div>
-							</div>
-							<div className="flex items-center gap-3 opacity-50">
-								<div className="w-3 h-3 rounded-full bg-zinc-600 flex-shrink-0"></div>
-								<div>
-									<p className="text-zinc-500 text-xs">
-										Detailed timeline
-										coming soon
-									</p>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</Card>
-
-			{/* Assigned Technicians and Technician Location - Two Column */}
+			{/* Assigned Technicians + Technician Location */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				<Card
 					title="Assigned Technicians"
@@ -1266,7 +1097,6 @@ export default function JobDetailPage() {
 										key={visit.id}
 										className="space-y-2"
 									>
-										{/* Visit Header - Now Clickable */}
 										<button
 											onClick={() =>
 												navigate(
@@ -1317,7 +1147,6 @@ export default function JobDetailPage() {
 											/>
 										</button>
 
-										{/* Technician Cards */}
 										{visit.visit_techs.map(
 											(vt) => (
 												<button
@@ -1335,7 +1164,6 @@ export default function JobDetailPage() {
 													className="w-full bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group"
 												>
 													<div className="flex items-center gap-3">
-														{/* Profile Picture / Avatar */}
 														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
 															{vt.tech.name
 																.split(
@@ -1356,18 +1184,14 @@ export default function JobDetailPage() {
 																	2
 																)}
 														</div>
-
-														{/* Tech Info */}
 														<div className="flex-1 min-w-0">
-															<div className="flex items-center gap-2 mb-1">
-																<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors">
-																	{
-																		vt
-																			.tech
-																			.name
-																	}
-																</h4>
-															</div>
+															<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors mb-1">
+																{
+																	vt
+																		.tech
+																		.name
+																}
+															</h4>
 															<div className="flex items-center gap-2 text-xs text-zinc-400">
 																<span className="truncate">
 																	{
@@ -1394,8 +1218,6 @@ export default function JobDetailPage() {
 																)}
 															</div>
 														</div>
-
-														{/* Status Badge */}
 														<div className="flex items-center gap-2 flex-shrink-0">
 															<span
 																className={`px-2 py-1 rounded text-xs font-medium ${

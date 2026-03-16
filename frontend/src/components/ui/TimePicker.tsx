@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
 
 interface TimePickerProps {
@@ -7,503 +8,543 @@ interface TimePickerProps {
 	dropdownPosition?: "above" | "below";
 }
 
+type Section = "hour" | "minute" | "period";
+
+// Resolve a partial/incomplete display string to a valid integer, clamped to range.
+// "_" suffix means the user typed one digit — treat the digit as the full value.
+const resolveHour = (h: string): number => {
+	if (h === "--") return 12;
+	const n = parseInt(h.replace("_", ""));
+	if (isNaN(n)) return 12;
+	return Math.min(Math.max(n, 1), 12);
+};
+
+const resolveMinute = (m: string): number => {
+	if (m === "--") return 0;
+	const n = parseInt(m.replace("_", ""));
+	if (isNaN(n)) return 0;
+	return Math.min(Math.max(n, 0), 59);
+};
+
+const resolvePeriod = (p: string): "AM" | "PM" => (p === "PM" ? "PM" : "AM");
+
+const toDisplay = (v: Date | null) => {
+	const d = v ?? new Date();
+	const h = d.getHours();
+	return {
+		hour: (h % 12 || 12).toString().padStart(2, "0"),
+		minute: d.getMinutes().toString().padStart(2, "0"),
+		period: (h >= 12 ? "PM" : "AM") as "AM" | "PM",
+	};
+};
+
 export default function TimePicker({
 	value,
 	onChange,
 	dropdownPosition = "below",
 }: TimePickerProps) {
 	const [open, setOpen] = useState(false);
-	const [focusedSection, setFocusedSection] = useState<"hour" | "minute" | "period" | null>(
-		null
-	);
+	const [focusedSection, setFocusedSection] = useState<Section | null>(null);
+	const [popupCoords, setPopupCoords] = useState<{
+		top: number;
+		left: number;
+	} | null>(null);
 
-	const date = value ? new Date(value) : new Date();
-	const currentH = date.getHours();
-	const currentM = date.getMinutes();
-
-	const display12Hour = currentH % 12 || 12;
-	const displayMinute = currentM;
-	const displayPeriod = currentH >= 12 ? "PM" : "AM";
-
-	const [hour, setHour] = useState<string>(display12Hour.toString().padStart(2, "0"));
-	const [minute, setMinute] = useState<string>(displayMinute.toString().padStart(2, "0"));
-	const [period, setPeriod] = useState<string>(displayPeriod);
+	const init = toDisplay(value);
+	const [hour, setHour] = useState<string>(init.hour);
+	const [minute, setMinute] = useState<string>(init.minute);
+	const [period, setPeriod] = useState<"AM" | "PM" | "--">(init.period);
 
 	const popupRef = useRef<HTMLDivElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
-	const hourRef = useRef<HTMLDivElement>(null);
-	const minuteRef = useRef<HTMLDivElement>(null);
-	const periodRef = useRef<HTMLDivElement>(null);
+	const anchorRef = useRef<HTMLDivElement>(null);
+	const lastAppliedRef = useRef<number | null>(value?.getTime() ?? null);
 
-	// Track if we're currently updating to prevent sync loops
-	const isUpdatingRef = useRef(false);
-
-	// Sync with value prop - but skip if we just updated it ourselves
+	// ── Sync from external value changes (draft restore, undo) ────────────
 	useEffect(() => {
-		if (isUpdatingRef.current) {
-			isUpdatingRef.current = false;
-			return;
-		}
-
+		const incoming = value?.getTime() ?? null;
+		if (incoming === lastAppliedRef.current) return;
+		lastAppliedRef.current = incoming;
 		if (value) {
-			const date = new Date(value);
-			const hrs = date.getHours();
-			const mins = date.getMinutes();
-
-			setHour((hrs % 12 || 12).toString().padStart(2, "0"));
-			setMinute(mins.toString().padStart(2, "0"));
-			setPeriod(hrs >= 12 ? "PM" : "AM");
+			const { hour: h, minute: m, period: p } = toDisplay(value);
+			setHour(h);
+			setMinute(m);
+			setPeriod(p);
 		}
 	}, [value]);
 
-	// Close on mousedown outside
+	// ── Commit: build a Date from current display state and fire onChange ──
+	// Tolerates incomplete entries — resolves them to nearest valid value.
+	// Always fires so blur/navigation never silently drops a partial edit.
+	const commit = useCallback(
+		(h: string, m: string, p: "AM" | "PM" | "--") => {
+			const resolvedH = resolveHour(h);
+			const resolvedM = resolveMinute(m);
+			const resolvedP = resolvePeriod(p);
+
+			// Normalise display to resolved values
+			const normH = resolvedH.toString().padStart(2, "0");
+			const normM = resolvedM.toString().padStart(2, "0");
+			setHour(normH);
+			setMinute(normM);
+			setPeriod(resolvedP);
+
+			const newDate = value ? new Date(value) : new Date();
+			let hrs = resolvedH;
+			if (resolvedP === "PM" && hrs !== 12) hrs += 12;
+			if (resolvedP === "AM" && hrs === 12) hrs = 0;
+			newDate.setHours(hrs, resolvedM, 0, 0);
+
+			const ts = newDate.getTime();
+			if (ts === lastAppliedRef.current) return; // no actual change
+			lastAppliedRef.current = ts;
+			onChange(newDate);
+		},
+		[value, onChange]
+	);
+
+	// ── Blur: commit when focus leaves the entire component ───────────────
+	const handleBlur = useCallback(
+		(e: React.FocusEvent) => {
+			const related = e.relatedTarget as Node | null;
+			// Ignore if focus moved to another element inside the container or the portal popup
+			if (containerRef.current?.contains(related)) return;
+			if (popupRef.current?.contains(related)) return;
+			if (focusedSection !== null) {
+				commit(hour, minute, period);
+				setFocusedSection(null);
+			}
+		},
+		[focusedSection, hour, minute, period, commit]
+	);
+
+	// ── Portal positioning ─────────────────────────────────────────────────
+	const openPopup = useCallback(() => {
+		if (!anchorRef.current) return;
+		const rect = anchorRef.current.getBoundingClientRect();
+		const POPUP_H = 180;
+		const above =
+			dropdownPosition === "above" ||
+			(dropdownPosition === "below" &&
+				window.innerHeight - rect.bottom < POPUP_H);
+		setPopupCoords({
+			top: above
+				? rect.top + window.scrollY - POPUP_H - 4
+				: rect.bottom + window.scrollY + 4,
+			left: rect.left + window.scrollX,
+		});
+		setOpen(true);
+	}, [dropdownPosition]);
+
 	useEffect(() => {
 		if (!open) return;
-
-		function handleClickOutside(e: MouseEvent) {
-			const target = e.target as Node;
-
-			if (popupRef.current?.contains(target)) {
-				return;
+		const handler = (e: MouseEvent) => {
+			const t = e.target as Node;
+			if (!popupRef.current?.contains(t) && !containerRef.current?.contains(t)) {
+				setOpen(false);
 			}
-			if (containerRef.current?.contains(target)) {
-				return;
-			}
+		};
+		document.addEventListener("mousedown", handler, true);
+		return () => document.removeEventListener("mousedown", handler, true);
+	}, [open]);
 
-			setOpen(false);
-		}
-		document.addEventListener("mousedown", handleClickOutside, true);
+	useEffect(() => {
+		if (!open) return;
+		const handler = () => setOpen(false);
+		window.addEventListener("scroll", handler, true);
+		window.addEventListener("resize", handler);
 		return () => {
-			document.removeEventListener("mousedown", handleClickOutside, true);
+			window.removeEventListener("scroll", handler, true);
+			window.removeEventListener("resize", handler);
 		};
 	}, [open]);
 
-	// Handle keyboard input
+	// ── Keyboard handler ──────────────────────────────────────────────────
 	useEffect(() => {
-		function handleKeyDown(e: KeyboardEvent) {
-			const target = e.target as HTMLElement;
-
-			if (!containerRef.current?.contains(target)) return;
-
-			// Only handle keyboard if a section is focused
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (!containerRef.current?.contains(e.target as HTMLElement)) return;
 			if (!focusedSection) return;
-
 			const key = e.key;
 
+			// ── Digits ────────────────────────────────────────────────────
 			if (/^[0-9]$/.test(key)) {
 				e.preventDefault();
+				const n = parseInt(key);
 
 				if (focusedSection === "hour") {
-					if (hour === "--") {
-						const num = parseInt(key);
-						if (num >= 2 && num <= 9) {
-							setHour("0" + key);
+					if (hour.includes("_")) {
+						const full = parseInt(hour[0] + key);
+						if (full >= 1 && full <= 12) {
+							const h = full.toString().padStart(2, "0");
+							setHour(h);
+							commit(h, minute, period);
 							setFocusedSection("minute");
-						} else if (num === 0) {
-							setHour("0" + key);
-						} else {
-							setHour(key + "_");
-						}
-					} else if (hour.includes("_")) {
-						const firstDigit = hour[0];
-						const secondDigit = key;
-						const fullHour = parseInt(firstDigit + secondDigit);
-
-						if (fullHour >= 1 && fullHour <= 12) {
-							setHour(
-								(firstDigit + secondDigit).padStart(
-									2,
-									"0"
-								)
-							);
+						} else if (full === 0) {
+							setHour("12");
+							commit("12", minute, period);
 							setFocusedSection("minute");
 						}
 					} else {
-						const num = parseInt(key);
-						if (num >= 2 && num <= 9) {
-							setHour("0" + key);
+						if (n === 0) {
+							setHour("0_");
+						} else if (n >= 2 && n <= 9) {
+							const h = "0" + key;
+							setHour(h);
+							commit(h, minute, period);
 							setFocusedSection("minute");
-						} else if (num === 0) {
-							setHour("0" + key);
 						} else {
 							setHour(key + "_");
 						}
 					}
 				} else if (focusedSection === "minute") {
-					if (minute === "--") {
-						setMinute(key + "_");
-					} else if (minute.includes("_")) {
-						const firstDigit = minute[0];
-						const secondDigit = key;
-						const fullMinute = parseInt(
-							firstDigit + secondDigit
-						);
-
-						if (fullMinute >= 0 && fullMinute <= 59) {
-							const newMin = (
-								firstDigit + secondDigit
-							).padStart(2, "0");
-							setMinute(newMin);
+					if (minute.includes("_")) {
+						const full = parseInt(minute[0] + key);
+						if (full >= 0 && full <= 59) {
+							const m = full.toString().padStart(2, "0");
+							setMinute(m);
+							commit(hour, m, period);
 							setFocusedSection("period");
 						}
 					} else {
-						setMinute(key + "_");
+						if (n <= 5) {
+							setMinute(key + "_");
+						} else {
+							const m = "0" + key;
+							setMinute(m);
+							commit(hour, m, period);
+							setFocusedSection("period");
+						}
 					}
+				}
+				return;
+			}
+
+			// ── Period keys ────────────────────────────────────────────────
+			if (focusedSection === "period") {
+				if (key === "a" || key === "A") {
+					e.preventDefault();
+					setPeriod("AM");
+					commit(hour, minute, "AM");
+				}
+				if (key === "p" || key === "P") {
+					e.preventDefault();
+					setPeriod("PM");
+					commit(hour, minute, "PM");
 				}
 			}
 
-			if ((key === "a" || key === "A") && focusedSection === "period") {
+			// ── Arrow Up/Down: increment/decrement value ───────────────────
+			if (key === "ArrowUp" || key === "ArrowDown") {
 				e.preventDefault();
-				setPeriod("AM");
-				applyTime(hour, minute, "AM");
-			}
-			if ((key === "p" || key === "P") && focusedSection === "period") {
-				e.preventDefault();
-				setPeriod("PM");
-				applyTime(hour, minute, "PM");
+				const delta = key === "ArrowUp" ? 1 : -1;
+				if (focusedSection === "hour") {
+					const cur = resolveHour(hour);
+					const next = ((cur - 1 + delta + 12) % 12) + 1;
+					const h = next.toString().padStart(2, "0");
+					setHour(h);
+					commit(h, minute, period);
+				} else if (focusedSection === "minute") {
+					const cur = resolveMinute(minute);
+					const next = (cur + delta + 60) % 60;
+					const m = next.toString().padStart(2, "0");
+					setMinute(m);
+					commit(hour, m, period);
+				} else if (focusedSection === "period") {
+					const next = period === "AM" ? "PM" : "AM";
+					setPeriod(next);
+					commit(hour, minute, next);
+				}
 			}
 
+			// ── Navigation ─────────────────────────────────────────────────
+			if (key === "ArrowRight" || key === "Tab" || key === ":" || key === " ") {
+				e.preventDefault();
+				if (focusedSection === "hour") {
+					// Commit partial hour before moving
+					const h = resolveHour(hour).toString().padStart(2, "0");
+					setHour(h);
+					commit(h, minute, period);
+					setFocusedSection("minute");
+				} else if (focusedSection === "minute") {
+					const m = resolveMinute(minute).toString().padStart(2, "0");
+					setMinute(m);
+					commit(hour, m, period);
+					setFocusedSection("period");
+				} else if (focusedSection === "period") {
+					// Tab out — commit and release focus
+					commit(hour, minute, period);
+					setFocusedSection(null);
+				}
+			}
+
+			if (key === "ArrowLeft") {
+				e.preventDefault();
+				if (focusedSection === "period") {
+					commit(hour, minute, period);
+					setFocusedSection("minute");
+				} else if (focusedSection === "minute") {
+					commit(hour, minute, period);
+					setFocusedSection("hour");
+				}
+			}
+
+			// ── Backspace: clear section and step back ─────────────────────
 			if (key === "Backspace") {
 				e.preventDefault();
 				if (focusedSection === "hour") {
 					setHour("--");
 				} else if (focusedSection === "minute") {
-					if (minute === "--") {
-						setFocusedSection("hour");
-					} else {
-						setMinute("--");
-					}
+					if (minute === "--") setFocusedSection("hour");
+					else setMinute("--");
 				} else if (focusedSection === "period") {
-					if (period === "--") {
-						setFocusedSection("minute");
-					} else {
-						setPeriod("--");
-					}
+					if (period === "--") setFocusedSection("minute");
+					else setPeriod("--");
 				}
 			}
 
-			// Space moves to next section and auto-completes current
-			if (key === " ") {
+			// ── Enter: commit and release focus ───────────────────────────
+			if (key === "Enter" || key === "Escape") {
 				e.preventDefault();
-
-				if (focusedSection === "hour") {
-					if (hour.includes("_")) {
-						const paddedHour = "0" + hour[0];
-						setHour(paddedHour);
-					}
-					setFocusedSection("minute");
-				} else if (focusedSection === "minute") {
-					if (minute.includes("_")) {
-						const paddedMinute = "0" + minute[0];
-						setMinute(paddedMinute);
-					}
-					setFocusedSection("period");
-				} else if (focusedSection === "period") {
-					// Space on period acts as submit
-					let finalHour = hour;
-					let finalMinute = minute;
-					let finalPeriod = period;
-
-					if (hour.includes("_")) {
-						finalHour = "0" + hour[0];
-						setHour(finalHour);
-					}
-					if (minute.includes("_")) {
-						finalMinute = "0" + minute[0];
-						setMinute(finalMinute);
-					}
-					if (period === "--") {
-						finalPeriod = "AM";
-						setPeriod(finalPeriod);
-					}
-
-					applyTime(finalHour, finalMinute, finalPeriod);
-				}
+				commit(hour, minute, period);
+				setFocusedSection(null);
+				setOpen(false);
 			}
-
-			// Colon also moves to next section and auto-completes
-			if (key === ":") {
-				e.preventDefault();
-				if (focusedSection === "hour") {
-					if (hour.includes("_")) {
-						const paddedHour = "0" + hour[0];
-						setHour(paddedHour);
-					}
-					setFocusedSection("minute");
-				}
-			}
-
-			if (key === "ArrowRight" || key === "Tab") {
-				e.preventDefault();
-				if (focusedSection === "hour") {
-					if (hour.includes("_")) {
-						const paddedHour = "0" + hour[0];
-						setHour(paddedHour);
-					}
-					setFocusedSection("minute");
-				} else if (focusedSection === "minute") {
-					if (minute.includes("_")) {
-						const paddedMinute = "0" + minute[0];
-						setMinute(paddedMinute);
-					}
-					setFocusedSection("period");
-				}
-			}
-			if (key === "ArrowLeft") {
-				e.preventDefault();
-				if (focusedSection === "period") setFocusedSection("minute");
-				else if (focusedSection === "minute") setFocusedSection("hour");
-			}
-
-			if (key === "Enter") {
-				e.preventDefault();
-				let finalHour = hour;
-				let finalMinute = minute;
-				let finalPeriod = period;
-
-				if (hour.includes("_")) {
-					finalHour = "0" + hour[0];
-					setHour(finalHour);
-				}
-				if (minute.includes("_")) {
-					finalMinute = "0" + minute[0];
-					setMinute(finalMinute);
-				}
-				if (period === "--") {
-					finalPeriod = "AM";
-					setPeriod(finalPeriod);
-				}
-
-				applyTime(finalHour, finalMinute, finalPeriod);
-			}
-		}
+		};
 
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [focusedSection, hour, minute, period]);
+	}, [focusedSection, hour, minute, period, commit]);
 
-	const applyTime = useCallback(
-		(h: string, m: string, p: string) => {
-			if (h === "--" || m === "--" || p === "--") return;
-			if (h.includes("_") || m.includes("_")) return;
-
-			const newDate = value ? new Date(value) : new Date();
-
-			let hrs = parseInt(h);
-			const mins = parseInt(m);
-
-			// Convert to 24-hour format
-			if (p === "PM" && hrs !== 12) hrs += 12;
-			if (p === "AM" && hrs === 12) hrs = 0;
-
-			newDate.setHours(hrs);
-			newDate.setMinutes(mins);
-			newDate.setSeconds(0);
-			newDate.setMilliseconds(0);
-
-			isUpdatingRef.current = true;
-			onChange(newDate);
-
-			// Clear focus after successful submit
-			setFocusedSection(null);
-		},
-		[value, onChange]
-	);
-
-	function handleSectionClick(section: "hour" | "minute" | "period") {
-		setFocusedSection(section);
-	}
-
-	const handlePopupTimeClick = useCallback(
-		(h: number, m: number, p: string, closePopup: boolean = false) => {
+	const handlePopupClick = useCallback(
+		(h: number, m: number, p: "AM" | "PM", closeAfter: boolean) => {
 			const hStr = h.toString().padStart(2, "0");
 			const mStr = m.toString().padStart(2, "0");
-
-			// Close popup immediately BEFORE state updates
-			if (closePopup) {
-				setOpen(false);
-			}
-
-			// Update all state in one batch
 			setHour(hStr);
 			setMinute(mStr);
 			setPeriod(p);
-
-			// Apply the time change
-			applyTime(hStr, mStr, p);
+			commit(hStr, mStr, p);
+			if (closeAfter) setOpen(false);
 		},
-		[applyTime]
+		[commit]
 	);
 
 	const hours = Array.from({ length: 12 }, (_, i) => i + 1);
 	const minutes = Array.from({ length: 60 }, (_, i) => i);
-	const periods = ["AM", "PM"];
 
-	const isAbove = dropdownPosition === "above";
+	// Whether the current display state is a complete, valid time
+	const isIncomplete =
+		hour === "--" ||
+		minute === "--" ||
+		period === "--" ||
+		hour.includes("_") ||
+		minute.includes("_");
+
+	// Switching sections via click must commit any partial state in the current
+	// section first — otherwise "1_" in hour is silently lost.
+	const switchSection = useCallback(
+		(next: Section) => {
+			if (focusedSection !== null && focusedSection !== next) {
+				// Resolve and normalise the section being left
+				if (
+					focusedSection === "hour" &&
+					(hour.includes("_") || hour === "--")
+				) {
+					const h = resolveHour(hour).toString().padStart(2, "0");
+					setHour(h);
+					commit(h, minute, period);
+				} else if (
+					focusedSection === "minute" &&
+					(minute.includes("_") || minute === "--")
+				) {
+					const m = resolveMinute(minute).toString().padStart(2, "0");
+					setMinute(m);
+					commit(hour, m, period);
+				}
+			}
+			setFocusedSection(next);
+		},
+		[focusedSection, hour, minute, period, commit]
+	);
+
+	const seg = (label: string, sec: Section) => (
+		<span
+			onClick={() => switchSection(sec)}
+			className={`cursor-pointer px-1 rounded font-mono text-sm select-none transition-colors ${
+				focusedSection === sec
+					? "bg-blue-600 text-white"
+					: isIncomplete && (label === "--" || label.includes("_"))
+						? "text-zinc-500"
+						: "text-zinc-200"
+			}`}
+		>
+			{label}
+		</span>
+	);
+
+	const popup =
+		open && popupCoords
+			? createPortal(
+					<div
+						ref={popupRef}
+						style={{
+							position: "absolute",
+							top: popupCoords.top,
+							left: popupCoords.left,
+							width: "152px",
+							zIndex: 9999,
+						}}
+						className="bg-zinc-900 border border-zinc-700 rounded shadow-xl p-1.5"
+					>
+						<div className="flex gap-1">
+							{/* Hours */}
+							<div className="flex-1 max-h-[148px] overflow-y-scroll scrollbar-hide">
+								{hours.map((h) => {
+									const active =
+										!hour.includes(
+											"_"
+										) &&
+										hour !== "--" &&
+										resolveHour(
+											hour
+										) === h;
+									return (
+										<button
+											key={h}
+											onClick={() =>
+												handlePopupClick(
+													h,
+													resolveMinute(
+														minute
+													),
+													resolvePeriod(
+														period
+													),
+													false
+												)
+											}
+											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
+												active
+													? "bg-blue-600 text-white"
+													: "text-zinc-200 hover:bg-zinc-800"
+											}`}
+										>
+											{h
+												.toString()
+												.padStart(
+													2,
+													"0"
+												)}
+										</button>
+									);
+								})}
+							</div>
+							{/* Minutes */}
+							<div className="flex-1 max-h-[148px] overflow-y-scroll scrollbar-hide">
+								{minutes.map((m) => {
+									const active =
+										!minute.includes(
+											"_"
+										) &&
+										minute !== "--" &&
+										resolveMinute(
+											minute
+										) === m;
+									return (
+										<button
+											key={m}
+											onClick={() =>
+												handlePopupClick(
+													resolveHour(
+														hour
+													),
+													m,
+													resolvePeriod(
+														period
+													),
+													false
+												)
+											}
+											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
+												active
+													? "bg-blue-600 text-white"
+													: "text-zinc-200 hover:bg-zinc-800"
+											}`}
+										>
+											{m
+												.toString()
+												.padStart(
+													2,
+													"0"
+												)}
+										</button>
+									);
+								})}
+							</div>
+							{/* AM/PM — clicking period closes the popup */}
+							<div className="flex-1 flex flex-col gap-1">
+								{(["AM", "PM"] as const).map(
+									(p) => (
+										<button
+											key={p}
+											onClick={() =>
+												handlePopupClick(
+													resolveHour(
+														hour
+													),
+													resolveMinute(
+														minute
+													),
+													p,
+													true
+												)
+											}
+											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
+												period ===
+												p
+													? "bg-blue-600 text-white"
+													: "text-zinc-200 hover:bg-zinc-800"
+											}`}
+										>
+											{p}
+										</button>
+									)
+								)}
+							</div>
+						</div>
+					</div>,
+					document.body
+				)
+			: null;
 
 	return (
-		<div className="relative w-full" ref={containerRef}>
-			{/* Input display */}
+		<div className="relative w-full" ref={containerRef} onBlur={handleBlur}>
 			<div
-				className="relative border border-zinc-700 bg-zinc-900 rounded px-3 py-2 flex items-center gap-2"
+				ref={anchorRef}
+				className="border border-zinc-700 bg-zinc-900 rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-zinc-600 focus-within:border-blue-500 transition-colors cursor-default"
 				tabIndex={0}
 			>
-				<button
-					onClick={() => setOpen(!open)}
-					className="text-gray-400 hover:text-gray-200"
-				>
-					<Clock size={18} />
-				</button>
-				<div className="flex items-center gap-1 text-base">
-					<div
-						ref={hourRef}
-						onClick={() => handleSectionClick("hour")}
-						className={`cursor-pointer px-1 rounded font-mono ${
-							focusedSection === "hour"
-								? "bg-blue-600 text-white"
-								: "text-gray-200"
-						}`}
-					>
-						{hour}
-					</div>
-					<span className="text-gray-200">:</span>
-					<div
-						ref={minuteRef}
-						onClick={() => handleSectionClick("minute")}
-						className={`cursor-pointer px-1 rounded font-mono ${
-							focusedSection === "minute"
-								? "bg-blue-600 text-white"
-								: "text-gray-200"
-						}`}
-					>
-						{minute}
-					</div>
-					<div
-						ref={periodRef}
-						onClick={() => handleSectionClick("period")}
-						className={`cursor-pointer px-1 rounded font-mono ml-1 ${
-							focusedSection === "period"
-								? "bg-blue-600 text-white"
-								: "text-gray-200"
-						}`}
-					>
-						{period}
-					</div>
+				<Clock
+					size={14}
+					className="text-zinc-400 flex-shrink-0 cursor-pointer hover:text-zinc-200 transition-colors"
+					onClick={() => (open ? setOpen(false) : openPopup())}
+				/>
+				<div className="flex items-center gap-0.5">
+					{seg(hour, "hour")}
+					<span className="text-zinc-400 text-sm select-none">:</span>
+					{seg(minute, "minute")}
+					<span className="text-zinc-400 text-sm select-none mx-0.5">
+						{" "}
+					</span>
+					{seg(period, "period")}
 				</div>
 			</div>
 
-			{/* Popup */}
-			{open && (
-				<div
-					ref={popupRef}
-					className={`absolute z-[6000] bg-zinc-900 border border-zinc-700 rounded-md shadow-xl p-2 ${
-						isAbove ? "mb-1 bottom-full" : "mt-1 top-full"
-					}`}
-					style={{ width: "160px" }}
-				>
-					<div className="flex gap-1">
-						{/* Hours column */}
-						<div className="flex-1 max-h-[156px] overflow-y-scroll scrollbar-hide">
-							{hours.map((h) => (
-								<button
-									key={h}
-									onClick={() =>
-										handlePopupTimeClick(
-											h,
-											minute ===
-												"--"
-												? 0
-												: parseInt(
-														minute
-													),
-											period ===
-												"--"
-												? "AM"
-												: period,
-											false
-										)
-									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-zinc-800 rounded text-center"
-								>
-									{h
-										.toString()
-										.padStart(2, "0")}
-								</button>
-							))}
-						</div>
-
-						{/* Minutes column */}
-						<div className="flex-1 max-h-[156px] overflow-y-scroll scrollbar-hide">
-							{minutes.map((m) => (
-								<button
-									key={m}
-									onClick={() =>
-										handlePopupTimeClick(
-											hour ===
-												"--"
-												? 12
-												: parseInt(
-														hour
-													),
-											m,
-											period ===
-												"--"
-												? "AM"
-												: period,
-											false
-										)
-									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-zinc-800 rounded text-center"
-								>
-									{m
-										.toString()
-										.padStart(2, "0")}
-								</button>
-							))}
-						</div>
-
-						{/* AM/PM column */}
-						<div className="flex-1 max-h-[156px] flex flex-col gap-1">
-							{periods.map((p) => (
-								<button
-									key={p}
-									onClick={() =>
-										handlePopupTimeClick(
-											hour ===
-												"--"
-												? 12
-												: parseInt(
-														hour
-													),
-											minute ===
-												"--"
-												? 0
-												: parseInt(
-														minute
-													),
-											p,
-											true
-										)
-									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-zinc-800 rounded text-center"
-								>
-									{p}
-								</button>
-							))}
-						</div>
-					</div>
-				</div>
-			)}
+			{popup}
 
 			<style>{`
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}</style>
+				.scrollbar-hide::-webkit-scrollbar { display: none; }
+				.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+			`}</style>
 		</div>
 	);
 }

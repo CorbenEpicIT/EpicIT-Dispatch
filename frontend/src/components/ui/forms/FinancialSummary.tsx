@@ -1,4 +1,5 @@
 import { RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface FinancialSummaryProps {
 	subtotal: number;
@@ -13,6 +14,8 @@ interface FinancialSummaryProps {
 	onDiscountTypeChange: (type: "percent" | "amount") => void;
 	onDiscountValueChange: (value: number) => void;
 	totalLabel?: string;
+
+	mode?: "create" | "edit";
 	isTaxDirty?: boolean;
 	isDiscountDirty?: boolean;
 	onTaxUndo?: () => void;
@@ -31,147 +34,227 @@ const FinancialSummary = ({
 	onTaxRateChange,
 	onDiscountTypeChange,
 	onDiscountValueChange,
-	totalLabel = "Total",
+	totalLabel = "Total Amount",
+	mode = "create",
 	isTaxDirty = false,
 	isDiscountDirty = false,
 	onTaxUndo,
 	onDiscountUndo,
 }: FinancialSummaryProps) => {
-	return (
-		<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-			<h3 className="text-lg font-semibold mb-4">Financial Summary</h3>
+	const [taxDisplay, setTaxDisplay] = useState(String(taxRate));
+	const [discountDisplay, setDiscountDisplay] = useState(String(discountValue));
 
-			{/* Subtotal */}
-			<div className="space-y-2 mb-3 pb-3 border-b border-zinc-700">
-				<div className="flex items-center justify-between text-sm">
-					<span className="text-zinc-400">Subtotal:</span>
-					<span className="font-semibold text-white">
+	const showDirty = mode === "edit";
+
+	// Sync display state when props change externally (undo, reset, template pre-fill)
+	useEffect(() => {
+		setTaxDisplay(String(taxRate));
+	}, [taxRate]);
+
+	useEffect(() => {
+		setDiscountDisplay(String(discountValue));
+	}, [discountValue]);
+
+	const handleTaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const val = e.target.value;
+		setTaxDisplay(val);
+		if (val !== "") onTaxRateChange(parseFloat(val) || 0);
+	};
+
+	const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const val = e.target.value;
+		setDiscountDisplay(val);
+		if (val !== "") onDiscountValueChange(parseFloat(val) || 0);
+	};
+
+	const taxRowDirty = showDirty && isTaxDirty;
+	const discountRowDirty = showDirty && isDiscountDirty;
+
+	return (
+		<div className="relative w-full bg-zinc-900 rounded-lg border border-zinc-700 shadow-xl overflow-hidden">
+			{/* Loading overlay */}
+			{isLoading && (
+				<div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+					<div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+				</div>
+			)}
+
+			{/* Header */}
+			<div className="flex items-center justify-between px-3 py-2 bg-zinc-800 border-b border-zinc-700">
+				<h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">
+					Financial Summary
+				</h3>
+				<div className="text-right">
+					<span className="text-[10px] text-zinc-500 uppercase font-semibold block leading-none">
+						Subtotal
+					</span>
+					<span className="text-sm font-semibold text-zinc-300 font-mono tabular-nums">
 						${subtotal.toFixed(2)}
 					</span>
 				</div>
 			</div>
 
-			{/* Tax & Discount Inputs */}
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-				{/* Tax Rate */}
-				<div className="relative">
-					<label className="text-xs text-zinc-400 mb-1 block">
-						Tax Rate
-					</label>
-					<div className="relative">
-						<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
-							%
+			{/* Body */}
+			<div className="p-2 space-y-2">
+				{/* Tax Row */}
+				<div
+					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
+						taxRowDirty
+							? "bg-blue-500/5 border-l-2 border-l-blue-500"
+							: "hover:bg-zinc-800/30"
+					}`}
+				>
+					<div className="flex items-center gap-3 flex-1">
+						<div className="relative flex items-center">
+							<input
+								type="number"
+								step="0.01"
+								min="0"
+								max="100"
+								value={taxDisplay}
+								onChange={handleTaxChange}
+								onBlur={() => {
+									if (
+										taxDisplay === "" ||
+										isNaN(
+											parseFloat(
+												taxDisplay
+											)
+										)
+									) {
+										setTaxDisplay(
+											String(
+												taxRate
+											)
+										);
+									}
+								}}
+								className="w-20 h-7 bg-zinc-950 border border-zinc-700 rounded text-zinc-200 text-xs pl-2 pr-6 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none transition-all disabled:opacity-50"
+								disabled={isLoading}
+							/>
+							<span className="absolute right-2 text-zinc-500 text-[10px] font-medium">
+								%
+							</span>
+						</div>
+						<div className="flex flex-col">
+							<span className="text-xs font-medium text-zinc-300">
+								Tax Rate
+							</span>
+							{taxRowDirty && (
+								<span className="text-[10px] text-blue-400 font-medium">
+									Modified
+								</span>
+							)}
+						</div>
+					</div>
+					<div className="flex items-center gap-3">
+						<span className="text-sm font-mono text-zinc-300 tabular-nums w-20 text-right">
+							${taxAmount.toFixed(2)}
 						</span>
-						<input
-							type="number"
-							step="0.01"
-							min="0"
-							max="100"
-							placeholder="0.00"
-							value={taxRate}
-							onChange={(e) =>
-								onTaxRateChange(
-									parseFloat(
-										e.target.value
-									) || 0
-								)
-							}
-							className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm pl-7 ${
-								isTaxDirty ? "pr-10" : ""
-							}`}
-							disabled={isLoading}
-						/>
-						{isTaxDirty && onTaxUndo && (
+						{taxRowDirty && onTaxUndo && (
 							<button
 								type="button"
-								title="Undo"
 								onClick={onTaxUndo}
-								className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+								className="p-1.5 rounded-full hover:bg-zinc-700 text-zinc-500 hover:text-blue-400 transition-colors"
+								title="Revert Tax Rate"
 							>
-								<RotateCcw size={16} />
+								<RotateCcw size={12} />
 							</button>
 						)}
 					</div>
 				</div>
 
-				{/* Discount */}
-				<div className="relative">
-					<label className="text-xs text-zinc-400 mb-1 block">
-						Discount
-					</label>
-					<div className="flex gap-1">
-						<div className="relative flex-1">
-							<span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+				{/* Discount Row */}
+				<div
+					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
+						discountRowDirty
+							? "bg-blue-500/5 border-l-2 border-l-blue-500"
+							: "hover:bg-zinc-800/30"
+					}`}
+				>
+					<div className="flex items-center gap-3 flex-1">
+						<div className="flex items-center bg-zinc-950 rounded border border-zinc-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all h-7">
+							<button
+								type="button"
+								onClick={() =>
+									onDiscountTypeChange(
+										discountType ===
+											"amount"
+											? "percent"
+											: "amount"
+									)
+								}
+								className="h-full px-2 text-[10px] font-bold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-l transition-colors border-r border-zinc-800"
+								disabled={isLoading}
+							>
 								{discountType === "amount"
 									? "$"
 									: "%"}
-							</span>
+							</button>
 							<input
 								type="number"
 								step="0.01"
 								min="0"
-								placeholder="0.00"
-								value={discountValue}
-								onChange={(e) =>
-									onDiscountValueChange(
-										parseFloat(
-											e.target
-												.value
-										) || 0
-									)
-								}
-								className={`border border-zinc-700 p-2 w-full rounded-sm bg-zinc-900 text-white text-sm pl-7 ${
-									isDiscountDirty
-										? "pr-10"
-										: ""
-								}`}
+								value={discountDisplay}
+								onChange={handleDiscountChange}
+								onBlur={() => {
+									if (
+										discountDisplay ===
+											"" ||
+										isNaN(
+											parseFloat(
+												discountDisplay
+											)
+										)
+									) {
+										setDiscountDisplay(
+											String(
+												discountValue
+											)
+										);
+									}
+								}}
+								className="w-16 bg-transparent border-none text-zinc-200 text-xs pl-2 pr-2 font-mono outline-none disabled:opacity-50"
 								disabled={isLoading}
 							/>
-							{isDiscountDirty && onDiscountUndo && (
-								<button
-									type="button"
-									title="Undo"
-									onClick={onDiscountUndo}
-									className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
-								>
-									<RotateCcw size={16} />
-								</button>
+						</div>
+						<div className="flex flex-col">
+							<span className="text-xs font-medium text-zinc-300">
+								Discount
+							</span>
+							{discountRowDirty && (
+								<span className="text-[10px] text-blue-400 font-medium">
+									Modified
+								</span>
 							)}
 						</div>
-						<button
-							type="button"
-							onClick={() =>
-								onDiscountTypeChange(
-									discountType === "amount"
-										? "percent"
-										: "amount"
-								)
-							}
-							disabled={isLoading}
-							className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 text-white text-xs font-medium rounded-sm transition-colors min-w-[45px]"
-						>
-							{discountType === "amount" ? "$" : "%"}
-						</button>
+					</div>
+					<div className="flex items-center gap-3">
+						<span className="text-sm font-mono text-emerald-400/90 tabular-nums w-20 text-right">
+							-${discountAmount.toFixed(2)}
+						</span>
+						{discountRowDirty && onDiscountUndo && (
+							<button
+								type="button"
+								onClick={onDiscountUndo}
+								className="p-1.5 rounded-full hover:bg-zinc-700 text-zinc-500 hover:text-blue-400 transition-colors"
+								title="Revert Discount"
+							>
+								<RotateCcw size={12} />
+							</button>
+						)}
 					</div>
 				</div>
 			</div>
 
-			{/* Totals */}
-			<div className="space-y-2 pt-3 border-t border-zinc-700">
-				<div className="flex items-center justify-between text-sm">
-					<span className="text-zinc-400">Tax Amount:</span>
-					<span className="text-white">${taxAmount.toFixed(2)}</span>
-				</div>
-				<div className="flex items-center justify-between text-sm">
-					<span className="text-zinc-400">Discount Amount:</span>
-					<span className="text-white">
-						-${discountAmount.toFixed(2)}
-					</span>
-				</div>
-				<div className="flex items-center justify-between text-lg font-bold pt-2 border-t border-zinc-700">
-					<span className="text-white">{totalLabel}:</span>
-					<span className="text-green-400">${total.toFixed(2)}</span>
-				</div>
+			{/* Footer / Total */}
+			<div className="bg-zinc-800/80 px-4 py-2 border-t border-zinc-700 flex items-center justify-between">
+				<span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+					{totalLabel}
+				</span>
+				<span className="text-lg font-bold text-white font-mono tabular-nums tracking-tight">
+					${total.toFixed(2)}
+				</span>
 			</div>
 		</div>
 	);

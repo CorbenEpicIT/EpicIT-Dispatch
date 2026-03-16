@@ -101,8 +101,26 @@ import {
 	getLowStockInventory,
 	updateInventoryThreshold,
 } from "./controllers/inventoryController.js";
+import {
+	getOverviewMetrics,
+	getRevenueYTD,
+	getRevenueByJobType,
+	getUnscheduledRevenue,
+	getQuotePipeline,
+	getArrivalPerformance,
+} from "./controllers/reportsController.js";
+import * as draftsController from "./controllers/draftsController.js";
+
+import {
+	login,
+	register,
+	logout,
+	checkRole,
+	checkToken,
+} from "./controllers/authenticationController.js";
 import http from "http";
 import { Server } from "socket.io";
+import { required } from "zod/v4/core/util.cjs";
 
 export interface UserContext {
 	techId?: string;
@@ -147,6 +165,59 @@ const notFoundHandler = (req: Request, res: Response) => {
 			`Route ${req.method} ${req.path} not found`,
 		),
 	);
+};
+
+const verifyToken = (req: Request, res: Response, next: NextFunction) => {
+	if (req.method === "OPTIONS") return next();
+
+	const token = req.headers.authorization?.split(" ")[1];
+	if (!token)
+		return res
+			.status(401)
+			.json(
+				createErrorResponse(
+					ErrorCodes.INVALID_TOKEN,
+					"No token provided",
+				),
+			);
+
+	try {
+		req.user = checkToken(token);
+		next();
+	} catch {
+		res.status(401).json(
+			createErrorResponse(
+				ErrorCodes.INVALID_TOKEN,
+				"Invalid or expired token",
+			),
+		);
+	}
+};
+
+const requireRole = (...roles: string[]) => {
+	return (req: Request, res: Response, next: NextFunction) => {
+		if (!req.user) {
+			return res
+				.status(401)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"Not authenticated",
+					),
+				);
+		}
+		if (!roles.includes(req.user.role)) {
+			return res
+				.status(403)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_CREDENTIALS,
+						"Insufficient permissions",
+					),
+				);
+		}
+		next();
+	};
 };
 
 // ============================================
@@ -206,10 +277,139 @@ if (!port) {
 }
 
 // ============================================
+// AUTH ROUTES (public — no verifyToken)
+// ============================================
+
+app.post("/login", async (req, res, next) => {
+	try {
+		const { email, password, role } = req.body;
+		const result = await login(email, password, role);
+
+		if ("error" in result) {
+			return res.status(401).json(result);
+		}
+
+		res.json(createSuccessResponse(result.data));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
+// DRAFT ROUTES
+// ============================================
+
+app.get("/drafts", async (req, res, next) => {
+	try {
+		const result = await draftsController.getAllDrafts(req);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(
+			createSuccessResponse(result.items, {
+				count: result.items!.length,
+			}),
+		);
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/drafts/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const result = await draftsController.getDraftById(id);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/drafts", async (req, res, next) => {
+	try {
+		const result = await draftsController.insertDraft(req);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.put("/drafts/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const result = await draftsController.updateDraft(id, req);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/drafts/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const result = await draftsController.deleteDraft(id);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
+		}
+
+		res.status(200).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
 // REQUEST ROUTES
 // ============================================
 
 app.get("/requests", async (req, res, next) => {
+	// requireRole("dispatch"),           temp removal until further implementation
 	try {
 		const requests = await getAllRequests();
 		res.json(createSuccessResponse(requests, { count: requests.length }));
@@ -1667,7 +1867,7 @@ app.post(
 // CLIENTS
 // ============================================
 
-app.get("/clients", async (req, res, next) => {
+app.get("/clients", verifyToken, async (req, res, next) => {
 	try {
 		const clients = await getAllClients();
 		res.json(createSuccessResponse(clients, { count: clients.length }));
@@ -2315,6 +2515,134 @@ app.patch("/inventory/:id/threshold", async (req, res, next) => {
 		}
 
 		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
+// REPORTS
+// ============================================
+
+app.get("/reports/overview", async (req, res, next) => {
+	try {
+		const { startDate, endDate } = req.query as {
+			startDate: string;
+			endDate: string;
+		};
+
+		if (!startDate || !endDate) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"startDate and endDate are required",
+					),
+				);
+		}
+
+		const overview = await getOverviewMetrics(startDate, endDate);
+		res.json(createSuccessResponse(overview));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/reports/revenue-ytd", async (req, res, next) => {
+	try {
+		const { year } = req.query as {
+			year?: string;
+		};
+
+		const revenueYTD = await getRevenueYTD(
+			year ? parseInt(year, 10) : undefined,
+		);
+		res.json(createSuccessResponse(revenueYTD));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/reports/revenue-by-job-type", async (req, res, next) => {
+	try {
+		const { startDate, endDate } = req.query as {
+			startDate: string;
+			endDate: string;
+		};
+
+		if (!startDate || !endDate) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"startDate and endDate are required",
+					),
+				);
+		}
+
+		const revenueByJobType = await getRevenueByJobType(startDate, endDate);
+		res.json(createSuccessResponse(revenueByJobType));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/reports/unscheduled-revenue", async (req, res, next) => {
+	try {
+		const unscheduledRevenue = await getUnscheduledRevenue();
+		res.json(createSuccessResponse(unscheduledRevenue));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/reports/quote-pipeline", async (req, res, next) => {
+	try {
+		const { startDate, endDate } = req.query as {
+			startDate: string;
+			endDate: string;
+		};
+
+		if (!startDate || !endDate) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"startDate and endDate are required",
+					),
+				);
+		}
+
+		const quotePipeline = await getQuotePipeline(startDate, endDate);
+		res.json(createSuccessResponse(quotePipeline));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/reports/arrival-performance", async (req, res, next) => {
+	try {
+		const { startDate, endDate } = req.query as {
+			startDate: string;
+			endDate: string;
+		};
+
+		if (!startDate || !endDate) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"startDate and endDate are required",
+					),
+				);
+		}
+
+		const data = await getArrivalPerformance(startDate, endDate);
+		res.json(createSuccessResponse(data));
 	} catch (err) {
 		next(err);
 	}

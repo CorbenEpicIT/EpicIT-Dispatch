@@ -22,7 +22,8 @@ import {
 } from "../../hooks/useJobs";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
 import { useMasonry } from "../../hooks/useMasonry";
-import type { Job, JobVisit, JobPriority } from "../../types/jobs";
+import type { Job, JobVisit, ArrivalConstraint, FinishConstraint } from "../../types/jobs";
+import type { Priority } from "../../types/common";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 
@@ -77,7 +78,7 @@ export default function AssignTechnicianPage() {
 
 	const sortedJobs = jobs
 		? [...jobs].sort((a, b) => {
-				const priorityOrder: Record<JobPriority, number> = {
+				const priorityOrder: Record<Priority, number> = {
 					Emergency: 5,
 					Urgent: 4,
 					High: 3,
@@ -85,8 +86,8 @@ export default function AssignTechnicianPage() {
 					Low: 1,
 				};
 
-				const aPriority = a.priority as JobPriority;
-				const bPriority = b.priority as JobPriority;
+				const aPriority = a.priority as Priority;
+				const bPriority = b.priority as Priority;
 				const priorityDiff =
 					priorityOrder[bPriority] - priorityOrder[aPriority];
 

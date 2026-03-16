@@ -7,29 +7,29 @@ import "react-day-picker/dist/style.css";
 type DatePickerProps = {
 	value: Date | null;
 	onChange: (date: Date | null) => void;
+	required?: boolean;
 	disabled?: boolean;
 	mode?: "create" | "edit";
 	originalValue?: Date | null;
+	onClear?: () => void;
 	align?: "left" | "right";
+	position?: "above" | "below" | "auto";
 };
 
 export default function DatePicker({
 	value,
 	onChange,
+	required = false,
 	disabled,
 	mode = "create",
 	originalValue,
+	onClear,
 	align = "left",
+	position = "auto",
 }: DatePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [ready, setReady] = useState(false);
-	const [position, setPosition] = useState<{
-		horizontal: "left" | "right";
-		vertical: "below" | "above";
-	}>({
-		horizontal: align,
-		vertical: "below",
-	});
+	const [calculatedPosition, setCalculatedPosition] = useState<"above" | "below">("below");
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const calendarRef = useRef<HTMLDivElement>(null);
@@ -43,13 +43,17 @@ export default function DatePicker({
 			setReady(false);
 			return;
 		}
-		const CAL_H = 350;
-		const rect = buttonRef.current!.getBoundingClientRect();
-		const vertical: "below" | "above" =
-			window.innerHeight - rect.bottom >= CAL_H ? "below" : "above";
-		setPosition({ horizontal: align, vertical });
+
+		if (position === "auto") {
+			// Calculate based on available space
+			const CAL_H = 350;
+			const rect = buttonRef.current!.getBoundingClientRect();
+			const hasSpaceBelow = window.innerHeight - rect.bottom >= CAL_H;
+			setCalculatedPosition(hasSpaceBelow ? "below" : "above");
+		}
+
 		requestAnimationFrame(() => setReady(true));
-	}, [open, align]);
+	}, [open, position]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -73,6 +77,13 @@ export default function DatePicker({
 		};
 	}, [open]);
 
+	const handleClear = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		onChange(null);
+		onClear?.();
+		setOpen(false);
+	};
+
 	const handleUndo = (e: React.MouseEvent) => {
 		e.stopPropagation();
 		if (originalValue !== undefined) {
@@ -81,62 +92,77 @@ export default function DatePicker({
 		}
 	};
 
+	const finalPosition = position === "auto" ? calculatedPosition : position;
+
 	const popupClasses = `
     absolute z-50 bg-zinc-950 border border-zinc-700
     rounded-sm shadow-xl p-0.5
-    ${position.vertical === "above" ? "bottom-full mb-1" : "top-full mt-1"}
-    ${position.horizontal === "left" ? "left-0" : "right-0"}
+    ${finalPosition === "above" ? "bottom-full mb-1" : "top-full mt-1"}
+    ${align === "left" ? "left-0" : "right-0"}
   `;
 
 	return (
 		<div className="relative w-full">
 			<style>{`
         .date-picker-dark {
-          --rdp-accent-color: #3b82f6;
-          --rdp-background-color: #18181b;
-          --rdp-accent-background-color: #1e40af;
-          color: #e4e4e7;
-          border-radius: 4px;
-          pointer-events: auto !important;
-          overscroll-behavior: contain;
-        }
-        .date-picker-dark .rdp-month_caption {
-          color: #e4e4e7;
-          font-weight: 600;
-          padding: 0 0 0 0.8rem;
-          margin-bottom: 0.25rem;
-          font-size: 1rem;
-        }
-        .date-picker-dark .rdp-weekdays { padding: 0 0.25rem; }
-        .date-picker-dark .rdp-weekday {
-          color: #a1a1aa;
-          font-size: 0.7rem;
-          padding: 0.05rem 0.25rem;
-        }
-        .date-picker-dark .rdp-day_button {
-          padding: 0.15rem;
-          border-radius: 3px;
-          font-size: 0.8rem;
-          line-height: 1rem;
-        }
-        .date-picker-dark .rdp-day_button:hover:not([disabled]):not(.rdp-day_selected) {
-          background-color: #27272a;
-        }
-        .date-picker-dark .rdp-day_button.rdp-day_selected {
-          background-color: #3b82f6;
-          color: white;
-        }
-        .date-picker-dark .rdp-day_button.rdp-day_today:not(.rdp-day_selected) {
-          color: #3b82f6;
-          font-weight: 600;
-        }
-        .date-picker-dark .rdp-day_button:disabled { opacity: 0.25; }
-        .date-picker-dark .rdp-nav_button {
-          padding: 0.2rem;
-          border-radius: 4px;
-          color: #e4e4e7;
-        }
-        .date-picker-dark .rdp-nav_button:hover { background-color: #27272a; }
+  --rdp-accent-color: #3b82f6;
+  --rdp-background-color: #18181b;
+  --rdp-accent-background-color: #1e40af;
+  color: #e4e4e7;
+  border-radius: 4px;
+  pointer-events: auto !important;
+  overscroll-behavior: contain;
+  font-size: 0.75rem;
+}
+.date-picker-dark .rdp-month_caption {
+  color: #e4e4e7;
+  font-weight: 600;
+  padding: 0 0 0 0.5rem;
+  margin-bottom: 0.15rem;
+  font-size: 0.8rem;
+}
+.date-picker-dark .rdp-weekdays { padding: 0 0.1rem; }
+.date-picker-dark .rdp-weekday {
+  color: #a1a1aa;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.1rem;
+  width: 1.8rem;
+}
+.date-picker-dark .rdp-day {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+.date-picker-dark .rdp-day_button {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  line-height: 1rem;
+}
+.date-picker-dark .rdp-day_button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: #27272a;
+}
+.date-picker-dark .rdp-day_button.rdp-day_selected {
+  background-color: #3b82f6;
+  color: white;
+}
+.date-picker-dark .rdp-day_button.rdp-day_today:not(.rdp-day_selected) {
+  color: #3b82f6;
+  font-weight: 600;
+}
+.date-picker-dark .rdp-day_button:disabled { opacity: 0.25; }
+.date-picker-dark .rdp-nav_button {
+  padding: 0.15rem;
+  border-radius: 4px;
+  color: #e4e4e7;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+.date-picker-dark .rdp-nav_button:hover { background-color: #27272a; }
+.date-picker-dark .rdp-months { padding: 0.25rem; }
+.date-picker-dark .rdp-month { width: 100%; }
+.date-picker-dark .rdp-caption_label { font-size: 0.8rem; }
       `}</style>
 
 			<button
@@ -144,15 +170,16 @@ export default function DatePicker({
 				type="button"
 				disabled={disabled}
 				onClick={() => setOpen((o) => !o)}
-				className="border border-zinc-700 bg-zinc-900 p-2 w-full rounded-sm text-left flex items-center justify-between
-                   hover:border-zinc-600 focus:border-blue-500 focus:outline-none transition-colors
-                   disabled:opacity-60 disabled:cursor-not-allowed"
+				className="border border-zinc-700 bg-zinc-900 px-2.5 h-[34px] w-full rounded text-left
+					flex items-center justify-between hover:border-zinc-600 focus:border-blue-500 focus:outline-none
+					transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-sm lg:text-base"
 			>
 				<span className={!value ? "text-zinc-500" : "text-white"}>
 					{!value ? "Select date..." : format(value, "MMMM dd, yyyy")}
 				</span>
 
 				<div className="flex items-center gap-1">
+					{/* Undo: shown when editing and dirty (regardless of required) */}
 					{isEdit && isDirty && !disabled && (
 						<span
 							onClick={handleUndo}
@@ -163,12 +190,11 @@ export default function DatePicker({
 						</span>
 					)}
 
-					{value && !disabled && (
+					{/* Clear: shown when NOT required, has value, and not disabled */}
+					{!required && value && !disabled && (
 						<span
-							onClick={(e) => {
-								e.stopPropagation();
-								onChange(new Date());
-							}}
+							onClick={handleClear}
+							title="Clear"
 							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
 							<X className="h-3 w-3 text-zinc-400 hover:text-white" />

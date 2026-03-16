@@ -1,359 +1,551 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	Users,
 	Clock,
 	MapPin,
 	CheckCircle2,
 	AlertCircle,
 	Calendar,
-	TrendingUp,
 	Activity,
 	ChevronRight,
-	RefreshCw,
+	Briefcase,
+	FileText,
+	Phone,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import SmartCalendar from "../../components/ui/SmartCalendar";
-import { useAllJobsQuery } from "../../hooks/useJobs";
+import { useAllJobsQuery, useCreateJobMutation } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
-import type { TechnicianWithVisits } from "../../types/technicians";
+import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
+import { useAllQuotesQuery, useCreateQuoteMutation } from "../../hooks/useQuotes";
+import { useAllRecurringPlansQuery } from "../../hooks/useRecurringPlans";
 import type { JobVisit } from "../../types/jobs";
+import CreateRequest from "../../components/requests/CreateRequest";
+import CreateJob from "../../components/jobs/CreateJob";
+import CreateQuote from "../../components/quotes/CreateQuote";
+import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
 
 export default function DashboardPage() {
 	const navigate = useNavigate();
+
+	const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
+	const [isCreateQuoteModalOpen, setIsCreateQuoteModalOpen] = useState(false);
+	const [isCreateJobModalOpen, setIsCreateJobModalOpen] = useState(false);
+	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
+
+	const { mutateAsync: createRequest } = useCreateRequestMutation();
+	const { mutateAsync: createJob } = useCreateJobMutation();
+	const { mutateAsync: createQuote } = useCreateQuoteMutation();
+
 	const { data: jobs = [], error: jobsError } = useAllJobsQuery();
-	const {
-		data: allTechnicians = [],
-		error: techsError,
-		refetch: refetchTechs,
-	} = useAllTechniciansQuery();
-	const [refreshing, setRefreshing] = useState(false);
+	const { data: requests = [] } = useAllRequestsQuery();
+	const { data: quotes = [] } = useAllQuotesQuery();
+	const { data: recurringPlans = [] } = useAllRecurringPlansQuery();
+	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
 
-	// Filter technicians who are on the clock (Available or Busy)
-	const onlineTechnicians = allTechnicians.filter(
-		(tech) => tech.status === "Available" || tech.status === "Busy"
+	const technicianStats = useMemo(() => {
+		const online = allTechnicians.filter(
+			(t) => t.status === "Available" || t.status === "Busy"
+		);
+		return {
+			total: allTechnicians.length,
+			online: online.length,
+			available: allTechnicians.filter((t) => t.status === "Available").length,
+			busy: allTechnicians.filter((t) => t.status === "Busy").length,
+			onBreak: allTechnicians.filter((t) => t.status === "Break").length,
+			offline: allTechnicians.filter((t) => t.status === "Offline").length,
+		};
+	}, [allTechnicians]);
+
+	const pipelineCounts = useMemo(
+		() => ({
+			newRequests: requests.filter((r) => r.status === "New").length,
+			reviewing: requests.filter((r) => r.status === "Reviewing").length,
+			quoted: requests.filter((r) => r.status === "Quoted").length,
+			pendingApproval: quotes.filter(
+				(q) => q.status === "Sent" || q.status === "Viewed"
+			).length,
+			approved: quotes.filter((q) => q.status === "Approved").length,
+			unscheduled: jobs.filter((j) => j.status === "Unscheduled").length,
+			scheduled: jobs.filter((j) => j.status === "Scheduled").length,
+			inProgress: jobs
+				.flatMap((j) => j.visits || [])
+				.filter((v) => v.status === "InProgress").length,
+			completedToday: jobs
+				.flatMap((j) => j.visits || [])
+				.filter(
+					(v) =>
+						v.status === "Completed" &&
+						new Date(v.actual_end_at || "").toDateString() ===
+							new Date().toDateString()
+				).length,
+		}),
+		[requests, quotes, jobs]
 	);
 
-	const availableCount = allTechnicians.filter((t) => t.status === "Available").length;
-	const busyCount = allTechnicians.filter((t) => t.status === "Busy").length;
-	const totalOnline = availableCount + busyCount;
-
-	const techniciansWithActiveVisits: TechnicianWithVisits[] = onlineTechnicians.map(
-		(tech) => {
-			const activeVisits = jobs
-				.flatMap((job) => job.visits || [])
-				.filter(
-					(visit) =>
-						visit.status === "InProgress" &&
-						visit.visit_techs?.some(
-							(vt) => vt.tech_id === tech.id
-						)
+	const activeTechnicians = useMemo(() => {
+		return allTechnicians
+			.filter((t) => t.status !== "Offline")
+			.map((tech) => {
+				const allVisits = jobs.flatMap((j) => j.visits || []);
+				const activeVisits = allVisits.filter(
+					(v) =>
+						v.status === "InProgress" &&
+						v.visit_techs?.some((vt) => vt.tech_id === tech.id)
 				) as JobVisit[];
 
-			const scheduledVisits = jobs
-				.flatMap((job) => job.visits || [])
-				.filter(
-					(visit) =>
-						visit.status === "Scheduled" &&
-						visit.visit_techs?.some(
-							(vt) => vt.tech_id === tech.id
-						)
-				) as JobVisit[];
+				const upcomingVisits = allVisits
+					.filter(
+						(v) =>
+							v.status === "Scheduled" &&
+							v.visit_techs?.some(
+								(vt) => vt.tech_id === tech.id
+							) &&
+							new Date(v.scheduled_start_at) > new Date()
+					)
+					.sort(
+						(a, b) =>
+							new Date(a.scheduled_start_at).getTime() -
+							new Date(b.scheduled_start_at).getTime()
+					) as JobVisit[];
 
-			return {
-				...tech,
-				activeVisits,
-				scheduledVisits,
-				totalVisitsToday: activeVisits.length + scheduledVisits.length,
-			};
-		}
-	);
-
-	const handleRefresh = async () => {
-		setRefreshing(true);
-		await refetchTechs();
-		setTimeout(() => setRefreshing(false), 500);
-	};
+				return {
+					...tech,
+					currentVisit: activeVisits[0] || null,
+					nextVisit: upcomingVisits[0] || null,
+					totalToday:
+						activeVisits.length +
+						upcomingVisits.filter(
+							(v) =>
+								new Date(
+									v.scheduled_start_at
+								).toDateString() ===
+								new Date().toDateString()
+						).length,
+				};
+			})
+			.sort((a, b) => (a.currentVisit ? -1 : 1));
+	}, [allTechnicians, jobs]);
 
 	const getStatusColor = (status: string) => {
+		const colors: Record<string, string> = {
+			Available: "bg-emerald-500",
+			Busy: "bg-amber-500",
+			Break: "bg-blue-500",
+			Offline: "bg-zinc-500",
+		};
+		return colors[status] || "bg-zinc-500";
+	};
+
+	const getStatusBadgeClass = (status: string) => {
 		switch (status) {
 			case "Available":
-				return "bg-green-500";
+				return "bg-emerald-500/10 text-emerald-400";
 			case "Busy":
-				return "bg-yellow-500";
+				return "bg-amber-500/10 text-amber-400";
 			case "Break":
-				return "bg-blue-500";
-			case "Offline":
-				return "bg-zinc-500";
+				return "bg-blue-500/10 text-blue-400";
 			default:
-				return "bg-zinc-500";
+				return "bg-zinc-500/10 text-zinc-400";
 		}
 	};
 
-	// const getTimeOnClock = (lastLogin: Date | string) => {
-	// 	const now = new Date();
-	// 	const loginTime = new Date(lastLogin);
-	// 	const diffMs = now.getTime() - loginTime.getTime();
-	// 	const diffHours = Math.floor(diffMs / 3600000);
-	// 	const diffMins = Math.floor((diffMs % 3600000) / 60000);
-
-	// 	if (diffHours > 0) return `${diffHours}h ${diffMins}m`;
-	// 	return `${diffMins}m`;
-	// };
-
-	const getCurrentVisit = (tech: TechnicianWithVisits) => {
-		if (tech.activeVisits.length === 0) return null;
-		return tech.activeVisits[0];
+	const getStatusAbbr = (status: string) => {
+		switch (status) {
+			case "Available":
+				return "Avail";
+			case "Busy":
+				return "Busy";
+			case "Break":
+				return "Break";
+			default:
+				return "Off";
+		}
 	};
 
+	const pipelineItems = useMemo(() => {
+		const items = [
+			{
+				label: "New Requests",
+				count: pipelineCounts.newRequests,
+				icon: Phone,
+				bg: "bg-blue-500/10",
+				border: "border-blue-500/20",
+				hoverBorder: "group-hover:border-blue-500/40",
+				text: "text-blue-400",
+				progress: "bg-blue-500",
+				path: "/dispatch/requests?status=New",
+			},
+			{
+				label: "Needs Quote",
+				count: pipelineCounts.reviewing,
+				icon: FileText,
+				bg: "bg-amber-500/10",
+				border: "border-amber-500/20",
+				hoverBorder: "group-hover:border-amber-500/40",
+				text: "text-amber-400",
+				progress: "bg-amber-500",
+				path: "/dispatch/requests?status=Reviewing",
+			},
+			{
+				label: "Pending Approval",
+				count: pipelineCounts.pendingApproval,
+				icon: Clock,
+				bg: "bg-purple-500/10",
+				border: "border-purple-500/20",
+				hoverBorder: "group-hover:border-purple-500/40",
+				text: "text-purple-400",
+				progress: "bg-purple-500",
+				path: "/dispatch/quotes?status=Sent",
+			},
+			{
+				label: "Approved Quotes",
+				count: pipelineCounts.approved,
+				icon: CheckCircle2,
+				bg: "bg-emerald-500/10",
+				border: "border-emerald-500/20",
+				hoverBorder: "group-hover:border-emerald-500/40",
+				text: "text-emerald-400",
+				progress: "bg-emerald-500",
+				path: "/dispatch/quotes?status=Approved",
+			},
+			{
+				label: "Unscheduled",
+				count: pipelineCounts.unscheduled,
+				icon: Calendar,
+				bg: "bg-orange-500/10",
+				border: "border-orange-500/20",
+				hoverBorder: "group-hover:border-orange-500/40",
+				text: "text-orange-400",
+				progress: "bg-orange-500",
+				path: "/dispatch/jobs?status=Unscheduled",
+			},
+		];
+
+		const max = Math.max(...items.map((i) => i.count), 1);
+		return items.map((item) => ({
+			...item,
+			barWidth: Math.round((item.count / max) * 100),
+		}));
+	}, [pipelineCounts]);
+
 	return (
-		<div className="min-h-screen text-white p-6">
-			<div className="grid gap-6 lg:grid-cols-3">
-				{/* Calendar */}
-				<Card className="lg:col-span-3">
-					{jobsError && (
-						<p className="text-red-400">
-							Failed to load calendar.
-						</p>
-					)}
-					<SmartCalendar
-						jobs={jobs}
-						view="week"
-						toolbar={{
-							left: "title",
-							center: "",
-							right: "today prev,next",
-						}}
-					/>
-				</Card>
-
-				{/* Stats Cards Row */}
-				<div className="lg:col-span-3 grid gap-4 md:grid-cols-4">
-					{/* Total Online */}
-					<div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
-						<div className="flex items-center justify-between mb-2">
-							<div className="flex items-center gap-2">
-								<Users
-									size={18}
-									className="text-blue-400"
-								/>
-								<span className="text-sm text-zinc-400">
-									Online Now
-								</span>
-							</div>
-						</div>
-						<div className="text-3xl font-bold text-white">
-							{totalOnline}
-						</div>
-						<div className="text-xs text-zinc-500 mt-1">
-							{availableCount} available • {busyCount}{" "}
-							busy
-						</div>
-					</div>
-
-					{/* Active Jobs */}
-					<div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
-						<div className="flex items-center justify-between mb-2">
-							<div className="flex items-center gap-2">
-								<Activity
-									size={18}
-									className="text-yellow-400"
-								/>
-								<span className="text-sm text-zinc-400">
-									In Progress
-								</span>
-							</div>
-						</div>
-						<div className="text-3xl font-bold text-white">
-							{
-								jobs
-									.flatMap(
-										(j) =>
-											j.visits ||
-											[]
-									)
-									.filter(
-										(v) =>
-											v.status ===
-											"InProgress"
-									).length
-							}
-						</div>
-						<div className="text-xs text-zinc-500 mt-1">
-							Active visits
-						</div>
-					</div>
-
-					{/* Scheduled Today */}
-					<div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
-						<div className="flex items-center justify-between mb-2">
-							<div className="flex items-center gap-2">
-								<Calendar
-									size={18}
-									className="text-blue-400"
-								/>
-								<span className="text-sm text-zinc-400">
-									Scheduled
-								</span>
-							</div>
-						</div>
-						<div className="text-3xl font-bold text-white">
-							{
-								jobs
-									.flatMap(
-										(j) =>
-											j.visits ||
-											[]
-									)
-									.filter(
-										(v) =>
-											v.status ===
-											"Scheduled"
-									).length
-							}
-						</div>
-						<div className="text-xs text-zinc-500 mt-1">
-							Today's visits
-						</div>
-					</div>
-
-					{/* Completion Rate */}
-					<div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
-						<div className="flex items-center justify-between mb-2">
-							<div className="flex items-center gap-2">
-								<TrendingUp
-									size={18}
-									className="text-green-400"
-								/>
-								<span className="text-sm text-zinc-400">
-									Completed
-								</span>
-							</div>
-						</div>
-						<div className="text-3xl font-bold text-white">
-							{
-								jobs
-									.flatMap(
-										(j) =>
-											j.visits ||
-											[]
-									)
-									.filter(
-										(v) =>
-											v.status ===
-											"Completed"
-									).length
-							}
-						</div>
-						<div className="text-xs text-zinc-500 mt-1">
-							This week
-						</div>
-					</div>
+		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
+			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
+				{/* Header */}
+				<div className="mb-5">
+					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+						Dispatch Dashboard
+					</h1>
+					<p className="text-sm text-zinc-400 mt-1">
+						{new Date().toLocaleDateString("en-US", {
+							weekday: "long",
+							month: "long",
+							day: "numeric",
+						})}
+					</p>
 				</div>
 
-				{/* Technicians Online - Main Section */}
-				<Card className="lg:col-span-2">
-					<div className="flex items-center justify-between mb-4">
-						<div className="flex items-center gap-3">
-							<div className="p-2 bg-blue-600/20 rounded-lg">
-								<Users
-									size={20}
-									className="text-blue-400"
-								/>
+				{/* Week Schedule Calendar */}
+				<Card className="mb-5 !p-0">
+					<div className="p-4 h-[250px] sm:h-[280px] lg:h-[300px]">
+						{jobsError ? (
+							<div className="flex items-center justify-center h-full">
+								<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+									<AlertCircle
+										size={16}
+										className="text-red-400"
+									/>
+									<p className="text-sm text-red-400">
+										Failed to load
+										calendar data
+									</p>
+								</div>
 							</div>
-							<div>
-								<h3 className="text-lg font-semibold text-white">
-									Active Technicians
-								</h3>
-								<p className="text-xs text-zinc-400">
-									{totalOnline} active •
-									Real-time status
-								</p>
-							</div>
-						</div>
-						<div className="flex items-center gap-2">
-							<button
-								onClick={handleRefresh}
-								className={`p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors ${refreshing ? "animate-spin" : ""}`}
-								title="Refresh status"
-							>
-								<RefreshCw
-									size={16}
-									className="text-zinc-400"
-								/>
-							</button>
-							<button
-								onClick={() =>
-									navigate(
-										"/dispatch/technicians"
-									)
-								}
-								className="flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-							>
-								View All
-								<ChevronRight size={16} />
-							</button>
-						</div>
-					</div>
-
-					{techsError && (
-						<div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg mb-4">
-							<AlertCircle
-								size={16}
-								className="text-red-400"
+						) : (
+							<SmartCalendar
+								jobs={jobs}
+								view="week"
+								toolbar={{
+									left: "title",
+									center: "",
+									right: "today prev,next",
+								}}
 							/>
-							<p className="text-sm text-red-400">
-								Failed to load technicians
-							</p>
-						</div>
-					)}
+						)}
+					</div>
+				</Card>
 
-					{!techsError && totalOnline === 0 && (
-						<div className="text-center py-12">
-							<div className="inline-flex items-center justify-center w-16 h-16 bg-zinc-800 rounded-full mb-3">
-								<Clock
-									size={24}
-									className="text-zinc-500"
-								/>
-							</div>
-							<p className="text-zinc-400 mb-1">
-								No technicians currently online
-							</p>
-							<p className="text-xs text-zinc-500">
-								Check back when the team clocks in
-							</p>
-						</div>
-					)}
-
-					{!techsError && totalOnline > 0 && (
-						<div className="flex flex-wrap gap-3 max-h-[500px] overflow-y-auto pr-2">
-							{techniciansWithActiveVisits.map((tech) => {
-								const currentVisit =
-									getCurrentVisit(tech);
-								const isOnJob =
-									tech.activeVisits.length >
-									0;
-
-								return (
+				{/* Main Content Grid */}
+				<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
+					{/* Left Column */}
+					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+						<Card title="Operations Pipeline">
+							<div className="space-y-1">
+								{pipelineItems.map((item) => (
 									<div
-										key={tech.id}
-										className="group relative bg-zinc-800/50 border border-zinc-700 rounded-xl hover:border-blue-500/50 hover:bg-zinc-800 transition-all cursor-pointer overflow-hidden flex-shrink-0"
-										style={{
-											width: "180px",
-											height: "260px",
-										}}
+										key={item.label}
 										onClick={() =>
 											navigate(
-												`/dispatch/technicians/${tech.id}`
+												item.path
 											)
 										}
+										className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
 									>
-										{/* Card Content*/}
-										<div className="p-3 h-full flex flex-col">
-											{/* Header: Avatar & Status*/}
-											<div className="flex items-start justify-between mb-2">
-												<div className="relative">
-													<div className="w-11 h-11 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-base shadow-md">
+										<div
+											className={`flex-shrink-0 w-10 h-10 rounded-lg ${item.bg} flex items-center justify-center border ${item.border} ${item.hoverBorder} transition-colors`}
+										>
+											<item.icon
+												size={
+													18
+												}
+												className={
+													item.text
+												}
+											/>
+										</div>
+										<div className="flex-1 min-w-0">
+											<div className="flex items-center justify-between mb-0.5">
+												<span className="text-sm font-medium text-zinc-200 truncate">
+													{
+														item.label
+													}
+												</span>
+												<span
+													className={`text-sm font-bold ${item.text} ml-2`}
+												>
+													{
+														item.count
+													}
+												</span>
+											</div>
+											<div className="w-full bg-zinc-800 rounded-full h-1.5">
+												<div
+													className={`${item.progress} h-1.5 rounded-full transition-all duration-300`}
+													style={{
+														width: `${item.barWidth}%`,
+													}}
+												/>
+											</div>
+										</div>
+										<ChevronRight
+											size={16}
+											className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
+										/>
+									</div>
+								))}
+							</div>
+						</Card>
+
+						<Card title="Recurring Plans">
+							<div className="flex items-center justify-between mb-3">
+								<span className="text-sm text-zinc-400">
+									Active Plans
+								</span>
+								<span className="text-lg font-bold text-white">
+									{
+										recurringPlans.filter(
+											(p) =>
+												p.status ===
+												"Active"
+										).length
+									}
+								</span>
+							</div>
+							<div className="flex items-center justify-between mb-3">
+								<span className="text-sm text-zinc-400">
+									Paused
+								</span>
+								<span className="text-sm font-bold text-zinc-300">
+									{
+										recurringPlans.filter(
+											(p) =>
+												p.status ===
+												"Paused"
+										).length
+									}
+								</span>
+							</div>
+							<div className="pt-3 border-t border-zinc-800">
+								<button
+									onClick={() =>
+										navigate(
+											"/dispatch/jobs?view=templates"
+										)
+									}
+									className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+								>
+									Manage Plans
+									<ChevronRight size={12} />
+								</button>
+							</div>
+						</Card>
+					</div>
+
+					{/* Center Column */}
+					<div className="min-w-0">
+						<Card
+							title="Live Activity Feed -todo"
+							className="h-full"
+						>
+							<div className="space-y-2">
+								{[
+									{
+										type: "visit_completed",
+										message: "Job #1024 completed by Mike R.",
+										time: "2 min ago",
+										icon: CheckCircle2,
+										color: "text-emerald-400",
+										bg: "bg-emerald-500/10",
+									},
+									{
+										type: "quote_approved",
+										message: "Quote #2041 approved by Acme Corp",
+										time: "15 min ago",
+										icon: FileText,
+										color: "text-blue-400",
+										bg: "bg-blue-500/10",
+									},
+									{
+										type: "tech_checkin",
+										message: "Sarah L. checked in for Job #1025",
+										time: "32 min ago",
+										icon: MapPin,
+										color: "text-amber-400",
+										bg: "bg-amber-500/10",
+									},
+									{
+										type: "request_urgent",
+										message: "Urgent request received from Downtown Properties",
+										time: "1 hr ago",
+										icon: AlertCircle,
+										color: "text-red-400",
+										bg: "bg-red-500/10",
+									},
+									{
+										type: "visit_completed",
+										message: "Job #1023 completed by John D.",
+										time: "2 hr ago",
+										icon: CheckCircle2,
+										color: "text-emerald-400",
+										bg: "bg-emerald-500/10",
+									},
+									{
+										type: "quote_sent",
+										message: "Quote #2040 sent to Westside Apartments",
+										time: "3 hr ago",
+										icon: FileText,
+										color: "text-purple-400",
+										bg: "bg-purple-500/10",
+									},
+								].map((activity, idx) => (
+									<div
+										key={idx}
+										className="flex items-start gap-3 p-3 rounded-lg hover:bg-zinc-800/30 transition-colors cursor-pointer group"
+									>
+										<div
+											className={`flex-shrink-0 w-8 h-8 rounded-lg ${activity.bg} flex items-center justify-center`}
+										>
+											<activity.icon
+												size={
+													14
+												}
+												className={
+													activity.color
+												}
+											/>
+										</div>
+										<div className="flex-1 min-w-0">
+											<p className="text-sm text-zinc-200 group-hover:text-white transition-colors break-words">
+												{
+													activity.message
+												}
+											</p>
+											<p className="text-xs text-zinc-500 mt-0.5">
+												{
+													activity.time
+												}
+											</p>
+										</div>
+									</div>
+								))}
+							</div>
+						</Card>
+					</div>
+
+					{/* Right Column */}
+					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+						<Card
+							title="Technicians"
+							headerAction={
+								<div className="flex items-center gap-2 min-w-0">
+									<span className="text-xs text-zinc-500 whitespace-nowrap hidden xl:inline">
+										{
+											technicianStats.online
+										}{" "}
+										of{" "}
+										{
+											technicianStats.total
+										}{" "}
+										online
+									</span>
+									<span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0 hidden xl:inline-block" />
+									<button
+										onClick={() =>
+											navigate(
+												"/dispatch/technicians"
+											)
+										}
+										className="text-xs font-medium text-zinc-400 hover:text-white px-2 py-1 rounded hover:bg-zinc-800 transition-colors flex-shrink-0"
+									>
+										View All
+									</button>
+								</div>
+							}
+						>
+							{techsError ? (
+								<div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+									<AlertCircle
+										size={14}
+										className="text-red-400"
+									/>
+									<p className="text-xs text-red-400">
+										Failed to load
+										technicians
+									</p>
+								</div>
+							) : activeTechnicians.length === 0 ? (
+								<div className="py-8 text-center">
+									<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
+										<Clock
+											size={20}
+											className="text-zinc-500"
+										/>
+									</div>
+									<p className="text-sm text-zinc-400">
+										No technicians
+										online
+									</p>
+								</div>
+							) : (
+								<div className="space-y-2">
+									{activeTechnicians
+										.slice(0, 8)
+										.map((tech) => (
+											<div
+												key={
+													tech.id
+												}
+												onClick={() =>
+													navigate(
+														`/dispatch/technicians/${tech.id}`
+													)
+												}
+												className="group flex items-start gap-3 p-2.5 rounded-lg hover:bg-zinc-800/30 cursor-pointer transition-all"
+											>
+												{/* Avatar */}
+												<div className="relative flex-shrink-0">
+													<div className="w-9 h-9 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm">
 														{tech.name
 															.charAt(
 																0
@@ -361,220 +553,279 @@ export default function DashboardPage() {
 															.toUpperCase()}
 													</div>
 													<div
-														className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 ${getStatusColor(tech.status)} rounded-full border-2 border-zinc-800 shadow-sm`}
+														className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${getStatusColor(tech.status)} rounded-full border-2 border-zinc-900`}
 													/>
 												</div>
 
-												<span
-													className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${
-														tech.status ===
-														"Available"
-															? "bg-green-500/20 text-green-400 border border-green-500/30"
-															: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-													}`}
-												>
-													{
-														tech.status
-													}
-												</span>
-											</div>
+												<div className="flex-1 min-w-0">
+													{/* Name + status badge */}
+													<div className="flex items-center justify-between mb-0.5">
+														<h4 className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
+															{
+																tech.name
+															}
+														</h4>
+														<span
+															className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ml-2 ${getStatusBadgeClass(tech.status)}`}
+														>
+															{/* Abbreviated on xs, full word on sm+ */}
+															<span className="inline sm:hidden">
+																{getStatusAbbr(
+																	tech.status
+																)}
+															</span>
+															<span className="hidden sm:inline">
+																{
+																	tech.status
+																}
+															</span>
+														</span>
+													</div>
 
-											{/* Name & Title*/}
-											<div className="mb-2">
-												<h4 className="font-semibold text-white group-hover:text-blue-400 transition-colors truncate text-[13px] leading-tight mb-0.5">
-													{
-														tech.name
-													}
-												</h4>
-												<p className="text-[10px] text-zinc-500 truncate leading-tight">
-													{
-														tech.title
-													}
-												</p>
-											</div>
+													{/* Title */}
+													<p className="text-xs text-zinc-500 truncate mb-1.5">
+														{
+															tech.title
+														}
+													</p>
 
-											{/* Status Box*/}
-											<div className="mb-2 h-14 flex items-center">
-												{isOnJob &&
-													currentVisit && (
-														<div className="w-full p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg shadow-sm">
-															<div className="flex items-center gap-1 mb-0.5">
-																<Activity
-																	size={
-																		11
-																	}
-																	className="text-yellow-400 flex-shrink-0"
-																/>
-																<p className="text-[10px] font-bold text-yellow-400 uppercase tracking-wide">
-																	On
-																	Job
-																</p>
-															</div>
-															<p className="text-[11px] text-zinc-200 truncate font-medium">
-																{currentVisit
+													{/* Visit status */}
+													{tech.currentVisit ? (
+														<div className="flex items-center gap-1.5 text-xs">
+															<Activity
+																size={
+																	12
+																}
+																className="text-amber-400 flex-shrink-0"
+															/>
+															<span className="text-amber-400 flex-shrink-0">
+																On
+																Job
+															</span>
+															<span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0" />
+															<span className="text-zinc-400 truncate">
+																{tech
+																	.currentVisit
 																	.job
 																	?.name ||
-																	"Unknown Job"}
-															</p>
+																	"Unknown"}
+															</span>
 														</div>
-													)}
-
-												{!isOnJob &&
-													tech
-														.scheduledVisits
-														.length >
-														0 && (
-														<div className="w-full p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg shadow-sm">
-															<div className="flex items-center gap-1 mb-0.5">
-																<Calendar
-																	size={
-																		11
-																	}
-																	className="text-blue-400 flex-shrink-0"
-																/>
-																<p className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">
-																	Next
-																	Up
-																</p>
-															</div>
-															<p className="text-[11px] text-zinc-200 font-medium">
+													) : tech.nextVisit ? (
+														<div className="flex items-center gap-1.5 text-xs min-w-0">
+															<Clock
+																size={
+																	12
+																}
+																className="text-blue-400 flex-shrink-0"
+															/>
+															<span className="text-blue-400 flex-shrink-0">
+																Next:
+															</span>
+															{/* Short on xs, long on sm+ */}
+															<span className="text-zinc-400 truncate inline sm:hidden">
 																{new Date(
 																	tech
-																		.scheduledVisits[0]
+																		.nextVisit
+																		.scheduled_start_at
+																).toLocaleDateString(
+																	"en-US",
+																	{
+																		weekday: "short",
+																		month: "short",
+																		day: "numeric",
+																	}
+																)}
+																,{" "}
+																{new Date(
+																	tech
+																		.nextVisit
 																		.scheduled_start_at
 																).toLocaleTimeString(
 																	"en-US",
 																	{
 																		hour: "numeric",
 																		minute: "2-digit",
-																		hour12: true,
 																	}
 																)}
-															</p>
-														</div>
-													)}
-
-												{!isOnJob &&
-													tech
-														.scheduledVisits
-														.length ===
-														0 && (
-														<div className="w-full p-2 bg-green-500/10 border border-green-500/30 rounded-lg shadow-sm">
-															<div className="flex items-center gap-1">
-																<CheckCircle2
-																	size={
-																		11
+															</span>
+															<span className="text-zinc-400 truncate hidden sm:inline">
+																{new Date(
+																	tech
+																		.nextVisit
+																		.scheduled_start_at
+																).toLocaleDateString(
+																	"en-US",
+																	{
+																		weekday: "long",
+																		month: "long",
+																		day: "numeric",
 																	}
-																	className="text-green-400 flex-shrink-0"
-																/>
-																<p className="text-[10px] font-bold text-green-400 uppercase tracking-wide">
-																	Available
-																</p>
-															</div>
+																)}
+																,{" "}
+																{new Date(
+																	tech
+																		.nextVisit
+																		.scheduled_start_at
+																).toLocaleTimeString(
+																	"en-US",
+																	{
+																		hour: "numeric",
+																		minute: "2-digit",
+																	}
+																)}
+															</span>
+														</div>
+													) : (
+														<div className="flex items-center gap-1.5 text-xs text-emerald-400">
+															<CheckCircle2
+																size={
+																	12
+																}
+																className="flex-shrink-0"
+															/>
+															<span>
+																No
+																active
+																visits
+															</span>
 														</div>
 													)}
-											</div>
-
-											{/* Divider & Visit Count*/}
-											<div className="mb-2 pb-2 border-b border-zinc-700/50">
-												<div className="flex items-center justify-between text-[10px]">
-													<span className="flex items-center gap-1 text-zinc-400">
-														<Calendar
-															size={
-																10
-															}
-															className="text-zinc-500"
-														/>
-														<span className="font-medium">
-															{
-																tech.totalVisitsToday
-															}
-														</span>
-														<span className="text-zinc-500">
-															today
-														</span>
-													</span>
 												</div>
 											</div>
+										))}
+								</div>
+							)}
 
-											{/* Assign Button*/}
-											<button
-												onClick={(
-													e
-												) => {
-													e.stopPropagation();
-													navigate(
-														`/dispatch/technicians/${tech.id}/assign`
-													);
-												}}
-												className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white text-[11px] font-bold rounded-lg transition-all hover:shadow-lg hover:shadow-blue-500/30 active:scale-95"
-											>
-												<MapPin
-													size={
-														12
-													}
-													className="flex-shrink-0"
-												/>
-												<span className="tracking-wide">
-													ASSIGN
-												</span>
-											</button>
-										</div>
+							{activeTechnicians.length > 8 && (
+								<div className="mt-4 pt-4 border-t border-zinc-800 text-center">
+									<button
+										onClick={() =>
+											navigate(
+												"/dispatch/technicians"
+											)
+										}
+										className="text-xs text-zinc-400 hover:text-white font-medium"
+									>
+										+
+										{activeTechnicians.length -
+											8}{" "}
+										more technicians
+									</button>
+								</div>
+							)}
+						</Card>
 
-										{/* Hover Glow Effect */}
-										<div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5" />
-									</div>
-								);
-							})}
-						</div>
-					)}
-				</Card>
-
-				<Card title="Pending Actions">
-					<div className="space-y-3">
-						<div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-							<div>
-								<p className="text-sm font-medium text-white">
-									Requests
-								</p>
-							</div>
-						</div>
-						<div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-							<div>
-								<p className="text-sm font-medium text-white">
-									Quotes
-								</p>
-							</div>
-						</div>
-
-						<div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-							<div>
-								<p className="text-sm font-medium text-white">
-									Unscheduled Jobs
-								</p>
-								<p className="text-xs text-zinc-400">
+						<Card title="Quick Actions">
+							<div className="grid grid-cols-2 gap-2">
+								{[
 									{
-										jobs.filter(
-											(j) =>
-												j.status ===
-												"Unscheduled"
-										).length
-									}{" "}
-									need scheduling
-								</p>
+										label: "New Request",
+										icon: Phone,
+										color: "text-blue-400",
+										action: () =>
+											setIsCreateRequestModalOpen(
+												true
+											),
+									},
+									{
+										label: "Create Quote",
+										icon: FileText,
+										color: "text-amber-400",
+										action: () =>
+											setIsCreateQuoteModalOpen(
+												true
+											),
+									},
+									{
+										label: "Create Job",
+										icon: Briefcase,
+										color: "text-emerald-400",
+										action: () =>
+											setIsCreateJobModalOpen(
+												true
+											),
+									},
+									{
+										label: "Schedule",
+										icon: Calendar,
+										color: "text-purple-400",
+										action: () =>
+											navigate(
+												"/dispatch/schedule"
+											),
+									},
+								].map((action) => (
+									<button
+										key={action.label}
+										onClick={
+											action.action
+										}
+										className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
+									>
+										<action.icon
+											size={16}
+											className={`${action.color} mb-2`}
+										/>
+										<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
+											{
+												action.label
+											}
+										</div>
+									</button>
+								))}
 							</div>
-							<button
-								onClick={() =>
-									navigate("/dispatch/jobs")
-								}
-								className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
-							>
-								View
-							</button>
-						</div>
+						</Card>
 					</div>
-				</Card>
+				</div>
 			</div>
+
+			<CreateRequest
+				isModalOpen={isCreateRequestModalOpen}
+				setIsModalOpen={setIsCreateRequestModalOpen}
+				createRequest={async (input) => {
+					const newRequest = await createRequest(input);
+					if (!newRequest?.id)
+						throw new Error(
+							"Request creation failed: no ID returned"
+						);
+					navigate(`/dispatch/requests/${newRequest.id}`);
+					return newRequest.id;
+				}}
+			/>
+
+			<CreateJob
+				isModalOpen={isCreateJobModalOpen}
+				setIsModalOpen={setIsCreateJobModalOpen}
+				createJob={async (input) => {
+					const newJob = await createJob(input);
+					if (!newJob?.id)
+						throw new Error(
+							"Job creation failed: no ID returned"
+						);
+					navigate(`/dispatch/jobs/${newJob.id}`);
+					return newJob.id;
+				}}
+			/>
+
+			<CreateQuote
+				isModalOpen={isCreateQuoteModalOpen}
+				setIsModalOpen={setIsCreateQuoteModalOpen}
+				createQuote={async (input) => {
+					const newQuote = await createQuote(input);
+					if (!newQuote?.id)
+						throw new Error(
+							"Quote creation failed: no ID returned"
+						);
+					navigate(`/dispatch/quotes/${newQuote.id}`);
+					return newQuote.id;
+				}}
+			/>
+
+			<CreateRecurringPlan
+				isModalOpen={isCreatePlanModalOpen}
+				setIsModalOpen={setIsCreatePlanModalOpen}
+			/>
 		</div>
 	);
 }

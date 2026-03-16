@@ -16,7 +16,7 @@ vi.stubEnv("VITE_BACKEND_URL", "http://localhost:3000");
 // Mock window.matchMedia
 Object.defineProperty(window, "matchMedia", {
 	writable: true,
-	value: vi.fn().mockImplementation((query: string) => ({
+	value: vi.fn().mockImplementation((query) => ({
 		matches: false,
 		media: query,
 		onchange: null,

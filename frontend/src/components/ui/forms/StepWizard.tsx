@@ -1,4 +1,4 @@
-import { Check, Lock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, Lock, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 import type { FormStep } from "../../../types/common";
 
@@ -105,7 +105,7 @@ const StepWizard = <T extends number>({
 	return (
 		<div className="w-full flex flex-col h-full">
 			{/* Progress Indicator */}
-			<div className="w-full px-4 py-2">
+			<div className="w-full">
 				<div className="flex items-center justify-center">
 					{stepStates.map((state, index) => (
 						<div
@@ -170,16 +170,16 @@ const StepWizard = <T extends number>({
 				</div>
 			</div>
 
-			{/* Content Area */}
+			{/* Content Area  */}
 			{children && (
-				<div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-4">
+				<div className="flex-1 overflow-y-auto custom-scrollbar">
 					{children}
 				</div>
 			)}
 
 			{/* Navigation Footer */}
 			{showNavigation && (
-				<div className="flex items-center justify-between px-5 py-4 border-t border-zinc-700 bg-zinc-900/50">
+				<div className="flex items-center justify-between border-t border-zinc-700 bg-zinc-900/50">
 					<div>
 						{!isFirstStep && onBack && (
 							<button
@@ -223,35 +223,15 @@ const StepWizard = <T extends number>({
 								disabled={isLoading}
 								className={`
 									flex items-center gap-2 px-5 py-2 rounded-md font-bold transition-colors
-									${
-										isLoading
-											? "bg-green-700 text-green-100 cursor-wait"
-											: "bg-green-600 hover:bg-green-700 text-white"
-									}
+									${isLoading ? "bg-green-700 text-green-100 cursor-wait" : "bg-green-600 hover:bg-green-700 text-white"}
 								`}
 							>
 								{isLoading ? (
 									<>
-										<svg
-											className="animate-spin h-4 w-4"
-											xmlns="http://www.w3.org/2000/svg"
-											fill="none"
-											viewBox="0 0 24 24"
-										>
-											<circle
-												className="opacity-25"
-												cx="12"
-												cy="12"
-												r="10"
-												stroke="currentColor"
-												strokeWidth="4"
-											/>
-											<path
-												className="opacity-75"
-												fill="currentColor"
-												d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-											/>
-										</svg>
+										<Loader2
+											size={16}
+											className="animate-spin"
+										/>
 										Processing...
 									</>
 								) : (

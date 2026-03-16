@@ -1,8 +1,7 @@
-import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
-import { QuotePriorityValues, type CreateQuoteInput } from "../../types/quotes";
+import { type CreateQuoteInput } from "../../types/quotes";
+import { PriorityValues } from "../../types/common";
 import type { Request } from "../../types/requests";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
@@ -28,10 +27,7 @@ export default function ConvertToQuote({
 	const expiresAtRef = useRef<HTMLInputElement>(null);
 	const [geoData, setGeoData] = useState<GeocodeResult | undefined>(
 		request.address || request.coords
-			? {
-					address: request.address || "",
-					coords: request.coords,
-				}
+			? { address: request.address || "", coords: request.coords }
 			: undefined
 	);
 	const [isLoading, setIsLoading] = useState(false);
@@ -44,19 +40,12 @@ export default function ConvertToQuote({
 	}, [isModalOpen]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData(() => ({
-			address: result.address,
-			coords: result.coords,
-		}));
+		setGeoData({ address: result.address, coords: result.coords });
 	};
 
 	const handleClearAddress = () => {
-		// In edit mode, revert to original if it exists
 		if (request.address || request.coords) {
-			setGeoData({
-				address: request.address || "",
-				coords: request.coords,
-			});
+			setGeoData({ address: request.address || "", coords: request.coords });
 		} else {
 			setGeoData(undefined);
 		}
@@ -64,7 +53,7 @@ export default function ConvertToQuote({
 
 	const priorityEntries = (
 		<>
-			{QuotePriorityValues.map((v) => (
+			{PriorityValues.map((v) => (
 				<option key={v} value={v} className="text-black">
 					{v}
 				</option>
@@ -83,16 +72,13 @@ export default function ConvertToQuote({
 			const validUntilValue = validUntilRef.current?.value || undefined;
 			const expiresAtValue = expiresAtRef.current?.value || undefined;
 
-			// Reset errors
 			setTitleError(null);
-
 			if (!titleValue) {
 				setTitleError("Quote title is required");
 				return;
 			}
 
 			setIsLoading(true);
-
 			try {
 				const quoteData: CreateQuoteInput = {
 					client_id: request.client_id,
@@ -119,14 +105,12 @@ export default function ConvertToQuote({
 
 				await onConvert(quoteData);
 
-				// Reset form
 				if (titleRef.current) titleRef.current.value = "";
 				if (descRef.current) descRef.current.value = "";
 				if (validUntilRef.current) validUntilRef.current.value = "";
 				if (expiresAtRef.current) expiresAtRef.current.value = "";
 				setGeoData(undefined);
 				setTitleError(null);
-
 				setIsModalOpen(false);
 			} catch (error) {
 				console.error("Failed to convert request to quote:", error);
@@ -142,93 +126,130 @@ export default function ConvertToQuote({
 	};
 
 	const content = (
-		<>
-			<h2 className="text-2xl font-bold mb-4">Convert to Quote</h2>
-
-			<p className="mb-1 hover:color-accent">Quote Title *</p>
-			<input
-				type="text"
-				placeholder="Quote Title"
-				className="border border-zinc-800 p-2 w-full rounded-sm"
-				disabled={isLoading}
-				ref={titleRef}
-				defaultValue={request.title}
-				onChange={() => setTitleError(null)}
-			/>
-			{titleError && <p className="text-red-500 text-sm mt-1">{titleError}</p>}
-
-			<p className="mb-1 mt-3 hover:color-accent">Description</p>
-			<textarea
-				placeholder="Quote Description"
-				className="border border-zinc-800 p-2 w-full h-24 rounded-sm"
-				disabled={isLoading}
-				ref={descRef}
-				defaultValue={request.description}
-			/>
-
-			<p className="mb-1 mt-3 hover:color-accent">Property Address</p>
-			<AddressForm
-				mode={request.address ? "edit" : "create"}
-				originalValue={request.address || ""}
-				originalCoords={request.coords}
-				handleChange={handleChangeAddress}
-				handleClear={handleClearAddress}
-			/>
-
-			<p className="mb-1 mt-3 hover:color-accent">Priority</p>
-			<div className="border border-zinc-800 rounded-sm">
-				<Dropdown refToApply={priorityRef} entries={priorityEntries} />
+		<div className="flex flex-col min-h-0 flex-1">
+			{/* Header */}
+			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-zinc-800 flex-shrink-0">
+				<h2 className="text-lg lg:text-xl font-bold text-white">
+					Convert to Quote
+				</h2>
 			</div>
 
-			<div className="grid grid-cols-2 gap-3 mt-3">
+			{/* Scrollable body */}
+			<div className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 lg:py-5 space-y-3 lg:space-y-4">
+				{/* Title */}
 				<div>
-					<p className="mb-1 hover:color-accent">Valid Until</p>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Quote Title *
+					</label>
 					<input
-						type="date"
-						className="border border-zinc-800 p-2 w-full rounded-sm"
+						type="text"
+						placeholder="Quote Title"
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors"
 						disabled={isLoading}
-						ref={validUntilRef}
+						ref={titleRef}
+						defaultValue={request.title}
+						onChange={() => setTitleError(null)}
+					/>
+					{titleError && (
+						<p className="text-red-400 text-xs mt-0.5">
+							{titleError}
+						</p>
+					)}
+				</div>
+
+				{/* Description */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Description
+					</label>
+					<textarea
+						placeholder="Quote Description"
+						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors"
+						disabled={isLoading}
+						ref={descRef}
+						defaultValue={request.description}
 					/>
 				</div>
-				<div>
-					<p className="mb-1 hover:color-accent">Expires At</p>
-					<input
-						type="date"
-						className="border border-zinc-800 p-2 w-full rounded-sm"
-						disabled={isLoading}
-						ref={expiresAtRef}
+
+				{/* Address */}
+				<div className="relative" style={{ zIndex: 50 }}>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Property Address
+					</label>
+					<AddressForm
+						mode={request.address ? "edit" : "create"}
+						originalValue={request.address || ""}
+						originalCoords={request.coords}
+						dropdownPosition="above"
+						handleChange={handleChangeAddress}
+						handleClear={handleClearAddress}
 					/>
+				</div>
+
+				{/* Priority */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Priority
+					</label>
+					<Dropdown
+						refToApply={priorityRef}
+						entries={priorityEntries}
+					/>
+				</div>
+
+				{/* Valid Until / Expires At */}
+				<div className="grid grid-cols-2 gap-2 lg:gap-3">
+					<div>
+						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							Valid Until
+						</label>
+						<input
+							type="date"
+							className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors"
+							disabled={isLoading}
+							ref={validUntilRef}
+						/>
+					</div>
+					<div>
+						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							Expires At
+						</label>
+						<input
+							type="date"
+							className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors"
+							disabled={isLoading}
+							ref={expiresAtRef}
+						/>
+					</div>
+				</div>
+
+				{/* Note */}
+				<div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-md">
+					<p className="text-xs text-amber-200">
+						Note: The quote will be created with no line items.
+						You can add pricing details after creation.
+					</p>
 				</div>
 			</div>
 
-			<div className="p-3 mt-4 bg-amber-900/20 border border-amber-700/50 rounded-md">
-				<p className="text-xs text-amber-200">
-					Note: The quote will be created with no line items. You can
-					add pricing details after creation.
-				</p>
+			{/* Footer */}
+			<div className="flex items-center justify-end gap-2 px-4 lg:px-6 py-3 lg:py-4 border-t border-zinc-800 flex-shrink-0">
+				<button
+					onClick={() => setIsModalOpen(false)}
+					disabled={isLoading}
+					className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md border border-zinc-700 transition-colors disabled:opacity-50"
+				>
+					Cancel
+				</button>
+				<button
+					onClick={invokeConvert}
+					disabled={isLoading}
+					className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+				>
+					{isLoading ? "Creating..." : "Create Quote"}
+				</button>
 			</div>
-
-			<div className="transition-all flex justify-end space-x-2 mt-4">
-				{isLoading ? (
-					<LoadSvg className="w-10 h-10" />
-				) : (
-					<>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
-							onClick={() => setIsModalOpen(false)}
-						>
-							<Button label="Cancel" />
-						</div>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all font-bold"
-							onClick={invokeConvert}
-						>
-							<Button label="Create Quote" />
-						</div>
-					</>
-				)}
-			</div>
-		</>
+		</div>
 	);
 
 	return (

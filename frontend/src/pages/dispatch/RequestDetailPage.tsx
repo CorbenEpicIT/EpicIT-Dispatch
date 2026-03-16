@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import {
 	Edit2,
-	User,
 	Calendar,
 	MapPin,
 	DollarSign,
@@ -12,13 +11,14 @@ import {
 	Phone,
 	Mail,
 	Globe,
-	ArrowRight,
 	RotateCcw,
+	Link2Off,
 } from "lucide-react";
 import { useRequestByIdQuery, useUpdateRequestMutation } from "../../hooks/useRequests";
 import { useCreateQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import Card from "../../components/ui/Card";
+import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditRequest from "../../components/requests/EditRequest";
 import ConvertToQuote from "../../components/requests/ConvertToQuote";
 import ConvertToJob from "../../components/requests/ConvertToJob";
@@ -41,8 +41,7 @@ export default function RequestDetailPage() {
 	const [hasAutoUpdated, setHasAutoUpdated] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
-	// Safeguarded auto-update: New → Reviewing after 10 seconds
-	// BUT: Skip if user manually changed the status or already auto-updated
+	// Auto-update: New → Reviewing after 5 seconds
 	useEffect(() => {
 		if (!request || request.status !== "New" || hasManualStatusChange || hasAutoUpdated)
 			return;
@@ -50,16 +49,11 @@ export default function RequestDetailPage() {
 		const timeoutId = setTimeout(() => {
 			if (!hasManualStatusChange && !hasAutoUpdated) {
 				setHasAutoUpdated(true);
-				updateRequest({
-					id: request.id,
-					data: { status: "Reviewing" },
-				});
+				updateRequest({ id: request.id, data: { status: "Reviewing" } });
 			}
-		}, 5000); // Always wait 5 seconds from page open
+		}, 5000);
 
-		return () => {
-			clearTimeout(timeoutId);
-		};
+		return () => clearTimeout(timeoutId);
 	}, [request?.id, request?.status, hasManualStatusChange, hasAutoUpdated, updateRequest]);
 
 	useEffect(() => {
@@ -68,11 +62,8 @@ export default function RequestDetailPage() {
 				setShowActionsMenu(false);
 			}
 		}
-
 		document.addEventListener("mousedown", handleClickOutside);
-		return () => {
-			document.removeEventListener("mousedown", handleClickOutside);
-		};
+		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
 	if (isLoading) {
@@ -91,16 +82,8 @@ export default function RequestDetailPage() {
 		);
 	}
 
-	const primaryContact = request.client?.contacts?.find((cc) => cc.is_primary)?.contact;
-
-	// Limit quotes and jobs to 5 entries
-	const displayedQuotes = request.quotes?.slice(0, 5) || [];
-	const hasMoreQuotes = (request.quotes?.length || 0) > 5;
-	const totalQuotes = request.quotes?.length || 0;
-
-	const displayedJobs = request.jobs?.slice(0, 5) || [];
-	const hasMoreJobs = (request.jobs?.length || 0) > 5;
-	const totalJobs = request.jobs?.length || 0;
+	const firstQuote = request.quotes?.[0] ?? null;
+	const firstJob = request.jobs?.[0] ?? null;
 
 	const getStatusColor = (status: string) => {
 		switch (status) {
@@ -165,24 +148,18 @@ export default function RequestDetailPage() {
 		setShowActionsMenu(false);
 		setIsEditModalOpen(true);
 	};
-
 	const handleConvertToQuote = () => {
 		setShowActionsMenu(false);
 		setIsConvertToQuoteModalOpen(true);
 	};
-
 	const handleConvertToJob = () => {
 		setShowActionsMenu(false);
 		setIsConvertToJobModalOpen(true);
 	};
-
 	const handleResetToNew = async () => {
 		setShowActionsMenu(false);
-		setHasManualStatusChange(true); // Mark as manually changed
-		await updateRequest({
-			id: request.id,
-			data: { status: "New" },
-		});
+		setHasManualStatusChange(true);
+		await updateRequest({ id: request.id, data: { status: "New" } });
 	};
 
 	return (
@@ -193,14 +170,11 @@ export default function RequestDetailPage() {
 
 				<div className="justify-self-end flex items-center gap-3">
 					<span
-						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(
-							request.status
-						)}`}
+						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(request.status)}`}
 					>
 						{request.status}
 					</span>
 
-					{/* Actions Menu */}
 					<div className="relative" ref={menuRef}>
 						<button
 							onClick={() =>
@@ -218,7 +192,7 @@ export default function RequestDetailPage() {
 										onClick={handleEdit}
 										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
 									>
-										<Edit2 size={16} />
+										<Edit2 size={16} />{" "}
 										Edit Request
 									</button>
 									<button
@@ -229,7 +203,7 @@ export default function RequestDetailPage() {
 									>
 										<FileText
 											size={16}
-										/>
+										/>{" "}
 										Convert to Quote
 									</button>
 									<button
@@ -240,15 +214,13 @@ export default function RequestDetailPage() {
 									>
 										<Briefcase
 											size={16}
-										/>
+										/>{" "}
 										Convert to Job
 									</button>
-
-									{/* Reset to New - Only show for Reviewing status */}
 									{request.status ===
 										"Reviewing" && (
 										<>
-											<div className="border-t border-zinc-800 my-1"></div>
+											<div className="border-t border-zinc-800 my-1" />
 											<button
 												onClick={
 													handleResetToNew
@@ -259,7 +231,7 @@ export default function RequestDetailPage() {
 													size={
 														16
 													}
-												/>
+												/>{" "}
 												Reset
 												to
 												New
@@ -274,10 +246,9 @@ export default function RequestDetailPage() {
 			</div>
 
 			{/* Request Information (2/3) and Client Details (1/3) */}
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				{/* Request Information*/}
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 				<div className="lg:col-span-2">
-					<Card title="Request Information" className="h-full">
+					<Card title="Request Information">
 						<div className="space-y-4">
 							<div>
 								<h3 className="text-zinc-400 text-sm mb-1">
@@ -292,7 +263,7 @@ export default function RequestDetailPage() {
 							{request.address && (
 								<div>
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
-										<MapPin size={14} />
+										<MapPin size={14} />{" "}
 										Address
 									</h3>
 									<p className="text-white break-words">
@@ -306,7 +277,7 @@ export default function RequestDetailPage() {
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
 										<TrendingUp
 											size={14}
-										/>
+										/>{" "}
 										Priority
 									</h3>
 									<p
@@ -319,7 +290,7 @@ export default function RequestDetailPage() {
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
 										<Calendar
 											size={14}
-										/>
+										/>{" "}
 										Created
 									</h3>
 									<p className="text-white">
@@ -342,7 +313,7 @@ export default function RequestDetailPage() {
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
 										<DollarSign
 											size={14}
-										/>
+										/>{" "}
 										Estimated Value
 									</h3>
 									<p className="text-white font-medium">
@@ -365,7 +336,7 @@ export default function RequestDetailPage() {
 									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
 										{getSourceIcon(
 											request.source
-										)}
+										)}{" "}
 										Source
 									</h3>
 									<div className="flex items-center gap-2">
@@ -435,349 +406,181 @@ export default function RequestDetailPage() {
 					</Card>
 				</div>
 
-				{/* Client Details */}
 				<div className="lg:col-span-1">
-					<Card
-						title="Client Details"
-						headerAction={
-							request.client?.is_active !== undefined && (
-								<span
-									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-										request.client
-											.is_active
-											? "bg-green-500/20 text-green-400 border-green-500/30"
-											: "bg-red-500/20 text-red-400 border-red-500/30"
-									}`}
-								>
-									{request.client.is_active
-										? "Active"
-										: "Inactive"}
-								</span>
-							)
-						}
-						className="h-full"
-					>
-						<div className="space-y-4">
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-2 flex items-center gap-2">
-									<User size={14} />
-									Client Name
-								</h3>
-								<p>
-									{request.client?.name ||
-										"Unknown Client"}
-								</p>
-							</div>
-
-							{request.client?.address && (
-								<div>
-									<h3 className="text-zinc-400 text-sm mb-1">
-										Address
-									</h3>
-									<p className="text-white text-sm break-words">
-										{
-											request
-												.client
-												.address
-										}
-									</p>
-								</div>
-							)}
-
-							{primaryContact && (
-								<div className="pt-4 border-t border-zinc-700">
-									<div className="flex items-center justify-between mb-3">
-										<h3 className="text-zinc-400 text-sm">
-											Primary
-											Contact
-										</h3>
-										{primaryContact.title && (
-											<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
-												{
-													primaryContact.title
-												}
-											</span>
-										)}
-									</div>
-									<div className="space-y-2">
-										<p className="text-white font-medium">
-											{
-												primaryContact.name
-											}
-										</p>
-
-										{primaryContact.email && (
-											<div className="flex items-center gap-2 text-sm">
-												<Mail
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<a className="text-white truncate">
-													{
-														primaryContact.email
-													}
-												</a>
-											</div>
-										)}
-
-										{primaryContact.phone && (
-											<div className="flex items-center gap-2 text-sm">
-												<Phone
-													size={
-														14
-													}
-													className="text-zinc-400 flex-shrink-0"
-												/>
-												<a className="text-white">
-													{
-														primaryContact.phone
-													}
-												</a>
-											</div>
-										)}
-									</div>
-								</div>
-							)}
-
-							<button
-								onClick={() =>
-									navigate(
-										`/dispatch/clients/${request.client_id}`
-									)
-								}
-								className="w-full mt-4 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors"
-							>
-								View Full Client Profile
-							</button>
-						</div>
-					</Card>
+					<ClientDetailsCard
+						client_id={request.client_id}
+						client={request.client}
+					/>
 				</div>
 			</div>
 
-			{/* Related Quotes and Jobs*/}
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				{/* Related Quotes*/}
-				<Card
-					title="Related Quotes"
-					headerAction={
-						<span className="text-sm text-zinc-400">
-							{totalQuotes} quote
-							{totalQuotes !== 1 ? "s" : ""}
-						</span>
-					}
-				>
-					{displayedQuotes.length === 0 ? (
-						<div className="text-center py-8">
-							<FileText
-								size={40}
-								className="mx-auto text-zinc-600 mb-3"
-							/>
-							<h3 className="text-zinc-400 text-sm font-medium mb-1">
-								No Quotes
-							</h3>
-							<p className="text-zinc-500 text-xs">
-								No quotes have been created for this
-								request yet.
-							</p>
-						</div>
-					) : (
-						<>
-							<div className="space-y-3">
-								{displayedQuotes.map((quote) => (
-									<button
-										key={quote.id}
-										onClick={() =>
-											navigate(
-												`/dispatch/quotes/${quote.id}`
-											)
-										}
-										className="w-full p-4 bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
-									>
-										<div className="flex items-start justify-between gap-3">
-											<div className="flex-1 min-w-0">
-												<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
-													{
-														quote.quote_number
-													}
-												</h4>
-												<p className="text-zinc-400 text-xs mb-2">
-													{quote.title ||
-														"Quote"}
-												</p>
-												<div className="flex items-center gap-2 text-xs text-zinc-500">
-													<Calendar
-														size={
-															12
-														}
-													/>
-													<span>
-														{new Date(
-															quote.created_at
-														).toLocaleDateString(
-															"en-US",
-															{
-																month: "short",
-																day: "numeric",
-																year: "numeric",
-															}
-														)}
-													</span>
-												</div>
-											</div>
-											<div className="flex flex-col items-end gap-2 flex-shrink-0">
-												<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
-													$
-													{Number(
-														quote.total
-													).toLocaleString(
-														"en-US",
-														{
-															minimumFractionDigits: 2,
-															maximumFractionDigits: 2,
-														}
-													)}
-												</span>
-												<div className="flex flex-col items-end gap-1">
-													<span
-														className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-															quote.status
-														)}`}
-													>
-														{
-															quote.status
-														}
-													</span>
-													{!quote.is_active && (
-														<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400 border border-zinc-600">
-															Superseded
-														</span>
-													)}
-												</div>
-											</div>
-										</div>
-									</button>
-								))}
+			{/* Relations Row: Quote + Job */}
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+				{/* Related Quote */}
+				{firstQuote ? (
+					<button
+						onClick={() =>
+							navigate(
+								`/dispatch/quotes/${firstQuote.id}`
+							)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Quote
+						</p>
+						<div className="flex items-start justify-between gap-3">
+							<div className="flex-1 min-w-0">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+									{firstQuote.quote_number}
+								</h4>
+								<p className="text-zinc-400 text-xs mb-2">
+									{firstQuote.title ||
+										"Quote"}
+								</p>
+								<div className="flex items-center gap-2 text-xs text-zinc-500">
+									<Calendar size={12} />
+									<span>
+										{new Date(
+											firstQuote.created_at
+										).toLocaleDateString(
+											"en-US",
+											{
+												month: "short",
+												day: "numeric",
+												year: "numeric",
+											}
+										)}
+									</span>
+								</div>
 							</div>
-							{hasMoreQuotes && (
-								<button
-									onClick={() =>
-										navigate(
-											`/dispatch/quotes?request=${requestId}`
-										)
-									}
-									className="w-full mt-3 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2"
+							<div className="flex flex-col items-end gap-2 flex-shrink-0">
+								<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+									$
+									{Number(
+										firstQuote.total
+									).toLocaleString("en-US", {
+										minimumFractionDigits: 2,
+										maximumFractionDigits: 2,
+									})}
+								</span>
+								<span
+									className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(firstQuote.status)}`}
 								>
-									View All Quotes (
-									{totalQuotes})
-									<ArrowRight size={14} />
+									{firstQuote.status}
+								</span>
+							</div>
+						</div>
+					</button>
+				) : (
+					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+						<div className="grid grid-cols-3 gap-4">
+							<div className="col-span-2 flex flex-col gap-2">
+								<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold">
+									Related Quote
+								</p>
+								<div className="flex items-center gap-2 text-zinc-600 text-sm">
+									<Link2Off
+										size={14}
+										className="flex-shrink-0"
+									/>
+									<span>
+										No quote created yet
+									</span>
+								</div>
+							</div>
+							<div className="col-span-1 flex items-center justify-end">
+								<button
+									onClick={(e) => {
+										e.stopPropagation();
+										handleConvertToQuote();
+									}}
+									className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
+								>
+									<FileText size={12} />{" "}
+									Convert to Quote
 								</button>
-							)}
-						</>
-					)}
-				</Card>
+							</div>
+						</div>
+					</div>
+				)}
 
-				{/* Related Jobs*/}
-				<Card
-					title="Related Jobs"
-					headerAction={
-						<span className="text-sm text-zinc-400">
-							{totalJobs} job{totalJobs !== 1 ? "s" : ""}
-						</span>
-					}
-				>
-					{displayedJobs.length === 0 ? (
-						<div className="text-center py-8">
-							<Briefcase
-								size={40}
-								className="mx-auto text-zinc-600 mb-3"
-							/>
-							<h3 className="text-zinc-400 text-sm font-medium mb-1">
-								No Jobs
-							</h3>
-							<p className="text-zinc-500 text-xs">
-								No jobs have been created for this
-								request yet.
-							</p>
-						</div>
-					) : (
-						<>
-							<div className="space-y-3">
-								{displayedJobs.map((job) => (
-									<button
-										key={job.id}
-										onClick={() =>
-											navigate(
-												`/dispatch/jobs/${job.id}`
-											)
-										}
-										className="w-full p-4 bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
-									>
-										<div className="flex items-start justify-between gap-3">
-											<div className="flex-1 min-w-0">
-												<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
-													{
-														job.job_number
-													}
-												</h4>
-												<p className="text-zinc-400 text-xs mb-2">
-													{
-														job.name
-													}
-												</p>
-												<div className="flex items-center gap-2 text-xs text-zinc-500">
-													<Calendar
-														size={
-															12
-														}
-													/>
-													<span>
-														{new Date(
-															job.created_at
-														).toLocaleDateString(
-															"en-US",
-															{
-																month: "short",
-																day: "numeric",
-																year: "numeric",
-															}
-														)}
-													</span>
-												</div>
-											</div>
-											<span
-												className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-													job.status
-												)}`}
-											>
-												{
-													job.status
-												}
-											</span>
-										</div>
-									</button>
-								))}
+				{/* Related Job */}
+				{firstJob ? (
+					<button
+						onClick={() =>
+							navigate(`/dispatch/jobs/${firstJob.id}`)
+						}
+						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+					>
+						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+							Related Job
+						</p>
+						<div className="flex items-start justify-between gap-3">
+							<div className="flex-1 min-w-0">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+									{firstJob.job_number}
+								</h4>
+								<p className="text-zinc-400 text-xs mb-2">
+									{firstJob.name}
+								</p>
+								<div className="flex items-center gap-2 text-xs text-zinc-500">
+									<Calendar size={12} />
+									<span>
+										{new Date(
+											firstJob.created_at
+										).toLocaleDateString(
+											"en-US",
+											{
+												month: "short",
+												day: "numeric",
+												year: "numeric",
+											}
+										)}
+									</span>
+								</div>
 							</div>
-							{hasMoreJobs && (
+							<span
+								className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(firstJob.status)}`}
+							>
+								{firstJob.status}
+							</span>
+						</div>
+					</button>
+				) : (
+					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+						<div className="grid grid-cols-3 gap-4">
+							<div className="col-span-2 flex flex-col gap-2">
+								<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold">
+									Related Job
+								</p>
+								<div className="flex items-center gap-2 text-zinc-600 text-sm">
+									<Link2Off
+										size={14}
+										className="flex-shrink-0"
+									/>
+									<span>
+										No job created yet
+									</span>
+								</div>
+							</div>
+							<div className="col-span-1 flex items-center justify-end">
 								<button
-									onClick={() =>
-										navigate(
-											`/dispatch/jobs?request=${requestId}`
-										)
-									}
-									className="w-full mt-3 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2"
+									onClick={(e) => {
+										e.stopPropagation();
+										handleConvertToJob();
+									}}
+									className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
 								>
-									View All Jobs ({totalJobs})
-									<ArrowRight size={14} />
+									<Briefcase size={12} />{" "}
+									Convert to Job
 								</button>
-							)}
-						</>
-					)}
-				</Card>
+							</div>
+						</div>
+					</div>
+				)}
 			</div>
 
-			{/* Notes*/}
 			<NoteManager requestId={requestId!} />
 
 			{request && (
@@ -787,7 +590,6 @@ export default function RequestDetailPage() {
 						setIsModalOpen={setIsEditModalOpen}
 						request={request}
 					/>
-
 					<ConvertToQuote
 						isModalOpen={isConvertToQuoteModalOpen}
 						setIsModalOpen={setIsConvertToQuoteModalOpen}
@@ -795,27 +597,24 @@ export default function RequestDetailPage() {
 						onConvert={async (quoteData) => {
 							const newQuote =
 								await createQuote(quoteData);
-							if (!newQuote?.id) {
+							if (!newQuote?.id)
 								throw new Error(
 									"Quote creation failed: no ID returned"
 								);
-							}
 							navigate(`/dispatch/quotes/${newQuote.id}`);
 							return newQuote.id;
 						}}
 					/>
-
 					<ConvertToJob
 						isModalOpen={isConvertToJobModalOpen}
 						setIsModalOpen={setIsConvertToJobModalOpen}
 						request={request}
 						onConvert={async (jobData) => {
 							const newJob = await createJob(jobData);
-							if (!newJob?.id) {
+							if (!newJob?.id)
 								throw new Error(
 									"Job creation failed: no ID returned"
 								);
-							}
 							navigate(`/dispatch/jobs/${newJob.id}`);
 							return newJob.id;
 						}}

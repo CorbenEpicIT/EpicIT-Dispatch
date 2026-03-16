@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import TimePicker from "../TimePicker";
 import { ArrivalConstraintValues, FinishConstraintValues } from "../../../types/recurringPlans";
 import type { ArrivalConstraint, FinishConstraint } from "../../../types/recurringPlans";
 import { UndoButton } from "./UndoButton";
 import { useTimeConstraints } from "../../../hooks/forms/useTimeConstraints";
+import Dropdown from "../Dropdown";
 
 export interface TimeConstraintsState {
 	arrivalConstraint: ArrivalConstraint;
@@ -17,6 +18,7 @@ export interface TimeConstraintsState {
 interface TimeConstraintsProps {
 	mode?: "create" | "edit";
 	isLoading?: boolean;
+	resetKey?: number;
 	initialArrivalConstraint?: ArrivalConstraint;
 	initialFinishConstraint?: FinishConstraint;
 	initialArrivalTime?: Date | null;
@@ -29,6 +31,7 @@ interface TimeConstraintsProps {
 const TimeConstraints = ({
 	mode = "create",
 	isLoading = false,
+	resetKey,
 	initialArrivalConstraint,
 	initialFinishConstraint,
 	initialArrivalTime,
@@ -64,6 +67,7 @@ const TimeConstraints = ({
 		undoFinishTime,
 	} = useTimeConstraints({
 		mode,
+		resetKey,
 		initialArrivalConstraint,
 		initialFinishConstraint,
 		initialArrivalTime,
@@ -72,18 +76,45 @@ const TimeConstraints = ({
 		initialFinishTime,
 	});
 
-	// Notify parent whenever state changes
+	// Use a ref for onStateChange so the effect never needs it as a dep,
+	// preventing infinite loops when the parent passes an inline function.
+	const onStateChangeRef = useRef(onStateChange);
 	useEffect(() => {
-		if (onStateChange) {
-			onStateChange({
-				arrivalConstraint,
-				finishConstraint,
-				arrivalTime,
-				arrivalWindowStart,
-				arrivalWindowEnd,
-				finishTime,
-			});
+		onStateChangeRef.current = onStateChange;
+	});
+
+	// isMounted guard: skip the initial fire so markDirty isn't called on mount.
+	// isResetting guard: skip fires caused by a resetKey change (draft load / form reset)
+	// so that loading a draft doesn't immediately mark the form dirty.
+	const isMounted = useRef(false);
+	const isResetting = useRef(false);
+	const prevResetKeyForGuard = useRef(resetKey);
+
+	// Arm the suppression flag when resetKey changes — must be declared BEFORE the
+	// state-change effect so React runs it first in the same flush.
+	useEffect(() => {
+		if (resetKey === prevResetKeyForGuard.current) return;
+		prevResetKeyForGuard.current = resetKey;
+		isResetting.current = true;
+	}, [resetKey]);
+
+	useEffect(() => {
+		if (!isMounted.current) {
+			isMounted.current = true;
+			return;
 		}
+		if (isResetting.current) {
+			isResetting.current = false;
+			return;
+		}
+		onStateChangeRef.current?.({
+			arrivalConstraint,
+			finishConstraint,
+			arrivalTime,
+			arrivalWindowStart,
+			arrivalWindowEnd,
+			finishTime,
+		});
 	}, [
 		arrivalConstraint,
 		finishConstraint,
@@ -91,59 +122,66 @@ const TimeConstraints = ({
 		arrivalWindowStart,
 		arrivalWindowEnd,
 		finishTime,
-		onStateChange,
+		// onStateChange intentionally excluded — accessed via ref to avoid loop
 	]);
 
 	const showUndo = mode === "edit";
 
 	return (
-		<div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-			<h3 className="text-lg font-semibold mb-4 text-white">Time Constraints</h3>
+		<div className="p-2.5 lg:p-3 bg-zinc-800 rounded-lg border border-zinc-700">
+			<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-white uppercase tracking-wider">
+				Time Constraints
+			</h3>
 
 			{/* Arrival */}
 			<div>
-				<label className="text-sm text-zinc-300 block mb-1">Arrival</label>
+				<label className="text-xs font-medium text-zinc-400 uppercase tracking-wider block mb-1.5">
+					Arrival
+				</label>
 
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+				<div className="grid grid-cols-2 gap-2 lg:gap-3 items-start">
 					{/* LEFT: constraint selector */}
-					<div className="space-y-1">
-						<label className="text-xs text-zinc-400 block h-4">
+					<div className="space-y-1 min-w-0">
+						<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 							Constraint
 						</label>
-
-						<div className="relative h-10">
-							<select
+						<div className="relative min-w-0">
+							<Dropdown
+								entries={
+									<>
+										{ArrivalConstraintValues.map(
+											(val) => (
+												<option
+													key={
+														val
+													}
+													value={
+														val
+													}
+												>
+													{val ===
+													"anytime"
+														? "Anytime"
+														: val ===
+															  "at"
+															? "At specific time"
+															: val ===
+																  "between"
+																? "Between times"
+																: "By deadline"}
+												</option>
+											)
+										)}
+									</>
+								}
 								value={arrivalConstraint}
-								onChange={(e) =>
+								onChange={(v) =>
 									setArrivalConstraint(
-										e.target
-											.value as ArrivalConstraint
+										v as ArrivalConstraint
 									)
 								}
 								disabled={isLoading}
-								className="appearance-none w-full h-10 p-2 bg-zinc-900 text-white border border-zinc-700 rounded-md outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors pr-10"
-							>
-								{ArrivalConstraintValues.map(
-									(val) => (
-										<option
-											key={val}
-											value={val}
-										>
-											{val ===
-											"anytime"
-												? "Anytime"
-												: val ===
-													  "at"
-													? "At specific time"
-													: val ===
-														  "between"
-														? "Between times"
-														: "By deadline"}
-										</option>
-									)
-								)}
-							</select>
-
+							/>
 							{showUndo && (
 								<UndoButton
 									show={
@@ -152,7 +190,7 @@ const TimeConstraints = ({
 									onUndo={
 										undoArrivalConstraint
 									}
-									position="right-2"
+									position="right-9"
 									disabled={isLoading}
 								/>
 							)}
@@ -160,14 +198,13 @@ const TimeConstraints = ({
 					</div>
 
 					{/* RIGHT: time inputs */}
-					<div className="space-y-2">
+					<div className="space-y-2 min-w-0">
 						{arrivalConstraint === "at" && (
-							<div className="space-y-1">
-								<label className="text-xs text-zinc-400 block h-4">
+							<div className="space-y-1 min-w-0">
+								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 									Time
 								</label>
-
-								<div className="relative h-10">
+								<div className="relative min-w-0">
 									<TimePicker
 										value={arrivalTime}
 										onChange={
@@ -194,11 +231,11 @@ const TimeConstraints = ({
 
 						{arrivalConstraint === "between" && (
 							<>
-								<div className="space-y-1">
-									<label className="text-xs text-zinc-400 block h-4">
+								<div className="space-y-1 min-w-0">
+									<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 										Start Time
 									</label>
-									<div className="relative h-10">
+									<div className="relative min-w-0">
 										<TimePicker
 											value={
 												arrivalWindowStart
@@ -223,12 +260,11 @@ const TimeConstraints = ({
 										)}
 									</div>
 								</div>
-
-								<div className="space-y-1">
-									<label className="text-xs text-zinc-400 block h-4">
+								<div className="space-y-1 min-w-0">
+									<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 										End Time
 									</label>
-									<div className="relative h-10">
+									<div className="relative min-w-0">
 										<TimePicker
 											value={
 												arrivalWindowEnd
@@ -257,11 +293,11 @@ const TimeConstraints = ({
 						)}
 
 						{arrivalConstraint === "by" && (
-							<div className="space-y-1">
-								<label className="text-xs text-zinc-400 block h-4">
+							<div className="space-y-1 min-w-0">
+								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 									Deadline
 								</label>
-								<div className="relative h-10">
+								<div className="relative min-w-0">
 									<TimePicker
 										value={
 											arrivalWindowEnd
@@ -290,65 +326,67 @@ const TimeConstraints = ({
 
 						{arrivalConstraint === "anytime" && (
 							<div className="space-y-1">
-								<label className="text-xs text-zinc-400 block h-4">
+								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 									&nbsp;
 								</label>
-								<div className="h-10 flex items-center">
-									<p className="text-xs text-zinc-400">
-										Arrival is flexible.
-										Scheduled start
-										defaults to 9:00 AM.
-									</p>
-								</div>
+								<p className="text-[10px] lg:text-xs text-zinc-400 leading-tight pt-1">
+									Arrival is flexible.
+									Defaults to 9:00 AM.
+								</p>
 							</div>
 						)}
 					</div>
 				</div>
 			</div>
 
-			<div className="my-4 border-t border-zinc-700" />
+			<div className="my-2 lg:my-3 border-t border-zinc-700" />
 
 			{/* Finish */}
 			<div>
-				<label className="text-sm text-zinc-300 block mb-1">Finish</label>
+				<label className="text-xs font-medium text-zinc-400 uppercase tracking-wider block mb-1.5">
+					Finish
+				</label>
 
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+				<div className="grid grid-cols-2 gap-2 lg:gap-3 items-start">
 					{/* LEFT */}
-					<div className="space-y-1">
-						<label className="text-xs text-zinc-400 block h-4">
+					<div className="space-y-1 min-w-0">
+						<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 							Constraint
 						</label>
-
-						<div className="relative h-10">
-							<select
+						<div className="relative min-w-0">
+							<Dropdown
+								entries={
+									<>
+										{FinishConstraintValues.map(
+											(val) => (
+												<option
+													key={
+														val
+													}
+													value={
+														val
+													}
+												>
+													{val ===
+													"when_done"
+														? "When done"
+														: val ===
+															  "at"
+															? "At specific time"
+															: "By deadline"}
+												</option>
+											)
+										)}
+									</>
+								}
 								value={finishConstraint}
-								onChange={(e) =>
+								onChange={(v) =>
 									setFinishConstraint(
-										e.target
-											.value as FinishConstraint
+										v as FinishConstraint
 									)
 								}
 								disabled={isLoading}
-								className="appearance-none w-full h-10 p-2 bg-zinc-900 text-white border border-zinc-700 rounded-md outline-none hover:border-zinc-600 focus:border-blue-500 transition-colors pr-10"
-							>
-								{FinishConstraintValues.map(
-									(val) => (
-										<option
-											key={val}
-											value={val}
-										>
-											{val ===
-											"when_done"
-												? "When done"
-												: val ===
-													  "at"
-													? "At specific time"
-													: "By deadline"}
-										</option>
-									)
-								)}
-							</select>
-
+							/>
 							{showUndo && (
 								<UndoButton
 									show={
@@ -357,7 +395,7 @@ const TimeConstraints = ({
 									onUndo={
 										undoFinishConstraint
 									}
-									position="right-2"
+									position="right-9"
 									disabled={isLoading}
 								/>
 							)}
@@ -365,17 +403,16 @@ const TimeConstraints = ({
 					</div>
 
 					{/* RIGHT */}
-					<div className="space-y-2">
+					<div className="space-y-2 min-w-0">
 						{(finishConstraint === "at" ||
 							finishConstraint === "by") && (
-							<div className="space-y-1">
-								<label className="text-xs text-zinc-400 block h-4">
+							<div className="space-y-1 min-w-0">
+								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 									{finishConstraint === "at"
 										? "Time"
 										: "Deadline"}
 								</label>
-
-								<div className="relative h-10">
+								<div className="relative min-w-0">
 									<TimePicker
 										value={finishTime}
 										onChange={
@@ -403,17 +440,12 @@ const TimeConstraints = ({
 
 						{finishConstraint === "when_done" && (
 							<div className="space-y-1">
-								<label className="text-xs text-zinc-400 block h-4">
+								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
 									&nbsp;
 								</label>
-								<div className="h-10 flex items-center">
-									<p className="text-xs text-zinc-400">
-										Default duration is
-										2 hours (adjust by
-										selecting a finish
-										constraint).
-									</p>
-								</div>
+								<p className="text-[10px] lg:text-xs text-zinc-400 leading-tight pt-1">
+									Default duration is 2 hours.
+								</p>
 							</div>
 						)}
 					</div>

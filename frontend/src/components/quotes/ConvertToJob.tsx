@@ -1,8 +1,7 @@
-import LoadSvg from "../../assets/icons/loading.svg?react";
-import Button from "../ui/Button";
 import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
-import { JobPriorityValues, type CreateJobInput } from "../../types/jobs";
+import { type CreateJobInput } from "../../types/jobs";
+import { PriorityValues } from "../../types/common";
 import type { Quote } from "../../types/quotes";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
@@ -33,7 +32,7 @@ export default function ConvertToJob({
 	const originalsRef = useRef({
 		name: "",
 		description: "",
-		priority: "Medium" as (typeof JobPriorityValues)[number],
+		priority: "Medium" as (typeof PriorityValues)[number],
 		address: "",
 		coords: undefined as any,
 	});
@@ -74,11 +73,10 @@ export default function ConvertToJob({
 		const initialName = quote.title ?? "";
 		const initialDesc = quote.description ?? "";
 		const initialPriority = (
-			JobPriorityValues.includes(quote.priority as any)
+			PriorityValues.includes(quote.priority as any)
 				? (quote.priority as any)
 				: "Medium"
-		) as (typeof JobPriorityValues)[number];
-
+		) as (typeof PriorityValues)[number];
 		const initialAddress = quote.address ?? "";
 		const initialCoords = quote.coords ?? undefined;
 
@@ -94,25 +92,20 @@ export default function ConvertToJob({
 		if (descRef.current) descRef.current.value = initialDesc;
 		if (priorityRef.current) priorityRef.current.value = initialPriority;
 
-		if (initialAddress) {
-			setGeoData({
-				address: initialAddress,
-				coords: initialCoords,
-			} as GeocodeResult);
-		} else {
-			setGeoData(undefined);
-		}
-
+		setGeoData(
+			initialAddress
+				? ({
+						address: initialAddress,
+						coords: initialCoords,
+					} as GeocodeResult)
+				: undefined
+		);
 		setDirty({});
 		setErrorMessage(null);
 	}, [isModalOpen, quote]);
 
 	const handleChangeAddress = (result: GeocodeResult) => {
-		setGeoData(() => ({
-			address: result.address,
-			coords: result.coords,
-		}));
-
+		setGeoData({ address: result.address, coords: result.coords });
 		setFieldDirty(
 			"address",
 			(result.address || "") !== (originalsRef.current.address || "") ||
@@ -124,22 +117,20 @@ export default function ConvertToJob({
 	const undoAddressToOriginal = () => {
 		const originalAddress = originalsRef.current.address || "";
 		const originalCoords = originalsRef.current.coords;
-
-		if (!originalAddress) {
-			setGeoData(undefined);
-		} else {
-			setGeoData({
-				address: originalAddress,
-				coords: originalCoords,
-			} as GeocodeResult);
-		}
-
+		setGeoData(
+			originalAddress
+				? ({
+						address: originalAddress,
+						coords: originalCoords,
+					} as GeocodeResult)
+				: undefined
+		);
 		setFieldDirty("address", false);
 	};
 
 	const priorityEntries = (
 		<>
-			{JobPriorityValues.map((v) => (
+			{PriorityValues.map((v) => (
 				<option key={v} value={v} className="text-black">
 					{v}
 				</option>
@@ -148,8 +139,8 @@ export default function ConvertToJob({
 	);
 
 	const invokeConvert = async () => {
-		if (!nameRef.current || !descRef.current || !priorityRef.current) return;
-		if (isLoading) return;
+		if (!nameRef.current || !descRef.current || !priorityRef.current || isLoading)
+			return;
 
 		revertIfBlank(nameRef.current, originalsRef.current.name, "name");
 		revertIfBlank(descRef.current, originalsRef.current.description, "description");
@@ -167,7 +158,6 @@ export default function ConvertToJob({
 			setErrorMessage("Job name is required");
 			return;
 		}
-
 		if (!geoData?.address) {
 			setErrorMessage("Job address is required");
 			return;
@@ -182,14 +172,11 @@ export default function ConvertToJob({
 				client_id: quote.client_id,
 				quote_id: quote.id,
 				request_id: quote.request_id || undefined,
-
 				address: geoData.address,
 				coords: geoData.coords || { lat: 0, lon: 0 },
-
 				description: descValue,
 				priority: priorityValue,
 				status: "Unscheduled",
-
 				subtotal: quote.subtotal ? Number(quote.subtotal) : undefined,
 				tax_rate: quote.tax_rate ? Number(quote.tax_rate) : undefined,
 				tax_amount: quote.tax_amount ? Number(quote.tax_amount) : undefined,
@@ -208,7 +195,6 @@ export default function ConvertToJob({
 			if (nameRef.current) nameRef.current.value = "";
 			if (descRef.current) descRef.current.value = "";
 			setGeoData(undefined);
-
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to convert quote to job:", error);
@@ -223,179 +209,216 @@ export default function ConvertToJob({
 	};
 
 	const content = (
-		<>
-			<h2 className="text-2xl font-bold mb-4">Convert to Job</h2>
+		<div className="flex flex-col min-h-0 flex-1">
+			{/* Header */}
+			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-zinc-800 flex-shrink-0">
+				<h2 className="text-lg lg:text-xl font-bold text-white">
+					Convert to Job
+				</h2>
+			</div>
 
-			{errorMessage && (
-				<div className="p-3 mb-4 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
-					{errorMessage}
+			{/* Scrollable body */}
+			<div className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 lg:py-5 space-y-3 lg:space-y-4">
+				{/* Error banner */}
+				{errorMessage && (
+					<div className="p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
+						{errorMessage}
+					</div>
+				)}
+
+				{/* Job Name */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Job Name *
+					</label>
+					<div className="relative">
+						<input
+							type="text"
+							placeholder="Job Name"
+							className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-9"
+							disabled={isLoading}
+							ref={nameRef}
+							defaultValue={quote.title}
+							onChange={(e) =>
+								setFieldDirty(
+									"name",
+									e.target.value.trim() !==
+										originalsRef.current
+											.name
+								)
+							}
+							onBlur={() =>
+								revertIfBlank(
+									nameRef.current,
+									originalsRef.current.name,
+									"name"
+								)
+							}
+						/>
+						{dirty.name && (
+							<button
+								type="button"
+								title="Undo"
+								onClick={() =>
+									undoToOriginal(
+										nameRef.current,
+										originalsRef.current
+											.name,
+										"name"
+									)
+								}
+								className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+							>
+								<RotateCcw size={14} />
+							</button>
+						)}
+					</div>
 				</div>
-			)}
 
-			<p className="mb-1 hover:color-accent">Job Name *</p>
-			<div className="relative">
-				<input
-					type="text"
-					placeholder="Job Name"
-					className="border border-zinc-800 p-2 w-full rounded-sm pr-10"
+				{/* Description */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Description
+					</label>
+					<div className="relative">
+						<textarea
+							placeholder="Job Description"
+							className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-9"
+							disabled={isLoading}
+							ref={descRef}
+							defaultValue={quote.description}
+							onChange={(e) =>
+								setFieldDirty(
+									"description",
+									e.target.value.trim() !==
+										originalsRef.current
+											.description
+								)
+							}
+							onBlur={() =>
+								revertIfBlank(
+									descRef.current,
+									originalsRef.current
+										.description,
+									"description"
+								)
+							}
+						/>
+						{dirty.description && (
+							<button
+								type="button"
+								title="Undo"
+								onClick={() =>
+									undoToOriginal(
+										descRef.current,
+										originalsRef.current
+											.description,
+										"description"
+									)
+								}
+								className="absolute right-2.5 top-2 text-zinc-400 hover:text-white transition-colors"
+							>
+								<RotateCcw size={14} />
+							</button>
+						)}
+					</div>
+				</div>
+
+				{/* Address */}
+				<div className="relative" style={{ zIndex: 50 }}>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Job Address *
+					</label>
+					<div className="relative">
+						<AddressForm
+							mode="edit"
+							originalValue={originalsRef.current.address}
+							originalCoords={originalsRef.current.coords}
+							dropdownPosition="above"
+							handleChange={handleChangeAddress}
+						/>
+						{dirty.address && (
+							<button
+								type="button"
+								title="Undo"
+								onClick={undoAddressToOriginal}
+								className="absolute right-2.5 top-2 text-zinc-400 hover:text-white transition-colors"
+							>
+								<RotateCcw size={14} />
+							</button>
+						)}
+					</div>
+				</div>
+
+				{/* Priority */}
+				<div>
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						Priority
+					</label>
+					<div className="relative">
+						<Dropdown
+							refToApply={priorityRef}
+							entries={priorityEntries}
+							defaultValue={originalsRef.current.priority}
+							onChange={(val) =>
+								setFieldDirty(
+									"priority",
+									val !==
+										originalsRef.current
+											.priority
+								)
+							}
+						/>
+						{dirty.priority && (
+							<button
+								type="button"
+								title="Undo"
+								onClick={() => {
+									if (priorityRef.current)
+										priorityRef.current.value =
+											originalsRef.current.priority;
+									setFieldDirty(
+										"priority",
+										false
+									);
+								}}
+								className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+							>
+								<RotateCcw size={14} />
+							</button>
+						)}
+					</div>
+				</div>
+
+				{/* Note */}
+				<div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-md">
+					<p className="text-xs text-amber-200">
+						Note: The job will be created in "Unscheduled"
+						status and line items will be copied from the quote.
+						You can create visits and assign technicians after
+						creation.
+					</p>
+				</div>
+			</div>
+
+			{/* Footer */}
+			<div className="flex items-center justify-end gap-2 px-4 lg:px-6 py-3 lg:py-4 border-t border-zinc-800 flex-shrink-0">
+				<button
+					onClick={() => setIsModalOpen(false)}
 					disabled={isLoading}
-					ref={nameRef}
-					defaultValue={quote.title}
-					onChange={(e) =>
-						setFieldDirty(
-							"name",
-							e.target.value.trim() !==
-								originalsRef.current.name
-						)
-					}
-					onBlur={() =>
-						revertIfBlank(
-							nameRef.current,
-							originalsRef.current.name,
-							"name"
-						)
-					}
-				/>
-				{dirty.name && (
-					<button
-						type="button"
-						title="Undo"
-						onClick={() =>
-							undoToOriginal(
-								nameRef.current,
-								originalsRef.current.name,
-								"name"
-							)
-						}
-						className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
-					>
-						<RotateCcw size={16} />
-					</button>
-				)}
-			</div>
-
-			<p className="mb-1 mt-3 hover:color-accent">Description</p>
-			<div className="relative">
-				<textarea
-					placeholder="Job Description"
-					className="border border-zinc-800 p-2 w-full h-24 rounded-sm pr-10"
+					className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md border border-zinc-700 transition-colors disabled:opacity-50"
+				>
+					Cancel
+				</button>
+				<button
+					onClick={invokeConvert}
 					disabled={isLoading}
-					ref={descRef}
-					defaultValue={quote.description}
-					onChange={(e) =>
-						setFieldDirty(
-							"description",
-							e.target.value.trim() !==
-								originalsRef.current.description
-						)
-					}
-					onBlur={() =>
-						revertIfBlank(
-							descRef.current,
-							originalsRef.current.description,
-							"description"
-						)
-					}
-				/>
-				{dirty.description && (
-					<button
-						type="button"
-						title="Undo"
-						onClick={() =>
-							undoToOriginal(
-								descRef.current,
-								originalsRef.current.description,
-								"description"
-							)
-						}
-						className="absolute right-2 top-2 text-zinc-400 hover:text-white transition-colors"
-					>
-						<RotateCcw size={16} />
-					</button>
-				)}
+					className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+				>
+					{isLoading ? "Creating..." : "Create Job"}
+				</button>
 			</div>
-
-			<p className="mb-1 mt-3 hover:color-accent">Job Address *</p>
-			<div className="relative">
-				<AddressForm
-					mode="edit"
-					originalValue={originalsRef.current.address}
-					originalCoords={originalsRef.current.coords}
-					handleChange={handleChangeAddress}
-				/>
-
-				{/* Undo for address changes */}
-				{dirty.address && (
-					<button
-						type="button"
-						title="Undo"
-						onClick={undoAddressToOriginal}
-						className="absolute right-2 top-2 text-zinc-400 hover:text-white transition-colors"
-					>
-						<RotateCcw size={16} />
-					</button>
-				)}
-			</div>
-
-			<p className="mb-1 mt-3 hover:color-accent">Priority</p>
-			<div className="relative border border-zinc-800 rounded-sm">
-				<Dropdown
-					refToApply={priorityRef}
-					entries={priorityEntries}
-					defaultValue={originalsRef.current.priority}
-					onChange={(val) =>
-						setFieldDirty(
-							"priority",
-							val !== originalsRef.current.priority
-						)
-					}
-				/>
-				{dirty.priority && (
-					<button
-						type="button"
-						title="Undo"
-						onClick={() => {
-							if (priorityRef.current)
-								priorityRef.current.value =
-									originalsRef.current.priority;
-							setFieldDirty("priority", false);
-						}}
-						className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
-					>
-						<RotateCcw size={16} />
-					</button>
-				)}
-			</div>
-
-			<div className="p-3 mt-4 bg-amber-900/20 border border-amber-700/50 rounded-md">
-				<p className="text-xs text-amber-200">
-					Note: The job will be created in "Unscheduled" status and
-					line items will be copied from the quote. You can create
-					visits and assign technicians after creation.
-				</p>
-			</div>
-
-			<div className="flex justify-end space-x-2 mt-2">
-				{isLoading ? (
-					<LoadSvg className="w-10 h-10" />
-				) : (
-					<>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all"
-							onClick={() => setIsModalOpen(false)}
-						>
-							<Button label="Cancel" />
-						</div>
-						<div
-							className="border-1 border-zinc-800 rounded-sm cursor-pointer hover:bg-zinc-800 transition-all font-bold"
-							onClick={invokeConvert}
-						>
-							<Button label="Create Job" />
-						</div>
-					</>
-				)}
-			</div>
-		</>
+		</div>
 	);
 
 	return (

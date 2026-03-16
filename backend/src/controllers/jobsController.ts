@@ -161,6 +161,14 @@ export const getJobById = async (id: string) => {
 				},
 			},
 			line_items: true,
+			recurring_plan: {
+				select: {
+					id: true,
+					name: true,
+					status: true,
+					starts_at: true,
+				},
+			},
 			notes: {
 				include: {
 					creator_tech: {
@@ -524,6 +532,14 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 						},
 					},
 					line_items: true,
+					recurring_plan: {
+						select: {
+							id: true,
+							name: true,
+							status: true,
+							starts_at: true,
+						},
+					},
 					notes: {
 						include: {
 							creator_tech: {

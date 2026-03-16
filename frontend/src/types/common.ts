@@ -115,12 +115,14 @@ export interface JobReference {
 	job_number: string;
 	status: string;
 	created_at: Date | string;
+	estimated_total?: number | null;
 }
 
 export interface JobSummary extends JobReference {
 	client_id: string;
 	address: string;
 	priority: string;
+	actual_total?: number | null;
 }
 
 // ============================================================================
