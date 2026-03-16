@@ -146,6 +146,7 @@ enum form_draft_type {
   job
   job_visit
   recurring_plan
+  invoice
 }
 
 
