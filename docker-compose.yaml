@@ -13,7 +13,8 @@ services:
         env_file:
             - ./backend/.env
         depends_on:
-            - db
+            db:
+                condition: service_healthy
         volumes:
             - ./backend:/app
         working_dir: /app
@@ -41,6 +42,11 @@ services:
             POSTGRES_USER: hvac_user
             POSTGRES_PASSWORD: hvac_pass
             POSTGRES_DB: hvac_db
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U hvac_user -d hvac_db"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
         ports:
             - "5433:5432"
         volumes:
