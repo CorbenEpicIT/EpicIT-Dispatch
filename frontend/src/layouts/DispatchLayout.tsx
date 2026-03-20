@@ -15,6 +15,7 @@ import {
 	ArrowLeft,
 	Phone,
 	Briefcase,
+	ReceiptText,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 
@@ -115,6 +116,11 @@ export default function DispatchLayout() {
 						to="/dispatch/map"
 						icon={<Map size={ICON_SIZE} />}
 						label="Map"
+					/>
+					<SideNavItem
+						to="/dispatch/invoices"
+						icon={<ReceiptText size={ICON_SIZE} />}
+						label="Invoices"
 					/>
 					<SideNavItem
 						to="/dispatch/reporting"

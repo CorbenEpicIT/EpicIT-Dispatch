@@ -1293,7 +1293,7 @@ export default function JobDetailPage() {
 
 			<JobNoteManager jobId={jobId!} visits={visits} />
 
-			{job && (
+			{job && isEditModalOpen && (
 				<EditJob
 					isModalOpen={isEditModalOpen}
 					setIsModalOpen={setIsEditModalOpen}

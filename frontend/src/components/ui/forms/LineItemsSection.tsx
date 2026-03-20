@@ -1,5 +1,5 @@
-import { Plus } from "lucide-react";
-import LineItemCard from "./LineItemCard";
+import { Plus, Download } from "lucide-react";
+import LineItemCard, { type SourceJob } from "./LineItemCard";
 import type { BaseLineItem } from "../../../types/common";
 
 interface LineItemsSectionProps {
@@ -8,12 +8,22 @@ interface LineItemsSectionProps {
 	onAdd: () => void;
 	onRemove: (id: string) => void;
 	onUpdate: (id: string, field: keyof BaseLineItem, value: string | number) => void;
+	onUpdateSource?: (
+		id: string,
+		sourceJobId: string | null,
+		sourceVisitId: string | null
+	) => void;
 	subtotal: number;
 	required?: boolean;
 	minItems?: number;
 	dirtyFields?: Record<string, boolean>;
 	onUndo?: (id: string, field: keyof BaseLineItem) => void;
 	onClear?: (id: string, field: keyof BaseLineItem) => void;
+	// Source attribution context — linked jobs and their selected visits
+	sourceJobs?: SourceJob[];
+	// Import — if provided, shows the import button
+	onImport?: () => void;
+	importLabel?: string;
 }
 
 const LineItemsSection = ({
@@ -22,29 +32,50 @@ const LineItemsSection = ({
 	onAdd,
 	onRemove,
 	onUpdate,
+	onUpdateSource,
 	subtotal,
 	required = false,
 	minItems = 1,
 	dirtyFields,
 	onUndo,
 	onClear,
+	sourceJobs = [],
+	onImport,
+	importLabel,
 }: LineItemsSectionProps) => {
 	const canRemove = lineItems.length > minItems;
 
 	return (
 		<div className="space-y-2 lg:space-y-3">
-			<div className="flex items-center justify-between">
-				<h3 className="text-xs lg:text-sm font-semibold text-white uppercase tracking-wider">
+			{/* Header row */}
+			<div className="flex items-center justify-between gap-2">
+				<h3 className="text-xs lg:text-sm font-semibold text-white uppercase tracking-wider flex-shrink-0">
 					Line Items {required && "*"}
 				</h3>
-				<div className="text-xs lg:text-sm text-zinc-400">
-					Subtotal:{" "}
-					<span className="text-white font-semibold">
-						${subtotal.toFixed(2)}
-					</span>
+				<div className="flex items-center gap-2 min-w-0">
+					{/* Import button — only shown when there are linked visit items to import */}
+					{onImport && (
+						<button
+							type="button"
+							onClick={onImport}
+							disabled={isLoading}
+							className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 hover:border-zinc-500 rounded text-xs font-medium text-zinc-300 hover:text-white transition-colors flex-shrink-0"
+							title={importLabel}
+						>
+							<Download size={12} />
+							{importLabel ?? "Import line items"}
+						</button>
+					)}
+					<div className="text-xs lg:text-sm text-zinc-400 flex-shrink-0">
+						Subtotal:{" "}
+						<span className="text-white font-semibold">
+							${subtotal.toFixed(2)}
+						</span>
+					</div>
 				</div>
 			</div>
 
+			{/* Line item cards */}
 			<div className="space-y-2 lg:space-y-3">
 				{lineItems.map((item, index) => (
 					<LineItemCard
@@ -58,6 +89,8 @@ const LineItemsSection = ({
 						dirtyFields={dirtyFields}
 						onUndo={onUndo}
 						onClear={onClear}
+						onUpdateSource={onUpdateSource}
+						sourceJobs={sourceJobs}
 					/>
 				))}
 			</div>
