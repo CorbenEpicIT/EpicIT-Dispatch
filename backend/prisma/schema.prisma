@@ -998,12 +998,17 @@ model invoice_schedule {
   day_of_week       weekday?
   generate_days_before Int                         @default(0)
   payment_terms_days   Int?
+  auto_send         Boolean                        @default(false)
+  memo_template     String?
+  next_invoice_at   DateTime?
+  last_invoiced_at  DateTime?
   is_active         Boolean                        @default(true)
   created_at        DateTime                       @default(now())
   updated_at        DateTime                       @updatedAt
 
   @@index([recurring_plan_id])
   @@index([is_active])
+  @@index([is_active, next_invoice_at])
 }
 
 model invoice {

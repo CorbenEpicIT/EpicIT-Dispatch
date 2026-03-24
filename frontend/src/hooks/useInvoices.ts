@@ -44,6 +44,22 @@ export const useInvoicesByClientIdQuery = (clientId: string): UseQueryResult<Inv
 	});
 };
 
+export const useInvoicesByJobIdQuery = (jobId: string): UseQueryResult<Invoice[], Error> => {
+	return useQuery({
+		queryKey: ["jobs", jobId, "invoices"],
+		queryFn: () => invoiceApi.getInvoicesByJobId(jobId),
+		enabled: !!jobId,
+	});
+};
+
+export const useInvoicesByVisitIdQuery = (jobId: string, visitId: string): UseQueryResult<Invoice[], Error> => {
+	return useQuery({
+		queryKey: ["jobs", jobId, "visits", visitId, "invoices"],
+		queryFn: () => invoiceApi.getInvoicesByVisitId(jobId, visitId),
+		enabled: !!jobId && !!visitId,
+	});
+};
+
 // ============================================================================
 // INVOICE MUTATIONS
 // ============================================================================

@@ -32,6 +32,8 @@ interface LineItemCardProps {
 	dirtyFields?: Record<string, boolean>;
 	onUndo?: (id: string, field: keyof BaseLineItem) => void;
 	onClear?: (id: string, field: keyof BaseLineItem) => void;
+	onUndoSource?: (id: string) => void;
+	originalLineItemsMap?: Map<string, BaseLineItem>;
 	sourceJobs?: SourceJob[];
 }
 
@@ -54,10 +56,15 @@ const LineItemCard = memo(
 		dirtyFields = {},
 		onUndo,
 		onClear,
+		onUndoSource,
+		originalLineItemsMap,
 		sourceJobs = [],
 	}: LineItemCardProps) => {
 		const isDirty = (field: string) => dirtyFields[`li:${item.id}:${field}`];
 		const showUndo = (field: keyof BaseLineItem) => !!onUndo && isDirty(field);
+		const origItem = originalLineItemsMap?.get(item.id);
+		const origHasSource = !!((origItem as any)?.source_job_id || (origItem as any)?.source_visit_id);
+		const isSourceDirty = !!onUndoSource && !!dirtyFields[`li:${item.id}:source`] && origHasSource;
 		const showClear = (field: keyof BaseLineItem, value: string) =>
 			!!onClear && value.trim().length > 0;
 
@@ -480,6 +487,16 @@ const LineItemCard = memo(
 								) : (
 									<span className="text-xs flex-1">
 										Unassigned
+									</span>
+								)}
+								{isSourceDirty && (
+									<span
+										role="button"
+										aria-label="Undo attribution"
+										onClick={(e) => { e.stopPropagation(); onUndoSource!(item.id); }}
+										className="flex-shrink-0 text-zinc-500 hover:text-white transition-colors cursor-pointer"
+									>
+										<RotateCcw size={12} />
 									</span>
 								)}
 								<ChevronDown

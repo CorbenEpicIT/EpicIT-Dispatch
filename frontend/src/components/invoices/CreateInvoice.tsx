@@ -86,13 +86,15 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		addLineItem,
 		removeLineItem,
 		updateLineItem,
+		updateLineItemSource: hookUpdateLineItemSource,
+		undoLineItemSource,
 		subtotal,
 		resetLineItems,
 		seedLineItems,
-		setLineItems,
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		originalLineItems,
 	} = useLineItems({ minItems: 0, mode: "create" });
 
 	const {
@@ -468,20 +470,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 	const updateLineItemSource = useCallback(
 		(id: string, sourceJobId: string | null, sourceVisitId: string | null) => {
-			setLineItems((prev) =>
-				prev.map((li) =>
-					li.id === id
-						? {
-								...li,
-								source_job_id: sourceJobId,
-								source_visit_id: sourceVisitId,
-							}
-						: li
-				)
-			);
+			hookUpdateLineItemSource(id, sourceJobId, sourceVisitId);
 			markDirty();
 		},
-		[setLineItems, markDirty]
+		[hookUpdateLineItemSource, markDirty]
 	);
 
 	// ── Submit ────────────────────────────────────────────────────────────
@@ -1203,7 +1195,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 				const totalImportable = importableCount + jobImportableCount;
 
 				return (
-					<div className="min-w-0 flex flex-col">
+					<div className="min-w-0 flex flex-col -mt-3 sm:-mt-4">
 						<LineItemsSection
 							lineItems={activeLineItems}
 							isLoading={isLoading}
@@ -1217,6 +1209,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							dirtyFields={dirtyLineItemFields}
 							onUndo={undoLineItemField}
 							onClear={clearLineItemField}
+							onUndoSource={undoLineItemSource}
+							originalLineItemsMap={originalLineItems}
 							sourceJobs={sourceJobsForStep2}
 							onImport={
 								totalImportable > 0
@@ -1228,6 +1222,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 									? `Import ${importableCount} visit item${importableCount !== 1 ? "s" : ""}`
 									: undefined
 							}
+							stickyHeader
 						/>
 					</div>
 				);
@@ -1398,6 +1393,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		undoLineItemSource,
+		originalLineItems,
 		taxRate,
 		taxAmount,
 		discountType,

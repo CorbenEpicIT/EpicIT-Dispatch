@@ -332,7 +332,7 @@ export function FormWizardContainer<T extends number>({
 						className={`flex-1 min-h-0 ${
 							fullHeightContent
 								? "flex flex-col"
-								: "overflow-y-auto overflow-x-hidden custom-scrollbar"
+								: "overflow-y-auto overflow-x-hidden custom-scrollbar [scrollbar-gutter:stable]"
 						}`}
 					>
 						{fullHeightContent ? (

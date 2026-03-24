@@ -1,5 +1,47 @@
 import z from "zod";
 
+// ============================================================================
+// INVOICE SCHEDULE
+// ============================================================================
+
+export const invoiceScheduleSchema = z
+	.object({
+		billing_basis: z.enum(["visit_actuals", "plan_line_items", "fixed_amount"]),
+		fixed_amount: z.number().min(0).optional().nullable(),
+		frequency: z.enum([
+			"on_visit_completion",
+			"weekly",
+			"biweekly",
+			"monthly",
+			"quarterly",
+		]),
+		day_of_month: z.number().int().min(1).max(31).optional().nullable(),
+		day_of_week: z
+			.enum(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])
+			.optional()
+			.nullable(),
+		generate_days_before: z.number().int().min(0).optional().default(0),
+		payment_terms_days: z.number().int().min(0).optional().default(30),
+		auto_send: z.boolean().optional().default(false),
+		memo_template: z.string().optional().nullable(),
+	})
+	.refine(
+		(d) => d.billing_basis !== "fixed_amount" || (d.fixed_amount != null && d.fixed_amount >= 0),
+		{ message: "fixed_amount is required when billing_basis is 'fixed_amount'", path: ["fixed_amount"] },
+	)
+	.refine(
+		(d) =>
+			!["weekly", "biweekly"].includes(d.frequency) || d.day_of_week != null,
+		{ message: "day_of_week is required for weekly and biweekly schedules", path: ["day_of_week"] },
+	)
+	.refine(
+		(d) =>
+			!["monthly", "quarterly"].includes(d.frequency) || d.day_of_month != null,
+		{ message: "day_of_month is required for monthly and quarterly schedules", path: ["day_of_month"] },
+	);
+
+export const updateInvoiceScheduleSchema = invoiceScheduleSchema;
+
 export const ArrivalConstraintValues = [
 	"anytime",
 	"at",
@@ -102,6 +144,8 @@ export const createRecurringPlanSchema = z
 				}),
 			)
 			.optional(),
+
+		invoice_schedule: invoiceScheduleSchema.optional(),
 	})
 	.refine(
 		(data) => {
@@ -332,6 +376,8 @@ export const updateRecurringPlanSchema = z
 				}),
 			)
 			.optional(),
+
+		invoice_schedule: invoiceScheduleSchema.optional(),
 	})
 	.refine(
 		(data) => {

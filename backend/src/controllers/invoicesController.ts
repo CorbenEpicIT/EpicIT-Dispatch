@@ -302,6 +302,22 @@ export const getInvoicesByClientId = async (clientId: string) => {
 	});
 };
 
+export const getInvoicesByJobId = async (jobId: string) => {
+	return await db.invoice.findMany({
+		where: { jobs: { some: { job_id: jobId } } },
+		include: invoiceInclude,
+		orderBy: { created_at: "desc" },
+	});
+};
+
+export const getInvoicesByVisitId = async (visitId: string) => {
+	return await db.invoice.findMany({
+		where: { visits: { some: { visit_id: visitId } } },
+		include: invoiceInclude,
+		orderBy: { created_at: "desc" },
+	});
+};
+
 export const insertInvoice = async (req: Request, context?: UserContext) => {
 	try {
 		const parsed = createInvoiceSchema.parse(req.body);

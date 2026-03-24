@@ -1263,6 +1263,17 @@ app.get("/jobs/:jobId/notes", async (req, res, next) => {
 	}
 });
 
+app.get("/jobs/:jobId/visits/:visitId/invoices", async (req, res, next) => {
+	try {
+		const invoices = await invoicesController.getInvoicesByVisitId(
+			req.params.visitId,
+		);
+		res.json(createSuccessResponse(invoices, { count: invoices.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
 app.get("/jobs/:jobId/visits/:visitId/notes", async (req, res, next) => {
 	try {
 		const { jobId, visitId } = req.params;
@@ -1591,6 +1602,42 @@ app.post("/jobs/:jobId/recurring-plan/complete", async (req, res, next) => {
 });
 
 // ============================================
+// RECURRING PLAN INVOICE SCHEDULE ROUTES
+// ============================================
+
+app.put("/jobs/:jobId/recurring-plan/invoice-schedule", async (req, res, next) => {
+	try {
+		const { jobId } = req.params;
+		const result = await recurringPlansController.upsertInvoiceSchedule(
+			jobId,
+			req.body,
+			getUserContext(req),
+		);
+		if (result.err) {
+			res.status(400).json(createErrorResponse("VALIDATION_ERROR", result.err));
+			return;
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/jobs/:jobId/recurring-plan/invoice-schedule", async (req, res, next) => {
+	try {
+		const { jobId } = req.params;
+		const result = await recurringPlansController.deleteInvoiceSchedule(jobId);
+		if (result.err) {
+			res.status(404).json(createErrorResponse("NOT_FOUND", result.err));
+			return;
+		}
+		res.json(createSuccessResponse({ message: "Invoice schedule removed" }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
 // RECURRING PLAN NOTES ROUTES
 // ============================================
 
@@ -1906,6 +1953,17 @@ app.get("/clients/:clientId/invoices", async (req, res, next) => {
 	}
 });
 
+app.get("/jobs/:jobId/invoices", async (req, res, next) => {
+	try {
+		const invoices = await invoicesController.getInvoicesByJobId(
+			req.params.jobId,
+		);
+		res.json(createSuccessResponse(invoices, { count: invoices.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
 app.post("/invoices", async (req, res, next) => {
 	try {
 		const context = getUserContext(req);
@@ -2121,7 +2179,7 @@ app.delete("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
 // CLIENTS
 // ============================================
 
-app.get("/clients", verifyToken, async (req, res, next) => {
+app.get("/clients", async (req, res, next) => {
 	try {
 		const clients = await getAllClients();
 		res.json(createSuccessResponse(clients, { count: clients.length }));

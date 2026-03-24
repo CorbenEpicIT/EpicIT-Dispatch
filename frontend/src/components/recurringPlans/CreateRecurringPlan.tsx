@@ -4,6 +4,7 @@ import type { ZodError } from "zod";
 import {
 	CreateRecurringPlanSchema,
 	type CreateRecurringPlanInput,
+	type InvoiceScheduleBillingBasis,
 	type RecurringFrequency,
 	type Weekday,
 } from "../../types/recurringPlans";
@@ -28,7 +29,11 @@ import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
-import { BillingConfiguration } from "../ui/forms/BillingConfiguration";
+import {
+	BillingConfiguration,
+	type BillingConfigState,
+	defaultBillingConfigState,
+} from "../ui/forms/BillingConfiguration";
 import { ScheduleConfiguration } from "../ui/forms/ScheduleConfiguration";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -104,13 +109,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		Partial<TimeConstraintsState> & { key: number }
 	>({ key: 1 });
 	const constraintResetKeyRef = useRef(1); // always incrementing — never reuse a value
-	const [billingMode, setBillingMode] = useState<"per_visit" | "subscription" | "none">(
-		"per_visit"
-	);
-	const [invoiceTiming, setInvoiceTiming] = useState<
-		"on_completion" | "on_schedule_date" | "manual"
-	>("on_completion");
-	const [autoInvoice, setAutoInvoice] = useState<boolean>(false);
+	const [billingConfig, setBillingConfig] = useState<BillingConfigState>(defaultBillingConfigState);
 
 	const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false);
 	const [sourceClientFilter, setSourceClientFilter] = useState("");
@@ -289,9 +288,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		setTimeConstraintsState(null);
 		constraintResetKeyRef.current += 1;
 		setConstraintSeed({ key: constraintResetKeyRef.current }); // clear all initial* props → use defaults
-		setBillingMode("per_visit");
-		setInvoiceTiming("on_completion");
-		setAutoInvoice(false);
+		setBillingConfig(defaultBillingConfigState);
 		resetLineItems();
 		setErrors(null);
 		setIsDraftPanelOpen(false);
@@ -336,6 +333,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			try {
 				const draft = await getDraft(draftId);
 				const p = draft.payload as Partial<CreateRecurringPlanInput> & {
+					billing_config?: BillingConfigState;
 					schedule?: typeof scheduleState;
 					line_items?: Array<{
 						name: string;
@@ -363,9 +361,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 						address: p.address,
 						coords: p.coords || { lat: 0, lon: 0 },
 					});
-				if (p.billing_mode) setBillingMode(p.billing_mode);
-				if (p.invoice_timing) setInvoiceTiming(p.invoice_timing);
-				if (p.auto_invoice !== undefined) setAutoInvoice(p.auto_invoice);
+				if (p.billing_config) setBillingConfig(p.billing_config as BillingConfigState);
 
 				if (p.schedule) {
 					setScheduleState({
@@ -434,9 +430,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			priority,
 			address: geoData?.address,
 			coords: geoData?.coords,
-			billing_mode: billingMode,
-			invoice_timing: invoiceTiming,
-			auto_invoice: autoInvoice,
+			billing_config: billingConfig,
 			schedule: scheduleState,
 			line_items: activeLineItems.map((item) => ({
 				name: item.name,
@@ -491,9 +485,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		clientId,
 		priority,
 		geoData,
-		billingMode,
-		invoiceTiming,
-		autoInvoice,
+		billingConfig,
 		scheduleState,
 		activeLineItems,
 		timeConstraintsState,
@@ -627,9 +619,20 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 			timezone,
 			generation_window_days: Number(scheduleState.generationWindow),
 			min_advance_days: Number(scheduleState.minAdvance),
-			billing_mode: billingMode,
-			invoice_timing: invoiceTiming,
-			auto_invoice: autoInvoice,
+			billing_mode: billingConfig.billingBasis === "none" ? "none" : billingConfig.billingBasis === "fixed_amount" ? "subscription" : "per_visit",
+			invoice_timing: billingConfig.invoiceTrigger === "on_completion" ? "on_completion" : billingConfig.invoiceTrigger === "on_schedule" ? "on_schedule_date" : "manual",
+			auto_invoice: billingConfig.invoiceTrigger !== "manual" && billingConfig.billingBasis !== "none",
+			invoice_schedule: billingConfig.billingBasis !== "none" ? {
+				billing_basis: billingConfig.billingBasis as InvoiceScheduleBillingBasis,
+				fixed_amount: billingConfig.billingBasis === "fixed_amount" ? Number(billingConfig.fixedAmount) || 0 : undefined,
+				frequency: billingConfig.invoiceTrigger === "on_schedule" ? billingConfig.scheduleFrequency : "on_visit_completion",
+				day_of_month: ["monthly", "quarterly"].includes(billingConfig.scheduleFrequency) && billingConfig.invoiceTrigger === "on_schedule" ? billingConfig.dayOfMonth : undefined,
+				day_of_week: ["weekly", "biweekly"].includes(billingConfig.scheduleFrequency) && billingConfig.invoiceTrigger === "on_schedule" ? billingConfig.dayOfWeek : undefined,
+				generate_days_before: billingConfig.generateDaysBefore,
+				payment_terms_days: billingConfig.paymentTermsDays,
+				memo_template: billingConfig.memoTemplate || undefined,
+			auto_send: false,
+			} : undefined,
 			rule: preparedRule,
 			line_items: preparedLineItems,
 		};
@@ -964,20 +967,9 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 				return (
 					<div className="space-y-2 min-w-0">
 						<BillingConfiguration
-							mode="create"
-							billingMode={billingMode}
-							invoiceTiming={invoiceTiming}
-							autoInvoice={autoInvoice}
-							onBillingModeChange={(v) => {
-								setBillingMode(v);
-								markDirty();
-							}}
-							onInvoiceTimingChange={(v) => {
-								setInvoiceTiming(v);
-								markDirty();
-							}}
-							onAutoInvoiceChange={(v) => {
-								setAutoInvoice(v);
+							state={billingConfig}
+							onChange={(updates) => {
+								setBillingConfig((prev) => ({ ...prev, ...updates }));
 								markDirty();
 							}}
 							isLoading={isLoading}
@@ -1015,9 +1007,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-		billingMode,
-		invoiceTiming,
-		autoInvoice,
+		billingConfig,
 		markDirty,
 	]);
 
