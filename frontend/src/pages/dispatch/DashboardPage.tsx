@@ -231,7 +231,7 @@ export default function DashboardPage() {
 
 	return (
 		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
-			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
+			<div className="w-full px-3 sm:px-5 lg:px-6 ">
 				{/* Header */}
 				<div className="mb-5">
 					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
@@ -248,7 +248,7 @@ export default function DashboardPage() {
 
 				{/* Week Schedule Calendar */}
 				<Card className="mb-5 !p-0">
-					<div className="p-4 h-[250px] sm:h-[280px] lg:h-[300px]">
+					<div className="p-3 sm:p-4 ">
 						{jobsError ? (
 							<div className="flex items-center justify-center h-full">
 								<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -280,6 +280,7 @@ export default function DashboardPage() {
 				<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
 					{/* Left Column */}
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+						{/* Operations Pipeline */}
 						<Card title="Operations Pipeline">
 							<div className="space-y-1">
 								{pipelineItems.map((item) => (
@@ -290,35 +291,41 @@ export default function DashboardPage() {
 												item.path
 											)
 										}
-										className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
+										className="group flex items-center gap-2 p-2 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all active:scale-[0.98]"
 									>
+										{/* Icon */}
 										<div
-											className={`flex-shrink-0 w-10 h-10 rounded-lg ${item.bg} flex items-center justify-center border ${item.border} ${item.hoverBorder} transition-colors`}
+											className={`flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-lg ${item.bg} flex items-center justify-center border ${item.border} ${item.hoverBorder} transition-colors`}
 										>
 											<item.icon
 												size={
-													18
+													16
 												}
 												className={
 													item.text
 												}
 											/>
 										</div>
+
 										<div className="flex-1 min-w-0">
-											<div className="flex items-center justify-between mb-0.5">
-												<span className="text-sm font-medium text-zinc-200 truncate">
+											{/* Label row */}
+											<div className="flex items-start justify-between gap-2 mb-1">
+												<span className="text-sm font-medium text-zinc-200 leading-tight">
 													{
 														item.label
 													}
 												</span>
+												{/* Count as badge */}
 												<span
-													className={`text-sm font-bold ${item.text} ml-2`}
+													className={`text-sm font-bold ${item.text} flex-shrink-0 bg-zinc-800/50 px-2 py-0.5 rounded-md`}
 												>
 													{
 														item.count
 													}
 												</span>
 											</div>
+
+											{/* Progress bar */}
 											<div className="w-full bg-zinc-800 rounded-full h-1.5">
 												<div
 													className={`${item.progress} h-1.5 rounded-full transition-all duration-300`}
@@ -328,9 +335,11 @@ export default function DashboardPage() {
 												/>
 											</div>
 										</div>
+
+										{/* Chevron */}
 										<ChevronRight
 											size={16}
-											className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0"
+											className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0 hidden sm:block -mr-1"
 										/>
 									</div>
 								))}
@@ -559,16 +568,15 @@ export default function DashboardPage() {
 
 												<div className="flex-1 min-w-0">
 													{/* Name + status badge */}
-													<div className="flex items-center justify-between mb-0.5">
+													<div className="flex items-center justify-between mb-0.5 gap-2">
 														<h4 className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
 															{
 																tech.name
 															}
 														</h4>
 														<span
-															className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ml-2 ${getStatusBadgeClass(tech.status)}`}
+															className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(tech.status)}`}
 														>
-															{/* Abbreviated on xs, full word on sm+ */}
 															<span className="inline sm:hidden">
 																{getStatusAbbr(
 																	tech.status
@@ -622,7 +630,6 @@ export default function DashboardPage() {
 															<span className="text-blue-400 flex-shrink-0">
 																Next:
 															</span>
-															{/* Short on xs, long on sm+ */}
 															<span className="text-zinc-400 truncate inline sm:hidden">
 																{new Date(
 																	tech
@@ -636,6 +643,7 @@ export default function DashboardPage() {
 																		day: "numeric",
 																	}
 																)}
+
 																,{" "}
 																{new Date(
 																	tech
@@ -662,6 +670,7 @@ export default function DashboardPage() {
 																		day: "numeric",
 																	}
 																)}
+
 																,{" "}
 																{new Date(
 																	tech
@@ -761,7 +770,7 @@ export default function DashboardPage() {
 										onClick={
 											action.action
 										}
-										className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group"
+										className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group active:scale-[0.98]"
 									>
 										<action.icon
 											size={16}

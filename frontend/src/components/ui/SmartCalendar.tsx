@@ -45,6 +45,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	const popupRef = useRef<HTMLDivElement>(null);
 	const visitsRootRef = useRef<ReturnType<typeof createRoot> | null>(null);
 	const occurrencesRootRef = useRef<ReturnType<typeof createRoot> | null>(null);
+	const calendarContainerRef = useRef<HTMLDivElement>(null);
 
 	const { mutateAsync: updateVisit } = useUpdateJobVisitMutation();
 	const { mutateAsync: rescheduleOccurrence } = useRescheduleOccurrenceMutation();
@@ -73,6 +74,37 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		}, 100);
 		return () => clearTimeout(timer);
 	}, [showVisits, showOccurrences, view, calendarKey]);
+
+	// Handle sidebar expansion/resizing - ResizeObserver to detect container width changes
+	useEffect(() => {
+		if (!calendarContainerRef.current || !calendarRef.current) return;
+
+		const resizeObserver = new ResizeObserver((entries) => {
+			if (calendarRef.current) {
+				const calendarApi = calendarRef.current.getApi();
+				calendarApi.updateSize();
+			}
+		});
+
+		resizeObserver.observe(calendarContainerRef.current);
+
+		return () => {
+			resizeObserver.disconnect();
+		};
+	}, []);
+
+	// Also handle window resize as fallback
+	useEffect(() => {
+		const handleResize = () => {
+			if (calendarRef.current) {
+				const calendarApi = calendarRef.current.getApi();
+				calendarApi.updateSize();
+			}
+		};
+
+		window.addEventListener("resize", handleResize);
+		return () => window.removeEventListener("resize", handleResize);
+	}, []);
 
 	// Occurrence badges update when data changes
 	useEffect(() => {
@@ -342,7 +374,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	};
 
 	return (
-		<div className="relative">
+		<div className="relative min-w-0" ref={calendarContainerRef}>
 			<style>{`
 	/* ============================================================================ */
 	/* SCROLLBAR STYLING - Grey without background */
@@ -373,13 +405,19 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	}
 
 	/* ============================================================================ */
-	/* CALENDAR BASE STYLING */
+	/* CALENDAR BASE STYLING - NO MINIMUM HEIGHT */
 	/* ============================================================================ */
 	
 	/* Base calendar background */
 	.fc {
 		background-color: var(--main); 
 		color: #e4e4e7; /* zinc-200 text */
+		min-height: unset !important; /* Remove minimum height */
+	}
+
+	/* Remove minimum height from view harness */
+	.fc-view-harness {
+		min-height: unset !important;
 	}
 
 	/* Calendar header (month title and nav buttons) */
@@ -466,6 +504,7 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	/* Fix rightmost column overflow in month view */
 	.fc-daygrid-day-frame {
 		overflow: hidden;
+		min-width: 0; /* Prevent overflow on small screens */
 	}
 
 	.fc-daygrid-day-top {
@@ -494,9 +533,8 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 		margin-bottom: 0 !important;
 	}
 
-	/* Scrollable days when many events */
+	/* Scrollable days when many events - removed fixed max-height to allow natural sizing */
 	.fc-daygrid-day-events {
-		max-height: 120px;
 		overflow-y: auto;
 		padding-right: 2px; /* Space for scrollbar */
 	}
@@ -543,6 +581,21 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 
 	.fc .fc-toolbar {
 		align-items: center !important;
+		flex-wrap: wrap; /* Allow toolbar to wrap on small screens */
+		gap: 0.5rem;
+	}
+
+	/* Responsive toolbar adjustments */
+	@media (max-width: 640px) {
+		.fc .fc-toolbar {
+			flex-direction: column;
+			align-items: stretch !important;
+		}
+		
+		.fc .fc-toolbar-chunk {
+			display: flex;
+			justify-content: center;
+		}
 	}
 
 	/* ============================================================================ */
@@ -658,6 +711,32 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 	/* HIDE tooltip for badges in next month's preview days */
 	.fc-day-other .occurrence-badge:hover::after {
 		display: none !important;
+	}
+
+	/* ============================================================================ */
+	/* RESPONSIVE HANDLING FOR SMALL SCREENS */
+	/* ============================================================================ */
+	
+	/* Ensure calendar doesn't overflow on small screens */
+	.fc-view-harness {
+		overflow-x: auto !important;
+	}
+	
+	/* Minimum width for day cells to prevent squishing */
+	.fc-daygrid-day {
+		min-width: 80px;
+	}
+	
+	/* Smaller text on very small screens */
+	@media (max-width: 480px) {
+		.fc-event {
+			font-size: 0.65rem;
+			padding: 1px 2px;
+		}
+		
+		.fc-daygrid-day-top {
+			font-size: 0.75rem;
+		}
 	}
 `}</style>
 
@@ -954,9 +1033,8 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 						);
 
 						const dayOfWeek = arg.date.getDay();
-						const isRightmostColumn = dayOfWeek === 6; // Saturday is last column
+						const isRightmostColumn = dayOfWeek === 6;
 
-						// Also check if it's the last visible column (in case of custom views)
 						const allDayCells =
 							arg.el.parentElement?.parentElement?.querySelectorAll(
 								".fc-daygrid-day"
@@ -1062,15 +1140,6 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 														.job_obj
 														.name}
 											</h2>
-											<span
-												className="inline-block w-3 h-3 rounded-full"
-												style={{
-													backgroundColor:
-														getStatusColor(
-															visit.status
-														),
-												}}
-											/>
 										</div>
 
 										<div className="space-y-2 text-zinc-300">
@@ -1229,13 +1298,6 @@ export default function SmartCalendar({ jobs, view, toolbar }: SmartCalendarProp
 													Occurrence
 												</p>
 											</div>
-											<span
-												className="inline-block w-3 h-3 rounded-full"
-												style={{
-													backgroundColor:
-														"#6b7280",
-												}}
-											/>
 										</div>
 
 										<div className="space-y-2 text-zinc-300">

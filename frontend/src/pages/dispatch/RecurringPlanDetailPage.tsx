@@ -21,6 +21,7 @@ import {
 	MoreVertical,
 	ChevronRight,
 	Briefcase,
+	ReceiptText,
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
@@ -42,6 +43,11 @@ import {
 	RecurringPlanStatusLabels,
 	OccurrenceStatusColors,
 	OccurrenceStatusLabels,
+	BillingModeLabels,
+	InvoiceTimingLabels,
+	InvoiceScheduleFrequencyLabels,
+	InvoiceScheduleBillingBasisLabels,
+	WeekdayLabels,
 	formatRecurringSchedule,
 	formatScheduleConstraints,
 	calculateTemplateTotal,
@@ -49,11 +55,23 @@ import {
 	type RecurringOccurrence,
 	type OccurrenceStatus,
 } from "../../types/recurringPlans";
-import { JobStatusColors, type JobStatus } from "../../types/jobs";
+import {
+	JobStatusColors,
+	VisitStatusColors,
+	VisitStatusLabels,
+	type JobStatus,
+	type VisitStatus,
+} from "../../types/jobs";
 import { PriorityColors } from "../../types/common";
 import { formatCurrency } from "../../util/util";
 
 const ITEMS_PER_PAGE = 10;
+
+function ordinalDay(n: number): string {
+	const s = ["th", "st", "nd", "rd"];
+	const v = n % 100;
+	return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
 
 export default function RecurringPlanDetailPage() {
 	const { recurringPlanId } = useParams<{ recurringPlanId: string }>();
@@ -97,11 +115,11 @@ export default function RecurringPlanDetailPage() {
 		}
 	}, [showActionsMenu]);
 
-	const { upcomingOccurrences, pastOccurrences } = useMemo(() => {
+	const { upcomingOccurrences, serviceHistory } = useMemo(() => {
 		if (!occurrences || occurrences.length === 0) {
 			return {
 				upcomingOccurrences: [],
-				pastOccurrences: [],
+				serviceHistory: [],
 				sortedOccurrences: [],
 			};
 		}
@@ -114,7 +132,7 @@ export default function RecurringPlanDetailPage() {
 
 		const now = new Date();
 		const upcoming: RecurringOccurrence[] = [];
-		const past: RecurringOccurrence[] = [];
+		const history: RecurringOccurrence[] = [];
 
 		for (const occ of sorted) {
 			const occDate = new Date(occ.occurrence_start_at);
@@ -125,7 +143,10 @@ export default function RecurringPlanDetailPage() {
 				occ.status === "cancelled";
 
 			if (isPast) {
-				past.push(occ);
+				// Only include occurrences that became actual visits
+				if (occ.job_visit_id) {
+					history.push(occ);
+				}
 			} else if (occ.status === "planned" || occ.status === "generated") {
 				upcoming.push(occ);
 			}
@@ -133,35 +154,11 @@ export default function RecurringPlanDetailPage() {
 
 		return {
 			upcomingOccurrences: upcoming,
-			pastOccurrences: past.reverse(),
+			serviceHistory: history.reverse(),
 			sortedOccurrences: sorted,
 		};
 	}, [occurrences]);
 
-	// Measure both occurrence columns after render to place the job card
-	// above whichever is shorter. Invisible on first pass to avoid layout shift.
-	const upcomingColRef = useRef<HTMLDivElement>(null);
-	const pastColRef = useRef<HTMLDivElement>(null);
-	const [jobAbovePast, setJobAbovePast] = useState<boolean | null>(null);
-
-	useEffect(() => {
-		const upcomingEl = upcomingColRef.current;
-		const pastEl = pastColRef.current;
-		if (!upcomingEl || !pastEl) return;
-
-		const measure = () => {
-			const upcomingH = upcomingEl.getBoundingClientRect().height;
-			const pastH = pastEl.getBoundingClientRect().height;
-			setJobAbovePast(pastH < upcomingH);
-		};
-
-		measure();
-
-		const ro = new ResizeObserver(measure);
-		ro.observe(upcomingEl);
-		ro.observe(pastEl);
-		return () => ro.disconnect();
-	}, [upcomingOccurrences, pastOccurrences, upcomingPage, pastPage]);
 
 	const isLoading = planLoading || occurrencesLoading;
 
@@ -199,13 +196,13 @@ export default function RecurringPlanDetailPage() {
 		upcomingPage * ITEMS_PER_PAGE,
 		(upcomingPage + 1) * ITEMS_PER_PAGE
 	);
-	const pastPaginatedOccurrences = pastOccurrences.slice(
+	const historyPaginatedOccurrences = serviceHistory.slice(
 		pastPage * ITEMS_PER_PAGE,
 		(pastPage + 1) * ITEMS_PER_PAGE
 	);
 	const upcomingHasNext = (upcomingPage + 1) * ITEMS_PER_PAGE < upcomingOccurrences.length;
 	const upcomingHasPrev = upcomingPage > 0;
-	const pastHasNext = (pastPage + 1) * ITEMS_PER_PAGE < pastOccurrences.length;
+	const pastHasNext = (pastPage + 1) * ITEMS_PER_PAGE < serviceHistory.length;
 	const pastHasPrev = pastPage > 0;
 
 	const handlePause = async () => {
@@ -342,6 +339,7 @@ export default function RecurringPlanDetailPage() {
 
 	const UpcomingOccurrencesCard = (
 		<Card
+			className="h-full"
 			title="Upcoming Occurrences"
 			headerAction={
 				upcomingOccurrences.length > 0 && (
@@ -489,19 +487,20 @@ export default function RecurringPlanDetailPage() {
 		</Card>
 	);
 
-	const PastOccurrencesCard = (
+	const ServiceHistoryCard = (
 		<Card
-			title="Past Occurrences"
+			className="h-full"
+			title="Service History"
 			headerAction={
-				pastOccurrences.length > 0 && (
+				serviceHistory.length > 0 && (
 					<div className="flex items-center gap-2">
 						<span className="text-sm text-zinc-400">
 							{pastPage * ITEMS_PER_PAGE + 1}-
 							{Math.min(
 								(pastPage + 1) * ITEMS_PER_PAGE,
-								pastOccurrences.length
+								serviceHistory.length
 							)}{" "}
-							of {pastOccurrences.length}
+							of {serviceHistory.length}
 						</span>
 						<button
 							onClick={() =>
@@ -525,69 +524,54 @@ export default function RecurringPlanDetailPage() {
 				)
 			}
 		>
-			{pastOccurrences.length === 0 ? (
+			{serviceHistory.length === 0 ? (
 				<div className="text-center py-8">
 					<Clock size={40} className="mx-auto text-zinc-600 mb-3" />
 					<h3 className="text-zinc-400 text-sm font-medium mb-1">
-						No Past Occurrences
+						No visits recorded yet
 					</h3>
 					<p className="text-zinc-500 text-xs">
-						Completed occurrences will appear here.
+						Past visits generated from this plan will appear here.
 					</p>
 				</div>
 			) : (
 				<div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-					{pastPaginatedOccurrences.map((occurrence) => (
-						<div
-							key={occurrence.id}
-							className="p-2 bg-zinc-800 border border-zinc-700 rounded-md opacity-75 hover:opacity-100 transition-opacity"
-						>
-							<div className="flex items-start justify-between gap-2 mb-1">
-								<div className="flex-1 min-w-0">
-									<p className="text-white text-xs font-medium truncate">
-										{new Date(
-											occurrence.occurrence_start_at
-										).toLocaleDateString(
-											"en-US",
-											{
-												month: "short",
-												day: "numeric",
-												year: "numeric",
-											}
-										)}
-									</p>
-									<p className="text-zinc-400 text-xs">
-										{new Date(
-											occurrence.occurrence_start_at
-										).toLocaleTimeString(
-											"en-US",
-											{
-												hour: "numeric",
-												minute: "2-digit",
-											}
-										)}
-									</p>
+					{historyPaginatedOccurrences.map((occurrence) => {
+						const visitDate = occurrence.job_visit?.scheduled_start_at
+							? new Date(occurrence.job_visit.scheduled_start_at)
+							: new Date(occurrence.occurrence_start_at);
+						const visitStatus = occurrence.job_visit?.status as VisitStatus | undefined;
+						return (
+							<div
+								key={occurrence.id}
+								className="p-2 bg-zinc-800 border border-zinc-700 rounded-md opacity-75 hover:opacity-100 transition-opacity"
+							>
+								<div className="flex items-start justify-between gap-2 mb-1">
+									<div className="flex-1 min-w-0">
+										<p className="text-white text-xs font-medium truncate">
+											{visitDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+											{" · "}
+											{visitDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+										</p>
+										<p className="text-zinc-400 text-xs truncate">
+											{occurrence.job_visit?.name ?? "\u00A0"}
+										</p>
+									</div>
+									{visitStatus && (
+										<span
+											className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${
+												VisitStatusColors[visitStatus] ||
+												"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+											}`}
+										>
+											{VisitStatusLabels[visitStatus] || visitStatus}
+										</span>
+									)}
 								</div>
-								<span
-									className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${
-										OccurrenceStatusColors[
-											occurrence.status as OccurrenceStatus
-										] ||
-										"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
-									}`}
-								>
-									{OccurrenceStatusLabels[
-										occurrence.status as OccurrenceStatus
-									] || occurrence.status}
-								</span>
-							</div>
-							<div className="flex gap-1 mt-2">
-								{occurrence.job_visit_id && (
+								<div className="flex gap-1 mt-2">
 									<button
 										onClick={() => {
-											if (
-												jobContainerId
-											) {
+											if (jobContainerId) {
 												navigate(
 													`/dispatch/jobs/${jobContainerId}/visits/${occurrence.job_visit_id}`
 												);
@@ -595,15 +579,13 @@ export default function RecurringPlanDetailPage() {
 										}}
 										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs font-medium transition-colors"
 									>
-										<ExternalLink
-											size={12}
-										/>
-										View
+										<ExternalLink size={12} />
+										View Visit
 									</button>
-								)}
+								</div>
 							</div>
-						</div>
-					))}
+						);
+					})}
 				</div>
 			)}
 		</Card>
@@ -774,10 +756,10 @@ export default function RecurringPlanDetailPage() {
 				</div>
 			</div>
 
-			{/* Plan Information (2/3) and Client Details (1/3) */}
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-				<div className="lg:col-span-2">
-					<Card title="Plan Information" className="h-full">
+			{/* Plan Information (2/3) and Client Details + Job Container (1/3) */}
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+				<div className="lg:col-span-2 flex flex-col">
+					<Card title="Plan Information" className="flex-1">
 						<div className="space-y-4">
 							<div>
 								<h3 className="text-zinc-400 text-sm mb-1">
@@ -890,15 +872,74 @@ export default function RecurringPlanDetailPage() {
 									</p>
 								</div>
 							)}
+
+							{/* Invoicing */}
+							<div className="pt-4 border-t border-zinc-700">
+								<h3 className="text-zinc-400 text-sm mb-2 flex items-center gap-2">
+									<ReceiptText size={14} />
+									Invoicing
+								</h3>
+								{plan.billing_mode === "none" ? (
+									<p className="text-white text-sm">
+										{BillingModeLabels[plan.billing_mode]}
+									</p>
+								) : (
+									<div className="grid grid-cols-3 gap-x-4 gap-y-3">
+										{/* Row 1 */}
+										<div>
+											<p className="text-zinc-400 text-xs mb-0.5">Billing Mode</p>
+											<p className="text-white text-sm">{BillingModeLabels[plan.billing_mode]}</p>
+										</div>
+										<div>
+											<p className="text-zinc-400 text-xs mb-0.5">Trigger</p>
+											<p className="text-white text-sm">{InvoiceTimingLabels[plan.invoice_timing]}</p>
+										</div>
+										<div>
+											<p className="text-zinc-400 text-xs mb-0.5">Auto Invoice</p>
+											<p className="text-white text-sm">{plan.auto_invoice ? "Yes" : "No"}</p>
+										</div>
+
+										{/* Row 2 */}
+										{plan.invoice_schedule && (
+											<>
+												<div>
+													<p className="text-zinc-400 text-xs mb-0.5">Frequency</p>
+													<p className="text-white text-sm">{InvoiceScheduleFrequencyLabels[plan.invoice_schedule.frequency]}</p>
+													{(plan.invoice_schedule.frequency === "weekly" || plan.invoice_schedule.frequency === "biweekly") &&
+														plan.invoice_schedule.day_of_week && (
+														<p className="text-zinc-400 text-xs mt-0.5">{WeekdayLabels[plan.invoice_schedule.day_of_week]}</p>
+													)}
+													{(plan.invoice_schedule.frequency === "monthly" || plan.invoice_schedule.frequency === "quarterly") &&
+														plan.invoice_schedule.day_of_month != null && (
+														<p className="text-zinc-400 text-xs mt-0.5">{ordinalDay(plan.invoice_schedule.day_of_month)} of {plan.invoice_schedule.frequency === "monthly" ? "month" : "quarter"}</p>
+													)}
+												</div>
+												<div>
+													<p className="text-zinc-400 text-xs mb-0.5">Billing Basis</p>
+													<p className="text-white text-sm">{InvoiceScheduleBillingBasisLabels[plan.invoice_schedule.billing_basis]}</p>
+													{plan.invoice_schedule.billing_basis === "fixed_amount" && plan.invoice_schedule.fixed_amount != null && (
+														<p className="text-zinc-400 text-xs mt-0.5">{"$" + Number(plan.invoice_schedule.fixed_amount).toFixed(2)}</p>
+													)}
+												</div>
+												<div>
+													<p className="text-zinc-400 text-xs mb-0.5">Payment Terms</p>
+													<p className="text-white text-sm">{plan.invoice_schedule.payment_terms_days != null ? "Net " + plan.invoice_schedule.payment_terms_days : "—"}</p>
+												</div>
+											</>
+										)}
+									</div>
+								)}
+							</div>
 						</div>
 					</Card>
 				</div>
 
-				<div className="lg:col-span-1">
+				<div className="lg:col-span-1 flex flex-col gap-6">
 					<ClientDetailsCard
 						client_id={plan.client_id}
 						client={plan.client}
 					/>
+					{JobContainerCard}
 				</div>
 			</div>
 
@@ -1058,39 +1099,16 @@ export default function RecurringPlanDetailPage() {
 				)}
 			</Card>
 
-			{/* Occurrences + Job Container card injected above the shorter column */}
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-				{/* Left column: upcoming */}
-				<div className="space-y-4">
-					{/* Job card shown here when placed above upcoming (default + both-equal case) */}
-					<div
-						className={`transition-opacity duration-200 ${
-							jobAbovePast === null ||
-							jobAbovePast === false
-								? jobAbovePast === null
-									? "opacity-0"
-									: "opacity-100"
-								: "hidden"
-						}`}
-					>
-						{JobContainerCard}
-					</div>
-					<div ref={upcomingColRef}>{UpcomingOccurrencesCard}</div>
+			{/* Occurrences + Job Container */}
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+				{/* Left column: upcoming occurrences — stretches to match right column height */}
+				<div className="flex flex-col">
+					<div className="flex-1">{UpcomingOccurrencesCard}</div>
 				</div>
 
-				{/* Right column: past */}
-				<div className="space-y-4">
-					{/* Job card shown here only when past column is shorter */}
-					<div
-						className={`transition-opacity duration-200 ${
-							jobAbovePast === true
-								? "opacity-100"
-								: "hidden"
-						}`}
-					>
-						{JobContainerCard}
-					</div>
-					<div ref={pastColRef}>{PastOccurrencesCard}</div>
+				{/* Right column: service history */}
+				<div className="flex flex-col">
+					<div className="flex-1">{ServiceHistoryCard}</div>
 				</div>
 			</div>
 
