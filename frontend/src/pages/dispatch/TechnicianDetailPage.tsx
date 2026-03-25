@@ -7,17 +7,25 @@ import {
 	Clock,
 	MoreVertical,
 	Trash2,
-	ChevronRight,
+	ChevronDown,
+	ExternalLink,
 	Mail,
 	Phone,
 	Calendar,
-	CheckCircle2,
-	Activity,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
+import DynamicMap from "../../components/ui/maps/DynamicMap";
 import EditTechnicianModal from "../../components/technicians/EditTechnician";
 import { useTechnicianByIdQuery, useDeleteTechnicianMutation } from "../../hooks/useTechnicians";
 import { TechnicianStatusColors, TechnicianStatusDotColors } from "../../types/technicians";
+import {
+	JobStatusColors,
+	JobStatusLabels,
+	VisitStatusColors,
+	VisitStatusLabels,
+	type JobStatus,
+	type VisitStatus,
+} from "../../types/jobs";
 
 export default function TechnicianDetailsPage() {
 	const { technicianId } = useParams<{ technicianId: string }>();
@@ -26,8 +34,16 @@ export default function TechnicianDetailsPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
+	const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
+	const toggleJob = (jobId: string) =>
+		setExpandedJobs((prev) => {
+			const next = new Set(prev);
+			next.has(jobId) ? next.delete(jobId) : next.add(jobId);
+			return next;
+		});
 
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
+	const locationMapRef = useRef<HTMLDivElement>(null);
 	const deleteTechnician = useDeleteTechnicianMutation();
 
 	const { data: technician, isLoading, error } = useTechnicianByIdQuery(technicianId);
@@ -82,10 +98,56 @@ export default function TechnicianDetailsPage() {
 	}
 
 	const visitTechs = technician.visit_techs ?? [];
-	const recentVisits = visitTechs.slice(0, 5);
+
+	const jobMap = new Map<
+		string,
+		{
+			job: (typeof visitTechs)[0]["visit"]["job"];
+			visits: (typeof visitTechs)[0]["visit"][];
+		}
+	>();
+	for (const vt of visitTechs) {
+		const entry = jobMap.get(vt.visit.job_id);
+		if (entry) entry.visits.push(vt.visit);
+		else jobMap.set(vt.visit.job_id, { job: vt.visit.job, visits: [vt.visit] });
+	}
+	const groupedJobs = Array.from(jobMap.values()).sort((a, b) => {
+		const aLatest = Math.max(
+			...a.visits.map((v) => new Date(v.scheduled_start_at).getTime())
+		);
+		const bLatest = Math.max(
+			...b.visits.map((v) => new Date(v.scheduled_start_at).getTime())
+		);
+		return bLatest - aLatest;
+	});
+
+	const ACTIVE_STATUSES = ["InProgress", "OnSite", "Driving", "Paused", "Delayed"];
+	const activeVisit =
+		visitTechs
+			.map((vt) => vt.visit)
+			.filter((v) => ACTIVE_STATUSES.includes(v.status))
+			.sort((a, b) => {
+				const priority = [
+					"InProgress",
+					"OnSite",
+					"Driving",
+					"Paused",
+					"Delayed",
+				];
+				return priority.indexOf(a.status) - priority.indexOf(b.status);
+			})[0] ?? null;
+
+	const fmtTime = (d: Date | string) =>
+		new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+	const fmtDate = (d: Date | string) =>
+		new Date(d).toLocaleDateString("en-US", {
+			month: "short",
+			day: "numeric",
+			year: "numeric",
+		});
 
 	const statCards = [
-		{ label: "Total Jobs", value: visitTechs.length, color: "text-white" },
+		{ label: "Total Jobs", value: groupedJobs.length, color: "text-white" },
 		{
 			label: "Completed",
 			value: visitTechs.filter((vt) => vt.visit.status === "Completed").length,
@@ -108,7 +170,6 @@ export default function TechnicianDetailsPage() {
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex items-center gap-4 min-w-0">
-					{/* Avatar */}
 					<div className="relative flex-shrink-0">
 						<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-bold text-xl">
 							{technician.name.charAt(0).toUpperCase()}
@@ -133,8 +194,6 @@ export default function TechnicianDetailsPage() {
 					>
 						{technician.status}
 					</span>
-
-					{/* Options Menu */}
 					<div className="relative" ref={optionsMenuRef}>
 						<button
 							onClick={() => {
@@ -145,7 +204,6 @@ export default function TechnicianDetailsPage() {
 						>
 							<MoreVertical size={18} />
 						</button>
-
 						{isOptionsMenuOpen && (
 							<div className="absolute right-0 mt-2 w-52 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
 								<div className="py-1">
@@ -221,98 +279,54 @@ export default function TechnicianDetailsPage() {
 				{/* Basic Information */}
 				<Card title="Information">
 					<div className="space-y-4">
-						<div className="flex items-center gap-3">
-							<div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-								<Mail
-									size={14}
-									className="text-zinc-400"
-								/>
+						{[
+							{
+								icon: Mail,
+								label: "Email",
+								value: technician.email,
+							},
+							{
+								icon: Phone,
+								label: "Phone",
+								value: technician.phone,
+							},
+							{
+								icon: Calendar,
+								label: "Hire Date",
+								value: new Date(
+									technician.hire_date
+								).toLocaleDateString("en-US", {
+									year: "numeric",
+									month: "long",
+									day: "numeric",
+								}),
+							},
+							{
+								icon: Clock,
+								label: "Last Login",
+								value: `${new Date(technician.last_login).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, ${new Date(technician.last_login).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
+							},
+						].map(({ icon: Icon, label, value }) => (
+							<div
+								key={label}
+								className="flex items-center gap-3"
+							>
+								<div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
+									<Icon
+										size={14}
+										className="text-zinc-400"
+									/>
+								</div>
+								<div className="min-w-0">
+									<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
+										{label}
+									</p>
+									<p className="text-sm text-white truncate">
+										{value}
+									</p>
+								</div>
 							</div>
-							<div className="min-w-0">
-								<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
-									Email
-								</p>
-								<p className="text-sm text-white truncate">
-									{technician.email}
-								</p>
-							</div>
-						</div>
-						<div className="flex items-center gap-3">
-							<div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-								<Phone
-									size={14}
-									className="text-zinc-400"
-								/>
-							</div>
-							<div className="min-w-0">
-								<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
-									Phone
-								</p>
-								<p className="text-sm text-white">
-									{technician.phone}
-								</p>
-							</div>
-						</div>
-						<div className="flex items-center gap-3">
-							<div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-								<Calendar
-									size={14}
-									className="text-zinc-400"
-								/>
-							</div>
-							<div className="min-w-0">
-								<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
-									Hire Date
-								</p>
-								<p className="text-sm text-white">
-									{new Date(
-										technician.hire_date
-									).toLocaleDateString(
-										"en-US",
-										{
-											year: "numeric",
-											month: "long",
-											day: "numeric",
-										}
-									)}
-								</p>
-							</div>
-						</div>
-						<div className="flex items-center gap-3">
-							<div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-								<Clock
-									size={14}
-									className="text-zinc-400"
-								/>
-							</div>
-							<div className="min-w-0">
-								<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
-									Last Login
-								</p>
-								<p className="text-sm text-white">
-									{new Date(
-										technician.last_login
-									).toLocaleDateString(
-										"en-US",
-										{
-											month: "short",
-											day: "numeric",
-											year: "numeric",
-										}
-									)}
-									,{" "}
-									{new Date(
-										technician.last_login
-									).toLocaleTimeString(
-										"en-US",
-										{
-											hour: "numeric",
-											minute: "2-digit",
-										}
-									)}
-								</p>
-							</div>
-						</div>
+						))}
 						{technician.description && (
 							<div className="pt-3 border-t border-zinc-800">
 								<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">
@@ -326,9 +340,19 @@ export default function TechnicianDetailsPage() {
 					</div>
 				</Card>
 
-				{/* Recent Jobs */}
-				<Card title="Recent Jobs">
-					{recentVisits.length === 0 ? (
+				{/* Jobs Accordion */}
+				<Card title="Jobs">
+					<style>{`
+						.tech-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.2s ease; }
+						.tech-scroll:hover { scrollbar-color: #52525b #27272a; }
+						.tech-scroll::-webkit-scrollbar { width: 6px; }
+						.tech-scroll::-webkit-scrollbar-track { background: transparent; }
+						.tech-scroll:hover::-webkit-scrollbar-track { background: #27272a; border-radius: 3px; }
+						.tech-scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; }
+						.tech-scroll:hover::-webkit-scrollbar-thumb { background-color: #52525b; }
+						.tech-scroll::-webkit-scrollbar-thumb:hover { background-color: #71717a; }
+					`}</style>
+					{groupedJobs.length === 0 ? (
 						<div className="py-10 text-center">
 							<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
 								<Briefcase
@@ -341,122 +365,188 @@ export default function TechnicianDetailsPage() {
 							</p>
 						</div>
 					) : (
-						<div className="space-y-1">
-							{recentVisits.map((vt) => {
-								const statusColor =
-									vt.visit.status ===
-									"Completed"
-										? {
-												icon: "text-emerald-400",
-												bg: "bg-emerald-500/10",
-												border: "border-emerald-500/20",
-												hoverBorder:
-													"group-hover:border-emerald-500/40",
-											}
-										: vt.visit
-													.status ===
-											  "InProgress"
-											? {
-													icon: "text-amber-400",
-													bg: "bg-amber-500/10",
-													border: "border-amber-500/20",
-													hoverBorder:
-														"group-hover:border-amber-500/40",
-												}
-											: vt.visit
-														.status ===
-												  "Scheduled"
-												? {
-														icon: "text-blue-400",
-														bg: "bg-blue-500/10",
-														border: "border-blue-500/20",
-														hoverBorder:
-															"group-hover:border-blue-500/40",
-													}
-												: {
-														icon: "text-zinc-400",
-														bg: "bg-zinc-500/10",
-														border: "border-zinc-500/20",
-														hoverBorder:
-															"group-hover:border-zinc-500/40",
-													};
-
-								const StatusIcon =
-									vt.visit.status ===
-									"Completed"
-										? CheckCircle2
-										: vt.visit
-													.status ===
-											  "InProgress"
-											? Activity
-											: Calendar;
-
+						<div className="overflow-y-auto tech-scroll max-h-[520px] -mt-4 -mx-4">
+							{groupedJobs.map(({ job, visits }) => {
+								const isExpanded = expandedJobs.has(
+									job.id
+								);
+								const jobColor =
+									JobStatusColors[
+										job.status as JobStatus
+									] ??
+									"bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+								const jobLabel =
+									JobStatusLabels[
+										job.status as JobStatus
+									] ?? job.status;
 								return (
 									<div
-										key={vt.visit.id}
-										onClick={() =>
-											navigate(
-												`/dispatch/jobs/${vt.visit.job.id}`
-											)
-										}
-										className="group flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
+										key={job.id}
+										className="border-b border-zinc-800"
 									>
-										<div
-											className={`flex-shrink-0 w-9 h-9 rounded-lg ${statusColor.bg} flex items-center justify-center border ${statusColor.border} ${statusColor.hoverBorder} transition-colors`}
-										>
-											<StatusIcon
-												size={
-													16
+										{/* Job row*/}
+										<div className="flex items-stretch">
+											<button
+												onClick={() =>
+													navigate(
+														`/dispatch/jobs/${job.id}`
+													)
 												}
-												className={
-													statusColor.icon
-												}
-											/>
-										</div>
-										<div className="flex-1 min-w-0">
-											<p className="text-sm font-medium text-zinc-200 truncate group-hover:text-white transition-colors">
-												{
-													vt
-														.visit
-														.job
-														.name
-												}
-											</p>
-											{vt.visit
-												.job
-												.address && (
-												<p className="text-xs text-zinc-500 truncate flex items-center gap-1 mt-0.5">
-													<MapPin
-														size={
-															10
-														}
-													/>
-													{
-														vt
-															.visit
-															.job
-															.address
-													}
-												</p>
-											)}
-										</div>
-										<div className="flex items-center gap-2 flex-shrink-0">
-											<span
-												className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${statusColor.bg} ${statusColor.icon}`}
+												className="w-1/4 flex items-center gap-2 pl-4 pr-3 py-2.5 border-r border-zinc-800 hover:bg-zinc-800/60 transition-colors text-left group flex-shrink-0"
 											>
-												{
-													vt
-														.visit
-														.status
+												<Briefcase
+													size={
+														14
+													}
+													className="text-zinc-500 group-hover:text-zinc-300 transition-colors flex-shrink-0"
+												/>
+												<div className="min-w-0">
+													<p className="text-xs font-medium text-zinc-300 group-hover:text-white transition-colors truncate leading-tight">
+														{
+															job.name
+														}
+													</p>
+													<p className="text-[11px] text-zinc-500 truncate leading-tight">
+														{
+															job
+																.client
+																.name
+														}
+													</p>
+												</div>
+											</button>
+
+											<button
+												onClick={() =>
+													toggleJob(
+														job.id
+													)
 												}
-											</span>
-											<ChevronRight
-												size={
-													14
-												}
-												className="text-zinc-600 group-hover:text-zinc-400"
-											/>
+												className="flex-1 flex items-center gap-2 px-3 py-2.5 hover:bg-zinc-800/40 transition-colors text-left group min-w-0"
+											>
+												<div className="flex-1 min-w-0">
+													{job.address && (
+														<p className="text-xs text-zinc-500 truncate flex items-center gap-1">
+															<MapPin
+																size={
+																	10
+																}
+																className="flex-shrink-0"
+															/>
+															{
+																job.address
+															}
+														</p>
+													)}
+												</div>
+												<span className="text-[10px] text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap flex-shrink-0">
+													{
+														visits.length
+													}{" "}
+													visit
+													{visits.length !==
+													1
+														? "s"
+														: ""}
+												</span>
+												<span
+													className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0 ${jobColor}`}
+												>
+													{
+														jobLabel
+													}
+												</span>
+												<ChevronDown
+													size={
+														13
+													}
+													className={`text-zinc-500 group-hover:text-zinc-300 transition-transform duration-200 flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`}
+												/>
+											</button>
 										</div>
+
+										{/* Expanded visit rows */}
+										{isExpanded && (
+											<div className="border-t border-zinc-800">
+												{visits.map(
+													(
+														visit
+													) => {
+														const visitColor =
+															VisitStatusColors[
+																visit.status as VisitStatus
+															] ??
+															"bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+														const visitLabel =
+															VisitStatusLabels[
+																visit.status as VisitStatus
+															] ??
+															visit.status;
+														return (
+															<button
+																key={
+																	visit.id
+																}
+																onClick={() =>
+																	navigate(
+																		`/dispatch/jobs/${job.id}/visits/${visit.id}`
+																	)
+																}
+																className="w-full flex items-center gap-3 pl-10 pr-4 py-2 border-b border-zinc-800/60 last:border-b-0 hover:bg-zinc-800/40 transition-colors text-left group"
+															>
+																<div className="flex-1 min-w-0">
+																	<div className="flex items-center gap-1.5 flex-wrap">
+																		<span className="text-xs font-medium text-zinc-300 group-hover:text-white transition-colors">
+																			{fmtDate(
+																				visit.scheduled_start_at
+																			)}
+																		</span>
+																		<span className="text-zinc-700">
+																			·
+																		</span>
+																		<span className="text-xs text-zinc-500">
+																			{fmtTime(
+																				visit.scheduled_start_at
+																			)}{" "}
+																			–{" "}
+																			{fmtTime(
+																				visit.scheduled_end_at
+																			)}
+																		</span>
+																	</div>
+																	{visit.actual_start_at && (
+																		<p className="text-[11px] text-zinc-600 mt-0.5">
+																			Actual:{" "}
+																			{fmtTime(
+																				visit.actual_start_at
+																			)}
+																			{visit.actual_end_at
+																				? ` – ${fmtTime(visit.actual_end_at)}`
+																				: " (ongoing)"}
+																		</p>
+																	)}
+																</div>
+																<div className="flex items-center gap-1.5 flex-shrink-0">
+																	<span
+																		className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${visitColor}`}
+																	>
+																		{
+																			visitLabel
+																		}
+																	</span>
+																	<ExternalLink
+																		size={
+																			11
+																		}
+																		className="text-zinc-600 group-hover:text-zinc-400 transition-colors"
+																	/>
+																</div>
+															</button>
+														);
+													}
+												)}
+											</div>
+										)}
 									</div>
 								);
 							})}
