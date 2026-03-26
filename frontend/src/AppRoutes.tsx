@@ -1,5 +1,9 @@
 import LoginPage from "./auth/LoginPage";
 import DispatchLayout from "./layouts/DispatchLayout";
+import TechnicianLayout from "./layouts/TechnicianLayout";
+import TechnicianDashboardPage from "./pages/technician/TechnicianDashboardPage";
+import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
+import TechnicianVisitDetailPage from "./pages/technician/TechnicianVisitDetailPage";
 import DashboardPage from "./pages/dispatch/DashboardPage";
 import JobsPage from "./pages/dispatch/JobsPage";
 import JobDetailPage from "./pages/dispatch/JobDetailPage";
@@ -92,6 +96,19 @@ export default function AppRoutes() {
 					</RequireAuth>
 				}
 			></Route>
+
+			<Route
+				path="/technician/*"
+				element={
+					<RequireAuth>
+						<TechnicianLayout />
+					</RequireAuth>
+				}
+			>
+				<Route index element={<TechnicianDashboardPage />} />
+				<Route path="visits" element={<TechnicianVisitsPage />} />
+				<Route path="visits/:visitId" element={<TechnicianVisitDetailPage />} />
+			</Route>
 
 			<Route path="*" element={<Navigate to="/login" replace />} />
 		</Routes>

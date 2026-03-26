@@ -262,6 +262,29 @@ export const useAssignTechniciansToVisitMutation = (): UseMutationResult<
 	});
 };
 
+export const useAcceptJobVisitMutation = (): UseMutationResult<
+	JobVisit,
+	Error,
+	{ visitId: string; techId: string }
+> => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({ visitId, techId }) => jobApi.acceptJobVisit(visitId, techId),
+		onSuccess: async (updatedVisit) => {
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", updatedVisit.job_id, "visits"],
+			});
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs", updatedVisit.job_id],
+			});
+			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
+			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
+		},
+	});
+};
+
 export const useDeleteJobVisitMutation = (): UseMutationResult<
 	{ message: string },
 	Error,

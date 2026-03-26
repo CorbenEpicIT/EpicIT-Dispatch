@@ -59,6 +59,7 @@ import {
 	insertJobVisit,
 	updateJobVisit,
 	assignTechniciansToVisit,
+	acceptJobVisit,
 	deleteJobVisit,
 } from "./controllers/jobVisitsController.js";
 import * as recurringPlansController from "./controllers/recurringPlansController.js";
@@ -1208,6 +1209,44 @@ app.put("/job-visits/:id/technicians", async (req, res, next) => {
 		}
 
 		const result = await assignTechniciansToVisit(id, tech_ids, context);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/accept", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const { tech_id } = req.body;
+		const context = getUserContext(req);
+
+		if (!tech_id) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_INPUT,
+						"tech_id is required",
+						null,
+						"tech_id",
+					),
+				);
+		}
+
+		const result = await acceptJobVisit(id, tech_id, context);
 
 		if (result.err) {
 			return res

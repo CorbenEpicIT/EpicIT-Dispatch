@@ -584,6 +584,78 @@ export const assignTechniciansToVisit = async (
 	}
 };
 
+export const acceptJobVisit = async (
+	visitId: string,
+	techId: string,
+	context?: UserContext,
+) => {
+	try {
+		const visit = await db.job_visit.findUnique({
+			where: { id: visitId },
+		});
+
+		if (!visit) {
+			return { err: "Job visit not found" };
+		}
+
+		const tech = await db.technician.findUnique({
+			where: { id: techId },
+			select: { id: true },
+		});
+
+		if (!tech) {
+			return { err: "Technician not found" };
+		}
+
+		await db.$transaction(async (tx) => {
+			await tx.job_visit_technician.create({
+				data: { visit_id: visitId, tech_id: techId },
+			});
+
+			await logActivity({
+				event_type: "job_visit.technicians_assigned",
+				action: "updated",
+				entity_type: "job_visit",
+				entity_id: visitId,
+				actor_type: context?.techId
+					? "technician"
+					: context?.dispatcherId
+						? "dispatcher"
+						: "system",
+				actor_id: context?.techId || context?.dispatcherId,
+				changes: {
+					technicians: {
+						old: [],
+						new: [techId],
+					},
+				},
+				ip_address: context?.ipAddress,
+				user_agent: context?.userAgent,
+			});
+		});
+
+		const updated = await db.job_visit.findUnique({
+			where: { id: visitId },
+			include: {
+				job: {
+					include: {
+						client: true,
+					},
+				},
+				visit_techs: {
+					include: { tech: true },
+				},
+				notes: true,
+			},
+		});
+
+		return { err: "", item: updated };
+	} catch (e) {
+		console.error("Failed to accept job visit:", e);
+		return { err: "Failed to accept job visit" };
+	}
+};
+
 export const deleteJobVisit = async (id: string, context?: UserContext) => {
 	try {
 		const visit = await db.job_visit.findUnique({
