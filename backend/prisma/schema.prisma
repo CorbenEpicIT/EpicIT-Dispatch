@@ -149,6 +149,31 @@ enum form_draft_type {
   invoice
 }
 
+enum invoice_status {
+  Draft
+  Sent
+  Viewed
+  PartiallyPaid
+  Paid
+  Disputed
+  Void
+}
+
+enum invoice_schedule_frequency {
+  weekly
+  biweekly
+  monthly
+  quarterly
+  on_visit_completion
+}
+
+enum invoice_schedule_billing_basis {
+  fixed_amount
+  visit_actuals
+  plan_line_items
+  invoice
+}
+
 /* Add more roles here if needed */
 enum DispatcherRole {
   dispatcher
@@ -157,9 +182,10 @@ enum DispatcherRole {
 
 
 model organization {
-  id   String @id @default(uuid())
-  name String
-  
+  id       String  @id @default(uuid())
+  name     String
+  tax_rate Decimal @default(0) @db.Decimal(5, 4)
+
   clients               client[]
   contacts              contact[]
   technicians           technician[]
@@ -172,12 +198,14 @@ model organization {
   jobs                  job[]
   recurring_plans       recurring_plan[]
   form_drafts           form_draft[]
+  invoices              invoice[]
 
   client_notes          client_note[]
   request_notes         request_note[]
   quote_notes           quote_note[]
   job_notes             job_note[]
   recurring_plan_notes  recurring_plan_note[]
+  invoice_notes         invoice_note[]
 }
 
 // ============================================================================
@@ -230,25 +258,29 @@ model client_contact {
 // ============================================================================
 
 model client {
-  id            String   @id @unique @default(uuid())
+  id              String   @id @unique @default(uuid())
   organization_id String?
   organization    organization? @relation(fields: [organization_id], references: [id])
-  name          String
-  address       String
-  coords        Json
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-  last_activity DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  name            String
+  address         String
+  coords          Json
+  is_active       Boolean  @default(true)
+  is_tax_exempt   Boolean  @default(false)
+  tax_rate        Decimal? @db.Decimal(5, 4)
+  created_at      DateTime @default(now())
+  last_activity   DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
-  contacts client_contact[]
-  requests request[]
-  quotes   quote[]
-  jobs     job[]
-  notes    client_note[]
+  contacts        client_contact[]
+  requests        request[]
+  quotes          quote[]
+  jobs            job[]
+  notes           client_note[]
   recurring_plans recurring_plan[]
+  invoices        invoice[]
 
   @@index([is_active])
+  @@index([is_tax_exempt])
   @@index([created_at])
   @@index([organization_id])
 }
@@ -489,9 +521,10 @@ model job {
   estimated_total Decimal? @db.Decimal(10, 2)
   actual_total    Decimal? @db.Decimal(10, 2)
 
-  visits     job_visit[]
-  notes      job_note[]
-  line_items job_line_item[]
+  visits       job_visit[]
+  notes        job_note[]
+  line_items   job_line_item[]
+  invoice_jobs invoice_job[]
 
   @@index([client_id])
   @@index([recurring_plan_id])
@@ -559,10 +592,11 @@ model job_visit {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  visit_techs job_visit_technician[]
-  notes       job_note[]             @relation("VisitNotes")
-  recurring_occurrence recurring_occurrence? @relation("OccurrenceVisit")
-  line_items  job_visit_line_item[]
+  visit_techs          job_visit_technician[]
+  notes                job_note[]              @relation("VisitNotes")
+  recurring_occurrence recurring_occurrence?   @relation("OccurrenceVisit")
+  line_items           job_visit_line_item[]
+  invoice_visits       invoice_visit[]
 
   @@index([job_id])
   @@index([status])
@@ -669,11 +703,13 @@ model recurring_plan {
   created_by_dispatcher_id String?
   created_by_dispatcher    dispatcher?    @relation("RecurringPlanCreator", fields: [created_by_dispatcher_id], references: [id])
   
-  rules           recurring_rule[]
-  occurrences     recurring_occurrence[]
-  line_items      recurring_plan_line_item[]
-  notes           recurring_plan_note[]
-  
+  rules            recurring_rule[]
+  occurrences      recurring_occurrence[]
+  line_items       recurring_plan_line_item[]
+  notes            recurring_plan_note[]
+  invoice_schedule invoice_schedule?
+  invoices         invoice[]
+
   @@index([client_id])
   @@index([status])
   @@index([organization_id])
@@ -873,6 +909,10 @@ model technician {
   created_recurring_plan_notes      recurring_plan_note[] @relation("RecurringPlanNoteCreator")
   last_edited_recurring_plan_notes  recurring_plan_note[] @relation("RecurringPlanNoteEditor")
 
+  recorded_invoice_payments    invoice_payment[]
+  created_invoice_notes        invoice_note[]    @relation("InvoiceNoteCreator")
+  last_edited_invoice_notes    invoice_note[]    @relation("InvoiceNoteEditor")
+
   @@index([email])
   @@index([status])
   @@index([organization_id])
@@ -891,9 +931,10 @@ model dispatcher {
   description String
   last_login  DateTime @default(now())
 
-  created_requests request[] @relation("RequestCreator")
-  created_quotes    quote[]   @relation("QuoteCreator")
-  created_recurring_plans     recurring_plan[]      @relation("RecurringPlanCreator")
+  created_requests        request[]        @relation("RequestCreator")
+  created_quotes          quote[]          @relation("QuoteCreator")
+  created_recurring_plans recurring_plan[] @relation("RecurringPlanCreator")
+  created_invoices        invoice[]
 
   created_client_notes      client_note[]  @relation("ClientNoteCreator")
   last_edited_client_notes  client_note[]  @relation("ClientNoteEditor")
@@ -903,9 +944,13 @@ model dispatcher {
   last_edited_request_notes request_note[] @relation("RequestNoteEditor")
   created_quote_notes       quote_note[]   @relation("QuoteNoteCreator")
   last_edited_quote_notes   quote_note[]   @relation("QuoteNoteEditor")
-  
-  created_recurring_plan_notes      recurring_plan_note[] @relation("RecurringPlanNoteCreator")
-  last_edited_recurring_plan_notes  recurring_plan_note[] @relation("RecurringPlanNoteEditor")
+
+  created_recurring_plan_notes     recurring_plan_note[] @relation("RecurringPlanNoteCreator")
+  last_edited_recurring_plan_notes recurring_plan_note[] @relation("RecurringPlanNoteEditor")
+
+  recorded_invoice_payments    invoice_payment[]
+  created_invoice_notes        invoice_note[]    @relation("InvoiceNoteCreator")
+  last_edited_invoice_notes    invoice_note[]    @relation("InvoiceNoteEditor")
 
   @@index([email])
   @@index([organization_id])
@@ -946,6 +991,165 @@ model log {
   @@index([organization_id])
 }
 
+// ============================================================================
+// INVOICING
+// ============================================================================
+
+model invoice_schedule {
+  id                String                         @id @default(uuid())
+  recurring_plan_id String                         @unique
+  recurring_plan    recurring_plan                 @relation(fields: [recurring_plan_id], references: [id], onDelete: Cascade)
+  frequency         invoice_schedule_frequency
+  billing_basis     invoice_schedule_billing_basis
+  fixed_amount      Decimal?                       @db.Decimal(10, 2)
+  day_of_month      Int?
+  day_of_week       weekday?
+  generate_days_before Int                         @default(0)
+  payment_terms_days   Int?
+  auto_send         Boolean                        @default(false)
+  memo_template     String?
+  next_invoice_at   DateTime?
+  last_invoiced_at  DateTime?
+  is_active         Boolean                        @default(true)
+  created_at        DateTime                       @default(now())
+  updated_at        DateTime                       @updatedAt
+
+  @@index([recurring_plan_id])
+  @@index([is_active])
+  @@index([is_active, next_invoice_at])
+}
+
+model invoice {
+  id                       String         @id @default(uuid())
+  organization_id          String?
+  organization             organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  invoice_number           String         @unique
+  client_id                String
+  client                   client         @relation(fields: [client_id], references: [id], onDelete: Restrict)
+  status                   invoice_status @default(Draft)
+  recurring_plan_id        String?
+  recurring_plan           recurring_plan? @relation(fields: [recurring_plan_id], references: [id], onDelete: SetNull)
+  issue_date               DateTime       @default(now())
+  due_date                 DateTime?
+  payment_terms_days       Int?
+  sent_at                  DateTime?
+  viewed_at                DateTime?
+  paid_at                  DateTime?
+  voided_at                DateTime?
+  void_reason              String?
+  subtotal                 Decimal        @default(0) @db.Decimal(10, 2)
+  tax_rate                 Decimal        @default(0) @db.Decimal(5, 4)
+  tax_amount               Decimal        @default(0) @db.Decimal(10, 2)
+  discount_type            discount_type?
+  discount_value           Decimal?       @db.Decimal(10, 2)
+  discount_amount          Decimal?       @db.Decimal(10, 2)
+  total                    Decimal        @default(0) @db.Decimal(10, 2)
+  amount_paid              Decimal        @default(0) @db.Decimal(10, 2)
+  balance_due              Decimal        @default(0) @db.Decimal(10, 2)
+  memo                     String?
+  internal_notes           String?
+  created_at               DateTime       @default(now())
+  updated_at               DateTime       @updatedAt
+  created_by_dispatcher_id String?
+  created_by_dispatcher    dispatcher?    @relation(fields: [created_by_dispatcher_id], references: [id], onDelete: SetNull)
+
+  line_items invoice_line_item[]
+  jobs       invoice_job[]
+  visits     invoice_visit[]
+  payments   invoice_payment[]
+  notes      invoice_note[]
+
+  @@index([client_id])
+  @@index([organization_id])
+  @@index([status])
+  @@index([invoice_number])
+  @@index([issue_date])
+  @@index([due_date])
+  @@index([recurring_plan_id])
+  @@index([client_id, status])
+}
+
+model invoice_line_item {
+  id              String         @id @default(uuid())
+  invoice_id      String
+  invoice         invoice        @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  source_job_id   String?
+  source_visit_id String?
+  name            String
+  description     String?
+  quantity        Decimal        @db.Decimal(10, 2)
+  unit_price      Decimal        @db.Decimal(10, 2)
+  total           Decimal        @db.Decimal(10, 2)
+  item_type       line_item_type?
+  sort_order      Int            @default(0)
+
+  @@index([invoice_id])
+  @@index([sort_order])
+}
+
+model invoice_job {
+  invoice_id    String
+  invoice       invoice  @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  job_id        String
+  job           job      @relation(fields: [job_id], references: [id], onDelete: Restrict)
+  billed_amount Decimal? @db.Decimal(10, 2)
+
+  @@id([invoice_id, job_id])
+  @@index([job_id])
+  @@index([invoice_id])
+}
+
+model invoice_visit {
+  invoice_id    String
+  invoice       invoice   @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  visit_id      String
+  visit         job_visit @relation(fields: [visit_id], references: [id], onDelete: Restrict)
+  billed_amount Decimal   @db.Decimal(10, 2)
+
+  @@id([invoice_id, visit_id])
+  @@index([visit_id])
+  @@index([invoice_id])
+}
+
+model invoice_payment {
+  id                        String      @id @default(uuid())
+  invoice_id                String
+  invoice                   invoice     @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  amount                    Decimal     @db.Decimal(10, 2)
+  paid_at                   DateTime    @default(now())
+  method                    String?
+  note                      String?
+  recorded_by_dispatcher_id String?
+  recorded_by_dispatcher    dispatcher? @relation(fields: [recorded_by_dispatcher_id], references: [id], onDelete: SetNull)
+  recorded_by_tech_id       String?
+  recorded_by_tech          technician? @relation(fields: [recorded_by_tech_id], references: [id], onDelete: SetNull)
+  created_at                DateTime    @default(now())
+
+  @@index([invoice_id])
+  @@index([paid_at])
+  @@index([recorded_by_tech_id])
+}
+
+model invoice_note {
+  id                        String        @id @default(uuid())
+  organization_id           String?
+  organization              organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  invoice_id                String
+  invoice                   invoice       @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  content                   String
+  created_at                DateTime      @default(now())
+  updated_at                DateTime      @updatedAt
+  creator_tech_id           String?
+  creator_tech              technician?   @relation("InvoiceNoteCreator", fields: [creator_tech_id], references: [id], onDelete: SetNull)
+  creator_dispatcher_id     String?
+  creator_dispatcher        dispatcher?   @relation("InvoiceNoteCreator", fields: [creator_dispatcher_id], references: [id], onDelete: SetNull)
+  last_editor_tech_id       String?
+  last_editor_tech          technician?   @relation("InvoiceNoteEditor", fields: [last_editor_tech_id], references: [id], onDelete: SetNull)
+  last_editor_dispatcher_id String?
+  last_editor_dispatcher    dispatcher?   @relation("InvoiceNoteEditor", fields: [last_editor_dispatcher_id], references: [id], onDelete: SetNull)
+
+  @@index([invoice_id])
+}
 
 // ============================================================================
 // Verification tokens 

@@ -148,7 +148,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 							fill="#FFFFFF"
 							fontSize={11}
 							fontWeight={600}
-							formatter={(val) => "$" + Number(val as number).toLocaleString()}
+							formatter={(val: unknown) => "$" + Number(val as number).toLocaleString()}
 						/>
 					</Bar>
 					</ComposedChart>

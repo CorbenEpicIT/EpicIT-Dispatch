@@ -10,23 +10,30 @@ import {
 	Clock,
 	MapPin,
 	Calendar,
-	DollarSign,
+	ReceiptText,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import EditClientModal from "../../components/clients/EditClient";
 import ContactManager from "../../components/clients/ContactManager";
 import NoteManager from "../../components/clients/NoteManager";
 import { useClientByIdQuery } from "../../hooks/useClients";
+import { useInvoicesByClientIdQuery } from "../../hooks/useInvoices";
+import {
+	InvoiceStatusColors,
+	InvoiceStatusLabels,
+	type InvoiceStatus,
+} from "../../types/invoices";
 import { formatCurrency, formatDate } from "../../util/util";
 
-type MainTab = "active" | "requests" | "quotes" | "jobs" | "plans";
+type MainTab = "active" | "requests" | "quotes" | "jobs" | "plans" | "invoices";
 const ITEMS_LIMIT = 8;
 
 interface WorkflowItem {
 	id: string;
-	type: "request" | "quote" | "job" | "plan";
+	type: "request" | "quote" | "job" | "plan" | "invoice";
 	title: string;
 	status: string;
+	statusLabel?: string;
 	created_at: string;
 	address?: string;
 	total?: number | string;
@@ -42,9 +49,10 @@ export default function ClientDetailsPage() {
 	const [activeTab, setActiveTab] = useState<MainTab>("active");
 
 	const { data: client, isLoading, error } = useClientByIdQuery(clientId!);
+	const { data: invoices } = useInvoicesByClientIdQuery(clientId!);
 
 	const workflowData = useMemo(() => {
-		if (!client) return { active: [], requests: [], quotes: [], jobs: [], plans: [] };
+		if (!client) return { active: [], requests: [], quotes: [], jobs: [], plans: [], invoices: [] };
 
 		const requests: WorkflowItem[] = (client.requests || []).map((r: any) => ({
 			id: r.id,
@@ -91,6 +99,19 @@ export default function ClientDetailsPage() {
 			priority: p.priority,
 		}));
 
+		const invoiceItems: WorkflowItem[] = (invoices ?? []).map((inv: any) => ({
+			id: inv.id,
+			type: "invoice" as const,
+			title: inv.memo || "Invoice",
+			number: inv.invoice_number,
+			status: inv.status,
+			statusLabel: InvoiceStatusLabels[inv.status as InvoiceStatus],
+			created_at: inv.created_at,
+			starts_at: inv.issue_date,
+			address: client.address,
+			total: inv.balance_due,
+		}));
+
 		const isActiveRequest = (r: any) =>
 			r.status !== "Cancelled" && r.status !== "ConvertedToJob";
 		const isActiveQuote = (q: any) =>
@@ -98,19 +119,22 @@ export default function ClientDetailsPage() {
 		const isActiveJob = (j: any) =>
 			j.status !== "Cancelled" && j.status !== "Completed";
 		const isActivePlan = (p: any) => p.status === "Active";
+		const isActiveInvoice = (i: WorkflowItem) =>
+			i.status !== "Paid" && i.status !== "Void";
 
 		const active: WorkflowItem[] = [
 			...requests.filter(isActiveRequest),
 			...quotes.filter(isActiveQuote),
 			...jobs.filter(isActiveJob),
 			...plans.filter(isActivePlan),
+			...invoiceItems.filter(isActiveInvoice),
 		].sort(
 			(a, b) =>
 				new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
 		);
 
-		return { active, requests, quotes, jobs, plans };
-	}, [client]);
+		return { active, requests, quotes, jobs, plans, invoices: invoiceItems };
+	}, [client, invoices]);
 
 	if (isLoading) {
 		return (
@@ -134,7 +158,11 @@ export default function ClientDetailsPage() {
 		);
 	}
 
-	const getStatusColor = (status: string) => {
+	const getStatusColor = (item: WorkflowItem) => {
+		if (item.type === "invoice") {
+			return InvoiceStatusColors[item.status as InvoiceStatus]
+				?? "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+		}
 		const colors: Record<string, string> = {
 			New: "bg-blue-500/20 text-blue-400 border-blue-500/30",
 			Reviewing: "bg-purple-500/20 text-purple-400 border-purple-500/30",
@@ -153,7 +181,7 @@ export default function ClientDetailsPage() {
 			Active: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
 			Paused: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 		};
-		return colors[status] || "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+		return colors[item.status] || "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
 	};
 
 	const getTypeIcon = (type: string) => {
@@ -180,6 +208,13 @@ export default function ClientDetailsPage() {
 					<Repeat
 						size={16}
 						className={`${iconClass} text-purple-400`}
+					/>
+				);
+			case "invoice":
+				return (
+					<ReceiptText
+						size={16}
+						className={iconClass + " text-green-400"}
 					/>
 				);
 			default:
@@ -226,6 +261,14 @@ export default function ClientDetailsPage() {
 			color: "text-purple-400",
 			inactiveColor: "text-purple-400/40",
 		},
+		{
+			id: "invoices" as MainTab,
+			label: "Invoices",
+			count: workflowData.invoices.length,
+			icon: ReceiptText,
+			color: "text-green-400",
+			inactiveColor: "text-green-400/40",
+		},
 	];
 
 	const currentData = workflowData[activeTab];
@@ -269,9 +312,9 @@ export default function ClientDetailsPage() {
 				</div>
 				<div className="sm:hidden mt-2 flex items-center justify-between">
 					<span
-						className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(item.status)}`}
+						className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(item)}`}
 					>
-						{item.status}
+						{item.statusLabel ?? item.status}
 					</span>
 					{item.total !== undefined && item.total !== null && (
 						<span className="text-xs text-emerald-400 font-medium">
@@ -284,14 +327,13 @@ export default function ClientDetailsPage() {
 				<div className="flex items-center gap-1 text-zinc-400">
 					<Calendar size={11} />
 					<span className="truncate">
-						{item.type === "plan" && item.starts_at
+						{(item.type === "plan" || item.type === "invoice") && item.starts_at
 							? formatDate(item.starts_at)
 							: formatDate(item.created_at)}
 					</span>
 				</div>
 				{item.total !== undefined && item.total !== null && (
 					<div className="flex items-center gap-1 text-emerald-400 font-medium mt-1">
-						<DollarSign size={11} />
 						<span className="truncate">
 							{formatCurrency(Number(item.total))}
 						</span>
@@ -300,9 +342,9 @@ export default function ClientDetailsPage() {
 			</div>
 			<div className="hidden sm:flex items-center justify-end">
 				<span
-					className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(item.status)}`}
+					className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(item)}`}
 				>
-					{item.status}
+					{item.statusLabel ?? item.status}
 				</span>
 			</div>
 		</button>

@@ -25,15 +25,19 @@ export default function MapPage() {
 	if (isLoading) return <p>Loading map data...</p>;
 
 	return (
-		<Card title="Map View" className="h-fit relative">
-			<button
-				className="absolute top-6 right-6 z-10 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-				onClick={() => nav("/map")}
-			>
-				<Expand size={16} className="text-white" />
-				View Fullscreen
-			</button>
-
+		<Card
+			title="Map View"
+			className="h-fit"
+			headerAction={
+				<button
+					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					onClick={() => nav("/map")}
+				>
+					<Expand size={16} className="text-white" />
+					View Fullscreen
+				</button>
+			}
+		>
 			<div className="space-y-4">
 				<div
 					ref={mapContainerRef}

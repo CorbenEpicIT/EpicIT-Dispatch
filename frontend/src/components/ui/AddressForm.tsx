@@ -100,26 +100,43 @@ const AddressForm = ({
 		const style = document.createElement("style");
 		style.id = styleId;
 		style.textContent = `
-        /* Target by stable role/aria attributes — immune to class hashing */
-        [data-seed] [role="listbox"] {
-            max-height: 60vh !important;
-            overflow-y: auto !important;
-        }
-        [data-seed] [role="option"] {
-            font-size: 12px !important;
-            min-height: unset !important;
-            padding: 4px 8px !important;
-        }
-        [data-seed] [role="option"] > div {
-            padding: 4px 8px !important;
-            min-height: unset !important;
-            gap: 4px !important;
-        }
-        /* Hide attribution row */
-        [data-seed] [aria-hidden="true"]:last-child {
-            display: none !important;
-        }
-    `;
+			/* Suggestion list container */
+			[data-seed] [role="listbox"] {
+				max-height: 200px !important;
+				overflow-y: auto !important;
+			}
+
+			/* Each suggestion row — single line, no wrapping */
+			[data-seed] [role="option"] {
+				font-size: 12px !important;
+				min-height: unset !important;
+				padding: 0 !important;
+				overflow: hidden !important;
+			}
+
+			/* Inner div that Mapbox uses for layout — force to single truncated line */
+			[data-seed] [role="option"] > div {
+				display: block !important;
+				padding: 5px 10px !important;
+				min-height: unset !important;
+				white-space: nowrap !important;
+				overflow: hidden !important;
+				text-overflow: ellipsis !important;
+				line-height: 1.4 !important;
+			}
+
+			/* All child spans/divs inside — inline so they flow as one line */
+			[data-seed] [role="option"] > div * {
+				display: inline !important;
+				white-space: nowrap !important;
+				overflow: visible !important;
+			}
+
+			/* Hide attribution row */
+			[data-seed] [aria-hidden="true"]:last-child {
+				display: none !important;
+			}
+		`;
 		document.head.appendChild(style);
 
 		return () => {
@@ -145,38 +162,38 @@ const AddressForm = ({
 			colorText: "#ffffffff",
 			colorPrimary: "#3b82f6",
 			colorSecondary: "#3f3f46",
-			border: "1px solid #2b2b30ff",
+			border: "1px solid #505058ff",
 			paddingModal: "0.5rem",
 			paddingFooterLabel: "0.25rem",
 		},
 		cssText: `
-        input {
-            color: #ffffff !important;
-        }
-        .mapboxgl-ctrl-geocoder--input {
-            background: transparent !important;
-        }
-        .suggestions-wrapper {
-            max-height: 140px !important;
-            overflow: hidden !important;
-        }
-        .suggestions {
-            max-height: 140px !important;
-            overflow-y: auto !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        .suggestions > li {
-            font-size: 12px !important;
-            line-height: 1.3 !important;
-        }
-        .suggestions > li > a {
-            padding: 5px 10px !important;
-        }
-        .mapboxgl-ctrl-geocoder--powered-by {
-            display: none !important;
-        }
-    `,
+			input {
+				color: #ffffff !important;
+			}
+			.mapboxgl-ctrl-geocoder--input {
+				background: transparent !important;
+			}
+			.suggestions-wrapper {
+				max-height: 140px !important;
+				overflow: hidden !important;
+			}
+			.suggestions {
+				max-height: 140px !important;
+				overflow-y: auto !important;
+				padding: 0 !important;
+				margin: 0 !important;
+			}
+			.suggestions > li {
+				font-size: 12px !important;
+				line-height: 1.3 !important;
+			}
+			.suggestions > li > a {
+				padding: 5px 10px !important;
+			}
+			.mapboxgl-ctrl-geocoder--powered-by {
+				display: none !important;
+			}
+		`,
 	};
 
 	const popoverOptions = useMemo(

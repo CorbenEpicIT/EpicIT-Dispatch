@@ -1,5 +1,9 @@
 import LoginPage from "./auth/LoginPage";
 import DispatchLayout from "./layouts/DispatchLayout";
+import TechnicianLayout from "./layouts/TechnicianLayout";
+import TechnicianDashboardPage from "./pages/technician/TechnicianDashboardPage";
+import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
+import TechnicianVisitDetailPage from "./pages/technician/TechnicianVisitDetailPage";
 import DashboardPage from "./pages/dispatch/DashboardPage";
 import JobsPage from "./pages/dispatch/JobsPage";
 import JobDetailPage from "./pages/dispatch/JobDetailPage";
@@ -20,6 +24,8 @@ import RequestsPage from "./pages/dispatch/RequestsPage";
 import RequestDetailsPage from "./pages/dispatch/RequestDetailPage";
 import InventoryPage from "./pages/dispatch/InventoryPage";
 import FullMapPage from "./pages/dispatch/FullMapPage";
+import InvoicesPage from "./pages/dispatch/InvoicesPage";
+import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
 import AdminPage from "./pages/dispatch/AdminPage";
 
 import { Routes, Route, Navigate } from "react-router-dom";
@@ -79,6 +85,8 @@ export default function AppRoutes() {
 					path="requests/:requestId"
 					element={<RequestDetailsPage />}
 				/>
+				<Route path="invoices" element={<InvoicesPage />} />
+				<Route path="invoices/:invoiceId" element={<InvoiceDetailPage />} />
 				<Route path="admin" element={<AdminPage />} />
 			</Route>
 
@@ -90,6 +98,19 @@ export default function AppRoutes() {
 					</RequireAuth>
 				}
 			></Route>
+
+			<Route
+				path="/technician/*"
+				element={
+					<RequireAuth>
+						<TechnicianLayout />
+					</RequireAuth>
+				}
+			>
+				<Route index element={<TechnicianDashboardPage />} />
+				<Route path="visits" element={<TechnicianVisitsPage />} />
+				<Route path="visits/:visitId" element={<TechnicianVisitDetailPage />} />
+			</Route>
 
 			<Route path="*" element={<Navigate to="/login" replace />} />
 		</Routes>

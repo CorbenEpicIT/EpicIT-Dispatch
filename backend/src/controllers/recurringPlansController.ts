@@ -11,6 +11,7 @@ import {
 	createRecurringPlanSchema,
 	updateRecurringPlanSchema,
 	updateRecurringPlanLineItemsSchema,
+	updateInvoiceScheduleSchema,
 	generateOccurrencesSchema,
 	skipOccurrenceSchema,
 	rescheduleOccurrenceSchema,
@@ -24,6 +25,10 @@ import {
 	VisitGenerationResult,
 } from "../types/common.js";
 import { addDays, addWeeks, addMonths, addYears, parseISO } from "date-fns";
+import {
+	calculateNextInvoiceAt,
+	type ScheduleFrequency,
+} from "../lib/invoiceSchedule.js";
 
 export interface UserContext {
 	techId?: string;
@@ -353,6 +358,7 @@ export const getRecurringPlanByJobId = async (jobId: string) => {
 			occurrences: {
 				orderBy: { occurrence_start_at: "asc" },
 			},
+			invoice_schedule: true,
 			created_by_dispatcher: {
 				select: {
 					id: true,
@@ -399,6 +405,7 @@ export const getRecurringPlanById = async (planId: string) => {
 			occurrences: {
 				orderBy: { occurrence_start_at: "asc" },
 			},
+			invoice_schedule: true,
 			created_by_dispatcher: {
 				select: {
 					id: true,
@@ -516,6 +523,36 @@ export const insertRecurringPlan = async (
 				});
 			}
 
+			// Create invoice schedule if billing is configured
+			if (parsed.invoice_schedule && parsed.billing_mode !== "none") {
+				const sched = parsed.invoice_schedule;
+				const nextInvoiceAt =
+					sched.frequency !== "on_visit_completion"
+						? calculateNextInvoiceAt(
+								sched.frequency as ScheduleFrequency,
+								sched.day_of_month ?? null,
+								sched.day_of_week ?? null,
+								sched.generate_days_before ?? 0,
+							)
+						: null;
+				await tx.invoice_schedule.create({
+					data: {
+						recurring_plan_id: plan.id,
+						billing_basis: sched.billing_basis,
+						fixed_amount: sched.fixed_amount ?? null,
+						frequency: sched.frequency,
+						day_of_month: sched.day_of_month ?? null,
+						day_of_week: sched.day_of_week as weekday | null ?? null,
+						generate_days_before: sched.generate_days_before ?? 0,
+						payment_terms_days: sched.payment_terms_days ?? 30,
+						auto_send: sched.auto_send ?? false,
+						memo_template: sched.memo_template ?? null,
+						next_invoice_at: nextInvoiceAt,
+						is_active: true,
+					},
+				});
+			}
+
 			// Generate initial occurrences
 			await generateOccurrencesForPlan(
 				plan.id,
@@ -572,6 +609,7 @@ export const insertRecurringPlan = async (
 						orderBy: { occurrence_start_at: "asc" },
 						take: 10,
 					},
+					invoice_schedule: true,
 				},
 			});
 		});
@@ -826,6 +864,58 @@ export const updateRecurringPlan = async (
 				});
 			}
 
+			// Upsert invoice schedule if billing configuration is provided
+			if (parsed.invoice_schedule) {
+				const sched = parsed.invoice_schedule;
+				if (parsed.billing_mode === "none") {
+					// Deactivate schedule if billing is set to none
+					await tx.invoice_schedule.updateMany({
+						where: { recurring_plan_id: existing.id },
+						data: { is_active: false },
+					});
+				} else {
+					const nextInvoiceAt =
+						sched.frequency !== "on_visit_completion"
+							? calculateNextInvoiceAt(
+									sched.frequency as ScheduleFrequency,
+									sched.day_of_month ?? null,
+									sched.day_of_week ?? null,
+									sched.generate_days_before ?? 0,
+								)
+							: null;
+					await tx.invoice_schedule.upsert({
+						where: { recurring_plan_id: existing.id },
+						create: {
+							recurring_plan_id: existing.id,
+							billing_basis: sched.billing_basis,
+							fixed_amount: sched.fixed_amount ?? null,
+							frequency: sched.frequency,
+							day_of_month: sched.day_of_month ?? null,
+							day_of_week: sched.day_of_week as weekday | null ?? null,
+							generate_days_before: sched.generate_days_before ?? 0,
+							payment_terms_days: sched.payment_terms_days ?? 30,
+							auto_send: sched.auto_send ?? false,
+							memo_template: sched.memo_template ?? null,
+							next_invoice_at: nextInvoiceAt,
+							is_active: true,
+						},
+						update: {
+							billing_basis: sched.billing_basis,
+							fixed_amount: sched.fixed_amount ?? null,
+							frequency: sched.frequency,
+							day_of_month: sched.day_of_month ?? null,
+							day_of_week: sched.day_of_week as weekday | null ?? null,
+							generate_days_before: sched.generate_days_before ?? 0,
+							payment_terms_days: sched.payment_terms_days ?? 30,
+							auto_send: sched.auto_send ?? false,
+							memo_template: sched.memo_template ?? null,
+							next_invoice_at: nextInvoiceAt,
+							is_active: true,
+						},
+					});
+				}
+			}
+
 			if (
 				Object.keys(changes).length > 0 ||
 				parsed.rule ||
@@ -894,6 +984,7 @@ export const updateRecurringPlan = async (
 					occurrences: {
 						orderBy: { occurrence_start_at: "asc" },
 					},
+					invoice_schedule: true,
 					created_by_dispatcher: {
 						select: {
 							id: true,
@@ -1035,6 +1126,91 @@ export const updateRecurringPlanLineItems = async (
 		console.error("Update recurring plan line items error:", e);
 		return { err: "Internal server error" };
 	}
+};
+
+// ============================================================================
+// INVOICE SCHEDULE
+// ============================================================================
+
+export const upsertInvoiceSchedule = async (
+	jobId: string,
+	data: unknown,
+	context?: UserContext,
+) => {
+	try {
+		const parsed = updateInvoiceScheduleSchema.parse(data);
+
+		const plan = await db.recurring_plan.findFirst({
+			where: { job_container: { id: jobId } },
+		});
+
+		if (!plan) return { err: "Recurring plan not found" };
+
+		const nextInvoiceAt =
+			parsed.frequency !== "on_visit_completion"
+				? calculateNextInvoiceAt(
+						parsed.frequency as ScheduleFrequency,
+						parsed.day_of_month ?? null,
+						parsed.day_of_week ?? null,
+						parsed.generate_days_before ?? 0,
+					)
+				: null;
+
+		const schedule = await db.invoice_schedule.upsert({
+			where: { recurring_plan_id: plan.id },
+			create: {
+				recurring_plan_id: plan.id,
+				billing_basis: parsed.billing_basis,
+				fixed_amount: parsed.fixed_amount ?? null,
+				frequency: parsed.frequency,
+				day_of_month: parsed.day_of_month ?? null,
+				day_of_week: parsed.day_of_week as weekday | null ?? null,
+				generate_days_before: parsed.generate_days_before ?? 0,
+				payment_terms_days: parsed.payment_terms_days ?? 30,
+				auto_send: parsed.auto_send ?? false,
+				memo_template: parsed.memo_template ?? null,
+				next_invoice_at: nextInvoiceAt,
+				is_active: true,
+			},
+			update: {
+				billing_basis: parsed.billing_basis,
+				fixed_amount: parsed.fixed_amount ?? null,
+				frequency: parsed.frequency,
+				day_of_month: parsed.day_of_month ?? null,
+				day_of_week: parsed.day_of_week as weekday | null ?? null,
+				generate_days_before: parsed.generate_days_before ?? 0,
+				payment_terms_days: parsed.payment_terms_days ?? 30,
+				auto_send: parsed.auto_send ?? false,
+				memo_template: parsed.memo_template ?? null,
+				next_invoice_at: nextInvoiceAt,
+				is_active: true,
+			},
+		});
+
+		return { err: "", item: schedule };
+	} catch (e) {
+		if (e instanceof ZodError) {
+			return {
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
+			};
+		}
+		console.error("Upsert invoice schedule error:", e);
+		return { err: "Internal server error" };
+	}
+};
+
+export const deleteInvoiceSchedule = async (jobId: string) => {
+	const plan = await db.recurring_plan.findFirst({
+		where: { job_container: { id: jobId } },
+	});
+
+	if (!plan) return { err: "Recurring plan not found" };
+
+	await db.invoice_schedule.deleteMany({
+		where: { recurring_plan_id: plan.id },
+	});
+
+	return { err: "" };
 };
 
 // ============================================================================

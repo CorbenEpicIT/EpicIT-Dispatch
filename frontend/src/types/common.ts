@@ -191,6 +191,8 @@ export interface BaseLineItem {
 	unit_price: number;
 	item_type: LineItemType | "";
 	total: number;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
 }
 
 //Extended line item for edit forms - tracks new/deleted items

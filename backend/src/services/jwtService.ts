@@ -83,7 +83,7 @@ export const generateOTPToken = (user: User, role: string, otp: string) => {
 }
 
 export const verifyToken = (token: string) => {
-    if (!JWT_SECRET){
+    if (!JWT_SECRET) {
         throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
     }
     return jwt.verify(token, JWT_SECRET) as {

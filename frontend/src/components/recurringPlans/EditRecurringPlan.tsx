@@ -24,7 +24,11 @@ import AddressForm from "../ui/AddressForm";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
-import { BillingConfiguration } from "../ui/forms/BillingConfiguration";
+import {
+	BillingConfiguration,
+	type BillingConfigState,
+	defaultBillingConfigState,
+} from "../ui/forms/BillingConfiguration";
 import { ScheduleConfiguration } from "../ui/forms/ScheduleConfiguration";
 import { UndoButton, UndoButtonTop } from "../ui/forms/UndoButton";
 
@@ -91,9 +95,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		selectedWeekdays: Weekday[];
 		monthDay: number | "";
 		month: number | "";
-		billingMode: "per_visit" | "subscription" | "none";
-		invoiceTiming: "on_completion" | "on_schedule_date" | "manual";
-		autoInvoice: boolean;
+		billingConfig: BillingConfigState;
 	};
 
 	const { fields, updateField, undoField, setOriginals, isDirty, getValue } =
@@ -110,9 +112,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			selectedWeekdays: [],
 			monthDay: "",
 			month: "",
-			billingMode: "per_visit",
-			invoiceTiming: "on_completion",
-			autoInvoice: false,
+			billingConfig: defaultBillingConfigState,
 		});
 
 	const [clientId, setClientId] = useState("");
@@ -279,9 +279,21 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 					) as Weekday[]) || [],
 				monthDay: toNumberOrEmpty(ruleData.by_month_day),
 				month: toNumberOrEmpty(ruleData.by_month),
-				billingMode: plan.billing_mode,
-				invoiceTiming: plan.invoice_timing,
-				autoInvoice: plan.auto_invoice || false,
+				billingConfig: (() => {
+					const sched = plan.invoice_schedule;
+					return {
+						...defaultBillingConfigState,
+						billingBasis: plan.billing_mode === "none" ? "none" : ((sched?.billing_basis ?? "visit_actuals") as BillingConfigState["billingBasis"]),
+						fixedAmount: sched?.fixed_amount != null ? String(sched.fixed_amount) : "",
+						invoiceTrigger: plan.invoice_timing === "manual" ? "manual" : plan.invoice_timing === "on_schedule_date" ? "on_schedule" : "on_completion",
+						scheduleFrequency: (sched?.frequency && sched.frequency !== "on_visit_completion" ? sched.frequency : "monthly") as BillingConfigState["scheduleFrequency"],
+						dayOfMonth: sched?.day_of_month ?? 1,
+						dayOfWeek: (sched?.day_of_week ?? "MO") as BillingConfigState["dayOfWeek"],
+						generateDaysBefore: sched?.generate_days_before ?? 0,
+						paymentTermsDays: sched?.payment_terms_days ?? 30,
+						memoTemplate: sched?.memo_template ?? "",
+					};
+				})(),
 			});
 
 			setClientId(plan.client_id);
@@ -426,9 +438,19 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			timezone,
 			generation_window_days: Number(getValue("generationWindow")),
 			min_advance_days: Number(getValue("minAdvance")),
-			billing_mode: getValue("billingMode"),
-			invoice_timing: getValue("invoiceTiming"),
-			auto_invoice: getValue("autoInvoice"),
+			billing_mode: getValue("billingConfig").billingBasis === "none" ? "none" : getValue("billingConfig").billingBasis === "fixed_amount" ? "subscription" : "per_visit",
+			invoice_timing: getValue("billingConfig").invoiceTrigger === "on_completion" ? "on_completion" : getValue("billingConfig").invoiceTrigger === "on_schedule" ? "on_schedule_date" : "manual",
+			auto_invoice: getValue("billingConfig").invoiceTrigger !== "manual" && getValue("billingConfig").billingBasis !== "none",
+			invoice_schedule: getValue("billingConfig").billingBasis !== "none" ? {
+				billing_basis: getValue("billingConfig").billingBasis as "visit_actuals" | "fixed_amount",
+				fixed_amount: getValue("billingConfig").billingBasis === "fixed_amount" ? Number(getValue("billingConfig").fixedAmount) || 0 : undefined,
+				frequency: getValue("billingConfig").invoiceTrigger === "on_schedule" ? getValue("billingConfig").scheduleFrequency : "on_visit_completion",
+				day_of_month: ["monthly", "quarterly"].includes(getValue("billingConfig").scheduleFrequency) && getValue("billingConfig").invoiceTrigger === "on_schedule" ? getValue("billingConfig").dayOfMonth : undefined,
+				day_of_week: ["weekly", "biweekly"].includes(getValue("billingConfig").scheduleFrequency) && getValue("billingConfig").invoiceTrigger === "on_schedule" ? getValue("billingConfig").dayOfWeek : undefined,
+				generate_days_before: getValue("billingConfig").generateDaysBefore,
+				payment_terms_days: getValue("billingConfig").paymentTermsDays,
+				memo_template: getValue("billingConfig").memoTemplate || undefined,
+			} : undefined,
 			rule: preparedRule,
 			line_items: preparedLineItems,
 		};
@@ -782,21 +804,10 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 				return (
 					<div className="space-y-2 min-w-0">
 						<BillingConfiguration
-							mode="edit"
-							billingMode={getValue("billingMode")}
-							invoiceTiming={getValue("invoiceTiming")}
-							autoInvoice={getValue("autoInvoice")}
-							onBillingModeChange={(val) =>
-								updateField("billingMode", val)
+							state={getValue("billingConfig")}
+							onChange={(updates) =>
+								updateField("billingConfig", { ...getValue("billingConfig"), ...updates })
 							}
-							onInvoiceTimingChange={(val) =>
-								updateField("invoiceTiming", val)
-							}
-							onAutoInvoiceChange={(val) =>
-								updateField("autoInvoice", val)
-							}
-							isDirty={isDirty}
-							onUndo={undoField}
 							isLoading={isLoading}
 							errors={errors}
 						/>

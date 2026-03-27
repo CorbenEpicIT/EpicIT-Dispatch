@@ -288,7 +288,10 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 
 		const existingVisit = await db.job_visit.findUnique({
 			where: { id },
-			include: { job: true },
+			include: {
+				job: true,
+				line_items: { select: { id: true } },
+			},
 		});
 
 		if (!existingVisit) {
@@ -312,12 +315,11 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 		] as const);
 
 		const updated = await db.$transaction(async (tx) => {
+			// ── Scalar field update ───────────────────────────────────────
 			const visit = await tx.job_visit.update({
 				where: { id },
 				data: {
-					...(parsed.name !== undefined && {
-						name: parsed.name,
-					}),
+					...(parsed.name !== undefined && { name: parsed.name }),
 					...(parsed.description !== undefined && {
 						description: parsed.description,
 					}),
@@ -354,14 +356,76 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 				},
 				include: {
 					job: true,
-					visit_techs: {
-						include: { tech: true },
-					},
+					visit_techs: { include: { tech: true } },
 					notes: true,
 				},
 			});
 
-			// Update job status based on visit status changes
+			// ── Line item replacement ─────────────────────────────────────
+			// Full replace: incoming array is the source of truth.
+			// Items with a matching id → update in place.
+			// Items without an id → create new.
+			// Existing items absent from the incoming array → delete.
+			// If line_items is undefined (not sent), skip entirely — no change.
+			if (parsed.line_items !== undefined) {
+				const existingIds = new Set(
+					existingVisit.line_items.map((i) => i.id),
+				);
+				const incomingIds = new Set(
+					parsed.line_items.filter((i) => i.id).map((i) => i.id!),
+				);
+
+				// Delete removed items
+				for (const item of existingVisit.line_items) {
+					if (!incomingIds.has(item.id)) {
+						await tx.job_visit_line_item.delete({
+							where: { id: item.id },
+						});
+					}
+				}
+
+				// Create or update
+				for (const item of parsed.line_items) {
+					if (item.id && existingIds.has(item.id)) {
+						// Update existing
+						await tx.job_visit_line_item.update({
+							where: { id: item.id },
+							data: {
+								name: item.name,
+								description: item.description ?? null,
+								quantity: item.quantity,
+								unit_price: item.unit_price,
+								total:
+									item.total ??
+									Number(item.quantity) *
+										Number(item.unit_price),
+								item_type: item.item_type ?? null,
+								sort_order: item.sort_order ?? 0,
+							},
+						});
+					} else {
+						// Create new
+						await tx.job_visit_line_item.create({
+							data: {
+								visit_id: id,
+								name: item.name,
+								description: item.description ?? null,
+								quantity: item.quantity,
+								unit_price: item.unit_price,
+								total:
+									item.total ??
+									Number(item.quantity) *
+										Number(item.unit_price),
+								source: "manual",
+								item_type: item.item_type ?? null,
+								sort_order: item.sort_order ?? 0,
+							},
+						});
+					}
+				}
+			}
+
+			// ── Job status sync ───────────────────────────────────────────
 			if (parsed.status) {
 				const allVisits = await tx.job_visit.findMany({
 					where: { job_id: existingVisit.job_id },
@@ -384,6 +448,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 				}
 			}
 
+			// ── Activity log ──────────────────────────────────────────────
 			if (Object.keys(changes).length > 0) {
 				await logActivity({
 					event_type: "job_visit.updated",
@@ -402,7 +467,16 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 				});
 			}
 
-			return visit;
+			// Re-fetch with line_items so the response shape is complete
+			return tx.job_visit.findUnique({
+				where: { id },
+				include: {
+					job: { include: { client: true } },
+					visit_techs: { include: { tech: true } },
+					line_items: { orderBy: { sort_order: "asc" } },
+					notes: true,
+				},
+			});
 		});
 
 		return { err: "", item: updated };
@@ -507,6 +581,78 @@ export const assignTechniciansToVisit = async (
 	} catch (e) {
 		console.error("Failed to assign technicians:", e);
 		return { err: "Failed to assign technicians" };
+	}
+};
+
+export const acceptJobVisit = async (
+	visitId: string,
+	techId: string,
+	context?: UserContext,
+) => {
+	try {
+		const visit = await db.job_visit.findUnique({
+			where: { id: visitId },
+		});
+
+		if (!visit) {
+			return { err: "Job visit not found" };
+		}
+
+		const tech = await db.technician.findUnique({
+			where: { id: techId },
+			select: { id: true },
+		});
+
+		if (!tech) {
+			return { err: "Technician not found" };
+		}
+
+		await db.$transaction(async (tx) => {
+			await tx.job_visit_technician.create({
+				data: { visit_id: visitId, tech_id: techId },
+			});
+
+			await logActivity({
+				event_type: "job_visit.technicians_assigned",
+				action: "updated",
+				entity_type: "job_visit",
+				entity_id: visitId,
+				actor_type: context?.techId
+					? "technician"
+					: context?.dispatcherId
+						? "dispatcher"
+						: "system",
+				actor_id: context?.techId || context?.dispatcherId,
+				changes: {
+					technicians: {
+						old: [],
+						new: [techId],
+					},
+				},
+				ip_address: context?.ipAddress,
+				user_agent: context?.userAgent,
+			});
+		});
+
+		const updated = await db.job_visit.findUnique({
+			where: { id: visitId },
+			include: {
+				job: {
+					include: {
+						client: true,
+					},
+				},
+				visit_techs: {
+					include: { tech: true },
+				},
+				notes: true,
+			},
+		});
+
+		return { err: "", item: updated };
+	} catch (e) {
+		console.error("Failed to accept job visit:", e);
+		return { err: "Failed to accept job visit" };
 	}
 };
 

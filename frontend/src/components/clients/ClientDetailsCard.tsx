@@ -25,9 +25,10 @@ export interface ClientDetailsProps {
 		is_active?: boolean;
 		contacts?: ClientContact[];
 	} | null;
+	showDispatchLink?: boolean;
 }
 
-export default function ClientDetailsCard({ client_id, client }: ClientDetailsProps) {
+export default function ClientDetailsCard({ client_id, client, showDispatchLink = true }: ClientDetailsProps) {
 	const navigate = useNavigate();
 
 	const primaryContact = client?.contacts?.find((cc) => cc.is_primary)?.contact;
@@ -150,12 +151,14 @@ export default function ClientDetailsCard({ client_id, client }: ClientDetailsPr
 					</div>
 				)}
 
-				<button
-					onClick={() => navigate(`/dispatch/clients/${client_id}`)}
-					className="w-full mt-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors cursor-pointer"
-				>
-					View Full Client Profile
-				</button>
+				{showDispatchLink && (
+					<button
+						onClick={() => navigate(`/dispatch/clients/${client_id}`)}
+						className="w-full mt-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors cursor-pointer"
+					>
+						View Full Client Profile
+					</button>
+				)}
 			</div>
 		</Card>
 	);

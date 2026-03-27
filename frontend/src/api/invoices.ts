@@ -35,6 +35,16 @@ export const getInvoicesByClientId = async (clientId: string): Promise<Invoice[]
 	return response.data.data || [];
 };
 
+export const getInvoicesByJobId = async (jobId: string): Promise<Invoice[]> => {
+	const response = await api.get<ApiResponse<Invoice[]>>(`/jobs/${jobId}/invoices`);
+	return response.data.data || [];
+};
+
+export const getInvoicesByVisitId = async (jobId: string, visitId: string): Promise<Invoice[]> => {
+	const response = await api.get<ApiResponse<Invoice[]>>(`/jobs/${jobId}/visits/${visitId}/invoices`);
+	return response.data.data || [];
+};
+
 export const createInvoice = async (input: CreateInvoiceInput): Promise<Invoice> => {
 	const response = await api.post<ApiResponse<Invoice>>("/invoices", input);
 
