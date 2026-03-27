@@ -15,8 +15,10 @@ import {
 	ArrowLeft,
 	Phone,
 	Briefcase,
+	ShieldUser,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
+import { isAdmin } from "../util/util";
 
 export default function DispatchLayout() {
 	const { logout, user } = useAuthStore();
@@ -50,6 +52,8 @@ export default function DispatchLayout() {
 			navigate("/dispatch/quotes");
 		} else if (path.includes("/inventory/")) {
 			navigate("/dispatch/inventory");
+		}else if (path.includes("/admin/")) {
+			navigate("/dispatch/admin");
 		} else {
 			navigate("/dispatch");
 		}
@@ -126,6 +130,15 @@ export default function DispatchLayout() {
 						icon={<Settings size={ICON_SIZE} />}
 						label="Settings"
 					/>
+					{/* Admin page only visible to dispatch role */
+						user?.role === "dispatch" /*&& isAdmin(user?.role)*/ && (
+							<SideNavItem
+								to="/dispatch/admin"
+								icon={<ShieldUser size={ICON_SIZE} />}
+								label="Admin"
+							/>
+						)
+					}
 				</nav>
 			</aside>
 

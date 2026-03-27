@@ -20,6 +20,7 @@ import RequestsPage from "./pages/dispatch/RequestsPage";
 import RequestDetailsPage from "./pages/dispatch/RequestDetailPage";
 import InventoryPage from "./pages/dispatch/InventoryPage";
 import FullMapPage from "./pages/dispatch/FullMapPage";
+import AdminPage from "./pages/dispatch/AdminPage";
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./auth/authStore";
@@ -78,6 +79,7 @@ export default function AppRoutes() {
 					path="requests/:requestId"
 					element={<RequestDetailsPage />}
 				/>
+				<Route path="admin" element={<AdminPage />} />
 			</Route>
 
 			<Route
