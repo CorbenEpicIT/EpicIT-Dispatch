@@ -521,6 +521,8 @@ model job {
   estimated_total Decimal? @db.Decimal(10, 2)
   actual_total    Decimal? @db.Decimal(10, 2)
 
+  deduct_inventory_on String @default("job_completion") // "job_completion" | "visit_completion"
+
   visits       job_visit[]
   notes        job_note[]
   line_items   job_line_item[]
@@ -620,11 +622,15 @@ model job_visit_line_item {
   source    line_item_source
   item_type line_item_type?
 
+  inventory_item_id String?
+  inventory_item    inventory_item? @relation(fields: [inventory_item_id], references: [id])
+
   sort_order Int @default(0)
   created_at DateTime @default(now())
 
   @@index([visit_id])
   @@index([sort_order])
+  @@index([inventory_item_id])
 }
 
 model job_visit_technician {
@@ -872,9 +878,19 @@ model inventory_item {
   is_active  Boolean  @default(true)
   low_stock_threshold Int?
 
+  image_urls           String[]  @default([])
+  alert_emails_enabled Boolean   @default(false)
+  alert_email          String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  visit_line_items job_visit_line_item[]
+
   @@index([sku])
   @@index([is_active])
   @@index([organization_id])
+  @@index([created_at])
 }
 
 // ============================================================================

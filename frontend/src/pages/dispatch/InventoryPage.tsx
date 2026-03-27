@@ -1,107 +1,59 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Plus, Search, ArrowUpDown, Trash2 } from "lucide-react";
 import InventoryCard from "../../components/inventory/InventoryCard";
 import LowStockList from "../../components/inventory/LowStockList";
 import EditInventory from "../../components/inventory/EditInventory";
-import { useAllInventoryQuery } from "../../hooks/useInventory";
-import type { InventoryItem } from "../../types/inventory";
+import CreateInventoryItem from "../../components/inventory/CreateInventoryItem";
+import {
+	useAllInventoryQuery,
+	useDeleteInventoryItemMutation,
+} from "../../hooks/useInventory";
+import type { InventoryItem, InventorySortOption } from "../../types/inventory";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 
-// Dummy Data
-const dummyDesc = "";
-const DUMMY_ITEMS: InventoryItem[] = [
-		{
-			id: "4",
-			name: "24in PVC Elbow",
-			description: dummyDesc,
-			location: "A42 - 325",
-			quantity: 14,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "5",
-			name: "Industrial Tape Roll",
-			description: dummyDesc,
-			location: "A42 - 326",
-			quantity: 57,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "6",
-			name: "Metal Bracket L-Shape",
-			description: dummyDesc,
-			location: "A42 - 327",
-			quantity: 240,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "7",
-			name: "Rubber Gasket 4in",
-			description: dummyDesc,
-			location: "A42 - 328",
-			quantity: 96,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "8",
-			name: "Steel Coupling 2in",
-			description: dummyDesc,
-			location: "A42 - 329",
-			quantity: 33,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "9",
-			name: "Silicone Sealant Tube",
-			description: dummyDesc,
-			location: "A42 - 330",
-			quantity: 0,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "10",
-			name: "Hex Bolts (1/4in)",
-			description: dummyDesc,
-			location: "A42 - 331",
-			quantity: 4,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "11",
-			name: "Plastic End Cap 8in",
-			description: dummyDesc,
-			location: "A42 - 332",
-			quantity: 0,
-			low_stock_threshold: 10,
-		},
-		{
-			id: "12",
-			name: "Brake Cleaner Spray",
-			description: dummyDesc,
-			location: "A42 - 333",
-			quantity: 11,
-			low_stock_threshold: 15,
-		},
-		{
-			id: "13",
-			name: "Threadlocker Blue",
-			description: dummyDesc,
-			location: "A42 - 334",
-			quantity: 9,
-			low_stock_threshold: 10,
-		},
-	];
+const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
+	{ value: "name", label: "Name A-Z" },
+	{ value: "quantity_desc", label: "Highest Stock" },
+	{ value: "quantity_asc", label: "Lowest Stock" },
+	{ value: "most_used", label: "Most Used" },
+	{ value: "recently_added", label: "Recently Added" },
+];
 
 export default function InventoryPage() {
+	const [sort, setSort] = useState<InventorySortOption>("name");
+	const [search, setSearch] = useState("");
+	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+	const [thresholdItem, setThresholdItem] = useState<InventoryItem | null>(null);
+	const [isCreateOpen, setIsCreateOpen] = useState(false);
+	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
 	const {
-		data: _inventoryItems = [],
+		data: inventoryItems = [],
 		isLoading,
 		error,
-	} = useAllInventoryQuery();
+	} = useAllInventoryQuery(sort);
 
-	// Use Dummy Data to show for right now use this const items = _inventoryItems and remove underscore on apiItems;
-	const items = DUMMY_ITEMS;
+	const deleteMutation = useDeleteInventoryItemMutation();
 
-	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+	const filteredItems = useMemo(() => {
+		if (!search.trim()) return inventoryItems;
+		const q = search.toLowerCase();
+		return inventoryItems.filter(
+			(item) =>
+				item.name.toLowerCase().includes(q) ||
+				(item.sku && item.sku.toLowerCase().includes(q)) ||
+				item.location.toLowerCase().includes(q),
+		);
+	}, [inventoryItems, search]);
+
+	const handleDelete = async (id: string) => {
+		try {
+			await deleteMutation.mutateAsync(id);
+			setDeleteConfirmId(null);
+		} catch (e) {
+			console.error("Failed to delete:", e);
+		}
+	};
 
 	if (isLoading) {
 		return (
@@ -121,32 +73,140 @@ export default function InventoryPage() {
 
 	return (
 		<div className="flex h-full text-white">
-			{/* Main content*/}
+			{/* Main content */}
 			<div className="flex-1 overflow-auto p-4 mr-14">
 				<div className="flex flex-wrap items-center justify-between gap-4 mb-2">
 					<h2 className="text-2xl font-semibold">Inventory</h2>
-					<div className="w-full flex flex-wrap gap-3">
-						{items.map((item) => (
-							<InventoryCard
-								key={item.id}
-								item={item}
-								onEditThreshold={() => setEditingItem(item)}
+
+					{/* Controls */}
+					<div className="flex items-center gap-2">
+						{/* Search */}
+						<div className="relative">
+							<Search
+								size={14}
+								className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
 							/>
-						))}
+							<input
+								type="text"
+								placeholder="Search items..."
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								className="pl-8 pr-3 h-8 rounded-md bg-zinc-900 border border-zinc-700 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none w-48"
+							/>
+						</div>
+
+						{/* Sort */}
+						<div className="relative">
+							<ArrowUpDown
+								size={14}
+								className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+							/>
+							<select
+								value={sort}
+								onChange={(e) => setSort(e.target.value as InventorySortOption)}
+								className="pl-8 pr-6 h-8 rounded-md bg-zinc-900 border border-zinc-700 text-sm text-white appearance-none cursor-pointer focus:border-blue-500 focus:outline-none"
+							>
+								{SORT_OPTIONS.map((opt) => (
+									<option key={opt.value} value={opt.value}>
+										{opt.label}
+									</option>
+								))}
+							</select>
+						</div>
+
+						{/* New Item */}
+						<button
+							onClick={() => setIsCreateOpen(true)}
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors"
+						>
+							<Plus size={14} />
+							New Item
+						</button>
 					</div>
+				</div>
+
+				<div className="w-full flex flex-wrap gap-3">
+					{filteredItems.map((item) => (
+						<div key={item.id} className="relative group">
+							<InventoryCard
+								item={item}
+								onEditThreshold={() => setThresholdItem(item)}
+								onClick={() => setEditingItem(item)}
+							/>
+							{/* Delete button */}
+							<button
+								onClick={(e) => {
+									e.stopPropagation();
+									setDeleteConfirmId(item.id);
+								}}
+								className="absolute top-2 right-2 p-1.5 rounded-md bg-zinc-800/80 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 opacity-0 group-hover:opacity-100 transition-all"
+								title="Delete item"
+							>
+								<Trash2 size={14} />
+							</button>
+						</div>
+					))}
+
+					{filteredItems.length === 0 && (
+						<div className="w-full py-12 text-center text-zinc-500">
+							{search
+								? "No items match your search"
+								: "No inventory items yet. Click \"New Item\" to add one."}
+						</div>
+					)}
 				</div>
 			</div>
 
 			{/* Low Stock Sidebar */}
-			<LowStockList items={items} />
+			<LowStockList items={inventoryItems} />
 
 			{/* Edit Threshold Modal */}
-			{editingItem && (
+			{thresholdItem && (
 				<EditInventory
-					isOpen={!!editingItem}
-					onClose={() => setEditingItem(null)}
-					item={editingItem}
+					isOpen={!!thresholdItem}
+					onClose={() => setThresholdItem(null)}
+					item={thresholdItem}
 				/>
+			)}
+
+			{/* Create/Edit Modal */}
+			<CreateInventoryItem
+				isOpen={isCreateOpen || !!editingItem}
+				onClose={() => {
+					setIsCreateOpen(false);
+					setEditingItem(null);
+				}}
+				existingItem={editingItem}
+			/>
+
+			{/* Delete Confirmation */}
+			{deleteConfirmId && (
+				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+					<div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full mx-4">
+						<h3 className="text-lg font-semibold text-white mb-2">
+							Delete Item
+						</h3>
+						<p className="text-sm text-zinc-400 mb-4">
+							Are you sure you want to delete this inventory item? This action
+							can be undone by reactivating the item.
+						</p>
+						<div className="flex justify-end gap-2">
+							<button
+								onClick={() => setDeleteConfirmId(null)}
+								className="px-3 py-1.5 rounded-md border border-zinc-700 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+							>
+								Cancel
+							</button>
+							<button
+								onClick={() => handleDelete(deleteConfirmId)}
+								disabled={deleteMutation.isPending}
+								className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-500 text-sm font-medium text-white transition-colors disabled:opacity-50"
+							>
+								{deleteMutation.isPending ? "Deleting..." : "Delete"}
+							</button>
+						</div>
+					</div>
+				</div>
 			)}
 		</div>
 	);

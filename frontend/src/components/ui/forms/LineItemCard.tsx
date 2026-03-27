@@ -1,6 +1,7 @@
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, useMemo } from "react";
 import { Trash2, RotateCcw, X, Briefcase, ChevronDown, ChevronRight, MapPin } from "lucide-react";
 import { LineItemTypeValues, LineItemTypeLabels, type BaseLineItem } from "../../../types/common";
+import type { InventoryItem } from "../../../types/inventory";
 import Dropdown from "../../ui/Dropdown";
 
 // ── Source context passed down from the invoice form ─────────────────────────
@@ -35,6 +36,113 @@ interface LineItemCardProps {
 	onUndoSource?: (id: string) => void;
 	originalLineItemsMap?: Map<string, BaseLineItem>;
 	sourceJobs?: SourceJob[];
+	inventoryItems?: InventoryItem[];
+}
+
+function InventoryAutofillInput({
+	item,
+	inventoryItems,
+	isLoading,
+	onUpdate,
+	onUndo,
+	showUndo,
+}: {
+	item: BaseLineItem;
+	inventoryItems: InventoryItem[];
+	isLoading: boolean;
+	onUpdate: (id: string, field: keyof BaseLineItem, value: string | number) => void;
+	onUndo?: (id: string, field: keyof BaseLineItem) => void;
+	showUndo: boolean;
+}) {
+	const [isOpen, setIsOpen] = useState(false);
+	const ref = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const handler = (e: MouseEvent) => {
+			if (ref.current && !ref.current.contains(e.target as Node)) {
+				setIsOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, []);
+
+	const filtered = useMemo(
+		() =>
+			inventoryItems
+				.filter(
+					(i) =>
+						i.is_active &&
+						(item.name.trim() === "" ||
+							i.name.toLowerCase().includes(item.name.toLowerCase()) ||
+							(i.sku && i.sku.toLowerCase().includes(item.name.toLowerCase()))),
+				)
+				.slice(0, 8),
+		[inventoryItems, item.name],
+	);
+
+	const handleSelect = (invItem: InventoryItem) => {
+		onUpdate(item.id, "name", invItem.name);
+		if (invItem.unit_price != null) {
+			onUpdate(item.id, "unit_price", Number(invItem.unit_price));
+		}
+		setIsOpen(false);
+	};
+
+	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		onUpdate(item.id, "name", e.target.value);
+		setIsOpen(true);
+	};
+
+	return (
+		<div ref={ref} className="relative min-w-0">
+			<input
+				type="text"
+				placeholder="Search inventory *"
+				value={item.name}
+				onChange={handleChange}
+				onFocus={() => setIsOpen(true)}
+				disabled={isLoading}
+				autoComplete="off"
+				className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base pr-8 min-w-0"
+			/>
+			{showUndo && (
+				<button
+					type="button"
+					title="Undo"
+					onClick={() => onUndo!(item.id, "name")}
+					className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+				>
+					<RotateCcw size={14} />
+				</button>
+			)}
+			{isOpen && filtered.length > 0 && (
+				<div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
+					<div className="max-h-44 overflow-y-auto">
+						{filtered.map((invItem) => (
+							<button
+								key={invItem.id}
+								type="button"
+								onMouseDown={(e) => {
+									e.preventDefault();
+									handleSelect(invItem);
+								}}
+								className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition-colors"
+							>
+								<div className="text-sm text-white truncate">{invItem.name}</div>
+								<div className="text-[10px] text-zinc-500">
+									{invItem.sku && `${invItem.sku} · `}
+									Qty: {invItem.quantity}
+									{invItem.unit_price != null &&
+										` · $${Number(invItem.unit_price).toFixed(2)}`}
+								</div>
+							</button>
+						))}
+					</div>
+				</div>
+			)}
+		</div>
+	);
 }
 
 const formatVisitDate = (d: string | Date) =>
@@ -59,12 +167,16 @@ const LineItemCard = memo(
 		onUndoSource,
 		originalLineItemsMap,
 		sourceJobs = [],
+		inventoryItems,
 	}: LineItemCardProps) => {
 		const isDirty = (field: string) => dirtyFields[`li:${item.id}:${field}`];
 		const showUndo = (field: keyof BaseLineItem) => !!onUndo && isDirty(field);
 		const origItem = originalLineItemsMap?.get(item.id);
-		const origHasSource = !!((origItem as any)?.source_job_id || (origItem as any)?.source_visit_id);
-		const isSourceDirty = !!onUndoSource && !!dirtyFields[`li:${item.id}:source`] && origHasSource;
+		const origHasSource = !!(
+			(origItem as any)?.source_job_id || (origItem as any)?.source_visit_id
+		);
+		const isSourceDirty =
+			!!onUndoSource && !!dirtyFields[`li:${item.id}:source`] && origHasSource;
 		const showClear = (field: keyof BaseLineItem, value: string) =>
 			!!onClear && value.trim().length > 0;
 
@@ -135,6 +247,10 @@ const LineItemCard = memo(
 			});
 		};
 
+		const isInventoryType =
+			(item.item_type === "material" || item.item_type === "equipment") &&
+			!!inventoryItems?.length;
+
 		return (
 			<div className="p-2.5 lg:p-3 bg-zinc-800 rounded border border-zinc-700">
 				{/* Header */}
@@ -161,34 +277,47 @@ const LineItemCard = memo(
 					{/* Row 1: Name + Type */}
 					<div className="grid grid-cols-2 gap-2 min-w-0">
 						<div className="relative min-w-0">
-							<input
-								type="text"
-								placeholder="Item name *"
-								value={item.name}
-								onChange={(e) =>
-									onUpdate(
-										item.id,
-										"name",
-										e.target.value
-									)
-								}
-								disabled={isLoading}
-								className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm pr-8 min-w-0"
-							/>
-							{showUndo("name") && (
-								<button
-									type="button"
-									title="Undo"
-									onClick={() =>
-										onUndo!(
-											item.id,
-											"name"
-										)
-									}
-									className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
-								>
-									<RotateCcw size={14} />
-								</button>
+							{isInventoryType ? (
+								<InventoryAutofillInput
+									item={item}
+									inventoryItems={inventoryItems!}
+									isLoading={isLoading}
+									onUpdate={onUpdate}
+									onUndo={onUndo}
+									showUndo={showUndo("name")}
+								/>
+							) : (
+								<>
+									<input
+										type="text"
+										placeholder="Item name *"
+										value={item.name}
+										onChange={(e) =>
+											onUpdate(
+												item.id,
+												"name",
+												e.target.value
+											)
+										}
+										disabled={isLoading}
+										className="border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm pr-8 min-w-0"
+									/>
+									{showUndo("name") && (
+										<button
+											type="button"
+											title="Undo"
+											onClick={() =>
+												onUndo!(
+													item.id,
+													"name"
+												)
+											}
+											className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+										>
+											<RotateCcw size={14} />
+										</button>
+									)}
+								</>
 							)}
 						</div>
 

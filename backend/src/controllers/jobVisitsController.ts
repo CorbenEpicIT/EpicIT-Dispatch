@@ -7,6 +7,7 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
+import { deductInventoryForVisit } from "./inventoryController.js";
 
 export interface UserContext {
 	techId?: string;
@@ -446,6 +447,26 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 						where: { id: existingVisit.job_id },
 						data: { status: newJobStatus },
 					});
+				}
+
+				const deductOn = existingVisit.job.deduct_inventory_on;
+				if (
+					parsed.status === "Completed" &&
+					existingVisit.status !== "Completed" &&
+					deductOn === "visit_completion"
+				) {
+					await deductInventoryForVisit(id, tx, context);
+				}
+
+				// Inventory deduction on job completion (all visits done)
+				if (
+					newJobStatus === "Completed" &&
+					existingVisit.job.status !== "Completed" &&
+					deductOn === "job_completion"
+				) {
+					for (const v of allVisits) {
+						await deductInventoryForVisit(v.id, tx, context);
+					}
 				}
 			}
 

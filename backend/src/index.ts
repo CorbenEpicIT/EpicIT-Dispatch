@@ -101,7 +101,13 @@ import {
 	getAllInventory,
 	getLowStockInventory,
 	updateInventoryThreshold,
+	createInventoryItem,
+	updateInventoryItem,
+	deleteInventoryItem,
+	adjustInventoryStock,
 } from "./controllers/inventoryController.js";
+import multer from "multer";
+import { uploadFile } from "./services/wasabiService.js";
 import {
 	getOverviewMetrics,
 	getRevenueYTD,
@@ -2905,12 +2911,114 @@ app.delete("/technicians/:id", async (req, res, next) => {
 
 app.get("/inventory", async (req, res, next) => {
 	try {
-		const { low_stock } = req.query;
+		const { low_stock, sort } = req.query;
 		const items =
 			low_stock === "true"
 				? await getLowStockInventory()
-				: await getAllInventory();
+				: await getAllInventory(sort as string | undefined);
 		res.json(createSuccessResponse(items, { count: items.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/inventory", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await createInventoryItem(req.body, context);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.patch("/inventory/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await updateInventoryItem(id, req.body, context);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/inventory/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await deleteInventoryItem(id, context);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+
+		res.json(createSuccessResponse({ message: result.message }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.patch("/inventory/:id/stock", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await adjustInventoryStock(id, req.body, context);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+const inventoryUpload = multer({
+	storage: multer.memoryStorage(),
+	limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+	fileFilter: (_req, file, cb) => {
+		const allowed = ["image/jpeg", "image/png", "image/webp"];
+		if (allowed.includes(file.mimetype)) {
+			cb(null, true);
+		} else {
+			cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
+		}
+	},
+});
+
+app.post("/inventory/upload-image", inventoryUpload.single("image"), async (req, res, next) => {
+	try {
+		if (!req.file) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No image file provided"));
+		}
+
+		const url = await uploadFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+		res.json(createSuccessResponse({ url }));
 	} catch (err) {
 		next(err);
 	}

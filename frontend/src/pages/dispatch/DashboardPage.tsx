@@ -24,6 +24,7 @@ import CreateRequest from "../../components/requests/CreateRequest";
 import CreateJob from "../../components/jobs/CreateJob";
 import CreateQuote from "../../components/quotes/CreateQuote";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
+import LowStockWidget from "../../components/dashboard/LowStockWidget";
 
 export default function DashboardPage() {
 	const navigate = useNavigate();
@@ -389,6 +390,8 @@ export default function DashboardPage() {
 								</button>
 							</div>
 						</Card>
+
+						<LowStockWidget />
 					</div>
 
 					{/* Center Column */}
