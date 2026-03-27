@@ -11,3 +11,7 @@ if (!BASE_URL) {
 export const api = axios.create({
 	baseURL: BASE_URL,
 });
+const token = localStorage.getItem("accessToken");
+if (token) {
+	api.defaults.headers.common.Authorization = `Bearer ${token}`;
+}

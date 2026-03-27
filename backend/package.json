@@ -18,19 +18,19 @@
 		"@types/express": "^5.0.5",
 		"@types/jsonwebtoken": "^9.0.10",
 		"@types/node": "^24.10.2",
-		"prisma": "^6.19.2",
+		"prisma": "^7.5.0",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
 		"@prisma/adapter-pg": "^7.1.0",
-		"@prisma/client": "^7.1.0",
+		"@prisma/client": "^7.5.0",
 		"bcrypt": "^6.0.0",
 		"cors": "^2.8.5",
 		"date-fns": "^4.1.0",
 		"dotenv": "^17.2.3",
 		"express": "^5.1.0",
-		"postmark": "^4.0.7",
 		"jsonwebtoken": "^9.0.3",
+		"postmark": "^4.0.7",
 		"socket.io": "^4.8.3",
 		"ts-node": "^10.9.2",
 		"zod": "^4.1.12"

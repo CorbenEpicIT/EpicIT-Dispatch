@@ -117,7 +117,10 @@ import {
 	logout,
 	checkRole,
 	checkToken,
+	checkRefreshToken,
+	issueAuthTokens
 } from "./controllers/authenticationController.js";
+import { verifyOTP } from "./services/otpServce.js";
 import http from "http";
 import { Server } from "socket.io";
 import { required } from "zod/v4/core/util.cjs";
@@ -283,14 +286,77 @@ if (!port) {
 app.post("/login", async (req, res, next) => {
 	try {
 		const { email, password, role } = req.body;
-		const result = await login(email, password, role);
-
+		const result = await login(res, email, password, role);
+		if (!result){
+			return res.status(401).json(
+				createErrorResponse(
+					ErrorCodes.INVALID_CREDENTIALS,
+					"Invalid credentials"
+				)
+			);
+		}
 		if ("error" in result) {
 			return res.status(401).json(result);
 		}
-
+		
 		res.json(createSuccessResponse(result.data));
 	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/logout", async (req, res, next) => {
+	try {
+		const user = req.user || {};
+		const token = req.headers.authorization?.split(" ")[1];
+		if (!token){
+			return res.status(400).json(
+				createErrorResponse(
+					ErrorCodes.INVALID_TOKEN,
+					"No token provided"
+				)
+			);
+		}
+		await logout(res, user, token);
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/otp-verify", async (req, res, next) => {
+	try {
+		const { otp } = req.body;
+		const pendingToken = req.headers.authorization?.split(" ")[1];
+		if (!pendingToken) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Missing session token")
+			);
+		}
+		const result = await verifyOTP(otp, pendingToken!);
+		if (!result){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Error verifying OTP")
+			);
+		}
+		// log in user by generating access and refresh tokens
+		const  userId = result.data?.userId;
+		const role = result.data?.role;
+		console.log("OTP verification successful for userId:", userId, "role:", role, "result data:", result.data);
+		if (!userId || !role) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid OTP session data")
+			);
+		}
+		const response = await issueAuthTokens(res, userId, role);
+		if (!response){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.SERVER_ERROR, "Error issuing auth tokens")
+			);
+		}
+		
+		return res.json(createSuccessResponse(response.data));
+	}catch(err){
 		next(err);
 	}
 });

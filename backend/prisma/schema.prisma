@@ -146,6 +146,13 @@ enum form_draft_type {
   job
   job_visit
   recurring_plan
+  invoice
+}
+
+/* Add more roles here if needed */
+enum DispatcherRole {
+  dispatcher
+  admin
 }
 
 
@@ -869,11 +876,12 @@ model technician {
   @@index([email])
   @@index([status])
   @@index([organization_id])
-}
+} 
 
 model dispatcher {
   id          String   @id @unique @default(uuid())
   organization_id String?
+  role            DispatcherRole @default(dispatcher)
   organization    organization? @relation(fields: [organization_id], references: [id])
   name        String
   email       String   @unique
@@ -936,4 +944,32 @@ model log {
   @@index([actor_type, actor_id])
   @@index([actor_type])
   @@index([organization_id])
+}
+
+
+// ============================================================================
+// Verification tokens 
+// ============================================================================
+
+model otp_verification {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   // 'dispatcher' | 'technician'
+  otp       String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, role])
+}
+
+model jwt_refresh_token {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   // 'dispatcher' | 'technician'
+  token     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, role])
 }
