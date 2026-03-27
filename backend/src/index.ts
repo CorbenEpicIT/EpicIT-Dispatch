@@ -130,11 +130,10 @@ import {
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
-import { httpMetricsMiddleware, register } from "./services/metricsService.js";
+import { httpMetricsMiddleware, register as metricsRegister } from "./services/metricsService.js";
 import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
-import { required } from "zod/v4/core/util.cjs";
 
 export interface UserContext {
 	techId?: string;
@@ -262,8 +261,8 @@ app.use(pinoHttp({ logger: log }));
 app.use(httpMetricsMiddleware);
 
 app.get("/metrics", async (_req, res) => {
-	res.set("Content-Type", register.contentType);
-	res.end(await register.metrics());
+	res.set("Content-Type", metricsRegister.contentType);
+	res.end(await metricsRegister.metrics());
 });
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];

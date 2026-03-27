@@ -14,69 +14,34 @@
   - Added the required column `updated_at` to the `inventory_item` table without a default value. This is not possible if the table is not empty.
 
 */
--- DropForeignKey
-ALTER TABLE "invoice" DROP CONSTRAINT "invoice_client_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice" DROP CONSTRAINT "invoice_created_by_dispatcher_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice" DROP CONSTRAINT "invoice_organization_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice" DROP CONSTRAINT "invoice_recurring_plan_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_job" DROP CONSTRAINT "invoice_job_invoice_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_job" DROP CONSTRAINT "invoice_job_job_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_line_item" DROP CONSTRAINT "invoice_line_item_invoice_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_note" DROP CONSTRAINT "invoice_note_creator_dispatcher_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_note" DROP CONSTRAINT "invoice_note_creator_tech_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_note" DROP CONSTRAINT "invoice_note_invoice_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_note" DROP CONSTRAINT "invoice_note_last_editor_dispatcher_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_note" DROP CONSTRAINT "invoice_note_last_editor_tech_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_note" DROP CONSTRAINT "invoice_note_organization_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_payment" DROP CONSTRAINT "invoice_payment_invoice_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_payment" DROP CONSTRAINT "invoice_payment_recorded_by_dispatcher_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_payment" DROP CONSTRAINT "invoice_payment_recorded_by_tech_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_schedule" DROP CONSTRAINT "invoice_schedule_recurring_plan_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_visit" DROP CONSTRAINT "invoice_visit_invoice_id_fkey";
-
--- DropForeignKey
-ALTER TABLE "invoice_visit" DROP CONSTRAINT "invoice_visit_visit_id_fkey";
+-- DropForeignKey (IF EXISTS — invoice tables may not exist in all environments)
+ALTER TABLE IF EXISTS "invoice" DROP CONSTRAINT IF EXISTS "invoice_client_id_fkey";
+ALTER TABLE IF EXISTS "invoice" DROP CONSTRAINT IF EXISTS "invoice_created_by_dispatcher_id_fkey";
+ALTER TABLE IF EXISTS "invoice" DROP CONSTRAINT IF EXISTS "invoice_organization_id_fkey";
+ALTER TABLE IF EXISTS "invoice" DROP CONSTRAINT IF EXISTS "invoice_recurring_plan_id_fkey";
+ALTER TABLE IF EXISTS "invoice_job" DROP CONSTRAINT IF EXISTS "invoice_job_invoice_id_fkey";
+ALTER TABLE IF EXISTS "invoice_job" DROP CONSTRAINT IF EXISTS "invoice_job_job_id_fkey";
+ALTER TABLE IF EXISTS "invoice_line_item" DROP CONSTRAINT IF EXISTS "invoice_line_item_invoice_id_fkey";
+ALTER TABLE IF EXISTS "invoice_note" DROP CONSTRAINT IF EXISTS "invoice_note_creator_dispatcher_id_fkey";
+ALTER TABLE IF EXISTS "invoice_note" DROP CONSTRAINT IF EXISTS "invoice_note_creator_tech_id_fkey";
+ALTER TABLE IF EXISTS "invoice_note" DROP CONSTRAINT IF EXISTS "invoice_note_invoice_id_fkey";
+ALTER TABLE IF EXISTS "invoice_note" DROP CONSTRAINT IF EXISTS "invoice_note_last_editor_dispatcher_id_fkey";
+ALTER TABLE IF EXISTS "invoice_note" DROP CONSTRAINT IF EXISTS "invoice_note_last_editor_tech_id_fkey";
+ALTER TABLE IF EXISTS "invoice_note" DROP CONSTRAINT IF EXISTS "invoice_note_organization_id_fkey";
+ALTER TABLE IF EXISTS "invoice_payment" DROP CONSTRAINT IF EXISTS "invoice_payment_invoice_id_fkey";
+ALTER TABLE IF EXISTS "invoice_payment" DROP CONSTRAINT IF EXISTS "invoice_payment_recorded_by_dispatcher_id_fkey";
+ALTER TABLE IF EXISTS "invoice_payment" DROP CONSTRAINT IF EXISTS "invoice_payment_recorded_by_tech_id_fkey";
+ALTER TABLE IF EXISTS "invoice_schedule" DROP CONSTRAINT IF EXISTS "invoice_schedule_recurring_plan_id_fkey";
+ALTER TABLE IF EXISTS "invoice_visit" DROP CONSTRAINT IF EXISTS "invoice_visit_invoice_id_fkey";
+ALTER TABLE IF EXISTS "invoice_visit" DROP CONSTRAINT IF EXISTS "invoice_visit_visit_id_fkey";
 
 -- DropIndex
-DROP INDEX "client_is_tax_exempt_idx";
+DROP INDEX IF EXISTS "client_is_tax_exempt_idx";
 
 -- AlterTable
-ALTER TABLE "client" DROP COLUMN "is_tax_exempt",
-DROP COLUMN "tax_rate";
+ALTER TABLE "client"
+  DROP COLUMN IF EXISTS "is_tax_exempt",
+  DROP COLUMN IF EXISTS "tax_rate";
 
 -- AlterTable
 ALTER TABLE "inventory_item" ADD COLUMN     "alert_email" TEXT,
@@ -92,37 +57,21 @@ ALTER TABLE "job" ADD COLUMN     "deduct_inventory_on" TEXT NOT NULL DEFAULT 'jo
 ALTER TABLE "job_visit_line_item" ADD COLUMN     "inventory_item_id" TEXT;
 
 -- AlterTable
-ALTER TABLE "organization" DROP COLUMN "tax_rate";
+ALTER TABLE "organization" DROP COLUMN IF EXISTS "tax_rate";
 
--- DropTable
-DROP TABLE "invoice";
+-- DropTable (IF EXISTS — may not exist in all environments)
+DROP TABLE IF EXISTS "invoice";
+DROP TABLE IF EXISTS "invoice_job";
+DROP TABLE IF EXISTS "invoice_line_item";
+DROP TABLE IF EXISTS "invoice_note";
+DROP TABLE IF EXISTS "invoice_payment";
+DROP TABLE IF EXISTS "invoice_schedule";
+DROP TABLE IF EXISTS "invoice_visit";
 
--- DropTable
-DROP TABLE "invoice_job";
-
--- DropTable
-DROP TABLE "invoice_line_item";
-
--- DropTable
-DROP TABLE "invoice_note";
-
--- DropTable
-DROP TABLE "invoice_payment";
-
--- DropTable
-DROP TABLE "invoice_schedule";
-
--- DropTable
-DROP TABLE "invoice_visit";
-
--- DropEnum
-DROP TYPE "invoice_schedule_billing_basis";
-
--- DropEnum
-DROP TYPE "invoice_schedule_frequency";
-
--- DropEnum
-DROP TYPE "invoice_status";
+-- DropEnum (IF EXISTS)
+DROP TYPE IF EXISTS "invoice_schedule_billing_basis";
+DROP TYPE IF EXISTS "invoice_schedule_frequency";
+DROP TYPE IF EXISTS "invoice_status";
 
 -- CreateIndex
 CREATE INDEX "inventory_item_created_at_idx" ON "inventory_item"("created_at");
