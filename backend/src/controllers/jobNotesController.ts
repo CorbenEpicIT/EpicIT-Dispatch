@@ -6,6 +6,7 @@ import {
 } from "../lib/validate/jobs.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -266,7 +267,7 @@ export const insertJobNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error inserting job note:", e);
+		log.error({ err: e }, "Error inserting job note");
 		return { err: "Internal server error" };
 	}
 };
@@ -412,7 +413,7 @@ export const updateJobNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error updating job note:", e);
+		log.error({ err: e }, "Error updating job note");
 		return { err: "Internal server error" };
 	}
 };
@@ -462,7 +463,7 @@ export const deleteJobNote = async (
 
 		return { err: "", message: "Note deleted successfully" };
 	} catch (error) {
-		console.error("Error deleting job note:", error);
+		log.error({ err: error }, "Error deleting job note");
 		return { err: "Internal server error" };
 	}
 };

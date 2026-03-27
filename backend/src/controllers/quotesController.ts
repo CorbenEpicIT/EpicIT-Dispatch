@@ -9,6 +9,7 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -357,7 +358,7 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert quote error:", e);
+		log.error({ err: e }, "Insert quote error");
 		return { err: "Internal server error" };
 	}
 };
@@ -693,7 +694,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Update quote error:", e);
+		log.error({ err: e }, "Update quote error");
 		return { err: "Internal server error" };
 	}
 };
@@ -752,7 +753,7 @@ export const deleteQuote = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (error) {
-		console.error("Delete quote error:", error);
+		log.error({ err: error }, "Delete quote error");
 		return { err: "Internal server error" };
 	}
 };
@@ -845,7 +846,7 @@ export const insertQuoteItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert quote line item error:", e);
+		log.error({ err: e }, "Insert quote line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -945,7 +946,7 @@ export const updateQuoteItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update quote line item error:", e);
+		log.error({ err: e }, "Update quote line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -994,7 +995,7 @@ export const deleteQuoteItem = async (
 
 		return { err: "", message: "Item deleted successfully" };
 	} catch (error) {
-		console.error("Delete quote line item error:", error);
+		log.error({ err: error }, "Delete quote line item error");
 		return { err: "Internal server error" };
 	}
 };

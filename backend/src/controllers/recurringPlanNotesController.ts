@@ -6,6 +6,7 @@ import {
 } from "../lib/validate/recurringPlans.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -138,7 +139,7 @@ export const insertRecurringPlanNote = async (
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert recurring plan note error:", e);
+		log.error({ err: e }, "Insert recurring plan note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -233,7 +234,7 @@ export const updateRecurringPlanNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update recurring plan note error:", e);
+		log.error({ err: e }, "Update recurring plan note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -294,7 +295,7 @@ export const deleteRecurringPlanNote = async (
 
 		return { err: "", message: "Note deleted successfully" };
 	} catch (e) {
-		console.error("Delete recurring plan note error:", e);
+		log.error({ err: e }, "Delete recurring plan note error");
 		return { err: "Internal server error" };
 	}
 };

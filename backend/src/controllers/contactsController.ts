@@ -8,6 +8,7 @@ import {
 } from "../lib/validate/contacts.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -183,7 +184,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert contact error:", e);
+		log.error({ err: e }, "Insert contact error");
 		return { err: "Internal server error" };
 	}
 };
@@ -360,7 +361,7 @@ export const deleteContact = async (
 
 		return { err: "", message: "Contact deleted successfully" };
 	} catch (error) {
-		console.error("Delete contact error:", error);
+		log.error({ err: error }, "Delete contact error");
 		return { err: "Internal server error" };
 	}
 };
@@ -453,7 +454,7 @@ export const linkContactToClient = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Link contact error:", e);
+		log.error({ err: e }, "Link contact error");
 		return { err: "Internal server error" };
 	}
 };
@@ -640,7 +641,7 @@ export const searchContacts = async (
 
 		return { err: "", items: contacts };
 	} catch (error) {
-		console.error("Search contacts error:", error);
+		log.error({ err: error }, "Search contacts error");
 		return { err: "Internal server error", items: [] };
 	}
 };

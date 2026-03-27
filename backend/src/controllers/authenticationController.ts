@@ -103,9 +103,6 @@ export const login = async (
 			);
 		}
 
-		let hashedPassword = await bcrypt.hash(password, 10);
-		let pass = await bcrypt.hash("password", 10);
-		console.log(pass, hashedPassword);
 		let match = await bcrypt.compare(password, user.password);
 		if (!user || !match) {
 			return createErrorResponse(

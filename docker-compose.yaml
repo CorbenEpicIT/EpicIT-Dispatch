@@ -3,10 +3,10 @@ services:
         image: node:20
         container_name: backend
         command: >
-            sh -c "npm install && 
-                   npx prisma generate && 
-                   npx prisma migrate reset --force && 
-                   npm run build && 
+            sh -c "npm install &&
+                   npx prisma generate &&
+                   npx prisma migrate reset --force &&
+                   npm run build &&
                    npm run start"
         ports:
             - "3000:3000"
@@ -54,8 +54,71 @@ services:
         networks:
             - hvacnet
 
+    prometheus:
+        image: prom/prometheus:latest
+        container_name: prometheus
+        command:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
+        volumes:
+            - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - prometheus_data:/prometheus
+        ports:
+            - "9090:9090"
+        depends_on:
+            - backend
+        networks:
+            - hvacnet
+
+    loki:
+        image: grafana/loki:latest
+        container_name: loki
+        command: -config.file=/etc/loki/local-config.yaml
+        volumes:
+            - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
+            - loki_data:/loki
+        ports:
+            - "3100:3100"
+        networks:
+            - hvacnet
+
+    promtail:
+        image: grafana/promtail:latest
+        container_name: promtail
+        command: -config.file=/etc/promtail/config.yml
+        volumes:
+            - ./monitoring/promtail-config.yaml:/etc/promtail/config.yml:ro
+            - /var/lib/docker/containers:/var/lib/docker/containers:ro
+            - /var/run/docker.sock:/var/run/docker.sock
+        depends_on:
+            - loki
+        networks:
+            - hvacnet
+
+    grafana:
+        image: grafana/grafana:latest
+        container_name: grafana
+        ports:
+            - "3001:3000"
+        environment:
+            - GF_SECURITY_ADMIN_USER=admin
+            - GF_SECURITY_ADMIN_PASSWORD=admin
+            - GF_USERS_ALLOW_SIGN_UP=false
+        volumes:
+            - grafana_data:/var/lib/grafana
+            - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+        depends_on:
+            - prometheus
+            - loki
+        networks:
+            - hvacnet
+
 volumes:
     pgdata:
+    prometheus_data:
+    loki_data:
+    grafana_data:
 
 networks:
     hvacnet:

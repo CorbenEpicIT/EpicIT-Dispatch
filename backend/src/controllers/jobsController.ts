@@ -10,6 +10,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -584,7 +585,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert job error:", e);
+		log.error({ err: e }, "Insert job error");
 		return { err: "Internal server error" };
 	}
 };
@@ -899,7 +900,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Update job error:", e);
+		log.error({ err: e }, "Update job error");
 		return { err: "Internal server error" };
 	}
 };
@@ -942,7 +943,7 @@ export const deleteJob = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (e) {
-		console.error("Delete job error:", e);
+		log.error({ err: e }, "Delete job error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1035,7 +1036,7 @@ export const insertJobLineItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert job line item error:", e);
+		log.error({ err: e }, "Insert job line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1150,7 +1151,7 @@ export const updateJobLineItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update job line item error:", e);
+		log.error({ err: e }, "Update job line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1199,7 +1200,7 @@ export const deleteJobLineItem = async (
 
 		return { err: "", message: "Item deleted successfully" };
 	} catch (error) {
-		console.error("Delete job line item error:", error);
+		log.error({ err: error }, "Delete job line item error");
 		return { err: "Internal server error" };
 	}
 };

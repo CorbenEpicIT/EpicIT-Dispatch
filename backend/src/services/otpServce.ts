@@ -37,7 +37,7 @@ export const verifyOTP = async (
             role: payload.role
         }
     });
-    console.log("OTP info from DB:", otpInfo, "payload:", payload);
+    // debug log removed
     if (!otpInfo) {
         return createErrorResponse(ErrorCodes.INVALID_TOKEN, "No OTP request found");
     }

@@ -123,6 +123,9 @@ import {
 	issueAuthTokens
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
+import { log } from "./services/appLogger.js";
+import { httpMetricsMiddleware, register } from "./services/metricsService.js";
+import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
 import { required } from "zod/v4/core/util.cjs";
@@ -144,7 +147,7 @@ const errorHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	console.error(`[ERROR] ${req.method} ${req.path}:`, err);
+	log.error({ err, method: req.method, path: req.path }, "Unhandled request error");
 
 	const statusCode = err.statusCode || 500;
 
@@ -155,12 +158,6 @@ const errorHandler = (
 			process.env.NODE_ENV === "development" ? err.stack : undefined,
 		),
 	);
-};
-
-const requestLogger = (req: Request, res: Response, next: NextFunction) => {
-	const timestamp = new Date().toISOString();
-	console.log(`[${timestamp}] ${req.method} ${req.path}`);
-	next();
 };
 
 const notFoundHandler = (req: Request, res: Response) => {
@@ -255,11 +252,17 @@ const getUserContext = (req: Request): UserContext => {
 const app = express();
 
 app.use(express.json());
-app.use(requestLogger);
+app.use(pinoHttp({ logger: log }));
+app.use(httpMetricsMiddleware);
+
+app.get("/metrics", async (_req, res) => {
+	res.set("Content-Type", register.contentType);
+	res.end(await register.metrics());
+});
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
 if (!frontend) {
-	console.warn("No frontend url configured. Defaulting...");
+	log.warn("No FRONTEND_URL configured, defaulting to http://localhost:5173");
 	frontend = "http://localhost:5173";
 }
 
@@ -277,7 +280,7 @@ const io = new Server(server, {
 
 let port: string | undefined = process.env["SERVER_PORT"];
 if (!port) {
-	console.warn("No port configured. Defaulting...");
+	log.warn("No SERVER_PORT configured, defaulting to 3000");
 	port = "3000";
 }
 
@@ -344,7 +347,7 @@ app.post("/otp-verify", async (req, res, next) => {
 		// log in user by generating access and refresh tokens
 		const  userId = result.data?.userId;
 		const role = result.data?.role;
-		console.log("OTP verification successful for userId:", userId, "role:", role, "result data:", result.data);
+		log.info({ userId, role }, "OTP verification successful");
 		if (!userId || !role) {
 			return res.status(400).json(
 				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid OTP session data")
@@ -3073,5 +3076,5 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 server.listen(port, () => {
-	console.log(`✓ Server running on http://localhost:${port}`);
+	log.info({ port }, "Server started");
 });

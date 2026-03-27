@@ -9,6 +9,7 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -232,7 +233,7 @@ export const insertRequest = async (req: Request, context?: UserContext) => {
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert request error:", e);
+		log.error({ err: e }, "Insert request error");
 		return { err: "Internal server error" };
 	}
 };
@@ -347,7 +348,7 @@ export const updateRequest = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Update request error:", e);
+		log.error({ err: e }, "Update request error");
 		return { err: "Internal server error" };
 	}
 };
@@ -411,7 +412,7 @@ export const deleteRequest = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (error) {
-		console.error("Delete request error:", error);
+		log.error({ err: error }, "Delete request error");
 		return { err: "Internal server error" };
 	}
 };
@@ -537,7 +538,7 @@ export const insertRequestNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert request note error:", e);
+		log.error({ err: e }, "Insert request note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -634,7 +635,7 @@ export const updateRequestNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update request note error:", e);
+		log.error({ err: e }, "Update request note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -683,7 +684,7 @@ export const deleteRequestNote = async (
 
 		return { err: "", message: "Note deleted successfully" };
 	} catch (error) {
-		console.error("Delete request note error:", error);
+		log.error({ err: error }, "Delete request note error");
 		return { err: "Internal server error" };
 	}
 };

@@ -5,6 +5,7 @@ import {
 	updateClientSchema,
 } from "../lib/validate/clients.js";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -142,7 +143,7 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 
 		return { err: "", item: created };
 	} catch (e) {
-		console.error("Insert client error:", e);
+		log.error({ err: e }, "Insert client error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -286,7 +287,7 @@ export const deleteClient = async (id: string, context?: UserContext) => {
 
 		return { err: "", message: "Client deleted successfully" };
 	} catch (error) {
-		console.error("Delete client error:", error);
+		log.error({ err: error }, "Delete client error");
 		return { err: "Failed to delete client. It may have related records." };
 	}
 };

@@ -2,6 +2,7 @@ import postmark, { TemplatedMessage } from "postmark";
 import { db } from "../db.js";
 import { create } from "node:domain";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
+import { log } from "../services/appLogger.js";
 
 
 const POSTMARK_FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL;
@@ -26,7 +27,7 @@ export const sendEmail = async (
 			TemplateModel: templateModel,
 		} as TemplatedMessage);
 	} catch (error) {
-		console.error(error);
+		log.error({ err: error }, "Failed to send templated email");
 	}
 };
 
@@ -79,7 +80,7 @@ export const sendOTPEmail = async (to: string, otp: string) => {
 		});
 		return createSuccessResponse(null);
 	} catch (error) {
-		console.error(error);
+		log.error({ err: error }, "Failed to send OTP email");
 		return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending OTP email");
 	}
 };

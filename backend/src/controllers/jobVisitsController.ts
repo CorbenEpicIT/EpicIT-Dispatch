@@ -6,6 +6,7 @@ import {
 } from "../lib/validate/jobVisits.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -276,7 +277,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Error inserting job visit:", e);
+		log.error({ err: e }, "Error inserting job visit");
 		return { err: "Internal server error" };
 	}
 };
@@ -488,7 +489,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Failed to update job visit:", e);
+		log.error({ err: e }, "Failed to update job visit");
 		return { err: "Failed to update job visit" };
 	}
 };
@@ -579,7 +580,7 @@ export const assignTechniciansToVisit = async (
 
 		return { err: "", item: updated };
 	} catch (e) {
-		console.error("Failed to assign technicians:", e);
+		log.error({ err: e }, "Failed to assign technicians");
 		return { err: "Failed to assign technicians" };
 	}
 };
@@ -651,7 +652,7 @@ export const acceptJobVisit = async (
 
 		return { err: "", item: updated };
 	} catch (e) {
-		console.error("Failed to accept job visit:", e);
+		log.error({ err: e }, "Failed to accept job visit");
 		return { err: "Failed to accept job visit" };
 	}
 };
@@ -718,7 +719,7 @@ export const deleteJobVisit = async (id: string, context?: UserContext) => {
 
 		return { err: "", message: "Job visit deleted successfully" };
 	} catch (e) {
-		console.error("Failed to delete job visit:", e);
+		log.error({ err: e }, "Failed to delete job visit");
 		return { err: "Failed to delete job visit" };
 	}
 };

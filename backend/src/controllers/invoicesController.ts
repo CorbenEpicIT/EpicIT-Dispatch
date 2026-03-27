@@ -11,6 +11,7 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -561,7 +562,7 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 			};
 		}
 		if (e instanceof Error) return { err: e.message };
-		console.error("Insert invoice error:", e);
+		log.error({ err: e }, "Insert invoice error");
 		return { err: "Internal server error" };
 	}
 };
@@ -760,7 +761,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Update invoice error:", e);
+		log.error({ err: e }, "Update invoice error");
 		return { err: "Internal server error" };
 	}
 };
@@ -800,7 +801,7 @@ export const deleteInvoice = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (e) {
-		console.error("Delete invoice error:", e);
+		log.error({ err: e }, "Delete invoice error");
 		return { err: "Internal server error" };
 	}
 };
@@ -882,7 +883,7 @@ export const insertInvoicePayment = async (
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Insert invoice payment error:", e);
+		log.error({ err: e }, "Insert invoice payment error");
 		return { err: "Internal server error" };
 	}
 };
@@ -931,7 +932,7 @@ export const deleteInvoicePayment = async (
 
 		return { err: "", item: { id: paymentId } };
 	} catch (e) {
-		console.error("Delete invoice payment error:", e);
+		log.error({ err: e }, "Delete invoice payment error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1015,7 +1016,7 @@ export const insertInvoiceNote = async (
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Insert invoice note error:", e);
+		log.error({ err: e }, "Insert invoice note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1086,7 +1087,7 @@ export const updateInvoiceNote = async (
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Update invoice note error:", e);
+		log.error({ err: e }, "Update invoice note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1125,7 +1126,7 @@ export const deleteInvoiceNote = async (
 
 		return { err: "", message: "Note deleted successfully" };
 	} catch (e) {
-		console.error("Delete invoice note error:", e);
+		log.error({ err: e }, "Delete invoice note error");
 		return { err: "Internal server error" };
 	}
 };

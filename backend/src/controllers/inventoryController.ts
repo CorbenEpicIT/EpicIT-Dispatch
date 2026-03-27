@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import { db } from "../db.js";
 import { updateThresholdSchema } from "../lib/validate/inventory.js";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -105,7 +106,7 @@ export const updateInventoryThreshold = async (
 			},
 		};
 	} catch (e) {
-		console.error("Update threshold error:", e);
+		log.error({ err: e }, "Update threshold error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,

@@ -8,6 +8,7 @@ import {
 } from "../lib/validate/drafts.js";
 import { deriveDraftLabel } from "../services/draftLabel.js";
 import { Request } from "express";
+import { log } from "../services/appLogger.js";
 
 //Returns the list view — id, label, form_type, entity_context_id, timestamps.
 export const getAllDrafts = async (req: Request) => {
@@ -57,7 +58,7 @@ export const getAllDrafts = async (req: Request) => {
 				err: `Invalid query parameters: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Get all drafts error:", e);
+		log.error({ err: e }, "Get all drafts error");
 		return { err: "Internal server error" };
 	}
 };
@@ -74,7 +75,7 @@ export const getDraftById = async (id: string) => {
 
 		return { err: "", item: draft };
 	} catch (e) {
-		console.error("Get draft by id error:", e);
+		log.error({ err: e }, "Get draft by id error");
 		return { err: "Internal server error" };
 	}
 };
@@ -101,7 +102,7 @@ export const insertDraft = async (req: Request) => {
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Insert draft error:", e);
+		log.error({ err: e }, "Insert draft error");
 		return { err: "Internal server error" };
 	}
 };
@@ -135,7 +136,7 @@ export const updateDraft = async (id: string, req: Request) => {
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Update draft error:", e);
+		log.error({ err: e }, "Update draft error");
 		return { err: "Internal server error" };
 	}
 };
@@ -155,7 +156,7 @@ export const deleteDraft = async (id: string) => {
 
 		return { err: "", item: { id } };
 	} catch (e) {
-		console.error("Delete draft error:", e);
+		log.error({ err: e }, "Delete draft error");
 		return { err: "Internal server error" };
 	}
 };

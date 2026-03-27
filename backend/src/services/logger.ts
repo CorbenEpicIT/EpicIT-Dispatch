@@ -68,7 +68,8 @@ export const logActivity = async (params: LogActivityParams) => {
 			},
 		});
 	} catch (error) {
-		console.error("Failed to create activity log:", error);
+		// Use stderr directly to avoid a circular dependency with appLogger
+		process.stderr.write(JSON.stringify({ level: "error", msg: "Failed to create activity log", err: String(error) }) + "\n");
 	}
 };
 
