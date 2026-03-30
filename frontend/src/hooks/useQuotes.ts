@@ -120,6 +120,7 @@ export const useCreateQuoteMutation = () => {
 			}
 
 			queryClient.setQueryData(["quotes", newQuote.id], newQuote);
+			queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -178,6 +179,7 @@ export const useSendQuoteMutation = () => {
 				queryKey: ["quotes", updatedQuote.id],
 			});
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
+			queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -192,6 +194,7 @@ export const useApproveQuoteMutation = () => {
 				queryKey: ["quotes", updatedQuote.id],
 			});
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
+			queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -207,6 +210,7 @@ export const useRejectQuoteMutation = () => {
 				queryKey: ["quotes", updatedQuote.id],
 			});
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
+			queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };

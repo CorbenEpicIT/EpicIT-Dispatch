@@ -84,6 +84,7 @@ export const useCreateRecurringPlanMutation = (): UseMutationResult<
 
 			// Set the plan by its own ID in cache
 			queryClient.setQueryData(["recurringPlans", newPlan.id], newPlan);
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };

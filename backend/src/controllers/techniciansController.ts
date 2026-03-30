@@ -256,7 +256,9 @@ export const updateTechnicianLocation = async (
 					? "dispatcher"
 					: "system",
 				actor_id: context?.techId || context?.dispatcherId,
-				changes: "coords",
+				changes: {
+					coords: { old: existing.coords ?? null, new: parsed.coords ?? null },
+				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
 			});

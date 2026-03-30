@@ -676,7 +676,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 							? "dispatcher"
 							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
-					changes,
+					changes: { ...changes, _quote_number: { old: null, new: existing.quote_number } },
 					ip_address: context?.ipAddress,
 					user_agent: context?.userAgent,
 				});

@@ -248,6 +248,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 					},
 					status: { old: null, new: visit.status },
 					job_id: { old: null, new: parsed.job_id },
+					_job_number: { old: null, new: job.job_number },
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -315,7 +316,6 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 			"actual_end_at",
 			"status",
 		] as const);
-
 		const updated = await db.$transaction(async (tx) => {
 			// ── Scalar field update ───────────────────────────────────────
 			const visit = await tx.job_visit.update({
@@ -483,7 +483,11 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 							? "dispatcher"
 							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
-					changes,
+					changes: {
+						...changes,
+						_job_id: { old: null, new: existingVisit.job_id },
+						_job_number: { old: null, new: existingVisit.job.job_number },
+					},
 					ip_address: context?.ipAddress,
 					user_agent: context?.userAgent,
 				});
@@ -524,6 +528,7 @@ export const assignTechniciansToVisit = async (
 		const visit = await db.job_visit.findUnique({
 			where: { id: visitId },
 			include: {
+				job: { select: { job_number: true } },
 				visit_techs: {
 					include: { tech: true },
 				},
@@ -536,7 +541,7 @@ export const assignTechniciansToVisit = async (
 
 		const existingTechs = await db.technician.findMany({
 			where: { id: { in: techIds } },
-			select: { id: true },
+			select: { id: true, name: true },
 		});
 
 		const existingIds = new Set(existingTechs.map((t) => t.id));
@@ -548,7 +553,8 @@ export const assignTechniciansToVisit = async (
 			};
 		}
 
-		const oldTechIds = visit.visit_techs.map((vt) => vt.tech_id);
+		const oldTechNames = visit.visit_techs.map((vt) => vt.tech.name);
+		const newTechNames = existingTechs.map((t) => t.name);
 
 		await db.$transaction(async (tx) => {
 			await tx.job_visit_technician.deleteMany({
@@ -575,9 +581,11 @@ export const assignTechniciansToVisit = async (
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					technicians: {
-						old: oldTechIds,
-						new: techIds,
+						old: oldTechNames,
+						new: newTechNames,
 					},
+					_job_id: { old: null, new: visit.job_id },
+					_job_number: { old: null, new: visit.job.job_number },
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,

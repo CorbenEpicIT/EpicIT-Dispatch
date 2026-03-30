@@ -748,7 +748,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 						? "technician"
 						: "system",
 				actor_id: context?.dispatcherId ?? context?.techId,
-				changes,
+				changes: { ...changes, _invoice_number: { old: null, new: existing.invoice_number } },
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
 			});
@@ -871,6 +871,7 @@ export const insertInvoicePayment = async (
 				invoice_id: { old: null, new: invoiceId },
 				amount: { old: null, new: parsed.amount },
 				method: { old: null, new: parsed.method ?? null },
+				_invoice_number: { old: null, new: invoice.invoice_number },
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,

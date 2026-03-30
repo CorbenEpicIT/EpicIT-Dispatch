@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Clock,
@@ -11,6 +11,11 @@ import {
 	Briefcase,
 	FileText,
 	Phone,
+	ReceiptText,
+	XCircle,
+	RefreshCw,
+	Repeat,
+	User,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import SmartCalendar from "../../components/ui/SmartCalendar";
@@ -19,12 +24,22 @@ import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
 import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
 import { useAllQuotesQuery, useCreateQuoteMutation } from "../../hooks/useQuotes";
 import { useAllRecurringPlansQuery } from "../../hooks/useRecurringPlans";
+import { useRecentActivityQuery } from "../../hooks/useLogs";
+import type { ActivityLog } from "../../types/logs";
 import type { JobVisit } from "../../types/jobs";
 import CreateRequest from "../../components/requests/CreateRequest";
 import CreateJob from "../../components/jobs/CreateJob";
 import CreateQuote from "../../components/quotes/CreateQuote";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
 import LowStockWidget from "../../components/dashboard/LowStockWidget";
+
+const FEED_FILTERS = [
+	{ key: "requests",  icon: Phone,       color: "text-orange-400", bg: "bg-orange-500/10",  eventTypes: ["request.created"] },
+	{ key: "jobs",      icon: Briefcase,   color: "text-amber-400",  bg: "bg-amber-500/10",   eventTypes: ["job.created", "job_visit.created", "job_visit.updated", "job_visit.technicians_assigned"] },
+	{ key: "quotes",    icon: FileText,    color: "text-blue-400",   bg: "bg-blue-500/10",    eventTypes: ["quote.created", "quote.updated"] },
+	{ key: "recurring", icon: Repeat,      color: "text-indigo-400", bg: "bg-indigo-500/10",  eventTypes: ["recurring_plan.created", "recurring_occurrence.generated"] },
+	{ key: "invoices",  icon: ReceiptText, color: "text-green-400",  bg: "bg-green-500/10",   eventTypes: ["invoice.created", "invoice.updated", "invoice_payment.created"] },
+] as const;
 
 export default function DashboardPage() {
 	const navigate = useNavigate();
@@ -34,6 +49,29 @@ export default function DashboardPage() {
 	const [isCreateJobModalOpen, setIsCreateJobModalOpen] = useState(false);
 	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
 
+	const [refreshSpinning, setRefreshSpinning] = useState(false);
+	const handleRefresh = () => {
+		refetchActivity();
+		setRefreshSpinning(true);
+		setTimeout(() => setRefreshSpinning(false), 600);
+	};
+
+	const [activeFilters, setActiveFilters] = useState<Set<string>>(
+		() => new Set(FEED_FILTERS.map((f) => f.key))
+	);
+	const toggleFilter = (key: string) => {
+		setActiveFilters((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
+	};
+	const activeEventTypes = useMemo<Set<string>>(
+		() => new Set(FEED_FILTERS.filter((f) => activeFilters.has(f.key)).flatMap((f) => [...f.eventTypes])),
+		[activeFilters]
+	);
+
 	const { mutateAsync: createRequest } = useCreateRequestMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
 	const { mutateAsync: createQuote } = useCreateQuoteMutation();
@@ -42,6 +80,12 @@ export default function DashboardPage() {
 	const { data: requests = [] } = useAllRequestsQuery();
 	const { data: quotes = [] } = useAllQuotesQuery();
 	const { data: recurringPlans = [] } = useAllRecurringPlansQuery();
+	const {
+		data: activityLogs,
+		isLoading: activityLoading,
+		isError: activityError,
+		refetch: refetchActivity,
+	} = useRecentActivityQuery(30);
 	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
 
 	const technicianStats = useMemo(() => {
@@ -91,7 +135,7 @@ export default function DashboardPage() {
 				const allVisits = jobs.flatMap((j) => j.visits || []);
 				const activeVisits = allVisits.filter(
 					(v) =>
-						v.status === "InProgress" &&
+						["InProgress", "Driving", "OnSite", "Paused"].includes(v.status) &&
 						v.visit_techs?.some((vt) => vt.tech_id === tech.id)
 				) as JobVisit[];
 
@@ -229,6 +273,316 @@ export default function DashboardPage() {
 			barWidth: Math.round((item.count / max) * 100),
 		}));
 	}, [pipelineCounts]);
+
+	const timeAgo = (iso: string): string => {
+		const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+		if (diff < 15) return "just now";
+		if (diff < 60) return `${diff}s ago`;
+		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+		if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+		return `${Math.floor(diff / 86400)}d ago`;
+	};
+
+	type FeedEntry = { message: string; icon: React.ElementType; color: string; bg: string };
+
+	const formatCurrency = (val: unknown): string | null => {
+		const n = parseFloat(String(val));
+		if (isNaN(n)) return null;
+		return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+	};
+
+	const formatShortDate = (val: unknown): string | null => {
+		if (!val) return null;
+		const d = new Date(String(val));
+		if (isNaN(d.getTime())) return null;
+		return d.toLocaleDateString("en-US", {
+			weekday: "short",
+			month: "short",
+			day: "numeric",
+			hour: "numeric",
+			minute: "2-digit",
+		});
+	};
+
+	const formatActivity = (log: ActivityLog): FeedEntry | null => {
+		const changes = log.changes as Record<
+			string,
+			{ old: unknown; new: unknown }
+		> | null;
+		const newStatus = changes?.status?.new as string | undefined;
+		const entityName = changes?.name?.new as string | undefined;
+
+		switch (log.event_type) {
+			case "job.created": {
+				const jobNum = changes?.job_number?.new as string | undefined;
+				const jobName = changes?.name?.new as string | undefined;
+				const base = `New job${jobNum ? ` ${jobNum}` : ""} created`;
+				return {
+					message: jobName ? `${base} — ${jobName}` : base,
+					icon: Briefcase,
+					color: "text-amber-400",
+					bg: "bg-amber-500/10",
+				};
+			}
+			case "job_visit.created": {
+				const jobNum = changes?._job_number?.new as string | undefined;
+				const visitName = changes?.name?.new as string | undefined;
+				const dateStr = formatShortDate(changes?.scheduled_start_at?.new);
+				const namePart = visitName ? `Visit '${visitName}'` : "Visit";
+				const jobPart = jobNum ? ` on ${jobNum}` : "";
+				const datePart = dateStr ? ` — ${dateStr}` : "";
+				return {
+					message: `${namePart} scheduled${jobPart}${datePart}`,
+					icon: Calendar,
+					color: "text-blue-400",
+					bg: "bg-blue-500/10",
+				};
+			}
+			case "job_visit.updated": {
+				const jobNum = changes?._job_number?.new as string | undefined;
+				const suffix = jobNum ? ` on ${jobNum}` : "";
+				if (!newStatus) {
+					const rescheduledDate = formatShortDate(
+						changes?.scheduled_start_at?.new
+					);
+					if (rescheduledDate)
+						return {
+							message: `Visit${suffix} rescheduled to ${rescheduledDate}`,
+							icon: Calendar,
+							color: "text-blue-400",
+							bg: "bg-blue-500/10",
+						};
+					return null;
+				}
+				if (newStatus === "Completed")
+					return {
+						message: `Visit${suffix} marked complete`,
+						icon: CheckCircle2,
+						color: "text-emerald-400",
+						bg: "bg-emerald-500/10",
+					};
+				if (newStatus === "InProgress")
+					return {
+						message: `Visit${suffix} now in progress`,
+						icon: Activity,
+						color: "text-amber-400",
+						bg: "bg-amber-500/10",
+					};
+				if (newStatus === "OnSite")
+					return {
+						message: `Technician on site${suffix}`,
+						icon: MapPin,
+						color: "text-purple-400",
+						bg: "bg-purple-500/10",
+					};
+				if (newStatus === "Driving")
+					return {
+						message: `Technician en route${suffix}`,
+						icon: MapPin,
+						color: "text-cyan-400",
+						bg: "bg-cyan-500/10",
+					};
+				if (newStatus === "Cancelled")
+					return {
+						message: `Visit${suffix} cancelled`,
+						icon: XCircle,
+						color: "text-red-400",
+						bg: "bg-red-500/10",
+					};
+				return null;
+			}
+			case "job_visit.technicians_assigned": {
+				const techsNew = changes?.technicians?.new;
+				const rawTechs: unknown[] = Array.isArray(techsNew) ? techsNew : [];
+				const isUUID = (s: unknown) =>
+					typeof s === "string" &&
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+						s
+					);
+				const newTechs = rawTechs.filter(
+					(t): t is string => typeof t === "string" && !isUUID(t)
+				);
+				let label: string;
+				if (newTechs.length === 0) label = "Technician";
+				else if (newTechs.length === 1) label = newTechs[0];
+				else if (newTechs.length === 2)
+					label = `${newTechs[0]} & ${newTechs[1]}`;
+				else label = `${newTechs[0]} & ${newTechs.length - 1} others`;
+				const jobNum = changes?._job_number?.new as string | undefined;
+				return {
+					message:
+						label +
+						" assigned to visit" +
+						(jobNum ? ` on ${jobNum}` : ""),
+					icon: User,
+					color: "text-blue-400",
+					bg: "bg-blue-500/10",
+				};
+			}
+			case "request.created": {
+				const title = changes?.title?.new as string | undefined;
+				const priority = changes?.priority?.new as string | undefined;
+				const hasPriority =
+					priority && priority !== "None" && priority !== "Low";
+				const base = hasPriority
+					? `New ${priority} priority request`
+					: "New request received";
+				return {
+					message: title ? `${base}: '${title}'` : base,
+					icon: Phone,
+					color: "text-orange-400",
+					bg: "bg-orange-500/10",
+				};
+			}
+			case "quote.created": {
+				const qNum = changes?.quote_number?.new as string | undefined;
+				const qTitle = changes?.title?.new as string | undefined;
+				const qTotal = formatCurrency(changes?.total?.new);
+				let msg = `Quote${qNum ? ` ${qNum}` : ""} created`;
+				if (qTitle) msg += ` — ${qTitle}${qTotal ? ` (${qTotal})` : ""}`;
+				else if (qTotal) msg += ` — ${qTotal}`;
+				return {
+					message: msg,
+					icon: FileText,
+					color: "text-blue-400",
+					bg: "bg-blue-500/10",
+				};
+			}
+			case "quote.updated": {
+				if (!newStatus) return null;
+				const qNum = changes?._quote_number?.new as string | undefined;
+				const qSuffix = qNum ? ` ${qNum}` : "";
+				if (newStatus === "Sent")
+					return {
+						message: `Quote${qSuffix} sent to client`,
+						icon: FileText,
+						color: "text-blue-400",
+						bg: "bg-blue-500/10",
+					};
+				if (newStatus === "Approved")
+					return {
+						message: `Quote${qSuffix} approved`,
+						icon: CheckCircle2,
+						color: "text-emerald-400",
+						bg: "bg-emerald-500/10",
+					};
+				if (newStatus === "Rejected")
+					return {
+						message: `Quote${qSuffix} rejected`,
+						icon: XCircle,
+						color: "text-red-400",
+						bg: "bg-red-500/10",
+					};
+				return null;
+			}
+			case "invoice.created": {
+				const invNum = changes?.invoice_number?.new as string | undefined;
+				const invTotal = formatCurrency(changes?.total?.new);
+				const base = `Invoice${invNum ? ` ${invNum}` : ""} created`;
+				return {
+					message: invTotal ? `${base} — ${invTotal}` : base,
+					icon: ReceiptText,
+					color: "text-green-400",
+					bg: "bg-green-500/10",
+				};
+			}
+			case "invoice.updated": {
+				if (!newStatus) return null;
+				const invNum = changes?._invoice_number?.new as string | undefined;
+				const invSuffix = invNum ? ` ${invNum}` : "";
+				if (newStatus === "Sent")
+					return {
+						message: `Invoice${invSuffix} sent to client`,
+						icon: ReceiptText,
+						color: "text-green-400",
+						bg: "bg-green-500/10",
+					};
+				if (newStatus === "Void")
+					return {
+						message: `Invoice${invSuffix} voided`,
+						icon: XCircle,
+						color: "text-red-400",
+						bg: "bg-red-500/10",
+					};
+				if (newStatus === "Paid")
+					return {
+						message: `Invoice${invSuffix} fully paid`,
+						icon: CheckCircle2,
+						color: "text-emerald-400",
+						bg: "bg-emerald-500/10",
+					};
+				return null;
+			}
+			case "invoice_payment.created": {
+				const invNum = changes?._invoice_number?.new as string | undefined;
+				const amount = formatCurrency(changes?.amount?.new);
+				const method = changes?.method?.new as string | undefined;
+				let msg = amount
+					? `Payment of ${amount} received`
+					: "Payment received";
+				if (invNum) msg += ` on ${invNum}`;
+				if (method) msg += ` via ${method}`;
+				return {
+					message: msg,
+					icon: CheckCircle2,
+					color: "text-emerald-400",
+					bg: "bg-emerald-500/10",
+				};
+			}
+			case "recurring_occurrence.generated": {
+				const count = changes?.generated_count?.new;
+				const n = typeof count === "number" ? count : parseInt(String(count ?? ""), 10);
+				const countStr = !isNaN(n) ? `${n} visit${n === 1 ? "" : "s"} generated` : "Visits generated";
+				return { message: `${countStr} from recurring plan`, icon: Repeat, color: "text-indigo-400", bg: "bg-indigo-500/10" };
+			}
+			case "recurring_plan.created":
+				return {
+					message: `Recurring plan created${entityName ? ` — ${entityName}` : ""}`,
+					icon: Repeat,
+					color: "text-blue-400",
+					bg: "bg-blue-500/10",
+				};
+			default:
+				return null;
+		}
+	};
+
+	const resolveRoute = (log: ActivityLog): string | null => {
+		const ch = log.changes;
+		const id = log.entity_id;
+		switch (log.event_type) {
+			case "job.created":
+				return `/dispatch/jobs/${id}`;
+			case "job_visit.created":
+			case "job_visit.updated":
+			case "job_visit.technicians_assigned":
+			case "job_visit.generated_from_occurrence": {
+				const jobId = (ch?.job_id?.new ?? ch?._job_id?.new) as
+					| string
+					| undefined;
+				return jobId
+					? `/dispatch/jobs/${jobId}/visits/${id}`
+					: `/dispatch/jobs`;
+			}
+			case "request.created":
+				return `/dispatch/requests/${id}`;
+			case "quote.created":
+			case "quote.updated":
+				return `/dispatch/quotes/${id}`;
+			case "invoice.created":
+			case "invoice.updated":
+				return `/dispatch/invoices/${id}`;
+			case "invoice_payment.created": {
+				const invoiceId = ch?.invoice_id?.new as string | undefined;
+				return invoiceId ? `/dispatch/invoices/${invoiceId}` : null;
+			}
+			case "recurring_plan.created":
+			case "recurring_occurrence.generated":
+				return `/dispatch/recurring-plans/${id}`;
+			default:
+				return null;
+		}
+	};
 
 	return (
 		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
@@ -397,91 +751,123 @@ export default function DashboardPage() {
 					{/* Center Column */}
 					<div className="min-w-0">
 						<Card
-							title="Live Activity Feed -todo"
+							title="Live Activity Feed"
 							className="h-full"
-						>
-							<div className="space-y-2">
-								{[
-									{
-										type: "visit_completed",
-										message: "Job #1024 completed by Mike R.",
-										time: "2 min ago",
-										icon: CheckCircle2,
-										color: "text-emerald-400",
-										bg: "bg-emerald-500/10",
-									},
-									{
-										type: "quote_approved",
-										message: "Quote #2041 approved by Acme Corp",
-										time: "15 min ago",
-										icon: FileText,
-										color: "text-blue-400",
-										bg: "bg-blue-500/10",
-									},
-									{
-										type: "tech_checkin",
-										message: "Sarah L. checked in for Job #1025",
-										time: "32 min ago",
-										icon: MapPin,
-										color: "text-amber-400",
-										bg: "bg-amber-500/10",
-									},
-									{
-										type: "request_urgent",
-										message: "Urgent request received from Downtown Properties",
-										time: "1 hr ago",
-										icon: AlertCircle,
-										color: "text-red-400",
-										bg: "bg-red-500/10",
-									},
-									{
-										type: "visit_completed",
-										message: "Job #1023 completed by John D.",
-										time: "2 hr ago",
-										icon: CheckCircle2,
-										color: "text-emerald-400",
-										bg: "bg-emerald-500/10",
-									},
-									{
-										type: "quote_sent",
-										message: "Quote #2040 sent to Westside Apartments",
-										time: "3 hr ago",
-										icon: FileText,
-										color: "text-purple-400",
-										bg: "bg-purple-500/10",
-									},
-								].map((activity, idx) => (
-									<div
-										key={idx}
-										className="flex items-start gap-3 p-3 rounded-lg hover:bg-zinc-800/30 transition-colors cursor-pointer group"
+							headerAction={
+								<div className="flex items-center gap-1">
+									{FEED_FILTERS.map((f) => {
+										const active = activeFilters.has(f.key);
+										const Icon = f.icon;
+										return (
+											<button
+												key={f.key}
+												onClick={() => toggleFilter(f.key)}
+												title={f.key.charAt(0).toUpperCase() + f.key.slice(1)}
+												className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+													active
+														? `${f.bg} ${f.color}`
+														: "bg-transparent text-zinc-600 hover:text-zinc-400"
+												}`}
+											>
+												<Icon size={13} />
+											</button>
+										);
+									})}
+									<div className="w-px h-4 bg-zinc-700" />
+									<button
+										onClick={handleRefresh}
+										title="Refresh"
+										className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
 									>
-										<div
-											className={`flex-shrink-0 w-8 h-8 rounded-lg ${activity.bg} flex items-center justify-center`}
-										>
-											<activity.icon
-												size={
-													14
-												}
-												className={
-													activity.color
-												}
-											/>
+										<RefreshCw size={12} className={refreshSpinning ? "animate-spin" : ""} />
+									</button>
+								</div>
+							}
+						>
+							<style>{`
+							.activity-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.2s ease; }
+							.activity-scroll:hover { scrollbar-color: #52525b #27272a; }
+							.activity-scroll::-webkit-scrollbar { width: 6px; }
+							.activity-scroll::-webkit-scrollbar-track { background: transparent; }
+							.activity-scroll:hover::-webkit-scrollbar-track { background: #27272a; border-radius: 3px; }
+							.activity-scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; }
+							.activity-scroll:hover::-webkit-scrollbar-thumb { background-color: #52525b; }
+							.activity-scroll::-webkit-scrollbar-thumb:hover { background-color: #71717a; }
+						`}</style>
+							{activityLoading ? (
+								<div className="space-y-1">
+									{Array.from({ length: 6 }).map((_, i) => (
+										<div key={i} className="flex items-start gap-3 p-3">
+											<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-zinc-800/70 animate-pulse" />
+											<div className="flex-1 space-y-2 pt-0.5">
+												<div className="h-3.5 bg-zinc-800/70 rounded animate-pulse" style={{ width: `${55 + (i % 4) * 10}%` }} />
+												<div className="h-2.5 bg-zinc-800/50 rounded animate-pulse w-14" />
+											</div>
 										</div>
-										<div className="flex-1 min-w-0">
-											<p className="text-sm text-zinc-200 group-hover:text-white transition-colors break-words">
-												{
-													activity.message
-												}
-											</p>
-											<p className="text-xs text-zinc-500 mt-0.5">
-												{
-													activity.time
-												}
-											</p>
-										</div>
-									</div>
-								))}
-							</div>
+									))}
+								</div>
+							) : activityError ? (
+								<div className="flex flex-col items-center justify-center py-10 gap-2">
+									<AlertCircle size={20} className="text-red-400/60" />
+									<p className="text-sm text-red-400">Failed to load activity</p>
+								</div>
+							) : !activityLogs?.length ? (
+								<div className="flex flex-col items-center justify-center py-10 gap-2">
+									<Activity size={20} className="text-zinc-600" />
+									<p className="text-sm text-zinc-500">No recent activity</p>
+								</div>
+							) : (
+								<div className="space-y-0.5 overflow-y-auto max-h-[510px] activity-scroll">
+									{(() => {
+										const visibleEntries = activityLogs
+											.filter((log) => activeEventTypes.has(log.event_type))
+											.map((log) => ({ log, entry: formatActivity(log), route: resolveRoute(log) }))
+											.filter(({ entry }) => entry !== null);
+
+										if (visibleEntries.length === 0) {
+											return (
+												<div className="flex flex-col items-center justify-center py-10 gap-2">
+													<Activity size={20} className="text-zinc-600" />
+													<p className="text-sm text-zinc-500">No matching activity</p>
+												</div>
+											);
+										}
+
+										return visibleEntries.map(({ log, entry, route }) => {
+											const Icon = entry!.icon;
+											const showActor = log.actor_name && log.actor_type !== "system";
+											return (
+												<div
+													key={log.id}
+													onClick={route ? () => navigate(route) : undefined}
+													className={`flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/40 transition-colors group${route ? " cursor-pointer" : ""}`}
+												>
+													<div className={`flex-shrink-0 w-8 h-8 rounded-lg ${entry!.bg} flex items-center justify-center`}>
+														<Icon size={14} className={entry!.color} />
+													</div>
+													<div className="flex-1 min-w-0">
+														<p className="text-sm text-zinc-200 group-hover:text-white transition-colors leading-snug truncate">
+															{entry!.message}
+														</p>
+														<p className="text-xs text-zinc-600 mt-0.5 flex items-center gap-1 truncate">
+															<span>{timeAgo(log.timestamp)}</span>
+															{showActor && (
+																<>
+																	<span className="text-zinc-700">·</span>
+																	<span className="text-zinc-500 truncate">{log.actor_name}</span>
+																</>
+															)}
+														</p>
+													</div>
+													{route && (
+														<ChevronRight size={13} className="flex-shrink-0 text-zinc-700 group-hover:text-zinc-400 transition-colors" />
+													)}
+												</div>
+											);
+										});
+									})()}
+								</div>
+							)}
 						</Card>
 					</div>
 
