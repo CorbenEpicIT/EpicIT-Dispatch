@@ -78,8 +78,10 @@ export const deleteQuote = async (id: string, hardDelete?: boolean): Promise<{ i
 // QUOTE ACTIONS
 // ============================================================================
 
-export const sendQuote = async (id: string): Promise<Quote> => {
-	const response = await api.post<ApiResponse<Quote>>(`/quotes/${id}/send`);
+export const sendQuote = async (id: string, recipientEmail: string): Promise<Quote> => {
+	const response = await api.post<ApiResponse<Quote>>(`/quotes/${id}/send`, {
+		recipient_email: recipientEmail,
+	});
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to send quote");
@@ -253,6 +255,22 @@ export const deleteQuoteNote = async (
 	}
 
 	return response.data.data || { message: "Quote note deleted successfully" };
+};
+
+// ============================================================================
+// QUOTE PDF
+// ============================================================================
+
+export const downloadQuotePdf = async (id: string, quoteNumber: string): Promise<void> => {
+	const response = await api.get(`/quotes/${id}/pdf`, { responseType: "blob" });
+	const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `${quoteNumber}.pdf`;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
 };
 
 // ============================================================================

@@ -17,6 +17,8 @@ import {
 	Repeat,
 	CreditCard,
 	Briefcase,
+	Download,
+	Loader2,
 } from "lucide-react";
 import {
 	useInvoiceByIdQuery,
@@ -25,6 +27,8 @@ import {
 	useCreateInvoicePaymentMutation,
 	useDeleteInvoicePaymentMutation,
 } from "../../hooks/useInvoices";
+import { downloadInvoicePdf, sendInvoice } from "../../api/invoices";
+import SendDocumentModal from "../../components/ui/SendDocumentModal";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import InvoiceNoteManager from "../../components/invoices/InvoiceNoteManager";
@@ -145,6 +149,8 @@ export default function InvoiceDetailPage() {
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
 	const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+	const [isPdfLoading, setIsPdfLoading] = useState(false);
+	const [isSendModalOpen, setIsSendModalOpen] = useState(false);
 	const [paymentForm, setPaymentForm] = useState<CreateInvoicePaymentInput>({
 		amount: 0,
 		method: undefined,
@@ -241,6 +247,22 @@ export default function InvoiceDetailPage() {
 		}
 	};
 
+	const handleSendConfirm = async (email: string) => {
+		await sendInvoice(invoiceId!, email);
+	};
+
+	const handleDownloadPdf = async () => {
+		setIsOptionsMenuOpen(false);
+		setIsPdfLoading(true);
+		try {
+			await downloadInvoicePdf(invoiceId!, invoice!.invoice_number);
+		} catch (error) {
+			console.error("Failed to download PDF:", error);
+		} finally {
+			setIsPdfLoading(false);
+		}
+	};
+
 	// ── Guards ────────────────────────────────────────────────────────────────
 
 	if (isLoading) {
@@ -297,7 +319,7 @@ export default function InvoiceDetailPage() {
 							)}
 						</div>
 						{invoice.memo && (
-							<p className="text-zinc-300 text-sm  truncate min-w-0">
+							<p className="text-zinc-300 text-sm break-words min-w-0 line-clamp-2" title={invoice.memo}>
 								{invoice.memo}
 							</p>
 						)}
@@ -318,11 +340,9 @@ export default function InvoiceDetailPage() {
 						{InvoiceStatusLabels[invoice.status]}
 					</span>
 
-					{invoice.status === "Draft" && (
+					{(invoice.status === "Draft" || invoice.status === "Issued") && (
 						<button
-							onClick={() =>
-								handleStatusTransition("Sent")
-							}
+							onClick={() => setIsSendModalOpen(true)}
 							className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
 						>
 							<Send size={14} />
@@ -373,26 +393,40 @@ export default function InvoiceDetailPage() {
 											Edit Invoice
 										</button>
 									)}
-									{invoice.status ===
-										"Sent" && (
+									<button
+										onClick={handleDownloadPdf}
+										disabled={isPdfLoading}
+										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										{isPdfLoading ? (
+											<Loader2 size={16} className="animate-spin" />
+										) : (
+											<Download size={16} />
+										)}
+										{isPdfLoading ? "Generating..." : "Download PDF"}
+									</button>
+									{invoice.status === "Draft" && (
 										<button
 											onClick={() => {
-												handleStatusTransition(
-													"Disputed"
-												);
-												setIsOptionsMenuOpen(
-													false
-												);
+												handleStatusTransition("Issued");
+												setIsOptionsMenuOpen(false);
+											}}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2"
+										>
+											<CheckCircle size={16} />
+											Mark as Issued
+										</button>
+									)}
+									{(invoice.status === "Sent" || invoice.status === "Viewed" || invoice.status === "PartiallyPaid") && (
+										<button
+											onClick={() => {
+												handleStatusTransition("Disputed");
+												setIsOptionsMenuOpen(false);
 											}}
 											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-2"
 										>
-											<AlertTriangle
-												size={
-													16
-												}
-											/>
-											Mark as
-											Disputed
+											<AlertTriangle size={16} />
+											Mark as Disputed
 										</button>
 									)}
 									{invoice.status ===
@@ -618,10 +652,8 @@ export default function InvoiceDetailPage() {
 									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
 										Void Reason
 									</p>
-									<p className="text-zinc-300 text-sm italic">
-										{
-											invoice.void_reason
-										}
+									<p className="text-zinc-300 text-sm italic break-words">
+										{invoice.void_reason}
 									</p>
 								</div>
 							)}
@@ -632,7 +664,7 @@ export default function InvoiceDetailPage() {
 								<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-2">
 									Internal Notes
 								</p>
-								<p className="text-zinc-300 text-sm">
+								<p className="text-zinc-300 text-sm break-words whitespace-pre-wrap">
 									{invoice.internal_notes}
 								</p>
 							</div>
@@ -653,57 +685,32 @@ export default function InvoiceDetailPage() {
 							</div>
 						) : (
 							<div>
+								{/* Header row */}
 								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
-									<div className="col-span-5">
-										Description
-									</div>
-									<div className="col-span-1 text-center">
-										Type
-									</div>
-									<div className="col-span-2 text-right">
-										Qty
-									</div>
-									<div className="col-span-2 text-right">
-										Unit Price
-									</div>
-									<div className="col-span-2 text-right">
-										Amount
-									</div>
+									<div className="col-span-5 min-w-0">Item / Description</div>
+									<div className="col-span-1 min-w-0 text-center">Type</div>
+									<div className="col-span-2 min-w-0 text-right">Qty</div>
+									<div className="col-span-2 min-w-0 text-right">Unit Price</div>
+									<div className="col-span-2 min-w-0 text-right">Amount</div>
 								</div>
+								{/* Data rows — items-start keeps numeric cols top-aligned when description wraps */}
 								{lineItems.map((item, index) => {
-									// Resolve source label using typed source fields
-									const sourceVisitId =
-										item.source_visit_id;
-									const sourceJobId =
-										item.source_job_id;
-									let sourceLabel:
-										| string
-										| null = null;
+									const sourceVisitId = item.source_visit_id;
+									const sourceJobId = item.source_job_id;
+									let sourceLabel: string | null = null;
 									let isVisitSource = false;
 
 									if (sourceVisitId != null) {
-										const iv = (
-											invoice.visits ??
-											[]
-										).find(
-											(v) =>
-												v.visit_id ===
-												sourceVisitId
+										const iv = (invoice.visits ?? []).find(
+											(v) => v.visit_id === sourceVisitId,
 										);
 										if (iv != null) {
 											sourceLabel = `${iv.visit.job.job_number} · Visit ${formatDate(iv.visit.scheduled_start_at)}`;
 											isVisitSource = true;
 										}
-									} else if (
-										sourceJobId != null
-									) {
-										const ij = (
-											invoice.jobs ??
-											[]
-										).find(
-											(j) =>
-												j.job_id ===
-												sourceJobId
+									} else if (sourceJobId != null) {
+										const ij = (invoice.jobs ?? []).find(
+											(j) => j.job_id === sourceJobId,
 										);
 										if (ij != null) {
 											sourceLabel = `${ij.job.job_number} · ${ij.job.name}`;
@@ -712,114 +719,63 @@ export default function InvoiceDetailPage() {
 
 									return (
 										<div
-											key={
-												item.id ??
-												index
-											}
-											className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
+											key={item.id ?? index}
+											className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors items-start"
 										>
-											<div className="col-span-5 text-sm">
-												<p className="text-white font-medium">
-													{
-														item.name
-													}
+											{/* Name + description + source — constrained to column */}
+											<div className="col-span-5 min-w-0 text-sm">
+												<p className="text-white font-medium break-words">
+													{item.name}
 												</p>
-												{item.description !=
-													null &&
-													item.description !==
-														"" && (
-														<p className="text-zinc-400 text-xs mt-0.5">
-															{
-																item.description
-															}
-														</p>
-													)}
-												{sourceLabel !=
-													null && (
-													<p className="flex items-center gap-1 mt-1">
+												{item.description != null && item.description !== "" && (
+													<p className="text-zinc-400 text-xs mt-0.5 break-words">
+														{item.description}
+													</p>
+												)}
+												{sourceLabel != null && (
+													<p className="mt-1">
 														<span
-															className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
+															className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border max-w-full truncate ${
 																isVisitSource
 																	? "bg-blue-500/10 text-blue-400 border-blue-500/20"
 																	: "bg-zinc-700/60 text-zinc-400 border-zinc-600/50"
 															}`}
 														>
 															{isVisitSource ? (
-																<svg
-																	width="9"
-																	height="9"
-																	viewBox="0 0 24 24"
-																	fill="none"
-																	stroke="currentColor"
-																	strokeWidth="2"
-																>
+																<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
 																	<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-																	<circle
-																		cx="12"
-																		cy="10"
-																		r="3"
-																	/>
+																	<circle cx="12" cy="10" r="3" />
 																</svg>
 															) : (
-																<svg
-																	width="9"
-																	height="9"
-																	viewBox="0 0 24 24"
-																	fill="none"
-																	stroke="currentColor"
-																	strokeWidth="2"
-																>
-																	<rect
-																		x="2"
-																		y="7"
-																		width="20"
-																		height="14"
-																		rx="2"
-																	/>
+																<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
+																	<rect x="2" y="7" width="20" height="14" rx="2" />
 																	<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
 																</svg>
 															)}
-															{
-																sourceLabel
-															}
+															<span className="truncate">{sourceLabel}</span>
 														</span>
 													</p>
 												)}
 											</div>
-											<div className="col-span-1 flex items-center justify-center">
-												{item.item_type !=
-													null && (
-													<span className="px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
-														{
-															item.item_type
-														}
+											{/* Type badge */}
+											<div className="col-span-1 min-w-0 flex justify-center pt-0.5">
+												{item.item_type != null && (
+													<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
+														{item.item_type}
 													</span>
 												)}
 											</div>
-											<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-												{Number(
-													item.quantity
-												).toLocaleString(
-													"en-US",
-													{
-														minimumFractionDigits: 0,
-														maximumFractionDigits: 2,
-													}
-												)}
+											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
+												{Number(item.quantity).toLocaleString("en-US", {
+													minimumFractionDigits: 0,
+													maximumFractionDigits: 2,
+												})}
 											</div>
-											<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-												{formatCurrency(
-													Number(
-														item.unit_price
-													)
-												)}
+											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
+												{formatCurrency(Number(item.unit_price))}
 											</div>
-											<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
-												{formatCurrency(
-													Number(
-														item.total
-													)
-												)}
+											<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums pt-0.5">
+												{formatCurrency(Number(item.total))}
 											</div>
 										</div>
 									);
@@ -1029,16 +985,11 @@ export default function InvoiceDetailPage() {
 													</>
 												)}
 											</p>
-											{payment.note !=
-												null &&
-												payment.note !==
-													"" && (
-													<p className="text-zinc-400 text-xs mt-1 italic">
-														{
-															payment.note
-														}
-													</p>
-												)}
+											{payment.note != null && payment.note !== "" && (
+												<p className="text-zinc-400 text-xs mt-1 italic break-words">
+													{payment.note}
+												</p>
+											)}
 										</div>
 										<button
 											onClick={() =>
@@ -1060,6 +1011,31 @@ export default function InvoiceDetailPage() {
 							</div>
 						)}
 					</Card>
+
+					{/* Recurring Plan — sidebar link, shown when invoice is plan-generated */}
+					{invoice.recurring_plan != null && (
+						<button
+							onClick={() =>
+								navigate(
+									`/dispatch/recurring-plans/${invoice.recurring_plan!.id}`
+								)
+							}
+							className="w-full p-3 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700/60 hover:border-blue-500/40 transition-all text-left group flex items-center gap-2"
+						>
+							<div className="flex-1 min-w-0">
+								<p className="text-zinc-500 text-[10px] uppercase tracking-wide font-semibold mb-1.5">
+									Recurring Plan
+								</p>
+								<div className="flex items-center gap-2 min-w-0">
+									<Repeat size={13} className="text-blue-400 flex-shrink-0" />
+									<span className="text-white text-sm font-medium group-hover:text-blue-400 transition-colors truncate">
+										{invoice.recurring_plan.name}
+									</span>
+								</div>
+							</div>
+							<ChevronRight size={13} className="text-zinc-500 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+						</button>
+					)}
 				</div>
 			</div>
 
@@ -1086,7 +1062,7 @@ export default function InvoiceDetailPage() {
 											size={13}
 											className="text-zinc-400 flex-shrink-0 group-hover:text-blue-400 transition-colors"
 										/>
-										<div>
+										<div className="flex flex-col justify-center min-h-[38px]">
 											<p className="text-white text-sm font-medium group-hover:text-blue-400 transition-colors leading-tight whitespace-nowrap">
 												{
 													group.jobNumber
@@ -1096,17 +1072,11 @@ export default function InvoiceDetailPage() {
 													group.jobName
 												}
 											</p>
-											{group.billedAmount !=
-												null &&
-												group.billedAmount >
-													0 && (
-													<p className="text-zinc-500 text-xs leading-tight mt-0.5 whitespace-nowrap">
-														Billed{" "}
-														{formatCurrency(
-															group.billedAmount
-														)}
-													</p>
-												)}
+											{group.billedAmount != null && group.billedAmount > 0 && (
+												<p className="text-zinc-500 text-xs leading-tight mt-0.5 whitespace-nowrap">
+													Billed {formatCurrency(group.billedAmount)}
+												</p>
+											)}
 										</div>
 										<ChevronRight
 											size={13}
@@ -1114,7 +1084,7 @@ export default function InvoiceDetailPage() {
 										/>
 									</button>
 								) : (
-									<span className="inline-flex items-center gap-1.5 px-3 py-2 bg-zinc-800/30 border border-zinc-700/40 rounded-lg text-zinc-400 text-sm flex-shrink-0">
+									<span className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[54px] bg-zinc-800/30 border border-zinc-700/40 rounded-lg text-zinc-400 text-sm flex-shrink-0">
 										<Briefcase
 											size={13}
 											className="text-zinc-600 flex-shrink-0"
@@ -1151,20 +1121,16 @@ export default function InvoiceDetailPage() {
 												r="3"
 											/>
 										</svg>
-										<div>
+										<div className="flex flex-col justify-center min-h-[38px]">
 											<p className="text-white text-sm font-medium group-hover:text-blue-400 transition-colors leading-tight whitespace-nowrap">
 												Visit{" "}
 												{formatDate(
 													v.scheduledStartAt
 												)}
 											</p>
-											{v.billedAmount >
-												0 && (
+											{v.billedAmount > 0 && (
 												<p className="text-zinc-500 text-xs leading-tight mt-0.5 whitespace-nowrap">
-													Billed{" "}
-													{formatCurrency(
-														v.billedAmount
-													)}
+													Billed {formatCurrency(v.billedAmount)}
 												</p>
 											)}
 										</div>
@@ -1180,36 +1146,6 @@ export default function InvoiceDetailPage() {
 				</Card>
 			)}
 
-			{/* Recurring Plan Link */}
-			{invoice.recurring_plan != null && (
-				<button
-					onClick={() =>
-						navigate(
-							`/dispatch/recurring-plans/${invoice.recurring_plan!.id}`
-						)
-					}
-					className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all text-left group"
-				>
-					<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
-						Recurring Plan
-					</p>
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2">
-							<Repeat
-								size={14}
-								className="text-blue-400"
-							/>
-							<span className="text-white font-medium group-hover:text-blue-400 transition-colors">
-								{invoice.recurring_plan.name}
-							</span>
-						</div>
-						<ChevronRight
-							size={16}
-							className="text-zinc-400 group-hover:text-blue-400 transition-colors"
-						/>
-					</div>
-				</button>
-			)}
 
 			{/* Notes */}
 			<InvoiceNoteManager invoiceId={invoiceId!} />
@@ -1413,6 +1349,17 @@ export default function InvoiceDetailPage() {
 					invoice={invoice}
 				/>
 			)}
+
+			<SendDocumentModal
+				isOpen={isSendModalOpen}
+				onClose={() => setIsSendModalOpen(false)}
+				onSend={handleSendConfirm}
+				docType="invoice"
+				docNumber={invoice.invoice_number}
+				clientName={invoice.client?.name ?? ""}
+				contactEmail={invoice.client?.contacts?.[0]?.contact?.email}
+				contactName={invoice.client?.contacts?.[0]?.contact?.name}
+			/>
 		</div>
 	);
 }

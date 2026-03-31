@@ -72,6 +72,7 @@ enum request_status {
 
 enum quote_status {
   Draft
+  Issued
   Sent
   Viewed
   Approved
@@ -151,6 +152,7 @@ enum form_draft_type {
 
 enum invoice_status {
   Draft
+  Issued
   Sent
   Viewed
   PartiallyPaid
@@ -412,6 +414,7 @@ model quote {
 
   created_at  DateTime  @default(now())
   updated_at  DateTime  @updatedAt
+  issued_at   DateTime?
   sent_at     DateTime?
   viewed_at   DateTime?
   approved_at DateTime?
@@ -1048,6 +1051,7 @@ model invoice {
   issue_date               DateTime       @default(now())
   due_date                 DateTime?
   payment_terms_days       Int?
+  issued_at                DateTime?
   sent_at                  DateTime?
   viewed_at                DateTime?
   paid_at                  DateTime?

@@ -118,6 +118,8 @@ import {
 } from "./controllers/reportsController.js";
 import * as draftsController from "./controllers/draftsController.js";
 import * as invoicesController from "./controllers/invoicesController.js";
+import { generateQuotePdf, generateInvoicePdf } from "./lib/pdf/pdfService.js";
+import { sendQuoteEmail, sendInvoiceEmail } from "./services/emailService.js";
 
 import {
 	login,
@@ -773,12 +775,63 @@ app.get("/quotes/:id", async (req, res, next) => {
 	}
 });
 
+app.get("/quotes/:id/pdf", async (req, res, next) => {
+	try {
+		const buffer = await generateQuotePdf(req.params.id);
+		res.setHeader("Content-Type", "application/pdf");
+		res.setHeader(
+			"Content-Disposition",
+			`attachment; filename="quote-${req.params.id}.pdf"`,
+		);
+		res.send(buffer);
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Quote not found"));
+		next(err);
+	}
+});
+
 app.get("/clients/:clientId/quotes", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
 		const quotes = await getQuotesByClientId(clientId);
 		res.json(createSuccessResponse(quotes, { count: quotes.length }));
 	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/quotes/:id/send", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const recipientEmail: string | undefined = req.body?.recipient_email;
+		if (!recipientEmail) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
+		}
+
+		await sendQuoteEmail(id, recipientEmail);
+
+		const context = getUserContext(req);
+		const result = await updateQuote(
+			{ params: { id }, body: { status: "Sent" } } as any,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, err.message));
 		next(err);
 	}
 });
@@ -2099,6 +2152,24 @@ app.get("/invoices/:id", async (req, res, next) => {
 	}
 });
 
+app.get("/invoices/:id/pdf", async (req, res, next) => {
+	try {
+		const buffer = await generateInvoicePdf(req.params.id);
+		res.setHeader("Content-Type", "application/pdf");
+		res.setHeader(
+			"Content-Disposition",
+			`attachment; filename="invoice-${req.params.id}.pdf"`,
+		);
+		res.send(buffer);
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Invoice not found"));
+		next(err);
+	}
+});
+
 app.get("/clients/:clientId/invoices", async (req, res, next) => {
 	try {
 		const invoices = await invoicesController.getInvoicesByClientId(
@@ -2117,6 +2188,39 @@ app.get("/jobs/:jobId/invoices", async (req, res, next) => {
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/invoices/:id/send", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const recipientEmail: string | undefined = req.body?.recipient_email;
+		if (!recipientEmail) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
+		}
+
+		await sendInvoiceEmail(id, recipientEmail);
+
+		const context = getUserContext(req);
+		const result = await invoicesController.updateInvoice(
+			{ params: { id }, body: { status: "Sent" } } as any,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, err.message));
 		next(err);
 	}
 });

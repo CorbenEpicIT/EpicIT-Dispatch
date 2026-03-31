@@ -45,6 +45,18 @@ export const getInvoicesByVisitId = async (jobId: string, visitId: string): Prom
 	return response.data.data || [];
 };
 
+export const sendInvoice = async (id: string, recipientEmail: string): Promise<Invoice> => {
+	const response = await api.post<ApiResponse<Invoice>>(`/invoices/${id}/send`, {
+		recipient_email: recipientEmail,
+	});
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to send invoice");
+	}
+
+	return response.data.data!;
+};
+
 export const createInvoice = async (input: CreateInvoiceInput): Promise<Invoice> => {
 	const response = await api.post<ApiResponse<Invoice>>("/invoices", input);
 
@@ -157,6 +169,22 @@ export const updateInvoiceNote = async (
 	}
 
 	return response.data.data!;
+};
+
+// ============================================================================
+// INVOICE PDF
+// ============================================================================
+
+export const downloadInvoicePdf = async (id: string, invoiceNumber: string): Promise<void> => {
+	const response = await api.get(`/invoices/${id}/pdf`, { responseType: "blob" });
+	const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `${invoiceNumber}.pdf`;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
 };
 
 export const deleteInvoiceNote = async (

@@ -12,6 +12,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
+import { assertValidInvoiceTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 
 export interface UserContext {
 	techId?: string;
@@ -91,11 +92,11 @@ async function syncInvoicePaymentTotals(
 
 	// Only auto-transition to PartiallyPaid or Paid.
 	// Disputed and Void are set manually and must not be overwritten here.
-	// Draft/Sent/Viewed are preserved when payments are removed.
+	// Draft/Issued/Sent/Viewed are preserved when payments are removed.
 	let status = invoice.status;
 	if (status !== "Disputed" && status !== "Void") {
 		if (amountPaid <= 0) {
-			// Only revert auto-set payment statuses; leave Draft/Sent/Viewed alone.
+			// Only revert auto-set payment statuses; leave other lifecycle states alone.
 			if (status === "PartiallyPaid" || status === "Paid") {
 				status = "Sent";
 			}
@@ -586,6 +587,18 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 			return { err: "void_reason is required when voiding an invoice" };
 		}
 
+		// Enforce valid status transitions
+		if (parsed.status && parsed.status !== existing.status) {
+			try {
+				assertValidInvoiceTransition(existing.status, parsed.status);
+			} catch (e) {
+				if (e instanceof InvalidTransitionError) {
+					return { err: e.message };
+				}
+				throw e;
+			}
+		}
+
 		const { line_items: _li, ...parsedScalars } = parsed;
 
 		const changes = buildChanges(existing, parsedScalars, [
@@ -718,6 +731,8 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 					...(parsed.void_reason !== undefined && {
 						void_reason: parsed.void_reason,
 					}),
+					...(parsed.status === "Issued" &&
+						!existing.issued_at && { issued_at: new Date() }),
 					...(parsed.status === "Sent" &&
 						!existing.sent_at && { sent_at: new Date() }),
 					...(parsed.status === "Void" && {

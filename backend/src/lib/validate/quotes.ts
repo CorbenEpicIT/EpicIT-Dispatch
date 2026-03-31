@@ -39,6 +39,7 @@ export const createQuoteSchema = z
 		status: z
 			.enum([
 				"Draft",
+				"Issued",
 				"Sent",
 				"Viewed",
 				"Approved",
@@ -117,6 +118,7 @@ export const updateQuoteSchema = z
 		status: z
 			.enum([
 				"Draft",
+				"Issued",
 				"Sent",
 				"Viewed",
 				"Approved",

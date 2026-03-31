@@ -10,6 +10,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
+import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 
 export interface UserContext {
 	techId?: string;
@@ -455,7 +456,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 						);
 
 						if (existingItem) {
-							const itemChanges: any = {};
+							const itemChanges: Record<string, { old: unknown; new: unknown }> = {};
 
 							if (item.name !== existingItem.name) {
 								itemChanges.name = {
@@ -574,7 +575,14 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 				}
 			}
 
+			// Enforce valid status transitions
+			if (parsed.status && parsed.status !== existing.status) {
+				assertValidQuoteTransition(existing.status, parsed.status);
+			}
+
 			// Track status changes for auto-timestamps
+			const isFirstIssued =
+				parsed.status === "Issued" && existing.status !== "Issued";
 			const isFirstSent =
 				parsed.status === "Sent" && existing.status !== "Sent";
 			const isFirstViewed =
@@ -636,6 +644,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 						rejection_reason: parsed.rejection_reason,
 					}),
 					// Auto-timestamps
+					...(isFirstIssued && { issued_at: new Date() }),
 					...(isFirstSent && { sent_at: new Date() }),
 					...(isFirstViewed && { viewed_at: new Date() }),
 					...(isFirstApproved && { approved_at: new Date() }),
@@ -693,6 +702,9 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 					.map((err) => err.message)
 					.join(", ")}`,
 			};
+		}
+		if (e instanceof InvalidTransitionError) {
+			return { err: e.message };
 		}
 		log.error({ err: e }, "Update quote error");
 		return { err: "Internal server error" };
