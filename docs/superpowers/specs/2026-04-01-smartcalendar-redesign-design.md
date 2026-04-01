@@ -11,12 +11,12 @@
 `SmartCalendar.tsx` currently serves two pages with conflicting needs:
 
 - **DashboardPage** — needs a compact week-at-a-glance calendar (existing day-grid behavior is correct)
-- **SchedulePage** — needs a full dispatch board: time-grid, technician filtering, and visual separation of concurrent visits by different techs
+- **SchedulePage** — needs a full dispatch board: time-grid, technician visibility, and visual separation of concurrent visits
 
 Both pages use `<SmartCalendar>` today. The component has two significant pain points:
 
 1. **Toolbar hack** — Visit/Occurrence toggle buttons are mounted via `createRoot` injected into FullCalendar's internal DOM nodes in `viewDidMount`. The roots re-render manually in a separate `useEffect`. This is fragile, breaks in React StrictMode, and is impossible to reason about.
-2. **Wrong view type for SchedulePage** — A day-grid (all-day event rows) cannot show a dispatcher's time-grid reality: overlapping visits, precise scheduling, technician-by-technician visibility.
+2. **Wrong view type for SchedulePage** — A day-grid (all-day event rows) cannot show a dispatcher's time-grid reality: overlapping visits, precise scheduling, per-technician visibility.
 
 ---
 
@@ -28,8 +28,8 @@ Both pages use `<SmartCalendar>` today. The component has two significant pain p
 
 ```
 frontend/src/components/ui/schedule/
-  DashboardCalendar.tsx    ← renamed/moved from SmartCalendar.tsx
-  ScheduleBoard.tsx        ← new component
+  DashboardCalendar.tsx    ← replaces SmartCalendar.tsx (migrated to @schedule-x)
+  ScheduleBoard.tsx        ← new custom component
 ```
 
 `SmartCalendar.tsx` is deleted after migration. Both pages update their imports.
@@ -38,7 +38,7 @@ frontend/src/components/ui/schedule/
 
 | Page | Component | View |
 |---|---|---|
-| `DashboardPage.tsx` | `DashboardCalendar` | Week (day-grid, unchanged) |
+| `DashboardPage.tsx` | `DashboardCalendar` | Week (day-grid) |
 | `SchedulePage.tsx` | `ScheduleBoard` | Time-grid week |
 
 `TechnicianDashboardPage.tsx` also imports SmartCalendar — evaluate separately; likely stays on DashboardCalendar or is removed from scope.
@@ -47,99 +47,134 @@ frontend/src/components/ui/schedule/
 
 ## 3. DashboardCalendar
 
-A direct rename and relocation of `SmartCalendar.tsx`. The FullCalendar day-grid behavior is preserved as-is. The only functional change is **replacing the toolbar hack** with a proper React-controlled toolbar.
+Migrated from `SmartCalendar.tsx` to **`@schedule-x/react`**. All existing behavior is preserved; the toolbar hack and Preact bridge are eliminated.
 
-### Toolbar fix
+### Why @schedule-x
 
-Replace `viewDidMount` + `createRoot` injection with a wrapper layout:
+FullCalendar v6's `viewDidMount` + `createRoot` toolbar pattern is structurally incompatible with React StrictMode (double-invokes effects → duplicate roots on the same DOM node). `@schedule-x/react` provides named React component slots for both the toolbar and event cards — the toolbar buttons become a plain React component, no DOM injection anywhere.
+
+Occurrence badges (currently using `dayCellDidMount` DOM injection) are migrated to render as a special event type with a custom `dateGridEvent` component styled as a badge — no lifecycle hooks needed.
+
+### Toolbar
+
+Replace `viewDidMount` + `createRoot` injection with `@schedule-x`'s header slots:
 
 ```tsx
-<div className="dashboard-calendar-shell">
-  <div className="dc-toolbar">
-    <span className="dc-title">{title}</span>
-    <div className="dc-nav">...</div>
-    <div className="dc-filters">
-      <VisitsToggle ... />
-      <OccurrencesToggle ... />
-      <TechFilter ... />   {/* new */}
-    </div>
-  </div>
-  <FullCalendar headerToolbar={false} ... />
-</div>
+<ScheduleXCalendar
+  calendarApp={cal}
+  customComponents={{
+    headerContentRightPrepend: DashboardCalendarToolbar,  // Visits + Occurrences toggles + TechFilter
+    dateGridEvent: VisitEventCard,
+    monthGridEvent: VisitEventCard,
+  }}
+/>
 ```
 
-`headerToolbar={false}` disables FullCalendar's built-in toolbar entirely. Navigation (`today`, `prev`, `next`) is wired to `calendarRef.current.getApi()` calls from the custom toolbar. This removes all DOM injection, `visitsRootRef`, `occurrencesRootRef`, `calendarKey`, and the secondary `useEffect` re-render.
+`DashboardCalendarToolbar` is a plain React component with full access to app state via closure. Removes: `visitsRootRef`, `occurrencesRootRef`, `calendarKey`, the secondary `useEffect` re-render, and all `createRoot` calls.
 
-### Tech filter (added to DashboardCalendar)
+### Occurrence badges
 
-Filters which technicians' visits are shown. Adaptive based on tech count — see Section 5.
+Render occurrence counts as a distinct event type (`type: 'occurrence-badge'`). The custom `dateGridEvent` component detects this type and renders a purple circle badge instead of an event chip. Badge tooltip stays as CSS `::after`.
+
+### Reactive updates
+
+Replace `calendarKey` force-remount with `eventsServicePlugin.set(events)` on data change. No full re-mount required.
+
+### Resize handling
+
+Remove the three `useEffect` resize workarounds — `@schedule-x` handles sizing via CSS. Verify on sidebar-expand scenarios during implementation; re-add a single `ResizeObserver` only if needed.
 
 ### Props change
 
-Remove `toolbar?: ToolbarInput` (FullCalendar-specific type, no longer needed). Add `technicians: Technician[]` for the tech filter.
+Remove `toolbar?: ToolbarInput` (FullCalendar-specific). Add `technicians: Technician[]` for the tech filter.
+
+### Drag-and-drop
+
+`@schedule-x/drag-and-drop` plugin replaces FullCalendar's `eventDrop`. Existing reschedule logic (API call + revert on failure) ports directly — validate parity during implementation.
+
+### CSS
+
+All 300+ lines of `.fc-*` overrides are replaced with `@schedule-x` theme variables and targeted class overrides. Dark theme tokens are already well-defined from the existing design; this is mechanical translation.
 
 ---
 
 ## 4. ScheduleBoard
 
-A new custom React component. Does **not** use FullCalendar — built as a pure custom time-grid. No library imposes an overlap algorithm that would conflict with CascadeStack.
+A new **custom React component** — no calendar library. Pure CSS grid + absolute-positioned cards.
 
 ### Layout
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ TOOLBAR: [Day|Week|Month] [Today ‹ Apr 2026 ›]      │
-│          [Visits] [Occurrences]  TECH [filter]      │
+│ TOOLBAR: [Today ‹ Apr 2026 ›]  [Visits][Occurrences]│
+│          TECH [filter]                              │
 ├────┬────────┬────────┬────────┬────────┬────────────┤
 │    │ Mon 31 │ Tue  1 │ Wed  2 │ Thu  3 │  ...       │
 ├────┼────────┼────────┼────────┼────────┼────────────┤
 │7AM │        │        │        │        │            │
-│8AM │ [card] │ [card] │        │        │            │
-│ .. │        │        │        │        │            │
+│8AM │ [████] │ [████] │        │        │            │
+│    │  [████]│        │        │        │            │
 │3PM │        │        │        │        │            │
 └────┴────────┴────────┴────────┴────────┴────────────┘
 ```
 
-- CSS grid: `48px gutter + repeat(7, minmax(90px, 1fr))`
-- Each hour row: 56px tall (`SLOT_H = 56`)
-- Default range: 7 AM – 3 PM (9 slots = 504px total column height)
-- Day columns use `position: relative`; cards are `position: absolute`
+- CSS grid: `48px gutter + repeat(7, minmax(150px, 1fr))`
+- Each hour slot: 56px tall (`SLOT_H = 56`)
+- Time range: 7 AM – 5 PM (10 slots)
+- Day columns: `position: relative`, `overflow: visible` (cards may slightly peek past edge at high density)
 
-### CascadeStack — overlapping events
+### Refined Cascade — card layout
 
-When two or more visits overlap in time within the same day column, they are cascade-stacked horizontally.
+Each visit is a **fixed-width card** (proportional to viewport: `clamp(72px, 6.8vw, 96px)`). Cards are never stretched to fill the column.
 
-#### Default state (no hover)
+#### Global tech ordering
 
-Each card receives an equal visible slice:
+A global ordering of all technicians is defined once (derived from technician list, e.g. by ID or name). This ordering determines each tech's horizontal position within any day column — consistently, across all 7 days.
+
+#### Per-day positioning
+
+For each day column, only the techs with visits that day are considered ("active techs"). Their relative order from the global ordering is preserved, and they are re-indexed 0…N-1 for that day.
 
 ```
-step = colWidth / n          // equal division
-card[i].left  = PAD + i * step
-card[i].width = colWidth - i * step
+LEFT_PAD  = 5px
+RIGHT_PAD = 10px   // breathing room from column right border
+
+step = (colWidth - CARD_W - LEFT_PAD - RIGHT_PAD) / (nActiveTechs - 1)
+
+card[i].left  = LEFT_PAD + i * step
+card[i].width = CARD_W               // fixed, never changes
 ```
 
-- Bottom card (i=0): full column width
-- Top card (i=n-1): width = `colWidth / n` (one equal slice)
-- All cards show an equal visible strip in the resting state
+**Effect:** With 3 active techs, cards spread comfortably across the full column. With 6 active techs, cards compress (larger overlap) but still reach the right edge with the same 10px gap. The rightmost card's right edge always lands `RIGHT_PAD` from the column border.
 
-#### Hover state
+**With a single active tech:** card sits at `LEFT_PAD`, no step applied.
 
-On `mouseenter` for card at index `focus`:
+#### Overlap behavior
 
-- **Focused card:** expands to full column width
-- **Cards left of focus (i < focus):** compress to `PEEK = 24px`, pinned left (`left = PAD + i * PEEK`)
-- **Cards right of focus (i > focus):** compress to `PEEK = 24px`, pinned right (`left = PAD + colWidth - (n - i) * PEEK`)
-- All transitions: `left 0.2s cubic-bezier(.4,0,.2,1), width 0.2s cubic-bezier(.4,0,.2,1)`
-- Mouse stays within the day column — user does not need to leave the cell to interact with other events
+Cards from different techs that share the same time window naturally layer (z-order = global tech index). No dynamic width changes. The visible strip of each background card shows its tech color — this is the "cascade" visual.
 
-On `mouseleave`: animate back to default equal-slice state.
+#### Hover
 
-#### Staggered overlaps
+`mouseenter` → raise card to z-index 30 (front of everything), add drop shadow, `translateY(-1px)`.  
+`mouseleave` → restore original z-index and shadow.
 
-Events are grouped by the clustering algorithm: if any two events overlap in time, they are placed in the same stack group (transitive — chains are captured). Within a group, each card renders at its **own actual start time and height**, not the group's full span. Left-offset stacking still applies by index within the group.
+No expand/compress animation. Hover simply surfaces the card for full reading.
 
-This means cards at different heights can occupy different vertical positions while sharing the same horizontal stacking layer.
+#### Sorting / z-order
+
+Cards are rendered in global tech index order (lower index rendered first = sits behind). Higher-indexed techs appear on top by default. On hover, any card can be brought to front regardless of index.
+
+### Visit card anatomy
+
+```
+┌──────────────────┐  ← fixed width (~88px), background = tech color
+│ ┃ John S.        │  ← tech name (bold, 10px)
+│ ┃ 8:00–9:30AM   │  ← time range (9px, muted)
+│ ┃                │
+│ ┃ Williams AC    │  ← job name (9px, dimmer, margin-top:auto)
+└──────────────────┘
+  ↑ colored left border = job priority color
+```
 
 #### Content thresholds (by card height in px)
 
@@ -148,28 +183,12 @@ This means cards at different heights can occupy different vertical positions wh
 | ≥ 48px | Tech name · Time range · Job name |
 | 32–47px | Tech name · Time range |
 | 20–31px | Tech name only |
-| 14–19px | Tech initials (centered) |
-| < 14px | Solid color bar (no text) |
-
-In peek state (compressed to 24px width), main text is hidden and rotated initials are shown vertically centered.
-
-### Visit card anatomy
-
-```
-┌─────────────────┐
-│ ┃ John S.       │  ← tech name (bold, 10px)
-│ ┃ 8:00–9:30AM  │  ← time range (9px, muted)
-│ ┃               │
-│ ┃ Williams AC   │  ← job name (9px, dimmer, margin-top:auto)
-└─────────────────┘
-  ↑ colored left border (priority color)
-```
-
-Background color = tech's assigned color. Border-left = job priority color.
+| 14–19px | Tech initials centered |
+| < 14px | Solid color bar only |
 
 ### Now indicator
 
-A red horizontal line + dot marker at the current time, rendered on today's column only. Updates on mount; does not need to tick live for v1.
+Red horizontal line + dot at current time on today's column. Set on mount; does not need to tick live for v1.
 
 ---
 
@@ -217,71 +236,60 @@ selectedTechs: Set<string>  // empty = All; IDs of selected techs
 
 ### DashboardCalendar
 
-No new data needs. Receives `jobs: Job[]` (existing). Tech filter derives technician list from the visits within jobs. If visits carry `technician_id` + name/color, that's sufficient.
+Receives `jobs: Job[]` (existing) + `technicians: Technician[]` (new, for filter). No backend changes.
 
 ### ScheduleBoard
 
-Needs explicit technician data for colors and display names:
+Needs technician data for global ordering, colors, and display names:
 
 ```typescript
 interface Technician {
   id: string;
-  name: string;        // display name
-  color: string;       // hex, assigned per tech for card backgrounds
-  initials: string;    // 2-char for peek state
+  name: string;      // display name (e.g. "John S.")
+  color: string;     // hex background color for visit cards
+  initials: string;  // 2-char (e.g. "JS")
 }
 ```
 
-`SchedulePage.tsx` already calls `useAllTechniciansQuery` (visible in DashboardPage — confirm SchedulePage also has access or add the hook call). Tech color assignment: derive deterministically from technician ID if not stored in DB (e.g., index into a palette), or store as a user preference field.
+`SchedulePage.tsx` currently does not call `useAllTechniciansQuery` — this hook call must be added. Tech color assignment: derive deterministically from a fixed palette indexed by technician ID for v1 (no DB changes needed).
 
-Visit events for ScheduleBoard need `scheduled_start_at`, `scheduled_end_at`, and `technician_id`. These are already on `JobVisit`.
+Visit cards need `scheduled_start_at`, `scheduled_end_at`, `technician_id`, and `name`/`job_obj.name`. All already present on `JobVisit`.
 
 ---
 
 ## 7. What Is Not In Scope
 
-- **Month view on ScheduleBoard** — ScheduleBoard is week/day only. Month view stays on DashboardCalendar.
-- **Drag-and-drop on ScheduleBoard** — DashboardCalendar retains its existing drag-to-reschedule. ScheduleBoard is read-only for v1; click-to-navigate is sufficient.
-- **Replacing FullCalendar with @schedule-x** — Evaluated (see library analysis notes below). Not in scope for this implementation. DashboardCalendar keeps FullCalendar.
-- **Technician color storage in DB** — Derive from palette for v1.
-- **ScheduleBoard day/month toggle** — Toolbar shows the toggle but only week view is implemented for v1.
+- **Month view on ScheduleBoard** — week/day only. Month view stays on DashboardCalendar.
+- **Drag-and-drop on ScheduleBoard** — read-only for v1.
+- **Technician color storage in DB** — palette derivation for v1.
+- **ScheduleBoard day toggle** — toolbar renders the button; only week view implemented for v1.
+- **FullCalendar v7** — still in beta; revisit at GA.
 
 ---
 
-## 8. Library Analysis Notes (Reference)
+## 8. Mockup Reference
 
-Evaluated during brainstorming — no decision to migrate yet.
-
-**@schedule-x/react** is the strongest alternative to FullCalendar for DashboardCalendar. Key advantage: named React component slots for toolbar and event cards (no `createRoot` hacks). MIT licensed, actively maintained. Migration is worthwhile but not a drop-in swap — requires full CSS rewrite, rebuilding occurrence badges (no `dayCellDidMount` equivalent), and validating drag-and-drop parity. Estimated effort: full component rewrite.
-
-**FullCalendar v7** (currently beta): pure React rewrite, eliminates the Preact bridge, fixes toolbar React component limitations natively. Worth revisiting at GA.
-
-**ScheduleBoard** is always a custom component regardless of library choice — no calendar library supports cascade fan-out stacking.
-
----
-
-## 9. Mockup Reference
-
-All mockups are in the visual companion session at:
-`HVAC/.superpowers/brainstorm/1428-1775069525/content/`
+All mockups at: `HVAC/.superpowers/brainstorm/1428-1775069525/content/`
 
 | File | Shows |
 |---|---|
-| `week-view.html` | Day-grid vs time-grid week comparison |
-| `overlap-approaches.html` | Approach A/B/C comparison |
-| `cascade-v3.html` | Approved cascade hover behavior (both-edge peek) |
-| `tech-filter-modes.html` | Pill vs dropdown mode comparison |
-| `tech-filter-multiselect.html` | Interactive multi-select (both modes) |
-| `schedule-board.html` | Full ScheduleBoard layout — approved mockup. Sat column = 6 same-slot events. Sun column = staggered overlaps. |
+| `cascade-refined.html` | **Approved ScheduleBoard design** — fixed-width cards, global tech ordering, full-width spread, hover lift |
+| `tech-filter-multiselect.html` | Interactive tech filter — pill mode + dropdown mode |
+| `layout-comparison.html` | Rejected alternatives: fixed sub-lane columns vs resource timeline |
+| `schedule-board.html` | Earlier cascade iteration (superseded by cascade-refined) |
+| `tech-filter-modes.html` | Pill vs dropdown threshold comparison |
 
 ---
 
-## 10. Implementation Order
+## 9. Implementation Order
 
 1. Create `frontend/src/components/ui/schedule/` directory
-2. Copy `SmartCalendar.tsx` → `DashboardCalendar.tsx`, fix toolbar hack, add tech filter
-3. Update `DashboardPage.tsx` and `SchedulePage.tsx` imports
-4. Delete `SmartCalendar.tsx`
-5. Build `ScheduleBoard.tsx` — time-grid shell, card placement, CascadeStack
-6. Wire `SchedulePage.tsx` to `ScheduleBoard` with real job/technician data
-7. Verify tech filter works end-to-end on both components
+2. **DashboardCalendar** — install `@schedule-x/react` and plugins; rewrite `SmartCalendar.tsx` as `DashboardCalendar.tsx` against @schedule-x API; migrate CSS; validate drag-and-drop parity and occurrence badges
+3. Update `DashboardPage.tsx` import; delete `SmartCalendar.tsx`
+4. Update `SchedulePage.tsx` import (temporary: point to DashboardCalendar until ScheduleBoard is ready)
+5. **ScheduleBoard** — build time-grid shell (CSS grid, time gutter, day headers, hour lines, now indicator)
+6. Build visit card placement (global tech ordering, `step` calculation, fixed-width cards, content thresholds)
+7. Build tech filter (pill/dropdown adaptive, shared with DashboardCalendar)
+8. Add `useAllTechniciansQuery` to `SchedulePage.tsx`; wire ScheduleBoard to real job + technician data
+9. Replace temporary DashboardCalendar import on SchedulePage with ScheduleBoard
+10. Verify tech filter works end-to-end on both components
