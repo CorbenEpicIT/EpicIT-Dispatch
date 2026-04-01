@@ -8,6 +8,8 @@ import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
 import { useAuthStore } from "../../auth/authStore";
+import { useAllDispatchersQuery, useCreateDispatcherMutation } from "../../hooks/useDispatchers";
+import { DispatcherCard } from "../../components/dispatchers/DispatcherCard";
 
 
 export default function AdminPage() {
@@ -20,6 +22,11 @@ export default function AdminPage() {
 		isLoading: isFetchLoading,
 		error: fetchError,
 	} = useAllTechniciansQuery();
+	const {
+		data: dispatchers,
+		isLoading: isDispatchersLoading,
+		error: dispatchersError,
+	} = useAllDispatchersQuery();
 	const { mutateAsync: createTechnician } = useCreateTechnicianMutation();
 	const [searchInput, setSearchInput] = useState("");
 	const [isTechModalOpen, setIsTechModalOpen] = useState(false);
@@ -58,6 +65,25 @@ export default function AdminPage() {
 		.sort((a, b) => {
 			const statusOrder = { Available: 0, Busy: 1, Break: 2, Offline: 3 };
 			return statusOrder[a.status] - statusOrder[b.status];
+		});
+	
+	const filteredDispatchers = dispatchers
+		?.filter((d) => {
+			if (activeSearch) {
+				const searchLower = activeSearch.toLowerCase();
+				const matchesSearch = 
+					d.name.toLowerCase().includes(searchLower) ||
+					d.email?.toLowerCase().includes(searchLower) ||
+					d.phone?.toLowerCase().includes(searchLower) ||
+					d.title?.toLowerCase().includes(searchLower);
+				if (!matchesSearch) return false;
+			}
+			return true;
+		})
+		.sort((a, b) => {
+			const sortA = a.name.toLowerCase();
+			const sortB = b.name.toLowerCase();
+			return sortA.localeCompare(sortB);
 		});
 
 	const handleSearchSubmit = (e: React.FormEvent) => {
@@ -283,20 +309,17 @@ export default function AdminPage() {
 					return newTechnician.id;
 				}}
 			/>
-           {/*  need to creat this component and hook up to backend
-                <CreateDispatcher
-                isModalOpen={isDispatcherModalOpen}
-                setIsModalOpen={setIsDispatcherModalOpen}
-                createDispatcher={async (input) => {
-                    const newDispatcher = await createDispatcher(input);
-
-                    if (!newDispatcher?.id)
-                        throw new Error(
-                            "Dispatcher creation failed: no ID returned"
-                        );
-                    return newDispatcher.id;
-                }}
-            /> */}
+           {!isDispatchersLoading && !dispatchersError && filteredDispatchers && filteredDispatchers.length > 0 && showDispatchers && (
+                <div className="flex flex-wrap gap-4 pt-4">
+					{filteredDispatchers.map((dispatcher) => (
+						<DispatcherCard
+							key={dispatcher.id}
+							dispatcher={dispatcher}
+							onClick={() => { navigate(`/dispatch/dispatchers/${dispatcher.id}`); }}
+						/>
+					))}
+				</div>
+			)}
 		</div>
     );
 }

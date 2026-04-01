@@ -98,6 +98,13 @@ import {
 	deleteTechnician,
 } from "./controllers/techniciansController.js";
 import {
+	getAllDispatchers,
+	getDispatcherById,
+	insertDispatcher,
+	updateDispatcher,
+	deleteDispatcher,
+} from "./controllers/dispatchersController.js";
+import {
 	getAllInventory,
 	getLowStockInventory,
 	updateInventoryThreshold,
@@ -3052,6 +3059,121 @@ app.delete("/technicians/:id", async (req, res, next) => {
 		next(err);
 	}
 });
+
+// ============================================
+// DISPATCHERS
+// ============================================
+app.get("/dispatchers", async (req, res, next) => {
+	try {
+		const dispatcher = await getAllDispatchers();
+		res.json(
+			createSuccessResponse(dispatcher, { count: dispatcher.length }),
+		);
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/dispatchers/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const dispatcher = await getDispatcherById(id);
+
+		if (!dispatcher) {
+			return res
+				.status(404)
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Dispatcher not found",
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(dispatcher));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/dispatcher", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await insertTechnician(req.body, context);
+
+		if (result.err) {
+			const isDuplicate = result.err
+				.toLowerCase()
+				.includes("already exists");
+			return res
+				.status(isDuplicate ? 409 : 400)
+				.json(
+					createErrorResponse(
+						isDuplicate
+							? ErrorCodes.CONFLICT
+							: ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.put("/dispatchers/:id", async (req, res, next) => {
+	try {
+		/*const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await updateDispatcher(id, req.body, context);
+
+		if (result.err) {
+			const isDuplicate = result.err
+				.toLowerCase()
+				.includes("already exists");
+			return res
+				.status(isDuplicate ? 409 : 400)
+				.json(
+					createErrorResponse(
+						isDuplicate
+							? ErrorCodes.CONFLICT
+							: ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));*/
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/dispatchers/:id", async (req, res, next) => {
+	try {
+		/*const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await deleteDispatcher(id, context);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
+		}
+
+		res.status(200).json(
+			createSuccessResponse({
+				message: result.message || "Technician deleted successfully",
+				id,
+			}),
+		);*/
+	} catch (err) {
+		next(err);
+	}
+});
+
 // ============================================
 // INVENTORY
 // ============================================

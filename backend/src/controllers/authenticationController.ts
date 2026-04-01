@@ -95,7 +95,6 @@ export const login = async (
 							email: email,
 						},
 					});
-		
 		if (!user) {
 			return createErrorResponse(
 				ErrorCodes.INVALID_CREDENTIALS,
