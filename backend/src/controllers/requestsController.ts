@@ -70,7 +70,6 @@ export const getRequestById = async (requestId: string) => {
 									name: true,
 									email: true,
 									phone: true,
-									title: true,
 								},
 							},
 						},

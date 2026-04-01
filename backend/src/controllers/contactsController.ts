@@ -106,10 +106,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 					name: parsed.name,
 					email: parsed.email || null,
 					phone: parsed.phone || null,
-					company: parsed.company || null,
-					title: parsed.title || null,
 					type: parsed.type || null,
-					misc_info: parsed.misc_info || null,
 					is_active: true,
 				},
 			});
@@ -239,10 +236,7 @@ export const updateContact = async (
 			"name",
 			"email",
 			"phone",
-			"company",
-			"title",
 			"type",
-			"misc_info",
 			"is_active",
 		] as const);
 
@@ -253,14 +247,7 @@ export const updateContact = async (
 					...(parsed.name !== undefined && { name: parsed.name }),
 					...(parsed.email !== undefined && { email: parsed.email }),
 					...(parsed.phone !== undefined && { phone: parsed.phone }),
-					...(parsed.company !== undefined && {
-						company: parsed.company,
-					}),
-					...(parsed.title !== undefined && { title: parsed.title }),
 					...(parsed.type !== undefined && { type: parsed.type }),
-					...(parsed.misc_info !== undefined && {
-						misc_info: parsed.misc_info,
-					}),
 					...(parsed.is_active !== undefined && {
 						is_active: parsed.is_active,
 					}),
@@ -630,9 +617,7 @@ export const searchContacts = async (
 				name: true,
 				email: true,
 				phone: true,
-				company: true,
-				title: true,
-			},
+				},
 			take: 10, // Limit results
 			orderBy: {
 				name: "asc",

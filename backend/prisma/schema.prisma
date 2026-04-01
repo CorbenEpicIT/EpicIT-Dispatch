@@ -221,10 +221,7 @@ model contact {
   name      String
   email     String?
   phone     String?
-  company   String?
-  title     String?
   type      String? // "customer", "vendor", "property_manager", "tenant"
-  misc_info String? @db.Text
   is_active Boolean @default(true)
 
   created_at DateTime @default(now())

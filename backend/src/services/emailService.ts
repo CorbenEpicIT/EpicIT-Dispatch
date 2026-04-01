@@ -220,7 +220,7 @@ export const sendQuoteEmail = async (
 
 	if (!quote) throw Object.assign(new Error("Quote not found"), { status: 404 });
 
-	const clientName = quote.client?.name ?? "Valued Customer";
+	const clientName = (quote as typeof quote & { client: { name: string } | null }).client?.name ?? "Valued Customer";
 	const total = fmt(quote.total);
 	const validUntil = fmtDate(quote.valid_until);
 

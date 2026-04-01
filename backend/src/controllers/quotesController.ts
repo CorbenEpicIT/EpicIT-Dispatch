@@ -94,7 +94,6 @@ export const getQuoteById = async (quoteId: string) => {
 									name: true,
 									email: true,
 									phone: true,
-									title: true,
 								},
 							},
 						},

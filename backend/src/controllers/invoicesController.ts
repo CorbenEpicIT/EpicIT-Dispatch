@@ -212,7 +212,6 @@ const invoiceInclude = {
 							name: true,
 							email: true,
 							phone: true,
-							title: true,
 						},
 					},
 				},

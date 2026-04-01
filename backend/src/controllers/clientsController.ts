@@ -34,7 +34,6 @@ const buildClientInclude = () => ({
 					name: true,
 					email: true,
 					phone: true,
-					title: true,
 					type: true,
 				},
 			},

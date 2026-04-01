@@ -12,10 +12,7 @@ export const createContactSchema = z.object({
 		.optional()
 		.or(z.literal("")),
 	phone: z.string().optional().or(z.literal("")),
-	company: z.string().optional().or(z.literal("")),
-	title: z.string().optional().or(z.literal("")),
 	type: z.string().optional().or(z.literal("")), // "customer", "vendor", "property_manager", "tenant"
-	misc_info: z.string().optional().or(z.literal("")), // Custom type field
 
 	// Optional client linking (creates client_contact record)
 	client_id: z.string().uuid().optional(),
@@ -33,10 +30,7 @@ export const updateContactSchema = z
 			.optional()
 			.or(z.literal("")),
 		phone: z.string().optional().or(z.literal("")),
-		company: z.string().optional().or(z.literal("")),
-		title: z.string().optional().or(z.literal("")),
 		type: z.string().optional().or(z.literal("")),
-		misc_info: z.string().optional().or(z.literal("")),
 		is_active: z.boolean().optional(),
 	})
 	.refine(
@@ -44,8 +38,6 @@ export const updateContactSchema = z
 			data.name !== undefined ||
 			data.email !== undefined ||
 			data.phone !== undefined ||
-			data.company !== undefined ||
-			data.title !== undefined ||
 			data.type !== undefined ||
 			data.is_active !== undefined,
 		{ message: "At least one field must be provided for update" }

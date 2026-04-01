@@ -9,7 +9,6 @@ import {
 	User,
 	Mail,
 	Phone,
-	Building2,
 } from "lucide-react";
 import Card from "../ui/Card";
 import type {
@@ -39,8 +38,6 @@ interface ContactFormData {
 	name: string;
 	email: string;
 	phone: string;
-	company: string;
-	title: string;
 	relationship: string;
 }
 
@@ -59,8 +56,6 @@ const EMPTY_FORM_DATA: ContactFormData = {
 	email: "",
 	phone: "",
 	relationship: "",
-	company: "",
-	title: "",
 };
 
 // Extracted ContactForm component
@@ -193,7 +188,6 @@ const ContactForm = memo(function ContactForm({
 											{[
 												contact.email,
 												contact.phone,
-												contact.company,
 											]
 												.filter(
 													Boolean
@@ -287,33 +281,6 @@ const ContactForm = memo(function ContactForm({
 								</p>
 							)}
 						</div>
-					</div>
-
-					<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-						<input
-							type="text"
-							name="company"
-							placeholder="Company"
-							value={formData.company}
-							onChange={onChange}
-							disabled={
-								formMode === "link" &&
-								!!selectedContact
-							}
-							className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm text-white disabled:opacity-50 focus:outline-none focus:border-blue-500"
-						/>
-						<input
-							type="text"
-							name="title"
-							placeholder="Job title"
-							value={formData.title}
-							onChange={onChange}
-							disabled={
-								formMode === "link" &&
-								!!selectedContact
-							}
-							className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm text-white disabled:opacity-50 focus:outline-none focus:border-blue-500"
-						/>
 					</div>
 
 					<div className="min-w-0">
@@ -505,8 +472,6 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 				name: contact.name,
 				email: contact.email || "",
 				phone: contact.phone || "",
-				company: contact.company || "",
-				title: contact.title || "",
 				relationship: contactLink.relationship,
 			});
 			setIsPrimary(contactLink.is_primary || false);
@@ -594,8 +559,6 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 							name: formData.name,
 							email: formData.email,
 							phone: formData.phone,
-							company: formData.company,
-							title: formData.title,
 						} as UpdateContactInput,
 					});
 					await updateRelationship.mutateAsync({
@@ -612,8 +575,6 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 						name: formData.name,
 						email: formData.email,
 						phone: formData.phone,
-						company: formData.company,
-						title: formData.title,
 						client_id: clientId,
 						relationship: formData.relationship || "contact",
 						is_primary: isPrimary,
@@ -699,8 +660,6 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 			name: contact.name,
 			email: contact.email || "",
 			phone: contact.phone || "",
-			company: contact.company || "",
-			title: contact.title || "",
 			relationship: "",
 		});
 	}, []);
@@ -968,13 +927,6 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 													contactLink.relationship
 												}
 											</span>
-											{contact.title && (
-												<span className="truncate">
-													{
-														contact.title
-													}
-												</span>
-											)}
 										</div>
 										<div className="space-y-1.5 text-sm">
 											{contact.email && (
@@ -1003,21 +955,6 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 													<span>
 														{
 															contact.phone
-														}
-													</span>
-												</div>
-											)}
-											{contact.company && (
-												<div className="flex items-center gap-2 text-zinc-500">
-													<Building2
-														size={
-															12
-														}
-														className="flex-shrink-0"
-													/>
-													<span className="truncate">
-														{
-															contact.company
 														}
 													</span>
 												</div>
