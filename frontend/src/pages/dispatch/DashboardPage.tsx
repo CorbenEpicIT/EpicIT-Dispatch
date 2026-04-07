@@ -18,7 +18,7 @@ import {
 	User,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
-import SmartCalendar from "../../components/ui/SmartCalendar";
+import WeekStrip from "../../components/ui/schedule/WeekStrip";
 import { useAllJobsQuery, useCreateJobMutation } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
 import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
@@ -603,32 +603,25 @@ export default function DashboardPage() {
 
 				{/* Week Schedule Calendar */}
 				<Card className="mb-5 !p-0">
-					<div className="p-3 sm:p-4 ">
-						{jobsError ? (
-							<div className="flex items-center justify-center h-full">
-								<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-									<AlertCircle
-										size={16}
-										className="text-red-400"
-									/>
-									<p className="text-sm text-red-400">
-										Failed to load
-										calendar data
-									</p>
-								</div>
+					{jobsError ? (
+						<div className="flex items-center justify-center h-full">
+							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+								<AlertCircle
+									size={16}
+									className="text-red-400"
+								/>
+								<p className="text-sm text-red-400">
+									Failed to load
+									calendar data
+								</p>
 							</div>
-						) : (
-							<SmartCalendar
-								jobs={jobs}
-								view="week"
-								toolbar={{
-									left: "title",
-									center: "",
-									right: "today prev,next",
-								}}
-							/>
-						)}
-					</div>
+						</div>
+					) : (
+						<WeekStrip
+							jobs={jobs}
+							technicians={allTechnicians}
+						/>
+					)}
 				</Card>
 
 				{/* Main Content Grid */}

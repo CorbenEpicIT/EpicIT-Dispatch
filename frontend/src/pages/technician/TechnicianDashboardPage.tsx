@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { AlertCircle } from "lucide-react";
 import Card from "../../components/ui/Card";
-import SmartCalendar from "../../components/ui/SmartCalendar";
+import DashboardCalendar from "../../components/ui/schedule/DashboardCalendar";
 import { useAllJobsQuery } from "../../hooks/useJobs";
 import { useAuthStore } from "../../auth/authStore";
 
@@ -49,14 +49,10 @@ export default function TechnicianDashboardPage() {
 								</div>
 							</div>
 						) : (
-							<SmartCalendar
+							<DashboardCalendar
 								jobs={myJobs}
+								technicians={[]}
 								view="week"
-								toolbar={{
-									left: "title",
-									center: "",
-									right: "today prev,next",
-								}}
 							/>
 						)}
 					</div>

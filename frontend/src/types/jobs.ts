@@ -26,6 +26,7 @@ import {
 	type ArrivalConstraint,
 	type FinishConstraint,
 	type RecurringPlanStatus,
+	type RecurringOccurrence,
 } from "./recurringPlans";
 
 // ============================================================================
@@ -138,6 +139,7 @@ export interface RecurringPlanReference {
 	name: string;
 	status: RecurringPlanStatus;
 	starts_at: Date | string;
+	occurrences?: RecurringOccurrence[];
 }
 
 export interface Job extends PricingBreakdown, ExecutionTotals {

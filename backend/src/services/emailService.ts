@@ -199,6 +199,7 @@ const generateInvoiceEmailHtml = (
 const fmtDate = (d: Date | string | null | undefined): string | null => {
 	if (!d) return null;
 	return new Date(d).toLocaleDateString("en-US", {
+		timeZone: "UTC",
 		month: "long",
 		day: "numeric",
 		year: "numeric",

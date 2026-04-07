@@ -190,8 +190,8 @@ export default function DispatchLayout() {
 					</div>
 				</header>
 
-				<main className="flex-1 overflow-y-auto bg-zinc-950">
-					<div className="p-4 md:p-6 min-h-full">
+				<main className="flex-1 overflow-hidden bg-zinc-950">
+					<div className="p-4 md:p-6 h-full overflow-y-auto">
 						<Outlet />
 					</div>
 				</main>

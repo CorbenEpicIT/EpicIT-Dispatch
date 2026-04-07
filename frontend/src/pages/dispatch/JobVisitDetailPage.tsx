@@ -11,6 +11,7 @@ import {
 	MoreVertical,
 	Receipt,
 	Calendar,
+	ExternalLink,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -29,7 +30,7 @@ import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
-import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
+import { formatCurrency, formatDate, formatDateTime, formatTime } from "../../util/util";
 
 export default function JobVisitDetailPage() {
 	const { jobId, visitId } = useParams<{ jobId: string; visitId: string }>();
@@ -190,26 +191,34 @@ export default function JobVisitDetailPage() {
 		return `${arrivalStr}, ${finishStr}`;
 	};
 
-	const calculateDuration = (): number | null => {
-		if (visit.actual_start_at && visit.actual_end_at) {
-			return Math.round(
-				(new Date(visit.actual_end_at).getTime() -
-					new Date(visit.actual_start_at).getTime()) /
-					(1000 * 60)
-			);
+	const openEnded = visit.finish_constraint === "when_done";
+	const hasActuals = !!(visit.actual_start_at && visit.actual_end_at);
+
+	const calculateDuration = (): { minutes: number; label: string } | null => {
+		if (hasActuals) {
+			return {
+				minutes: Math.round(
+					(new Date(visit.actual_end_at!).getTime() -
+						new Date(visit.actual_start_at!).getTime()) /
+						(1000 * 60)
+				),
+				label: "Job Duration",
+			};
 		}
-		if (visit.scheduled_start_at && visit.scheduled_end_at) {
-			return Math.round(
-				(new Date(visit.scheduled_end_at).getTime() -
-					new Date(visit.scheduled_start_at).getTime()) /
-					(1000 * 60)
-			);
+		if (!openEnded && visit.scheduled_start_at && visit.scheduled_end_at) {
+			return {
+				minutes: Math.round(
+					(new Date(visit.scheduled_end_at).getTime() -
+						new Date(visit.scheduled_start_at).getTime()) /
+						(1000 * 60)
+				),
+				label: "Est. Duration",
+			};
 		}
 		return null;
 	};
 
-	const formatDuration = (minutes: number | null): string => {
-		if (minutes === null) return "N/A";
+	const formatDuration = (minutes: number): string => {
 		const hours = Math.floor(minutes / 60);
 		const mins = minutes % 60;
 		if (hours === 0) return `${mins} ${mins === 1 ? "minute" : "minutes"}`;
@@ -228,7 +237,7 @@ export default function JobVisitDetailPage() {
 						{visit.name || "Job Visit"}
 					</h1>
 					<p className="text-zinc-400 text-sm">
-						{formatDateTime(visit.scheduled_start_at)}
+						{formatDate(visit.scheduled_start_at)}
 					</p>
 				</div>
 
@@ -391,7 +400,19 @@ export default function JobVisitDetailPage() {
 			{/* Visit Information (2/3) + Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<div className="lg:col-span-2">
-					<Card title="Visit Information" className="h-full">
+					<Card
+						title="Visit Information"
+						className="h-full"
+						headerAction={
+							<button
+								onClick={() => navigate(`/dispatch/jobs/${jobId}`)}
+								className="flex items-center gap-1 text-xs text-zinc-400 hover:text-blue-400 transition-colors"
+							>
+								<ExternalLink size={12} />
+								View Job
+							</button>
+						}
+					>
 						<div className="space-y-4">
 							{visit.description && (
 								<div>
@@ -420,86 +441,46 @@ export default function JobVisitDetailPage() {
 								</h3>
 								<div className="space-y-1">
 									<p className="text-white">
-										{formatDateTime(
-											visit.scheduled_start_at
-										)}{" "}
-										-{" "}
-										{formatTime(
-											visit.scheduled_end_at
-										)}
+										{formatDate(visit.scheduled_start_at)}
 									</p>
 
-									{visit.arrival_constraint ===
-										"at" &&
-										visit.arrival_time && (
-											<p className="text-zinc-400 text-sm">
-												Arrival:{" "}
-												{formatConstraintTime(
-													visit.arrival_time
-												)}
-											</p>
-										)}
-									{visit.arrival_constraint ===
-										"between" &&
+									{visit.arrival_constraint === "at" && visit.arrival_time && (
+										<p className="text-zinc-400 text-sm">
+											Arrive at: {formatConstraintTime(visit.arrival_time)}
+										</p>
+									)}
+									{visit.arrival_constraint === "between" &&
 										visit.arrival_window_start &&
 										visit.arrival_window_end && (
 											<p className="text-zinc-400 text-sm">
-												Arrival
-												Window:{" "}
-												{formatConstraintTime(
-													visit.arrival_window_start
-												)}{" "}
-												-{" "}
-												{formatConstraintTime(
-													visit.arrival_window_end
-												)}
+												Arrival window: {formatConstraintTime(visit.arrival_window_start)} – {formatConstraintTime(visit.arrival_window_end)}
 											</p>
 										)}
-									{visit.arrival_constraint ===
-										"by" &&
-										visit.arrival_window_end && (
-											<p className="text-zinc-400 text-sm">
-												Arrive
-												by:{" "}
-												{formatConstraintTime(
-													visit.arrival_window_end
-												)}
-											</p>
-										)}
-									{visit.finish_constraint ===
-										"at" &&
-										visit.finish_time && (
-											<p className="text-zinc-400 text-sm">
-												Finish
-												at:{" "}
-												{formatConstraintTime(
-													visit.finish_time
-												)}
-											</p>
-										)}
-									{visit.finish_constraint ===
-										"by" &&
-										visit.finish_time && (
-											<p className="text-zinc-400 text-sm">
-												Finish
-												by:{" "}
-												{formatConstraintTime(
-													visit.finish_time
-												)}
-											</p>
-										)}
+									{visit.arrival_constraint === "by" && visit.arrival_window_end && (
+										<p className="text-zinc-400 text-sm">
+											Arrive by: {formatConstraintTime(visit.arrival_window_end)}
+										</p>
+									)}
+									{visit.finish_constraint === "at" && visit.finish_time && (
+										<p className="text-zinc-400 text-sm">
+											Finish at: {formatConstraintTime(visit.finish_time)}
+										</p>
+									)}
+									{visit.finish_constraint === "by" && visit.finish_time && (
+										<p className="text-zinc-400 text-sm">
+											Finish by: {formatConstraintTime(visit.finish_time)}
+										</p>
+									)}
 								</div>
 							</div>
 
 							{duration !== null && (
 								<div>
 									<h3 className="text-zinc-400 text-sm mb-1">
-										Job Duration
+										{duration.label}
 									</h3>
 									<p className="text-white font-medium">
-										{formatDuration(
-											duration
-										)}
+										{formatDuration(duration.minutes)}
 									</p>
 								</div>
 							)}
@@ -727,7 +708,7 @@ export default function JobVisitDetailPage() {
 				)}
 			</Card>
 
-			<div className="flex flex-col lg:flex-row gap-6 items-start">
+			<div className={`flex flex-col lg:flex-row gap-6 ${linkedInvoices.length >= 2 ? "items-start" : ""}`}>
 				<div className="w-full lg:w-80 flex-shrink-0 flex flex-col">
 				{/* Linked Invoices */}
 				<Card
