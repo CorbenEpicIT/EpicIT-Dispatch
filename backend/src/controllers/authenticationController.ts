@@ -142,28 +142,18 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 	try {
 		// get user by id and role
 		if (userId === "0") {
-			const user =
-		    	role === "dispatch" ? {
-					id: userId,
-					name: "user",
-					organization_id: "1",
-					title: "admin",
-					description: "user for testing",
-					email: "user@domain.com",
-					phone: null,
-					password: "",
-					last_login: new Date(),
-				} : {
-					id: userId,
-					name: "user",
-					organization_id: "1",
-					title: "tech",
-					description: "user for testing",
-					email: "user@domain.com",
-					phone: null,
-					password: "",
-					last_login: new Date(),
-				}
+			const firstOrg = await db.organization.findFirst({ select: { id: true } });
+			const user = {
+				id: userId,
+				name: "user",
+				organization_id: firstOrg?.id ?? null,
+				title: role === "dispatch" ? "admin" : "tech",
+				description: "user for testing",
+				email: "user@domain.com",
+				phone: null,
+				password: "",
+				last_login: new Date(),
+			};
 			const accessToken = generateAccessToken(user, role);
 			const refreshToken = gererateRefreshToken(user, role);
 			// set refresh token in httpOnly cookie

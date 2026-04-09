@@ -32,7 +32,15 @@ async function main() {
 	// ============================================================================
 
 	const org = await db.organization.create({
-		data: { name: "Epic HVAC Services", tax_rate: 0.0825 },
+		data: {
+			name:     "Epic HVAC Services",
+			tax_rate: 0.0825,
+			phone:    "(608) 555-0142",
+			address:  "1857 Sand Lake Road, Onalaska, WI 54650",
+			coords:   { lat: 44.7441, lon: -91.2396 },
+			email:    "info@epicitautomations.com",
+			website:  "epicitautomations.com",
+		},
 	});
 
 	// ============================================================================

@@ -184,9 +184,15 @@ enum DispatcherRole {
 
 
 model organization {
-  id       String  @id @default(uuid())
-  name     String
-  tax_rate Decimal @default(0) @db.Decimal(5, 4)
+  id        String  @id @default(uuid())
+  name      String
+  logo_url  String?
+  phone     String?
+  address   String?
+  coords    Json?
+  email     String?
+  website   String?
+  tax_rate  Decimal @default(0) @db.Decimal(5, 4)
 
   clients               client[]
   contacts              contact[]

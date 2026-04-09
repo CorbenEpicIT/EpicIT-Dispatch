@@ -36,10 +36,11 @@ export const generateAccessToken = (user: User, role: string)=>{
             {
                 uid: user.id,
                 email: user.email,
-                role: role
+                role: role,
+                organization_id: user.organization_id,
             },
-            JWT_SECRET, 
-            {expiresIn : '15m'}  // token expires in an hour may change in future 
+            JWT_SECRET,
+            {expiresIn : '15m'}  // token expires in an hour may change in future
         );
 }
 
@@ -90,6 +91,7 @@ export const verifyToken = (token: string) => {
         uid: string;
         email: string;
         role: string;
+        organization_id: string | null;
     };
 }
 
@@ -138,16 +140,19 @@ export const refreshAccessToken = async (refreshToken: string) => {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
         
+        const dbUser = await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } });
+
         const jwtResult = jwt.sign(
                     {
                         uid: user.id,
                         email: user.email,
-                        role: user.role
+                        role: user.role,
+                        organization_id: dbUser?.organization_id ?? null,
                     },
-                    JWT_SECRET, 
-                    {expiresIn : '15m'} 
-                ); 
-        
+                    JWT_SECRET,
+                    {expiresIn : '15m'}
+                );
+
         return jwtResult;  
     } catch (e) {
         if (e instanceof jwt.JsonWebTokenError) {
