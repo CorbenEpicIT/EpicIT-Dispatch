@@ -70,7 +70,7 @@ export default function DispatchLayout() {
 					transition-all duration-300 ease-in-out
 					${expanded ? "w-40 lg:w-44" : "w-16"}`}
 			>
-				<nav className="flex-1 py-2 space-y-1 overflow-y-auto">
+				<nav className="flex-1 py-2 space-y-1 overflow-y-auto overflow-x-hidden sidebar-nav">
 					<SideNavItem
 						expanded={expanded}
 						to="/dispatch"
