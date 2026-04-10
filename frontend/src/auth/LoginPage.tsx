@@ -1,13 +1,19 @@
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./authStore";
-import { use, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { loginCall, verifyOTPCall } from "../api/authenticate.ts"
 
 export default function LoginPage() {
 	const { login } = useAuthStore();
 	const [role, setRole] = useState<"dispatch" | "technician">("dispatch");
-	const [name, setName] = useState("user");
-	const [password, setPassword] = useState("");
+
+	const DEV_CREDENTIALS = {
+		dispatch: { name: "admin@epichvac.com", password: "password123" },
+		technician: { name: "john.smith@epichvac.com", password: "password123" },
+	};
+
+	const [name, setName] = useState(DEV_CREDENTIALS.dispatch.name);
+	const [password, setPassword] = useState(DEV_CREDENTIALS.dispatch.password);
 	const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 	const [otpSent, setOtpSent] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
@@ -32,14 +38,18 @@ export default function LoginPage() {
 		e.preventDefault();
 		try {
 			const result = await verifyOTPCall(otp.join(""));
-			console.log("otp verification result:", result);
-			login(role, name || "User");
+			const parts = result.token?.split(".");
+			if (!parts || parts.length !== 3) throw new Error("Malformed token received from server");
+			const payload = JSON.parse(atob(parts[1]));
+			if (!payload.uid) throw new Error("Token is missing user ID — contact support");
+			const orgTimezone = payload.organization_timezone ?? "America/Chicago";
+			login(role, name || "User", payload.uid, orgTimezone);
 			if (role === "dispatch") navigate("/dispatch");
 			else navigate("/technician");
-		}catch (error) {
+		} catch (error) {
 			console.error("OTP verification failed:", error);
 		}
-	}
+	};
 
 	// seperate from login so that it doesn't need args
 	const resendOTP = async () => {
@@ -155,7 +165,12 @@ export default function LoginPage() {
 				/>
 				<select
 					value={role}
-					onChange={(e) => setRole(e.target.value as any)}
+					onChange={(e) => {
+						const newRole = e.target.value as "dispatch" | "technician";
+						setRole(newRole);
+						setName(DEV_CREDENTIALS[newRole].name);
+						setPassword(DEV_CREDENTIALS[newRole].password);
+					}}
 					className="w-full border rounded px-3 py-2"
 				>
 					<option value="dispatch">Dispatch/Admin</option>

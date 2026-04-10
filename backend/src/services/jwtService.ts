@@ -28,7 +28,7 @@ export const hasValidRefreshToken = async (userId: string) => {
     return !!token;
 }
 
-export const generateAccessToken = (user: User, role: string)=>{
+export const generateAccessToken = (user: User, role: string, orgTimezone?: string | null)=>{
         if (!JWT_SECRET) {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
@@ -38,6 +38,7 @@ export const generateAccessToken = (user: User, role: string)=>{
                 email: user.email,
                 role: role,
                 organization_id: user.organization_id,
+                organization_timezone: orgTimezone ?? null,
             },
             JWT_SECRET,
             {expiresIn : '15m'}  // token expires in an hour may change in future
@@ -92,6 +93,7 @@ export const verifyToken = (token: string) => {
         email: string;
         role: string;
         organization_id: string | null;
+        organization_timezone: string | null;
     };
 }
 
@@ -140,7 +142,18 @@ export const refreshAccessToken = async (refreshToken: string) => {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
         
-        const dbUser = await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } });
+        const dbUser = user.role === "dispatch"
+            ? await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } })
+            : await db.technician.findUnique({ where: { id: user.id }, select: { organization_id: true } });
+
+        let orgTimezone: string | null = null;
+        if (dbUser?.organization_id) {
+            const org = await db.organization.findUnique({
+                where: { id: dbUser.organization_id },
+                select: { timezone: true },
+            });
+            orgTimezone = org?.timezone ?? null;
+        }
 
         const jwtResult = jwt.sign(
                     {
@@ -148,6 +161,7 @@ export const refreshAccessToken = async (refreshToken: string) => {
                         email: user.email,
                         role: user.role,
                         organization_id: dbUser?.organization_id ?? null,
+                        organization_timezone: orgTimezone,
                     },
                     JWT_SECRET,
                     {expiresIn : '15m'}

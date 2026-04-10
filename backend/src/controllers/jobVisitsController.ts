@@ -57,6 +57,12 @@ export const getJobVisitById = async (id: string) => {
 			line_items: {
 				orderBy: { sort_order: "asc" },
 			},
+			time_entries: {
+				orderBy: { clocked_in_at: "asc" },
+				include: {
+					tech: { select: { id: true, name: true } },
+				},
+			},
 			notes: true,
 		},
 	});
@@ -99,6 +105,12 @@ export const getJobVisitsByTechId = async (techId: string) => {
 			},
 			line_items: {
 				orderBy: { sort_order: "asc" },
+			},
+			time_entries: {
+				orderBy: { clocked_in_at: "asc" },
+				include: {
+					tech: { select: { id: true, name: true } },
+				},
 			},
 			visit_techs: {
 				include: {
@@ -690,7 +702,7 @@ export const acceptJobVisit = async (
 	}
 };
 
-// ── Visit lifecycle ───────────────────────────────────────────
+// ── Visit lifecycle ───────────────────────────────────────────────
 
 export const LIFECYCLE_TRANSITIONS = {
 	drive: { from: ["Scheduled"], to: "Driving" as const },
@@ -743,7 +755,7 @@ export const applyVisitTransition = async (
 				},
 			});
 
-			// ── Job status sync ───────────────────────────────────────────────
+			// ── Job status sync ────────────────────────────────────────────────
 			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
 			let newJobStatus = existingVisit.job.status;
 			if (allVisits.every((v) => v.status === "Completed")) {
@@ -757,7 +769,7 @@ export const applyVisitTransition = async (
 				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
 			}
 
-			// ── Inventory deduction ───────────────────────────────────────────
+			// ── Inventory deduction ───────────────────────────────────
 			const deductOn = existingVisit.job.deduct_inventory_on;
 			if (action === "complete" && existingVisit.status !== "Completed" && deductOn === "visit_completion") {
 				await deductInventoryForVisit(id, tx, context);
@@ -768,7 +780,58 @@ export const applyVisitTransition = async (
 				}
 			}
 
-			// ── Activity log ──────────────────────────────────────────────────
+			// ── Auto-close open time entries on complete ────────────────────────
+			if (action === "complete") {
+				const openEntries = await tx.visit_tech_time_entry.findMany({
+					where: { visit_id: id, clocked_out_at: null },
+					include: { tech: { select: { id: true, name: true, hourly_rate: true } } },
+				});
+
+				const completionTime = new Date();
+
+				for (const entry of openEntries) {
+					const elapsedMs = completionTime.getTime() - entry.clocked_in_at.getTime();
+					const hoursWorked = parseFloat((elapsedMs / (1000 * 60 * 60)).toFixed(4));
+					const hourlyRate = Number(entry.tech.hourly_rate);
+					const laborTotal = parseFloat((hoursWorked * hourlyRate).toFixed(2));
+
+					const lineItem = await tx.job_visit_line_item.create({
+						data: {
+							visit_id: id,
+							name: `Labor – ${entry.tech.name}`,
+							description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr (auto-closed on complete)`,
+							quantity: hoursWorked,
+							unit_price: hourlyRate,
+							total: laborTotal,
+							source: "field_addition",
+							item_type: "labor",
+							sort_order: 0,
+						},
+					});
+
+					await tx.visit_tech_time_entry.update({
+						where: { id: entry.id },
+						data: { clocked_out_at: completionTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
+					});
+				}
+
+				if (openEntries.length > 0) {
+					const allItems = await tx.job_visit_line_item.findMany({ where: { visit_id: id } });
+					const newSubtotal = allItems.reduce((s, li) => s + Number(li.total), 0);
+					const taxRate = Number(existingVisit.tax_rate ?? 0);
+					const newTaxAmount = parseFloat((newSubtotal * taxRate).toFixed(2));
+					await tx.job_visit.update({
+						where: { id },
+						data: {
+							subtotal: newSubtotal,
+							tax_amount: newTaxAmount,
+							total: parseFloat((newSubtotal + newTaxAmount).toFixed(2)),
+						},
+					});
+				}
+			}
+
+			// ── Activity log ────────────────────────────────────────────────────
 			await logActivity({
 				event_type: "job_visit.updated",
 				action: "updated",
@@ -799,7 +862,7 @@ export const applyVisitTransition = async (
 			});
 		});
 
-		return { err: "", item: updated };
+		return { err: "", item: updated ?? undefined };
 	} catch (e) {
 		log.error({ err: e }, `Failed to apply visit transition: ${action}`);
 		return { err: "Failed to update visit status" };
@@ -808,6 +871,72 @@ export const applyVisitTransition = async (
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+export const cancelJobVisit = async (
+	id: string,
+	cancellationReason: string,
+	context?: UserContext,
+) => {
+	try {
+		const existingVisit = await db.job_visit.findUnique({
+			where: { id },
+			include: { job: true },
+		});
+
+		if (!existingVisit) return { err: "Job visit not found" };
+
+		const updated = await db.$transaction(async (tx) => {
+			await tx.job_visit.update({
+				where: { id },
+				data: { status: "Cancelled", cancellation_reason: cancellationReason },
+			});
+
+			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
+			let newJobStatus = existingVisit.job.status;
+			if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
+				newJobStatus = "Completed";
+			} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
+				newJobStatus = "InProgress";
+			} else if (allVisits.some((v) => v.status === "Scheduled")) {
+				newJobStatus = "Scheduled";
+			}
+			if (newJobStatus !== existingVisit.job.status) {
+				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
+			}
+
+			await logActivity({
+				event_type: "job_visit.updated",
+				action: "updated",
+				entity_type: "job_visit",
+				entity_id: id,
+				actor_type: context?.techId ? "technician" : context?.dispatcherId ? "dispatcher" : "system",
+				actor_id: context?.techId || context?.dispatcherId,
+				changes: {
+					status: { old: existingVisit.status, new: "Cancelled" },
+					cancellation_reason: { old: null, new: cancellationReason },
+					_job_id: { old: null, new: existingVisit.job_id },
+					_job_number: { old: null, new: existingVisit.job.job_number },
+				},
+				ip_address: context?.ipAddress,
+				user_agent: context?.userAgent,
+			});
+
+			return tx.job_visit.findUnique({
+				where: { id },
+				include: {
+					job: { include: { client: true, quote: true } },
+					visit_techs: { include: { tech: true } },
+					line_items: { orderBy: { sort_order: "asc" } },
+					notes: true,
+				},
+			});
+		});
+
+		return { err: "", item: updated ?? undefined };
+	} catch (e) {
+		log.error({ err: e }, "Failed to cancel job visit");
+		return { err: "Failed to cancel visit" };
+	}
+};
 
 export const deleteJobVisit = async (id: string, context?: UserContext) => {
 	try {

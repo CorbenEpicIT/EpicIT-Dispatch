@@ -30,11 +30,14 @@ import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
-import { formatCurrency, formatDate, formatDateTime, formatTime } from "../../util/util";
+import { formatCurrency, formatDate, formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
+import { useAuthStore } from "../../auth/authStore";
 
 export default function JobVisitDetailPage() {
 	const { jobId, visitId } = useParams<{ jobId: string; visitId: string }>();
 	const navigate = useNavigate();
+	const { user } = useAuthStore();
+	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 	const { data: visit, isLoading: visitLoading } = useJobVisitByIdQuery(visitId!);
 	const { data: job, isLoading: jobLoading } = useJobByIdQuery(jobId!);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -237,7 +240,7 @@ export default function JobVisitDetailPage() {
 						{visit.name || "Job Visit"}
 					</h1>
 					<p className="text-zinc-400 text-sm">
-						{formatDate(visit.scheduled_start_at)}
+						{formatDate(visit.scheduled_start_at, tz)}
 					</p>
 				</div>
 
@@ -441,7 +444,7 @@ export default function JobVisitDetailPage() {
 								</h3>
 								<div className="space-y-1">
 									<p className="text-white">
-										{formatDate(visit.scheduled_start_at)}
+										{formatDate(visit.scheduled_start_at, tz)}
 									</p>
 
 									{visit.arrival_constraint === "at" && visit.arrival_time && (
@@ -496,7 +499,7 @@ export default function JobVisitDetailPage() {
 											<p className="text-white text-sm">
 												Started:{" "}
 												{formatDateTime(
-													visit.actual_start_at
+													visit.actual_start_at, tz
 												)}
 											</p>
 										)}
@@ -504,7 +507,7 @@ export default function JobVisitDetailPage() {
 											<p className="text-white text-sm">
 												Ended:{" "}
 												{formatDateTime(
-													visit.actual_end_at
+													visit.actual_end_at, tz
 												)}
 											</p>
 										)}
@@ -662,7 +665,7 @@ export default function JobVisitDetailPage() {
 									<span className="text-white font-medium">
 										{
 											formatDateTime(
-												visit.scheduled_start_at
+												visit.scheduled_start_at, tz
 											).split(
 												" at "
 											)[0]

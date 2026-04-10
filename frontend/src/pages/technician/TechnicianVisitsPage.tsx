@@ -3,12 +3,12 @@ import {
 	useAcceptJobVisitMutation,
 	useVisitTransitionMutation,
 } from "../../hooks/useJobs";
-import { LIFECYCLE_TRANSITIONS, VisitStatusLabels, type VisitStatus, type LifecycleAction } from "../../types/jobs";
+import { LIFECYCLE_TRANSITIONS, VisitStatusLabels, VisitStatusValues, type VisitStatus, type LifecycleAction } from "../../types/jobs";
 import { useAuthStore } from "../../auth/authStore";
 import { useMemo, useState } from "react";
 import { Search, Car, MapPin, Play, Pause, CheckCircle2, Calendar } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { formatDateTime } from "../../util/util";
+import { addSpacesToCamelCase, formatDateTime, FALLBACK_TIMEZONE } from "../../util/util";
 
 type TabFilter = "available" | "mine" | "past";
 
@@ -17,6 +17,7 @@ type ConfirmAction = { visitId: string; action: LifecycleAction } | null;
 export default function TechnicianVisitsPage() {
 	const { user } = useAuthStore();
 	const navigate = useNavigate();
+	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 
 	const [tab, setTab] = useState<TabFilter>("mine");
 	const [searchInput, setSearchInput] = useState("");
@@ -31,17 +32,6 @@ export default function TechnicianVisitsPage() {
 
 	const anyLifecyclePending = transitionMutation.isPending;
 
-	const myTechId = useMemo(() => {
-		const token = localStorage.getItem("accessToken");
-		if (!token) return "";
-		try {
-			const payload = JSON.parse(atob(token.split(".")[1]));
-			return payload.uid ?? "";
-		} catch {
-			return "";
-		}
-	}, []);
-
 	const display = useMemo(() => {
 		if (!visits) return [];
 
@@ -50,15 +40,15 @@ export default function TechnicianVisitsPage() {
 		if (tab === "past") {
 			filtered = filtered
 				.filter((v) => v.status === "Completed" || v.status === "Cancelled")
-				.filter((v) => v.visit_techs?.some((vt) => vt.tech?.email === user?.name));
+				.filter((v) => v.visit_techs?.some((vt) => vt.tech_id === user?.userId));
 		} else if (tab === "available") {
 			filtered = filtered
 				.filter((v) => v.status !== "Completed" && v.status !== "Cancelled")
 				.filter((v) => (v.visit_techs?.length ?? 0) === 0);
 		} else {
-			filtered = filtered
-				.filter((v) => v.status !== "Completed" && v.status !== "Cancelled")
-				.filter((v) => v.visit_techs?.some((vt) => vt.tech?.email === user?.name));
+			filtered = filtered.filter((v) =>
+				v.visit_techs?.some((vt) => vt.tech_id === user?.userId)
+			);
 		}
 
 		if (searchInput.trim()) {
@@ -72,35 +62,26 @@ export default function TechnicianVisitsPage() {
 			);
 		}
 
-		const statusPriority: Record<string, number> = {
-			InProgress: 0,
-			Paused: 1,
-			OnSite: 2,
-			Driving: 3,
-			Scheduled: 4,
-			Delayed: 5,
-		};
-
-		const sorted = tab === "past"
-			? [...filtered].sort((a, b) =>
-				new Date(b.scheduled_start_at).getTime() - new Date(a.scheduled_start_at).getTime()
-			)
-			: [...filtered].sort((a, b) => {
-				const aPriority = statusPriority[a.status] ?? 99;
-				const bPriority = statusPriority[b.status] ?? 99;
-				if (aPriority !== bPriority) return aPriority - bPriority;
-				return new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime();
-			});
-
-		return sorted.map((v) => ({
-			id: v.id,
-			visitName: v.name || "Unnamed Visit",
-			client: v.job?.client?.name ?? "—",
-			address: v.job?.address ?? "—",
-			scheduled: formatDateTime(v.scheduled_start_at),
-			rawStatus: v.status as VisitStatus,
-		}));
-	}, [visits, tab, searchInput, user?.name]);
+		return filtered
+			.map((v) => ({
+				id: v.id,
+				visitName: v.name || "Unnamed Visit",
+				client: v.job?.client?.name ?? "—",
+				address: v.job?.address ?? "—",
+				scheduled: formatDateTime(v.scheduled_start_at, tz),
+				status: addSpacesToCamelCase(v.status),
+				rawStatus: v.status as VisitStatus,
+				_scheduleDate: new Date(v.scheduled_start_at),
+			}))
+			.sort((a, b) => {
+				const statusDiff =
+					VisitStatusValues.indexOf(a.rawStatus) -
+					VisitStatusValues.indexOf(b.rawStatus);
+				if (statusDiff !== 0) return statusDiff;
+				return a._scheduleDate.getTime() - b._scheduleDate.getTime();
+			})
+			.map(({ _scheduleDate, ...rest }) => rest);
+	}, [visits, tab, searchInput, user?.userId]);
 
 	const cardData = tab === "past" && !showAllPast ? display.slice(0, 5) : display;
 
@@ -119,7 +100,7 @@ export default function TechnicianVisitsPage() {
 			return;
 		}
 		try {
-			await acceptMutation.mutateAsync({ visitId, techId: myTechId });
+			await acceptMutation.mutateAsync({ visitId, techId: user?.userId ?? "" });
 			setAcceptConfirm(null);
 			setTab("mine");
 		} catch (err) {

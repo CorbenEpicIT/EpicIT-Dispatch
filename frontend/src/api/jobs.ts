@@ -10,6 +10,8 @@ import type {
 	JobVisit,
 	CreateJobVisitInput,
 	UpdateJobVisitInput,
+	ClockInResult,
+	ClockOutResult,
 } from "../types/jobs";
 
 
@@ -195,6 +197,32 @@ export const cancelJobVisit = async (visitId: string, cancellationReason: string
 		throw new Error(response.data.error?.message || "Failed to cancel visit");
 	}
 
+	return response.data.data!;
+};
+
+// ============================================
+// TIME TRACKING API
+// ============================================
+
+export const clockInVisit = async (visitId: string, techId: string): Promise<ClockInResult> => {
+	const response = await api.post<ApiResponse<ClockInResult>>(
+		`/job-visits/${visitId}/clock-in`,
+		{ tech_id: techId },
+	);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to clock in");
+	}
+	return response.data.data!;
+};
+
+export const clockOutVisit = async (visitId: string, techId: string): Promise<ClockOutResult> => {
+	const response = await api.post<ApiResponse<ClockOutResult>>(
+		`/job-visits/${visitId}/clock-out`,
+		{ tech_id: techId },
+	);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to clock out");
+	}
 	return response.data.data!;
 };
 

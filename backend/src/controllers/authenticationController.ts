@@ -45,35 +45,6 @@ export const login = async (
 	role: string
 ) => {
 	try {
-		// just for testing
-		if (email === "user" && password === "") {
-			const user = {
-				id: "0",
-				name: email,
-				organization_id: "epic",
-				title: "admin",
-				description: "admin",
-				email: email,
-				phone: null,
-				password: "",
-				last_login: new Date(),
-			};
-			const otp = await createOTP(user.id, role);
-
-			const pendingToken = generateOTPToken(user, role, otp);
-			if (!pendingToken) {
-				return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
-			}
-
-			return { data: { pendingToken } };
-			
-			//return issueAuthTokens(res, user.id, role);
-		}
-		// user already has pending token and otp
-		// resend the opt token to user
-		/*if (req.header.authorization?.split(" ")[0] === "Bearer") {
-			
-		}*/
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
 			return createErrorResponse(
@@ -189,7 +160,15 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 		if (!user) {
 			return createErrorResponse(ErrorCodes.NOT_FOUND, "User not found");
 		}
-		const accessToken = generateAccessToken(user, role);
+		let orgTimezone: string | null = null;
+		if (user.organization_id) {
+			const org = await db.organization.findUnique({
+				where: { id: user.organization_id },
+				select: { timezone: true },
+			});
+			orgTimezone = org?.timezone ?? null;
+		}
+		const accessToken = generateAccessToken(user, role, orgTimezone);
 		const refreshToken = gererateRefreshToken(user, role);
 		// set refresh token in httpOnly cookie
 		res.cookie("refreshToken", refreshToken, {

@@ -16,6 +16,8 @@ import type {
 	CreateJobVisitInput,
 	UpdateJobVisitInput,
 	LifecycleAction,
+	ClockInResult,
+	ClockOutResult,
 } from "../types/jobs";
 import * as jobApi from "../api/jobs";
 
@@ -324,14 +326,15 @@ export const useVisitTransitionMutation = (): UseMutationResult<JobVisit, Error,
 			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id, "visits"] });
 			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id] });
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-			if (updatedVisit.visit_techs && updatedVisit.visit_techs.length > 0) {
+			if (updatedVisit.visit_techs?.length > 0) {
 				for (const vt of updatedVisit.visit_techs) {
-					await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id, "visits"] });
-					if (action === "complete") {
-						await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id] });
-					}
+					queryClient.setQueryData<JobVisit[]>(
+						["technicians", vt.tech_id, "visits"],
+						(old) => old?.map((v) => (v.id === updatedVisit.id ? updatedVisit : v)),
+					);
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
@@ -377,10 +380,47 @@ export const useCancelJobVisitMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id] });
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 			for (const vt of updatedVisit.visit_techs ?? []) {
-				await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id, "visits"] });
+				queryClient.setQueryData<JobVisit[]>(
+					["technicians", vt.tech_id, "visits"],
+					(old) => old?.map((v) => (v.id === updatedVisit.id ? updatedVisit : v)),
+				);
 				await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id] });
 			}
+			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+		},
+	});
+};
+
+// ============================================
+// TIME TRACKING MUTATIONS
+// ============================================
+
+export const useClockInMutation = (): UseMutationResult<
+	ClockInResult,
+	Error,
+	{ visitId: string; techId: string }
+> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ visitId, techId }) => jobApi.clockInVisit(visitId, techId),
+		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({ queryKey: ["technicians", variables.techId, "visits"] });
+		},
+	});
+};
+
+export const useClockOutMutation = (): UseMutationResult<
+	ClockOutResult,
+	Error,
+	{ visitId: string; techId: string }
+> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ visitId, techId }) => jobApi.clockOutVisit(visitId, techId),
+		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({ queryKey: ["technicians", variables.techId, "visits"] });
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits", variables.visitId] });
 		},
 	});
 };

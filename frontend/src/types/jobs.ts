@@ -145,6 +145,35 @@ export interface JobVisitTechnician {
 	};
 }
 
+export interface VisitTechTimeEntry {
+	id: string;
+	visit_id: string;
+	tech_id: string;
+	tech: { id: string; name: string };
+	clocked_in_at: Date | string;
+	clocked_out_at: Date | string | null;
+	hours_worked: number | null;
+	line_item_id: string | null;
+	created_at: Date | string;
+}
+
+export interface ClockInResult {
+	id: string;
+	visit_id: string;
+	tech_id: string;
+	clocked_in_at: Date | string;
+	clocked_out_at: null;
+	hours_worked: null;
+	line_item_id: null;
+	tech: { id: string; name: string };
+}
+
+export interface ClockOutResult {
+	entry: VisitTechTimeEntry;
+	line_item: VisitLineItem;
+	is_last_tech: boolean;
+}
+
 export interface JobSummary {
 	id: string;
 	name: string;
@@ -334,6 +363,7 @@ export interface JobVisit extends PricingBreakdown {
 	visit_techs: JobVisitTechnician[];
 	notes?: JobNote[];
 	line_items?: VisitLineItem[];
+	time_entries?: VisitTechTimeEntry[];
 }
 
 export interface CreateJobVisitInput {

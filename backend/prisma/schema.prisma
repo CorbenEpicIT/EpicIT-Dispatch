@@ -186,6 +186,7 @@ enum DispatcherRole {
 model organization {
   id        String  @id @default(uuid())
   name      String
+  timezone  String  @default("America/Chicago") // IANA timezone identifier
   logo_url  String?
   phone     String?
   address   String?
@@ -587,7 +588,8 @@ model job_visit {
   actual_start_at      DateTime?
   actual_end_at        DateTime?
 
-  status visit_status @default(Scheduled)
+  status              visit_status @default(Scheduled)
+  cancellation_reason String?
 
   subtotal        Decimal  @default(0) @db.Decimal(10, 2)
   tax_rate        Decimal  @default(0) @db.Decimal(5, 4)
@@ -604,6 +606,7 @@ model job_visit {
   notes                job_note[]              @relation("VisitNotes")
   recurring_occurrence recurring_occurrence?   @relation("OccurrenceVisit")
   line_items           job_visit_line_item[]
+  time_entries         visit_tech_time_entry[]
   invoice_visits       invoice_visit[]
 
   @@index([job_id])
@@ -633,6 +636,7 @@ model job_visit_line_item {
 
   sort_order Int @default(0)
   created_at DateTime @default(now())
+  time_entry visit_tech_time_entry?
 
   @@index([visit_id])
   @@index([sort_order])
@@ -648,6 +652,30 @@ model job_visit_technician {
   @@id([visit_id, tech_id])
   @@index([tech_id])
   @@index([visit_id])
+}
+
+model visit_tech_time_entry {
+  id             String    @id @default(uuid())
+
+  visit_id       String
+  visit          job_visit  @relation(fields: [visit_id], references: [id], onDelete: Cascade)
+
+  tech_id        String
+  tech           technician @relation(fields: [tech_id], references: [id])
+
+  clocked_in_at  DateTime
+  clocked_out_at DateTime?
+  hours_worked   Decimal?  @db.Decimal(8, 4)
+
+  line_item_id   String?   @unique
+  line_item      job_visit_line_item? @relation(fields: [line_item_id], references: [id])
+
+  created_at     DateTime  @default(now())
+
+  @@index([visit_id])
+  @@index([tech_id])
+  @@index([visit_id, tech_id])
+  @@index([clocked_out_at])
 }
 
 model job_note {
@@ -917,8 +945,10 @@ model technician {
   hire_date   DateTime
   coords      Json              @default("{}")
   last_login  DateTime          @default(now())
+  hourly_rate Decimal           @default(0) @db.Decimal(10, 2)
 
-  visit_techs job_visit_technician[]
+  visit_techs  job_visit_technician[]
+  time_entries visit_tech_time_entry[]
 
   created_client_notes      client_note[]  @relation("ClientNoteCreator")
   last_edited_client_notes  client_note[]  @relation("ClientNoteEditor")

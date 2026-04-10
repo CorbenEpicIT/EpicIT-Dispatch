@@ -8,7 +8,7 @@ import JobNoteManager from "../../components/jobs/JobNoteManager";
 import TechnicianQuoteModal from "../../components/quotes/TechnicianQuoteModal";
 import { VisitStatusColors, type VisitStatus, type LifecycleAction } from "../../types/jobs";
 import { QuoteStatusColors } from "../../types/quotes";
-import { formatDateTime, formatTime } from "../../util/util";
+import { formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
 
 const CONFIRM_ACTIONS = new Set<LifecycleAction>(["drive", "arrive", "complete"]);
@@ -16,6 +16,7 @@ const CONFIRM_ACTIONS = new Set<LifecycleAction>(["drive", "arrive", "complete"]
 export default function TechnicianVisitDetailPage() {
 	const { visitId } = useParams<{ visitId: string }>();
 	const { user } = useAuthStore();
+	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 	const { data: visit, isLoading } = useJobVisitByIdQuery(visitId!);
 	const [pendingAction, setPendingAction] = useState<LifecycleAction | null>(null);
 
@@ -146,7 +147,7 @@ export default function TechnicianVisitDetailPage() {
 						{visit.name || "Job Visit"}
 					</h1>
 					<p className="text-zinc-400 text-sm">
-						{formatDateTime(visit.scheduled_start_at)}
+						{formatDateTime(visit.scheduled_start_at, tz)}
 					</p>
 					{job && (
 						<p className="text-zinc-500 text-sm mt-1">
@@ -276,9 +277,9 @@ export default function TechnicianVisitDetailPage() {
 								</h3>
 								<div className="space-y-1">
 									<p className="text-white">
-										{formatDateTime(visit.scheduled_start_at)}{" "}
+										{formatDateTime(visit.scheduled_start_at, tz)}{" "}
 										-{" "}
-										{formatTime(visit.scheduled_end_at)}
+										{formatTime(visit.scheduled_end_at, tz)}
 									</p>
 
 									{visit.arrival_constraint === "at" &&
@@ -342,13 +343,13 @@ export default function TechnicianVisitDetailPage() {
 										{visit.actual_start_at && (
 											<p className="text-white text-sm">
 												Started:{" "}
-												{formatDateTime(visit.actual_start_at)}
+												{formatDateTime(visit.actual_start_at, tz)}
 											</p>
 										)}
 										{visit.actual_end_at && (
 											<p className="text-white text-sm">
 												Ended:{" "}
-												{formatDateTime(visit.actual_end_at)}
+												{formatDateTime(visit.actual_end_at, tz)}
 											</p>
 										)}
 									</div>

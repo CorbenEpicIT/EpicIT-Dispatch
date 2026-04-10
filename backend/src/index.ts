@@ -64,8 +64,10 @@ import {
 	acceptJobVisit,
 	deleteJobVisit,
 	applyVisitTransition,
+	cancelJobVisit,
 	LIFECYCLE_TRANSITIONS,
 } from "./controllers/jobVisitsController.js";
+import { clockInVisit, clockOutVisit } from "./controllers/visitTimeEntriesController.js";
 import * as recurringPlansController from "./controllers/recurringPlansController.js";
 import * as recurringPlanNotesController from "./controllers/recurringPlanNotesController.js";
 import {
@@ -1428,6 +1430,110 @@ app.post("/job-visits/:id/accept", async (req, res, next) => {
 				);
 		}
 
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ── Time tracking ─────────────────────────────────────────────────────────────
+
+app.post("/job-visits/:id/clock-in", async (req, res, next) => {
+	try {
+		const { tech_id } = req.body as { tech_id?: string };
+		if (!tech_id) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
+			);
+		}
+		const result = await clockInVisit(req.params.id, tech_id, getUserContext(req));
+		if (result.err) {
+			if (result.err.startsWith("ALREADY_CLOCKED_IN:")) {
+				return res.status(409).json(createErrorResponse(ErrorCodes.CONFLICT, result.err));
+			}
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/clock-out", async (req, res, next) => {
+	try {
+		const { tech_id } = req.body as { tech_id?: string };
+		if (!tech_id) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
+			);
+		}
+		const result = await clockOutVisit(req.params.id, tech_id, getUserContext(req));
+		if (result.err) {
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ── Lifecycle actions ────────────────────────────────────────────────────────
+
+app.post("/job-visits/:id/start", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "start", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/pause", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "pause", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/resume", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "resume", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/complete", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "complete", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/cancel", async (req, res, next) => {
+	try {
+		const { cancellation_reason } = req.body as { cancellation_reason?: string };
+		const result = await cancelJobVisit(req.params.id, cancellation_reason ?? "", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);
