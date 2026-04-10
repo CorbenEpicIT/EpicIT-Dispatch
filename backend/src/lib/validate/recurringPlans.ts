@@ -67,7 +67,7 @@ export const createRecurringPlanSchema = z
 
 		starts_at: z.string().datetime("Invalid start date"),
 		ends_at: z.string().datetime("Invalid end date").optional().nullable(),
-		timezone: z.string().optional().default("America/Chicago"),
+		timezone: z.string().optional().default("UTC"),
 		generation_window_days: z
 			.number()
 			.int()
