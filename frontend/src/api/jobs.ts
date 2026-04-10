@@ -2,6 +2,7 @@ import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type {
 	CreateJobInput,
+	UpdateJobInput,
 	Job,
 	CreateJobNoteInput,
 	JobNote,
@@ -45,7 +46,7 @@ export const createJob = async (input: CreateJobInput): Promise<Job> => {
 	return response.data.data!;
 };
 
-export const updateJob = async (id: string, updates: Partial<Job>): Promise<Job> => {
+export const updateJob = async (id: string, updates: UpdateJobInput): Promise<Job> => {
 	const response = await api.patch<ApiResponse<Job>>(`/jobs/${id}`, updates);
 
 	if (!response.data.success) {
@@ -175,50 +176,17 @@ export const deleteJobVisit = async (id: string): Promise<{ message: string }> =
 // JOB VISIT LIFECYCLE API
 // ============================================
 
-export const startJobVisit = async (visitId: string): Promise<JobVisit> => {
-	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/start`);
+export const transitionJobVisit = async (visitId: string, action: import("../types/jobs").LifecycleAction): Promise<JobVisit> => {
+	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/transition`, { action });
 
 	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to start visit");
+		throw new Error(response.data.error?.message || "Failed to update visit");
 	}
 
 	return response.data.data!;
 };
 
-export const pauseJobVisit = async (visitId: string): Promise<JobVisit> => {
-	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/pause`);
-
-	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to pause visit");
-	}
-
-	return response.data.data!;
-};
-
-export const resumeJobVisit = async (visitId: string): Promise<JobVisit> => {
-	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/resume`);
-
-	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to resume visit");
-	}
-
-	return response.data.data!;
-};
-
-export const completeJobVisit = async (visitId: string): Promise<JobVisit> => {
-	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/complete`);
-
-	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to complete visit");
-	}
-
-	return response.data.data!;
-};
-
-export const cancelJobVisit = async (
-	visitId: string,
-	cancellationReason: string
-): Promise<JobVisit> => {
+export const cancelJobVisit = async (visitId: string, cancellationReason: string): Promise<JobVisit> => {
 	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/cancel`, {
 		cancellation_reason: cancellationReason,
 	});

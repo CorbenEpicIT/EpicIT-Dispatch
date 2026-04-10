@@ -93,6 +93,36 @@ export const VisitStatusColors: Record<VisitStatus, string> = {
 	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
+export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete";
+
+export interface LifecycleTransition {
+	action: LifecycleAction;
+	label: string;
+	confirmLabel: string;
+	needsConfirm: boolean;
+	color: string;
+	confirmColor: string;
+}
+
+export const LIFECYCLE_TRANSITIONS: Partial<Record<VisitStatus, LifecycleTransition[]>> = {
+	Scheduled: [
+		{ action: "drive", label: "I'm Driving", confirmLabel: "Confirm Driving", needsConfirm: true, color: "bg-cyan-700 hover:bg-cyan-600 text-white", confirmColor: "bg-cyan-500 hover:bg-cyan-400 animate-pulse text-white" },
+	],
+	Driving: [
+		{ action: "arrive", label: "I've Arrived", confirmLabel: "Confirm Arrived", needsConfirm: true, color: "bg-purple-700 hover:bg-purple-600 text-white", confirmColor: "bg-purple-500 hover:bg-purple-400 animate-pulse text-white" },
+	],
+	OnSite: [
+		{ action: "start", label: "Start Work", confirmLabel: "Start Work", needsConfirm: false, color: "bg-blue-600 hover:bg-blue-700 text-white", confirmColor: "bg-blue-600 hover:bg-blue-700 text-white" },
+	],
+	InProgress: [
+		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-amber-600 hover:bg-amber-700 text-white", confirmColor: "bg-amber-600 hover:bg-amber-700 text-white" },
+		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-green-700 hover:bg-green-600 text-white", confirmColor: "bg-green-500 hover:bg-green-400 animate-pulse text-white" },
+	],
+	Paused: [
+		{ action: "resume", label: "Resume", confirmLabel: "Resume", needsConfirm: false, color: "bg-blue-600 hover:bg-blue-700 text-white", confirmColor: "bg-blue-600 hover:bg-blue-700 text-white" },
+	],
+};
+
 // Re-export constraint types from recurringPlans for convenience
 export { ArrivalConstraintValues, FinishConstraintValues };
 export type { ArrivalConstraint, FinishConstraint };
@@ -298,7 +328,7 @@ export interface JobVisit extends PricingBreakdown {
 	created_at?: Date | string;
 	updated_at?: Date | string;
 
-	job?: JobSummary & { client: ClientSummary; coords: Coordinates };
+	job?: JobSummary & { client: ClientSummary; coords: Coordinates; quote?: QuoteReference | null };
 	visit_techs: JobVisitTechnician[];
 	notes?: JobNote[];
 	line_items?: VisitLineItem[];

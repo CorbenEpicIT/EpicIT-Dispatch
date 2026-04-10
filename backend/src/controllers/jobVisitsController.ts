@@ -16,6 +16,8 @@ export interface UserContext {
 	userAgent?: string;
 }
 
+const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
+
 export const getAllJobVisits = async () => {
 	return await db.job_visit.findMany({
 		include: {
@@ -44,6 +46,7 @@ export const getJobVisitById = async (id: string) => {
 			job: {
 				include: {
 					client: true,
+					quote: true,
 				},
 			},
 			visit_techs: {
@@ -355,6 +358,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 					...(parsed.actual_end_at !== undefined && {
 						actual_end_at: parsed.actual_end_at,
 					}),
+					...(parsed.status !== undefined && { status: parsed.status }),
 				},
 				include: {
 					job: true,
@@ -436,7 +440,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 				let newJobStatus = existingVisit.job.status;
 				if (allVisits.every((v) => v.status === "Completed")) {
 					newJobStatus = "Completed";
-				} else if (allVisits.some((v) => v.status === "InProgress")) {
+				} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
 					newJobStatus = "InProgress";
 				} else if (allVisits.some((v) => v.status === "Scheduled")) {
 					newJobStatus = "Scheduled";
@@ -497,7 +501,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 			return tx.job_visit.findUnique({
 				where: { id },
 				include: {
-					job: { include: { client: true } },
+					job: { include: { client: true, quote: true } },
 					visit_techs: { include: { tech: true } },
 					line_items: { orderBy: { sort_order: "asc" } },
 					notes: true,
@@ -685,6 +689,125 @@ export const acceptJobVisit = async (
 		return { err: "Failed to accept job visit" };
 	}
 };
+
+// ── Visit lifecycle ───────────────────────────────────────────
+
+export const LIFECYCLE_TRANSITIONS = {
+	drive: { from: ["Scheduled"], to: "Driving" as const },
+	arrive: { from: ["Driving"], to: "OnSite" as const },
+	start: { from: ["OnSite"], to: "InProgress" as const },
+	pause: { from: ["InProgress"], to: "Paused" as const },
+	resume: { from: ["Paused"], to: "InProgress" as const },
+	complete: { from: ["InProgress", "Paused", "OnSite"], to: "Completed" as const },
+};
+
+export type LifecycleAction = keyof typeof LIFECYCLE_TRANSITIONS;
+
+export const applyVisitTransition = async (
+	id: string,
+	action: LifecycleAction,
+	context?: UserContext,
+) => {
+	try {
+		const { from, to } = LIFECYCLE_TRANSITIONS[action];
+
+		const existingVisit = await db.job_visit.findUnique({
+			where: { id },
+			include: { job: true, line_items: { select: { id: true } } },
+		});
+
+		if (!existingVisit) return { err: "Job visit not found" };
+
+		if (!from.includes(existingVisit.status)) {
+			return {
+				err: `Cannot ${action} a visit with status "${existingVisit.status}". Expected one of: ${from.join(", ")}.`,
+			};
+		}
+
+		const now = new Date();
+		const timestampData: Record<string, Date | null> = {};
+		if (action === "start" && !existingVisit.actual_start_at) {
+			timestampData.actual_start_at = now;
+		}
+		if (action === "complete") {
+			timestampData.actual_end_at = now;
+			if (!existingVisit.actual_start_at) timestampData.actual_start_at = now;
+		}
+
+		const updated = await db.$transaction(async (tx) => {
+			await tx.job_visit.update({
+				where: { id },
+				data: {
+					status: to,
+					...timestampData,
+				},
+			});
+
+			// ── Job status sync ───────────────────────────────────────────────
+			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
+			let newJobStatus = existingVisit.job.status;
+			if (allVisits.every((v) => v.status === "Completed")) {
+				newJobStatus = "Completed";
+			} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
+				newJobStatus = "InProgress";
+			} else if (allVisits.some((v) => v.status === "Scheduled")) {
+				newJobStatus = "Scheduled";
+			}
+			if (newJobStatus !== existingVisit.job.status) {
+				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
+			}
+
+			// ── Inventory deduction ───────────────────────────────────────────
+			const deductOn = existingVisit.job.deduct_inventory_on;
+			if (action === "complete" && existingVisit.status !== "Completed" && deductOn === "visit_completion") {
+				await deductInventoryForVisit(id, tx, context);
+			}
+			if (newJobStatus === "Completed" && existingVisit.job.status !== "Completed" && deductOn === "job_completion") {
+				for (const v of allVisits) {
+					await deductInventoryForVisit(v.id, tx, context);
+				}
+			}
+
+			// ── Activity log ──────────────────────────────────────────────────
+			await logActivity({
+				event_type: "job_visit.updated",
+				action: "updated",
+				entity_type: "job_visit",
+				entity_id: id,
+				actor_type: context?.techId ? "technician" : context?.dispatcherId ? "dispatcher" : "system",
+				actor_id: context?.techId || context?.dispatcherId,
+				changes: {
+					status: { old: existingVisit.status, new: to },
+					...Object.fromEntries(
+						Object.entries(timestampData).map(([k, v]) => [k, { old: null, new: v }]),
+					),
+					_job_id: { old: null, new: existingVisit.job_id },
+					_job_number: { old: null, new: existingVisit.job.job_number },
+				},
+				ip_address: context?.ipAddress,
+				user_agent: context?.userAgent,
+			});
+
+			return tx.job_visit.findUnique({
+				where: { id },
+				include: {
+					job: { include: { client: true, quote: true } },
+					visit_techs: { include: { tech: true } },
+					line_items: { orderBy: { sort_order: "asc" } },
+					notes: true,
+				},
+			});
+		});
+
+		return { err: "", item: updated };
+	} catch (e) {
+		log.error({ err: e }, `Failed to apply visit transition: ${action}`);
+		return { err: "Failed to update visit status" };
+	}
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const deleteJobVisit = async (id: string, context?: UserContext) => {
 	try {

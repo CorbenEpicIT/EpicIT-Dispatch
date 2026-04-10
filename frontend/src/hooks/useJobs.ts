@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import type {
 	CreateJobInput,
+	UpdateJobInput,
 	Job,
 	JobNote,
 	CreateJobNoteInput,
@@ -14,6 +15,7 @@ import type {
 	JobVisit,
 	CreateJobVisitInput,
 	UpdateJobVisitInput,
+	LifecycleAction,
 } from "../types/jobs";
 import * as jobApi from "../api/jobs";
 
@@ -80,7 +82,7 @@ export const useCreateJobMutation = (): UseMutationResult<Job, Error, CreateJobI
 export const useUpdateJobMutation = (): UseMutationResult<
 	Job,
 	Error,
-	{ id: string; updates: Partial<Job> }
+	{ id: string; updates: UpdateJobInput }
 > => {
 	const queryClient = useQueryClient();
 
@@ -311,26 +313,23 @@ export const useDeleteJobVisitMutation = (): UseMutationResult<
 // JOB VISIT LIFECYCLE MUTATIONS
 // ============================================
 
-export const useStartJobVisitMutation = (): UseMutationResult<JobVisit, Error, string> => {
+export const useVisitTransitionMutation = (): UseMutationResult<JobVisit, Error, { visitId: string; action: LifecycleAction }> => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (visitId: string) => jobApi.startJobVisit(visitId),
-		onSuccess: async (updatedVisit) => {
+		mutationFn: ({ visitId, action }) => jobApi.transitionJobVisit(visitId, action),
+		onSuccess: async (updatedVisit, { action }) => {
 			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id, "visits"],
-			});
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id],
-			});
+			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id, "visits"] });
+			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id] });
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 			if (updatedVisit.visit_techs && updatedVisit.visit_techs.length > 0) {
 				for (const vt of updatedVisit.visit_techs) {
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id, "visits"],
-					});
+					await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id, "visits"] });
+					if (action === "complete") {
+						await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id] });
+					}
 				}
 			}
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
@@ -338,88 +337,28 @@ export const useStartJobVisitMutation = (): UseMutationResult<JobVisit, Error, s
 	});
 };
 
-export const usePauseJobVisitMutation = (): UseMutationResult<JobVisit, Error, string> => {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: (visitId: string) => jobApi.pauseJobVisit(visitId),
-		onSuccess: async (updatedVisit) => {
-			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
-			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id, "visits"],
-			});
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id],
-			});
-			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-			if (updatedVisit.visit_techs && updatedVisit.visit_techs.length > 0) {
-				for (const vt of updatedVisit.visit_techs) {
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id, "visits"],
-					});
-				}
-			}
-			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
-		},
-	});
+export const useStartJobVisitMutation = () => {
+	const m = useVisitTransitionMutation();
+	return { ...m, mutate: (visitId: string) => m.mutate({ visitId, action: "start" }),
+		mutateAsync: (visitId: string) => m.mutateAsync({ visitId, action: "start" }) };
 };
 
-export const useResumeJobVisitMutation = (): UseMutationResult<JobVisit, Error, string> => {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: (visitId: string) => jobApi.resumeJobVisit(visitId),
-		onSuccess: async (updatedVisit) => {
-			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
-			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id, "visits"],
-			});
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id],
-			});
-			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-			if (updatedVisit.visit_techs && updatedVisit.visit_techs.length > 0) {
-				for (const vt of updatedVisit.visit_techs) {
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id, "visits"],
-					});
-				}
-			}
-			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
-		},
-	});
+export const usePauseJobVisitMutation = () => {
+	const m = useVisitTransitionMutation();
+	return { ...m, mutate: (visitId: string) => m.mutate({ visitId, action: "pause" }),
+		mutateAsync: (visitId: string) => m.mutateAsync({ visitId, action: "pause" }) };
 };
 
-export const useCompleteJobVisitMutation = (): UseMutationResult<JobVisit, Error, string> => {
-	const queryClient = useQueryClient();
+export const useResumeJobVisitMutation = () => {
+	const m = useVisitTransitionMutation();
+	return { ...m, mutate: (visitId: string) => m.mutate({ visitId, action: "resume" }),
+		mutateAsync: (visitId: string) => m.mutateAsync({ visitId, action: "resume" }) };
+};
 
-	return useMutation({
-		mutationFn: (visitId: string) => jobApi.completeJobVisit(visitId),
-		onSuccess: async (updatedVisit) => {
-			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
-			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id, "visits"],
-			});
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id],
-			});
-			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-			if (updatedVisit.visit_techs && updatedVisit.visit_techs.length > 0) {
-				for (const vt of updatedVisit.visit_techs) {
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id, "visits"],
-					});
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id],
-					});
-				}
-			}
-			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
-		},
-	});
+export const useCompleteJobVisitMutation = () => {
+	const m = useVisitTransitionMutation();
+	return { ...m, mutate: (visitId: string) => m.mutate({ visitId, action: "complete" }),
+		mutateAsync: (visitId: string) => m.mutateAsync({ visitId, action: "complete" }) };
 };
 
 export const useCancelJobVisitMutation = (): UseMutationResult<
@@ -428,29 +367,18 @@ export const useCancelJobVisitMutation = (): UseMutationResult<
 	{ visitId: string; cancellationReason: string }
 > => {
 	const queryClient = useQueryClient();
-
 	return useMutation({
 		mutationFn: ({ visitId, cancellationReason }) =>
 			jobApi.cancelJobVisit(visitId, cancellationReason),
 		onSuccess: async (updatedVisit) => {
 			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id, "visits"],
-			});
-			await queryClient.invalidateQueries({
-				queryKey: ["jobs", updatedVisit.job_id],
-			});
+			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id, "visits"] });
+			await queryClient.invalidateQueries({ queryKey: ["jobs", updatedVisit.job_id] });
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-			if (updatedVisit.visit_techs && updatedVisit.visit_techs.length > 0) {
-				for (const vt of updatedVisit.visit_techs) {
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id, "visits"],
-					});
-					await queryClient.invalidateQueries({
-						queryKey: ["technicians", vt.tech_id],
-					});
-				}
+			for (const vt of updatedVisit.visit_techs ?? []) {
+				await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id, "visits"] });
+				await queryClient.invalidateQueries({ queryKey: ["technicians", vt.tech_id] });
 			}
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},

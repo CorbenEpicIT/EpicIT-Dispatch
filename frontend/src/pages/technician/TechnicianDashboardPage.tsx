@@ -15,7 +15,7 @@ export default function TechnicianDashboardPage() {
 			.map((job) => ({
 				...job,
 				visits: (job.visits ?? []).filter((v) =>
-					v.visit_techs?.some((vt) => vt.tech?.name === user.name)
+					v.visit_techs?.some((vt) => vt.tech?.email === user.name)
 				),
 			}))
 			.filter((job) => job.visits.length > 0);

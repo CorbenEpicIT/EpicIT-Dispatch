@@ -61,6 +61,8 @@ import {
 	assignTechniciansToVisit,
 	acceptJobVisit,
 	deleteJobVisit,
+	applyVisitTransition,
+	LIFECYCLE_TRANSITIONS,
 } from "./controllers/jobVisitsController.js";
 import * as recurringPlansController from "./controllers/recurringPlansController.js";
 import * as recurringPlanNotesController from "./controllers/recurringPlanNotesController.js";
@@ -1452,6 +1454,33 @@ app.delete("/job-visits/:id", async (req, res, next) => {
 		next(err);
 	}
 });
+
+// ── Visit lifecycle routes ────────────────────────────────────────────────────
+
+const LIFECYCLE_ACTIONS = Object.keys(LIFECYCLE_TRANSITIONS) as (keyof typeof LIFECYCLE_TRANSITIONS)[];
+
+app.post("/job-visits/:id/transition", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const { action } = req.body;
+		if (!action || !LIFECYCLE_ACTIONS.includes(action)) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, `Invalid action. Must be one of: ${LIFECYCLE_ACTIONS.join(", ")}.`));
+		}
+		const context = getUserContext(req);
+		const result = await applyVisitTransition(id, action, context);
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ============================================
 // JOB NOTES

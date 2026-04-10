@@ -1,32 +1,30 @@
 import { useParams } from "react-router-dom";
-import { Clock, Play, Pause, CheckCircle2, Users } from "lucide-react";
+import { Clock, Play, Pause, CheckCircle2, Users, Car, MapPin, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
-import {
-	useJobVisitByIdQuery,
-	useStartJobVisitMutation,
-	usePauseJobVisitMutation,
-	useResumeJobVisitMutation,
-	useCompleteJobVisitMutation,
-} from "../../hooks/useJobs";
+import { useJobVisitByIdQuery, useVisitTransitionMutation } from "../../hooks/useJobs";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
-import { VisitStatusColors, type VisitStatus } from "../../types/jobs";
+import TechnicianQuoteModal from "../../components/quotes/TechnicianQuoteModal";
+import { VisitStatusColors, type VisitStatus, type LifecycleAction } from "../../types/jobs";
+import { QuoteStatusColors } from "../../types/quotes";
 import { formatDateTime, formatTime } from "../../util/util";
+import { useAuthStore } from "../../auth/authStore";
+
+const CONFIRM_ACTIONS = new Set<LifecycleAction>(["drive", "arrive", "complete"]);
 
 export default function TechnicianVisitDetailPage() {
 	const { visitId } = useParams<{ visitId: string }>();
+	const { user } = useAuthStore();
 	const { data: visit, isLoading } = useJobVisitByIdQuery(visitId!);
-	const [confirmComplete, setConfirmComplete] = useState(false);
+	const [pendingAction, setPendingAction] = useState<LifecycleAction | null>(null);
 
-	const startVisitMutation = useStartJobVisitMutation();
-	const pauseVisitMutation = usePauseJobVisitMutation();
-	const resumeVisitMutation = useResumeJobVisitMutation();
-	const completeVisitMutation = useCompleteJobVisitMutation();
+	const transitionMutation = useVisitTransitionMutation();
+	const [showQuoteModal, setShowQuoteModal] = useState(false);
 
 	// Reset confirm state when visit status changes
 	useEffect(() => {
-		setConfirmComplete(false);
+		setPendingAction(null);
 	}, [visit?.status]);
 
 	if (isLoading) {
@@ -45,40 +43,16 @@ export default function TechnicianVisitDetailPage() {
 		);
 	}
 
-	const handleStartVisit = async () => {
-		try {
-			await startVisitMutation.mutateAsync(visitId!);
-		} catch (error) {
-			console.error("Failed to start visit:", error);
-		}
-	};
-
-	const handlePauseVisit = async () => {
-		try {
-			await pauseVisitMutation.mutateAsync(visitId!);
-		} catch (error) {
-			console.error("Failed to pause visit:", error);
-		}
-	};
-
-	const handleResumeVisit = async () => {
-		try {
-			await resumeVisitMutation.mutateAsync(visitId!);
-		} catch (error) {
-			console.error("Failed to resume visit:", error);
-		}
-	};
-
-	const handleCompleteVisit = async () => {
-		if (!confirmComplete) {
-			setConfirmComplete(true);
+	const handleTransition = async (action: LifecycleAction) => {
+		if (CONFIRM_ACTIONS.has(action) && pendingAction !== action) {
+			setPendingAction(action);
 			return;
 		}
 		try {
-			await completeVisitMutation.mutateAsync(visitId!);
-			setConfirmComplete(false);
+			await transitionMutation.mutateAsync({ visitId: visitId!, action });
+			setPendingAction(null);
 		} catch (error) {
-			console.error("Failed to complete visit:", error);
+			console.error("Failed to transition visit:", error);
 		}
 	};
 
@@ -166,9 +140,9 @@ export default function TechnicianVisitDetailPage() {
 	return (
 		<div className="text-white space-y-6">
 			{/* Header */}
-			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
+			<div className="flex flex-col gap-3 mb-6 sm:grid sm:grid-cols-2 sm:gap-4 sm:items-center">
 				<div>
-					<h1 className="text-3xl font-bold text-white mb-2">
+					<h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
 						{visit.name || "Job Visit"}
 					</h1>
 					<p className="text-zinc-400 text-sm">
@@ -181,7 +155,7 @@ export default function TechnicianVisitDetailPage() {
 					)}
 				</div>
 
-				<div className="justify-self-end flex items-center gap-3 flex-wrap">
+				<div className="flex flex-col gap-2 sm:justify-self-end sm:flex-row sm:items-center sm:gap-3 sm:flex-wrap">
 					<span
 						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 							VisitStatusColors[visit.status as VisitStatus] ||
@@ -191,47 +165,77 @@ export default function TechnicianVisitDetailPage() {
 						{visit.status}
 					</span>
 
-					{visit.status === "Scheduled" && (
+					{visit.visit_techs?.some((vt) => vt.tech?.email === user?.name) && visit.status === "Scheduled" && (
 						<button
-							onClick={handleStartVisit}
-							disabled={startVisitMutation.isPending}
-							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
+							onClick={() => handleTransition("drive")}
+							disabled={transitionMutation.isPending}
+							className={`flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] w-full sm:w-auto rounded-md text-sm font-medium disabled:opacity-50 transition-colors ${
+								pendingAction === "drive"
+									? "bg-cyan-500 hover:bg-cyan-400 animate-pulse"
+									: "bg-cyan-700 hover:bg-cyan-600"
+							}`}
+						>
+							<Car size={16} />
+							{pendingAction === "drive" ? "Confirm Driving" : "I'm Driving"}
+						</button>
+					)}
+
+					{visit.visit_techs?.some((vt) => vt.tech?.email === user?.name) && visit.status === "Driving" && (
+						<button
+							onClick={() => handleTransition("arrive")}
+							disabled={transitionMutation.isPending}
+							className={`flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] w-full sm:w-auto rounded-md text-sm font-medium disabled:opacity-50 transition-colors ${
+								pendingAction === "arrive"
+									? "bg-purple-500 hover:bg-purple-400 animate-pulse"
+									: "bg-purple-700 hover:bg-purple-600"
+							}`}
+						>
+							<MapPin size={16} />
+							{pendingAction === "arrive" ? "Confirm Arrived" : "I've Arrived"}
+						</button>
+					)}
+
+					{visit.visit_techs?.some((vt) => vt.tech?.email === user?.name) && visit.status === "OnSite" && (
+						<button
+							onClick={() => handleTransition("start")}
+							disabled={transitionMutation.isPending}
+							className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] w-full sm:w-auto bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
 						>
 							<Play size={16} />
 							Start Visit
 						</button>
 					)}
 
-					{visit.status === "InProgress" && (
+					{visit.visit_techs?.some((vt) => vt.tech?.email === user?.name) && visit.status === "InProgress" && (
 						<>
 							<button
-								onClick={handlePauseVisit}
-								disabled={pauseVisitMutation.isPending}
-								className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
+								onClick={() => handleTransition("pause")}
+								disabled={transitionMutation.isPending}
+								className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] w-full sm:w-auto bg-amber-600 hover:bg-amber-700 rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
 							>
 								<Pause size={16} />
 								Pause
 							</button>
 							<button
-								onClick={handleCompleteVisit}
-								disabled={completeVisitMutation.isPending}
-								className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 transition-colors ${
-									confirmComplete
+								onClick={() => handleTransition("complete")}
+								disabled={transitionMutation.isPending}
+								className={`flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] w-full sm:w-auto rounded-md text-sm font-medium disabled:opacity-50 transition-colors ${
+									pendingAction === "complete"
 										? "bg-green-500 hover:bg-green-400 animate-pulse"
 										: "bg-green-700 hover:bg-green-600"
 								}`}
 							>
 								<CheckCircle2 size={16} />
-								{confirmComplete ? "Confirm Complete" : "Complete"}
+								{pendingAction === "complete" ? "Confirm Complete" : "Complete"}
 							</button>
 						</>
 					)}
 
-					{visit.status === "Paused" && (
+					{visit.visit_techs?.some((vt) => vt.tech?.email === user?.name) && visit.status === "Paused" && (
 						<button
-							onClick={handleResumeVisit}
-							disabled={resumeVisitMutation.isPending}
-							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
+							onClick={() => handleTransition("resume")}
+							disabled={transitionMutation.isPending}
+							className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] w-full sm:w-auto bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
 						>
 							<Play size={16} />
 							Resume
@@ -242,8 +246,8 @@ export default function TechnicianVisitDetailPage() {
 
 			{/* Visit Information (2/3) + Client/Job Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				<div className="lg:col-span-2">
-					<Card title="Visit Information" className="h-full">
+				<div className="lg:col-span-2 space-y-4">
+					<Card title="Visit Information">
 						<div className="space-y-4">
 							{visit.description && (
 								<div>
@@ -378,8 +382,52 @@ export default function TechnicianVisitDetailPage() {
 									</div>
 								</div>
 							)}
+
 						</div>
 					</Card>
+
+					{job?.quote && (
+						<Card title="Quote">
+							<div className="space-y-3">
+								<div>
+									<h3 className="text-zinc-400 text-sm mb-1">Quote</h3>
+									<p className="text-white font-medium">
+										#{job.quote.quote_number} · {job.quote.title}
+									</p>
+								</div>
+								<div>
+									<h3 className="text-zinc-400 text-sm mb-1">Status</h3>
+									<span
+										className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+											QuoteStatusColors[job.quote.status as keyof typeof QuoteStatusColors] ??
+											"bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
+										}`}
+									>
+										{job.quote.status}
+									</span>
+								</div>
+								<div>
+									<h3 className="text-zinc-400 text-sm mb-1">Total</h3>
+									<p className="text-white font-medium">
+										${Number(job.quote.total).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+									</p>
+								</div>
+								<button
+									onClick={() => setShowQuoteModal(true)}
+									className="w-full flex items-center justify-center gap-2 mt-1 px-3 py-2 rounded-md text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 transition-colors"
+								>
+									<ChevronRight size={14} />
+									View Full Quote
+								</button>
+							</div>
+						</Card>
+					)}
+					{showQuoteModal && job?.quote?.id && (
+						<TechnicianQuoteModal
+							quoteId={job.quote.id}
+							onClose={() => setShowQuoteModal(false)}
+						/>
+					)}
 				</div>
 
 				<div className="lg:col-span-1 space-y-4">
