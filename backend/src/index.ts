@@ -1,6 +1,8 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import { z } from "zod";
+import { Prisma } from "../generated/prisma/client.js";
 import type { Request, Response, NextFunction } from "express";
 import {
 	ErrorCodes,
@@ -61,7 +63,11 @@ import {
 	assignTechniciansToVisit,
 	acceptJobVisit,
 	deleteJobVisit,
+	applyVisitTransition,
+	cancelJobVisit,
+	LIFECYCLE_TRANSITIONS,
 } from "./controllers/jobVisitsController.js";
+import { clockInVisit, clockOutVisit } from "./controllers/visitTimeEntriesController.js";
 import * as recurringPlansController from "./controllers/recurringPlansController.js";
 import * as recurringPlanNotesController from "./controllers/recurringPlanNotesController.js";
 import {
@@ -114,7 +120,7 @@ import {
 	adjustInventoryStock,
 } from "./controllers/inventoryController.js";
 import multer from "multer";
-import { uploadFile } from "./services/wasabiService.js";
+import { uploadFile, deleteFile } from "./services/wasabiService.js";
 import {
 	getOverviewMetrics,
 	getRevenueYTD,
@@ -1457,6 +1463,110 @@ app.post("/job-visits/:id/accept", async (req, res, next) => {
 	}
 });
 
+// ── Time tracking ─────────────────────────────────────────────────────────────
+
+app.post("/job-visits/:id/clock-in", async (req, res, next) => {
+	try {
+		const { tech_id } = req.body as { tech_id?: string };
+		if (!tech_id) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
+			);
+		}
+		const result = await clockInVisit(req.params.id, tech_id, getUserContext(req));
+		if (result.err) {
+			if (result.err.startsWith("ALREADY_CLOCKED_IN:")) {
+				return res.status(409).json(createErrorResponse(ErrorCodes.CONFLICT, result.err));
+			}
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/clock-out", async (req, res, next) => {
+	try {
+		const { tech_id } = req.body as { tech_id?: string };
+		if (!tech_id) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
+			);
+		}
+		const result = await clockOutVisit(req.params.id, tech_id, getUserContext(req));
+		if (result.err) {
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ── Lifecycle actions ────────────────────────────────────────────────────────
+
+app.post("/job-visits/:id/start", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "start", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/pause", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "pause", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/resume", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "resume", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/complete", async (req, res, next) => {
+	try {
+		const result = await applyVisitTransition(req.params.id, "complete", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/job-visits/:id/cancel", async (req, res, next) => {
+	try {
+		const { cancellation_reason } = req.body as { cancellation_reason?: string };
+		const result = await cancelJobVisit(req.params.id, cancellation_reason ?? "", getUserContext(req));
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
 app.delete("/job-visits/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
@@ -1479,6 +1589,33 @@ app.delete("/job-visits/:id", async (req, res, next) => {
 		next(err);
 	}
 });
+
+// ── Visit lifecycle routes ────────────────────────────────────────────────────
+
+const LIFECYCLE_ACTIONS = Object.keys(LIFECYCLE_TRANSITIONS) as (keyof typeof LIFECYCLE_TRANSITIONS)[];
+
+app.post("/job-visits/:id/transition", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const { action } = req.body;
+		if (!action || !LIFECYCLE_ACTIONS.includes(action)) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, `Invalid action. Must be one of: ${LIFECYCLE_ACTIONS.join(", ")}.`));
+		}
+		const context = getUserContext(req);
+		const result = await applyVisitTransition(id, action, context);
+		if (result.err) {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ============================================
 // JOB NOTES
@@ -3442,6 +3579,92 @@ app.post(
 		}
 	},
 );
+
+// ── Org settings ─────────────────────────────────────────────────────────────
+
+app.get("/org", verifyToken, requireRole("dispatch"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id;
+		if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
+		const org = await db.organization.findUnique({
+			where: { id: orgId },
+			select: { id: true, name: true, logo_url: true, phone: true, address: true, coords: true, email: true, website: true, tax_rate: true },
+		});
+		if (!org) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
+		res.json(createSuccessResponse(org));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.patch("/org", verifyToken, requireRole("dispatch"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id;
+		if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
+		const coordsSchema = z.object({ lat: z.number(), lon: z.number() }).nullable().optional();
+		const schema = z.object({
+			name:    z.string().min(1).max(100).optional(),
+			phone:   z.string().max(30).nullable().optional(),
+			address: z.string().max(200).nullable().optional(),
+			coords:  coordsSchema,
+			email:   z.string().email().nullable().optional(),
+			website: z.string().max(100).nullable().optional(),
+		});
+		const parsed = schema.safeParse(req.body);
+		if (!parsed.success) return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.issues[0].message));
+		const { coords, ...rest } = parsed.data;
+		const org = await db.organization.update({
+			where: { id: orgId },
+			data: {
+				...rest,
+				...(coords !== undefined ? { coords: coords ?? Prisma.JsonNull } : {}),
+			},
+			select: { id: true, name: true, logo_url: true, phone: true, address: true, coords: true, email: true, website: true, tax_rate: true },
+		});
+		res.json(createSuccessResponse(org));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post(
+	"/org/logo",
+	verifyToken,
+	requireRole("dispatch"),
+	inventoryUpload.single("image"),
+	async (req, res, next) => {
+		try {
+			if (!req.file) {
+				return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No image file provided"));
+			}
+			const orgId = req.user!.organization_id;
+			if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
+
+			const url = await uploadFile(req.file.buffer, req.file.mimetype, req.file.originalname, "org");
+			await db.organization.update({ where: { id: orgId }, data: { logo_url: url } });
+			res.json(createSuccessResponse({ url }));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+app.delete("/org/logo", verifyToken, requireRole("dispatch"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id;
+		if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
+		const org = await db.organization.findUnique({ where: { id: orgId }, select: { logo_url: true } });
+		if (org?.logo_url) {
+			await deleteFile(org.logo_url);
+		}
+		await db.organization.update({ where: { id: orgId }, data: { logo_url: null } });
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ── Inventory threshold ───────────────────────────────────────────────────────
 
 app.patch("/inventory/:id/threshold", async (req, res, next) => {
 	try {

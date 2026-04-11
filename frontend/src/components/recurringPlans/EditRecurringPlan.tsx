@@ -450,6 +450,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 				generate_days_before: getValue("billingConfig").generateDaysBefore,
 				payment_terms_days: getValue("billingConfig").paymentTermsDays,
 				memo_template: getValue("billingConfig").memoTemplate || undefined,
+				auto_send: false,
 			} : undefined,
 			rule: preparedRule,
 			line_items: preparedLineItems,

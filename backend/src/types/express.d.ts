@@ -5,6 +5,7 @@ declare global {
                 uid: string;
                 email: string;
                 role: string;
+                organization_id: string | null;
             }
         }
     }

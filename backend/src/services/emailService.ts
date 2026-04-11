@@ -71,6 +71,10 @@ const generateOTPEmail = (otp: string): string => `
   </html>
 `;
 export const sendOTPEmail = async (to: string, otp: string) => {
+	if (process.env.NODE_ENV !== "production") {
+		log.info({ to, otp }, "[DEV] Skipping OTP email — use 000000 to verify");
+		return createSuccessResponse(null);
+	}
 	try {
 		// sendEmail(to, "otp-verification", { otp });
 		await client.sendEmail({
@@ -199,6 +203,7 @@ const generateInvoiceEmailHtml = (
 const fmtDate = (d: Date | string | null | undefined): string | null => {
 	if (!d) return null;
 	return new Date(d).toLocaleDateString("en-US", {
+		timeZone: "UTC",
 		month: "long",
 		day: "numeric",
 		year: "numeric",

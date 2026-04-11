@@ -36,9 +36,10 @@ export const uploadFile = async (
 	file: Buffer,
 	contentType: string,
 	originalName: string,
+	folder: string = "inventory",
 ): Promise<string> => {
 	const ext = originalName.split(".").pop() || "jpg";
-	const key = `inventory/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+	const key = `${folder}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
 
 	await getClient().send(
 		new PutObjectCommand({

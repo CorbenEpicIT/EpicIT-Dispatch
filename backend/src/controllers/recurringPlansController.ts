@@ -24,12 +24,78 @@ import {
 	OccurrenceGenerationResult,
 	VisitGenerationResult,
 } from "../types/common.js";
-import { addDays, addWeeks, addMonths, addYears, parseISO } from "date-fns";
+import { addDays } from "date-fns";
 import {
 	calculateNextInvoiceAt,
 	type ScheduleFrequency,
 } from "../lib/invoiceSchedule.js";
 import { log } from "../services/appLogger.js";
+
+// ─── Timezone-safe date helpers ───────────────────────────────────────────────
+// All occurrence generation works with "YYYY-MM-DD" calendar-date strings in the
+// plan's IANA timezone so that day/weekday/month checks are correct regardless of
+// the server's system timezone (which is always UTC in production).
+
+/** Convert a UTC instant to a "YYYY-MM-DD" calendar-date string in an IANA timezone. */
+function toDateStr(date: Date, timezone: string): string {
+	return date.toLocaleDateString("en-CA", { timeZone: timezone }); // "YYYY-MM-DD"
+}
+
+/** Return the later of two "YYYY-MM-DD" strings (lexicographic = chronological). */
+function laterDate(a: string, b: string): string {
+	return a > b ? a : b;
+}
+
+/** Add N calendar days to a "YYYY-MM-DD" string. */
+function dateStrAddDays(dateStr: string, days: number): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
+}
+
+/** Add N calendar months to a "YYYY-MM-DD" string (end-of-month clamped by JS Date). */
+function dateStrAddMonths(dateStr: string, months: number): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(Date.UTC(y, m - 1 + months, d)).toISOString().split("T")[0];
+}
+
+/** Add N calendar years to a "YYYY-MM-DD" string. */
+function dateStrAddYears(dateStr: string, years: number): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(Date.UTC(y + years, m - 1, d)).toISOString().split("T")[0];
+}
+
+/**
+ * Convert a local date + time in an IANA timezone to a UTC Date.
+ * Uses only the Intl API — no external dependencies required.
+ *
+ * @param dateStr  "YYYY-MM-DD" calendar date in the given timezone
+ * @param hhmm     "HH:MM" local wall-clock time
+ * @param timezone IANA timezone string, e.g. "America/Chicago"
+ */
+function localToUTC(dateStr: string, hhmm: string, timezone: string): Date {
+	// Treat the desired local time as a UTC instant (initial approximation)
+	const approx = new Date(`${dateStr}T${hhmm}:00Z`);
+	// Ask Intl what local clock the timezone shows for that UTC instant
+	// 'sv' locale produces "YYYY-MM-DD HH:MM:SS" — easy to parse back as UTC
+	const localRepr = approx.toLocaleString("sv", { timeZone: timezone });
+	const localTime = new Date(localRepr.replace(" ", "T") + "Z");
+	// offsetMs = local reading − UTC instant (positive for UTC+, negative for UTC−)
+	const offsetMs = localTime.getTime() - approx.getTime();
+	// Subtract the offset to get the UTC instant that equals the desired local time
+	return new Date(approx.getTime() - offsetMs);
+}
+
+/** Parse "HH:MM" to total minutes from midnight. */
+function parseHHMM(hhmm: string): number {
+	const [h, m] = hhmm.split(":").map(Number);
+	return h * 60 + m;
+}
+
+/** Convert total minutes from midnight to "HH:MM" (clamped to 23:59). */
+function formatHHMM(totalMinutes: number): string {
+	const clamped = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
+	return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
 
 export interface UserContext {
 	techId?: string;
@@ -106,6 +172,7 @@ async function generateOccurrencesForPlan(
 		new Date(plan.starts_at),
 		startDate,
 		generationEndDate,
+		plan.timezone ?? "UTC",
 	);
 
 	let generated = 0;
@@ -152,137 +219,89 @@ function calculateOccurrenceDates(
 	planStartDate: Date,
 	rangeStart: Date,
 	rangeEnd: Date,
+	timezone: string,
 ): Array<{ start: Date; end: Date }> {
 	const dates: Array<{ start: Date; end: Date }> = [];
-	let currentDate = new Date(
-		Math.max(planStartDate.getTime(), rangeStart.getTime()),
+
+	// Work with calendar-date strings in the plan's timezone so that day/weekday/
+	// month comparisons are correct independent of the server's system timezone.
+	const startDateStr = laterDate(
+		toDateStr(planStartDate, timezone),
+		toDateStr(rangeStart, timezone),
 	);
+	const endDateStr = toDateStr(rangeEnd, timezone);
+	let currentDateStr = startDateStr;
 
-	let startHours = 9; // Default 9 AM
-	let startMinutes = 0;
-
-	// Determine start time based on arrival constraint
+	// ── Derive visit start time (HH:MM) from arrival constraint ─────────────
+	let startHHMM = "09:00";
 	if (rule.arrival_constraint === "at" && rule.arrival_time) {
-		const [h, m] = rule.arrival_time.split(":").map(Number);
-		startHours = h;
-		startMinutes = m;
-	} else if (
-		rule.arrival_constraint === "between" &&
-		rule.arrival_window_start
-	) {
-		const [h, m] = rule.arrival_window_start.split(":").map(Number);
-		startHours = h;
-		startMinutes = m;
+		startHHMM = rule.arrival_time;
+	} else if (rule.arrival_constraint === "between" && rule.arrival_window_start) {
+		startHHMM = rule.arrival_window_start;
 	} else if (rule.arrival_constraint === "by" && rule.arrival_window_end) {
-		// For "by" constraint, calculate a reasonable start time before deadline
-		// Default to 4 hours before deadline, or 9 AM if deadline is earlier
-		const [deadlineH, deadlineM] = rule.arrival_window_end
-			.split(":")
-			.map(Number);
-		const deadlineMinutes = deadlineH * 60 + deadlineM;
-		const startTimeMinutes = Math.max(540, deadlineMinutes - 240); // 540 = 9:00 AM, 240 = 4 hours
-		startHours = Math.floor(startTimeMinutes / 60);
-		startMinutes = startTimeMinutes % 60;
+		// 4 hours before deadline, floor at 9 AM
+		const startM = Math.max(9 * 60, parseHHMM(rule.arrival_window_end) - 240);
+		startHHMM = formatHHMM(startM);
 	}
 
+	// ── Derive duration and end time from finish constraint ──────────────────
+	let durationMinutes = 120; // default 2 hours
+	if (
+		(rule.finish_constraint === "at" || rule.finish_constraint === "by") &&
+		rule.finish_time
+	) {
+		durationMinutes = Math.max(0, parseHHMM(rule.finish_time) - parseHHMM(startHHMM)) || 120;
+	}
+
+	// ── Day-of-week map (JS getUTCDay: 0=Sun…6=Sat) ─────────────────────────
 	const weekdayMap: Record<weekday, number> = {
-		MO: 1,
-		TU: 2,
-		WE: 3,
-		TH: 4,
-		FR: 5,
-		SA: 6,
-		SU: 0,
+		MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0,
 	};
 
-	while (currentDate <= rangeEnd) {
-		let shouldInclude = false;
+	while (currentDateStr <= endDateStr) {
+		const [year, month, day] = currentDateStr.split("-").map(Number);
+		// Build a UTC-midnight Date just to derive the day of week — no local time involved
+		const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
+		let shouldInclude = false;
 		switch (rule.frequency) {
 			case "daily":
 				shouldInclude = true;
 				break;
-
 			case "weekly":
-				const currentDay = currentDate.getDay();
-				shouldInclude = rule.by_weekday.some(
-					(wd) => weekdayMap[wd.weekday] === currentDay,
-				);
+				shouldInclude = rule.by_weekday.some((wd) => weekdayMap[wd.weekday] === dow);
 				break;
-
 			case "monthly":
-				if (rule.by_month_day !== null) {
-					shouldInclude = currentDate.getDate() === rule.by_month_day;
-				}
+				shouldInclude = rule.by_month_day !== null && day === rule.by_month_day;
 				break;
-
 			case "yearly":
-				if (rule.by_month !== null && rule.by_month_day !== null) {
-					shouldInclude =
-						currentDate.getMonth() + 1 === rule.by_month &&
-						currentDate.getDate() === rule.by_month_day;
-				}
+				shouldInclude =
+					rule.by_month !== null &&
+					rule.by_month_day !== null &&
+					month === rule.by_month &&
+					day === rule.by_month_day;
 				break;
 		}
 
 		if (shouldInclude) {
-			const occurrenceStart = new Date(currentDate);
-			occurrenceStart.setHours(startHours, startMinutes, 0, 0);
-
-			// Calculate end time based on finish constraint
-			let endHours = startHours;
-			let endMinutes = startMinutes;
-			let durationMinutes = 120; // Default 2 hours
-
-			if (rule.finish_constraint === "at" && rule.finish_time) {
-				const [h, m] = rule.finish_time.split(":").map(Number);
-				endHours = h;
-				endMinutes = m;
-				durationMinutes =
-					endHours * 60 +
-					endMinutes -
-					(startHours * 60 + startMinutes);
-			} else if (rule.finish_constraint === "by" && rule.finish_time) {
-				const [h, m] = rule.finish_time.split(":").map(Number);
-				endHours = h;
-				endMinutes = m;
-				durationMinutes =
-					endHours * 60 +
-					endMinutes -
-					(startHours * 60 + startMinutes);
-			} else {
-				// Default duration for "when_done" or unspecified
-				const endTimeMinutes =
-					startHours * 60 + startMinutes + durationMinutes;
-				endHours = Math.floor(endTimeMinutes / 60) % 24;
-				endMinutes = endTimeMinutes % 60;
-			}
-
-			if (durationMinutes <= 0) {
-				durationMinutes = 120; // Fallback to 2 hours
-			}
-
-			const occurrenceEnd = addMinutes(occurrenceStart, durationMinutes);
-
-			dates.push({
-				start: occurrenceStart,
-				end: occurrenceEnd,
-			});
+			const occurrenceStart = localToUTC(currentDateStr, startHHMM, timezone);
+			const occurrenceEnd   = addMinutes(occurrenceStart, durationMinutes);
+			dates.push({ start: occurrenceStart, end: occurrenceEnd });
 		}
 
-		// Increment date based on frequency and interval
+		// Advance to the next candidate calendar date
 		switch (rule.frequency) {
 			case "daily":
-				currentDate = addDays(currentDate, rule.interval);
+				currentDateStr = dateStrAddDays(currentDateStr, rule.interval);
 				break;
 			case "weekly":
-				currentDate = addDays(currentDate, 1); // Check each day for weekly
+				currentDateStr = dateStrAddDays(currentDateStr, 1); // check every day, filter by weekday above
 				break;
 			case "monthly":
-				currentDate = addMonths(currentDate, rule.interval);
+				currentDateStr = dateStrAddMonths(currentDateStr, rule.interval);
 				break;
 			case "yearly":
-				currentDate = addYears(currentDate, rule.interval);
+				currentDateStr = dateStrAddYears(currentDateStr, rule.interval);
 				break;
 		}
 	}
