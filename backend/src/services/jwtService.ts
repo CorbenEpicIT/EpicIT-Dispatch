@@ -13,7 +13,7 @@ interface User {
     email: string;
     phone: string | null;
     password: string;
-    last_login: Date;
+    last_login: Date | null;
 }
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;

@@ -1,11 +1,13 @@
 import z from "zod";
 
+const DispatcherRole = z.enum(["dispatcher", "admin"]);
+
 export const createDispatcherSchema = z.object({
 	organization_id: z.string().uuid("Valid organization ID is required").optional(),
 	name: z.string().min(1, "Dispatcher name is required"),
 	email: z.string().email("Valid email is required"),
 	phone: z.string().min(1, "Phone number is required").optional(),
-	password: z.string().min(8, "Password must be at least 8 characters"),
+	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
 });
@@ -26,6 +28,7 @@ export const updateDispatcherSchema = z
 			.optional(),
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
+		role: DispatcherRole.optional(),
 		last_login: z
 			.preprocess(
 				(val) =>
@@ -45,6 +48,7 @@ export const updateDispatcherSchema = z
 			data.password !== undefined ||
 			data.title !== undefined ||
 			data.description !== undefined ||
+			data.role !== undefined ||
 			data.last_login !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);

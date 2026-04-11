@@ -33,6 +33,10 @@ export default function LoginPage() {
 		try {
 			const result = await verifyOTPCall(otp.join(""));
 			console.log("otp verification result:", result);
+			if (result.forcePasswordReset && result.resetToken) {
+				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
+				return;
+			}
 			login(role, name || "User");
 			if (role === "dispatch") navigate("/dispatch");
 			else navigate("/technician");

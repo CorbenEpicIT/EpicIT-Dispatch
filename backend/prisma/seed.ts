@@ -51,6 +51,8 @@ async function main() {
 			password: dispatcherPassword,
 			title: "Operations Manager",
 			description: "Lead dispatcher and operations manager.",
+			email_verified_at: new Date(),
+			email_verification_token: null
 		},
 	});
 

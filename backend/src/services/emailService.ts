@@ -305,3 +305,117 @@ export const sendInvoiceEmail = async (
 
 	log.info({ invoiceId, recipientEmail }, "Invoice email sent");
 };
+
+export const sendEmailVerificationEmail = async (
+	to: string,
+	token: string,
+	tempPassword?: string,
+) => {
+	try {
+		const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+		const tempPasswordSection = tempPassword ? `
+						<div style="margin: 20px 0; padding: 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+							<p style="color: #555; font-size: 13px; margin: 0 0 8px;">Your temporary password:</p>
+							<p style="font-size: 18px; font-weight: bold; color: #1a1a1a; letter-spacing: 2px; margin: 0;">${tempPassword}</p>
+							<p style="color: #999; font-size: 12px; margin: 8px 0 0;">You will be prompted to change this after logging in.</p>
+						</div>` : "";
+
+		const htmlContent = `
+			<!DOCTYPE html>
+			<html>
+				<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 40px;">
+					<div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 8px; padding: 32px;">
+						<h2 style="color: #1a1a1a; margin-bottom: 8px;">Welcome to EpicIT Dispatch</h2>
+						<p style="color: #555; margin-bottom: 24px;">
+							Your account has been created. Please verify your email and use the temporary password below to log in.
+						</p>
+						${tempPasswordSection}
+						<a href="${verificationLink}" style="
+							display: inline-block;
+							padding: 12px 24px;
+							font-size: 16px;
+							color: white;
+							background-color: #2563eb;
+							border-radius: 8px;
+							text-decoration: none;
+						">
+							Verify Email
+						</a>
+						<p style="color: #999; font-size: 13px; margin-top: 24px;">
+							If you didn't create an account, you can safely ignore this email.
+						</p>
+					</div>
+				</body>
+			</html>
+		`;
+
+		await client.sendEmail({
+			From: POSTMARK_FROM_EMAIL,
+			To: to,
+			Subject: 'Welcome — verify your email address',
+			HtmlBody: htmlContent,
+			TextBody: `Please verify your email by clicking the following link: ${verificationLink}${tempPassword ? `\n\nYour temporary password is: ${tempPassword}` : ""}`,
+			MessageStream: 'outbound',
+		});
+	} catch (error) {
+		log.error({ err: error }, "Failed to send email verification email");
+		return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending email verification email");
+	}
+};
+
+export const sendPasswordResetEmail = async (
+	to: string, 
+	token: string,
+	role: string
+) => {
+	try {
+		const passwordResetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&role=${role}`;
+		const htmlContent = `
+			<!DOCTYPE html>
+			<html>
+				<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 40px;">
+					<div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 8px; padding: 32px;">
+						<h2 style="color: #1a1a1a; margin-bottom: 8px;">Reset Your Password</h2>
+						<p style="color: #555; margin-bottom: 24px;">
+							Please click the button below to reset your password.
+						</p>
+						<a href="${passwordResetLink}" style="
+							display: inline-block;
+							padding: 12px 24px;
+							font-size: 16px;
+							color: white;
+							background-color: #2563eb;
+							border-radius: 8px;
+							text-decoration: none;
+						">
+							Reset Password
+						</a>
+						<p style="color: #999; font-size: 13px; margin-top: 24px;">
+							If you know your password, you can safely ignore this email.
+						</p>
+					</div>
+				</body>
+			</html>
+		`;
+
+		const result = await client.sendEmail({
+			From: POSTMARK_FROM_EMAIL,
+			To: to,
+			Subject: 'Reset Password',
+			HtmlBody: htmlContent,
+			TextBody: `Reset your password by visiting the following link: ${passwordResetLink}`,
+			MessageStream: 'outbound',
+		});
+		if (result.ErrorCode) {
+			log.error(
+				{ to, postmarkCode: result.ErrorCode, postmarkMessage: result.Message },
+				"Failed to send password reset email",
+			);
+			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending password reset email");
+		}
+		return createSuccessResponse(null);
+	}catch (error) {
+		log.error({ err: error }, "Failed to send password reset email");
+		return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending password reset email");
+	}
+};

@@ -16,11 +16,13 @@ interface AuthResponse {
     pendingToken: string;
     token: string,
     expiresIn: number,
-    refreshToken?: string,   // for refresh token rotation
-    user?: {                 // avoids a second /me API call after login
+    refreshToken?: string,
+    user?: {
         email: string,
         role: string
-    }
+    },
+    forcePasswordReset?: boolean,
+    resetToken?: string,
 }
 
 export const loginCall = async (input: User): Promise<AuthResponse> => {
@@ -67,5 +69,24 @@ export const logoutCall = async (): Promise<AuthResponse> => {
     }
     localStorage.removeItem("accessToken");
     delete api.defaults.headers.common.Authorization;
+    return response.data.data!;
+}
+
+export const requestPasswordResetCall = async (id: string, role: string): Promise<{ message: string }> => {
+    const endpoint = role === "technician" ? `/technicians/${id}/reset-password` : `/dispatchers/${id}/reset-password`;
+    const response = await api.post<ApiResponse<{ message: string }>>(endpoint);
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "Password reset request failed");
+    }
+    return response.data.data!;
+}
+
+export const resetPasswordCall = async (token: string, newPassword: string, role: string): Promise<{ message: string }> => {
+    const response = await api.post<ApiResponse<{ message: string }>>('/reset-password', { token, newPassword, role });   
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "Password reset failed");
+    }
     return response.data.data!;
 }

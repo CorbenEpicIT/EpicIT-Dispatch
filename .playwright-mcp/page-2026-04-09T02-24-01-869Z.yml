@@ -1,0 +1,110 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - navigation [ref=e5]:
+      - link "Dashboard" [ref=e6] [cursor=pointer]:
+        - /url: /dispatch
+        - img [ref=e8]
+        - generic:
+          - generic: Dashboard
+      - link "Requests" [ref=e11] [cursor=pointer]:
+        - /url: /dispatch/requests
+        - img [ref=e13]
+        - generic:
+          - generic: Requests
+      - link "Quotes" [ref=e15] [cursor=pointer]:
+        - /url: /dispatch/quotes
+        - img [ref=e17]
+        - generic:
+          - generic: Quotes
+      - link "Jobs" [ref=e20] [cursor=pointer]:
+        - /url: /dispatch/jobs
+        - img [ref=e22]
+        - generic:
+          - generic: Jobs
+      - link "Schedule" [ref=e25] [cursor=pointer]:
+        - /url: /dispatch/schedule
+        - img [ref=e27]
+        - generic:
+          - generic: Schedule
+      - link "Clients" [ref=e29] [cursor=pointer]:
+        - /url: /dispatch/clients
+        - img [ref=e31]
+        - generic:
+          - generic: Clients
+      - link "Inventory" [ref=e36] [cursor=pointer]:
+        - /url: /dispatch/inventory
+        - img [ref=e38]
+        - generic:
+          - generic: Inventory
+      - link "Technicians" [ref=e42] [cursor=pointer]:
+        - /url: /dispatch/technicians
+        - img [ref=e44]
+        - generic:
+          - generic: Technicians
+      - link "Map" [ref=e46] [cursor=pointer]:
+        - /url: /dispatch/map
+        - img [ref=e48]
+        - generic:
+          - generic: Map
+      - link "Invoices" [ref=e50] [cursor=pointer]:
+        - /url: /dispatch/invoices
+        - img [ref=e52]
+        - generic:
+          - generic: Invoices
+      - link "Reporting" [ref=e54] [cursor=pointer]:
+        - /url: /dispatch/reporting
+        - img [ref=e56]
+        - generic:
+          - generic: Reporting
+      - link "Settings" [ref=e58] [cursor=pointer]:
+        - /url: /dispatch/settings
+        - img [ref=e60]
+        - generic:
+          - generic: Settings
+      - link "Admin" [ref=e63] [cursor=pointer]:
+        - /url: /dispatch/admin
+        - img [ref=e65]
+        - generic:
+          - generic: Admin
+  - generic [ref=e69]:
+    - banner [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]: Dispatch Demo
+        - button "Back" [ref=e73]:
+          - img [ref=e74]
+          - generic [ref=e76]: Back
+      - generic [ref=e77]:
+        - generic [ref=e78]:
+          - img
+          - textbox "Search..." [ref=e79]
+        - button "Logout" [ref=e80]
+    - main [ref=e81]:
+      - generic [ref=e83]:
+        - generic [ref=e84]:
+          - heading "Administation" [level=2] [ref=e86]
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - img
+              - textbox "Search technicians..." [ref=e90]
+            - button "New Technician" [ref=e91] [cursor=pointer]:
+              - img [ref=e92]
+              - text: New Technician
+            - button "New Dispatcher" [ref=e93] [cursor=pointer]:
+              - img [ref=e94]
+              - text: New Dispatcher
+            - button "Refresh" [ref=e95] [cursor=pointer]
+        - generic [ref=e96]:
+          - paragraph [ref=e97]: "View options:"
+          - button "View Technicians" [ref=e98] [cursor=pointer]
+          - button "View Dispatchers" [ref=e99] [cursor=pointer]
+          - generic [ref=e100]:
+            - text: "Change View:"
+            - button "Card View" [ref=e101] [cursor=pointer]:
+              - text: Card View
+              - img [ref=e102]
+            - button "List View" [ref=e107] [cursor=pointer]:
+              - text: List View
+              - img [ref=e108]
+        - generic [ref=e111]:
+          - img [ref=e112]
+          - heading "Please wait..." [level=1] [ref=e115]

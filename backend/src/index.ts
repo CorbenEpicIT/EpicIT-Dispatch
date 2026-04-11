@@ -136,6 +136,8 @@ import {
 	checkToken,
 	checkRefreshToken,
 	issueAuthTokens,
+	requestPasswordReset,
+	resetPassword,
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
@@ -147,6 +149,8 @@ import {
 import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
+import { verifyEmail } from "./controllers/emailController.js";
+import { get } from "http";
 
 export interface UserContext {
 	techId?: string;
@@ -410,6 +414,29 @@ app.post("/otp-verify", async (req, res, next) => {
 		next(err);
 	}
 });
+
+app.post("/reset-password", async (req, res, next) => {
+	try {
+		const { token, newPassword, role } = req.body;
+		const result = await resetPassword(token, newPassword, role);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
 
 // ============================================
 // DRAFT ROUTES
@@ -3037,6 +3064,39 @@ app.put("/technicians/:id", async (req, res, next) => {
 	}
 });
 
+app.post("/technicians/:id/reset-password", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const user = await getTechnicianById(id); 
+		if (!user) {
+			return res
+				.status(404)
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Technician not found",
+					),
+				);
+		}
+		const result = await requestPasswordReset(user.email, "technician");
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
 app.delete("/technicians/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
@@ -3096,10 +3156,10 @@ app.get("/dispatchers/:id", async (req, res, next) => {
 	}
 });
 
-app.post("/dispatcher", async (req, res, next) => {
+app.post("/dispatchers", async (req, res, next) => {
 	try {
 		const context = getUserContext(req);
-		const result = await insertTechnician(req.body, context);
+		const result = await insertDispatcher(req.body, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -3125,7 +3185,7 @@ app.post("/dispatcher", async (req, res, next) => {
 
 app.put("/dispatchers/:id", async (req, res, next) => {
 	try {
-		/*const { id } = req.params;
+		const { id } = req.params;
 		const context = getUserContext(req);
 		const result = await updateDispatcher(id, req.body, context);
 
@@ -3145,7 +3205,40 @@ app.put("/dispatchers/:id", async (req, res, next) => {
 				);
 		}
 
-		res.json(createSuccessResponse(result.item));*/
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/dispatchers/:id/reset-password", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const user = await getDispatcherById(id); 
+		if (!user) {
+			return res
+				.status(404)
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Dispatcher not found",
+					),
+				);
+		}
+		const result = await requestPasswordReset(user.email, user.role);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(null));
 	} catch (err) {
 		next(err);
 	}
@@ -3169,6 +3262,30 @@ app.delete("/dispatchers/:id", async (req, res, next) => {
 				id,
 			}),
 		);*/
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
+// Email
+// ============================================
+
+app.post("/verify-email", async (req, res, next) => {
+	try {
+		const { token } = req.body;
+		const result = await verifyEmail(token);
+		if ("error" in result && !result.success) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.error?.message || "Failed to verify email",
+					),
+				);
+		}
+		res.json(createSuccessResponse(result));
 	} catch (err) {
 		next(err);
 	}
