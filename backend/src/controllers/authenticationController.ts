@@ -56,13 +56,13 @@ export const login = async (
 		
 		// ask if last login updates automatically or if I have to add that here
 		const user =
-			role === "dispatch"
-				? await db.dispatcher.findUnique({
+			role === "technician"
+				? await db.technician.findUnique({
 						where: {
 							email: email,
 						},
 					})
-				: await db.technician.findUnique({
+				: await db.dispatcher.findUnique({
 						where: {
 							email: email,
 						},
@@ -73,6 +73,8 @@ export const login = async (
 				"Invalid credentials",
 			);
 		}
+		// if dispatcher, use role from db (admin or dispatch)
+		const effectiveRole = "role" in user ? user.role : role;
 
 		let match = await bcrypt.compare(password, user.password);
 		if (!user || !match) {
@@ -82,9 +84,14 @@ export const login = async (
 			);
 		}
 
-		const otp = await createOTP(user.id, role);
+		// First login: skip OTP and go straight to forced password reset
+		if (!user.last_login) {
+			return await issueAuthTokens(res, user.id, effectiveRole);
+		}
 
-		const pendingToken = generateOTPToken(user, role, otp);
+		const otp = await createOTP(user.id, effectiveRole);
+
+		const pendingToken = generateOTPToken(user, effectiveRole, otp);
 		if (!pendingToken) {
 			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
 		}
@@ -112,48 +119,15 @@ export const login = async (
 
 export const issueAuthTokens = async (res: Response, userId: string, role: string) => {
 	try {
-		// get user by id and role
-		if (userId === "0") {
-			const firstOrg = await db.organization.findFirst({ select: { id: true } });
-			const user = {
-				id: userId,
-				name: "user",
-				organization_id: firstOrg?.id ?? null,
-				title: role === "dispatch" ? "admin" : "tech",
-				description: "user for testing",
-				email: "user@domain.com",
-				phone: null,
-				password: "",
-				last_login: new Date(),
-			};
-			const accessToken = generateAccessToken(user, role);
-			const refreshToken = gererateRefreshToken(user, role);
-			// set refresh token in httpOnly cookie
-			res.cookie("refreshToken", refreshToken, {
-				httpOnly: true,
-				secure: true,
-				sameSite: "strict",
-				maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-			});
-			let AuthResponse = {
-				token: accessToken,
-				expiresIn: 3600,
-				user: {
-					uid: userId,
-					email: "user",
-					role: role,
-				},
-			};
-			return { data: AuthResponse };
-		}
+		// get user by id
 		const user =
-			role === "dispatch"
-				? await db.dispatcher.findUnique({
+			role === "technician"
+				? await db.technician.findUnique({
 						where: {
 							id: userId,
 						},
 					})
-				: await db.technician.findUnique({
+				: await db.dispatcher.findUnique({
 						where: {
 							id: userId,
 						},
@@ -162,22 +136,30 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 			return createErrorResponse(ErrorCodes.NOT_FOUND, "User not found");
 		}
 
+		// if last login is null, force password reset and generate reset token
 		const forcePasswordReset = !user.last_login;
 		let resetToken: string | undefined;
+		const now = new Date();
 
 		if (forcePasswordReset) {
 			resetToken = crypto.randomBytes(32).toString("hex");
 			const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-			if (role === "dispatch") {
-				await db.dispatcher.update({
-					where: { id: userId },
-					data: { password_reset_token: resetToken, password_reset_token_expires_at: expiresAt },
-				});
-			} else {
+			if (role === "technician") {
 				await db.technician.update({
 					where: { id: userId },
-					data: { password_reset_token: resetToken, password_reset_token_expires_at: expiresAt },
+					data: { password_reset_token: resetToken, password_reset_token_expires_at: expiresAt, last_login: now },
 				});
+			} else {
+				await db.dispatcher.update({
+					where: { id: userId },
+					data: { password_reset_token: resetToken, password_reset_token_expires_at: expiresAt, last_login: now },
+				});
+			}
+		} else {
+			if (role === "technician") {
+				await db.technician.update({ where: { id: userId }, data: { last_login: now } });
+			} else {
+				await db.dispatcher.update({ where: { id: userId }, data: { last_login: now } });
 			}
 		}
 
@@ -348,7 +330,7 @@ export const requestPasswordReset = async (email: string, role: string) => {
 
 export const resetPassword = async (token: string, newPassword: string, role: string) => {
 	try {
-		const isDispatcher = role === "dispatcher" || role === "admin";
+		const isDispatcher = role !== "technician";
 		const user = isDispatcher
 			? await db.dispatcher.findFirst({ where: { password_reset_token: token } })
 			: await db.technician.findFirst({ where: { password_reset_token: token } });

@@ -32,7 +32,6 @@ export default function DispatchLayout() {
 	useEffect(() => {
 		navigationCount.current++;
 	}, [location.pathname]);
-
 	const handleBack = () => {
 		const path = location.pathname;
 		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -144,7 +143,7 @@ export default function DispatchLayout() {
 						label="Settings"
 					/>
 					{/* Admin page only visible to dispatch role */
-						user?.role === "dispatch" /*&& isAdmin(user?.role)*/ && (
+						user?.role === "admin" && (
 							<SideNavItem
 								to="/dispatch/admin"
 								icon={<ShieldUser size={ICON_SIZE} />}

@@ -37,10 +37,12 @@ export const loginCall = async (input: User): Promise<AuthResponse> => {
         throw new Error(response.data.error?.message || "Login failed");
     }
     const data = response.data.data!;
-    
-    // Store the token and set it as default header for all future requests
-    localStorage.setItem("accessToken", data.pendingToken);
-    api.defaults.headers.common["Authorization"] = `Bearer ${data.pendingToken}`;
+
+    // First login skips OTP and returns a full token directly.
+    // Normal login returns a pendingToken for the OTP step.
+    const tokenToStore = data.token ?? data.pendingToken;
+    localStorage.setItem("accessToken", tokenToStore);
+    api.defaults.headers.common["Authorization"] = `Bearer ${tokenToStore}`;
     console.log(localStorage.getItem("accessToken"));
     console.log("api headers", api.defaults.headers.common["Authorization"]);
     
@@ -57,7 +59,7 @@ export const verifyOTPCall = async (otp: string): Promise<AuthResponse> => {
     console.log("OTP verification response:", response.data);
     localStorage.setItem("accessToken", response.data.data!.token);
     api.defaults.headers.common["Authorization"] = `Bearer ${response.data.data!.token}`;
-    console.log("OTP verification successful, access token stored.");
+
     return response.data.data!;
 }
 

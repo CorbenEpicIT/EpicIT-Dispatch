@@ -558,7 +558,7 @@ app.delete("/drafts/:id", async (req, res, next) => {
 // ============================================
 
 app.get("/requests", async (req, res, next) => {
-	// requireRole("dispatch"),           temp removal until further implementation
+	// requireRole("dispatcher"),           temp removal until further implementation
 	try {
 		const requests = await getAllRequests();
 		res.json(createSuccessResponse(requests, { count: requests.length }));
@@ -3582,7 +3582,7 @@ app.post(
 
 // ── Org settings ─────────────────────────────────────────────────────────────
 
-app.get("/org", verifyToken, requireRole("dispatch"), async (req, res, next) => {
+app.get("/org", verifyToken, requireRole("dispatcher"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id;
 		if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
@@ -3597,7 +3597,7 @@ app.get("/org", verifyToken, requireRole("dispatch"), async (req, res, next) => 
 	}
 });
 
-app.patch("/org", verifyToken, requireRole("dispatch"), async (req, res, next) => {
+app.patch("/org", verifyToken, requireRole("dispatcher"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id;
 		if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
@@ -3630,7 +3630,7 @@ app.patch("/org", verifyToken, requireRole("dispatch"), async (req, res, next) =
 app.post(
 	"/org/logo",
 	verifyToken,
-	requireRole("dispatch"),
+	requireRole("dispatcher"),
 	inventoryUpload.single("image"),
 	async (req, res, next) => {
 		try {
@@ -3649,7 +3649,7 @@ app.post(
 	},
 );
 
-app.delete("/org/logo", verifyToken, requireRole("dispatch"), async (req, res, next) => {
+app.delete("/org/logo", verifyToken, requireRole("dispatcher"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id;
 		if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));

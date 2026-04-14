@@ -142,9 +142,9 @@ export const refreshAccessToken = async (refreshToken: string) => {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
         
-        const dbUser = user.role === "dispatch"
-            ? await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } })
-            : await db.technician.findUnique({ where: { id: user.id }, select: { organization_id: true } });
+        const dbUser = user.role === "technician"
+            ? await db.technician.findUnique({ where: { id: user.id }, select: { organization_id: true } })
+            : await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } });
 
         let orgTimezone: string | null = null;
         if (dbUser?.organization_id) {

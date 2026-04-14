@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 interface User {
-	role: "dispatch" | "technician" | "admin";
+	role: "dispatcher" | "technician" | "admin";
 	name: string;
 	userId: string;
 	orgTimezone: string; // IANA timezone, e.g. "America/Chicago"

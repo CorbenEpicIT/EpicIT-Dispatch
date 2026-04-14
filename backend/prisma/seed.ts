@@ -82,7 +82,8 @@ async function main() {
 			title: "Operations Manager",
 			description: "Lead dispatcher and operations manager.",
 			email_verified_at: new Date(),
-			email_verification_token: null
+			email_verification_token: null,
+			role: "admin",
 		},
 	});
 
