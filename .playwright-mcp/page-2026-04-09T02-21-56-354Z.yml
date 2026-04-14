@@ -1,8 +1,0 @@
-- generic [ref=e4]:
-  - heading "Service Login" [level=2] [ref=e5]
-  - textbox "Name" [ref=e6]: user
-  - textbox "Password" [ref=e7]
-  - combobox [ref=e8]:
-    - option "Dispatch/Admin" [selected]
-    - option "Technician"
-  - button "Login" [ref=e9]
