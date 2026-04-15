@@ -26,6 +26,8 @@ interface ScheduleBoardCardProps {
 	priorityColor: string;
 	assignedTechs: AssignedTech[];
 	isHovered?: boolean;
+	/** Applied to the root element; used for ghost-card drag feedback. */
+	opacity?: number;
 	top: number;
 	height: number;
 	left: number;
@@ -58,6 +60,7 @@ export default function ScheduleBoardCard({
 	priorityColor,
 	assignedTechs,
 	isHovered = false,
+	opacity = 1,
 	top,
 	height,
 	left,
@@ -149,7 +152,9 @@ export default function ScheduleBoardCard({
 				cursor: "grab",
 				boxSizing: "border-box",
 				display: "flex",
-				transition: "box-shadow 0.15s ease-out, transform 0.15s ease-out",
+				opacity,
+				pointerEvents: opacity === 0 ? "none" : "auto",
+				transition: "box-shadow 0.15s ease-out, transform 0.15s ease-out, opacity 0.1s ease-out",
 				boxShadow: isHovered ? CARD_SHADOW_HOVERED : CARD_SHADOW,
 				transform: isHovered ? "translateY(-1px)" : "none",
 			}}
@@ -236,6 +241,8 @@ export default function ScheduleBoardCard({
 								color: TEXT_TIME,
 								lineHeight: 1.2,
 								whiteSpace: "nowrap",
+								overflow: "hidden",
+								textOverflow: "ellipsis",
 							}}>
 								{timeLabel}
 							</span>

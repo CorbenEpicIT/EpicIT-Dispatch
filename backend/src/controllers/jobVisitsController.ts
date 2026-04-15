@@ -521,6 +521,45 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 			});
 		});
 
+		// ── "This & all future" — shift future visits by the same delta ─────
+		if (parsed.reschedule_scope === "future" && existingVisit.job.recurring_plan_id) {
+			const oldStart = existingVisit.scheduled_start_at;
+			const newStart = parsed.scheduled_start_at;
+			if (oldStart && newStart) {
+				const deltaMs = newStart.getTime() - oldStart.getTime();
+				const futureVisits = await db.job_visit.findMany({
+					where: {
+						job: { recurring_plan_id: existingVisit.job.recurring_plan_id },
+						scheduled_start_at: { gt: oldStart },
+						id: { not: id },
+						status: { notIn: ["Completed", "Cancelled"] },
+					},
+					select: { id: true, scheduled_start_at: true, scheduled_end_at: true },
+				});
+				if (futureVisits.length > 0) {
+					await db.$transaction(
+						futureVisits.map((v) =>
+							db.job_visit.update({
+								where: { id: v.id },
+								data: {
+									scheduled_start_at: new Date(v.scheduled_start_at.getTime() + deltaMs),
+									...(v.scheduled_end_at && {
+										scheduled_end_at: new Date(v.scheduled_end_at.getTime() + deltaMs),
+									}),
+									...(parsed.arrival_constraint !== undefined && { arrival_constraint: parsed.arrival_constraint }),
+									...(parsed.arrival_time !== undefined && { arrival_time: parsed.arrival_time }),
+									...(parsed.arrival_window_start !== undefined && { arrival_window_start: parsed.arrival_window_start }),
+									...(parsed.arrival_window_end !== undefined && { arrival_window_end: parsed.arrival_window_end }),
+									...(parsed.finish_constraint !== undefined && { finish_constraint: parsed.finish_constraint }),
+									...(parsed.finish_time !== undefined && { finish_time: parsed.finish_time }),
+								},
+							}),
+						),
+					);
+				}
+			}
+		}
+
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {

@@ -239,6 +239,12 @@ export interface RecurringOccurrence {
 	occurrence_start_at: Date | string;
 	occurrence_end_at: Date | string;
 	status: OccurrenceStatus;
+	arrival_constraint: ArrivalConstraint;
+	finish_constraint: FinishConstraint;
+	arrival_time?: string | null;
+	arrival_window_start?: string | null;
+	arrival_window_end?: string | null;
+	finish_time?: string | null;
 	job_visit_id?: string | null;
 	job_visit?: VisitReference | null;
 	generated_at?: Date | string | null;
@@ -752,6 +758,13 @@ export const SkipOccurrenceSchema = z.object({
 export const RescheduleOccurrenceSchema = z.object({
 	new_start_at: z.string().datetime("Invalid start date"),
 	new_end_at: z.string().datetime("Invalid end date").optional(),
+	scope: z.enum(["this", "future"]).optional(),
+	arrival_constraint:   z.enum(ArrivalConstraintValues).optional(),
+	finish_constraint:    z.enum(FinishConstraintValues).optional(),
+	arrival_time:         z.string().nullable().optional(),
+	arrival_window_start: z.string().nullable().optional(),
+	arrival_window_end:   z.string().nullable().optional(),
+	finish_time:          z.string().nullable().optional(),
 });
 
 export const BulkSkipOccurrencesSchema = z.object({

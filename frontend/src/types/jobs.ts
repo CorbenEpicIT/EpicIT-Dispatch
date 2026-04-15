@@ -405,6 +405,7 @@ export interface UpdateJobVisitInput {
 	cancellation_reason?: string | null;
 	tech_ids?: string[];
 	line_items?: UpdateVisitLineItemInput[];
+	reschedule_scope?: "this" | "future";
 }
 
 // ============================================================================

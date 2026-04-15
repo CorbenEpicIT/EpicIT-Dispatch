@@ -803,22 +803,29 @@ model recurring_occurrence {
   occurrence_end_at   DateTime
   
   status              occurrence_status @default(planned)
-  
+
+  // Per-occurrence scheduling constraints (copied from rule at generation; may be overridden on reschedule)
+  arrival_constraint   arrival_constraint @default(at)
+  finish_constraint    finish_constraint  @default(when_done)
+  arrival_time         String?            // HH:MM — for arrival_constraint = "at"
+  arrival_window_start String?            // HH:MM — for arrival_constraint = "between"
+  arrival_window_end   String?            // HH:MM — for arrival_constraint = "between" or "by"
+  finish_time          String?            // HH:MM — for finish_constraint = "at" or "by"
+
   // Link to actual generated visit
   job_visit_id        String?           @unique
   job_visit           job_visit?        @relation("OccurrenceVisit", fields: [job_visit_id], references: [id])
-  
+
   generated_at        DateTime?
   completed_at        DateTime?
   skipped_at          DateTime?
   skip_reason         String?
-  
+
   // Template versioning (optional)
   template_version    Int               @default(1)
   
   created_at          DateTime          @default(now())
   
-  @@unique([recurring_plan_id, occurrence_start_at])
   @@index([recurring_plan_id])
   @@index([occurrence_start_at])
   @@index([status])

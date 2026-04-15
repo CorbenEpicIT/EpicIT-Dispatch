@@ -19,6 +19,7 @@ interface MonthMiniCardProps {
 	techs: MiniCardTech[];
 	isOccurrence?: boolean;
 	isDragging?: boolean;
+	isGhost?: boolean;
 	onDragStart?: (e: React.DragEvent) => void;
 	onDragEnd?: () => void;
 	onClick?: (e: React.MouseEvent) => void;
@@ -34,6 +35,7 @@ export default function MonthMiniCard({
 	techs,
 	isOccurrence = false,
 	isDragging = false,
+	isGhost = false,
 	onDragStart,
 	onDragEnd,
 	onClick,
@@ -72,12 +74,18 @@ export default function MonthMiniCard({
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
 			onClick={onClick}
-			onKeyDown={onClick ? (e) => {
-				if (e.key === "Enter" || e.key === " ") {
-					e.preventDefault();
-					onClick(e as unknown as React.MouseEvent);
-				}
-			} : undefined}
+			onKeyDown={
+				onClick
+					? (e) => {
+							if (e.key === "Enter" || e.key === " ") {
+								e.preventDefault();
+								onClick(
+									e as unknown as React.MouseEvent
+								);
+							}
+						}
+					: undefined
+			}
 			style={{
 				display: "flex",
 				alignItems: "stretch",
@@ -85,9 +93,14 @@ export default function MonthMiniCard({
 				overflow: "hidden",
 				cursor: onDragStart ? "grab" : onClick ? "pointer" : "default",
 				backgroundColor: isOccurrence ? OCCURRENCE_CARD_BG : CARD_BG,
-				opacity: isDragging ? 0.4 : 1,
+				opacity: isDragging ? 0.4 : isGhost ? 0.5 : 1,
 				userSelect: "none",
 				flexShrink: 0,
+				outline: isGhost ? "1px dashed #3b82f6" : "none",
+				outlineOffset: isGhost ? "1px" : "0",
+				boxShadow: isGhost
+					? "inset 0 0 0 999px rgba(59,130,246,0.06)"
+					: undefined,
 			}}
 		>
 			{/* Priority strip — stretches to full card height */}
@@ -105,37 +118,49 @@ export default function MonthMiniCard({
 			 *     reconciler, which sees no JSX children on the span, never clobbers it).
 			 *   • maxHeight + overflow:hidden on this container is a safety-net only.
 			 */}
-			<div style={{
-				flex: 1,
-				minWidth: 0,
-				padding: "2px 5px 2px 4px",
-				boxSizing: "border-box",
-				maxHeight: 28,
-				overflow: "hidden",
-			}}>
+			<div
+				style={{
+					flex: 1,
+					minWidth: 0,
+					padding: "2px 5px 2px 4px",
+					boxSizing: "border-box",
+					maxHeight: 28,
+					overflow: "hidden",
+				}}
+			>
 				{/* Float declared FIRST so the title's line-boxes wrap around it */}
 				{(timeLabel || hasTechs) && (
-					<div style={{
-						float: "right",
-						display: "flex",
-						alignItems: "center",
-						gap: 4,
-						height: 11,
-						marginLeft: 4,
-					}}>
+					<div
+						style={{
+							float: "right",
+							display: "flex",
+							alignItems: "center",
+							gap: 4,
+							height: 11,
+							marginLeft: 4,
+						}}
+					>
 						{timeLabel && (
-							<span style={{
-								fontSize: 8,
-								color: TEXT_MUTED,
-								whiteSpace: "nowrap",
-								lineHeight: 1,
-							}}>
+							<span
+								style={{
+									fontSize: 8,
+									color: TEXT_MUTED,
+									whiteSpace: "nowrap",
+									lineHeight: 1,
+								}}
+							>
 								{timeLabel}
 							</span>
 						)}
 
 						{hasTechs && (
-							<div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+							<div
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: 2,
+								}}
+							>
 								{visibleTechs.map((t) => (
 									<span
 										key={t.id}
@@ -143,19 +168,23 @@ export default function MonthMiniCard({
 											display: "block",
 											width: 6,
 											height: 6,
-											borderRadius: "50%",
-											backgroundColor: t.color,
+											borderRadius:
+												"50%",
+											backgroundColor:
+												t.color,
 											flexShrink: 0,
 										}}
 									/>
 								))}
 								{overflow > 0 && (
-									<span style={{
-										fontSize: 7,
-										color: "rgba(255,255,255,0.4)",
-										lineHeight: 1,
-										flexShrink: 0,
-									}}>
+									<span
+										style={{
+											fontSize: 7,
+											color: "rgba(255,255,255,0.4)",
+											lineHeight: 1,
+											flexShrink: 0,
+										}}
+									>
 										+{overflow}
 									</span>
 								)}
@@ -173,7 +202,9 @@ export default function MonthMiniCard({
 						display: "block",
 						fontSize: 9,
 						fontWeight: 600,
-						color: isOccurrence ? OCCURRENCE_TITLE : VISIT_TITLE,
+						color: isOccurrence
+							? OCCURRENCE_TITLE
+							: VISIT_TITLE,
 						fontStyle: isOccurrence ? "italic" : "normal",
 						lineHeight: 1.3,
 					}}

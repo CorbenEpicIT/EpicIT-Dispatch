@@ -10,27 +10,20 @@ import DashboardCalendarToolbar from "./DashboardCalendarToolbar";
 import type { Job, UpdateJobVisitInput } from "../../../types/jobs";
 import type { Technician } from "../../../types/technicians";
 import { useUpdateJobVisitMutation } from "../../../hooks/useJobs";
-import { useRescheduleOccurrenceMutation } from "../../../hooks/useRecurringPlans";
+import { useRescheduleOccurrenceMutation, useGenerateVisitFromOccurrenceMutation } from "../../../hooks/useRecurringPlans";
 import {
 	buildVisitEvents,
 	buildOccurrenceEvents,
 	buildOccurrenceBadgeEvents,
 	toZonedDateTime,
 	type VisitWithJob,
+	type OccurrenceWithPlan,
 } from "./dashboardCalendarUtils";
-import { buildTechOrder, getTechColor, visitStartLabel, visitEndLabel } from "./scheduleBoardUtils";
-import {
-	POPUP_BG,
-	BORDER,
-	TEXT_PRIMARY,
-	TEXT_SECONDARY,
-	TEXT_FAINT,
-	STATUS_BG,
-	STATUS_TEXT,
-	SURFACE,
-	ACCENT_BG,
-	ACCENT_BG_HOVER,
-} from "./scheduleTokens";
+import { buildTechOrder, getTechColor } from "./scheduleBoardUtils";
+import VisitClickPopup from "./VisitClickPopup";
+import OccurrenceClickPopup from "./OccurrenceClickPopup";
+import ReschedulePopup from "./ReschedulePopup";
+import OccurrenceReschedulePopup from "./OccurrenceReschedulePopup";
 
 interface DashboardCalendarProps {
 	jobs: Job[];
@@ -49,11 +42,21 @@ export default function DashboardCalendar({
 	const [selectedTechs, setSelectedTechs] = useState<Set<string>>(new Set());
 
 	const [clickedVisit, setClickedVisit] = useState<{ visit: VisitWithJob; x: number; y: number } | null>(null);
+	const [clickedOccurrence, setClickedOccurrence] = useState<{ occ: OccurrenceWithPlan; x: number; y: number } | null>(null);
+	const [generatingVisitId, setGeneratingVisitId] = useState<string | null>(null);
+	const [pendingClickReschedule, setPendingClickReschedule] = useState<{
+		type: "visit" | "occurrence";
+		visit?: VisitWithJob;
+		occurrence?: OccurrenceWithPlan;
+		anchorRect: DOMRect;
+	} | null>(null);
 	const mousePosRef = useRef({ x: 0, y: 0 });
 	const popupRef    = useRef<HTMLDivElement>(null);
+	const occurrencePopupRef = useRef<HTMLDivElement>(null);
 
 	const { mutateAsync: updateVisit } = useUpdateJobVisitMutation();
 	const { mutateAsync: rescheduleOccurrence } = useRescheduleOccurrenceMutation();
+	const { mutateAsync: generateVisitFromOccurrence } = useGenerateVisitFromOccurrenceMutation();
 
 	const eventsService = useMemo(() => createEventsServicePlugin(), []);
 	const dndPlugin = useMemo(() => createDragAndDropPlugin(), []);
@@ -71,7 +74,11 @@ export default function DashboardCalendar({
 				onEventClick(calEvent: any) {
 					if (calEvent._type === "occurrence-badge") return;
 					if (calEvent._type === "visit") {
+						setClickedOccurrence(null);
 						setClickedVisit({ visit: calEvent._data as VisitWithJob, x: mousePosRef.current.x, y: mousePosRef.current.y });
+					} else if (calEvent._type === "occurrence") {
+						setClickedVisit(null);
+						setClickedOccurrence({ occ: calEvent._data as OccurrenceWithPlan, x: mousePosRef.current.x, y: mousePosRef.current.y });
 					}
 				},
 				async onEventUpdate(updatedEvent: any) {
@@ -126,6 +133,17 @@ export default function DashboardCalendar({
 		document.addEventListener("mousedown", handler);
 		return () => document.removeEventListener("mousedown", handler);
 	}, [clickedVisit]);
+
+	// Close occurrence popup on outside click
+	useEffect(() => {
+		if (!clickedOccurrence) return;
+		function handler(e: MouseEvent) {
+			if (occurrencePopupRef.current && !occurrencePopupRef.current.contains(e.target as Node))
+				setClickedOccurrence(null);
+		}
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [clickedOccurrence]);
 
 	// Rebuild events when jobs or filter toggles change
 	useEffect(() => {
@@ -184,103 +202,100 @@ export default function DashboardCalendar({
 				const vp = { w: window.innerWidth, h: window.innerHeight };
 				const left = x + PW + PAD < vp.w ? x + 6 : Math.max(PAD, x - PW - 6);
 				const top  = Math.max(PAD, Math.min(y - 20, vp.h - PH - PAD));
-
-				const timeStart = visitStartLabel(v);
-				const timeLabel = v.finish_constraint !== "when_done"
-					? `${timeStart} – ${visitEndLabel(v)}`
-					: `${timeStart} · finish when done`;
-
 				return (
-					<div
-						ref={popupRef}
-						style={{
-							position: "fixed",
-							top,
-							left,
-							width: PW,
-							zIndex: 1000,
-							backgroundColor: POPUP_BG,
-							border: `1px solid ${BORDER}`,
-							borderRadius: 8,
-							boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-							padding: "10px 12px",
-							fontFamily: "inherit",
+					<VisitClickPopup
+						visit={v}
+						style={{ position: "fixed", top, left }}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						popupRef={popupRef}
+						onClose={() => setClickedVisit(null)}
+						onViewVisit={() => { setClickedVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}/visits/${v.id}`); }}
+						onViewJob={() => { setClickedVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}`); }}
+						onRescheduleClick={() => { setClickedVisit(null); setPendingClickReschedule({ type: "visit", visit: v, anchorRect: new DOMRect(x, y, 0, 0) }); }}
+					/>
+				);
+			})()}
+
+			{/* Occurrence detail popup */}
+			{clickedOccurrence && (() => {
+				const { occ, x, y } = clickedOccurrence;
+				const PAD = 8;
+				const PW = 236, PH = 200;
+				const vp = { w: window.innerWidth, h: window.innerHeight };
+				const left = x + PW + PAD < vp.w ? x + 6 : Math.max(PAD, x - PW - 6);
+				const top  = Math.max(PAD, Math.min(y - 20, vp.h - PH - PAD));
+				return (
+					<OccurrenceClickPopup
+						occurrence={occ}
+						style={{ position: "fixed", top, left }}
+						popupRef={occurrencePopupRef}
+						isGenerating={generatingVisitId === occ.id}
+						onClose={() => setClickedOccurrence(null)}
+						onViewPlan={() => { setClickedOccurrence(null); navigate(`/dispatch/recurring-plans/${occ.plan.id}`); }}
+						onGenerate={async () => {
+							setGeneratingVisitId(occ.id);
+							setClickedOccurrence(null);
+							try { await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id }); } catch {}
+							setGeneratingVisitId(null);
 						}}
-					>
-						{/* Header */}
-						<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-							<span style={{ fontSize: 12, fontWeight: 700, color: TEXT_PRIMARY, lineHeight: 1.3, flex: 1 }}>
-								{v.job_obj?.name}
-							</span>
-							<button
-								aria-label="Close"
-								onClick={() => setClickedVisit(null)}
-								style={{ fontSize: 16, color: TEXT_FAINT, background: "none", border: "none", cursor: "pointer", padding: "0 0 0 6px", lineHeight: 1, transition: "color 0.1s" }}
-								onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#a1a1aa")}
-								onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = TEXT_FAINT)}
-							>×</button>
-						</div>
+						onRescheduleClick={() => { setClickedOccurrence(null); setPendingClickReschedule({ type: "occurrence", occurrence: occ, anchorRect: new DOMRect(x, y, 0, 0) }); }}
+					/>
+				);
+			})()}
 
-						{/* Status badge */}
-						<span style={{
-							display: "inline-block", fontSize: 9, fontWeight: 600,
-							padding: "1px 6px", borderRadius: 10, marginBottom: 6,
-							backgroundColor: STATUS_BG, color: STATUS_TEXT,
-							textTransform: "uppercase", letterSpacing: "0.04em",
-						}}>
-							{v.status}
-						</span>
+			{/* Click-reschedule: visit (clock button) */}
+			{pendingClickReschedule?.type === "visit" && pendingClickReschedule.visit && (() => {
+				const v = pendingClickReschedule.visit;
+				const nd = new Date(v.scheduled_start_at).toISOString().split("T")[0];
+				// Build allVisitsOnNewDay from jobs prop
+				const allVisits: VisitWithJob[] = jobs.flatMap((job_obj) =>
+					(job_obj.visits ?? []).map((vis) => ({ ...vis, job_obj }))
+				);
+				const allVisitsOnNewDay = allVisits.filter((vis) => {
+					if (!vis.scheduled_start_at) return false;
+					return new Date(vis.scheduled_start_at).toISOString().split("T")[0] === nd;
+				});
+				return (
+					<ReschedulePopup
+						visit={v}
+						oldDateStr={nd}
+						newDateStr={nd}
+						allVisitsOnNewDay={allVisitsOnNewDay}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						anchorRect={pendingClickReschedule.anchorRect}
+						onSave={async (data) => { try { await updateVisit({ id: v.id, data }); } catch {} setPendingClickReschedule(null); }}
+						onUndo={() => setPendingClickReschedule(null)}
+					/>
+				);
+			})()}
 
-						{/* Time */}
-						<div style={{ fontSize: 10, color: TEXT_SECONDARY, marginBottom: 8 }}>
-							{timeLabel}
-						</div>
-
-						{/* Tech pills */}
-						{(v.visit_techs?.length ?? 0) > 0 && (
-							<div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-								{v.visit_techs!.map((vt) => {
-									const color = techColorMap.get(vt.tech_id) ?? "#6b7280";
-									const name  = technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id;
-									return (
-										<span key={vt.tech_id} style={{
-											display: "inline-flex", alignItems: "center", gap: 3,
-											fontSize: 9, color: "#e4e4e7",
-											backgroundColor: color + "33", border: `1px solid ${color}55`,
-											borderRadius: 10, padding: "1px 6px",
-										}}>
-											<span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color }} />
-											{name}
-										</span>
-									);
-								})}
-							</div>
-						)}
-
-						{/* Buttons */}
-						<div style={{ display: "flex", gap: 5 }}>
-							<button
-								onClick={() => { setClickedVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}/visits/${v.id}`); }}
-								style={{
-									flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 600,
-									color: "#fff", backgroundColor: ACCENT_BG, border: "none",
-									borderRadius: 5, cursor: "pointer", fontFamily: "inherit", transition: "background-color 0.1s",
-								}}
-								onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = ACCENT_BG_HOVER)}
-								onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = ACCENT_BG)}
-							>View Visit →</button>
-							<button
-								onClick={() => { setClickedVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}`); }}
-								style={{
-									flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 600,
-									color: "#a1a1aa", backgroundColor: SURFACE, border: `1px solid ${BORDER}`,
-									borderRadius: 5, cursor: "pointer", fontFamily: "inherit", transition: "background-color 0.1s",
-								}}
-								onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = BORDER)}
-								onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = SURFACE)}
-							>View Job</button>
-						</div>
-					</div>
+			{/* Click-reschedule: occurrence (clock button) */}
+			{pendingClickReschedule?.type === "occurrence" && pendingClickReschedule.occurrence && (() => {
+				const occ = pendingClickReschedule.occurrence;
+				const nd  = new Date(occ.occurrence_start_at).toISOString().split("T")[0];
+				return (
+					<OccurrenceReschedulePopup
+						occurrence={occ}
+						oldDateStr={nd}
+						newDateStr={nd}
+						anchorRect={pendingClickReschedule.anchorRect}
+						onReschedule={async (newStartAt, newEndAt, scope) => {
+							try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input: { new_start_at: newStartAt, new_end_at: newEndAt, scope } }); } catch {}
+							setPendingClickReschedule(null);
+						}}
+						onGenerate={async (newStartAt, newEndAt) => {
+							setGeneratingVisitId(occ.id);
+							setPendingClickReschedule(null);
+							try {
+								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input: { new_start_at: newStartAt, new_end_at: newEndAt } });
+								await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
+							} catch {}
+							setGeneratingVisitId(null);
+						}}
+						onCancel={() => setPendingClickReschedule(null)}
+					/>
 				);
 			})()}
 		</div>

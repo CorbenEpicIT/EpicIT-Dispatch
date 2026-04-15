@@ -545,20 +545,50 @@ export default function TimePicker({
 					tabIndex={0}
 					onClick={() => !open && openPopup()}
 					onMouseEnter={(e) => {
-						if (!focusedSection) (e.currentTarget as HTMLElement).style.borderColor = "#52525b";
+						if (!focusedSection)
+							(
+								e.currentTarget as HTMLElement
+							).style.borderColor = "#52525b";
 					}}
 					onMouseLeave={(e) => {
-						if (!focusedSection) (e.currentTarget as HTMLElement).style.borderColor = open ? "#52525b" : "#3f3f46";
+						if (!focusedSection)
+							(
+								e.currentTarget as HTMLElement
+							).style.borderColor = open
+								? "#52525b"
+								: "#3f3f46";
 					}}
 				>
-					<div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 1,
+						}}
+					>
 						{seg(hour, "hour", true)}
-						<span style={{ color: "#52525b", fontSize: 10, userSelect: "none", lineHeight: 1 }}>:</span>
+						<span
+							style={{
+								color: "#52525b",
+								fontSize: 10,
+								userSelect: "none",
+								lineHeight: 1,
+							}}
+						>
+							:
+						</span>
 						{seg(minute, "minute", true)}
 						<span style={{ width: 3, flexShrink: 0 }} />
 						{seg(period, "period", true)}
 					</div>
-					<Clock size={10} style={{ color: "#3f3f46", flexShrink: 0, marginLeft: 4 }} />
+					<Clock
+						size={10}
+						style={{
+							color: "#c9c9c9",
+							flexShrink: 0,
+							marginLeft: 4,
+						}}
+					/>
 				</div>
 			) : (
 				<div
@@ -569,11 +599,15 @@ export default function TimePicker({
 					<Clock
 						size={14}
 						className="text-zinc-400 flex-shrink-0 cursor-pointer hover:text-zinc-200 transition-colors"
-						onClick={() => (open ? setOpen(false) : openPopup())}
+						onClick={() =>
+							open ? setOpen(false) : openPopup()
+						}
 					/>
 					<div className="flex items-center gap-0.5">
 						{seg(hour, "hour")}
-						<span className="text-zinc-400 text-sm select-none">:</span>
+						<span className="text-zinc-400 text-sm select-none">
+							:
+						</span>
 						{seg(minute, "minute")}
 						<span className="text-zinc-400 text-sm select-none mx-0.5">
 							{" "}

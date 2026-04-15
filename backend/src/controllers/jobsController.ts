@@ -47,6 +47,8 @@ async function generateJobNumber(): Promise<string> {
 // ============================================================================
 
 export const getAllJobs = async () => {
+	const now = new Date();
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 	return await db.job.findMany({
 		include: {
 			client: {
@@ -92,7 +94,7 @@ export const getAllJobs = async () => {
 					occurrences: {
 						where: {
 							occurrence_start_at: {
-								gte: new Date(),
+								gte: startOfToday,
 							},
 							status: "planned",
 						},
