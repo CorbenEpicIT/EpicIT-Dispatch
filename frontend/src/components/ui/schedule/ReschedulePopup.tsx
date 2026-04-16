@@ -31,6 +31,10 @@ interface ReschedulePopupProps {
 	technicians: Technician[];
 	techColorMap: Map<string, string>;
 	anchorRect: DOMRect;
+	/** When provided, overrides formatDateDisplay(oldDateStr) in the move chip — use for drag-triggered reschedules to show times instead of dates. */
+	fromLabel?: string;
+	/** When provided, overrides formatDateDisplay(newDateStr) in the move chip. */
+	toLabel?: string;
 	onSave: (data: UpdateJobVisitInput) => void;
 	onUndo: () => void;
 }
@@ -110,6 +114,8 @@ export default function ReschedulePopup({
 	technicians,
 	techColorMap,
 	anchorRect,
+	fromLabel,
+	toLabel,
 	onSave,
 	onUndo,
 }: ReschedulePopupProps) {
@@ -238,6 +244,7 @@ export default function ReschedulePopup({
 			arrival_window_start: arrivalConstraint === "between" ? (arrivalWindowStart || null) : null,
 			arrival_window_end: (arrivalConstraint === "between" || arrivalConstraint === "by") ? (arrivalWindowEnd || null) : null,
 			finish_time: (finishConstraint === "at" || finishConstraint === "by") ? (finishTime || null) : null,
+			...(isRecurring && { reschedule_scope: recurringScope }),
 		};
 		onSave(data);
 	}
@@ -292,65 +299,33 @@ export default function ReschedulePopup({
 
 				<div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
 
-					{/* Move chip — full width, subtle blue accent */}
+					{/* Move chip — content-width, centered */}
 					<div style={{
 						display: "flex",
 						alignItems: "center",
-						justifyContent: "center",
 						gap: 6,
 						fontSize: 11,
 						backgroundColor: "rgba(59,130,246,0.06)",
 						border: "1px solid rgba(59,130,246,0.14)",
 						borderRadius: 6,
 						padding: "6px 10px",
+						width: "fit-content",
+						margin: "0 auto",
 					}}>
-						<span style={{ color: "#71717a" }}>{formatDateDisplay(oldDateStr)}</span>
-						<ArrowRight size={11} style={{ color: "#3b82f6", flexShrink: 0 }} />
-						<span style={{ color: "#93c5fd", fontWeight: 600 }}>{formatDateDisplay(newDateStr)}</span>
+						{!fromLabel && !toLabel && oldDateStr === newDateStr ? (
+							<>
+								<span style={{ color: "#71717a" }}>Same Day</span>
+								<span style={{ color: "#3f3f46" }}>:</span>
+								<span style={{ color: "#93c5fd", fontWeight: 600 }}>{formatDateDisplay(newDateStr)}</span>
+							</>
+						) : (
+							<>
+								<span style={{ color: "#71717a" }}>{fromLabel ?? formatDateDisplay(oldDateStr)}</span>
+								<ArrowRight size={11} style={{ color: "#3b82f6", flexShrink: 0 }} />
+								<span style={{ color: "#93c5fd", fontWeight: 600 }}>{toLabel ?? formatDateDisplay(newDateStr)}</span>
+							</>
+						)}
 					</div>
-
-					{/* Recurring scope */}
-					{isRecurring && (
-						<div style={{
-							backgroundColor: "rgba(139,92,246,0.08)",
-							border: "1px solid rgba(139,92,246,0.2)",
-							borderRadius: 6,
-							padding: "7px 9px",
-						}}>
-							<div style={{
-								fontSize: 9,
-								color: "#a78bfa",
-								marginBottom: 5,
-								fontWeight: 600,
-								textTransform: "uppercase",
-								letterSpacing: "0.06em",
-							}}>
-								Recurring visit
-							</div>
-							<div style={{ display: "flex", gap: 4 }}>
-								{(["this", "future"] as const).map((scope) => (
-									<button
-										key={scope}
-										onClick={() => setRecurringScope(scope)}
-										style={{
-											fontSize: 10,
-											padding: "3px 9px",
-											borderRadius: 4,
-											border: "1px solid",
-											cursor: "pointer",
-											backgroundColor: recurringScope === scope ? "#7c3aed" : "transparent",
-											borderColor: recurringScope === scope ? "#7c3aed" : "rgba(139,92,246,0.35)",
-											color: recurringScope === scope ? "#fff" : "#a78bfa",
-											fontFamily: "inherit",
-											transition: "background-color 0.15s, border-color 0.15s, color 0.15s",
-										}}
-									>
-										{scope === "this" ? "This visit only" : "This & all future"}
-									</button>
-								))}
-							</div>
-						</div>
-					)}
 
 					{/* Two-column constraint form */}
 					<div style={{ display: "grid", gridTemplateColumns: "1fr 1px 1fr" }}>
@@ -362,6 +337,8 @@ export default function ReschedulePopup({
 								value={arrivalConstraint}
 								onChange={(e) => handleArrivalConstraintChange(e.target.value as ArrivalConstraint)}
 								style={POPUP_SELECT_STYLE}
+								onFocus={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
+								onBlur={(e) => (e.currentTarget.style.borderColor = "#3f3f46")}
 							>
 								<option value="anytime">Anytime</option>
 								<option value="at">Arrive at</option>
@@ -378,21 +355,25 @@ export default function ReschedulePopup({
 							)}
 							{arrivalConstraint === "between" && (
 								<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-									<div>
-										<div style={{ fontSize: 9, color: "#71717a", marginBottom: 2 }}>From</div>
-										<TimePicker
-											value={hhmmToPickerDate(arrivalWindowStart)}
-											onChange={(d) => setArrivalWindowStart(dateToHHMM(d))}
-											compact
-										/>
+									<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+										<span style={{ fontSize: 9, color: "#a1a1aa", minWidth: 22, flexShrink: 0 }}>From</span>
+										<div style={{ flex: 1, minWidth: 0 }}>
+											<TimePicker
+												value={hhmmToPickerDate(arrivalWindowStart)}
+												onChange={(d) => setArrivalWindowStart(dateToHHMM(d))}
+												compact
+											/>
+										</div>
 									</div>
-									<div>
-										<div style={{ fontSize: 9, color: "#71717a", marginBottom: 2 }}>To</div>
-										<TimePicker
-											value={hhmmToPickerDate(arrivalWindowEnd)}
-											onChange={(d) => setArrivalWindowEnd(dateToHHMM(d))}
-											compact
-										/>
+									<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+										<span style={{ fontSize: 9, color: "#a1a1aa", minWidth: 22, flexShrink: 0 }}>To</span>
+										<div style={{ flex: 1, minWidth: 0 }}>
+											<TimePicker
+												value={hhmmToPickerDate(arrivalWindowEnd)}
+												onChange={(d) => setArrivalWindowEnd(dateToHHMM(d))}
+												compact
+											/>
+										</div>
 									</div>
 								</div>
 							)}
@@ -418,6 +399,8 @@ export default function ReschedulePopup({
 								value={finishConstraint}
 								onChange={(e) => handleFinishConstraintChange(e.target.value as FinishConstraint)}
 								style={POPUP_SELECT_STYLE}
+								onFocus={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
+								onBlur={(e) => (e.currentTarget.style.borderColor = "#3f3f46")}
 							>
 								<option value="when_done">When done</option>
 								<option value="at">Finish at</option>
@@ -466,6 +449,38 @@ export default function ReschedulePopup({
 										<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{row.visitName}</span>
 										<span style={{ color: "#71717a", flexShrink: 0 }}>{row.timeRange}</span>
 									</div>
+								))}
+							</div>
+						</div>
+					)}
+
+					{/* Apply to — recurring scope, after conflict box */}
+					{isRecurring && (
+						<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+							<div style={POPUP_LABEL_STYLE}>Apply to</div>
+							<div style={{ display: "flex", gap: 4 }}>
+								{(["this", "future"] as const).map((scope) => (
+									<button
+										key={scope}
+										onClick={() => setRecurringScope(scope)}
+										style={{
+											flex: 1,
+											height: 26,
+											fontSize: 11,
+											fontWeight: 500,
+											padding: "0 8px",
+											borderRadius: 4,
+											border: "1px solid",
+											cursor: "pointer",
+											backgroundColor: recurringScope === scope ? "#7c3aed" : "transparent",
+											borderColor: recurringScope === scope ? "#7c3aed" : "rgba(139,92,246,0.35)",
+											color: recurringScope === scope ? "#fff" : "#a78bfa",
+											fontFamily: "inherit",
+											transition: "background-color 0.15s, border-color 0.15s, color 0.15s",
+										}}
+									>
+										{scope === "this" ? "This visit only" : "This & all future"}
+									</button>
 								))}
 							</div>
 						</div>

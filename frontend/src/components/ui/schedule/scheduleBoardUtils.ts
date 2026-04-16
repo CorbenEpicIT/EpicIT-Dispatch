@@ -4,19 +4,19 @@ import type { JobVisit } from "../../../types/jobs";
 
 // ─── Shared constants (scroll zones) ─────────────────────────────────────────
 
-export const SCROLL_ZONE_W   = 40;   // px — edge zone that triggers week/month scroll during drag
+export const SCROLL_ZONE_W = 40; // px — edge zone that triggers week/month scroll during drag
 export const SCROLL_DELAY_MS = 1500; // ms — delay before auto-advancing on zone hold
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const SLOT_H     = 56;   // px per hour
-export const DAY_START  = 0;    // 12 AM (midnight)
-export const DAY_END    = 24;   // 12 AM next day
-export const CARD_W_VW  = 0.068;
+export const SLOT_H = 56; // px per hour
+export const DAY_START = 0; // 12 AM (midnight)
+export const DAY_END = 24; // 12 AM next day
+export const CARD_W_VW = 0.068;
 export const CARD_W_MIN = 72;
 export const CARD_W_MAX = 96;
-export const LEFT_PAD   = 5;
-export const RIGHT_PAD  = 10;
+export const LEFT_PAD = 5;
+export const RIGHT_PAD = 10;
 
 const TECH_COLOR_PALETTE = [
 	"#3b82f6", // blue-500
@@ -37,12 +37,18 @@ const TECH_COLOR_PALETTE = [
 
 export function getPriorityColor(priority?: string): string {
 	switch (priority?.toLowerCase()) {
-		case "emergency": return "#dc2626"; // red-600 — most severe
-		case "urgent":    return "#ea580c"; // orange-600
-		case "high":      return "#ef4444"; // red-500
-		case "medium":    return "#f59e0b"; // amber-500
-		case "low":       return "#10b981"; // emerald-500
-		default:          return "#3b82f6"; // blue-500
+		case "emergency":
+			return "#dc2626"; // red-600 — most severe
+		case "urgent":
+			return "#ea580c"; // orange-600
+		case "high":
+			return "#ef4444"; // red-500
+		case "medium":
+			return "#f59e0b"; // amber-500
+		case "low":
+			return "#10b981"; // emerald-500
+		default:
+			return "#3b82f6"; // blue-500
 	}
 }
 
@@ -97,10 +103,28 @@ function visitEndHours(visit: {
 }
 
 /**
- * Time-collision cascade layout: one slot per visit, split column width equally
- * among visits that overlap in time. Non-overlapping visits take full width.
+ * Time-local overlap layout: assigns each visit a lane via greedy slot-packing,
+ * then expands each visit rightward into lanes that are free during its time range.
  *
- * Replaces calcCardLeft (which was tech-index based).
+ * Algorithm:
+ *   1. Assign lanes — each visit takes the lowest lane whose last occupant ended
+ *      before this visit starts. This is independent per visit, not per group.
+ *   2. Build direct-overlap adjacency — two visits overlap iff their time ranges
+ *      intersect (start < other.end && other.start < end).
+ *   3. Find connected components of the overlap graph — this is the true "cluster"
+ *      even when visits are only indirectly connected through a long-spanning visit.
+ *      The cluster's max lane + 1 is the width denominator for all members.
+ *   4. Per visit, columnSpan = (next lane occupied by a direct overlap to its right)
+ *      minus its own lane.  If no directly-overlapping visit sits to its right, it
+ *      spans all the way to the end of the cluster — filling unused horizontal space.
+ *
+ * Example: A(7–17), B(8–10), C(9–10), D(14–15)
+ *   Lanes:  A=0, B=1, C=2, D=1   (D reuses lane 1 after B ends at 10)
+ *   Cluster max lane = 2  →  totalLanes = 3  (width denominator for all four)
+ *   A: direct overlaps B(1),C(2),D(1) → next right = 1 → span=1 → 1/3 width
+ *   B: direct overlaps A(0),C(2)      → next right = 2 → span=1 → 1/3 width
+ *   C: direct overlaps A(0),B(1)      → no right    → span=1 → 1/3 width
+ *   D: direct overlaps A(0) only      → no right    → span=2 → 2/3 width
  */
 export function resolveOverlapLayout<
 	T extends {
@@ -119,42 +143,93 @@ export function resolveOverlapLayout<
 	const GAP = 2;
 	const usableWidth = colWidth - LEFT_PAD - RIGHT_PAD;
 
-	// Sort by constraint-derived start time
-	const sorted = [...visits].sort(
-		(a, b) => visitStartHours(a) - visitStartHours(b)
-	);
+	const sorted = [...visits].sort((a, b) => visitStartHours(a) - visitStartHours(b));
+	const n = sorted.length;
 
-	// Build contiguous overlap groups: a visit joins the current group if its
-	// start time is before the group's current maximum end time.
-	const groups: T[][] = [];
-	let current: T[] = [];
-	let groupEndH = -Infinity;
+	// ── Step 1: assign lanes ───────────────────────────────────────────────────
+	// laneEnd[i] = the end-hour of the last visit placed in lane i.
+	const laneEnd: number[] = [];
+	const lane = new Map<string, number>();
+	const sH: number[] = [];
+	const eH: number[] = [];
 
-	for (const visit of sorted) {
-		const startH = visitStartHours(visit);
-		const endH = visitEndHours(visit);
-		if (startH < groupEndH) {
-			current.push(visit);
-			groupEndH = Math.max(groupEndH, endH);
-		} else {
-			if (current.length > 0) groups.push(current);
-			current = [visit];
-			groupEndH = endH;
+	for (let i = 0; i < n; i++) {
+		const s = visitStartHours(sorted[i]);
+		const e = visitEndHours(sorted[i]);
+		sH.push(s);
+		eH.push(e);
+
+		let assigned = -1;
+		for (let l = 0; l < laneEnd.length; l++) {
+			if (laneEnd[l] <= s) {
+				laneEnd[l] = e;
+				assigned = l;
+				break;
+			}
+		}
+		if (assigned === -1) {
+			assigned = laneEnd.length;
+			laneEnd.push(e);
+		}
+		lane.set(sorted[i].id, assigned);
+	}
+
+	// ── Step 2: direct-overlap adjacency ──────────────────────────────────────
+	const adj: Set<number>[] = Array.from({ length: n }, () => new Set<number>());
+	for (let i = 0; i < n; i++) {
+		for (let j = i + 1; j < n; j++) {
+			if (sH[i] < eH[j] && sH[j] < eH[i]) {
+				adj[i].add(j);
+				adj[j].add(i);
+			}
 		}
 	}
-	if (current.length > 0) groups.push(current);
 
-	// Assign left + width for each slot
+	// ── Step 3: connected components (BFS) ────────────────────────────────────
+	const comp = new Int32Array(n).fill(-1);
+	let numComp = 0;
+	for (let i = 0; i < n; i++) {
+		if (comp[i] !== -1) continue;
+		const queue = [i];
+		comp[i] = numComp;
+		for (let qi = 0; qi < queue.length; qi++) {
+			for (const nb of adj[queue[qi]]) {
+				if (comp[nb] === -1) {
+					comp[nb] = numComp;
+					queue.push(nb);
+				}
+			}
+		}
+		numComp++;
+	}
+
+	// max lane per component → totalLanes per component
+	const compMaxLane = new Int32Array(numComp).fill(0);
+	for (let i = 0; i < n; i++) {
+		const l = lane.get(sorted[i].id)!;
+		if (l > compMaxLane[comp[i]]) compMaxLane[comp[i]] = l;
+	}
+
+	// ── Step 4: compute left + width per visit ─────────────────────────────────
 	const result: OverlapSlot<T>[] = [];
-	for (const group of groups) {
-		const n = group.length;
-		const cardW = n === 1 ? usableWidth : (usableWidth - GAP * (n - 1)) / n;
-		group.forEach((visit, i) => {
-			result.push({
-				visit,
-				left: LEFT_PAD + i * (cardW + GAP),
-				width: cardW,
-			});
+	for (let i = 0; i < n; i++) {
+		const visit = sorted[i];
+		const myLane = lane.get(visit.id)!;
+		const totalLanes = compMaxLane[comp[i]] + 1;
+
+		// Find nearest directly-overlapping lane to the right of myLane
+		let nextOccupied = totalLanes;
+		for (const j of adj[i]) {
+			const jl = lane.get(sorted[j].id)!;
+			if (jl > myLane && jl < nextOccupied) nextOccupied = jl;
+		}
+		const span = nextOccupied - myLane;
+
+		const slotW = (usableWidth - GAP * (totalLanes - 1)) / totalLanes;
+		result.push({
+			visit,
+			left: LEFT_PAD + myLane * (slotW + GAP),
+			width: slotW * span + GAP * (span - 1),
 		});
 	}
 	return result;
@@ -197,9 +272,10 @@ export function visitStartHours(visit: {
 	}
 	if (h !== null) return h;
 	// Fallback: local time from scheduled_start_at
-	const d = typeof visit.scheduled_start_at === "string"
-		? new Date(visit.scheduled_start_at)
-		: visit.scheduled_start_at;
+	const d =
+		typeof visit.scheduled_start_at === "string"
+			? new Date(visit.scheduled_start_at)
+			: visit.scheduled_start_at;
 	return d.getHours() + d.getMinutes() / 60;
 }
 
@@ -236,18 +312,19 @@ export function visitStartLabel(visit: {
 	scheduled_start_at: string | Date;
 }): string {
 	let hhmm: string | null | undefined = null;
-	if (visit.arrival_constraint === "at")           hhmm = visit.arrival_time;
+	if (visit.arrival_constraint === "at") hhmm = visit.arrival_time;
 	else if (visit.arrival_constraint === "between") hhmm = visit.arrival_window_start;
-	else if (visit.arrival_constraint === "by")      hhmm = visit.arrival_window_end;
+	else if (visit.arrival_constraint === "by") hhmm = visit.arrival_window_end;
 	if (hhmm) {
 		const [h, m] = hhmm.split(":").map(Number);
-		const period   = h >= 12 ? "PM" : "AM";
+		const period = h >= 12 ? "PM" : "AM";
 		const displayH = h % 12 || 12;
 		return `${displayH}:${String(m).padStart(2, "0")} ${period}`;
 	}
-	const d = typeof visit.scheduled_start_at === "string"
-		? new Date(visit.scheduled_start_at)
-		: visit.scheduled_start_at;
+	const d =
+		typeof visit.scheduled_start_at === "string"
+			? new Date(visit.scheduled_start_at)
+			: visit.scheduled_start_at;
 	return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
@@ -257,16 +334,40 @@ export function visitEndLabel(visit: {
 	finish_time?: string | null;
 	scheduled_end_at: string | Date;
 }): string {
-	if ((visit.finish_constraint === "at" || visit.finish_constraint === "by") && visit.finish_time) {
+	if (
+		(visit.finish_constraint === "at" || visit.finish_constraint === "by") &&
+		visit.finish_time
+	) {
 		const [h, m] = visit.finish_time.split(":").map(Number);
-		const period   = h >= 12 ? "PM" : "AM";
+		const period = h >= 12 ? "PM" : "AM";
 		const displayH = h % 12 || 12;
 		return `${displayH}:${String(m).padStart(2, "0")} ${period}`;
 	}
-	const d = typeof visit.scheduled_end_at === "string"
-		? new Date(visit.scheduled_end_at)
-		: visit.scheduled_end_at;
+	const d =
+		typeof visit.scheduled_end_at === "string"
+			? new Date(visit.scheduled_end_at)
+			: visit.scheduled_end_at;
 	return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * Formats a visit or occurrence as a single time-range string for compact chip display.
+ * Uses constraint fields (arrival_constraint, finish_constraint) rather than raw scheduled times.
+ * Returns e.g. "7:00 AM · WD" for when_done, "8:00 AM – 3:00 PM" for timed constraints.
+ */
+export function visitConstraintTimeLabel(visit: {
+	arrival_constraint: string;
+	arrival_time?: string | null;
+	arrival_window_start?: string | null;
+	arrival_window_end?: string | null;
+	finish_constraint: string;
+	finish_time?: string | null;
+	scheduled_start_at: string | Date;
+	scheduled_end_at: string | Date;
+}): string {
+	const start = visitStartLabel(visit);
+	if (visit.finish_constraint === "when_done") return `${start} · WD`;
+	return `${start} – ${visitEndLabel(visit)}`;
 }
 
 /** Height in px for a visit. Minimum is one half-slot (30 min = SLOT_H/2) for clean display.
@@ -294,13 +395,16 @@ export function calcCardHeight(
 	}
 
 	// Timed visits: derive height from scheduled duration (timezone-relative offset).
-	const e = typeof visit.scheduled_end_at === "string"
-		? new Date(visit.scheduled_end_at)
-		: visit.scheduled_end_at;
-	const s = typeof visit.scheduled_start_at === "string"
-		? new Date(visit.scheduled_start_at)
-		: visit.scheduled_start_at;
-	const durationHours = (e.getHours() + e.getMinutes() / 60) - (s.getHours() + s.getMinutes() / 60);
+	const e =
+		typeof visit.scheduled_end_at === "string"
+			? new Date(visit.scheduled_end_at)
+			: visit.scheduled_end_at;
+	const s =
+		typeof visit.scheduled_start_at === "string"
+			? new Date(visit.scheduled_start_at)
+			: visit.scheduled_start_at;
+	const durationHours =
+		e.getHours() + e.getMinutes() / 60 - (s.getHours() + s.getMinutes() / 60);
 	return Math.max(SLOT_H / 2, Math.min(durationHours, maxHours) * SLOT_H);
 }
 
@@ -322,7 +426,9 @@ export function getTechInitials(name: string): string {
 export function groupVisitsByDay<T extends JobVisit>(visits: T[]): Record<string, T[]> {
 	return visits.reduce(
 		(acc, visit) => {
-			const dateStr = new Date(visit.scheduled_start_at).toISOString().split("T")[0];
+			const dateStr = new Date(visit.scheduled_start_at)
+				.toISOString()
+				.split("T")[0];
 			if (!acc[dateStr]) acc[dateStr] = [];
 			acc[dateStr].push(visit);
 			return acc;
@@ -378,7 +484,7 @@ export const POPUP_LABEL_STYLE: CSSProperties = {
 /** Shared muted text style inside reschedule popups */
 export const POPUP_MUTED_STYLE: CSSProperties = {
 	fontSize: 9,
-	color: "#52525b",
+	color: "#a1a1aa",
 };
 
 /** Shared <select> style inside reschedule popups */
@@ -388,10 +494,11 @@ export const POPUP_SELECT_STYLE: CSSProperties = {
 	borderRadius: 4,
 	color: "#e4e4e7",
 	fontSize: 10,
-	padding: "2px 4px",
+	padding: "4px 6px",
 	cursor: "pointer",
 	outline: "none",
 	width: "100%",
+	transition: "border-color 0.15s ease-out",
 };
 
 // ─── Day header ───────────────────────────────────────────────────────────────

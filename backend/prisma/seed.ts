@@ -683,7 +683,7 @@ async function main() {
 			description:
 				"Monthly preventive maintenance across all Williams Property Management units. Includes filter replacement, coil inspection, and full system check.",
 			address: client3.address,
-			coords: { lat: 43.7889, lng: -91.2297 },
+			coords: { lat: 43.7889, lon: -91.2297 },
 			priority: "Medium",
 			status: "Active",
 			starts_at: daysFromNow(-180),
@@ -734,7 +734,7 @@ async function main() {
 			description:
 				"Weekly MERV-13 filter inspection and replacement for 3 rooftop units. Required by building air quality policy.",
 			address: client4.address,
-			coords: { lat: 43.8334, lng: -91.2601 },
+			coords: { lat: 43.8334, lon: -91.2601 },
 			priority: "Low",
 			status: "Active",
 			starts_at: daysFromNow(-90),
@@ -1569,6 +1569,10 @@ async function main() {
 				skip_reason:
 					"New Year's holiday — building closed. Rescheduled maintenance folded into February visit.",
 				generated_at: daysFromNow(-100),
+				arrival_constraint: "between",
+				finish_constraint: "when_done",
+				arrival_window_start: "08:00",
+				arrival_window_end: "09:00",
 			},
 		}),
 		// Plan 1 — completed (last month)
@@ -1581,6 +1585,10 @@ async function main() {
 				job_visit_id: recurringVisit1.id,
 				generated_at: daysFromNow(-45),
 				completed_at: dateAt(occurrencePastStart, 11, 50),
+				arrival_constraint: "between",
+				finish_constraint: "when_done",
+				arrival_window_start: "08:00",
+				arrival_window_end: "09:00",
 			},
 		}),
 		// Plan 1 — planned (next month)
@@ -1590,6 +1598,10 @@ async function main() {
 				occurrence_start_at: occurrenceFutureStart,
 				occurrence_end_at: occurrenceFutureEnd,
 				status: "planned",
+				arrival_constraint: "between",
+				finish_constraint: "when_done",
+				arrival_window_start: "08:00",
+				arrival_window_end: "09:00",
 			},
 		}),
 		// Plan 2 — completed (last week)
@@ -1602,6 +1614,9 @@ async function main() {
 				job_visit_id: weeklyVisit1.id,
 				generated_at: daysFromNow(-14),
 				completed_at: dateAt(weeklyOccStart1, 8, 45),
+				arrival_constraint: "at",
+				finish_constraint: "when_done",
+				arrival_time: "07:00",
 			},
 		}),
 		// Plan 2 — generated (next week, linked to scheduled visit)
@@ -1613,6 +1628,9 @@ async function main() {
 				status: "generated",
 				job_visit_id: weeklyVisit2.id,
 				generated_at: daysFromNow(-7),
+				arrival_constraint: "at",
+				finish_constraint: "when_done",
+				arrival_time: "07:00",
 			},
 		}),
 	]);

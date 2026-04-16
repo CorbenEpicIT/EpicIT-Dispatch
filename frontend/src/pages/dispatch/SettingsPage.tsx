@@ -14,6 +14,7 @@ export default function SettingsPage() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [uploadError, setUploadError] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
+	const [logoImgError, setLogoImgError] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saveSuccess, setSaveSuccess] = useState(false);
 	const [nameError, setNameError] = useState<string | null>(null);
@@ -42,6 +43,7 @@ export default function SettingsPage() {
 				email: org.email ?? "",
 				website: org.website ?? "",
 			});
+			setLogoImgError(false);
 		}
 	}, [org]);
 
@@ -135,11 +137,12 @@ export default function SettingsPage() {
 						<div className="flex items-center gap-5">
 							{isLoading ? (
 								<div className="h-12 w-12 flex-shrink-0 animate-pulse rounded-md bg-zinc-800" />
-							) : org?.logo_url ? (
+							) : org?.logo_url && !logoImgError ? (
 								<img
-									src={org.logo_url}
+									src={org.logo_url ?? undefined}
 									alt="Organization logo"
 									className="h-12 w-12 flex-shrink-0 rounded-md object-contain bg-zinc-800"
+									onError={() => setLogoImgError(true)}
 								/>
 							) : (
 								<div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md bg-zinc-800">

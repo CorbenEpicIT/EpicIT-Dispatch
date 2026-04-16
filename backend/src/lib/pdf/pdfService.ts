@@ -6,6 +6,7 @@ import { InvoicePdfTemplate } from "./invoicePdfTemplate.js";
 import { getQuoteById } from "../../controllers/quotesController.js";
 import { getInvoiceById } from "../../controllers/invoicesController.js";
 import { db } from "../../db.js";
+import { getBuffer } from "../../services/wasabiService.js";
 
 type DocElement = ReactElement<DocumentProps, string | JSXElementConstructor<unknown>>;
 
@@ -17,7 +18,18 @@ async function fetchOrg(organizationId: string | null | undefined) {
 		where: { id: organizationId },
 		select: { name: true, logo_url: true, phone: true, address: true, email: true, website: true },
 	});
-	return org ?? fallbackOrg;
+	if (!org) return fallbackOrg;
+
+	let logo_url: string | null = null;
+	if (org.logo_url) {
+		try {
+			const { buffer, contentType } = await getBuffer(org.logo_url);
+			logo_url = `data:${contentType};base64,${buffer.toString("base64")}`;
+		} catch {
+			logo_url = null;
+		}
+	}
+	return { ...org, logo_url };
 }
 
 export async function generateQuotePdf(quoteId: string): Promise<Buffer> {

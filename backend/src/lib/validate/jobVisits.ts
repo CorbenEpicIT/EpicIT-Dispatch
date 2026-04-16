@@ -221,6 +221,8 @@ export const updateJobVisitSchema = z
 
 		// Full replacement array — undefined means "don't touch line items"
 		line_items: z.array(visitLineItemInputSchema).optional(),
+
+		reschedule_scope: z.enum(["this", "future"]).optional(),
 	})
 	.refine(
 		(data) => {
