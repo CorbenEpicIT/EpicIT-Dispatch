@@ -1,4 +1,4 @@
-import axios from "axios";
+import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type {
 	Draft,
@@ -7,14 +7,6 @@ import type {
 	UpdateDraftInput,
 	ListDraftsQuery,
 } from "../types/drafts";
-
-const BASE_URL: string = import.meta.env.VITE_BACKEND_URL;
-
-if (!BASE_URL) console.warn("Failed to load backend url environment variable!");
-
-const api = axios.create({
-	baseURL: BASE_URL,
-});
 
 export const getDrafts = async (query?: ListDraftsQuery): Promise<DraftSummary[]> => {
 	const params = new URLSearchParams();
