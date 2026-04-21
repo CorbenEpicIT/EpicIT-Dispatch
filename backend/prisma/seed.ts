@@ -160,6 +160,8 @@ async function main() {
 				cost: 38.0,
 				sku: "REF-410A-25",
 				low_stock_threshold: 3,
+				category: "Refrigerants",
+				unit: "cylinder",
 			},
 		}),
 		db.inventory_item.create({
@@ -174,6 +176,8 @@ async function main() {
 				cost: 3.25,
 				sku: "FILT-16251-M8",
 				low_stock_threshold: 12,
+				category: "Filters",
+				unit: "each",
 			},
 		}),
 		db.inventory_item.create({
@@ -188,6 +192,8 @@ async function main() {
 				cost: 8.5,
 				sku: "CAP-45-5-440",
 				low_stock_threshold: 5,
+				category: "Electrical",
+				unit: "each",
 			},
 		}),
 		db.inventory_item.create({
@@ -202,6 +208,8 @@ async function main() {
 				cost: 32.0,
 				sku: "TSTAT-T6PRO",
 				low_stock_threshold: 2,
+				category: "Controls",
+				unit: "each",
 			},
 		}),
 		db.inventory_item.create({
@@ -216,6 +224,8 @@ async function main() {
 				cost: 11.0,
 				sku: "CONT-2P-40A",
 				low_stock_threshold: 4,
+				category: "Electrical",
+				unit: "each",
 			},
 		}),
 	]);
@@ -2617,6 +2627,88 @@ async function main() {
 		],
 	});
 
+	// ============================================================================
+	// Vehicles + Stock
+	// ============================================================================
+
+	// Van 1 — John Smith's primary truck (well-stocked, one item low)
+	const van1 = await db.vehicle.create({
+		data: {
+			organization_id: org.id,
+			name: "Van 1 — Smith",
+			type: "Van",
+			license_plate: "WIS-4421",
+			year: 2021,
+			make: "Ford",
+			model: "Transit 250",
+			status: "active",
+			color: "Pearl White",
+			notes: "Primary service van. Roof rack with ladder.",
+		},
+	});
+
+	// Van 2 — Marcus Lee's van (lightly stocked, refrigerant low)
+	const van2 = await db.vehicle.create({
+		data: {
+			organization_id: org.id,
+			name: "Van 2 — Lee",
+			type: "Van",
+			license_plate: "WIS-8834",
+			year: 2019,
+			make: "Chevrolet",
+			model: "Express 2500",
+			status: "active",
+			color: "Fleet Blue",
+			notes: "Secondary van. Check tire pressure weekly.",
+		},
+	});
+
+	// Truck 3 — spare / fully stocked (not assigned to any tech)
+	const truck3 = await db.vehicle.create({
+		data: {
+			organization_id: org.id,
+			name: "Truck 3 — Spare",
+			type: "Truck",
+			license_plate: "WIS-1109",
+			year: 2020,
+			make: "Ram",
+			model: "ProMaster 2500",
+			status: "active",
+			color: "Silver",
+			notes: "Spare vehicle. Fully stocked. Available for overflow.",
+		},
+	});
+
+	// Stock Van 1: filters (healthy), capacitors (healthy), contactor (low), thermostat (healthy)
+	await db.vehicle_stock_item.createMany({
+		data: [
+			{ vehicle_id: van1.id, inventory_item_id: invFilter.id,     qty_on_hand: 8,  qty_min: 4 },
+			{ vehicle_id: van1.id, inventory_item_id: invCapacitor.id,  qty_on_hand: 6,  qty_min: 3 },
+			{ vehicle_id: van1.id, inventory_item_id: invContactor.id,  qty_on_hand: 1,  qty_min: 2 }, // LOW
+			{ vehicle_id: van1.id, inventory_item_id: invThermostat.id, qty_on_hand: 3,  qty_min: 2 },
+		],
+	});
+
+	// Stock Van 2: refrigerant (low), filters (healthy), capacitors (low)
+	await db.vehicle_stock_item.createMany({
+		data: [
+			{ vehicle_id: van2.id, inventory_item_id: invRefrigerant.id, qty_on_hand: 1,  qty_min: 2 }, // LOW
+			{ vehicle_id: van2.id, inventory_item_id: invFilter.id,      qty_on_hand: 10, qty_min: 4 },
+			{ vehicle_id: van2.id, inventory_item_id: invCapacitor.id,   qty_on_hand: 2,  qty_min: 3 }, // LOW
+		],
+	});
+
+	// Stock Truck 3: fully loaded across all 5 inventory items
+	await db.vehicle_stock_item.createMany({
+		data: [
+			{ vehicle_id: truck3.id, inventory_item_id: invRefrigerant.id, qty_on_hand: 4,  qty_min: 2 },
+			{ vehicle_id: truck3.id, inventory_item_id: invFilter.id,      qty_on_hand: 24, qty_min: 8 },
+			{ vehicle_id: truck3.id, inventory_item_id: invCapacitor.id,   qty_on_hand: 10, qty_min: 4 },
+			{ vehicle_id: truck3.id, inventory_item_id: invThermostat.id,  qty_on_hand: 4,  qty_min: 2 },
+			{ vehicle_id: truck3.id, inventory_item_id: invContactor.id,   qty_on_hand: 5,  qty_min: 2 },
+		],
+	});
+
 	console.log("Seeded successfully:");
 	console.log(`  Organization:      ${org.name}`);
 	console.log(`  Dispatcher:        ${dispatcher.email} / password123`);
@@ -2652,6 +2744,7 @@ async function main() {
 	console.log(`  Payments:          2  full (check) + partial (ACH)`);
 	console.log(`  Form Drafts:       3  quote, job_visit, invoice`);
 	console.log(`  Inventory:         5 items (2 below low-stock threshold)`);
+	console.log(`  Vehicles:          3  (Van 1/2 active w/ stock, Truck 3 spare fully loaded)`);
 	console.log(
 		`  Activity Logs:     37 entries covering all feed event types`,
 	);

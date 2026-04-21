@@ -14,6 +14,8 @@ export interface InventoryItem {
 	image_urls: string[];
 	alert_emails_enabled: boolean;
 	alert_email: string | null;
+	category: string | null;
+	unit: string;
 	created_at: string;
 	updated_at: string;
 	stock_status?: StockStatus;

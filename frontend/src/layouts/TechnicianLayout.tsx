@@ -1,13 +1,20 @@
 import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect } from "react";
-import { ClipboardList, ArrowLeft, House } from "lucide-react";
+import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle } from "lucide-react";
+import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
+import { useNotificationsQuery } from "../hooks/useNotifications";
 
 export default function TechnicianLayout() {
 	const { user, logout } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const navigationCount = useRef(0);
+
+	const { data: techProfile } = useTechnicianByIdQuery(user?.userId ?? null);
+	const { data: notifications = [] } = useNotificationsQuery(user?.userId ?? null);
+	const unreadCount = notifications.filter((n) => !n.read_at).length;
+	const noVehicle = techProfile && !techProfile.current_vehicle_id;
 
 	useEffect(() => {
 		navigationCount.current++;
@@ -33,9 +40,6 @@ export default function TechnicianLayout() {
 				{/* TOP NAV */}
 				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-zinc-950 border-b border-zinc-900">
 					<div className="flex items-center gap-3 sm:gap-6">
-						<div className="font-semibold text-sm whitespace-nowrap">
-							Tech Demo
-						</div>
 						<button
 							onClick={handleBack}
 							className="flex items-center gap-2 text-zinc-400 hover:text-white px-2 sm:px-3 py-2 rounded-lg hover:bg-zinc-800 group"
@@ -48,9 +52,44 @@ export default function TechnicianLayout() {
 								Back
 							</span>
 						</button>
+						<div className="font-semibold text-sm whitespace-nowrap">
+							Tech Demo
+						</div>
 					</div>
 
-					<div className="flex items-center gap-3">
+					<div className="flex items-center gap-2">
+						{/* Truck / vehicle icon */}
+						<button
+							onClick={() => navigate("/technician/vehicle")}
+							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-800 transition-colors"
+							title={techProfile?.current_vehicle?.name ?? "No vehicle selected"}
+						>
+							<Truck
+								size={20}
+								className={noVehicle ? "text-amber-400" : "text-zinc-400"}
+							/>
+							{noVehicle && (
+								<AlertTriangle
+									size={10}
+									className="absolute top-1 right-1 text-amber-400"
+								/>
+							)}
+						</button>
+
+						{/* Bell / notifications icon */}
+						<button
+							onClick={() => navigate("/technician/notifications")}
+							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-800 transition-colors"
+							title="Notifications"
+						>
+							<Bell size={20} className="text-zinc-400" />
+							{unreadCount > 0 && (
+								<span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+									{unreadCount > 9 ? "9+" : unreadCount}
+								</span>
+							)}
+						</button>
+
 						{user && (
 							<span className="hidden sm:block text-sm text-zinc-400">
 								{user.name}

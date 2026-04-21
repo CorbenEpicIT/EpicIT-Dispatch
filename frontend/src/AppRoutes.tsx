@@ -4,6 +4,8 @@ import TechnicianLayout from "./layouts/TechnicianLayout";
 import TechnicianDashboardPage from "./pages/technician/TechnicianDashboardPage";
 import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
 import TechnicianVisitDetailPage from "./pages/technician/TechnicianVisitDetailPage";
+import TechnicianNotificationsPage from "./pages/technician/TechnicianNotificationsPage";
+import TechnicianVehiclePage from "./pages/technician/TechnicianVehiclePage";
 import DashboardPage from "./pages/dispatch/DashboardPage";
 import JobsPage from "./pages/dispatch/JobsPage";
 import JobDetailPage from "./pages/dispatch/JobDetailPage";
@@ -113,6 +115,8 @@ export default function AppRoutes() {
 				<Route index element={<TechnicianDashboardPage />} />
 				<Route path="visits" element={<TechnicianVisitsPage />} />
 				<Route path="visits/:visitId" element={<TechnicianVisitDetailPage />} />
+				<Route path="notifications" element={<TechnicianNotificationsPage />} />
+				<Route path="vehicle" element={<TechnicianVehiclePage />} />
 			</Route>
 
 			<Route path="*" element={<Navigate to="/login" replace />} />

@@ -1,3 +1,4 @@
+import axios from "axios";
 import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type {
@@ -76,6 +77,13 @@ export const deleteJob = async (id: string): Promise<{ message: string; id: stri
 
 export const getAllJobVisits = async (): Promise<JobVisit[]> => {
 	const response = await api.get<ApiResponse<JobVisit[]>>("/job-visits");
+	return response.data.data || [];
+};
+
+export const getClientVisitHistory = async (clientId: string, limit = 5): Promise<JobVisit[]> => {
+	const response = await api.get<ApiResponse<JobVisit[]>>("/job-visits", {
+		params: { client_id: clientId, limit, sort: "desc" },
+	});
 	return response.data.data || [];
 };
 
@@ -205,14 +213,21 @@ export const cancelJobVisit = async (visitId: string, cancellationReason: string
 // ============================================
 
 export const clockInVisit = async (visitId: string, techId: string): Promise<ClockInResult> => {
-	const response = await api.post<ApiResponse<ClockInResult>>(
-		`/job-visits/${visitId}/clock-in`,
-		{ tech_id: techId },
-	);
-	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to clock in");
+	try {
+		const response = await api.post<ApiResponse<ClockInResult>>(
+			`/job-visits/${visitId}/clock-in`,
+			{ tech_id: techId },
+		);
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || "Failed to clock in");
+		}
+		return response.data.data!;
+	} catch (err) {
+		if (axios.isAxiosError(err) && err.response?.data?.error?.message) {
+			throw new Error(err.response.data.error.message);
+		}
+		throw err;
 	}
-	return response.data.data!;
 };
 
 export const clockOutVisit = async (visitId: string, techId: string): Promise<ClockOutResult> => {
@@ -275,4 +290,18 @@ export const deleteJobNote = async (
 	}
 
 	return response.data.data || { message: "Job note deleted successfully" };
+};
+
+export const uploadNotePhoto = async (file: File): Promise<string> => {
+	const formData = new FormData();
+	formData.append("photo", file);
+	const response = await api.post<ApiResponse<{ url: string }>>(
+		"/notes/upload-photo",
+		formData,
+		{ headers: { "Content-Type": "multipart/form-data" } },
+	);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Upload failed");
+	}
+	return response.data.data!.url;
 };

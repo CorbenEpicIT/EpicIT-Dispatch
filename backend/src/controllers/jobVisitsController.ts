@@ -8,18 +8,17 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
+import { createNotification } from "./notificationsController.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
+import { UserContext } from "../lib/context.js";
 
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
-export const getAllJobVisits = async () => {
+export const getAllJobVisits = async (filters?: { clientId?: string; limit?: number; sort?: "asc" | "desc" }) => {
 	return await db.job_visit.findMany({
+		where: filters?.clientId
+			? { job: { client_id: filters.clientId } }
+			: undefined,
 		include: {
 			job: {
 				include: {
@@ -36,6 +35,8 @@ export const getAllJobVisits = async () => {
 			},
 			notes: true,
 		},
+		orderBy: { scheduled_start_at: filters?.sort ?? "asc" },
+		...(filters?.limit && { take: filters.limit }),
 	});
 };
 
@@ -560,6 +561,29 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 			}
 		}
 
+		// Notify assigned technicians if scheduled time changed
+		if (
+			updated &&
+			parsed.scheduled_start_at !== undefined &&
+			existingVisit.scheduled_start_at.getTime() !== parsed.scheduled_start_at.getTime()
+		) {
+			const clientName = updated.job.client.name;
+			const newTime = parsed.scheduled_start_at.toLocaleString("en-US", {
+				weekday: "short", month: "short", day: "numeric",
+				hour: "numeric", minute: "2-digit",
+			});
+			const techIds = updated.visit_techs.map((vt: { tech_id: string }) => vt.tech_id);
+			for (const techId of techIds) {
+				await createNotification({
+					technicianId: techId,
+					type:         "visit_changed",
+					title:        `Schedule changed: ${clientName}`,
+					body:         `Your visit at ${clientName} has been rescheduled to ${newTime}.`,
+					actionUrl:    `/technician/visits/${id}`,
+				});
+			}
+		}
+
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -662,6 +686,27 @@ export const assignTechniciansToVisit = async (
 			},
 		});
 
+		// Notify newly assigned technicians
+		if (updated) {
+			const clientName = updated.job.client.name;
+			const scheduledAt = updated.scheduled_start_at.toLocaleString("en-US", {
+				weekday: "short", month: "short", day: "numeric",
+				hour: "numeric", minute: "2-digit",
+			});
+			const newlyAssigned = techIds.filter(
+				(id) => !visit.visit_techs.some((vt) => vt.tech_id === id),
+			);
+			for (const techId of newlyAssigned) {
+				await createNotification({
+					technicianId: techId,
+					type:         "visit_assigned",
+					title:        `New visit assigned: ${clientName}`,
+					body:         `You have been assigned to a visit at ${clientName} on ${scheduledAt}.`,
+					actionUrl:    `/technician/visits/${visitId}`,
+				});
+			}
+		}
+
 		return { err: "", item: updated };
 	} catch (e) {
 		log.error({ err: e }, "Failed to assign technicians");
@@ -744,12 +789,21 @@ export const acceptJobVisit = async (
 // ── Visit lifecycle ───────────────────────────────────────────────
 
 export const LIFECYCLE_TRANSITIONS = {
-	drive: { from: ["Scheduled"], to: "Driving" as const },
+	drive: { from: ["Scheduled", "Delayed"], to: "Driving" as const },
 	arrive: { from: ["Driving"], to: "OnSite" as const },
 	start: { from: ["OnSite"], to: "InProgress" as const },
 	pause: { from: ["InProgress"], to: "Paused" as const },
 	resume: { from: ["Paused"], to: "InProgress" as const },
 	complete: { from: ["InProgress", "Paused", "OnSite"], to: "Completed" as const },
+};
+
+const LIFECYCLE_ORDER: Record<string, number> = {
+	Scheduled: 0,
+	Driving: 1,
+	OnSite: 2,
+	InProgress: 3,
+	Paused: 4,
+	Completed: 5,
 };
 
 export type LifecycleAction = keyof typeof LIFECYCLE_TRANSITIONS;
@@ -769,7 +823,31 @@ export const applyVisitTransition = async (
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
+		// Guard: drive and arrive require the technician to not be clocked in
+		if ((action === "drive" || action === "arrive") && context?.techId) {
+			const openEntry = await db.visit_tech_time_entry.findFirst({
+				where: { tech_id: context.techId, clocked_out_at: null },
+			});
+			if (openEntry) {
+				return { err: "CLOCKED_IN" };
+			}
+		}
+
 		if (!from.includes(existingVisit.status)) {
+			const currentOrder = LIFECYCLE_ORDER[existingVisit.status] ?? -1;
+			const targetOrder = LIFECYCLE_ORDER[to] ?? -1;
+			if (targetOrder >= 0 && currentOrder >= targetOrder) {
+				const currentVisit = await db.job_visit.findUnique({
+					where: { id },
+					include: {
+						job: { include: { client: true, quote: true } },
+						visit_techs: { include: { tech: true } },
+						line_items: { orderBy: { sort_order: "asc" } },
+						notes: true,
+					},
+				});
+				return { err: "", item: currentVisit ?? undefined };
+			}
 			return {
 				err: `Cannot ${action} a visit with status "${existingVisit.status}". Expected one of: ${from.join(", ")}.`,
 			};
@@ -793,6 +871,39 @@ export const applyVisitTransition = async (
 					...timestampData,
 				},
 			});
+
+			// Destination switch: revert any other Driving visit assigned to this tech
+			if (action === "drive" && context?.techId) {
+				const otherDrivingVisits = await tx.job_visit.findMany({
+					where: {
+						status: "Driving",
+						id: { not: id },
+						visit_techs: { some: { tech_id: context.techId } },
+					},
+					include: { job: true },
+				});
+				for (const other of otherDrivingVisits) {
+					await tx.job_visit.update({
+						where: { id: other.id },
+						data: { status: "Scheduled" },
+					});
+					// Re-sync job status for the reverted visit
+					const otherJobVisits = await tx.job_visit.findMany({
+						where: { job_id: other.job_id },
+					});
+					let revertedJobStatus = other.job.status;
+					if (otherJobVisits.every((v) => v.status === "Completed")) {
+						revertedJobStatus = "Completed";
+					} else if (otherJobVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
+						revertedJobStatus = "InProgress";
+					} else if (otherJobVisits.some((v) => v.status === "Scheduled" || v.status === "Driving")) {
+						revertedJobStatus = "Scheduled";
+					}
+					if (revertedJobStatus !== other.job.status) {
+						await tx.job.update({ where: { id: other.job_id }, data: { status: revertedJobStatus } });
+					}
+				}
+			}
 
 			// ── Job status sync ────────────────────────────────────────────────
 			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
@@ -819,17 +930,17 @@ export const applyVisitTransition = async (
 				}
 			}
 
-			// ── Auto-close open time entries on complete ────────────────────────
-			if (action === "complete") {
+			// ── Auto-close open time entries on pause or complete ─────────────
+			if (action === "pause" || action === "complete") {
 				const openEntries = await tx.visit_tech_time_entry.findMany({
 					where: { visit_id: id, clocked_out_at: null },
 					include: { tech: { select: { id: true, name: true, hourly_rate: true } } },
 				});
 
-				const completionTime = new Date();
+				const closeTime = new Date();
 
 				for (const entry of openEntries) {
-					const elapsedMs = completionTime.getTime() - entry.clocked_in_at.getTime();
+					const elapsedMs = closeTime.getTime() - entry.clocked_in_at.getTime();
 					const hoursWorked = parseFloat((elapsedMs / (1000 * 60 * 60)).toFixed(4));
 					const hourlyRate = Number(entry.tech.hourly_rate);
 					const laborTotal = parseFloat((hoursWorked * hourlyRate).toFixed(2));
@@ -838,7 +949,7 @@ export const applyVisitTransition = async (
 						data: {
 							visit_id: id,
 							name: `Labor – ${entry.tech.name}`,
-							description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr (auto-closed on complete)`,
+							description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr`,
 							quantity: hoursWorked,
 							unit_price: hourlyRate,
 							total: laborTotal,
@@ -850,7 +961,7 @@ export const applyVisitTransition = async (
 
 					await tx.visit_tech_time_entry.update({
 						where: { id: entry.id },
-						data: { clocked_out_at: completionTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
+						data: { clocked_out_at: closeTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
 					});
 				}
 
@@ -969,6 +1080,21 @@ export const cancelJobVisit = async (
 				},
 			});
 		});
+
+		// Notify assigned technicians of cancellation
+		if (updated) {
+			const clientName = updated.job.client.name;
+			const techIds = updated.visit_techs.map((vt) => vt.tech_id);
+			for (const techId of techIds) {
+				await createNotification({
+					technicianId: techId,
+					type:         "visit_cancelled",
+					title:        `Visit cancelled: ${clientName}`,
+					body:         `A visit at ${clientName} has been cancelled.${cancellationReason ? ` Reason: ${cancellationReason}` : ""}`,
+					actionUrl:    `/technician/visits/${id}`,
+				});
+			}
+		}
 
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {

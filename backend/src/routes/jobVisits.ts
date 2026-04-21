@@ -19,6 +19,7 @@ import {
     LIFECYCLE_TRANSITIONS,
 } from '../controllers/jobVisitsController.js';
 import { clockInVisit, clockOutVisit } from "../controllers/visitTimeEntriesController.js";
+import { addPartsUsed } from "../controllers/vehiclesController.js";
 
 
 const router = Router();
@@ -323,6 +324,22 @@ router.delete("/:id", async (req, res, next) => {
                 id,
             }),
         );
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post("/:id/parts-used", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const result = await addPartsUsed(id, req.body);
+        if (result.err) {
+            if (result.err.toLowerCase().includes("not found")) {
+                return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+            }
+            return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+        res.status(201).json(createSuccessResponse(result.item));
     } catch (err) {
         next(err);
     }

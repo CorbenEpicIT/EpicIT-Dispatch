@@ -882,7 +882,7 @@ export default function JobDetailPage() {
 							<button
 								key={invoice.id}
 								onClick={() => navigate(`/dispatch/invoices/${invoice.id}`)}
-								className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-750 transition-all cursor-pointer text-left group"
+								className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group"
 							>
 								<div className="flex items-center justify-between gap-6 mb-2">
 									<span className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors tabular-nums">
@@ -967,7 +967,7 @@ export default function JobDetailPage() {
 										`/dispatch/jobs/${jobId}/visits/${visit.id}`
 									)
 								}
-								className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 hover:border-blue-500 hover:bg-zinc-750 transition-all cursor-pointer text-left group w-fit"
+								className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group w-fit"
 							>
 								{visit.name && (
 									<h4 className="text-white font-semibold text-base mb-2 group-hover:text-blue-400 transition-colors">
@@ -1223,7 +1223,7 @@ export default function JobDetailPage() {
 															`/dispatch/technicians/${vt.tech_id}`
 														);
 													}}
-													className="w-full bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group"
+													className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group"
 												>
 													<div className="flex items-center gap-3">
 														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">

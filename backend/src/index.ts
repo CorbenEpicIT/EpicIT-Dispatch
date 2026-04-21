@@ -7,6 +7,8 @@ import {
 	createSuccessResponse,
 	createErrorResponse,
 } from "./types/responses.js";
+import * as notificationsController from "./controllers/notificationsController.js";
+import { startVisitReminderInterval } from "./services/notifications.js";
 import {
 	login,
 	logout,
@@ -44,6 +46,8 @@ import recurringPlansRouter from "./routes/recurringPlans.js";
 import reportsRouter from "./routes/reports.js";
 import requestsRouter from "./routes/requests.js";
 import techniciansRouter from "./routes/technicians.js";
+import vehiclesRouter from "./routes/vehicles.js";
+import notificationsRouter from "./routes/notifications.js";
 
 // ============================================
 // MIDDLEWARE
@@ -119,8 +123,10 @@ const requireRole = (...roles: string[]) => {
 					),
 				);
 		}
-		// adds admin permissions to dispatchers since they have the same UI access 
-		const effective = roles.includes("dispatcher") ? [...roles, "admin"] : roles;
+		// adds admin permissions to dispatchers since they have the same UI access
+		const effective = roles.includes("dispatcher")
+			? [...roles, "admin"]
+			: roles;
 		if (!effective.includes(req.user.role)) {
 			return res
 				.status(403)
@@ -168,6 +174,16 @@ const io = new Server(server, {
 	cors: corsOptions,
 });
 initSocket(io);
+
+// Inject io into notifications so createNotification can emit in real-time
+notificationsController.setSocketIo(io);
+startVisitReminderInterval();
+
+// Each technician joins their personal room on connect
+io.on("connection", (socket) => {
+	const techId = socket.handshake.query["techId"] as string | undefined;
+	if (techId) socket.join(`tech:${techId}`);
+});
 
 let port: string | undefined = process.env["SERVER_PORT"];
 if (!port) {
@@ -303,7 +319,6 @@ app.post("/reset-password", async (req, res, next) => {
 	}
 });
 
-
 // ============================================
 // DRAFT ROUTES
 // ============================================
@@ -347,7 +362,7 @@ app.use("/invoices", verifyToken, invoicesRouter);
 // ============================================
 // CLIENTS + CONTACTS
 // ============================================
-// since its mounted at / everything will be sent here 
+// since its mounted at / everything will be sent here
 // which can cause performance issues if scaled
 app.use("/", verifyToken, clientsContactsRouter);
 
@@ -355,6 +370,7 @@ app.use("/", verifyToken, clientsContactsRouter);
 // TECHNICIANS
 // ============================================
 app.use("/technicians", verifyToken, techniciansRouter);
+app.use("/technicians", verifyToken, notificationsRouter);
 
 // ============================================
 // DISPATCHERS
@@ -371,10 +387,8 @@ app.use("/email", verifyToken, emailRouter);
 // ============================================
 app.use("/inventory", verifyToken, inventoryRouter);
 
-
 // ── Org settings ─────────────────────────────────────────────────────────────
 app.use("/org", verifyToken, requireRole("dispatcher"), orgRouter);
-
 
 // ============================================
 // REPORTS
@@ -382,8 +396,9 @@ app.use("/org", verifyToken, requireRole("dispatcher"), orgRouter);
 app.use("/reports", verifyToken, reportsRouter);
 
 // ============================================
-// ERROR HANDLERS (Must be last)
+// VEHICLES
 // ============================================
+app.use("/vehicles", verifyToken, vehiclesRouter);
 
 // ============================================================
 // ACTIVITY FEED

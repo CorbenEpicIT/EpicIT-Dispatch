@@ -7,56 +7,54 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
+import { createNotification } from "./notificationsController.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	organizationId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
+import { UserContext } from "../lib/context.js";
+
+const noteInclude = {
+	creator_tech: {
+		select: {
+			id: true,
+			name: true,
+			email: true,
+		},
+	},
+	creator_dispatcher: {
+		select: {
+			id: true,
+			name: true,
+			email: true,
+		},
+	},
+	last_editor_tech: {
+		select: {
+			id: true,
+			name: true,
+			email: true,
+		},
+	},
+	last_editor_dispatcher: {
+		select: {
+			id: true,
+			name: true,
+			email: true,
+		},
+	},
+	visit: {
+		select: {
+			id: true,
+			scheduled_start_at: true,
+			scheduled_end_at: true,
+			status: true,
+		},
+	},
+	photos: { orderBy: { created_at: "asc" as const } },
+};
 
 export const getJobNotes = async (jobId: string) => {
 	return await db.job_note.findMany({
 		where: { job_id: jobId },
-		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			visit: {
-				select: {
-					id: true,
-					scheduled_start_at: true,
-					scheduled_end_at: true,
-					status: true,
-				},
-			},
-		},
+		include: noteInclude,
 		orderBy: { created_at: "desc" },
 	});
 };
@@ -67,44 +65,7 @@ export const getJobNotesByVisitId = async (jobId: string, visitId: string) => {
 			job_id: jobId,
 			visit_id: visitId,
 		},
-		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			visit: {
-				select: {
-					id: true,
-					scheduled_start_at: true,
-					scheduled_end_at: true,
-					status: true,
-				},
-			},
-		},
+		include: noteInclude,
 		orderBy: { created_at: "desc" },
 	});
 };
@@ -115,44 +76,7 @@ export const getNoteById = async (jobId: string, noteId: string) => {
 			id: noteId,
 			job_id: jobId,
 		},
-		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			visit: {
-				select: {
-					id: true,
-					scheduled_start_at: true,
-					scheduled_end_at: true,
-					status: true,
-				},
-			},
-		},
+		include: noteInclude,
 	});
 };
 
@@ -191,6 +115,7 @@ export const insertJobNote = async (
 			const noteData: Prisma.job_noteCreateInput = {
 				job: { connect: { id: jobId } },
 				content: parsed.content,
+				notify_technician: parsed.notify_technician,
 				...(job.organization_id && {
 					organization: { connect: { id: job.organization_id } },
 				}),
@@ -207,33 +132,17 @@ export const insertJobNote = async (
 				}),
 			};
 
-			const note = await tx.job_note.create({
-				data: noteData,
-				include: {
-					creator_tech: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					creator_dispatcher: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					visit: {
-						select: {
-							id: true,
-							scheduled_start_at: true,
-							scheduled_end_at: true,
-							status: true,
-						},
-					},
-				},
-			});
+			const note = await tx.job_note.create({ data: noteData });
+
+			if (parsed.photos.length > 0) {
+				await tx.job_note_photo.createMany({
+					data: parsed.photos.map((p) => ({
+						note_id: note.id,
+						photo_url: p.photo_url,
+						photo_label: p.photo_label,
+					})),
+				});
+			}
 
 			await logActivity({
 				event_type: "job_note.created",
@@ -255,8 +164,34 @@ export const insertJobNote = async (
 				user_agent: context?.userAgent,
 			});
 
-			return note;
+			return await tx.job_note.findFirst({
+				where: { id: note.id },
+				include: noteInclude,
+			});
 		});
+
+		if (!created) return { err: "Failed to create note" };
+
+		// Notify assigned technicians if dispatcher flagged the note
+		if (parsed.notify_technician && created.visit_id) {
+			const visitTechs = await db.job_visit_technician.findMany({
+				where: { visit_id: created.visit_id },
+				select: { tech_id: true },
+			});
+			const jobName = (await db.job.findUnique({
+				where: { id: jobId },
+				select: { job_number: true },
+			}))?.job_number ?? "a job";
+			for (const { tech_id } of visitTechs) {
+				await createNotification({
+					technicianId: tech_id,
+					type:         "note_added",
+					title:        `Note added: Job #${jobName}`,
+					body:         parsed.content.slice(0, 200),
+					actionUrl:    `/technician/visits/${created.visit_id}`,
+				});
+			}
+		}
 
 		return { err: "", item: created };
 	} catch (e) {

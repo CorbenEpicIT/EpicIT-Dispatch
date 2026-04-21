@@ -3,6 +3,7 @@ import type { Request } from "express";
 export interface UserContext {
 	techId?: string;
 	dispatcherId?: string;
+	organizationId?: string;
 	ipAddress?: string;
 	userAgent?: string;
 }
