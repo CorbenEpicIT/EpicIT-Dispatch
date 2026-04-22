@@ -1,0 +1,6 @@
+# ─── AI / Claude Code tooling ────────────────────────────────────────────────
+# These files are local to the developer's machine and must not be committed.
+# CLAUDE.md (project instructions) is the only exception — it IS committed.
+.impeccable.md
+.superpowers/
+docs/superpowers/
