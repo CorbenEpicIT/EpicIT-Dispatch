@@ -303,7 +303,9 @@ export default function InvoiceDetailPage() {
 						)}
 					</div>
 					<p className="text-zinc-400 text-sm">
-						Issued {formatDate(invoice.issue_date)}
+						{invoice.status === "Draft"
+							? `Created ${formatDate(invoice.created_at)}`
+							: `Issued ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
 						{invoice.due_date &&
 							` · Due ${formatDate(invoice.due_date)}`}
 					</p>
@@ -525,18 +527,24 @@ export default function InvoiceDetailPage() {
 						<div className="flex flex-wrap gap-x-6 gap-y-3 mb-6">
 							<div className="min-w-0">
 								<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
-									Issue Date
+									Created
 								</p>
 								<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
-									<Calendar
-										size={13}
-										className="text-zinc-500 flex-shrink-0"
-									/>
-									{formatDate(
-										invoice.issue_date
-									)}
+									<Calendar size={13} className="text-zinc-500 flex-shrink-0" />
+									{formatDate(invoice.created_at)}
 								</p>
 							</div>
+							{invoice.status !== "Draft" && invoice.issue_date != null && (
+								<div className="min-w-0">
+									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+										Issue Date
+									</p>
+									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
+										<Calendar size={13} className="text-zinc-500 flex-shrink-0" />
+										{formatDate(invoice.issue_date)}
+									</p>
+								</div>
+							)}
 							{invoice.due_date != null && (
 								<div className="min-w-0">
 									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">

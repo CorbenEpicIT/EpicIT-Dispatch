@@ -67,7 +67,7 @@ export interface InvoiceReference {
 	status: InvoiceStatus;
 	total: number;
 	balance_due: number;
-	issue_date: Date | string;
+	issue_date: Date | string | null;
 }
 
 export interface JobReference {
@@ -198,7 +198,7 @@ export interface Invoice extends PricingBreakdown {
 	status: InvoiceStatus;
 
 	// Dates
-	issue_date: Date | string;
+	issue_date: Date | string | null;
 	due_date?: Date | string | null;
 	payment_terms_days?: number | null;
 	sent_at?: Date | string | null;
@@ -280,7 +280,7 @@ export interface InvoiceSummary {
 	total: number | null;
 	amount_paid: number;
 	balance_due: number;
-	issue_date: Date | string;
+	issue_date: Date | string | null;
 	due_date?: Date | string | null;
 }
 

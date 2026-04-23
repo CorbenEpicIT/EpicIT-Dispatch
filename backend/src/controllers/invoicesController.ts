@@ -414,7 +414,7 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 							client_id: parsed.client_id,
 							recurring_plan_id: parsed.recurring_plan_id ?? null,
 							status: "Draft",
-							issue_date: parsed.issue_date ?? new Date(),
+							...(parsed.issue_date !== undefined && { issue_date: parsed.issue_date }),
 							due_date: dueDate ?? null,
 							payment_terms_days:
 								parsed.payment_terms_days ?? null,
@@ -719,6 +719,8 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 					}),
 					...(parsed.status === "Sent" &&
 						!existing.sent_at && { sent_at: new Date() }),
+					...(parsed.status === "Sent" &&
+						!existing.issue_date && { issue_date: new Date() }),
 					...(parsed.status === "Void" && {
 						voided_at: new Date(),
 					}),

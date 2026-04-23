@@ -774,11 +774,13 @@ export default function JobVisitDetailPage() {
 									<div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2">
 										<Calendar size={11} />
 										<span>
-											{new Date(invoice.issue_date).toLocaleDateString("en-US", {
-												month: "short",
-												day: "numeric",
-												year: "numeric",
-											})}
+											{invoice.issue_date
+												? new Date(invoice.issue_date).toLocaleDateString("en-US", {
+													month: "short",
+													day: "numeric",
+													year: "numeric",
+												  })
+												: "—"}
 										</span>
 									</div>
 									<div className="flex items-baseline gap-2">

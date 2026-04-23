@@ -170,10 +170,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 
 	// ── Auto due date from payment terms ──────────────────────────────────
 	useEffect(() => {
-		if (paymentTermsDays === "" || !issueDate) return;
+		if (paymentTermsDays === "") return;
 		const days = parseInt(paymentTermsDays, 10);
 		if (!isNaN(days)) {
-			const base = new Date(issueDate);
+			const base = issueDate ? new Date(issueDate) : new Date();
 			base.setDate(base.getDate() + days);
 			setDueDate(base);
 		}
@@ -227,7 +227,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 	}, [invoice.jobs, invoice.visits]);
 
 	// ── Validation ────────────────────────────────────────────────────────
-	const validateStep1 = useCallback((): boolean => !!issueDate, [issueDate]);
+	const validateStep1 = useCallback((): boolean => true, []);
 
 	const validateStep2 = useCallback((): boolean => {
 		const meaningful = activeLineItems.filter(
@@ -353,7 +353,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							</div>
 							<div className="min-w-0">
 								<label className={LABEL}>
-									Issue Date *
+									Issue Date
 								</label>
 								<DatePicker
 									mode="edit"
