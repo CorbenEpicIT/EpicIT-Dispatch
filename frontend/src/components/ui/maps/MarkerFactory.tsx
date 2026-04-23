@@ -40,6 +40,11 @@ const CreateMarker = (m: StaticMarker) => {
 	output.innerHTML = staticElement;
 	output.classList.add("mapboxgl-marker");
 
+	if (m.onClick) {
+		output.style.cursor = "pointer";
+		output.addEventListener("click", m.onClick);
+	}
+
 	return output;
 };
 

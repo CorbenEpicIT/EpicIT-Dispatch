@@ -16,15 +16,15 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm"
 			onClick={onClose}
 		>
 			<div
-				className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl"
+				className="relative w-full max-w-2xl max-h-[90svh] flex flex-col bg-zinc-900 border border-zinc-700/80 rounded-b-xl sm:rounded-xl shadow-2xl"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<div className="sticky top-0 z-10 flex items-start justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm rounded-t-xl">
+				<div className="shrink-0 flex items-start justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm rounded-t-xl">
 					<div className="min-w-0 flex-1">
 						{isLoading || !quote ? (
 							<div className="h-6 w-48 bg-zinc-700 rounded animate-pulse" />
@@ -52,11 +52,11 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 				</div>
 
 				{isLoading || !quote ? (
-					<div className="flex items-center justify-center h-40">
+					<div className="flex-1 flex items-center justify-center h-40">
 						<div className="text-zinc-400 text-sm animate-pulse">Loading quote...</div>
 					</div>
 				) : (
-					<div className="p-5 space-y-5">
+					<div className="flex-1 overflow-y-auto p-5 space-y-5 pb-8">
 						{/* Rejection reason */}
 						{quote.status === "Rejected" && quote.rejection_reason && (
 							<div className="flex gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30">

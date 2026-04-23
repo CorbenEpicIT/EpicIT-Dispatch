@@ -212,9 +212,11 @@ export default function TechnicianVisitsPage() {
 				.filter((v) => v.status !== "Completed" && v.status !== "Cancelled")
 				.filter((v) => (v.visit_techs?.length ?? 0) === 0);
 		} else {
-			filtered = filtered.filter((v) =>
-				v.visit_techs?.some((vt) => vt.tech_id === user?.userId)
-			);
+			filtered = filtered
+				.filter((v) => v.status !== "Completed" && v.status !== "Cancelled")
+				.filter((v) =>
+					v.visit_techs?.some((vt) => vt.tech_id === user?.userId)
+				);
 		}
 
 		if (searchInput.trim()) {
@@ -257,6 +259,10 @@ export default function TechnicianVisitsPage() {
 				};
 			})
 			.sort((a, b) => {
+				const statusDiff =
+					VisitStatusValues.indexOf(b.rawStatus) -
+					VisitStatusValues.indexOf(a.rawStatus);
+				if (statusDiff !== 0) return statusDiff;
 				if (
 					sortMode === "distance" &&
 					a.distanceMiles !== null &&
@@ -264,10 +270,6 @@ export default function TechnicianVisitsPage() {
 				) {
 					return a.distanceMiles - b.distanceMiles;
 				}
-				const statusDiff =
-					VisitStatusValues.indexOf(a.rawStatus) -
-					VisitStatusValues.indexOf(b.rawStatus);
-				if (statusDiff !== 0) return statusDiff;
 				return a._scheduleDate.getTime() - b._scheduleDate.getTime();
 			})
 			.map(({ _scheduleDate, ...rest }) => rest);

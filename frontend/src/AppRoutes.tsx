@@ -6,6 +6,7 @@ import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
 import TechnicianVisitDetailPage from "./pages/technician/TechnicianVisitDetailPage";
 import TechnicianNotificationsPage from "./pages/technician/TechnicianNotificationsPage";
 import TechnicianVehiclePage from "./pages/technician/TechnicianVehiclePage";
+import TechnicianMapPage from "./pages/technician/TechnicianMapPage";
 import DashboardPage from "./pages/dispatch/DashboardPage";
 import JobsPage from "./pages/dispatch/JobsPage";
 import JobDetailPage from "./pages/dispatch/JobDetailPage";
@@ -119,6 +120,7 @@ export default function AppRoutes() {
 				<Route path="visits/:visitId" element={<TechnicianVisitDetailPage />} />
 				<Route path="notifications" element={<TechnicianNotificationsPage />} />
 				<Route path="vehicle" element={<TechnicianVehiclePage />} />
+				<Route path="map" element={<TechnicianMapPage />} />
 			</Route>
 
 			<Route path="*" element={<Navigate to="/login" replace />} />

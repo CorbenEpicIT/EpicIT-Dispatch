@@ -1,7 +1,7 @@
 import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect } from "react";
-import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle } from "lucide-react";
+import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map } from "lucide-react";
 import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
 
@@ -135,6 +135,17 @@ export default function TechnicianLayout() {
 				>
 					<ClipboardList size={22} />
 					<span>My Visits</span>
+				</NavLink>
+				<NavLink
+					to="/technician/map"
+					className={({ isActive }) =>
+						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
+							isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+						}`
+					}
+				>
+					<Map size={22} />
+					<span>Map</span>
 				</NavLink>
 			</nav>
 		</div>

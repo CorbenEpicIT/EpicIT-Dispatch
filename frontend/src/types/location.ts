@@ -7,6 +7,7 @@ export interface StaticMarker {
 	coords: Coordinates;
 	type: MarkerTypeValue;
 	label?: string;
+	onClick?: () => void;
 }
 
 export type Coordinates = { lat: number; lon: number };
