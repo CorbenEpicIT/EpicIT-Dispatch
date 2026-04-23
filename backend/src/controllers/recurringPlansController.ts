@@ -7,6 +7,7 @@ import {
 } from "../../generated/prisma/client.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { getScopedDb } from "../lib/context.js";
 import {
 	createRecurringPlanSchema,
 	updateRecurringPlanSchema,
@@ -323,10 +324,11 @@ function addMinutes(date: Date, minutes: number): Date {
 // RECURRING PLAN CRUD
 // ============================================================================
 
-export const getAllRecurringPlans = async () => {
+export const getAllRecurringPlans = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
 	const now = new Date();
 	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-	return await db.recurring_plan.findMany({
+	return await sdb.recurring_plan.findMany({
 		include: {
 			client: {
 				select: {
@@ -599,6 +601,7 @@ export const insertRecurringPlan = async (
 				action: "created",
 				entity_type: "recurring_plan",
 				entity_id: plan.id,
+				organization_id: client.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -954,6 +957,7 @@ export const updateRecurringPlan = async (
 					action: "updated",
 					entity_type: "recurring_plan",
 					entity_id: existing.id,
+					organization_id: existing.organization_id,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -1116,6 +1120,7 @@ export const updateRecurringPlanLineItems = async (
 				action: "updated",
 				entity_type: "recurring_plan",
 				entity_id: plan.id,
+				organization_id: plan.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1303,6 +1308,7 @@ export const cancelRecurringPlan = async (
 				action: "updated",
 				entity_type: "recurring_plan",
 				entity_id: plan.id,
+				organization_id: plan.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1404,6 +1410,7 @@ export const generateOccurrences = async (
 			action: "created",
 			entity_type: "recurring_plan",
 			entity_id: plan.id,
+			organization_id: plan.organization_id,
 			actor_type: context?.techId
 				? "technician"
 				: context?.dispatcherId
@@ -1786,6 +1793,7 @@ export const generateVisitFromOccurrence = async (
 				action: "created",
 				entity_type: "job_visit",
 				entity_id: visit.id,
+				organization_id: plan.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

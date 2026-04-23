@@ -7,85 +7,31 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
-export const getRequestNotes = async (requestId: string) => {
-	return await db.request_note.findMany({
+export const getRequestNotes = async (requestId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request_note.findMany({
 		where: { request_id: requestId },
 		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
+			creator_tech: { select: { id: true, name: true, email: true } },
+			creator_dispatcher: { select: { id: true, name: true, email: true } },
+			last_editor_tech: { select: { id: true, name: true, email: true } },
+			last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 		},
 		orderBy: { created_at: "desc" },
 	});
 };
 
-export const getNoteById = async (requestId: string, noteId: string) => {
-	return await db.request_note.findFirst({
-		where: {
-			id: noteId,
-			request_id: requestId,
-		},
+export const getNoteById = async (requestId: string, noteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request_note.findFirst({
+		where: { id: noteId, request_id: requestId },
 		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
+			creator_tech: { select: { id: true, name: true, email: true } },
+			creator_dispatcher: { select: { id: true, name: true, email: true } },
+			last_editor_tech: { select: { id: true, name: true, email: true } },
+			last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 		},
 	});
 };
@@ -93,14 +39,14 @@ export const getNoteById = async (requestId: string, noteId: string) => {
 export const insertRequestNote = async (
 	requestId: string,
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = createRequestNoteSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const request = await db.request.findUnique({
-			where: { id: requestId },
-		});
+		const request = await sdb.request.findFirst({ where: { id: requestId } });
 		if (!request) {
 			return { err: "Request not found" };
 		}
@@ -113,21 +59,15 @@ export const insertRequestNote = async (
 					creator_tech: { connect: { id: context.techId } },
 				}),
 				...(context?.dispatcherId && {
-					creator_dispatcher: {
-						connect: { id: context.dispatcherId },
-					},
+					creator_dispatcher: { connect: { id: context.dispatcherId } },
 				}),
 			};
 
 			const note = await tx.request_note.create({
 				data: noteData,
 				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
+					creator_tech: { select: { id: true, name: true, email: true } },
+					creator_dispatcher: { select: { id: true, name: true, email: true } },
 				},
 			});
 
@@ -136,6 +76,7 @@ export const insertRequestNote = async (
 				action: "created",
 				entity_type: "request_note",
 				entity_id: note.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -157,9 +98,7 @@ export const insertRequestNote = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error inserting request note");
@@ -171,16 +110,15 @@ export const updateRequestNote = async (
 	requestId: string,
 	noteId: string,
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRequestNoteSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.request_note.findFirst({
-			where: {
-				id: noteId,
-				request_id: requestId,
-			},
+		const existing = await sdb.request_note.findFirst({
+			where: { id: noteId, request_id: requestId },
 		});
 
 		if (!existing) {
@@ -199,14 +137,10 @@ export const updateRequestNote = async (
 			}
 
 			if (context?.techId) {
-				updateData.last_editor_tech = {
-					connect: { id: context.techId },
-				};
+				updateData.last_editor_tech = { connect: { id: context.techId } };
 				updateData.last_editor_dispatcher = { disconnect: true };
 			} else if (context?.dispatcherId) {
-				updateData.last_editor_dispatcher = {
-					connect: { id: context.dispatcherId },
-				};
+				updateData.last_editor_dispatcher = { connect: { id: context.dispatcherId } };
 				updateData.last_editor_tech = { disconnect: true };
 			}
 
@@ -214,18 +148,10 @@ export const updateRequestNote = async (
 				where: { id: noteId },
 				data: updateData,
 				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
+					creator_tech: { select: { id: true, name: true, email: true } },
+					creator_dispatcher: { select: { id: true, name: true, email: true } },
+					last_editor_tech: { select: { id: true, name: true, email: true } },
+					last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 				},
 			});
 
@@ -235,6 +161,7 @@ export const updateRequestNote = async (
 					action: "updated",
 					entity_type: "request_note",
 					entity_id: noteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -254,9 +181,7 @@ export const updateRequestNote = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error updating request note");
@@ -267,14 +192,13 @@ export const updateRequestNote = async (
 export const deleteRequestNote = async (
 	requestId: string,
 	noteId: string,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.request_note.findFirst({
-			where: {
-				id: noteId,
-				request_id: requestId,
-			},
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.request_note.findFirst({
+			where: { id: noteId, request_id: requestId },
 		});
 
 		if (!existing) {
@@ -287,6 +211,7 @@ export const deleteRequestNote = async (
 				action: "deleted",
 				entity_type: "request_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -301,9 +226,7 @@ export const deleteRequestNote = async (
 				user_agent: context?.userAgent,
 			});
 
-			await tx.request_note.delete({
-				where: { id: noteId },
-			});
+			await tx.request_note.delete({ where: { id: noteId } });
 		});
 
 		return { err: "", message: "Note deleted successfully" };

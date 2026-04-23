@@ -13,7 +13,8 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
     try {
-        const invoices = await invoicesController.getAllInvoices();
+        const orgId = req.user!.organization_id as string;
+        const invoices = await invoicesController.getAllInvoices(orgId);
         res.json(createSuccessResponse(invoices, { count: invoices.length }));
     } catch (err) {
         next(err);
@@ -22,7 +23,8 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
     try {
-        const invoice = await invoicesController.getInvoiceById(req.params.id);
+        const orgId = req.user!.organization_id as string;
+        const invoice = await invoicesController.getInvoiceById(req.params.id, orgId);
         if (!invoice)
             return res
                 .status(404)
@@ -40,7 +42,8 @@ router.get("/:id", async (req, res, next) => {
 
 router.get("/:id/pdf", async (req, res, next) => {
     try {
-        const buffer = await generateInvoicePdf(req.params.id);
+        const orgId2 = req.user!.organization_id as string;
+        const buffer = await generateInvoicePdf(req.params.id, orgId2);
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader(
             "Content-Disposition",
@@ -59,7 +62,6 @@ router.get("/:id/pdf", async (req, res, next) => {
 
 
 
-
 router.post("/:id/send", async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -70,11 +72,12 @@ router.post("/:id/send", async (req, res, next) => {
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
         }
 
-        await sendInvoiceEmail(id, recipientEmail);
-
+        const orgId = req.user!.organization_id as string;
+        await sendInvoiceEmail(id, recipientEmail, orgId);
         const context = getUserContext(req);
         const result = await invoicesController.updateInvoice(
             { params: { id }, body: { status: "Sent" } } as any,
+            orgId,
             context,
         );
         if (result.err) {
@@ -95,8 +98,9 @@ router.post("/:id/send", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await invoicesController.insertInvoice(req, context);
+        const result = await invoicesController.insertInvoice(req, orgId, context);
         if (result.err)
             return res
                 .status(400)
@@ -114,8 +118,9 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await invoicesController.updateInvoice(req, context);
+        const result = await invoicesController.updateInvoice(req, orgId, context);
         if (result.err) {
             const status = result.err.includes("not found") ? 404 : 400;
             return res
@@ -135,9 +140,11 @@ router.patch("/:id", async (req, res, next) => {
 
 router.delete("/:id", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.deleteInvoice(
             req.params.id,
+            orgId,
             context,
         );
         if (result.err) {
@@ -167,10 +174,12 @@ router.get("/:invoiceId/payments", async (req, res, next) => {
 
 router.post("/:invoiceId/payments", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.insertInvoicePayment(
             req.params.invoiceId,
             req.body,
+            orgId,
             context,
         );
         if (result.err) {
@@ -194,10 +203,12 @@ router.delete(
     "/:invoiceId/payments/:paymentId",
     async (req, res, next) => {
         try {
+            const orgId = req.user!.organization_id as string;
             const context = getUserContext(req);
             const result = await invoicesController.deleteInvoicePayment(
                 req.params.invoiceId,
                 req.params.paymentId,
+                orgId,
                 context,
             );
             if (result.err) {
@@ -222,8 +233,10 @@ router.delete(
 
 router.get("/:invoiceId/notes", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const notes = await invoicesController.getInvoiceNotes(
             req.params.invoiceId,
+            orgId,
         );
         res.json(createSuccessResponse(notes, { count: notes.length }));
     } catch (err) {
@@ -233,10 +246,12 @@ router.get("/:invoiceId/notes", async (req, res, next) => {
 
 router.post("/:invoiceId/notes", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.insertInvoiceNote(
             req.params.invoiceId,
             req.body,
+            orgId,
             context,
         );
         if (result.err) {
@@ -258,11 +273,13 @@ router.post("/:invoiceId/notes", async (req, res, next) => {
 
 router.put("/:invoiceId/notes/:noteId", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.updateInvoiceNote(
             req.params.invoiceId,
             req.params.noteId,
             req.body,
+            orgId,
             context,
         );
         if (result.err) {
@@ -284,10 +301,12 @@ router.put("/:invoiceId/notes/:noteId", async (req, res, next) => {
 
 router.delete("/:invoiceId/notes/:noteId", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.deleteInvoiceNote(
             req.params.invoiceId,
             req.params.noteId,
+            orgId,
             context,
         );
         if (result.err) {

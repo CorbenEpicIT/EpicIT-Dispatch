@@ -1,29 +1,31 @@
 import { db } from "../db.js";
 import { log } from "../services/appLogger.js";
 import { logActivity } from "../services/logger.js";
-import type { UserContext } from "./jobVisitsController.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
 const CLOCK_IN_TRANSITIONS = ["Scheduled", "Driving", "OnSite"];
 
 export const clockInVisit = async (
 	visitId: string,
 	techId: string,
+	organizationId: string,
 	context?: UserContext,
 ): Promise<{ err: string; item?: any }> => {
 	try {
-		const visit = await db.job_visit.findUnique({
-			where: { id: visitId },
+		const sdb = getScopedDb(organizationId);
+		const visit = await sdb.job_visit.findFirst({
+			where: { id: visitId, job: { organization_id: organizationId } },
 			include: { job: { select: { id: true, job_number: true } } },
 		});
 		if (!visit) return { err: "Job visit not found" };
 
-		const assignment = await db.job_visit_technician.findUnique({
+		const assignment = await sdb.job_visit_technician.findUnique({
 			where: { visit_id_tech_id: { visit_id: visitId, tech_id: techId } },
 		});
 		if (!assignment) return { err: "Technician not assigned to this visit" };
 
 		// Enforce global 1-open-entry constraint
-		const existingOpen = await db.visit_tech_time_entry.findFirst({
+		const existingOpen = await sdb.visit_tech_time_entry.findFirst({
 			where: { tech_id: techId, clocked_out_at: null },
 			include: { visit: { select: { id: true } } },
 		});
@@ -33,7 +35,7 @@ export const clockInVisit = async (
 
 		const now = new Date();
 
-		const entry = await db.$transaction(async (tx) => {
+		const entry = await sdb.$transaction(async (tx) => {
 			const newEntry = await tx.visit_tech_time_entry.create({
 				data: { visit_id: visitId, tech_id: techId, clocked_in_at: now },
 				include: { tech: { select: { id: true, name: true } } },
@@ -59,6 +61,7 @@ export const clockInVisit = async (
 				action: "created",
 				entity_type: "visit_tech_time_entry",
 				entity_id: newEntry.id,
+				organization_id: organizationId,
 				actor_type: "technician",
 				actor_id: techId,
 				changes: {
@@ -80,15 +83,17 @@ export const clockInVisit = async (
 export const clockOutVisit = async (
 	visitId: string,
 	techId: string,
+	organizationId: string,
 	context?: UserContext,
 ): Promise<{ err: string; item?: any }> => {
 	try {
-		const openEntry = await db.visit_tech_time_entry.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const openEntry = await sdb.visit_tech_time_entry.findFirst({
 			where: { visit_id: visitId, tech_id: techId, clocked_out_at: null },
 		});
 		if (!openEntry) return { err: "No active clock-in found for this technician on this visit" };
 
-		const tech = await db.technician.findUnique({
+		const tech = await sdb.technician.findFirst({
 			where: { id: techId },
 			select: { hourly_rate: true, name: true },
 		});
@@ -100,7 +105,7 @@ export const clockOutVisit = async (
 		const hourlyRate = Number(tech.hourly_rate);
 		const laborTotal = parseFloat((hoursWorked * hourlyRate).toFixed(2));
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			const closedEntry = await tx.visit_tech_time_entry.update({
 				where: { id: openEntry.id },
 				data: { clocked_out_at: now, hours_worked: hoursWorked },
@@ -158,6 +163,7 @@ export const clockOutVisit = async (
 				action: "updated",
 				entity_type: "visit_tech_time_entry",
 				entity_id: closedEntry.id,
+				organization_id: organizationId,
 				actor_type: "technician",
 				actor_id: techId,
 				changes: {

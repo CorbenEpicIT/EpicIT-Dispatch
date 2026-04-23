@@ -42,10 +42,10 @@ const router = Router();
 // CLIENTS
 // ============================================
 
-// routes will be added here
 router.get("/clients", async (req, res, next) => {
     try {
-        const clients = await getAllClients();
+        const orgId = req.user!.organization_id as string;
+        const clients = await getAllClients(orgId);
         res.json(createSuccessResponse(clients, { count: clients.length }));
     } catch (err) {
         next(err);
@@ -55,7 +55,8 @@ router.get("/clients", async (req, res, next) => {
 router.get("/clients/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const client = await getClientById(id);
+        const orgId = req.user!.organization_id as string;
+        const client = await getClientById(id, orgId);
 
         if (!client) {
             return res
@@ -76,8 +77,9 @@ router.get("/clients/:id", async (req, res, next) => {
 
 router.post("/clients", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertClient(req.body, context);
+        const result = await insertClient(req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -104,8 +106,9 @@ router.post("/clients", async (req, res, next) => {
 router.put("/clients/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateClient(id, req.body, context);
+        const result = await updateClient(id, req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -132,8 +135,9 @@ router.put("/clients/:id", async (req, res, next) => {
 router.delete("/clients/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteClient(id, context);
+        const result = await deleteClient(id, orgId, context);
 
         if (result.err) {
             return res
@@ -152,11 +156,12 @@ router.delete("/clients/:id", async (req, res, next) => {
     }
 });
 
-// Qoutes for a client
+// Quotes for a client
 router.get("/clients/:clientId/quotes", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
-		const quotes = await getQuotesByClientId(clientId);
+		const orgId = req.user!.organization_id as string;
+		const quotes = await getQuotesByClientId(clientId, orgId);
 		res.json(createSuccessResponse(quotes, { count: quotes.length }));
 	} catch (err) {
 		next(err);
@@ -167,7 +172,8 @@ router.get("/clients/:clientId/quotes", async (req, res, next) => {
 router.get("/clients/:clientId/requests", async (req, res, next) => {
     try {
         const { clientId } = req.params;
-        const requests = await getRequestsByClientId(clientId);
+        const orgId = req.user!.organization_id as string;
+        const requests = await getRequestsByClientId(clientId, orgId);
         res.json(createSuccessResponse(requests, { count: requests.length }));
     } catch (err) {
         next(err);
@@ -177,8 +183,10 @@ router.get("/clients/:clientId/requests", async (req, res, next) => {
 // invoices for a client
 router.get("/clients/:clientId/invoices", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const invoices = await invoicesController.getInvoicesByClientId(
             req.params.clientId,
+            orgId,
         );
         res.json(createSuccessResponse(invoices, { count: invoices.length }));
     } catch (err) {
@@ -187,16 +195,18 @@ router.get("/clients/:clientId/invoices", async (req, res, next) => {
 });
 
 // ============================================
-// CONTACTS (handled by clientsContactsRouter above)
+// CONTACTS
 // ============================================
 
 // Search contacts
 router.get("/contacts/search", async (req, res, next) => {
     try {
         const { q, exclude_client_id } = req.query;
+        const orgId = req.user!.organization_id as string;
 
         const result = await searchContacts(
             q as string,
+            orgId,
             exclude_client_id as string | undefined,
         );
 
@@ -225,7 +235,8 @@ router.get("/clients/:clientId/contacts", async (req, res, next) => {
 router.get("/contacts/:contactId", async (req, res, next) => {
     try {
         const { contactId } = req.params;
-        const contact = await getContactById(contactId);
+        const orgId = req.user!.organization_id as string;
+        const contact = await getContactById(contactId, orgId);
 
         if (!contact) {
             return res
@@ -246,7 +257,8 @@ router.get("/contacts/:contactId", async (req, res, next) => {
 
 router.get("/contacts", async (req, res, next) => {
     try {
-        const contacts = await getAllContacts();
+        const orgId = req.user!.organization_id as string;
+        const contacts = await getAllContacts(orgId);
         res.json(createSuccessResponse(contacts, { count: contacts.length }));
     } catch (err) {
         next(err);
@@ -255,8 +267,9 @@ router.get("/contacts", async (req, res, next) => {
 
 router.post("/contacts", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertContact(req.body, context);
+        const result = await insertContact(req.body, orgId, context);
 
         if (result.err) {
             const statusCode = result.existingContact ? 409 : 400;
@@ -281,8 +294,9 @@ router.post("/contacts", async (req, res, next) => {
 router.put("/contacts/:contactId", async (req, res, next) => {
     try {
         const { contactId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateContact(contactId, req.body, context);
+        const result = await updateContact(contactId, req.body, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -306,8 +320,9 @@ router.put("/contacts/:contactId", async (req, res, next) => {
 router.delete("/contacts/:contactId", async (req, res, next) => {
     try {
         const { contactId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteContact(contactId, context);
+        const result = await deleteContact(contactId, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -329,12 +344,14 @@ router.post("/clients/:clientId/contacts/link", async (req, res, next) => {
     try {
         const { clientId } = req.params;
         const { contact_id, relationship, is_primary, is_billing } = req.body;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
 
         const result = await linkContactToClient(
             contact_id,
             clientId,
             { relationship, is_primary, is_billing },
+            orgId,
             context,
         );
 
@@ -438,7 +455,8 @@ router.delete(
 router.get("/clients/:clientId/notes", async (req, res, next) => {
     try {
         const { clientId } = req.params;
-        const notes = await getClientNotes(clientId);
+        const orgId = req.user!.organization_id as string;
+        const notes = await getClientNotes(clientId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
     } catch (err) {
         next(err);
@@ -448,7 +466,8 @@ router.get("/clients/:clientId/notes", async (req, res, next) => {
 router.get("/clients/:clientId/notes/:noteId", async (req, res, next) => {
     try {
         const { clientId, noteId } = req.params;
-        const note = await getNoteById(clientId, noteId);
+        const orgId = req.user!.organization_id as string;
+        const note = await getNoteById(clientId, noteId, orgId);
 
         if (!note) {
             return res
@@ -467,8 +486,9 @@ router.get("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 router.post("/clients/:clientId/notes", async (req, res, next) => {
     try {
         const { clientId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertNote(clientId, req.body, context);
+        const result = await insertNote(clientId, req.body, orgId, context);
 
         if (result.err) {
             return res
@@ -490,8 +510,9 @@ router.post("/clients/:clientId/notes", async (req, res, next) => {
 router.put("/clients/:clientId/notes/:noteId", async (req, res, next) => {
     try {
         const { clientId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateNote(clientId, noteId, req.body, context);
+        const result = await updateNote(clientId, noteId, req.body, orgId, context);
 
         if (result.err) {
             return res
@@ -513,8 +534,9 @@ router.put("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 router.delete("/clients/:clientId/notes/:noteId", async (req, res, next) => {
     try {
         const { clientId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteNote(clientId, noteId, context);
+        const result = await deleteNote(clientId, noteId, orgId, context);
 
         if (result.err) {
             return res
@@ -539,7 +561,8 @@ router.delete("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 router.get("/clients/:clientId/jobs", async (req, res, next) => {
     try {
         const { clientId } = req.params;
-        const jobs = await getJobsByClientId(clientId);
+        const orgId = req.user!.organization_id as string;
+        const jobs = await getJobsByClientId(clientId, orgId);
         res.json(createSuccessResponse(jobs, { count: jobs.length }));
     } catch (err) {
         next(err);
@@ -548,4 +571,3 @@ router.get("/clients/:clientId/jobs", async (req, res, next) => {
 
 
 export default router;
-

@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobVisitSchema,
 	updateJobVisitSchema,
@@ -9,17 +10,11 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
-export const getAllJobVisits = async () => {
-	return await db.job_visit.findMany({
+export const getAllJobVisits = async (organization_id: string) => {
+	const sdb = getScopedDb(organization_id);
+	return await sdb.job_visit.findMany({
 		include: {
 			job: {
 				include: {
@@ -39,8 +34,9 @@ export const getAllJobVisits = async () => {
 	});
 };
 
-export const getJobVisitById = async (id: string) => {
-	return await db.job_visit.findFirst({
+export const getJobVisitById = async (id: string, organization_id: string) => {
+	const sdb = getScopedDb(organization_id);
+	return await sdb.job_visit.findFirst({
 		where: { id: id },
 		include: {
 			job: {
@@ -68,8 +64,9 @@ export const getJobVisitById = async (id: string) => {
 	});
 };
 
-export const getJobVisitsByJobId = async (jobId: string) => {
-	return await db.job_visit.findMany({
+export const getJobVisitsByJobId = async (jobId: string, organization_id: string) => {
+	const sdb = getScopedDb(organization_id);
+	return await sdb.job_visit.findMany({
 		where: { job_id: jobId },
 		include: {
 			visit_techs: {
@@ -88,8 +85,9 @@ export const getJobVisitsByJobId = async (jobId: string) => {
 	});
 };
 
-export const getJobVisitsByTechId = async (techId: string) => {
-	return await db.job_visit.findMany({
+export const getJobVisitsByTechId = async (techId: string, organization_id: string) => {
+	const sdb = getScopedDb(organization_id);
+	return await sdb.job_visit.findMany({
 		where: {
 			visit_techs: {
 				some: {
@@ -128,8 +126,10 @@ export const getJobVisitsByTechId = async (techId: string) => {
 export const getJobVisitsByDateRange = async (
 	startDate: Date,
 	endDate: Date,
+	organization_id: string
 ) => {
-	return await db.job_visit.findMany({
+	const sdb = getScopedDb(organization_id);
+	return await sdb.job_visit.findMany({
 		where: {
 			OR: [
 				{
@@ -168,11 +168,11 @@ export const getJobVisitsByDateRange = async (
 	});
 };
 
-export const insertJobVisit = async (req: Request, context?: UserContext) => {
+export const insertJobVisit = async (req: Request, organization_id: string, context?: UserContext) => {
 	try {
 		const parsed = createJobVisitSchema.parse(req.body);
-
-		const job = await db.job.findUnique({
+		const sdb = getScopedDb(organization_id);
+		const job = await sdb.job.findFirst({
 			where: { id: parsed.job_id },
 		});
 
@@ -181,7 +181,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 		}
 
 		if (parsed.tech_ids && parsed.tech_ids.length > 0) {
-			const existingTechs = await db.technician.findMany({
+			const existingTechs = await sdb.technician.findMany({
 				where: { id: { in: parsed.tech_ids } },
 				select: { id: true },
 			});
@@ -196,7 +196,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 			}
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const visit = await tx.job_visit.create({
 				data: {
 					job_id: parsed.job_id,
@@ -236,6 +236,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 				action: "created",
 				entity_type: "job_visit",
 				entity_id: visit.id,
+				organization_id: organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -269,7 +270,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findUnique({
+			return tx.job_visit.findFirst({
 				where: { id: visit.id },
 				include: {
 					job: {
@@ -299,13 +300,13 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const updateJobVisit = async (req: Request, context?: UserContext) => {
+export const updateJobVisit = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const id = req.params.id as string;
 		const parsed = updateJobVisitSchema.parse(req.body);
 
-		const existingVisit = await db.job_visit.findUnique({
-			where: { id },
+		const existingVisit = await db.job_visit.findFirst({
+			where: { id, job: { organization_id: organizationId } },
 			include: {
 				job: true,
 				line_items: { select: { id: true } },
@@ -493,6 +494,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 					action: "updated",
 					entity_type: "job_visit",
 					entity_id: id,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -510,7 +512,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 			}
 
 			// Re-fetch with line_items so the response shape is complete
-			return tx.job_visit.findUnique({
+			return tx.job_visit.findFirst({
 				where: { id },
 				include: {
 					job: { include: { client: true, quote: true } },
@@ -577,11 +579,13 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 export const assignTechniciansToVisit = async (
 	visitId: string,
 	techIds: string[],
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const visit = await db.job_visit.findUnique({
-			where: { id: visitId },
+		const sdb = getScopedDb(organizationId);
+		const visit = await db.job_visit.findFirst({
+			where: { id: visitId, job: { organization_id: organizationId } },
 			include: {
 				job: { select: { job_number: true } },
 				visit_techs: {
@@ -594,7 +598,7 @@ export const assignTechniciansToVisit = async (
 			return { err: "Job visit not found" };
 		}
 
-		const existingTechs = await db.technician.findMany({
+		const existingTechs = await sdb.technician.findMany({
 			where: { id: { in: techIds } },
 			select: { id: true, name: true },
 		});
@@ -628,6 +632,7 @@ export const assignTechniciansToVisit = async (
 				action: "updated",
 				entity_type: "job_visit",
 				entity_id: visitId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -647,7 +652,7 @@ export const assignTechniciansToVisit = async (
 			});
 		});
 
-		const updated = await db.job_visit.findUnique({
+		const updated = await db.job_visit.findFirst({
 			where: { id: visitId },
 			include: {
 				job: {
@@ -672,18 +677,20 @@ export const assignTechniciansToVisit = async (
 export const acceptJobVisit = async (
 	visitId: string,
 	techId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const visit = await db.job_visit.findUnique({
-			where: { id: visitId },
+		const sdb = getScopedDb(organizationId);
+		const visit = await db.job_visit.findFirst({
+			where: { id: visitId, job: { organization_id: organizationId } },
 		});
 
 		if (!visit) {
 			return { err: "Job visit not found" };
 		}
 
-		const tech = await db.technician.findUnique({
+		const tech = await sdb.technician.findFirst({
 			where: { id: techId },
 			select: { id: true },
 		});
@@ -702,6 +709,7 @@ export const acceptJobVisit = async (
 				action: "updated",
 				entity_type: "job_visit",
 				entity_id: visitId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -719,7 +727,7 @@ export const acceptJobVisit = async (
 			});
 		});
 
-		const updated = await db.job_visit.findUnique({
+		const updated = await db.job_visit.findFirst({
 			where: { id: visitId },
 			include: {
 				job: {
@@ -757,13 +765,14 @@ export type LifecycleAction = keyof typeof LIFECYCLE_TRANSITIONS;
 export const applyVisitTransition = async (
 	id: string,
 	action: LifecycleAction,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const { from, to } = LIFECYCLE_TRANSITIONS[action];
 
-		const existingVisit = await db.job_visit.findUnique({
-			where: { id },
+		const existingVisit = await db.job_visit.findFirst({
+			where: { id, job: { organization_id: organizationId } },
 			include: { job: true, line_items: { select: { id: true } } },
 		});
 
@@ -876,6 +885,7 @@ export const applyVisitTransition = async (
 				action: "updated",
 				entity_type: "job_visit",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId ? "technician" : context?.dispatcherId ? "dispatcher" : "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
@@ -890,7 +900,7 @@ export const applyVisitTransition = async (
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findUnique({
+			return tx.job_visit.findFirst({
 				where: { id },
 				include: {
 					job: { include: { client: true, quote: true } },
@@ -913,11 +923,12 @@ export const applyVisitTransition = async (
 export const cancelJobVisit = async (
 	id: string,
 	cancellationReason: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existingVisit = await db.job_visit.findUnique({
-			where: { id },
+		const existingVisit = await db.job_visit.findFirst({
+			where: { id, job: { organization_id: organizationId } },
 			include: { job: true },
 		});
 
@@ -947,6 +958,7 @@ export const cancelJobVisit = async (
 				action: "updated",
 				entity_type: "job_visit",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId ? "technician" : context?.dispatcherId ? "dispatcher" : "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
@@ -959,7 +971,7 @@ export const cancelJobVisit = async (
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findUnique({
+			return tx.job_visit.findFirst({
 				where: { id },
 				include: {
 					job: { include: { client: true, quote: true } },
@@ -977,10 +989,10 @@ export const cancelJobVisit = async (
 	}
 };
 
-export const deleteJobVisit = async (id: string, context?: UserContext) => {
+export const deleteJobVisit = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const visit = await db.job_visit.findUnique({
-			where: { id },
+		const visit = await db.job_visit.findFirst({
+			where: { id, job: { organization_id: organizationId } },
 		});
 
 		if (!visit) {
@@ -997,6 +1009,7 @@ export const deleteJobVisit = async (id: string, context?: UserContext) => {
 				action: "deleted",
 				entity_type: "job_visit",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

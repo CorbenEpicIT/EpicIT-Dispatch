@@ -11,7 +11,8 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
 	try {
-		const plans = await recurringPlansController.getAllRecurringPlans();
+		const orgId = req.user!.organization_id as string;
+		const plans = await recurringPlansController.getAllRecurringPlans(orgId);
 		res.json(createSuccessResponse(plans, { count: plans.length }));
 	} catch (err) {
 		next(err);

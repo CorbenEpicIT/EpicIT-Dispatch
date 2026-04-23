@@ -24,10 +24,11 @@ const router = Router();
 router.get("/", async (req, res, next) => {
     try {
         const { low_stock, sort } = req.query;
+        const orgId = req.user!.organization_id as string;
         const items =
             low_stock === "true"
-                ? await getLowStockInventory()
-                : await getAllInventory(sort as string | undefined);
+                ? await getLowStockInventory(orgId)
+                : await getAllInventory(orgId, sort as string | undefined);
         res.json(createSuccessResponse(items, { count: items.length }));
     } catch (err) {
         next(err);
@@ -37,7 +38,8 @@ router.get("/", async (req, res, next) => {
 router.post("/", async (req, res, next) => {
     try {
         const context = getUserContext(req);
-        const result = await createInventoryItem(req.body, context);
+        const orgId = req.user!.organization_id as string;
+        const result = await createInventoryItem(req.body, orgId, context);
 
         if (result.err) {
             return res
@@ -60,7 +62,8 @@ router.patch("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
         const context = getUserContext(req);
-        const result = await updateInventoryItem(id, req.body, context);
+        const orgId = req.user!.organization_id as string;
+        const result = await updateInventoryItem(id, req.body, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -84,7 +87,8 @@ router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
         const context = getUserContext(req);
-        const result = await deleteInventoryItem(id, context);
+        const orgId = req.user!.organization_id as string;
+        const result = await deleteInventoryItem(id, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -108,7 +112,8 @@ router.patch("/:id/stock", async (req, res, next) => {
     try {
         const { id } = req.params;
         const context = getUserContext(req);
-        const result = await adjustInventoryStock(id, req.body, context);
+        const orgId = req.user!.organization_id as string;
+        const result = await adjustInventoryStock(id, req.body, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -163,7 +168,8 @@ router.patch("/:id/threshold", async (req, res, next) => {
     try {
         const { id } = req.params;
         const context = getUserContext(req);
-        const result = await updateInventoryThreshold(id, req.body, context);
+        const orgId = req.user!.organization_id as string;
+        const result = await updateInventoryThreshold(id, req.body, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;

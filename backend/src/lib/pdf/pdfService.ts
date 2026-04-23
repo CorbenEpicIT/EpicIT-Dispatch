@@ -32,8 +32,8 @@ async function fetchOrg(organizationId: string | null | undefined) {
 	return { ...org, logo_url };
 }
 
-export async function generateQuotePdf(quoteId: string): Promise<Buffer> {
-	const quote = await getQuoteById(quoteId);
+export async function generateQuotePdf(quoteId: string, organizationId: string): Promise<Buffer> {
+	const quote = await getQuoteById(quoteId, organizationId);
 	if (!quote) throw Object.assign(new Error("Quote not found"), { status: 404 });
 
 	// Auto-promote Draft → Issued on first PDF generation (document is now finalized)
@@ -55,8 +55,8 @@ export async function generateQuotePdf(quoteId: string): Promise<Buffer> {
 	return renderToBuffer(element) as Promise<Buffer>;
 }
 
-export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
-	const invoice = await getInvoiceById(invoiceId);
+export async function generateInvoicePdf(invoiceId: string, organizationId: string): Promise<Buffer> {
+	const invoice = await getInvoiceById(invoiceId, organizationId);
 	if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
 
 	// Auto-promote Draft → Issued on first PDF generation (document is now finalized)

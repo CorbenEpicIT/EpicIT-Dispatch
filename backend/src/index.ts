@@ -17,6 +17,7 @@ import {
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
 import { db } from "./db.js";
+import { getScopedDb } from "./lib/context.js";
 import {
 	httpMetricsMiddleware,
 	register as metricsRegister,
@@ -39,6 +40,7 @@ import jobsRouter from "./routes/jobs.js";
 import jobVisitsRouter from "./routes/jobVisits.js";
 import occurrencesRouter from "./routes/occurrences.js";
 import orgRouter from "./routes/org.js";
+import organizationsRouter from "./routes/organizations.js";
 import quotesRouter from "./routes/quotes.js";
 import recurringPlansRouter from "./routes/recurringPlans.js";
 import reportsRouter from "./routes/reports.js";
@@ -303,7 +305,6 @@ app.post("/reset-password", async (req, res, next) => {
 	}
 });
 
-
 // ============================================
 // DRAFT ROUTES
 // ============================================
@@ -345,9 +346,14 @@ app.use("/occurrences", verifyToken, occurrencesRouter);
 app.use("/invoices", verifyToken, invoicesRouter);
 
 // ============================================
+// ORGANIZATION (public — must be before "/" catch-all)
+// ============================================
+app.use("/organizations", organizationsRouter);
+
+// ============================================
 // CLIENTS + CONTACTS
 // ============================================
-// since its mounted at / everything will be sent here 
+// since its mounted at / everything will be sent here
 // which can cause performance issues if scaled
 app.use("/", verifyToken, clientsContactsRouter);
 
@@ -406,7 +412,9 @@ app.get("/logs/recent", async (req, res, next) => {
 			"recurring_plan.created",
 			"recurring_occurrence.generated",
 		];
-		const logs = await db.log.findMany({
+		const orgId = req.user!.organization_id as string;
+		const sdb = getScopedDb(orgId);
+		const logs = await sdb.log.findMany({
 			where: { event_type: { in: FEED_EVENTS } },
 			orderBy: { timestamp: "desc" },
 			take: limit,

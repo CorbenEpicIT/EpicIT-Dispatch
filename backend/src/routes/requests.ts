@@ -20,7 +20,8 @@ const router = Router();
 router.get("/", async (req, res, next) => {
     // requireRole("dispatcher"),           temp removal until further implementation
     try {
-        const requests = await getAllRequests();
+        const orgId = req.user!.organization_id as string;
+        const requests = await getAllRequests(orgId);
         res.json(createSuccessResponse(requests, { count: requests.length }));
     } catch (err) {
         next(err);
@@ -30,7 +31,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const request = await getRequestById(id);
+        const orgId = req.user!.organization_id as string;
+        const request = await getRequestById(id, orgId);
 
         if (!request) {
             return res
@@ -53,8 +55,9 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertRequest(req, context);
+        const result = await insertRequest(req, orgId, context);
 
         if (result.err) {
             return res
@@ -75,8 +78,9 @@ router.post("/", async (req, res, next) => {
 
 router.put("/:id", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateRequest(req, context);
+        const result = await updateRequest(req, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -99,8 +103,9 @@ router.put("/:id", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteRequest(id, context);
+        const result = await deleteRequest(id, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -122,7 +127,8 @@ router.delete("/:id", async (req, res, next) => {
 router.get("/:requestId/notes", async (req, res, next) => {
     try {
         const { requestId } = req.params;
-        const notes = await requestNotesController.getRequestNotes(requestId);
+        const orgId = req.user!.organization_id as string;
+        const notes = await requestNotesController.getRequestNotes(requestId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
     } catch (err) {
         next(err);
@@ -132,9 +138,11 @@ router.get("/:requestId/notes", async (req, res, next) => {
 router.get("/:requestId/notes/:noteId", async (req, res, next) => {
     try {
         const { requestId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const note = await requestNotesController.getNoteById(
             requestId,
             noteId,
+            orgId,
         );
 
         if (!note) {
@@ -154,10 +162,12 @@ router.get("/:requestId/notes/:noteId", async (req, res, next) => {
 router.post("/:requestId/notes", async (req, res, next) => {
     try {
         const { requestId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await requestNotesController.insertRequestNote(
             requestId,
             req.body,
+            orgId,
             context,
         );
 
@@ -182,11 +192,13 @@ router.post("/:requestId/notes", async (req, res, next) => {
 router.put("/:requestId/notes/:noteId", async (req, res, next) => {
     try {
         const { requestId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await requestNotesController.updateRequestNote(
             requestId,
             noteId,
             req.body,
+            orgId,
             context,
         );
 
@@ -211,10 +223,12 @@ router.put("/:requestId/notes/:noteId", async (req, res, next) => {
 router.delete("/:requestId/notes/:noteId", async (req, res, next) => {
     try {
         const { requestId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await requestNotesController.deleteRequestNote(
             requestId,
             noteId,
+            orgId,
             context,
         );
 

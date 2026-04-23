@@ -30,7 +30,8 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
     try {
-        const jobs = await getAllJobs();
+        const orgId = req.user!.organization_id as string;
+        const jobs = await getAllJobs(orgId);
         res.json(createSuccessResponse(jobs, { count: jobs.length }));
     } catch (err) {
         next(err);
@@ -40,7 +41,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const job = await getJobById(id);
+        const orgId = req.user!.organization_id as string;
+        const job = await getJobById(id, orgId);
 
         if (!job) {
             return res
@@ -58,8 +60,9 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertJob(req, context);
+        const result = await insertJob(req, orgId, context);
 
         if (result.err) {
             return res
@@ -80,8 +83,9 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateJob(req, context);
+        const result = await updateJob(req, orgId, context);
 
         if (result.err) {
             return res
@@ -103,8 +107,9 @@ router.patch("/:id", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteJob(id, context);
+        const result = await deleteJob(id, orgId, context);
 
         if (result.err) {
             return res
@@ -123,14 +128,13 @@ router.delete("/:id", async (req, res, next) => {
 router.get("/:jobId/visits", async (req, res, next) => {
     try {
         const { jobId } = req.params;
-        const visits = await getJobVisitsByJobId(jobId);
+        const orgId = req.user!.organization_id as string;
+        const visits = await getJobVisitsByJobId(jobId, orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
     } catch (err) {
         next(err);
     }
 });
-
-
 
 
 
@@ -144,7 +148,8 @@ router.get("/:jobId/visits", async (req, res, next) => {
 router.get("/:jobId/notes", async (req, res, next) => {
     try {
         const { jobId } = req.params;
-        const notes = await getJobNotes(jobId);
+        const orgId = req.user!.organization_id as string;
+        const notes = await getJobNotes(jobId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
     } catch (err) {
         next(err);
@@ -153,8 +158,10 @@ router.get("/:jobId/notes", async (req, res, next) => {
 
 router.get("/:jobId/visits/:visitId/invoices", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const invoices = await invoicesController.getInvoicesByVisitId(
             req.params.visitId,
+            orgId,
         );
         res.json(createSuccessResponse(invoices, { count: invoices.length }));
     } catch (err) {
@@ -165,7 +172,8 @@ router.get("/:jobId/visits/:visitId/invoices", async (req, res, next) => {
 router.get("/:jobId/visits/:visitId/notes", async (req, res, next) => {
     try {
         const { jobId, visitId } = req.params;
-        const notes = await getJobNotesByVisitId(jobId, visitId);
+        const orgId = req.user!.organization_id as string;
+        const notes = await getJobNotesByVisitId(jobId, visitId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
     } catch (err) {
         next(err);
@@ -175,8 +183,9 @@ router.get("/:jobId/visits/:visitId/notes", async (req, res, next) => {
 router.post("/:jobId/notes", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertJobNote(jobId, req.body, context);
+        const result = await insertJobNote(jobId, req.body, orgId, context);
 
         if (result.err) {
             return res
@@ -198,8 +207,9 @@ router.post("/:jobId/notes", async (req, res, next) => {
 router.put("/:jobId/notes/:noteId", async (req, res, next) => {
     try {
         const { jobId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateJobNote(jobId, noteId, req.body, context);
+        const result = await updateJobNote(jobId, noteId, req.body, orgId, context);
 
         if (result.err) {
             return res
@@ -221,8 +231,9 @@ router.put("/:jobId/notes/:noteId", async (req, res, next) => {
 router.delete("/:jobId/notes/:noteId", async (req, res, next) => {
     try {
         const { jobId, noteId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteJobNote(jobId, noteId, context);
+        const result = await deleteJobNote(jobId, noteId, orgId, context);
 
         if (result.err) {
             return res
@@ -240,11 +251,13 @@ router.delete("/:jobId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-// invoices 
+// invoices
 router.get("/:jobId/invoices", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const invoices = await invoicesController.getInvoicesByJobId(
 			req.params.jobId,
+			orgId,
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
@@ -301,6 +314,7 @@ router.post("/:jobId/occurrences/generate", async (req, res, next) => {
 router.get("/:jobId/recurring-plan/notes", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
 
         const plan =
             await recurringPlansController.getRecurringPlanByJobId(jobId);
@@ -318,6 +332,7 @@ router.get("/:jobId/recurring-plan/notes", async (req, res, next) => {
 
         const notes = await recurringPlanNotesController.getRecurringPlanNotes(
             plan.id,
+            orgId,
         );
         res.json(createSuccessResponse(notes, { count: notes.length }));
     } catch (err) {
@@ -327,10 +342,12 @@ router.get("/:jobId/recurring-plan/notes", async (req, res, next) => {
 
 router.post("/:jobId/recurring-plan/notes", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result =
             await recurringPlanNotesController.insertRecurringPlanNote(
                 req,
+                orgId,
                 context,
             );
 
@@ -354,10 +371,12 @@ router.post("/:jobId/recurring-plan/notes", async (req, res, next) => {
 
 router.put("/:jobId/recurring-plan/notes/:noteId", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result =
             await recurringPlanNotesController.updateRecurringPlanNote(
                 req,
+                orgId,
                 context,
             );
 
@@ -384,11 +403,13 @@ router.delete(
     async (req, res, next) => {
         try {
             const { jobId, noteId } = req.params;
+            const orgId = req.user!.organization_id as string;
             const context = getUserContext(req);
             const result =
                 await recurringPlanNotesController.deleteRecurringPlanNote(
                     jobId,
                     noteId,
+                    orgId,
                     context,
                 );
 

@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobSchema,
 	updateJobSchema,
@@ -11,13 +12,6 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
 import { log } from "../services/appLogger.js";
-
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
 
 async function generateJobNumber(): Promise<string> {
 	const lastJob = await db.job.findFirst({
@@ -46,10 +40,11 @@ async function generateJobNumber(): Promise<string> {
 // JOB CRUD
 // ============================================================================
 
-export const getAllJobs = async () => {
+export const getAllJobs = async (organizationId: string) => {
 	const now = new Date();
 	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-	return await db.job.findMany({
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job.findMany({
 		include: {
 			client: {
 				select: {
@@ -108,8 +103,9 @@ export const getAllJobs = async () => {
 	});
 };
 
-export const getJobById = async (id: string) => {
-	return await db.job.findUnique({
+export const getJobById = async (id: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job.findFirst({
 		where: { id },
 		include: {
 			client: {
@@ -203,8 +199,9 @@ export const getJobById = async (id: string) => {
 	});
 };
 
-export const getJobsByClientId = async (clientId: string) => {
-	return await db.job.findMany({
+export const getJobsByClientId = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job.findMany({
 		where: { client_id: clientId },
 		include: {
 			client: true,
@@ -236,7 +233,7 @@ export const getJobsByClientId = async (clientId: string) => {
 	});
 };
 
-export const insertJob = async (req: Request, context?: UserContext) => {
+export const insertJob = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createJobSchema.parse(req.body);
 
@@ -409,6 +406,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 
 			const job = await tx.job.create({
 				data: {
+					organization_id: organizationId,
 					job_number: jobNumber,
 					name: name,
 					description: description,
@@ -464,6 +462,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 				action: "created",
 				entity_type: "job",
 				entity_id: job.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -590,12 +589,13 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const updateJob = async (req: Request, context?: UserContext) => {
+export const updateJob = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const id = req.params.id as string;
 		const parsed = updateJobSchema.parse(req.body);
 
-		const existing = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job.findFirst({
 			where: { id },
 			include: { line_items: true },
 		});
@@ -656,6 +656,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 						action: "deleted",
 						entity_type: "job_line_item",
 						entity_id: item.id,
+						organization_id: organizationId,
 						actor_type: context?.techId
 							? "technician"
 							: context?.dispatcherId
@@ -748,6 +749,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 									action: "updated",
 									entity_type: "job_line_item",
 									entity_id: item.id,
+									organization_id: organizationId,
 									actor_type: context?.techId
 										? "technician"
 										: context?.dispatcherId
@@ -781,6 +783,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 							action: "created",
 							entity_type: "job_line_item",
 							entity_id: newItem.id,
+							organization_id: organizationId,
 							actor_type: context?.techId
 								? "technician"
 								: context?.dispatcherId
@@ -876,6 +879,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 					action: "updated",
 					entity_type: "job",
 					entity_id: id,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -905,9 +909,10 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const deleteJob = async (id: string, context?: UserContext) => {
+export const deleteJob = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const existing = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job.findFirst({
 			where: { id },
 		});
 
@@ -921,6 +926,7 @@ export const deleteJob = async (id: string, context?: UserContext) => {
 				action: "deleted",
 				entity_type: "job",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -971,12 +977,14 @@ export const getJobLineItemById = async (jobId: string, itemId: string) => {
 export const insertJobLineItem = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createJobLineItemSchema.parse(data);
 
-		const job = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const job = await sdb.job.findFirst({
 			where: { id: jobId },
 		});
 
@@ -1009,6 +1017,7 @@ export const insertJobLineItem = async (
 				action: "created",
 				entity_type: "job_line_item",
 				entity_id: item.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

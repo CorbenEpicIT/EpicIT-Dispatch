@@ -217,10 +217,11 @@ const fmtDate = (d: Date | string | null | undefined): string | null => {
 export const sendQuoteEmail = async (
 	quoteId: string,
 	recipientEmail: string,
+	organizationId: string,
 ): Promise<void> => {
 	const [quote, pdfBuffer] = await Promise.all([
-		getQuoteById(quoteId),
-		generateQuotePdf(quoteId),
+		getQuoteById(quoteId, organizationId),
+		generateQuotePdf(quoteId, organizationId),
 	]);
 
 	if (!quote) throw Object.assign(new Error("Quote not found"), { status: 404 });
@@ -264,10 +265,11 @@ export const sendQuoteEmail = async (
 export const sendInvoiceEmail = async (
 	invoiceId: string,
 	recipientEmail: string,
+	organizationId: string,
 ): Promise<void> => {
 	const [invoice, pdfBuffer] = await Promise.all([
-		getInvoiceById(invoiceId),
-		generateInvoicePdf(invoiceId),
+		getInvoiceById(invoiceId, organizationId),
+		generateInvoicePdf(invoiceId, organizationId),
 	]);
 
 	if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });

@@ -17,13 +17,8 @@ import {
 	sendPasswordResetEmail,
 } from "../services/emailService.js";
 import crypto from "crypto";
+import { UserContext } from "../lib/context.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
 
 interface AuthResponse {
 	token: string;
@@ -202,30 +197,6 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 		}
 	}
 }
-
-// not sure what inputs will be needed for register
-// email, password, and organization for now
-// will change when i know more details
-export const register = async (
-	email: string,
-	password: string,
-	organization: string, // will change if I find an organization obj/interface
-) => {
-	try {
-	} catch (e) {
-		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
-		}
-		return createErrorResponse(
-			ErrorCodes.SERVER_ERROR,
-			"Internal server error",
-		);
-	}
-};
 
 // invalidate session token and clear cookies
 // access token is cleared on front end

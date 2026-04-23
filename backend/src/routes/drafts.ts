@@ -35,7 +35,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const result = await draftsController.getDraftById(id);
+        const orgId = req.user!.organization_id as string;
+        const result = await draftsController.getDraftById(id, orgId);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -97,7 +98,8 @@ router.put("/:id", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const result = await draftsController.deleteDraft(id);
+        const orgId = req.user!.organization_id as string;
+        const result = await draftsController.deleteDraft(id, orgId);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;

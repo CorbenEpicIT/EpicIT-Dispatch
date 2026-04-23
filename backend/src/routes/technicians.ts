@@ -20,7 +20,8 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
     try {
-        const technicians = await getAllTechnicians();
+        const orgId = req.user!.organization_id as string;
+        const technicians = await getAllTechnicians(orgId);
         res.json(
             createSuccessResponse(technicians, { count: technicians.length }),
         );
@@ -32,7 +33,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const technician = await getTechnicianById(id);
+        const orgId = req.user!.organization_id as string;
+        const technician = await getTechnicianById(id, orgId);
 
         if (!technician) {
             return res
@@ -53,8 +55,9 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertTechnician(req.body, context);
+        const result = await insertTechnician(req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -81,8 +84,9 @@ router.post("/", async (req, res, next) => {
 router.post("/:id/ping", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateTechnician(id, req.body, context);
+        const result = await updateTechnician(id, req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -99,7 +103,7 @@ router.post("/:id/ping", async (req, res, next) => {
                     ),
                 );
         }
-        
+
         const io = getSocket();
         io.emit("technician-update", result.item);
         res.json(createSuccessResponse(result.item));
@@ -111,8 +115,9 @@ router.post("/:id/ping", async (req, res, next) => {
 router.put("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateTechnician(id, req.body, context);
+        const result = await updateTechnician(id, req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -139,7 +144,8 @@ router.put("/:id", async (req, res, next) => {
 router.post("/:id/reset-password", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const user = await getTechnicianById(id); 
+        const orgId = req.user!.organization_id as string;
+        const user = await getTechnicianById(id, orgId);
         if (!user) {
             return res
                 .status(404)
@@ -172,8 +178,9 @@ router.post("/:id/reset-password", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteTechnician(id, context);
+        const result = await deleteTechnician(id, orgId, context);
 
         if (result.err) {
             return res
@@ -196,7 +203,8 @@ router.delete("/:id", async (req, res, next) => {
 router.get("/:techId/visits", async (req, res, next) => {
     try {
         const { techId } = req.params;
-        const visits = await getJobVisitsByTechId(techId);
+        const orgId = req.user!.organization_id as string;
+        const visits = await getJobVisitsByTechId(techId, orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
     } catch (err) {
         next(err);

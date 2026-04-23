@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import bcrypt from "bcrypt";
 import { randomBytes, randomUUID } from "crypto";
 import {
@@ -10,28 +11,19 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
 
-
-export const getAllDispatchers = async () => {
-    return await db.dispatcher.findMany({
-        where:{
-            // organization_id: context?.organizationId,
-            // for now won't check orgs but will need to later
-        },
+export const getAllDispatchers = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+    return await sdb.dispatcher.findMany({
         include: {
-            
+
         },
     });
 };
 
-export const getDispatcherById = async (id: string) => {
-    return await db.dispatcher.findUnique({
+export const getDispatcherById = async (id: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+    return await sdb.dispatcher.findFirst({
         where: { id },
         /*include: {
             Default for now
@@ -41,12 +33,13 @@ export const getDispatcherById = async (id: string) => {
 
 export const insertDispatcher = async (
     data: unknown,
+    organizationId: string,
     context?: UserContext
 ) => {
     try {
         const parsed = createDispatcherSchema.parse(data);
-
-        const existing = await db.dispatcher.findUnique({
+        const sdb = getScopedDb(organizationId);
+        const existing = await sdb.dispatcher.findFirst({
             where: { email: parsed.email },
         });
 
@@ -57,10 +50,11 @@ export const insertDispatcher = async (
         const tempPassword = randomBytes(8).toString("hex") + "A1!";
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-        const created = await db.$transaction(async (tx) => {
+        const created = await sdb.$transaction(async (tx) => {
             const dispatcher = await tx.dispatcher.create({
                 data: {
                     ...parsed,
+                    organization_id: organizationId,
                     password: hashedPassword,
                     email_verification_token: randomUUID(),
                 },
@@ -74,6 +68,7 @@ export const insertDispatcher = async (
                 action: "created",
                 entity_type: "dispatcher",
                 entity_id: dispatcher.id,
+                organization_id: organizationId,
                 actor_type: context?.techId
                     ? "technician"
                     : context?.dispatcherId
@@ -112,12 +107,14 @@ export const insertDispatcher = async (
 export const updateDispatcher = async (
     id : string,
     data: unknown,
+    organizationId: string,
     context?: UserContext
 ) => {
     try {
         const parsed = updateDispatcherSchema.parse(data);
 
-        const existing = await db.dispatcher.findUnique({
+        const sdb = getScopedDb(organizationId);
+        const existing = await sdb.dispatcher.findFirst({
             where: { id },
         });
 
@@ -126,7 +123,7 @@ export const updateDispatcher = async (
         }
 
         if (parsed.email && parsed.email !== existing.email) {
-            const emailTaken = await db.dispatcher.findUnique({
+            const emailTaken = await sdb.dispatcher.findFirst({
                 where: { email: parsed.email },
             });
 
@@ -145,7 +142,7 @@ export const updateDispatcher = async (
             "last_login",
         ] as const);
 
-        const updated = await db.$transaction(async (tx) => {
+        const updated = await sdb.$transaction(async (tx) => {
             const dispatcher = await tx.dispatcher.update({
                 where: { id },
                 data: parsed,
@@ -160,6 +157,7 @@ export const updateDispatcher = async (
                     action: "updated",
                     entity_type: "dispatcher",
                     entity_id: id,
+                    organization_id: organizationId,
                     actor_type: context?.techId
                         ? "technician"
                         : context?.dispatcherId
@@ -189,29 +187,44 @@ export const updateDispatcher = async (
     }
 };
 
-export const updateDispatcherLocation = async (
-    id: string,
-    data: unknown,
-    context?: UserContext
-) => {
+export const deleteDispatcher = async (id: string, organization_id: string, context?: UserContext) => {
     try {
-        
-    } catch (e) {
-        if (e instanceof ZodError) {
-            return {
-                err: `Validation failed: ${e.issues
-                    .map((err) => err.message)
-                    .join(", ")}`,
-            };
-        }
-        log.error({ err: e }, "Error updating dispatcher");
-        return { err: "Internal server error" };
-    }
-};
+        const sdb = getScopedDb(organization_id);
+        const user = await sdb.dispatcher.findFirst({
+            where: { id },
+        });
 
-export const deleteDispatcher = async (id: string, context?: UserContext) => {
-    try {
-        
+        if (!user) {
+            return { err: "Dispatcher not found" };
+        }
+
+        await sdb.$transaction(async (tx) => {
+            await tx.dispatcher.delete({
+                where: { id },
+            });
+
+            await logActivity({
+                event_type: "dispatcher.deleted",
+                action: "deleted",
+                entity_type: "dispatcher",
+                entity_id: id,
+                organization_id: organization_id,
+                actor_type: context?.techId
+                    ? "technician"
+                    : context?.dispatcherId
+                    ? "dispatcher"
+                    : "system",
+                actor_id: context?.techId || context?.dispatcherId,
+                changes: {
+                    name: { old: user.name, new: null },
+                    email: { old: user.email, new: null },
+                    phone: { old: user.phone, new: null },
+                    title: { old: user.title, new: null },
+                },
+                ip_address: context?.ipAddress,
+                user_agent: context?.userAgent,
+            });
+        });
     } catch (error) {
         log.error({ err: error }, "Error deleting dispatcher");
         return { err: "Internal server error" };

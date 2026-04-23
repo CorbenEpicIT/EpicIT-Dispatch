@@ -18,7 +18,8 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
     try {
-        const dispatcher = await getAllDispatchers();
+        const orgId = req.user!.organization_id as string;
+        const dispatcher = await getAllDispatchers(orgId);
         res.json(
             createSuccessResponse(dispatcher, { count: dispatcher.length }),
         );
@@ -30,7 +31,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const dispatcher = await getDispatcherById(id);
+        const orgId = req.user!.organization_id as string;
+        const dispatcher = await getDispatcherById(id, orgId);
 
         if (!dispatcher) {
             return res
@@ -51,8 +53,9 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertDispatcher(req.body, context);
+        const result = await insertDispatcher(req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -79,8 +82,9 @@ router.post("/", async (req, res, next) => {
 router.put("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateDispatcher(id, req.body, context);
+        const result = await updateDispatcher(id, req.body, orgId, context);
 
         if (result.err) {
             const isDuplicate = result.err
@@ -107,7 +111,8 @@ router.put("/:id", async (req, res, next) => {
 router.post("/:id/reset-password", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const user = await getDispatcherById(id); 
+        const orgId = req.user!.organization_id as string;
+        const user = await getDispatcherById(id, orgId);
         if (!user) {
             return res
                 .status(404)

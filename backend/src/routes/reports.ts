@@ -5,17 +5,18 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import { getArrivalPerformance,
-    getOverviewMetrics, 
-    getQuotePipeline, 
-    getRevenueByJobType, 
-    getRevenueYTD, 
-    getUnscheduledRevenue 
+    getOverviewMetrics,
+    getQuotePipeline,
+    getRevenueByJobType,
+    getRevenueYTD,
+    getUnscheduledRevenue
 } from '../controllers/reportsController.js';
 
 const router = Router();
 
 router.get("/overview", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
 			startDate: string;
 			endDate: string;
@@ -32,7 +33,7 @@ router.get("/overview", async (req, res, next) => {
 				);
 		}
 
-		const overview = await getOverviewMetrics(startDate, endDate);
+		const overview = await getOverviewMetrics(startDate, endDate, orgId);
 		res.json(createSuccessResponse(overview));
 	} catch (err) {
 		next(err);
@@ -41,11 +42,13 @@ router.get("/overview", async (req, res, next) => {
 
 router.get("/revenue-ytd", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const { year } = req.query as {
 			year?: string;
 		};
 
 		const revenueYTD = await getRevenueYTD(
+			orgId,
 			year ? parseInt(year, 10) : undefined,
 		);
 		res.json(createSuccessResponse(revenueYTD));
@@ -56,6 +59,7 @@ router.get("/revenue-ytd", async (req, res, next) => {
 
 router.get("/revenue-by-job-type", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
 			startDate: string;
 			endDate: string;
@@ -72,7 +76,7 @@ router.get("/revenue-by-job-type", async (req, res, next) => {
 				);
 		}
 
-		const revenueByJobType = await getRevenueByJobType(startDate, endDate);
+		const revenueByJobType = await getRevenueByJobType(startDate, endDate, orgId);
 		res.json(createSuccessResponse(revenueByJobType));
 	} catch (err) {
 		next(err);
@@ -81,7 +85,8 @@ router.get("/revenue-by-job-type", async (req, res, next) => {
 
 router.get("/unscheduled-revenue", async (req, res, next) => {
 	try {
-		const unscheduledRevenue = await getUnscheduledRevenue();
+		const orgId = req.user!.organization_id as string;
+		const unscheduledRevenue = await getUnscheduledRevenue(orgId);
 		res.json(createSuccessResponse(unscheduledRevenue));
 	} catch (err) {
 		next(err);
@@ -90,6 +95,7 @@ router.get("/unscheduled-revenue", async (req, res, next) => {
 
 router.get("/quote-pipeline", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
 			startDate: string;
 			endDate: string;
@@ -106,7 +112,7 @@ router.get("/quote-pipeline", async (req, res, next) => {
 				);
 		}
 
-		const quotePipeline = await getQuotePipeline(startDate, endDate);
+		const quotePipeline = await getQuotePipeline(startDate, endDate, orgId);
 		res.json(createSuccessResponse(quotePipeline));
 	} catch (err) {
 		next(err);
@@ -115,6 +121,7 @@ router.get("/quote-pipeline", async (req, res, next) => {
 
 router.get("/arrival-performance", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
 			startDate: string;
 			endDate: string;
@@ -131,7 +138,7 @@ router.get("/arrival-performance", async (req, res, next) => {
 				);
 		}
 
-		const data = await getArrivalPerformance(startDate, endDate);
+		const data = await getArrivalPerformance(startDate, endDate, orgId);
 		res.json(createSuccessResponse(data));
 	} catch (err) {
 		next(err);

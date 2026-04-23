@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "./authStore";
 import { useRef, useState } from "react";
 import { loginCall, verifyOTPCall } from "../api/authenticate.ts"
@@ -33,7 +33,7 @@ export default function LoginPage() {
 				if (parts.length === 3) {
 					const payload = JSON.parse(atob(parts[1]));
 					const orgTimezone = payload.organization_timezone ?? "America/Chicago";
-					login(role, name || "User", payload.uid, orgTimezone);
+					login(role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
 				}
 				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
 				return;
@@ -56,7 +56,7 @@ export default function LoginPage() {
 			const payload = JSON.parse(atob(parts[1]));
 			if (!payload.uid) throw new Error("Token is missing user ID — contact support");
 			const orgTimezone = payload.organization_timezone ?? "America/Chicago";
-			login(payload.role, name || "User", payload.uid, orgTimezone);
+			login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
 			if (result.forcePasswordReset && result.resetToken) {
 				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
 				return;
@@ -204,6 +204,10 @@ export default function LoginPage() {
 				>
 					Login
 				</button>
+				<p className="text-sm text-gray-500 text-center">
+					New organization?{" "}
+					<Link to="/register" className="text-blue-600 hover:underline">Create account</Link>
+				</p>
 			</form>
 		)}
 		</div>

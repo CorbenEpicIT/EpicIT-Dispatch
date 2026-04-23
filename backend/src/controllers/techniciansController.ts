@@ -6,26 +6,17 @@ import {
 } from "../lib/validate/technicians.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-export const getAllTechnicians = async () => {
-	return await db.technician.findMany({
+export const getAllTechnicians = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.technician.findMany({
 		include: {
 			visit_techs: {
 				include: {
 					visit: {
 						include: {
-							job: {
-								include: {
-									client: true,
-								},
-							},
+							job: { include: { client: true } },
 						},
 					},
 				},
@@ -34,19 +25,16 @@ export const getAllTechnicians = async () => {
 	});
 };
 
-export const getTechnicianById = async (id: string) => {
-	return await db.technician.findUnique({
+export const getTechnicianById = async (id: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.technician.findFirst({
 		where: { id },
 		include: {
 			visit_techs: {
 				include: {
 					visit: {
 						include: {
-							job: {
-								include: {
-									client: true,
-								},
-							},
+							job: { include: { client: true } },
 						},
 					},
 				},
@@ -57,12 +45,14 @@ export const getTechnicianById = async (id: string) => {
 
 export const insertTechnician = async (
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = createTechnicianSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.technician.findUnique({
+		const existing = await sdb.technician.findFirst({
 			where: { email: parsed.email },
 		});
 
@@ -72,17 +62,16 @@ export const insertTechnician = async (
 
 		const created = await db.$transaction(async (tx) => {
 			const technician = await tx.technician.create({
-				data: parsed,
+				data: {
+					...parsed,
+					organization_id: organizationId,
+				},
 				include: {
 					visit_techs: {
 						include: {
 							visit: {
 								include: {
-									job: {
-										include: {
-											client: true,
-										},
-									},
+									job: { include: { client: true } },
 								},
 							},
 						},
@@ -95,6 +84,7 @@ export const insertTechnician = async (
 				action: "created",
 				entity_type: "technician",
 				entity_id: technician.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -119,9 +109,7 @@ export const insertTechnician = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error inserting technician");
@@ -132,21 +120,21 @@ export const insertTechnician = async (
 export const updateTechnician = async (
 	id: string,
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateTechnicianSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.technician.findUnique({
-			where: { id },
-		});
+		const existing = await sdb.technician.findFirst({ where: { id } });
 
 		if (!existing) {
 			return { err: "Technician not found" };
 		}
 
 		if (parsed.email && parsed.email !== existing.email) {
-			const emailTaken = await db.technician.findUnique({
+			const emailTaken = await sdb.technician.findFirst({
 				where: { email: parsed.email },
 			});
 
@@ -176,11 +164,7 @@ export const updateTechnician = async (
 						include: {
 							visit: {
 								include: {
-									job: {
-										include: {
-											client: true,
-										},
-									},
+									job: { include: { client: true } },
 								},
 							},
 						},
@@ -194,6 +178,7 @@ export const updateTechnician = async (
 					action: "updated",
 					entity_type: "technician",
 					entity_id: id,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -213,9 +198,7 @@ export const updateTechnician = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error updating technician");
@@ -226,14 +209,14 @@ export const updateTechnician = async (
 export const updateTechnicianLocation = async (
 	id: string,
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateTechnicianSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.technician.findUnique({
-			where: { id },
-		});
+		const existing = await sdb.technician.findFirst({ where: { id } });
 
 		if (!existing) {
 			return { err: "Technician not found" };
@@ -250,6 +233,7 @@ export const updateTechnicianLocation = async (
 				action: "updated",
 				entity_type: "technician",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -270,9 +254,7 @@ export const updateTechnicianLocation = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error updating technician");
@@ -280,11 +262,14 @@ export const updateTechnicianLocation = async (
 	}
 };
 
-export const deleteTechnician = async (id: string, context?: UserContext) => {
+export const deleteTechnician = async (
+	id: string,
+	organizationId: string,
+	context?: UserContext,
+) => {
 	try {
-		const existing = await db.technician.findUnique({
-			where: { id },
-		});
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.technician.findFirst({ where: { id } });
 
 		if (!existing) {
 			return { err: "Technician not found" };
@@ -293,11 +278,7 @@ export const deleteTechnician = async (id: string, context?: UserContext) => {
 		const upcomingVisits = await db.job_visit_technician.count({
 			where: {
 				tech_id: id,
-				visit: {
-					status: {
-						in: ["Scheduled", "InProgress"],
-					},
-				},
+				visit: { status: { in: ["Scheduled", "InProgress"] } },
 			},
 		});
 
@@ -308,15 +289,14 @@ export const deleteTechnician = async (id: string, context?: UserContext) => {
 		}
 
 		await db.$transaction(async (tx) => {
-			await tx.job_visit_technician.deleteMany({
-				where: { tech_id: id },
-			});
+			await tx.job_visit_technician.deleteMany({ where: { tech_id: id } });
 
 			await logActivity({
 				event_type: "technician.deleted",
 				action: "deleted",
 				entity_type: "technician",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

@@ -83,6 +83,7 @@ async function main() {
 			description: "Lead dispatcher and operations manager.",
 			email_verified_at: new Date(),
 			email_verification_token: null,
+			last_login: new Date(), // set null to test password reseting on first login
 			role: "admin",
 		},
 	});

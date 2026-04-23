@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 import {
 	updateThresholdSchema,
@@ -10,13 +11,6 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { sendEmail } from "../services/emailService.js";
-
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
 
 type StockStatus = "sufficient" | "low" | "out_of_stock" | null;
 
@@ -60,7 +54,7 @@ function withStockStatus<T extends { quantity: number; low_stock_threshold: numb
 	};
 }
 
-export const getAllInventory = async (sort?: string) => {
+export const getAllInventory = async (organizationId: string, sort?: string) => {
 	let orderBy: Record<string, unknown> = { name: "asc" };
 
 	switch (sort) {
@@ -82,7 +76,8 @@ export const getAllInventory = async (sort?: string) => {
 			break;
 	}
 
-	const items = await db.inventory_item.findMany({
+	const sdb = getScopedDb(organizationId);
+	const items = await sdb.inventory_item.findMany({
 		where: { is_active: true },
 		orderBy,
 		include: {
@@ -95,8 +90,9 @@ export const getAllInventory = async (sort?: string) => {
 	return items.map(withStockStatus);
 };
 
-export const getLowStockInventory = async () => {
-	const items = await db.inventory_item.findMany({
+export const getLowStockInventory = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const items = await sdb.inventory_item.findMany({
 		where: {
 			is_active: true,
 			low_stock_threshold: { not: null },
@@ -113,13 +109,14 @@ export const getLowStockInventory = async () => {
 		});
 };
 
-export const createInventoryItem = async (data: unknown, context?: UserContext) => {
+export const createInventoryItem = async (data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createInventoryItemSchema.parse(data);
 
 		const item = await db.$transaction(async (tx) => {
 			const created = await tx.inventory_item.create({
 				data: {
+					organization_id: organizationId,
 					name: parsed.name,
 					description: parsed.description,
 					location: parsed.location,
@@ -139,6 +136,7 @@ export const createInventoryItem = async (data: unknown, context?: UserContext) 
 				action: "created",
 				entity_type: "inventory_item",
 				entity_id: created.id,
+				organization_id: organizationId,
 				...getActorInfo(context),
 				changes: {
 					name: { old: null, new: created.name },
@@ -165,12 +163,14 @@ export const createInventoryItem = async (data: unknown, context?: UserContext) 
 export const updateInventoryItem = async (
 	itemId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateInventoryItemSchema.parse(data);
 
-		const existing = await db.inventory_item.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.inventory_item.findFirst({
 			where: { id: itemId },
 		});
 
@@ -204,6 +204,7 @@ export const updateInventoryItem = async (
 					action: "updated",
 					entity_type: "inventory_item",
 					entity_id: itemId,
+					organization_id: organizationId,
 					...getActorInfo(context),
 					changes,
 				});
@@ -224,9 +225,10 @@ export const updateInventoryItem = async (
 	}
 };
 
-export const deleteInventoryItem = async (itemId: string, context?: UserContext) => {
+export const deleteInventoryItem = async (itemId: string, organizationId: string, context?: UserContext) => {
 	try {
-		const existing = await db.inventory_item.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.inventory_item.findFirst({
 			where: { id: itemId },
 		});
 
@@ -245,6 +247,7 @@ export const deleteInventoryItem = async (itemId: string, context?: UserContext)
 				action: "deleted",
 				entity_type: "inventory_item",
 				entity_id: itemId,
+				organization_id: organizationId,
 				...getActorInfo(context),
 				changes: {
 					is_active: { old: true, new: false },
@@ -263,12 +266,14 @@ export const deleteInventoryItem = async (itemId: string, context?: UserContext)
 export const adjustInventoryStock = async (
 	itemId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = adjustStockSchema.parse(data);
 
-		const existing = await db.inventory_item.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.inventory_item.findFirst({
 			where: { id: itemId },
 		});
 
@@ -292,6 +297,7 @@ export const adjustInventoryStock = async (
 				action: "updated",
 				entity_type: "inventory_item",
 				entity_id: itemId,
+				organization_id: organizationId,
 				...getActorInfo(context),
 				changes: {
 					quantity: { old: existing.quantity, new: newQuantity },
@@ -390,12 +396,14 @@ async function triggerLowStockAlert(item: InventoryRecord) {
 export const updateInventoryThreshold = async (
 	itemId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateThresholdSchema.parse(data);
 
-		const existing = await db.inventory_item.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.inventory_item.findFirst({
 			where: { id: itemId },
 		});
 
@@ -414,6 +422,7 @@ export const updateInventoryThreshold = async (
 				action: "updated",
 				entity_type: "inventory_item",
 				entity_id: itemId,
+				organization_id: organizationId,
 				...getActorInfo(context),
 				changes: buildChanges(
 					existing,

@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobNoteSchema,
 	updateJobNoteSchema,
@@ -8,16 +9,9 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	organizationId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-export const getJobNotes = async (jobId: string) => {
-	return await db.job_note.findMany({
+export const getJobNotes = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job_note.findMany({
 		where: { job_id: jobId },
 		include: {
 			creator_tech: {
@@ -61,8 +55,9 @@ export const getJobNotes = async (jobId: string) => {
 	});
 };
 
-export const getJobNotesByVisitId = async (jobId: string, visitId: string) => {
-	return await db.job_note.findMany({
+export const getJobNotesByVisitId = async (jobId: string, visitId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job_note.findMany({
 		where: {
 			job_id: jobId,
 			visit_id: visitId,
@@ -109,8 +104,9 @@ export const getJobNotesByVisitId = async (jobId: string, visitId: string) => {
 	});
 };
 
-export const getNoteById = async (jobId: string, noteId: string) => {
-	return await db.job_note.findFirst({
+export const getNoteById = async (jobId: string, noteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job_note.findFirst({
 		where: {
 			id: noteId,
 			job_id: jobId,
@@ -159,12 +155,14 @@ export const getNoteById = async (jobId: string, noteId: string) => {
 export const insertJobNote = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createJobNoteSchema.parse(data);
 
-		const job = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const job = await sdb.job.findFirst({
 			where: { id: jobId },
 			select: { id: true, organization_id: true },
 		});
@@ -240,6 +238,7 @@ export const insertJobNote = async (
 				action: "created",
 				entity_type: "job_note",
 				entity_id: note.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -276,12 +275,14 @@ export const updateJobNote = async (
 	jobId: string,
 	noteId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateJobNoteSchema.parse(data);
 
-		const existing = await db.job_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job_note.findFirst({
 			where: {
 				id: noteId,
 				job_id: jobId,
@@ -389,6 +390,7 @@ export const updateJobNote = async (
 					action: "updated",
 					entity_type: "job_note",
 					entity_id: noteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -421,10 +423,12 @@ export const updateJobNote = async (
 export const deleteJobNote = async (
 	jobId: string,
 	noteId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.job_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job_note.findFirst({
 			where: {
 				id: noteId,
 				job_id: jobId,
@@ -441,6 +445,7 @@ export const deleteJobNote = async (
 				action: "deleted",
 				entity_type: "job_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

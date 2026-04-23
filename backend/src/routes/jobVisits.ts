@@ -25,7 +25,8 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
     try {
-        const visits = await getAllJobVisits();
+        const orgId = req.user!.organization_id as string;
+        const visits = await getAllJobVisits(orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
     } catch (err) {
         next(err);
@@ -35,7 +36,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const visit = await getJobVisitById(id);
+        const orgId = req.user!.organization_id as string;
+        const visit = await getJobVisitById(id, orgId);
 
         if (!visit) {
             return res
@@ -61,6 +63,7 @@ router.get(
             const { startDate, endDate } = req.params;
             const start = new Date(startDate);
             const end = new Date(endDate);
+            const orgId = req.user!.organization_id as string;
 
             if (isNaN(start.getTime()) || isNaN(end.getTime())) {
                 return res
@@ -73,7 +76,7 @@ router.get(
                     );
             }
 
-            const visits = await getJobVisitsByDateRange(start, end);
+            const visits = await getJobVisitsByDateRange(start, end, orgId);
             res.json(createSuccessResponse(visits, { count: visits.length }));
         } catch (err) {
             next(err);
@@ -83,8 +86,9 @@ router.get(
 
 router.post("/", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertJobVisit(req, context);
+        const result = await insertJobVisit(req, orgId, context);
 
         if (result.err) {
             return res
@@ -105,8 +109,9 @@ router.post("/", async (req, res, next) => {
 
 router.put("/:id", async (req, res, next) => {
     try {
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await updateJobVisit(req, context);
+        const result = await updateJobVisit(req, orgId, context);
 
         if (result.err) {
             return res
@@ -129,6 +134,7 @@ router.put("/:id/technicians", async (req, res, next) => {
     try {
         const { id } = req.params;
         const { tech_ids } = req.body;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
 
         if (!Array.isArray(tech_ids)) {
@@ -144,7 +150,7 @@ router.put("/:id/technicians", async (req, res, next) => {
                 );
         }
 
-        const result = await assignTechniciansToVisit(id, tech_ids, context);
+        const result = await assignTechniciansToVisit(id, tech_ids, orgId, context);
 
         if (result.err) {
             return res
@@ -167,6 +173,7 @@ router.post("/:id/accept", async (req, res, next) => {
     try {
         const { id } = req.params;
         const { tech_id } = req.body;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
 
         if (!tech_id) {
@@ -182,7 +189,7 @@ router.post("/:id/accept", async (req, res, next) => {
                 );
         }
 
-        const result = await acceptJobVisit(id, tech_id, context);
+        const result = await acceptJobVisit(id, tech_id, orgId, context);
 
         if (result.err) {
             return res
@@ -211,7 +218,8 @@ router.post("/:id/clock-in", async (req, res, next) => {
                 createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
             );
         }
-        const result = await clockInVisit(req.params.id, tech_id, getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await clockInVisit(req.params.id, tech_id, orgId, getUserContext(req));
         if (result.err) {
             if (result.err.startsWith("ALREADY_CLOCKED_IN:")) {
                 return res.status(409).json(createErrorResponse(ErrorCodes.CONFLICT, result.err));
@@ -232,7 +240,8 @@ router.post("/:id/clock-out", async (req, res, next) => {
                 createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
             );
         }
-        const result = await clockOutVisit(req.params.id, tech_id, getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await clockOutVisit(req.params.id, tech_id, orgId, getUserContext(req));
         if (result.err) {
             return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -246,7 +255,8 @@ router.post("/:id/clock-out", async (req, res, next) => {
 
 router.post("/:id/start", async (req, res, next) => {
     try {
-        const result = await applyVisitTransition(req.params.id, "start", getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await applyVisitTransition(req.params.id, "start", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -258,7 +268,8 @@ router.post("/:id/start", async (req, res, next) => {
 
 router.post("/:id/pause", async (req, res, next) => {
     try {
-        const result = await applyVisitTransition(req.params.id, "pause", getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await applyVisitTransition(req.params.id, "pause", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -270,7 +281,8 @@ router.post("/:id/pause", async (req, res, next) => {
 
 router.post("/:id/resume", async (req, res, next) => {
     try {
-        const result = await applyVisitTransition(req.params.id, "resume", getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await applyVisitTransition(req.params.id, "resume", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -282,7 +294,8 @@ router.post("/:id/resume", async (req, res, next) => {
 
 router.post("/:id/complete", async (req, res, next) => {
     try {
-        const result = await applyVisitTransition(req.params.id, "complete", getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await applyVisitTransition(req.params.id, "complete", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -295,7 +308,8 @@ router.post("/:id/complete", async (req, res, next) => {
 router.post("/:id/cancel", async (req, res, next) => {
     try {
         const { cancellation_reason } = req.body as { cancellation_reason?: string };
-        const result = await cancelJobVisit(req.params.id, cancellation_reason ?? "", getUserContext(req));
+        const orgId = req.user!.organization_id as string;
+        const result = await cancelJobVisit(req.params.id, cancellation_reason ?? "", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -308,8 +322,9 @@ router.post("/:id/cancel", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteJobVisit(id, context);
+        const result = await deleteJobVisit(id, orgId, context);
 
         if (result.err) {
             return res
@@ -341,8 +356,9 @@ router.post("/:id/transition", async (req, res, next) => {
                 .status(400)
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, `Invalid action. Must be one of: ${LIFECYCLE_ACTIONS.join(", ")}.`));
         }
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await applyVisitTransition(id, action, context);
+        const result = await applyVisitTransition(id, action, orgId, context);
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }

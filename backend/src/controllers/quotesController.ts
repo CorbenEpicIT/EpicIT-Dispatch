@@ -11,16 +11,11 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-async function generateQuoteNumber(): Promise<string> {
-	const lastQuote = await db.quote.findFirst({
+async function generateQuoteNumber(organizationId: string): Promise<string> {
+	const sdb = getScopedDb(organizationId);
+	const lastQuote = await sdb.quote.findFirst({
 		where: {
 			quote_number: {
 				startsWith: "Q-",
@@ -42,8 +37,9 @@ async function generateQuoteNumber(): Promise<string> {
 	return `Q-${nextNumber.toString().padStart(4, "0")}`;
 }
 
-export const getAllQuotes = async () => {
-	return await db.quote.findMany({
+export const getAllQuotes = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote.findMany({
 		include: {
 			client: {
 				select: {
@@ -74,8 +70,9 @@ export const getAllQuotes = async () => {
 	});
 };
 
-export const getQuoteById = async (quoteId: string) => {
-	return await db.quote.findUnique({
+export const getQuoteById = async (quoteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote.findFirst({
 		where: { id: quoteId },
 		include: {
 			client: {
@@ -143,8 +140,9 @@ export const getQuoteById = async (quoteId: string) => {
 	});
 };
 
-export const getQuotesByClientId = async (clientId: string) => {
-	return await db.quote.findMany({
+export const getQuotesByClientId = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote.findMany({
 		where: { client_id: clientId },
 		include: {
 			client: true,
@@ -171,12 +169,13 @@ export const getQuotesByClientId = async (clientId: string) => {
 	});
 };
 
-export const insertQuote = async (req: Request, context?: UserContext) => {
+export const insertQuote = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createQuoteSchema.parse(req.body);
+		const sdb = getScopedDb(organizationId);
 
 		const created = await db.$transaction(async (tx) => {
-			const client = await tx.client.findUnique({
+			const client = await sdb.client.findFirst({
 				where: { id: parsed.client_id },
 			});
 
@@ -193,7 +192,7 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 
 			// If linked to request, inherit missing fields
 			if (parsed.request_id) {
-				const request = await tx.request.findUnique({
+				const request = await sdb.request.findFirst({
 					where: { id: parsed.request_id },
 				});
 
@@ -235,11 +234,12 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 				throw new Error("Description is required for quote");
 			}
 
-			const quoteNumber = await generateQuoteNumber();
+			const quoteNumber = await generateQuoteNumber(organizationId);
 
 			const quoteData: Prisma.quoteCreateInput = {
 				quote_number: quoteNumber,
 
+				organization: { connect: { id: organizationId } },
 				client: { connect: { id: parsed.client_id } },
 
 				...(parsed.request_id && {
@@ -318,6 +318,7 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 				action: "created",
 				entity_type: "quote",
 				entity_id: quote.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -363,12 +364,13 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const updateQuote = async (req: Request, context?: UserContext) => {
+export const updateQuote = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const quoteId = req.params.id as string;
 		const parsed = updateQuoteSchema.parse(req.body);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.quote.findUnique({
+		const existing = await sdb.quote.findFirst({
 			where: { id: quoteId },
 			include: { job: true, line_items: true },
 		});
@@ -431,6 +433,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 						action: "deleted",
 						entity_type: "quote_line_item",
 						entity_id: item.id,
+						organization_id: organizationId,
 						actor_type: context?.techId
 							? "technician"
 							: context?.dispatcherId
@@ -522,6 +525,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 									action: "updated",
 									entity_type: "quote_line_item",
 									entity_id: item.id,
+									organization_id: organizationId,
 									actor_type: context?.techId
 										? "technician"
 										: context?.dispatcherId
@@ -556,6 +560,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 							action: "created",
 							entity_type: "quote_line_item",
 							entity_id: newItem.id,
+							organization_id: organizationId,
 							actor_type: context?.techId
 								? "technician"
 								: context?.dispatcherId
@@ -678,6 +683,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 					action: "updated",
 					entity_type: "quote",
 					entity_id: quoteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -710,9 +716,10 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const deleteQuote = async (id: string, context?: UserContext) => {
+export const deleteQuote = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const existing = await db.quote.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.quote.findFirst({
 			where: { id },
 			include: { job: true },
 		});
@@ -734,6 +741,7 @@ export const deleteQuote = async (id: string, context?: UserContext) => {
 				action: "deleted",
 				entity_type: "quote",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -792,12 +800,14 @@ export const getQuoteItemById = async (quoteId: string, itemId: string) => {
 export const insertQuoteItem = async (
 	quoteId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createQuoteItemSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const quote = await db.quote.findUnique({
+		const quote = await sdb.quote.findFirst({
 			where: { id: quoteId },
 		});
 
@@ -830,6 +840,7 @@ export const insertQuoteItem = async (
 				action: "created",
 				entity_type: "quote_line_item",
 				entity_id: item.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

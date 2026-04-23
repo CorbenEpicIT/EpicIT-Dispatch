@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createNoteSchema,
 	updateNoteSchema,
@@ -7,15 +8,9 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-export const getClientNotes = async (clientId: string) => {
-	return await db.client_note.findMany({
+export const getClientNotes = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.client_note.findMany({
 		where: { client_id: clientId },
 		include: {
 			creator_tech: {
@@ -51,8 +46,9 @@ export const getClientNotes = async (clientId: string) => {
 	});
 };
 
-export const getNoteById = async (clientId: string, noteId: string) => {
-	return await db.client_note.findFirst({
+export const getNoteById = async (clientId: string, noteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.client_note.findFirst({
 		where: {
 			id: noteId,
 			client_id: clientId,
@@ -93,20 +89,23 @@ export const getNoteById = async (clientId: string, noteId: string) => {
 export const insertNote = async (
 	clientId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext
 ) => {
 	try {
 		const parsed = createNoteSchema.parse(data);
 
-		const client = await db.client.findUnique({ where: { id: clientId } });
+		const sdb = getScopedDb(organizationId);
+		const client = await sdb.client.findFirst({ where: { id: clientId } });
 		if (!client) {
 			return { err: "Client not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const note = await tx.client_note.create({
 				data: {
 					client_id: clientId,
+					organization_id: organizationId,
 					content: parsed.content,
 					creator_tech_id: context?.techId || null,
 					creator_dispatcher_id: context?.dispatcherId || null,
@@ -118,6 +117,7 @@ export const insertNote = async (
 				action: "created",
 				entity_type: "client_note",
 				entity_id: note.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -137,7 +137,7 @@ export const insertNote = async (
 				data: { last_activity: new Date() },
 			});
 
-			return tx.client_note.findUnique({
+			return tx.client_note.findFirst({
 				where: { id: note.id },
 				include: {
 					client: true,
@@ -176,12 +176,14 @@ export const updateNote = async (
 	clientId: string,
 	noteId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext
 ) => {
 	try {
 		const parsed = updateNoteSchema.parse(data);
 
-		const existing = await db.client_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.client_note.findFirst({
 			where: {
 				id: noteId,
 				client_id: clientId,
@@ -197,7 +199,7 @@ export const updateNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const updateData: Prisma.client_noteUpdateInput = {
 				content: parsed.content,
 				updated_at: new Date(),
@@ -257,6 +259,7 @@ export const updateNote = async (
 					action: "updated",
 					entity_type: "client_note",
 					entity_id: noteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -293,10 +296,12 @@ export const updateNote = async (
 export const deleteNote = async (
 	clientId: string,
 	noteId: string,
+	organizationId: string,
 	context?: UserContext
 ) => {
 	try {
-		const existing = await db.client_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.client_note.findFirst({
 			where: {
 				id: noteId,
 				client_id: clientId,
@@ -310,12 +315,13 @@ export const deleteNote = async (
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "client_note.deleted",
 				action: "deleted",
 				entity_type: "client_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

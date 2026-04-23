@@ -21,8 +21,8 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 export const hasValidRefreshToken = async (userId: string) => {
     const token = await db.jwt_refresh_token.findFirst({
         where: {
-        userId: userId,
-        expiresAt: { gt: new Date() },
+            userId: userId,
+            expiresAt: { gt: new Date() },
         },
     });
     return !!token;
@@ -57,7 +57,7 @@ export const gererateRefreshToken = async (user: User, role: string) => {
     }
 
     const token = jwt.sign(
-        {id: user.id, email: user.email, role: role},
+        {id: user.id, email: user.email, role: role, organization_id: user.organization_id},
         JWT_REFRESH_SECRET,
         {expiresIn: '7d'} 
     );
@@ -78,7 +78,7 @@ export const generateOTPToken = (user: User, role: string, otp: string) => {
         throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
     }
     return jwt.sign(
-        { userId: user.id, role, stage: 'pending_otp', otp },
+        { userId: user.id, role, organization_id: user.organization_id, stage: 'pending_otp', otp },
         JWT_SECRET,
         { expiresIn: '10m' }
     );
@@ -117,6 +117,7 @@ export const verifyRefreshToken = async (token: string) => {
         id: string;
         email: string;
         role: string;
+        organization_id: string | null;
     };
 }
 
@@ -127,6 +128,7 @@ export const verifyOTPToken = (token: string) => {
     return jwt.verify(token, JWT_SECRET) as {
         userId: string;
         role: string;
+        organization_id: string | null;
         stage: 'pending_otp';
         otp: string;
     };
