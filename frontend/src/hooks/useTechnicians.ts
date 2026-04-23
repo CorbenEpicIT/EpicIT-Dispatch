@@ -99,3 +99,15 @@ export const useDeleteTechnicianMutation = (): UseMutationResult<
 		},
 	});
 };
+
+
+export const useSetTechnicianVehicleMutation = () => {
+	const queryClient = useQueryClient();
+	return useMutation<void, Error, { technicianId: string; vehicleId: string | null }>({
+		mutationFn: ({ technicianId, vehicleId }) =>
+			technicianApi.setTechnicianCurrentVehicle(technicianId, vehicleId),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};

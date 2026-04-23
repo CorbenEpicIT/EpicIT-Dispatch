@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createQuoteSchema,
 	updateQuoteSchema,
@@ -174,7 +173,7 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 		const parsed = createQuoteSchema.parse(req.body);
 		const sdb = getScopedDb(organizationId);
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const client = await sdb.client.findFirst({
 				where: { id: parsed.client_id },
 			});
@@ -406,7 +405,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 			"coords",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			if (parsed.line_items !== undefined) {
 				const incomingItems = parsed.line_items || [];
 				const existingItemIds = new Set(
@@ -735,7 +734,7 @@ export const deleteQuote = async (id: string, organizationId: string, context?: 
 			};
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "quote.deleted",
 				action: "deleted",
@@ -781,15 +780,17 @@ export const deleteQuote = async (id: string, organizationId: string, context?: 
 // QUOTE LINE ITEMS
 // ============================================================================
 
-export const getQuoteItems = async (quoteId: string) => {
-	return await db.quote_line_item.findMany({
+export const getQuoteItems = async (quoteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote_line_item.findMany({
 		where: { quote_id: quoteId },
 		orderBy: { sort_order: "asc" },
 	});
 };
 
-export const getQuoteItemById = async (quoteId: string, itemId: string) => {
-	return await db.quote_line_item.findFirst({
+export const getQuoteItemById = async (quoteId: string, itemId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote_line_item.findFirst({
 		where: {
 			id: itemId,
 			quote_id: quoteId,
@@ -815,7 +816,7 @@ export const insertQuoteItem = async (
 			return { err: "Quote not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			// Calculate total if not provided
 			const total =
 				parsed.total !== undefined
@@ -877,12 +878,13 @@ export const updateQuoteItem = async (
 	quoteId: string,
 	itemId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateQuoteItemSchema.parse(data);
-
-		const existing = await db.quote_line_item.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.quote_line_item.findFirst({
 			where: { id: itemId, quote_id: quoteId },
 		});
 
@@ -900,7 +902,7 @@ export const updateQuoteItem = async (
 			"total",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// Recalculate total if quantity or unit_price changed
 			let total = parsed.total;
 			if (total === undefined) {
@@ -976,10 +978,12 @@ export const updateQuoteItem = async (
 export const deleteQuoteItem = async (
 	quoteId: string,
 	itemId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.quote_line_item.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.quote_line_item.findFirst({
 			where: {
 				id: itemId,
 				quote_id: quoteId,
@@ -990,7 +994,7 @@ export const deleteQuoteItem = async (
 			return { err: "Item not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "quote_line_item.deleted",
 				action: "deleted",

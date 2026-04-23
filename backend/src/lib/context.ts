@@ -4,6 +4,7 @@ import { db } from "../db.js";
 export interface UserContext {
 	techId?: string;
 	dispatcherId?: string;
+	organizationId?: string;
 	ipAddress?: string;
 	userAgent?: string;
 }
@@ -42,6 +43,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"invoice",
 	"invoice_note",
 	"log",
+	"vehicle",
 ]);
 /*
 Here's the complete list of models that have no organization_id column and

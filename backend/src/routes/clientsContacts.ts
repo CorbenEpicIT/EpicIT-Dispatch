@@ -225,7 +225,7 @@ router.get("/contacts/search", async (req, res, next) => {
 router.get("/clients/:clientId/contacts", async (req, res, next) => {
     try {
         const { clientId } = req.params;
-        const contacts = await getClientContacts(clientId);
+        const contacts = await getClientContacts(clientId, req.user!.organization_id as string);
         res.json(createSuccessResponse(contacts, { count: contacts.length }));
     } catch (err) {
         next(err);
@@ -388,6 +388,7 @@ router.put(
                 contactId,
                 clientId,
                 req.body,
+                req.user!.organization_id as string,
                 context,
             );
 
@@ -422,6 +423,7 @@ router.delete(
             const result = await unlinkContactFromClient(
                 contactId,
                 clientId,
+                req.user!.organization_id as string,
                 context,
             );
 

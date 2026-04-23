@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createContactSchema,
@@ -15,8 +14,9 @@ import { log } from "../services/appLogger.js";
 // CONTACT CRUD
 // ============================================================================
 
-export const getClientContacts = async (clientId: string) => {
-	return await db.client_contact.findMany({
+export const getClientContacts = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.client_contact.findMany({
 		where: { client_id: clientId },
 		include: {
 			contact: true,
@@ -388,7 +388,7 @@ export const linkContactToClient = async (
 		}
 
 		// Check if already linked
-		const existing = await db.client_contact.findUnique({
+		const existing = await sdb.client_contact.findUnique({
 			where: {
 				client_id_contact_id: {
 					client_id: clientId,
@@ -458,12 +458,14 @@ export const updateClientContact = async (
 	contactId: string,
 	clientId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
+		const sdb = getScopedDb(organizationId);
 		const parsed = updateClientContactSchema.parse(data);
 
-		const existing = await db.client_contact.findUnique({
+		const existing = await sdb.client_contact.findUnique({
 			where: {
 				client_id_contact_id: {
 					client_id: clientId,
@@ -482,7 +484,7 @@ export const updateClientContact = async (
 			"is_billing",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const link = await tx.client_contact.update({
 				where: {
 					client_id_contact_id: {
@@ -540,10 +542,12 @@ export const updateClientContact = async (
 export const unlinkContactFromClient = async (
 	contactId: string,
 	clientId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.client_contact.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.client_contact.findUnique({
 			where: {
 				client_id_contact_id: {
 					client_id: clientId,
@@ -556,7 +560,7 @@ export const unlinkContactFromClient = async (
 			return { err: "Contact not linked to this client" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.client_contact.delete({
 				where: {
 					client_id_contact_id: {

@@ -22,7 +22,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const plan = await recurringPlansController.getRecurringPlanById(id);
+		const orgId = req.user!.organization_id as string;
+		const plan = await recurringPlansController.getRecurringPlanById(id, orgId);
 
 		if (!plan) {
 			return res
@@ -43,9 +44,11 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
 	try {
+		const orgId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.insertRecurringPlan(
 			req,
+			orgId,
 			context,
 		);
 

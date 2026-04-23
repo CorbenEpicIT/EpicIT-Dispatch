@@ -164,7 +164,7 @@ router.delete("/:id", async (req, res, next) => {
 router.get("/:invoiceId/payments", async (req, res, next) => {
     try {
         const payments = await invoicesController.getInvoicePayments(
-            req.params.invoiceId,
+            req.params.invoiceId, req.user!.organization_id as string,
         );
         res.json(createSuccessResponse(payments, { count: payments.length }));
     } catch (err) {

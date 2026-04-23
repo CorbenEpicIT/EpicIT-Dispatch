@@ -15,6 +15,7 @@ import {
 import { getUserContext } from '../lib/context.js';
 import { getJobVisitsByTechId } from '../controllers/jobVisitsController.js';
 import { getSocket } from "../services/socketService.js";
+import { setTechnicianVehicle } from "../controllers/vehiclesController.js";
 
 const router = Router();
 
@@ -209,6 +210,22 @@ router.get("/:techId/visits", async (req, res, next) => {
     } catch (err) {
         next(err);
     }
+});
+
+router.put("/:id/vehicle", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const orgId = req.user!.organization_id as string;
+		const { vehicle_id } = req.body as { vehicle_id: string | null };
+		const result = await setTechnicianVehicle(id, vehicle_id ?? null, orgId);
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
 });
 
 export default router;

@@ -185,7 +185,8 @@ router.delete("/:id", async (req, res, next) => {
 router.get("/:quoteId/line-items", async (req, res, next) => {
     try {
         const { quoteId } = req.params;
-        const items = await getQuoteItems(quoteId);
+        const orgId = req.user!.organization_id as string;
+        const items = await getQuoteItems(quoteId, orgId);
         res.json(createSuccessResponse(items, { count: items.length }));
     } catch (err) {
         next(err);
@@ -195,7 +196,8 @@ router.get("/:quoteId/line-items", async (req, res, next) => {
 router.get("/:quoteId/line-items/:itemId", async (req, res, next) => {
     try {
         const { quoteId, itemId } = req.params;
-        const item = await getQuoteItemById(quoteId, itemId);
+        const orgId = req.user!.organization_id as string;
+        const item = await getQuoteItemById(quoteId, itemId, orgId);
 
         if (!item) {
             return res
@@ -242,11 +244,13 @@ router.post("/:quoteId/line-items", async (req, res, next) => {
 router.put("/:quoteId/line-items/:itemId", async (req, res, next) => {
     try {
         const { quoteId, itemId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateQuoteItem(
             quoteId,
             itemId,
             req.body,
+            orgId,
             context,
         );
 
@@ -272,7 +276,8 @@ router.delete("/:quoteId/line-items/:itemId", async (req, res, next) => {
     try {
         const { quoteId, itemId } = req.params;
         const context = getUserContext(req);
-        const result = await deleteQuoteItem(quoteId, itemId, context);
+        const orgId = req.user!.organization_id as string;
+        const result = await deleteQuoteItem(quoteId, itemId, orgId, context);
 
         if (result.err) {
             const statusCode = result.err.includes("not found") ? 404 : 400;

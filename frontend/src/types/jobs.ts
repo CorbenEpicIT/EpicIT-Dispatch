@@ -112,15 +112,9 @@ export const LIFECYCLE_TRANSITIONS: Partial<Record<VisitStatus, LifecycleTransit
 	Driving: [
 		{ action: "arrive", label: "I've Arrived", confirmLabel: "Confirm Arrived", needsConfirm: true, color: "bg-purple-700 hover:bg-purple-600 text-white", confirmColor: "bg-purple-500 hover:bg-purple-400 animate-pulse text-white" },
 	],
-	OnSite: [
-		{ action: "start", label: "Start Work", confirmLabel: "Start Work", needsConfirm: false, color: "bg-blue-600 hover:bg-blue-700 text-white", confirmColor: "bg-blue-600 hover:bg-blue-700 text-white" },
-	],
 	InProgress: [
 		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-amber-600 hover:bg-amber-700 text-white", confirmColor: "bg-amber-600 hover:bg-amber-700 text-white" },
 		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-green-700 hover:bg-green-600 text-white", confirmColor: "bg-green-500 hover:bg-green-400 animate-pulse text-white" },
-	],
-	Paused: [
-		{ action: "resume", label: "Resume", confirmLabel: "Resume", needsConfirm: false, color: "bg-blue-600 hover:bg-blue-700 text-white", confirmColor: "bg-blue-600 hover:bg-blue-700 text-white" },
 	],
 };
 
@@ -172,6 +166,7 @@ export interface ClockOutResult {
 	entry: VisitTechTimeEntry;
 	line_item: VisitLineItem;
 	is_last_tech: boolean;
+	statusChangedToPaused?: boolean;
 }
 
 export interface JobSummary {
@@ -359,7 +354,7 @@ export interface JobVisit extends PricingBreakdown {
 	created_at?: Date | string;
 	updated_at?: Date | string;
 
-	job?: JobSummary & { client: ClientSummary; coords: Coordinates; quote?: QuoteReference | null };
+	job?: JobSummary & { client: ClientWithPrimaryContact; coords: Coordinates; quote?: QuoteReference | null };
 	visit_techs: JobVisitTechnician[];
 	notes?: JobNote[];
 	line_items?: VisitLineItem[];
@@ -412,15 +407,25 @@ export interface UpdateJobVisitInput {
 // NOTE TYPES
 // ============================================================================
 
+export interface JobNotePhoto {
+	id: string;
+	note_id: string;
+	photo_url: string;
+	photo_label: "Before" | "After" | "Other";
+	created_at: string;
+}
+
 export interface JobNote extends BaseNote {
 	job_id: string;
 	visit_id?: string | null;
 	visit?: VisitReference | null;
+	photos?: JobNotePhoto[];
 }
 
 export interface CreateJobNoteInput {
 	content: string;
 	visit_id?: string | null;
+	photos?: { photo_url: string; photo_label: string }[];
 }
 
 export interface UpdateJobNoteInput {

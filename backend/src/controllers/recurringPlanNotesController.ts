@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createRecurringPlanNoteSchema,
 	updateRecurringPlanNoteSchema,
@@ -62,7 +61,7 @@ export const insertRecurringPlanNote = async (
 			return { err: "Recurring plan not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const note = await tx.recurring_plan_note.create({
 				data: {
 					recurring_plan_id: plan.id,
@@ -144,7 +143,7 @@ export const updateRecurringPlanNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const note = await tx.recurring_plan_note.update({
 				where: { id: noteId },
 				data: {
@@ -219,7 +218,7 @@ export const deleteRecurringPlanNote = async (
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "recurring_plan_note.deleted",
 				action: "deleted",

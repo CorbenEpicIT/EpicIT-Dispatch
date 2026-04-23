@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import {
@@ -98,8 +97,8 @@ export const insertDraft = async (req: Request) => {
 		const parsed = createDraftSchema.parse(req.body);
 
 		const label = deriveDraftLabel(parsed.form_type, parsed.payload);
-
-		const draft = await db.form_draft.create({
+		const sdb = getScopedDb(organizationId);
+		const draft = await sdb.form_draft.create({
 			data: {
 				organization_id: organizationId,
 				form_type: parsed.form_type,
@@ -141,7 +140,7 @@ export const updateDraft = async (id: string, req: Request) => {
 		const parsed = updateDraftSchema.parse(req.body);
 		const label = deriveDraftLabel(existing.form_type, parsed.payload);
 
-		const updated = await db.form_draft.update({
+		const updated = await sdb.form_draft.update({
 			where: { id },
 			data: {
 				payload: parsed.payload as Prisma.InputJsonValue,
@@ -172,7 +171,7 @@ export const deleteDraft = async (id: string, organizationId: string) => {
 			return { err: "Draft not found" };
 		}
 
-		await db.form_draft.delete({ where: { id } });
+		await sdb.form_draft.delete({ where: { id } });
 
 		return { err: "", item: { id } };
 	} catch (e) {

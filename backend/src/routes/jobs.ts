@@ -60,9 +60,8 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
-        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await insertJob(req, orgId, context);
+        const result = await insertJob(req, context);
 
         if (result.err) {
             return res
@@ -270,7 +269,7 @@ router.get("/:jobId/occurrences", async (req, res, next) => {
     try {
         const { jobId } = req.params;
         const occurrences =
-            await recurringPlansController.getOccurrencesByJobId(jobId);
+            await recurringPlansController.getOccurrencesByJobId(jobId, req.user!.organization_id as string,);
         res.json(
             createSuccessResponse(occurrences, { count: occurrences.length }),
         );
@@ -286,6 +285,7 @@ router.post("/:jobId/occurrences/generate", async (req, res, next) => {
         const result = await recurringPlansController.generateOccurrences(
             jobId,
             req.body,
+            req.user!.organization_id as string,
             context,
         );
 
@@ -317,7 +317,7 @@ router.get("/:jobId/recurring-plan/notes", async (req, res, next) => {
         const orgId = req.user!.organization_id as string;
 
         const plan =
-            await recurringPlansController.getRecurringPlanByJobId(jobId);
+            await recurringPlansController.getRecurringPlanByJobId(jobId, orgId);
 
         if (!plan) {
             return res
@@ -436,8 +436,9 @@ router.delete(
 router.get("/:jobId/recurring-plan", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const plan =
-            await recurringPlansController.getRecurringPlanByJobId(jobId);
+            await recurringPlansController.getRecurringPlanByJobId(jobId, orgId);
 
         if (!plan) {
             return res
@@ -459,10 +460,12 @@ router.get("/:jobId/recurring-plan", async (req, res, next) => {
 router.put("/:jobId/recurring-plan", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.updateRecurringPlan(
             jobId,
             req.body,
+            orgId,
             context,
         );
 
@@ -487,11 +490,13 @@ router.put("/:jobId/recurring-plan", async (req, res, next) => {
 router.put("/:jobId/recurring-plan/template", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result =
             await recurringPlansController.updateRecurringPlanLineItems(
                 jobId,
                 req.body,
+                orgId,
                 context,
             );
 
@@ -516,9 +521,11 @@ router.put("/:jobId/recurring-plan/template", async (req, res, next) => {
 router.post("/:jobId/recurring-plan/pause", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.pauseRecurringPlan(
             jobId,
+            orgId,
             context,
         );
 
@@ -543,9 +550,11 @@ router.post("/:jobId/recurring-plan/pause", async (req, res, next) => {
 router.post("/:jobId/recurring-plan/resume", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.resumeRecurringPlan(
             jobId,
+            orgId,
             context,
         );
 
@@ -570,9 +579,11 @@ router.post("/:jobId/recurring-plan/resume", async (req, res, next) => {
 router.post("/:jobId/recurring-plan/cancel", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.cancelRecurringPlan(
             jobId,
+            orgId,
             context,
         );
 
@@ -597,9 +608,11 @@ router.post("/:jobId/recurring-plan/cancel", async (req, res, next) => {
 router.post("/:jobId/recurring-plan/complete", async (req, res, next) => {
     try {
         const { jobId } = req.params;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.completeRecurringPlan(
             jobId,
+            orgId,
             context,
         );
 
@@ -630,9 +643,11 @@ router.put(
     async (req, res, next) => {
         try {
             const { jobId } = req.params;
+            const orgId = req.user!.organization_id as string;
             const result = await recurringPlansController.upsertInvoiceSchedule(
                 jobId,
                 req.body,
+                orgId,
                 getUserContext(req),
             );
             if (result.err) {
@@ -653,8 +668,9 @@ router.delete(
     async (req, res, next) => {
         try {
             const { jobId } = req.params;
+            const orgId = req.user!.organization_id as string;
             const result =
-                await recurringPlansController.deleteInvoiceSchedule(jobId);
+                await recurringPlansController.deleteInvoiceSchedule(jobId, orgId);
             if (result.err) {
                 res.status(404).json(
                     createErrorResponse("NOT_FOUND", result.err),

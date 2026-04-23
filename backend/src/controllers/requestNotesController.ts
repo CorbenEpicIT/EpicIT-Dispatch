@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createRequestNoteSchema,
 	updateRequestNoteSchema,
@@ -51,7 +50,7 @@ export const insertRequestNote = async (
 			return { err: "Request not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const noteData: Prisma.request_noteCreateInput = {
 				request: { connect: { id: requestId } },
 				content: parsed.content,
@@ -127,7 +126,7 @@ export const updateRequestNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const updateData: Prisma.request_noteUpdateInput = {
 				updated_at: new Date(),
 			};
@@ -205,7 +204,7 @@ export const deleteRequestNote = async (
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "request_note.deleted",
 				action: "deleted",

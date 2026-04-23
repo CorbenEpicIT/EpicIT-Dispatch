@@ -1,12 +1,13 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { create } from "domain";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
+import { getScopedDb } from "../lib/context.js";
 
-export const verifyEmail = async (token: string) => {
+export const verifyEmail = async (token: string, organizationId: string) => {
     try {
-        const dispatcher = await db.dispatcher.findFirst({
+        const sdb = getScopedDb(organizationId);
+        const dispatcher = await sdb.dispatcher.findFirst({
             where: { email_verification_token: token },
         });
 
@@ -14,7 +15,7 @@ export const verifyEmail = async (token: string) => {
             return createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid or expired token");
         }
 
-        await db.dispatcher.update({
+        await sdb.dispatcher.update({
             where: { id: dispatcher.id },
             data: { email_verified_at: new Date(), email_verification_token: null },
         });

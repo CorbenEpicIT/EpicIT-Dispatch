@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createTechnicianSchema,
 	updateTechnicianSchema,
@@ -60,7 +59,7 @@ export const insertTechnician = async (
 			return { err: "Email already exists" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const technician = await tx.technician.create({
 				data: {
 					...parsed,
@@ -155,7 +154,7 @@ export const updateTechnician = async (
 			"last_login",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const technician = await tx.technician.update({
 				where: { id },
 				data: parsed,
@@ -222,7 +221,7 @@ export const updateTechnicianLocation = async (
 			return { err: "Technician not found" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const technician = await tx.technician.update({
 				where: { id },
 				data: parsed,
@@ -275,7 +274,7 @@ export const deleteTechnician = async (
 			return { err: "Technician not found" };
 		}
 
-		const upcomingVisits = await db.job_visit_technician.count({
+		const upcomingVisits = await sdb.job_visit_technician.count({
 			where: {
 				tech_id: id,
 				visit: { status: { in: ["Scheduled", "InProgress"] } },
@@ -288,7 +287,7 @@ export const deleteTechnician = async (
 			};
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit_technician.deleteMany({ where: { tech_id: id } });
 
 			await logActivity({

@@ -212,12 +212,28 @@ export const updateJobLineItemSchema = z
 
 export const createJobNoteSchema = z
 	.object({
-		content: z.string().min(1, "Content is required"),
-		visit_id: z.string().uuid("Invalid visit ID").optional().nullable(),
+		content:           z.string(),
+		visit_id:          z.string().uuid("Invalid visit ID").optional().nullable(),
+		notify_technician: z.boolean().default(false),
+		photos: z
+			.array(
+				z.object({
+					photo_url:   z.string().url(),
+					photo_label: z.enum(["Before", "After", "Other"]),
+				}),
+			)
+			.optional()
+			.default([]),
 	})
+	.refine(
+		(data) => data.content.trim().length > 0 || (data.photos ?? []).length > 0,
+		{ message: "Content or at least one photo is required", path: ["content"] },
+	)
 	.transform((data) => ({
-		content: data.content,
-		visit_id: data.visit_id || null,
+		content:           data.content,
+		visit_id:          data.visit_id || null,
+		notify_technician: data.notify_technician ?? false,
+		photos:            data.photos ?? [],
 	}));
 
 export const updateJobNoteSchema = z.object({

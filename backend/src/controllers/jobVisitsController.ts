@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobVisitSchema,
@@ -9,12 +8,16 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
+import { createNotification } from "./notificationsController.js";
 
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
-export const getAllJobVisits = async (organization_id: string) => {
+export const getAllJobVisits = async (organization_id: string, filters?: { clientId?: string; limit?: number; sort?: "asc" | "desc" }) => {
 	const sdb = getScopedDb(organization_id);
 	return await sdb.job_visit.findMany({
+		where: filters?.clientId
+			? { job: { client_id: filters.clientId } }
+			: undefined,
 		include: {
 			job: {
 				include: {
@@ -31,6 +34,8 @@ export const getAllJobVisits = async (organization_id: string) => {
 			},
 			notes: true,
 		},
+		orderBy: { scheduled_start_at: filters?.sort ?? "asc" },
+		...(filters?.limit && { take: filters.limit }),
 	});
 };
 
@@ -304,8 +309,8 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 	try {
 		const id = req.params.id as string;
 		const parsed = updateJobVisitSchema.parse(req.body);
-
-		const existingVisit = await db.job_visit.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existingVisit = await sdb.job_visit.findFirst({
 			where: { id, job: { organization_id: organizationId } },
 			include: {
 				job: true,
@@ -332,7 +337,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			"actual_end_at",
 			"status",
 		] as const);
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// ── Scalar field update ───────────────────────────────────────
 			const visit = await tx.job_visit.update({
 				where: { id },
@@ -529,7 +534,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			const newStart = parsed.scheduled_start_at;
 			if (oldStart && newStart) {
 				const deltaMs = newStart.getTime() - oldStart.getTime();
-				const futureVisits = await db.job_visit.findMany({
+				const futureVisits = await sdb.job_visit.findMany({
 					where: {
 						job: { recurring_plan_id: existingVisit.job.recurring_plan_id },
 						scheduled_start_at: { gt: oldStart },
@@ -539,9 +544,9 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 					select: { id: true, scheduled_start_at: true, scheduled_end_at: true },
 				});
 				if (futureVisits.length > 0) {
-					await db.$transaction(
+					await sdb.$transaction(
 						futureVisits.map((v) =>
-							db.job_visit.update({
+							sdb.job_visit.update({
 								where: { id: v.id },
 								data: {
 									scheduled_start_at: new Date(v.scheduled_start_at.getTime() + deltaMs),
@@ -559,6 +564,29 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 						),
 					);
 				}
+			}
+		}
+
+		// Notify assigned technicians if scheduled time changed
+		if (
+			updated &&
+			parsed.scheduled_start_at !== undefined &&
+			existingVisit.scheduled_start_at.getTime() !== parsed.scheduled_start_at.getTime()
+		) {
+			const clientName = updated.job.client.name;
+			const newTime = parsed.scheduled_start_at.toLocaleString("en-US", {
+				weekday: "short", month: "short", day: "numeric",
+				hour: "numeric", minute: "2-digit",
+			});
+			const techIds = updated.visit_techs.map((vt: { tech_id: string }) => vt.tech_id);
+			for (const techId of techIds) {
+				await createNotification({
+					technicianId: techId,
+					type:         "visit_changed",
+					title:        `Schedule changed: ${clientName}`,
+					body:         `Your visit at ${clientName} has been rescheduled to ${newTime}.`,
+					actionUrl:    `/technician/visits/${id}`,
+				}, organizationId);
 			}
 		}
 
@@ -584,7 +612,7 @@ export const assignTechniciansToVisit = async (
 ) => {
 	try {
 		const sdb = getScopedDb(organizationId);
-		const visit = await db.job_visit.findFirst({
+		const visit = await sdb.job_visit.findFirst({
 			where: { id: visitId, job: { organization_id: organizationId } },
 			include: {
 				job: { select: { job_number: true } },
@@ -615,7 +643,7 @@ export const assignTechniciansToVisit = async (
 		const oldTechNames = visit.visit_techs.map((vt) => vt.tech.name);
 		const newTechNames = existingTechs.map((t) => t.name);
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit_technician.deleteMany({
 				where: { visit_id: visitId },
 			});
@@ -652,7 +680,7 @@ export const assignTechniciansToVisit = async (
 			});
 		});
 
-		const updated = await db.job_visit.findFirst({
+		const updated = await sdb.job_visit.findFirst({
 			where: { id: visitId },
 			include: {
 				job: {
@@ -666,6 +694,27 @@ export const assignTechniciansToVisit = async (
 				notes: true,
 			},
 		});
+
+		// Notify newly assigned technicians
+		if (updated) {
+			const clientName = updated.job.client.name;
+			const scheduledAt = updated.scheduled_start_at.toLocaleString("en-US", {
+				weekday: "short", month: "short", day: "numeric",
+				hour: "numeric", minute: "2-digit",
+			});
+			const newlyAssigned = techIds.filter(
+				(id) => !visit.visit_techs.some((vt) => vt.tech_id === id),
+			);
+			for (const techId of newlyAssigned) {
+				await createNotification({
+					technicianId: techId,
+					type:         "visit_assigned",
+					title:        `New visit assigned: ${clientName}`,
+					body:         `You have been assigned to a visit at ${clientName} on ${scheduledAt}.`,
+					actionUrl:    `/technician/visits/${visitId}`,
+				}, organizationId);
+			}
+		}
 
 		return { err: "", item: updated };
 	} catch (e) {
@@ -682,7 +731,7 @@ export const acceptJobVisit = async (
 ) => {
 	try {
 		const sdb = getScopedDb(organizationId);
-		const visit = await db.job_visit.findFirst({
+		const visit = await sdb.job_visit.findFirst({
 			where: { id: visitId, job: { organization_id: organizationId } },
 		});
 
@@ -699,7 +748,7 @@ export const acceptJobVisit = async (
 			return { err: "Technician not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit_technician.create({
 				data: { visit_id: visitId, tech_id: techId },
 			});
@@ -727,7 +776,7 @@ export const acceptJobVisit = async (
 			});
 		});
 
-		const updated = await db.job_visit.findFirst({
+		const updated = await sdb.job_visit.findFirst({
 			where: { id: visitId },
 			include: {
 				job: {
@@ -752,12 +801,21 @@ export const acceptJobVisit = async (
 // ── Visit lifecycle ───────────────────────────────────────────────
 
 export const LIFECYCLE_TRANSITIONS = {
-	drive: { from: ["Scheduled"], to: "Driving" as const },
+	drive: { from: ["Scheduled", "Delayed"], to: "Driving" as const },
 	arrive: { from: ["Driving"], to: "OnSite" as const },
 	start: { from: ["OnSite"], to: "InProgress" as const },
 	pause: { from: ["InProgress"], to: "Paused" as const },
 	resume: { from: ["Paused"], to: "InProgress" as const },
 	complete: { from: ["InProgress", "Paused", "OnSite"], to: "Completed" as const },
+};
+
+const LIFECYCLE_ORDER: Record<string, number> = {
+	Scheduled: 0,
+	Driving: 1,
+	OnSite: 2,
+	InProgress: 3,
+	Paused: 4,
+	Completed: 5,
 };
 
 export type LifecycleAction = keyof typeof LIFECYCLE_TRANSITIONS;
@@ -770,15 +828,39 @@ export const applyVisitTransition = async (
 ) => {
 	try {
 		const { from, to } = LIFECYCLE_TRANSITIONS[action];
-
-		const existingVisit = await db.job_visit.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existingVisit = await sdb.job_visit.findFirst({
 			where: { id, job: { organization_id: organizationId } },
 			include: { job: true, line_items: { select: { id: true } } },
 		});
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
+		// Guard: drive and arrive require the technician to not be clocked in
+		if ((action === "drive" || action === "arrive") && context?.techId) {
+			const openEntry = await sdb.visit_tech_time_entry.findFirst({
+				where: { tech_id: context.techId, clocked_out_at: null },
+			});
+			if (openEntry) {
+				return { err: "CLOCKED_IN" };
+			}
+		}
+
 		if (!from.includes(existingVisit.status)) {
+			const currentOrder = LIFECYCLE_ORDER[existingVisit.status] ?? -1;
+			const targetOrder = LIFECYCLE_ORDER[to] ?? -1;
+			if (targetOrder >= 0 && currentOrder >= targetOrder) {
+				const currentVisit = await sdb.job_visit.findUnique({
+					where: { id },
+					include: {
+						job: { include: { client: true, quote: true } },
+						visit_techs: { include: { tech: true } },
+						line_items: { orderBy: { sort_order: "asc" } },
+						notes: true,
+					},
+				});
+				return { err: "", item: currentVisit ?? undefined };
+			}
 			return {
 				err: `Cannot ${action} a visit with status "${existingVisit.status}". Expected one of: ${from.join(", ")}.`,
 			};
@@ -794,7 +876,7 @@ export const applyVisitTransition = async (
 			if (!existingVisit.actual_start_at) timestampData.actual_start_at = now;
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
 				data: {
@@ -802,6 +884,39 @@ export const applyVisitTransition = async (
 					...timestampData,
 				},
 			});
+
+			// Destination switch: revert any other Driving visit assigned to this tech
+			if (action === "drive" && context?.techId) {
+				const otherDrivingVisits = await tx.job_visit.findMany({
+					where: {
+						status: "Driving",
+						id: { not: id },
+						visit_techs: { some: { tech_id: context.techId } },
+					},
+					include: { job: true },
+				});
+				for (const other of otherDrivingVisits) {
+					await tx.job_visit.update({
+						where: { id: other.id },
+						data: { status: "Scheduled" },
+					});
+					// Re-sync job status for the reverted visit
+					const otherJobVisits = await tx.job_visit.findMany({
+						where: { job_id: other.job_id },
+					});
+					let revertedJobStatus = other.job.status;
+					if (otherJobVisits.every((v) => v.status === "Completed")) {
+						revertedJobStatus = "Completed";
+					} else if (otherJobVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
+						revertedJobStatus = "InProgress";
+					} else if (otherJobVisits.some((v) => v.status === "Scheduled" || v.status === "Driving")) {
+						revertedJobStatus = "Scheduled";
+					}
+					if (revertedJobStatus !== other.job.status) {
+						await tx.job.update({ where: { id: other.job_id }, data: { status: revertedJobStatus } });
+					}
+				}
+			}
 
 			// ── Job status sync ────────────────────────────────────────────────
 			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
@@ -828,17 +943,17 @@ export const applyVisitTransition = async (
 				}
 			}
 
-			// ── Auto-close open time entries on complete ────────────────────────
-			if (action === "complete") {
+			// ── Auto-close open time entries on pause or complete ─────────────
+			if (action === "pause" || action === "complete") {
 				const openEntries = await tx.visit_tech_time_entry.findMany({
 					where: { visit_id: id, clocked_out_at: null },
 					include: { tech: { select: { id: true, name: true, hourly_rate: true } } },
 				});
 
-				const completionTime = new Date();
+				const closeTime = new Date();
 
 				for (const entry of openEntries) {
-					const elapsedMs = completionTime.getTime() - entry.clocked_in_at.getTime();
+					const elapsedMs = closeTime.getTime() - entry.clocked_in_at.getTime();
 					const hoursWorked = parseFloat((elapsedMs / (1000 * 60 * 60)).toFixed(4));
 					const hourlyRate = Number(entry.tech.hourly_rate);
 					const laborTotal = parseFloat((hoursWorked * hourlyRate).toFixed(2));
@@ -847,7 +962,7 @@ export const applyVisitTransition = async (
 						data: {
 							visit_id: id,
 							name: `Labor – ${entry.tech.name}`,
-							description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr (auto-closed on complete)`,
+							description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr`,
 							quantity: hoursWorked,
 							unit_price: hourlyRate,
 							total: laborTotal,
@@ -859,7 +974,7 @@ export const applyVisitTransition = async (
 
 					await tx.visit_tech_time_entry.update({
 						where: { id: entry.id },
-						data: { clocked_out_at: completionTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
+						data: { clocked_out_at: closeTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
 					});
 				}
 
@@ -927,14 +1042,15 @@ export const cancelJobVisit = async (
 	context?: UserContext,
 ) => {
 	try {
-		const existingVisit = await db.job_visit.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existingVisit = await sdb.job_visit.findFirst({
 			where: { id, job: { organization_id: organizationId } },
 			include: { job: true },
 		});
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
 				data: { status: "Cancelled", cancellation_reason: cancellationReason },
@@ -982,6 +1098,21 @@ export const cancelJobVisit = async (
 			});
 		});
 
+		// Notify assigned technicians of cancellation
+		if (updated) {
+			const clientName = updated.job.client.name;
+			const techIds = updated.visit_techs.map((vt) => vt.tech_id);
+			for (const techId of techIds) {
+				await createNotification({
+					technicianId: techId,
+					type:         "visit_cancelled",
+					title:        `Visit cancelled: ${clientName}`,
+					body:         `A visit at ${clientName} has been cancelled.${cancellationReason ? ` Reason: ${cancellationReason}` : ""}`,
+					actionUrl:    `/technician/visits/${id}`,
+				}, organizationId);
+			}
+		}
+
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {
 		log.error({ err: e }, "Failed to cancel job visit");
@@ -991,7 +1122,8 @@ export const cancelJobVisit = async (
 
 export const deleteJobVisit = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const visit = await db.job_visit.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const visit = await sdb.job_visit.findFirst({
 			where: { id, job: { organization_id: organizationId } },
 		});
 
@@ -999,7 +1131,7 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 			return { err: "Job visit not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit_technician.deleteMany({
 				where: { visit_id: id },
 			});

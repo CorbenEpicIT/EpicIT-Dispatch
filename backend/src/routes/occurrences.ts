@@ -13,9 +13,11 @@ router.post("/:occurrenceId/skip", async (req, res, next) => {
     try {
         const { occurrenceId } = req.params;
         const context = getUserContext(req);
+        const orgId = req.user!.organization_id as string;
         const result = await recurringPlansController.skipOccurrence(
             occurrenceId,
             req.body,
+            orgId,
             context,
         );
 
@@ -41,9 +43,11 @@ router.put("/:occurrenceId/reschedule", async (req, res, next) => {
     try {
         const { occurrenceId } = req.params;
         const context = getUserContext(req);
+        const orgId = req.user!.organization_id as string;
         const result = await recurringPlansController.rescheduleOccurrence(
             occurrenceId,
             req.body,
+            orgId,
             context,
         );
 
@@ -68,8 +72,10 @@ router.put("/:occurrenceId/reschedule", async (req, res, next) => {
 router.post("/bulk-skip", async (req, res, next) => {
     try {
         const context = getUserContext(req);
+        const orgId = req.user!.organization_id as string;
         const result = await recurringPlansController.bulkSkipOccurrences(
             req.body,
+            orgId,
             context,
         );
 
@@ -96,9 +102,11 @@ router.post(
         try {
             const { occurrenceId } = req.params;
             const context = getUserContext(req);
+            const orgId = req.user!.organization_id as string;
             const result =
                 await recurringPlansController.generateVisitFromOccurrence(
                     occurrenceId,
+                    orgId,
                     context,
                 );
 

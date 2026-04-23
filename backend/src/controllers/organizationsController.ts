@@ -1,15 +1,14 @@
 import { ZodError } from "zod";
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
-import { db } from "../db.js";
 import { log } from "../services/appLogger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { registerOrganizationSchema } from "../lib/validate/organizations.js";
+import { db } from '../db.js';
 
 export const registerOrganization = async (data: unknown) => {
 	try {
 		const parsed = registerOrganizationSchema.parse(data);
-
 		const existing = await db.dispatcher.findUnique({
 			where: { email: parsed.admin_email },
 		});

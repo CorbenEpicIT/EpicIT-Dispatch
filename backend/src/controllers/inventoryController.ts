@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 import {
@@ -112,8 +111,8 @@ export const getLowStockInventory = async (organizationId: string) => {
 export const createInventoryItem = async (data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createInventoryItemSchema.parse(data);
-
-		const item = await db.$transaction(async (tx) => {
+		const sdb = getScopedDb(organizationId);
+		const item = await sdb.$transaction(async (tx) => {
 			const created = await tx.inventory_item.create({
 				data: {
 					organization_id: organizationId,
@@ -192,7 +191,7 @@ export const updateInventoryItem = async (
 			"alert_email",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const item = await tx.inventory_item.update({
 				where: { id: itemId },
 				data: parsed,
@@ -236,7 +235,7 @@ export const deleteInventoryItem = async (itemId: string, organizationId: string
 			return { err: "Inventory item not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.inventory_item.update({
 				where: { id: itemId },
 				data: { is_active: false },
@@ -286,7 +285,7 @@ export const adjustInventoryStock = async (
 			return { err: "Stock cannot go below zero" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const item = await tx.inventory_item.update({
 				where: { id: itemId },
 				data: { quantity: newQuantity },
@@ -330,7 +329,8 @@ export const adjustInventoryStock = async (
 
 export const deductInventoryForVisit = async (
 	visitId: string,
-	tx: TransactionClient,
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	tx: any,
 	context?: UserContext,
 ) => {
 	const lineItems = await tx.job_visit_line_item.findMany({
@@ -411,7 +411,7 @@ export const updateInventoryThreshold = async (
 			return { err: "Inventory item not found" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const item = await tx.inventory_item.update({
 				where: { id: itemId },
 				data: { low_stock_threshold: parsed.low_stock_threshold },

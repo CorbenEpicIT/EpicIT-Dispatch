@@ -12,7 +12,7 @@ const router = Router();
 router.post("/verify-email", async (req, res, next) => {
 	try {
 		const { token } = req.body;
-		const result = await verifyEmail(token);
+		const result = await verifyEmail(token, req.user!.organization_id as string,);
 		if ("error" in result && !result.success) {
 			return res
 				.status(400)

@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import bcrypt from "bcrypt";
 import { randomBytes, randomUUID } from "crypto";

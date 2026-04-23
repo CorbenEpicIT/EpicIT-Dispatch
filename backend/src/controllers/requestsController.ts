@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createRequestSchema,
 	updateRequestSchema,
@@ -147,7 +146,7 @@ export const insertRequest = async (req: Request, organizationId: string, contex
 		const parsed = createRequestSchema.parse(req.body);
 		const sdb = getScopedDb(organizationId);
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const client = await sdb.client.findFirst({
 				where: { id: parsed.client_id },
 			});
@@ -272,7 +271,7 @@ export const updateRequest = async (req: Request, organizationId: string, contex
 			"coords",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const request = await tx.request.update({
 				where: { id: requestId },
 				data: {
@@ -383,7 +382,7 @@ export const deleteRequest = async (id: string, organizationId: string, context?
 			};
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "request.deleted",
 				action: "deleted",
@@ -488,7 +487,7 @@ export const insertRequestNote = async (
 			return { err: "Request not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const noteData: Prisma.request_noteCreateInput = {
 				request: { connect: { id: requestId } },
 				content: parsed.content,
@@ -575,7 +574,7 @@ export const updateRequestNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const updateData: Prisma.request_noteUpdateInput = {
 				updated_at: new Date(),
 			};
@@ -670,7 +669,7 @@ export const deleteRequestNote = async (
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "request_note.deleted",
 				action: "deleted",

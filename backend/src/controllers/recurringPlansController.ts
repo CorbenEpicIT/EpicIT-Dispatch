@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	Prisma,
 	recurring_frequency,
@@ -109,8 +108,9 @@ type RecurringRuleWithWeekdays = Prisma.recurring_ruleGetPayload<{
 	include: { by_weekday: true };
 }>;
 
-async function generateJobNumber(): Promise<string> {
-	const lastJob = await db.job.findFirst({
+async function generateJobNumber(organizationId: string): Promise<string> {
+	const sdb = getScopedDb(organizationId);
+	const lastJob = await sdb.job.findFirst({
 		where: {
 			job_number: {
 				startsWith: "J-",
@@ -139,7 +139,8 @@ async function generateJobNumber(): Promise<string> {
 async function generateOccurrencesForPlan(
 	planId: string,
 	daysAhead: number,
-	tx: Prisma.TransactionClient,
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	tx: any,
 ): Promise<OccurrenceGenerationResult> {
 	const plan = await tx.recurring_plan.findUnique({
 		where: { id: planId },
@@ -367,8 +368,9 @@ export const getAllRecurringPlans = async (organizationId: string) => {
 	});
 };
 
-export const getRecurringPlanByJobId = async (jobId: string) => {
-	return await db.recurring_plan.findFirst({
+export const getRecurringPlanByJobId = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.recurring_plan.findFirst({
 		where: {
 			job_container: {
 				id: jobId,
@@ -400,8 +402,9 @@ export const getRecurringPlanByJobId = async (jobId: string) => {
 	});
 };
 
-export const getRecurringPlanById = async (planId: string) => {
-	return await db.recurring_plan.findUnique({
+export const getRecurringPlanById = async (planId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.recurring_plan.findUnique({
 		where: { id: planId },
 		include: {
 			client: {
@@ -449,12 +452,13 @@ export const getRecurringPlanById = async (planId: string) => {
 
 export const insertRecurringPlan = async (
 	req: Request,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createRecurringPlanSchema.parse(req.body);
-
-		const created = await db.$transaction(async (tx) => {
+		const sdb = getScopedDb(organizationId);
+		const created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.findUnique({
 				where: { id: parsed.client_id },
 			});
@@ -463,7 +467,7 @@ export const insertRecurringPlan = async (
 				throw new Error("Client not found");
 			}
 
-			const jobNumber = await generateJobNumber();
+			const jobNumber = await generateJobNumber(organizationId);
 
 			// Create job container first (without recurring_plan_id)
 			const job = await tx.job.create({
@@ -665,12 +669,13 @@ export const insertRecurringPlan = async (
 export const updateRecurringPlan = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRecurringPlanSchema.parse(data);
-
-		const existing = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -707,7 +712,7 @@ export const updateRecurringPlan = async (
 			"coords",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const plan = await tx.recurring_plan.update({
 				where: { id: existing.id },
 				data: {
@@ -1045,12 +1050,13 @@ export const updateRecurringPlan = async (
 export const updateRecurringPlanLineItems = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRecurringPlanLineItemsSchema.parse(data);
-
-		const plan = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const plan = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -1065,7 +1071,7 @@ export const updateRecurringPlanLineItems = async (
 			return { err: "Recurring plan not found" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const existingItemIds = new Set(
 				plan.line_items.map((item) => item.id),
 			);
@@ -1168,12 +1174,14 @@ export const updateRecurringPlanLineItems = async (
 export const upsertInvoiceSchedule = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateInvoiceScheduleSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const plan = await db.recurring_plan.findFirst({
+		const plan = await sdb.recurring_plan.findFirst({
 			where: { job_container: { id: jobId } },
 		});
 
@@ -1189,7 +1197,7 @@ export const upsertInvoiceSchedule = async (
 					)
 				: null;
 
-		const schedule = await db.invoice_schedule.upsert({
+		const schedule = await sdb.invoice_schedule.upsert({
 			where: { recurring_plan_id: plan.id },
 			create: {
 				recurring_plan_id: plan.id,
@@ -1232,14 +1240,15 @@ export const upsertInvoiceSchedule = async (
 	}
 };
 
-export const deleteInvoiceSchedule = async (jobId: string) => {
-	const plan = await db.recurring_plan.findFirst({
+export const deleteInvoiceSchedule = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const plan = await sdb.recurring_plan.findFirst({
 		where: { job_container: { id: jobId } },
 	});
 
 	if (!plan) return { err: "Recurring plan not found" };
 
-	await db.invoice_schedule.deleteMany({
+	await sdb.invoice_schedule.deleteMany({
 		where: { recurring_plan_id: plan.id },
 	});
 
@@ -1252,24 +1261,28 @@ export const deleteInvoiceSchedule = async (jobId: string) => {
 
 export const pauseRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
-	return updateRecurringPlan(jobId, { status: "Paused" }, context);
+	return updateRecurringPlan(jobId, { status: "Paused" }, organizationId, context);
 };
 
 export const resumeRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
-	return updateRecurringPlan(jobId, { status: "Active" }, context);
+	return updateRecurringPlan(jobId, { status: "Active" }, organizationId, context);
 };
 
 export const cancelRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const plan = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const plan = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -1281,7 +1294,7 @@ export const cancelRecurringPlan = async (
 			return { err: "Recurring plan not found" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// Cancel all future planned occurrences
 			await tx.recurring_occurrence.updateMany({
 				where: {
@@ -1334,17 +1347,19 @@ export const cancelRecurringPlan = async (
 
 export const completeRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
-	return updateRecurringPlan(jobId, { status: "Completed" }, context);
+	return updateRecurringPlan(jobId, { status: "Completed" }, organizationId, context);
 };
 
 // ============================================================================
 // OCCURRENCE MANAGEMENT
 // ============================================================================
 
-export const getOccurrencesByJobId = async (jobId: string) => {
-	const plan = await db.recurring_plan.findFirst({
+export const getOccurrencesByJobId = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const plan = await sdb.recurring_plan.findFirst({
 		where: {
 			job_container: {
 				id: jobId,
@@ -1356,7 +1371,7 @@ export const getOccurrencesByJobId = async (jobId: string) => {
 		return [];
 	}
 
-	return await db.recurring_occurrence.findMany({
+	return await sdb.recurring_occurrence.findMany({
 		where: { recurring_plan_id: plan.id },
 		include: {
 			job_visit: {
@@ -1376,12 +1391,14 @@ export const getOccurrencesByJobId = async (jobId: string) => {
 export const generateOccurrences = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = generateOccurrencesSchema.parse(data);
 
-		const plan = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const plan = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -1397,7 +1414,7 @@ export const generateOccurrences = async (
 			return { err: "Can only generate occurrences for active plans" };
 		}
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			return await generateOccurrencesForPlan(
 				plan.id,
 				parsed.days_ahead,
@@ -1445,12 +1462,13 @@ export const generateOccurrences = async (
 export const skipOccurrence = async (
 	occurrenceId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = skipOccurrenceSchema.parse(data);
-
-		const occurrence = await db.recurring_occurrence.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const occurrence = await sdb.recurring_occurrence.findUnique({
 			where: { id: occurrenceId },
 		});
 
@@ -1462,7 +1480,7 @@ export const skipOccurrence = async (
 			return { err: "Can only skip planned occurrences" };
 		}
 
-		const updated = await db.recurring_occurrence.update({
+		const updated = await sdb.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
 				status: "skipped",
@@ -1507,12 +1525,14 @@ export const skipOccurrence = async (
 export const rescheduleOccurrence = async (
 	occurrenceId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = rescheduleOccurrenceSchema.parse(data);
 
-		const occurrence = await db.recurring_occurrence.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const occurrence = await sdb.recurring_occurrence.findUnique({
 			where: { id: occurrenceId },
 		});
 
@@ -1539,7 +1559,7 @@ export const rescheduleOccurrence = async (
 			...(parsed.finish_time          !== undefined && { finish_time:          parsed.finish_time }),
 		};
 
-		const updated = await db.recurring_occurrence.update({
+		const updated = await sdb.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
 				occurrence_start_at: newStartDate,
@@ -1551,7 +1571,7 @@ export const rescheduleOccurrence = async (
 		// ── "This & all future" — shift future planned occurrences by the same delta ──
 		if (parsed.scope === "future") {
 			const deltaMs = newStartDate.getTime() - occurrence.occurrence_start_at.getTime();
-			const futureOccurrences = await db.recurring_occurrence.findMany({
+			const futureOccurrences = await sdb.recurring_occurrence.findMany({
 				where: {
 					recurring_plan_id: occurrence.recurring_plan_id,
 					occurrence_start_at: { gt: occurrence.occurrence_start_at },
@@ -1561,9 +1581,9 @@ export const rescheduleOccurrence = async (
 				select: { id: true, occurrence_start_at: true, occurrence_end_at: true },
 			});
 			if (futureOccurrences.length > 0) {
-				await db.$transaction(
+				await sdb.$transaction(
 					futureOccurrences.map((o) =>
-						db.recurring_occurrence.update({
+						sdb.recurring_occurrence.update({
 							where: { id: o.id },
 							data: {
 								occurrence_start_at: new Date(o.occurrence_start_at.getTime() + deltaMs),
@@ -1577,7 +1597,7 @@ export const rescheduleOccurrence = async (
 
 			// Update the rule so newly generated occurrences also inherit the constraint change
 			if (Object.keys(constraintData).length > 0) {
-				await db.recurring_rule.updateMany({
+				await sdb.recurring_rule.updateMany({
 					where: { recurring_plan_id: occurrence.recurring_plan_id },
 					data: constraintData,
 				});
@@ -1637,12 +1657,14 @@ export const rescheduleOccurrence = async (
 
 export const bulkSkipOccurrences = async (
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = bulkSkipOccurrencesSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			const updated = await tx.recurring_occurrence.updateMany({
 				where: {
 					id: { in: parsed.occurrence_ids },
@@ -1697,10 +1719,12 @@ export const bulkSkipOccurrences = async (
 
 export const generateVisitFromOccurrence = async (
 	occurrenceId: string,
+	organizationId: string,
 	context?: UserContext,
 ): Promise<{ err: string; item?: VisitGenerationResult }> => {
 	try {
-		const occurrence = await db.recurring_occurrence.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const occurrence = await sdb.recurring_occurrence.findUnique({
 			where: { id: occurrenceId },
 			include: {
 				recurring_plan: {
@@ -1734,7 +1758,7 @@ export const generateVisitFromOccurrence = async (
 		const plan = occurrence.recurring_plan;
 		const rule = plan.rules[0];
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			// Calculate subtotal from template line items
 			const subtotal = plan.line_items.reduce(
 				(sum, item) =>
