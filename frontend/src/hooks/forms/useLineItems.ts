@@ -14,12 +14,20 @@ interface UseLineItemsReturn {
 	addLineItem: () => void;
 	removeLineItem: (id: string) => void;
 	updateLineItem: (id: string, field: keyof BaseLineItem, value: string | number) => void;
+	updateLineItemSource: (id: string, sourceJobId: string | null, sourceVisitId: string | null) => void;
+	undoLineItemSource: (id: string) => void;
 	// "start from existing" / template pre-fill
+	// Accepts the core fields plus optional source attribution fields
 	seedLineItems: (
-		items: Pick<
-			BaseLineItem,
-			"name" | "description" | "quantity" | "unit_price" | "item_type"
-		>[]
+		items: Array<
+			Pick<
+				BaseLineItem,
+				"name" | "description" | "quantity" | "unit_price" | "item_type"
+			> & {
+				source_job_id?: string | null;
+				source_visit_id?: string | null;
+			}
+		>
 	) => void;
 	subtotal: number;
 	resetLineItems: () => void;
@@ -74,6 +82,12 @@ export const useLineItems = (options: UseLineItemsOptions = {}): UseLineItemsRet
 							unit_price: item.unit_price,
 							item_type: item.item_type,
 							total: item.total,
+							...(item.source_job_id !== undefined && {
+								source_job_id: item.source_job_id,
+							}),
+							...(item.source_visit_id !== undefined && {
+								source_visit_id: item.source_visit_id,
+							}),
 						});
 					}
 				});
@@ -92,19 +106,24 @@ export const useLineItems = (options: UseLineItemsOptions = {}): UseLineItemsRet
 		};
 
 		setLineItems((prev) => [...prev, newItem]);
-		setOriginalLineItems((prev) => {
-			const updated = new Map(prev);
-			updated.set(newItem.id, { ...newItem });
-			return updated;
-		});
+
 	}, [mode]);
 
 	const seedLineItems = useCallback(
 		(
-			seeds: Pick<
-				BaseLineItem,
-				"name" | "description" | "quantity" | "unit_price" | "item_type"
-			>[]
+			seeds: Array<
+				Pick<
+					BaseLineItem,
+					| "name"
+					| "description"
+					| "quantity"
+					| "unit_price"
+					| "item_type"
+				> & {
+					source_job_id?: string | null;
+					source_visit_id?: string | null;
+				}
+			>
 		) => {
 			const items: BaseLineItem[] = seeds.map((s) => {
 				const id = crypto.randomUUID();
@@ -116,7 +135,14 @@ export const useLineItems = (options: UseLineItemsOptions = {}): UseLineItemsRet
 					unit_price: Number(s.unit_price),
 					item_type: s.item_type,
 					total: Number(s.quantity) * Number(s.unit_price),
-				};
+					// Preserve source attribution if provided
+					...(s.source_job_id !== undefined && {
+						source_job_id: s.source_job_id,
+					}),
+					...(s.source_visit_id !== undefined && {
+						source_visit_id: s.source_visit_id,
+					}),
+				} as BaseLineItem;
 			});
 
 			// If no seeds provided fall back to one blank item
@@ -190,6 +216,45 @@ export const useLineItems = (options: UseLineItemsOptions = {}): UseLineItemsRet
 		[originalLineItems]
 	);
 
+	const updateLineItemSource = useCallback(
+		(id: string, sourceJobId: string | null, sourceVisitId: string | null) => {
+			// Use raw setLineItems to avoid resetting originals
+			setLineItems((prev) =>
+				prev.map((item) =>
+					item.id !== id
+						? item
+						: { ...item, source_job_id: sourceJobId, source_visit_id: sourceVisitId }
+				)
+			);
+			const original = originalLineItems.get(id);
+			if (original) {
+				const origJobId = (original as any).source_job_id ?? null;
+				const origVisitId = (original as any).source_visit_id ?? null;
+				const dirty = origJobId !== sourceJobId || origVisitId !== sourceVisitId;
+				setDirtyLineItemFields((prev) => ({ ...prev, [`li:${id}:source`]: dirty }));
+			}
+		},
+		[originalLineItems]
+	);
+
+	const undoLineItemSource = useCallback(
+		(id: string) => {
+			const original = originalLineItems.get(id);
+			if (!original) return;
+			const origJobId = (original as any).source_job_id ?? null;
+			const origVisitId = (original as any).source_visit_id ?? null;
+			setLineItems((prev) =>
+				prev.map((item) =>
+					item.id !== id
+						? item
+						: { ...item, source_job_id: origJobId, source_visit_id: origVisitId }
+				)
+			);
+			setDirtyLineItemFields((prev) => ({ ...prev, [`li:${id}:source`]: false }));
+		},
+		[originalLineItems]
+	);
+
 	const undoLineItemField = useCallback(
 		(id: string, field: keyof BaseLineItem) => {
 			const original = originalLineItems.get(id);
@@ -256,6 +321,8 @@ export const useLineItems = (options: UseLineItemsOptions = {}): UseLineItemsRet
 		addLineItem,
 		removeLineItem,
 		updateLineItem,
+		updateLineItemSource,
+		undoLineItemSource,
 		seedLineItems,
 		subtotal,
 		resetLineItems,

@@ -7,6 +7,7 @@ interface FullPopupProps {
 	onClose: () => void;
 	size?: "md" | "lg" | "xl";
 	hasBackground?: boolean;
+	overflowVisible?: boolean;
 }
 
 const FullPopup = ({
@@ -15,6 +16,7 @@ const FullPopup = ({
 	onClose,
 	size = "md",
 	hasBackground = true,
+	overflowVisible = false,
 }: FullPopupProps) => {
 	const backdropClass =
 		"transition-opacity duration-300 fixed inset-0 z-[4000] bg-black " +
@@ -25,7 +27,9 @@ const FullPopup = ({
 		(isModalOpen ? "pointer-events-auto" : "pointer-events-none");
 
 	let insetClass =
-		"scrollbar-hide bg-zinc-900 rounded-lg shadow-xl max-h-[92vh] min-h-0 text-white overflow-hidden flex flex-col ";
+		"scrollbar-hide bg-zinc-900 rounded-lg shadow-xl max-h-[92vh] min-h-0 text-white flex flex-col ";
+
+	insetClass += overflowVisible ? "overflow-visible " : "overflow-hidden ";
 
 	switch (size) {
 		case "md":

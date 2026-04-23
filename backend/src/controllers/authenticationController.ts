@@ -1,8 +1,21 @@
-import { ZodError } from "zod";
+import { date, ZodError } from "zod";
 import { db } from "../db.js";
 import bcrypt from "bcrypt";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
-import { generateAccessToken, verifyToken } from "../services/jwtService.js";
+import { 
+	generateAccessToken, 
+	gererateRefreshToken, 
+	verifyToken,
+	verifyRefreshToken,
+	generateOTPToken,
+} from "../services/jwtService.js";
+import { createOTP } from "../services/otpServce.js";
+//import { ref } from "process";
+import { Response } from "express";
+import {
+	sendEmail,
+	sendOTPEmail,
+} from "../services/emailService.js";
 
 export interface UserContext {
 	techId?: string;
@@ -25,12 +38,17 @@ interface AuthResponse {
 // will only need email and password for now
 // get organization by parsing email if needed
 // might change later
-export const login = async (email: string, password: string, role: string) => {
+export const login = async (
+	res: Response, 
+	email: string, 
+	password: string, 
+	role: string
+) => {
 	try {
 		// just for testing
 		if (email === "user" && password === "") {
 			const user = {
-				id: "1",
+				id: "0",
 				name: email,
 				organization_id: "epic",
 				title: "admin",
@@ -40,18 +58,22 @@ export const login = async (email: string, password: string, role: string) => {
 				password: "",
 				last_login: new Date(),
 			};
-			const accessToken = generateAccessToken(user, role);
-			let AuthResponse = {
-				token: accessToken,
-				expiresIn: 3600,
-				user: {
-					uid: user.id,
-					email: email,
-					role: role,
-				},
-			};
-			return { data: AuthResponse };
+			const otp = await createOTP(user.id, role);
+
+			const pendingToken = generateOTPToken(user, role);
+			if (!pendingToken) {
+				return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
+			}
+
+			return { data: { pendingToken } };
+			
+			//return issueAuthTokens(res, user.id, role);
 		}
+		// user already has pending token and otp
+		// resend the opt token to user
+		/*if (req.header.authorization?.split(" ")[0] === "Bearer") {
+			
+		}*/
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
 			return createErrorResponse(
@@ -59,10 +81,10 @@ export const login = async (email: string, password: string, role: string) => {
 				"Invalid credentials",
 			);
 		}
-
+		
 		// ask if last login updates automatically or if I have to add that here
 		const user =
-			role === "dispatcher"
+			role === "dispatch"
 				? await db.dispatcher.findUnique({
 						where: {
 							email: email,
@@ -73,7 +95,7 @@ export const login = async (email: string, password: string, role: string) => {
 							email: email,
 						},
 					});
-
+		
 		if (!user) {
 			return createErrorResponse(
 				ErrorCodes.INVALID_CREDENTIALS,
@@ -82,8 +104,9 @@ export const login = async (email: string, password: string, role: string) => {
 		}
 
 		let hashedPassword = await bcrypt.hash(password, 10);
-		let match = await bcrypt.compare(user.password, hashedPassword);
-
+		let pass = await bcrypt.hash("password", 10);
+		console.log(pass, hashedPassword);
+		let match = await bcrypt.compare(password, user.password);
 		if (!user || !match) {
 			return createErrorResponse(
 				ErrorCodes.INVALID_CREDENTIALS,
@@ -91,7 +114,104 @@ export const login = async (email: string, password: string, role: string) => {
 			);
 		}
 
+		const otp = await createOTP(user.id, role);
+
+		const pendingToken = generateOTPToken(user, role);
+		if (!pendingToken) {
+			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
+		}
+
+		const sent = await sendOTPEmail(user.email, otp);
+		if (!sent.success) {
+			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending OTP email");
+		}
+		return { data: { pendingToken } };
+	} catch (e) {
+		if (e instanceof ZodError) {
+			return {
+				error: `Validation failed: ${e.issues
+					.map((err) => err.message)
+					.join(", ")}`,
+			};
+		}
+		
+		return createErrorResponse(
+			ErrorCodes.SERVER_ERROR,
+			"Internal server error",
+		);
+	}
+};
+
+export const issueAuthTokens = async (res: Response, userId: string, role: string) => {
+	try {
+		// get user by id and role
+		if (userId === "0") {
+			const user =
+		    	role === "dispatch" ? {
+					id: userId,
+					name: "user",
+					organization_id: "1",
+					title: "admin",
+					description: "user for testing",
+					email: "user@domain.com",
+					phone: null,
+					password: "",
+					last_login: new Date(),
+				} : {
+					id: userId,
+					name: "user",
+					organization_id: "1",
+					title: "tech",
+					description: "user for testing",
+					email: "user@domain.com",
+					phone: null,
+					password: "",
+					last_login: new Date(),
+				}
+			const accessToken = generateAccessToken(user, role);
+			const refreshToken = gererateRefreshToken(user, role);
+			// set refresh token in httpOnly cookie
+			res.cookie("refreshToken", refreshToken, {
+				httpOnly: true,
+				secure: true,
+				sameSite: "strict",
+				maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+			});
+			let AuthResponse = {
+				token: accessToken,
+				expiresIn: 3600,
+				user: {
+					uid: userId,
+					email: "user",
+					role: role,
+				},
+			};
+			return { data: AuthResponse };
+		}
+		const user =
+			role === "dispatch"
+				? await db.dispatcher.findUnique({
+						where: {
+							id: userId,
+						},
+					})
+				: await db.technician.findUnique({
+						where: {
+							id: userId,
+						},
+					});
+		if (!user) {
+			return createErrorResponse(ErrorCodes.NOT_FOUND, "User not found");
+		}
 		const accessToken = generateAccessToken(user, role);
+		const refreshToken = gererateRefreshToken(user, role);
+		// set refresh token in httpOnly cookie
+		res.cookie("refreshToken", refreshToken, {
+			httpOnly: true,
+			secure: true,
+			sameSite: "strict",
+			maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+		});
 
 		let AuthResponse = {
 			token: accessToken,
@@ -103,21 +223,15 @@ export const login = async (email: string, password: string, role: string) => {
 			},
 		};
 		return { data: AuthResponse };
-	} catch (e) {
+	}catch (e) {
 		if (e instanceof ZodError) {
-			return {
-				error: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
+			return createErrorResponse(
+				ErrorCodes.VALIDATION_ERROR,
+				`Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
+			);
 		}
-		console.log(e);
-		return createErrorResponse(
-			ErrorCodes.SERVER_ERROR,
-			"Internal server error",
-		);
 	}
-};
+}
 
 // not sure what inputs will be needed for register
 // email, password, and organization for now
@@ -144,12 +258,11 @@ export const register = async (
 };
 
 // invalidate session token and clear cookies
-// add toen to blakclist
-export const logout = async (
-	userData: JSON, // whatever user data is stored with the token
-	token: string,
-) => {
+// access token is cleared on front end
+export const logout = async (res: Response, userData: any, token: string) => {
 	try {
+		await db.jwt_refresh_token.deleteMany({ where: { token: token } });
+		res.clearCookie("refreshToken");
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
@@ -170,6 +283,7 @@ export const logout = async (
 // just here if needed
 export const checkRole = async (userData: UserContext) => {
 	try {
+
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
@@ -188,3 +302,7 @@ export const checkRole = async (userData: UserContext) => {
 export const checkToken = (token: string) => {
 	return verifyToken(token);
 };
+
+export const checkRefreshToken = (token: string) => {
+	return verifyRefreshToken(token);
+}

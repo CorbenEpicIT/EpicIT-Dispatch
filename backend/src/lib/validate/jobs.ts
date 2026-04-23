@@ -50,7 +50,7 @@ export const createJobSchema = z
 					unit_price: z
 						.number()
 						.min(0, "Unit price must be non-negative"),
-					total: z.number().min(0, "Total must be non-negative"),
+					total: z.number().min(0, "Total must be non-negative").optional(),
 					item_type: z
 						.enum(["labor", "material", "equipment", "other"])
 						.optional()
@@ -64,20 +64,20 @@ export const createJobSchema = z
 		name: data.name || undefined,
 		description: data.description || undefined,
 		address: data.address || undefined,
-		coords: data.coords || undefined,
-		request_id: data.request_id || undefined,
-		quote_id: data.quote_id || undefined,
-		recurring_plan_id: data.recurring_plan_id || undefined,
-		subtotal: data.subtotal || undefined,
-		tax_rate: data.tax_rate || undefined,
-		tax_amount: data.tax_amount || undefined,
-		discount_type: data.discount_type || undefined,
-		discount_value: data.discount_value || undefined,
-		discount_amount: data.discount_amount || undefined,
-		estimated_total: data.estimated_total || undefined,
-		actual_total: data.actual_total || undefined,
+		coords: data.coords ?? undefined,
+		request_id: data.request_id ?? undefined,
+		quote_id: data.quote_id ?? undefined,
+		recurring_plan_id: data.recurring_plan_id ?? undefined,
+		subtotal: data.subtotal ?? undefined,
+		tax_rate: data.tax_rate ?? undefined,
+		tax_amount: data.tax_amount ?? undefined,
+		discount_type: data.discount_type ?? undefined,
+		discount_value: data.discount_value ?? undefined,
+		discount_amount: data.discount_amount ?? undefined,
+		estimated_total: data.estimated_total ?? undefined,
+		actual_total: data.actual_total ?? undefined,
 		cancellation_reason: data.cancellation_reason || undefined,
-		line_items: data.line_items || undefined,
+		line_items: data.line_items ?? undefined,
 	}));
 
 export const updateJobSchema = z
@@ -113,7 +113,7 @@ export const updateJobSchema = z
 					unit_price: z
 						.number()
 						.min(0, "Unit price must be non-negative"),
-					total: z.number().min(0, "Total must be non-negative"),
+					total: z.number().min(0, "Total must be non-negative").optional(),
 					item_type: z
 						.enum(["labor", "material", "equipment", "other"])
 						.optional()
@@ -144,16 +144,16 @@ export const updateJobSchema = z
 		name: data.name || undefined,
 		description: data.description || undefined,
 		address: data.address || undefined,
-		coords: data.coords || undefined,
-		line_items: data.line_items || undefined,
-		subtotal: data.subtotal || undefined,
-		tax_rate: data.tax_rate || undefined,
-		tax_amount: data.tax_amount || undefined,
-		discount_type: data.discount_type || undefined,
-		discount_value: data.discount_value || undefined,
-		discount_amount: data.discount_amount || undefined,
-		estimated_total: data.estimated_total || undefined,
-		actual_total: data.actual_total || undefined,
+		coords: data.coords ?? undefined,
+		line_items: data.line_items ?? undefined,
+		subtotal: data.subtotal ?? undefined,
+		tax_rate: data.tax_rate ?? undefined,
+		tax_amount: data.tax_amount ?? undefined,
+		discount_type: data.discount_type ?? undefined,
+		discount_value: data.discount_value ?? undefined,
+		discount_amount: data.discount_amount ?? undefined,
+		estimated_total: data.estimated_total ?? undefined,
+		actual_total: data.actual_total ?? undefined,
 		cancellation_reason: data.cancellation_reason || undefined,
 	}));
 
@@ -203,9 +203,9 @@ export const updateJobLineItemSchema = z
 		...data,
 		name: data.name || undefined,
 		description: data.description || undefined,
-		quantity: data.quantity || undefined,
-		unit_price: data.unit_price || undefined,
-		total: data.total || undefined,
+		quantity: data.quantity ?? undefined,
+		unit_price: data.unit_price ?? undefined,
+		total: data.total ?? undefined,
 		source: data.source || undefined,
 		item_type: data.item_type || undefined,
 	}));
@@ -220,24 +220,10 @@ export const createJobNoteSchema = z
 		visit_id: data.visit_id || null,
 	}));
 
-export const updateJobNoteSchema = z
-	.object({
-		content: z.string().min(1, "Content is required").optional(),
-		visit_id: z.string().uuid("Invalid visit ID").optional().nullable(),
-	})
-	.transform((data) => {
-		const result: Record<string, any> = {};
-
-		if (data.content !== undefined) {
-			result.content = data.content;
-		}
-
-		if (data.visit_id !== undefined) {
-			result.visit_id = data.visit_id;
-		}
-
-		return result;
-	});
+export const updateJobNoteSchema = z.object({
+	content: z.string().min(1, "Content is required").optional(),
+	visit_id: z.string().uuid("Invalid visit ID").optional().nullable(),
+});
 export type CreateJobInput = z.infer<typeof createJobSchema>;
 export type UpdateJobInput = z.infer<typeof updateJobSchema>;
 export type CreateJobLineItemInput = z.infer<typeof createJobLineItemSchema>;

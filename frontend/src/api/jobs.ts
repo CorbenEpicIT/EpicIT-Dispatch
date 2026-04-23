@@ -151,6 +151,16 @@ export const assignTechniciansToVisit = async (
 	return response.data.data!;
 };
 
+export const acceptJobVisit = async (visitId: string, techId: string): Promise<JobVisit> => {
+	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/accept`, { tech_id: techId });
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to accept visit");
+	}
+
+	return response.data.data!;
+};
+
 export const deleteJobVisit = async (id: string): Promise<{ message: string }> => {
 	const response = await api.delete<ApiResponse<{ message: string }>>(`/job-visits/${id}`);
 

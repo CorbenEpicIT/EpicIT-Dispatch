@@ -136,6 +136,22 @@ export const createJobVisitSchema = z
 		},
 	);
 
+// ── Line item sub-schema (reused in both create and update contexts) ──────────
+const visitLineItemInputSchema = z.object({
+	// Present on existing items being updated; absent on new items being created
+	id: z.string().uuid().optional(),
+	name: z.string().min(1, "Item name is required"),
+	description: z.string().optional().nullable(),
+	quantity: z.number().positive("Quantity must be positive"),
+	unit_price: z.number().min(0, "Unit price must be non-negative"),
+	total: z.number().min(0, "Total must be non-negative").optional(),
+	item_type: z
+		.enum(["labor", "material", "equipment", "other"])
+		.optional()
+		.nullable(),
+	sort_order: z.number().int().min(0).optional(),
+});
+
 export const updateJobVisitSchema = z
 	.object({
 		name: z.string().min(1).max(255).optional(),
@@ -189,6 +205,7 @@ export const updateJobVisitSchema = z
 				return typeof arg === "string" ? new Date(arg) : arg;
 			}, z.date().nullable())
 			.optional(),
+
 		status: z
 			.enum([
 				"Scheduled",
@@ -201,6 +218,9 @@ export const updateJobVisitSchema = z
 				"Cancelled",
 			])
 			.optional(),
+
+		// Full replacement array — undefined means "don't touch line items"
+		line_items: z.array(visitLineItemInputSchema).optional(),
 	})
 	.refine(
 		(data) => {

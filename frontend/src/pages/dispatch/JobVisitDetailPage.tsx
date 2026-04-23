@@ -9,6 +9,8 @@ import {
 	Pause,
 	Play,
 	MoreVertical,
+	Receipt,
+	Calendar,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -20,6 +22,8 @@ import {
 	useCancelJobVisitMutation,
 	useJobByIdQuery,
 } from "../../hooks/useJobs";
+import { useInvoicesByVisitIdQuery } from "../../hooks/useInvoices";
+import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
@@ -35,6 +39,8 @@ export default function JobVisitDetailPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+	const { data: linkedInvoices = [] } = useInvoicesByVisitIdQuery(jobId!, visitId!);
 
 	const startVisitMutation = useStartJobVisitMutation();
 	const pauseVisitMutation = usePauseJobVisitMutation();
@@ -721,9 +727,88 @@ export default function JobVisitDetailPage() {
 				)}
 			</Card>
 
-			{/* Assigned Technicians */}
+			<div className="flex flex-col lg:flex-row gap-6 items-start">
+				<div className="w-full lg:w-80 flex-shrink-0 flex flex-col">
+				{/* Linked Invoices */}
+				<Card
+					title="Linked Invoices" className="h-full"
+				headerAction={
+					linkedInvoices.length > 0 ? (
+						<span className="text-sm text-zinc-400">
+							{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
+						</span>
+					) : undefined
+				}
+			>
+				{linkedInvoices.length === 0 ? (
+					<div className="flex items-center gap-2 text-zinc-500 text-sm py-1">
+						<Receipt size={14} className="flex-shrink-0" />
+						<span>No invoices linked to this visit</span>
+					</div>
+				) : (
+					<div className="flex flex-wrap gap-3">
+						{linkedInvoices.map((invoice) => {
+							const visitBilling = invoice.visits?.find((v) => v.visit_id === visitId);
+							const billedAmount = visitBilling
+								? Number(visitBilling.billed_amount)
+								: null;
+							return (
+								<button
+									key={invoice.id}
+									onClick={() => navigate(`/dispatch/invoices/${invoice.id}`)}
+									className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-750 transition-all cursor-pointer text-left group w-full"
+								>
+									<div className="flex items-center justify-between gap-6 mb-2">
+										<span className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors tabular-nums">
+											{invoice.invoice_number}
+										</span>
+										<span
+											className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+												InvoiceStatusColors[invoice.status as InvoiceStatus] ??
+												"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+											}`}
+										>
+											{InvoiceStatusLabels[invoice.status as InvoiceStatus] ?? invoice.status}
+										</span>
+									</div>
+									<div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2">
+										<Calendar size={11} />
+										<span>
+											{invoice.issue_date
+												? new Date(invoice.issue_date).toLocaleDateString("en-US", {
+													month: "short",
+													day: "numeric",
+													year: "numeric",
+												  })
+												: "—"}
+										</span>
+									</div>
+									<div className="flex items-baseline gap-2">
+										{billedAmount !== null ? (
+											<>
+												<span className="text-white font-semibold text-sm tabular-nums">
+													{formatCurrency(billedAmount)}
+												</span>
+												<span className="text-xs text-zinc-500">billed this visit</span>
+											</>
+										) : (
+											<span className="text-white font-semibold text-sm tabular-nums">
+												{formatCurrency(Number(invoice.total))}
+											</span>
+										)}
+									</div>
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</Card>
+
+				</div>
+				<div className="flex-1 min-w-0 flex flex-col">
+				{/* Assigned Technicians */}
 			<Card
-				title="Assigned Technicians"
+				title="Assigned Technicians" className="h-full"
 				headerAction={
 					visit.visit_techs && visit.visit_techs.length > 0 ? (
 						<span className="text-sm text-zinc-400">
@@ -749,98 +834,35 @@ export default function JobVisitDetailPage() {
 						</p>
 					</div>
 				) : (
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+					<div className="flex flex-wrap gap-3">
 						{visit.visit_techs.map((vt) => (
 							<button
+						
 								key={vt.tech_id}
-								onClick={() =>
-									navigate(
-										`/dispatch/technicians/${vt.tech_id}`
-									)
-								}
-								className="bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 hover:border-zinc-600 rounded-lg p-4 transition-all cursor-pointer text-left group"
+								onClick={() => navigate(`/dispatch/technicians/${vt.tech_id}`)}
+								className="relative bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group w-52 flex-shrink-0"
 							>
-								<div className="flex items-center gap-3 mb-3">
-									<div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold">
-										{vt.tech.name
-											.split(" ")
-											.map(
-												(
-													n
-												) =>
-													n[0]
-											)
-											.join("")
-											.toUpperCase()
-											.slice(
-												0,
-												2
-											)}
+								<div className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${vt.tech.status === "Available" ? "bg-green-400" : vt.tech.status === "Busy" ? "bg-red-400" : vt.tech.status === "Offline" ? "bg-zinc-500" : "bg-blue-400"}`} />
+								<div className="flex items-center gap-2 mb-2">
+									<div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold">
+										{vt.tech.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
 									</div>
-									<div className="flex-1 min-w-0">
-										<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors">
-											{
-												vt
-													.tech
-													.name
-											}
-										</h4>
-										<p className="text-zinc-400 text-xs truncate">
-											{
-												vt
-													.tech
-													.title
-											}
-										</p>
+									<div className="flex-1 min-w-0 pr-3">
+										<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors">{vt.tech.name}</h4>
+										<p className="text-zinc-400 text-xs truncate">{vt.tech.title}</p>
 									</div>
 								</div>
-
-								<div className="space-y-2 text-xs">
-									{vt.tech.email && (
-										<p className="text-zinc-400 truncate">
-											{
-												vt
-													.tech
-													.email
-											}
-										</p>
-									)}
-									{vt.tech.phone && (
-										<p className="text-zinc-400">
-											{
-												vt
-													.tech
-													.phone
-											}
-										</p>
-									)}
-									<span
-										className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-											vt.tech
-												.status ===
-											"Available"
-												? "bg-green-500/20 text-green-400 border border-green-500/30"
-												: vt
-															.tech
-															.status ===
-													  "Busy"
-													? "bg-red-500/20 text-red-400 border border-red-500/30"
-													: vt
-																.tech
-																.status ===
-														  "Offline"
-														? "bg-zinc-500/20 text-zinc-400 border border-zinc-500/30"
-														: "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-										}`}
-									>
-										{vt.tech.status}
-									</span>
+								<div className="space-y-1 text-xs">
+									{vt.tech.email && <p className="text-zinc-400 truncate">{vt.tech.email}</p>}
+									{vt.tech.phone && <p className="text-zinc-400">{vt.tech.phone}</p>}
 								</div>
 							</button>
 						))}
 					</div>
 				)}
-			</Card>
+				</Card>
+				</div>
+			</div>
 
 			<JobNoteManager jobId={jobId!} visits={[visit]} visitId={visitId!} />
 

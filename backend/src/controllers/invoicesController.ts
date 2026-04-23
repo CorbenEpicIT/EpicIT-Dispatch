@@ -23,10 +23,12 @@ export interface UserContext {
 // HELPERS
 // ============================================================================
 
-async function generateInvoiceNumber(): Promise<string> {
-	const last = await db.invoice.findFirst({
+async function generateInvoiceNumber(
+	tx: Prisma.TransactionClient,
+): Promise<string> {
+	const last = await tx.invoice.findFirst({
 		where: { invoice_number: { startsWith: "INV-" } },
-		orderBy: { invoice_number: "desc" },
+		orderBy: { created_at: "desc" },
 	});
 
 	let next = 1;
@@ -38,6 +40,13 @@ async function generateInvoiceNumber(): Promise<string> {
 	return `INV-${next.toString().padStart(4, "0")}`;
 }
 
+/**
+ * Resolve tax rate for a new invoice using the cascade:
+ * client.is_tax_exempt → 0
+ * client.tax_rate      → client rate
+ * organization.tax_rate → org rate
+ * fallback             → 0
+ */
 async function resolveTaxRate(clientId: string): Promise<number> {
 	const client = await db.client.findUnique({
 		where: { id: clientId },
@@ -79,10 +88,16 @@ async function syncInvoicePaymentTotals(
 	const amountPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
 	const balanceDue = Math.max(0, total - amountPaid);
 
+	// Only auto-transition to PartiallyPaid or Paid.
+	// Disputed and Void are set manually and must not be overwritten here.
+	// Draft/Sent/Viewed are preserved when payments are removed.
 	let status = invoice.status;
 	if (status !== "Disputed" && status !== "Void") {
 		if (amountPaid <= 0) {
-			status = invoice.status === "Viewed" ? "Viewed" : "Sent";
+			// Only revert auto-set payment statuses; leave Draft/Sent/Viewed alone.
+			if (status === "PartiallyPaid" || status === "Paid") {
+				status = "Sent";
+			}
 		} else if (amountPaid >= total) {
 			status = "Paid";
 		} else {
@@ -101,8 +116,82 @@ async function syncInvoicePaymentTotals(
 	});
 }
 
+/**
+ * Recompute billed_amount for every invoice_job and invoice_visit row
+ * linked to this invoice by summing the line items attributed to each
+ * via source_job_id / source_visit_id.
+ *
+ * Called after any line item replacement so the Linked Jobs & Visits
+ * display always reflects current line item values.
+ */
+async function syncBilledAmounts(
+	invoiceId: string,
+	tx: Prisma.TransactionClient,
+): Promise<void> {
+	// Fetch all current line items for this invoice
+	const lineItems = await tx.invoice_line_item.findMany({
+		where: { invoice_id: invoiceId },
+		select: {
+			total: true,
+			source_job_id: true,
+			source_visit_id: true,
+		},
+	});
+
+	// ── Visit billed amounts ──────────────────────────────────────────────
+	// Sum line items where source_visit_id matches the linked visit.
+	const linkedVisits = await tx.invoice_visit.findMany({
+		where: { invoice_id: invoiceId },
+		select: { visit_id: true },
+	});
+
+	for (const { visit_id } of linkedVisits) {
+		const billedAmount = lineItems
+			.filter((li) => li.source_visit_id === visit_id)
+			.reduce((sum, li) => sum + Number(li.total), 0);
+
+		await tx.invoice_visit.update({
+			where: {
+				invoice_id_visit_id: {
+					invoice_id: invoiceId,
+					visit_id,
+				},
+			},
+			data: { billed_amount: billedAmount },
+		});
+	}
+
+	// ── Job billed amounts ────────────────────────────────────────────────
+	// Sum line items attributed to the job directly (source_job_id matches,
+	// source_visit_id is null — visit-attributed items are counted on the visit,
+	// not the job level).
+	const linkedJobs = await tx.invoice_job.findMany({
+		where: { invoice_id: invoiceId },
+		select: { job_id: true },
+	});
+
+	for (const { job_id } of linkedJobs) {
+		const billedAmount = lineItems
+			.filter(
+				(li) =>
+					li.source_job_id === job_id && li.source_visit_id === null,
+			)
+			.reduce((sum, li) => sum + Number(li.total), 0);
+
+		await tx.invoice_job.update({
+			where: {
+				invoice_id_job_id: {
+					invoice_id: invoiceId,
+					job_id,
+				},
+			},
+			data: { billed_amount: billedAmount },
+		});
+	}
+}
+
 // ============================================================================
-// SHARED INCLUDE — used by all reads
+// SHARED INCLUDE — used by all reads for consistent shape
 // ============================================================================
 
 const invoiceInclude = {
@@ -213,207 +302,256 @@ export const getInvoicesByClientId = async (clientId: string) => {
 	});
 };
 
+export const getInvoicesByJobId = async (jobId: string) => {
+	return await db.invoice.findMany({
+		where: { jobs: { some: { job_id: jobId } } },
+		include: invoiceInclude,
+		orderBy: { created_at: "desc" },
+	});
+};
+
+export const getInvoicesByVisitId = async (visitId: string) => {
+	return await db.invoice.findMany({
+		where: { visits: { some: { visit_id: visitId } } },
+		include: invoiceInclude,
+		orderBy: { created_at: "desc" },
+	});
+};
+
 export const insertInvoice = async (req: Request, context?: UserContext) => {
 	try {
 		const parsed = createInvoiceSchema.parse(req.body);
 
-		const created = await db.$transaction(async (tx) => {
-			const client = await tx.client.findUnique({
-				where: { id: parsed.client_id },
-			});
-			if (!client) throw new Error("Client not found");
+		let created: Awaited<ReturnType<typeof db.invoice.findUnique>> | undefined;
 
-			// Validate recurring plan if provided
-			if (parsed.recurring_plan_id) {
-				const plan = await tx.recurring_plan.findUnique({
-					where: { id: parsed.recurring_plan_id },
+		for (let attempt = 0; attempt < 5; attempt++) {
+			try {
+				created = await db.$transaction(async (tx) => {
+					// Validate client exists
+					const client = await tx.client.findUnique({
+						where: { id: parsed.client_id },
+					});
+					if (!client) throw new Error("Client not found");
+
+					// Validate recurring plan if provided
+					if (parsed.recurring_plan_id) {
+						const plan = await tx.recurring_plan.findUnique({
+							where: { id: parsed.recurring_plan_id },
+						});
+						if (!plan) throw new Error("Recurring plan not found");
+					}
+
+					// Validate all linked jobs belong to this client
+					const allJobIds = [
+						...(parsed.job_ids ?? []),
+						...(parsed.job_billings?.map((jb) => jb.job_id) ?? []),
+					];
+					const uniqueJobIds = [...new Set(allJobIds)];
+
+					if (uniqueJobIds.length > 0) {
+						const jobs = await tx.job.findMany({
+							where: { id: { in: uniqueJobIds } },
+							select: { id: true, client_id: true },
+						});
+						if (jobs.length !== uniqueJobIds.length) {
+							throw new Error("One or more jobs not found");
+						}
+						const wrongClient = jobs.find(
+							(j) => j.client_id !== parsed.client_id,
+						);
+						if (wrongClient) {
+							throw new Error(
+								"All linked jobs must belong to the same client",
+							);
+						}
+					}
+
+					// Validate all linked visits
+					const allVisitIds =
+						parsed.visit_billings?.map((vb) => vb.visit_id) ?? [];
+					if (allVisitIds.length > 0) {
+						const visits = await tx.job_visit.findMany({
+							where: { id: { in: allVisitIds } },
+							select: {
+								id: true,
+								job: { select: { client_id: true } },
+							},
+						});
+						if (visits.length !== allVisitIds.length) {
+							throw new Error("One or more visits not found");
+						}
+						const wrongVisitClient = visits.find(
+							(v) => v.job.client_id !== parsed.client_id,
+						);
+						if (wrongVisitClient) {
+							throw new Error(
+								"All linked visits must belong to the same client",
+							);
+						}
+					}
+
+					// Resolve tax rate via cascade if not explicitly provided
+					const taxRate =
+						parsed.tax_rate !== undefined
+							? parsed.tax_rate
+							: await resolveTaxRate(parsed.client_id);
+
+					const invoiceNumber = await generateInvoiceNumber(tx);
+
+					// Calculate due_date from payment_terms_days if due_date not provided
+					let dueDate = parsed.due_date;
+					if (!dueDate && parsed.payment_terms_days) {
+						const base = parsed.issue_date ?? new Date();
+						dueDate = new Date(base);
+						dueDate.setDate(
+							dueDate.getDate() + parsed.payment_terms_days,
+						);
+					}
+
+					const invoice = await tx.invoice.create({
+						data: {
+							invoice_number: invoiceNumber,
+							client_id: parsed.client_id,
+							recurring_plan_id: parsed.recurring_plan_id ?? null,
+							status: "Draft",
+							...(parsed.issue_date !== undefined && { issue_date: parsed.issue_date }),
+							due_date: dueDate ?? null,
+							payment_terms_days:
+								parsed.payment_terms_days ?? null,
+							subtotal: parsed.subtotal ?? 0,
+							tax_rate: taxRate,
+							tax_amount: parsed.tax_amount ?? 0,
+							discount_type: parsed.discount_type ?? null,
+							discount_value: parsed.discount_value ?? null,
+							discount_amount: parsed.discount_amount ?? null,
+							total: parsed.total ?? 0,
+							amount_paid: 0,
+							balance_due: parsed.total ?? 0,
+							memo: parsed.memo ?? null,
+							internal_notes: parsed.internal_notes ?? null,
+							created_by_dispatcher_id:
+								context?.dispatcherId ?? null,
+						},
+					});
+
+					// Create line items
+					if (parsed.line_items && parsed.line_items.length > 0) {
+						await tx.invoice_line_item.createMany({
+							data: parsed.line_items.map((item, idx) => ({
+								invoice_id: invoice.id,
+								name: item.name,
+								description: item.description ?? null,
+								quantity: item.quantity,
+								unit_price: item.unit_price,
+								total:
+									item.total !== undefined
+										? item.total
+										: item.quantity * item.unit_price,
+								item_type: item.item_type ?? null,
+								sort_order: item.sort_order ?? idx,
+								source_job_id: item.source_job_id ?? null,
+								source_visit_id: item.source_visit_id ?? null,
+							})),
+						});
+					}
+
+					// Link jobs (traceability-only — no billed_amount)
+					if (parsed.job_ids && parsed.job_ids.length > 0) {
+						const billedJobIds = new Set(
+							parsed.job_billings?.map((jb) => jb.job_id) ?? [],
+						);
+						const tracingOnlyJobIds = parsed.job_ids.filter(
+							(id) => !billedJobIds.has(id),
+						);
+						if (tracingOnlyJobIds.length > 0) {
+							await tx.invoice_job.createMany({
+								data: tracingOnlyJobIds.map((job_id) => ({
+									invoice_id: invoice.id,
+									job_id,
+									billed_amount: null,
+								})),
+							});
+						}
+					}
+
+					// Link jobs with explicit billed_amount
+					if (parsed.job_billings && parsed.job_billings.length > 0) {
+						await tx.invoice_job.createMany({
+							data: parsed.job_billings.map((jb) => ({
+								invoice_id: invoice.id,
+								job_id: jb.job_id,
+								billed_amount: jb.billed_amount,
+							})),
+						});
+					}
+
+					// Link visits with explicit billed_amount
+					if (
+						parsed.visit_billings &&
+						parsed.visit_billings.length > 0
+					) {
+						await tx.invoice_visit.createMany({
+							data: parsed.visit_billings.map((vb) => ({
+								invoice_id: invoice.id,
+								visit_id: vb.visit_id,
+								billed_amount: vb.billed_amount,
+							})),
+						});
+					}
+
+					await tx.client.update({
+						where: { id: parsed.client_id },
+						data: { last_activity: new Date() },
+					});
+
+					return tx.invoice.findUnique({
+						where: { id: invoice.id },
+						include: invoiceInclude,
+					});
 				});
-				if (!plan) throw new Error("Recurring plan not found");
-			}
 
-			// Validate all linked jobs belong to this client
-			const allJobIds = [
-				...(parsed.job_ids ?? []),
-				...(parsed.job_billings?.map((jb) => jb.job_id) ?? []),
-			];
-			const uniqueJobIds = [...new Set(allJobIds)];
-
-			if (uniqueJobIds.length > 0) {
-				const jobs = await tx.job.findMany({
-					where: { id: { in: uniqueJobIds } },
-					select: { id: true, client_id: true },
-				});
-				if (jobs.length !== uniqueJobIds.length) {
-					throw new Error("One or more jobs not found");
-				}
-				const wrongClient = jobs.find(
-					(j) => j.client_id !== parsed.client_id,
-				);
-				if (wrongClient) {
-					throw new Error(
-						"All linked jobs must belong to the same client",
-					);
-				}
-			}
-
-			// Validate all linked visits
-			const allVisitIds =
-				parsed.visit_billings?.map((vb) => vb.visit_id) ?? [];
-			if (allVisitIds.length > 0) {
-				const visits = await tx.job_visit.findMany({
-					where: { id: { in: allVisitIds } },
-					select: {
-						id: true,
-						job: { select: { client_id: true } },
-					},
-				});
-				if (visits.length !== allVisitIds.length) {
-					throw new Error("One or more visits not found");
-				}
-				const wrongVisitClient = visits.find(
-					(v) => v.job.client_id !== parsed.client_id,
-				);
-				if (wrongVisitClient) {
-					throw new Error(
-						"All linked visits must belong to the same client",
-					);
-				}
-			}
-
-			// Resolve tax rate via cascade if not explicitly provided
-			const taxRate =
-				parsed.tax_rate !== undefined
-					? parsed.tax_rate
-					: await resolveTaxRate(parsed.client_id);
-
-			const invoiceNumber = await generateInvoiceNumber();
-
-			// Calculate due_date from payment_terms_days if due_date not provided
-			let dueDate = parsed.due_date;
-			if (!dueDate && parsed.payment_terms_days) {
-				const base = parsed.issue_date ?? new Date();
-				dueDate = new Date(base);
-				dueDate.setDate(dueDate.getDate() + parsed.payment_terms_days);
-			}
-
-			const invoice = await tx.invoice.create({
-				data: {
-					invoice_number: invoiceNumber,
-					client_id: parsed.client_id,
-					recurring_plan_id: parsed.recurring_plan_id ?? null,
-					status: "Draft",
-					issue_date: parsed.issue_date ?? new Date(),
-					due_date: dueDate ?? null,
-					payment_terms_days: parsed.payment_terms_days ?? null,
-					subtotal: parsed.subtotal ?? 0,
-					tax_rate: taxRate,
-					tax_amount: parsed.tax_amount ?? 0,
-					discount_type: parsed.discount_type ?? null,
-					discount_value: parsed.discount_value ?? null,
-					discount_amount: parsed.discount_amount ?? null,
-					total: parsed.total ?? 0,
-					amount_paid: 0,
-					balance_due: parsed.total ?? 0,
-					memo: parsed.memo ?? null,
-					internal_notes: parsed.internal_notes ?? null,
-					created_by_dispatcher_id: context?.dispatcherId ?? null,
-				},
-			});
-
-			// Create line items
-			if (parsed.line_items && parsed.line_items.length > 0) {
-				await tx.invoice_line_item.createMany({
-					data: parsed.line_items.map((item, idx) => ({
-						invoice_id: invoice.id,
-						name: item.name,
-						description: item.description ?? null,
-						quantity: item.quantity,
-						unit_price: item.unit_price,
-						total:
-							item.total !== undefined
-								? item.total
-								: item.quantity * item.unit_price,
-						item_type: item.item_type ?? null,
-						sort_order: item.sort_order ?? idx,
-						source_job_id: item.source_job_id ?? null,
-						source_visit_id: item.source_visit_id ?? null,
-					})),
-				});
-			}
-
-			// Link jobs (traceability-only — no billed_amount)
-			if (parsed.job_ids && parsed.job_ids.length > 0) {
-				// Deduplicate against job_billings which also create invoice_job rows
-				const billedJobIds = new Set(
-					parsed.job_billings?.map((jb) => jb.job_id) ?? [],
-				);
-				const tracingOnlyJobIds = parsed.job_ids.filter(
-					(id) => !billedJobIds.has(id),
-				);
-				if (tracingOnlyJobIds.length > 0) {
-					await tx.invoice_job.createMany({
-						data: tracingOnlyJobIds.map((job_id) => ({
-							invoice_id: invoice.id,
-							job_id,
-							billed_amount: null,
-						})),
+				// Transaction committed — log outside so it is never rolled back
+				if (created) {
+					await logActivity({
+						event_type: "invoice.created",
+						action: "created",
+						entity_type: "invoice",
+						entity_id: created.id,
+						actor_type: context?.dispatcherId
+							? "dispatcher"
+							: context?.techId
+								? "technician"
+								: "system",
+						actor_id: context?.dispatcherId ?? context?.techId,
+						changes: {
+							invoice_number: {
+								old: null,
+								new: created.invoice_number,
+							},
+							client_id: { old: null, new: created.client_id },
+							total: { old: null, new: created.total },
+							status: { old: null, new: created.status },
+						},
+						ip_address: context?.ipAddress,
+						user_agent: context?.userAgent,
 					});
 				}
+				break; // success — exit retry loop
+			} catch (e) {
+				// Retry on invoice_number unique constraint collision
+				if (
+					attempt < 4 &&
+					e instanceof Prisma.PrismaClientKnownRequestError &&
+					e.code === "P2002" &&
+					(e.meta?.target as string[] | undefined)?.includes(
+						"invoice_number",
+					)
+				) {
+					continue;
+				}
+				throw e;
 			}
-
-			// Link jobs with explicit billed_amount (flat-rate job billing)
-			if (parsed.job_billings && parsed.job_billings.length > 0) {
-				await tx.invoice_job.createMany({
-					data: parsed.job_billings.map((jb) => ({
-						invoice_id: invoice.id,
-						job_id: jb.job_id,
-						billed_amount: jb.billed_amount,
-					})),
-				});
-			}
-
-			// Link visits with explicit billed_amount
-			if (parsed.visit_billings && parsed.visit_billings.length > 0) {
-				await tx.invoice_visit.createMany({
-					data: parsed.visit_billings.map((vb) => ({
-						invoice_id: invoice.id,
-						visit_id: vb.visit_id,
-						billed_amount: vb.billed_amount,
-					})),
-				});
-			}
-
-			await tx.client.update({
-				where: { id: parsed.client_id },
-				data: { last_activity: new Date() },
-			});
-
-			await logActivity({
-				event_type: "invoice.created",
-				action: "created",
-				entity_type: "invoice",
-				entity_id: invoice.id,
-				actor_type: context?.dispatcherId
-					? "dispatcher"
-					: context?.techId
-						? "technician"
-						: "system",
-				actor_id: context?.dispatcherId ?? context?.techId,
-				changes: {
-					invoice_number: { old: null, new: invoice.invoice_number },
-					client_id: { old: null, new: invoice.client_id },
-					total: { old: null, new: invoice.total },
-					status: { old: null, new: invoice.status },
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
-
-			return tx.invoice.findUnique({
-				where: { id: invoice.id },
-				include: invoiceInclude,
-			});
-		});
+		}
 
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
@@ -439,12 +577,10 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 		});
 		if (!existing) return { err: "Invoice not found" };
 
-		// Guard: cannot edit a Void invoice
 		if (existing.status === "Void") {
 			return { err: "Void invoices cannot be modified" };
 		}
 
-		// Guard: void_reason required when transitioning to Void
 		if (parsed.status === "Void" && !parsed.void_reason) {
 			return { err: "void_reason is required when voiding an invoice" };
 		}
@@ -471,7 +607,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 		] as const);
 
 		const updated = await db.$transaction(async (tx) => {
-			// ── Line item replacement ────────────────
+			// ── Line item replacement ──────────────────────────────────────
 			if (parsed.line_items !== undefined) {
 				const incoming = parsed.line_items;
 				const existingIds = new Set(
@@ -481,7 +617,6 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 					incoming.filter((i) => i.id).map((i) => i.id!),
 				);
 
-				// Delete items not in incoming list
 				for (const item of existing.line_items) {
 					if (!incomingIds.has(item.id)) {
 						await tx.invoice_line_item.delete({
@@ -492,7 +627,6 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 
 				for (const item of incoming) {
 					if (item.id && existingIds.has(item.id)) {
-						// Update existing
 						await tx.invoice_line_item.update({
 							where: { id: item.id },
 							data: {
@@ -511,7 +645,6 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 							},
 						});
 					} else {
-						// Create new
 						await tx.invoice_line_item.create({
 							data: {
 								invoice_id: id,
@@ -531,6 +664,10 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 						});
 					}
 				}
+
+				// Recompute billed_amount for all linked jobs and visits
+				// from the now-current line items' source attribution.
+				await syncBilledAmounts(id, tx);
 			}
 
 			const invoice = await tx.invoice.update({
@@ -580,13 +717,13 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 					...(parsed.void_reason !== undefined && {
 						void_reason: parsed.void_reason,
 					}),
-					// Timestamp side-effects
 					...(parsed.status === "Sent" &&
 						!existing.sent_at && { sent_at: new Date() }),
+					...(parsed.status === "Sent" &&
+						!existing.issue_date && { issue_date: new Date() }),
 					...(parsed.status === "Void" && {
 						voided_at: new Date(),
 					}),
-					// balance_due must stay in sync when total is updated
 					...(parsed.total !== undefined && {
 						balance_due: Math.max(
 							0,
@@ -597,26 +734,26 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 				include: invoiceInclude,
 			});
 
-			if (Object.keys(changes).length > 0) {
-				await logActivity({
-					event_type: "invoice.updated",
-					action: "updated",
-					entity_type: "invoice",
-					entity_id: id,
-					actor_type: context?.dispatcherId
-						? "dispatcher"
-						: context?.techId
-							? "technician"
-							: "system",
-					actor_id: context?.dispatcherId ?? context?.techId,
-					changes,
-					ip_address: context?.ipAddress,
-					user_agent: context?.userAgent,
-				});
-			}
-
 			return invoice;
 		});
+
+		if (Object.keys(changes).length > 0) {
+			await logActivity({
+				event_type: "invoice.updated",
+				action: "updated",
+				entity_type: "invoice",
+				entity_id: id,
+				actor_type: context?.dispatcherId
+					? "dispatcher"
+					: context?.techId
+						? "technician"
+						: "system",
+				actor_id: context?.dispatcherId ?? context?.techId,
+				changes,
+				ip_address: context?.ipAddress,
+				user_agent: context?.userAgent,
+			});
+		}
 
 		return { err: "", item: updated };
 	} catch (e) {
@@ -635,38 +772,32 @@ export const deleteInvoice = async (id: string, context?: UserContext) => {
 		const existing = await db.invoice.findUnique({ where: { id } });
 		if (!existing) return { err: "Invoice not found" };
 
-		// Guard: only Draft invoices can be hard-deleted
 		if (existing.status !== "Draft") {
 			return {
 				err: "Only Draft invoices can be deleted. Void the invoice instead.",
 			};
 		}
 
-		await db.$transaction(async (tx) => {
-			await logActivity({
-				event_type: "invoice.deleted",
-				action: "deleted",
-				entity_type: "invoice",
-				entity_id: id,
-				actor_type: context?.dispatcherId
-					? "dispatcher"
-					: context?.techId
-						? "technician"
-						: "system",
-				actor_id: context?.dispatcherId ?? context?.techId,
-				changes: {
-					invoice_number: {
-						old: existing.invoice_number,
-						new: null,
-					},
-					status: { old: existing.status, new: null },
-					total: { old: existing.total, new: null },
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
+		await db.invoice.delete({ where: { id } });
 
-			await tx.invoice.delete({ where: { id } });
+		await logActivity({
+			event_type: "invoice.deleted",
+			action: "deleted",
+			entity_type: "invoice",
+			entity_id: id,
+			actor_type: context?.dispatcherId
+				? "dispatcher"
+				: context?.techId
+					? "technician"
+					: "system",
+			actor_id: context?.dispatcherId ?? context?.techId,
+			changes: {
+				invoice_number: { old: existing.invoice_number, new: null },
+				status: { old: existing.status, new: null },
+				total: { old: existing.total, new: null },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
 		});
 
 		return { err: "", item: { id } };
@@ -723,27 +854,27 @@ export const insertInvoicePayment = async (
 
 			await syncInvoicePaymentTotals(invoiceId, tx);
 
-			await logActivity({
-				event_type: "invoice_payment.created",
-				action: "created",
-				entity_type: "invoice_payment",
-				entity_id: payment.id,
-				actor_type: context?.dispatcherId
-					? "dispatcher"
-					: context?.techId
-						? "technician"
-						: "system",
-				actor_id: context?.dispatcherId ?? context?.techId,
-				changes: {
-					invoice_id: { old: null, new: invoiceId },
-					amount: { old: null, new: parsed.amount },
-					method: { old: null, new: parsed.method ?? null },
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
-
 			return payment;
+		});
+
+		await logActivity({
+			event_type: "invoice_payment.created",
+			action: "created",
+			entity_type: "invoice_payment",
+			entity_id: created.id,
+			actor_type: context?.dispatcherId
+				? "dispatcher"
+				: context?.techId
+					? "technician"
+					: "system",
+			actor_id: context?.dispatcherId ?? context?.techId,
+			changes: {
+				invoice_id: { old: null, new: invoiceId },
+				amount: { old: null, new: parsed.amount },
+				method: { old: null, new: parsed.method ?? null },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
 		});
 
 		return { err: "", item: created };
@@ -779,25 +910,25 @@ export const deleteInvoicePayment = async (
 		await db.$transaction(async (tx) => {
 			await tx.invoice_payment.delete({ where: { id: paymentId } });
 			await syncInvoicePaymentTotals(invoiceId, tx);
+		});
 
-			await logActivity({
-				event_type: "invoice_payment.deleted",
-				action: "deleted",
-				entity_type: "invoice_payment",
-				entity_id: paymentId,
-				actor_type: context?.dispatcherId
-					? "dispatcher"
-					: context?.techId
-						? "technician"
-						: "system",
-				actor_id: context?.dispatcherId ?? context?.techId,
-				changes: {
-					invoice_id: { old: invoiceId, new: null },
-					amount: { old: existing.amount, new: null },
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
+		await logActivity({
+			event_type: "invoice_payment.deleted",
+			action: "deleted",
+			entity_type: "invoice_payment",
+			entity_id: paymentId,
+			actor_type: context?.dispatcherId
+				? "dispatcher"
+				: context?.techId
+					? "technician"
+					: "system",
+			actor_id: context?.dispatcherId ?? context?.techId,
+			changes: {
+				invoice_id: { old: invoiceId, new: null },
+				amount: { old: existing.amount, new: null },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
 		});
 
 		return { err: "", item: { id: paymentId } };
@@ -841,46 +972,42 @@ export const insertInvoiceNote = async (
 		});
 		if (!invoice) return { err: "Invoice not found" };
 
-		const created = await db.$transaction(async (tx) => {
-			const note = await tx.invoice_note.create({
-				data: {
-					invoice_id: invoiceId,
-					content: parsed.content,
-					creator_tech_id: context?.techId ?? null,
-					creator_dispatcher_id: context?.dispatcherId ?? null,
-					last_editor_tech_id: context?.techId ?? null,
-					last_editor_dispatcher_id: context?.dispatcherId ?? null,
+		const created = await db.invoice_note.create({
+			data: {
+				invoice_id: invoiceId,
+				content: parsed.content,
+				creator_tech_id: context?.techId ?? null,
+				creator_dispatcher_id: context?.dispatcherId ?? null,
+				last_editor_tech_id: context?.techId ?? null,
+				last_editor_dispatcher_id: context?.dispatcherId ?? null,
+			},
+			include: {
+				creator_tech: {
+					select: { id: true, name: true, email: true },
 				},
-				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
+				creator_dispatcher: {
+					select: { id: true, name: true, email: true },
 				},
-			});
+			},
+		});
 
-			await logActivity({
-				event_type: "invoice_note.created",
-				action: "created",
-				entity_type: "invoice_note",
-				entity_id: note.id,
-				actor_type: context?.dispatcherId
-					? "dispatcher"
-					: context?.techId
-						? "technician"
-						: "system",
-				actor_id: context?.dispatcherId ?? context?.techId,
-				changes: {
-					invoice_id: { old: null, new: invoiceId },
-					content: { old: null, new: parsed.content },
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
-
-			return note;
+		await logActivity({
+			event_type: "invoice_note.created",
+			action: "created",
+			entity_type: "invoice_note",
+			entity_id: created.id,
+			actor_type: context?.dispatcherId
+				? "dispatcher"
+				: context?.techId
+					? "technician"
+					: "system",
+			actor_id: context?.dispatcherId ?? context?.techId,
+			changes: {
+				invoice_id: { old: null, new: invoiceId },
+				content: { old: null, new: parsed.content },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
 		});
 
 		return { err: "", item: created };
@@ -909,57 +1036,50 @@ export const updateInvoiceNote = async (
 		});
 		if (!existing) return { err: "Note not found" };
 
-		const updated = await db.$transaction(async (tx) => {
-			const note = await tx.invoice_note.update({
-				where: { id: noteId },
-				data: {
-					...(parsed.content !== undefined && {
-						content: parsed.content,
-					}),
-					last_editor_tech_id: context?.techId ?? null,
-					last_editor_dispatcher_id: context?.dispatcherId ?? null,
+		const updated = await db.invoice_note.update({
+			where: { id: noteId },
+			data: {
+				...(parsed.content !== undefined && {
+					content: parsed.content,
+				}),
+				last_editor_tech_id: context?.techId ?? null,
+				last_editor_dispatcher_id: context?.dispatcherId ?? null,
+			},
+			include: {
+				creator_tech: {
+					select: { id: true, name: true, email: true },
 				},
-				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
+				creator_dispatcher: {
+					select: { id: true, name: true, email: true },
 				},
-			});
-
-			if (parsed.content !== undefined) {
-				await logActivity({
-					event_type: "invoice_note.updated",
-					action: "updated",
-					entity_type: "invoice_note",
-					entity_id: noteId,
-					actor_type: context?.dispatcherId
-						? "dispatcher"
-						: context?.techId
-							? "technician"
-							: "system",
-					actor_id: context?.dispatcherId ?? context?.techId,
-					changes: {
-						content: {
-							old: existing.content,
-							new: parsed.content,
-						},
-					},
-					ip_address: context?.ipAddress,
-					user_agent: context?.userAgent,
-				});
-			}
-
-			return note;
+				last_editor_tech: {
+					select: { id: true, name: true, email: true },
+				},
+				last_editor_dispatcher: {
+					select: { id: true, name: true, email: true },
+				},
+			},
 		});
+
+		if (parsed.content !== undefined) {
+			await logActivity({
+				event_type: "invoice_note.updated",
+				action: "updated",
+				entity_type: "invoice_note",
+				entity_id: noteId,
+				actor_type: context?.dispatcherId
+					? "dispatcher"
+					: context?.techId
+						? "technician"
+						: "system",
+				actor_id: context?.dispatcherId ?? context?.techId,
+				changes: {
+					content: { old: existing.content, new: parsed.content },
+				},
+				ip_address: context?.ipAddress,
+				user_agent: context?.userAgent,
+			});
+		}
 
 		return { err: "", item: updated };
 	} catch (e) {
@@ -984,27 +1104,25 @@ export const deleteInvoiceNote = async (
 		});
 		if (!existing) return { err: "Note not found" };
 
-		await db.$transaction(async (tx) => {
-			await logActivity({
-				event_type: "invoice_note.deleted",
-				action: "deleted",
-				entity_type: "invoice_note",
-				entity_id: noteId,
-				actor_type: context?.dispatcherId
-					? "dispatcher"
-					: context?.techId
-						? "technician"
-						: "system",
-				actor_id: context?.dispatcherId ?? context?.techId,
-				changes: {
-					invoice_id: { old: invoiceId, new: null },
-					content: { old: existing.content, new: null },
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
+		await db.invoice_note.delete({ where: { id: noteId } });
 
-			await tx.invoice_note.delete({ where: { id: noteId } });
+		await logActivity({
+			event_type: "invoice_note.deleted",
+			action: "deleted",
+			entity_type: "invoice_note",
+			entity_id: noteId,
+			actor_type: context?.dispatcherId
+				? "dispatcher"
+				: context?.techId
+					? "technician"
+					: "system",
+			actor_id: context?.dispatcherId ?? context?.techId,
+			changes: {
+				invoice_id: { old: invoiceId, new: null },
+				content: { old: existing.content, new: null },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
 		});
 
 		return { err: "", message: "Note deleted successfully" };

@@ -59,6 +59,7 @@ import {
 	insertJobVisit,
 	updateJobVisit,
 	assignTechniciansToVisit,
+	acceptJobVisit,
 	deleteJobVisit,
 } from "./controllers/jobVisitsController.js";
 import * as recurringPlansController from "./controllers/recurringPlansController.js";
@@ -110,6 +111,7 @@ import {
 	getArrivalPerformance,
 } from "./controllers/reportsController.js";
 import * as draftsController from "./controllers/draftsController.js";
+import * as invoicesController from "./controllers/invoicesController.js";
 
 import {
 	login,
@@ -117,7 +119,10 @@ import {
 	logout,
 	checkRole,
 	checkToken,
+	checkRefreshToken,
+	issueAuthTokens
 } from "./controllers/authenticationController.js";
+import { verifyOTP } from "./services/otpServce.js";
 import http from "http";
 import { Server } from "socket.io";
 import { required } from "zod/v4/core/util.cjs";
@@ -283,14 +288,77 @@ if (!port) {
 app.post("/login", async (req, res, next) => {
 	try {
 		const { email, password, role } = req.body;
-		const result = await login(email, password, role);
-
+		const result = await login(res, email, password, role);
+		if (!result){
+			return res.status(401).json(
+				createErrorResponse(
+					ErrorCodes.INVALID_CREDENTIALS,
+					"Invalid credentials"
+				)
+			);
+		}
 		if ("error" in result) {
 			return res.status(401).json(result);
 		}
-
+		
 		res.json(createSuccessResponse(result.data));
 	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/logout", async (req, res, next) => {
+	try {
+		const user = req.user || {};
+		const token = req.headers.authorization?.split(" ")[1];
+		if (!token){
+			return res.status(400).json(
+				createErrorResponse(
+					ErrorCodes.INVALID_TOKEN,
+					"No token provided"
+				)
+			);
+		}
+		await logout(res, user, token);
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/otp-verify", async (req, res, next) => {
+	try {
+		const { otp } = req.body;
+		const pendingToken = req.headers.authorization?.split(" ")[1];
+		if (!pendingToken) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Missing session token")
+			);
+		}
+		const result = await verifyOTP(otp, pendingToken!);
+		if (!result){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Error verifying OTP")
+			);
+		}
+		// log in user by generating access and refresh tokens
+		const  userId = result.data?.userId;
+		const role = result.data?.role;
+		console.log("OTP verification successful for userId:", userId, "role:", role, "result data:", result.data);
+		if (!userId || !role) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid OTP session data")
+			);
+		}
+		const response = await issueAuthTokens(res, userId, role);
+		if (!response){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.SERVER_ERROR, "Error issuing auth tokens")
+			);
+		}
+		
+		return res.json(createSuccessResponse(response.data));
+	}catch(err){
 		next(err);
 	}
 });
@@ -1225,6 +1293,44 @@ app.put("/job-visits/:id/technicians", async (req, res, next) => {
 	}
 });
 
+app.post("/job-visits/:id/accept", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const { tech_id } = req.body;
+		const context = getUserContext(req);
+
+		if (!tech_id) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_INPUT,
+						"tech_id is required",
+						null,
+						"tech_id",
+					),
+				);
+		}
+
+		const result = await acceptJobVisit(id, tech_id, context);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
 app.delete("/job-visits/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
@@ -1257,6 +1363,17 @@ app.get("/jobs/:jobId/notes", async (req, res, next) => {
 		const { jobId } = req.params;
 		const notes = await getJobNotes(jobId);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/jobs/:jobId/visits/:visitId/invoices", async (req, res, next) => {
+	try {
+		const invoices = await invoicesController.getInvoicesByVisitId(
+			req.params.visitId,
+		);
+		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
 		next(err);
 	}
@@ -1590,6 +1707,42 @@ app.post("/jobs/:jobId/recurring-plan/complete", async (req, res, next) => {
 });
 
 // ============================================
+// RECURRING PLAN INVOICE SCHEDULE ROUTES
+// ============================================
+
+app.put("/jobs/:jobId/recurring-plan/invoice-schedule", async (req, res, next) => {
+	try {
+		const { jobId } = req.params;
+		const result = await recurringPlansController.upsertInvoiceSchedule(
+			jobId,
+			req.body,
+			getUserContext(req),
+		);
+		if (result.err) {
+			res.status(400).json(createErrorResponse("VALIDATION_ERROR", result.err));
+			return;
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/jobs/:jobId/recurring-plan/invoice-schedule", async (req, res, next) => {
+	try {
+		const { jobId } = req.params;
+		const result = await recurringPlansController.deleteInvoiceSchedule(jobId);
+		if (result.err) {
+			res.status(404).json(createErrorResponse("NOT_FOUND", result.err));
+			return;
+		}
+		res.json(createSuccessResponse({ message: "Invoice schedule removed" }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
 // RECURRING PLAN NOTES ROUTES
 // ============================================
 
@@ -1864,10 +2017,274 @@ app.post(
 );
 
 // ============================================
+// INVOICE ROUTES
+// ============================================
+
+app.get("/invoices", async (req, res, next) => {
+	try {
+		const invoices = await invoicesController.getAllInvoices();
+		res.json(createSuccessResponse(invoices, { count: invoices.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/invoices/:id", async (req, res, next) => {
+	try {
+		const invoice = await invoicesController.getInvoiceById(req.params.id);
+		if (!invoice)
+			return res
+				.status(404)
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Invoice not found",
+					),
+				);
+		res.json(createSuccessResponse(invoice));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/clients/:clientId/invoices", async (req, res, next) => {
+	try {
+		const invoices = await invoicesController.getInvoicesByClientId(
+			req.params.clientId,
+		);
+		res.json(createSuccessResponse(invoices, { count: invoices.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/jobs/:jobId/invoices", async (req, res, next) => {
+	try {
+		const invoices = await invoicesController.getInvoicesByJobId(
+			req.params.jobId,
+		);
+		res.json(createSuccessResponse(invoices, { count: invoices.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/invoices", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.insertInvoice(req, context);
+		if (result.err)
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.patch("/invoices/:id", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.updateInvoice(req, context);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/invoices/:id", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.deleteInvoice(
+			req.params.id,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
+		}
+		res.status(200).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ── Payments ─────────────────────────────────────────────────────────────────
+
+app.get("/invoices/:invoiceId/payments", async (req, res, next) => {
+	try {
+		const payments = await invoicesController.getInvoicePayments(
+			req.params.invoiceId,
+		);
+		res.json(createSuccessResponse(payments, { count: payments.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/invoices/:invoiceId/payments", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.insertInvoicePayment(
+			req.params.invoiceId,
+			req.body,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete(
+	"/invoices/:invoiceId/payments/:paymentId",
+	async (req, res, next) => {
+		try {
+			const context = getUserContext(req);
+			const result = await invoicesController.deleteInvoicePayment(
+				req.params.invoiceId,
+				req.params.paymentId,
+				context,
+			);
+			if (result.err) {
+				const status = result.err.includes("not found") ? 404 : 400;
+				return res
+					.status(status)
+					.json(
+						createErrorResponse(
+							ErrorCodes.DELETE_ERROR,
+							result.err,
+						),
+					);
+			}
+			res.status(200).json(createSuccessResponse(result.item));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+// ── Notes ─────────────────────────────────────────────────────────────────────
+
+app.get("/invoices/:invoiceId/notes", async (req, res, next) => {
+	try {
+		const notes = await invoicesController.getInvoiceNotes(
+			req.params.invoiceId,
+		);
+		res.json(createSuccessResponse(notes, { count: notes.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/invoices/:invoiceId/notes", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.insertInvoiceNote(
+			req.params.invoiceId,
+			req.body,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.put("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.updateInvoiceNote(
+			req.params.invoiceId,
+			req.params.noteId,
+			req.body,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await invoicesController.deleteInvoiceNote(
+			req.params.invoiceId,
+			req.params.noteId,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
+		}
+		res.status(200).json(
+			createSuccessResponse({ message: result.message }),
+		);
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ============================================
 // CLIENTS
 // ============================================
 
-app.get("/clients", verifyToken, async (req, res, next) => {
+app.get("/clients", async (req, res, next) => {
 	try {
 		const clients = await getAllClients();
 		res.json(createSuccessResponse(clients, { count: clients.length }));

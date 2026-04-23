@@ -91,7 +91,9 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 	const [timeConstraintsState, setTimeConstraintsState] =
 		useState<TimeConstraintsState | null>(null);
 
-	const lineItems = useLineItems({ minItems: 1, mode: "edit" });
+	// minItems: 0 — allow all items to be deleted, including recurring plan template items.
+	// Dispatchers and techs should be able to freely add, edit, and remove visit line items.
+	const lineItems = useLineItems({ minItems: 0, mode: "edit" });
 
 	const {
 		currentStep,
@@ -189,7 +191,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 				startDate: new Date(visit.scheduled_start_at),
 			});
 
-			// Seed existing items or a blank template row if none
+			// Seed existing items. If none exist, start with an empty list —
+			// minItems: 0 means no forced blank row. Dispatchers/techs add items as needed.
 			const initialLineItems: EditableLineItem[] = visit.line_items?.length
 				? visit.line_items.map((item) => ({
 						id: crypto.randomUUID(),
@@ -205,20 +208,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 						isNew: false,
 						isDeleted: false,
 					}))
-				: [
-						{
-							id: crypto.randomUUID(),
-							entity_line_item_id: undefined,
-							name: "",
-							description: "",
-							quantity: 1,
-							unit_price: 0,
-							item_type: "" as LineItemType | "",
-							total: 0,
-							isNew: true,
-							isDeleted: false,
-						},
-					];
+				: [];
 
 			setLineItems(initialLineItems);
 
@@ -330,6 +320,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		const preparedLineItems = lineItems.activeLineItems
 			.filter((li) => li.name.trim() !== "")
 			.map((item, index) => ({
+				// Pass entity_line_item_id as id so the backend can match existing items
+				id: (item as EditableLineItem).entity_line_item_id,
 				name: item.name.trim(),
 				description: item.description || undefined,
 				quantity: Number(item.quantity),
@@ -414,6 +406,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 				timeConstraintsState?.finishConstraint === "by"
 					? formatTimeString(timeConstraintsState.finishTime)
 					: null,
+			// Send full line_items array — backend does a full replace
 			line_items: preparedLineItems,
 		};
 
@@ -571,7 +564,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 			case 2:
 				return (
-					<div className="space-y-2 lg:space-y-3 min-w-0 ">
+					<div className="space-y-2 lg:space-y-3 min-w-0">
 						<TimeConstraints
 							mode="edit"
 							initialArrivalConstraint={
@@ -620,7 +613,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							onUpdate={lineItems.updateLineItem}
 							subtotal={lineItems.subtotal}
 							required={false}
-							minItems={1}
+							minItems={0}
 							dirtyFields={lineItems.dirtyLineItemFields}
 							onUndo={lineItems.undoLineItemField}
 							onClear={lineItems.clearLineItemField}

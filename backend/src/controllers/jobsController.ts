@@ -76,6 +76,9 @@ export const getAllJobs = async () => {
 							tech: true,
 						},
 					},
+					line_items: {
+						orderBy: { sort_order: "asc" },
+					},
 				},
 			},
 			recurring_plan: {
@@ -88,9 +91,9 @@ export const getAllJobs = async () => {
 					occurrences: {
 						where: {
 							occurrence_start_at: {
-								gte: new Date(), // Only future occurrences
+								gte: new Date(),
 							},
-							status: "planned", // Only planned ones
+							status: "planned",
 						},
 						orderBy: { occurrence_start_at: "asc" },
 					},
@@ -381,7 +384,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 					description: item.description || null,
 					quantity: item.quantity,
 					unit_price: item.unit_price,
-					total: item.total,
+					total: item.total ?? item.quantity * item.unit_price,
 					source: "manual" as const,
 					item_type: item.item_type || null,
 				}));
@@ -734,7 +737,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 										description: item.description || null,
 										quantity: item.quantity,
 										unit_price: item.unit_price,
-										total: item.total,
+										total: item.total ?? item.quantity * item.unit_price,
 										item_type: item.item_type || null,
 									},
 								});
@@ -766,7 +769,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 								description: item.description || null,
 								quantity: item.quantity,
 								unit_price: item.unit_price,
-								total: item.total,
+								total: item.total ?? item.quantity * item.unit_price,
 								source: "manual",
 								item_type: item.item_type || null,
 							},
@@ -1089,18 +1092,10 @@ export const updateJobLineItem = async (
 
 		const updated = await db.$transaction(async (tx) => {
 			// Recalculate total if quantity or unit_price changed
-			let total = parsed.total;
-			if (total === undefined) {
-				const newQuantity =
-					parsed.quantity !== undefined
-						? parsed.quantity
-						: Number(existing.quantity);
-				const newUnitPrice =
-					parsed.unit_price !== undefined
-						? parsed.unit_price
-						: Number(existing.unit_price);
-				total = newQuantity * newUnitPrice;
-			}
+			const total =
+				parsed.total ??
+				(parsed.quantity ?? Number(existing.quantity)) *
+					(parsed.unit_price ?? Number(existing.unit_price));
 
 			const item = await tx.job_line_item.update({
 				where: { id: itemId },

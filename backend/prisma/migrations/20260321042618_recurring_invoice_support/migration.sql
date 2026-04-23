@@ -1,0 +1,3 @@
+-- All invoice_schedule columns (auto_send, memo_template, next_invoice_at, last_invoiced_at)
+-- and the composite index were included in the invoice_patch_to_run_some_tests migration.
+-- This file is intentionally empty.
