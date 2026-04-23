@@ -44,12 +44,12 @@ export const verifyOTP = async (
 
     // checks if otp has expired
     if (otpInfo.expiresAt < new Date()) {
-        db.otp_verification.deleteMany({ where: { userId: payload.userId } });
+        await db.otp_verification.deleteMany({ where: { userId: payload.userId } });
         return createErrorResponse(ErrorCodes.INVALID_TOKEN, "OTP expired");
     }
     // checks number of attempts and deletes otp if 5 or more
     if (otpInfo.attempts >= 5) {
-        db.otp_verification.deleteMany({ where: { userId: payload.userId } });
+        await db.otp_verification.deleteMany({ where: { userId: payload.userId } });
         return createErrorResponse(ErrorCodes.TOO_MANY_REQUESTS, "Too many attempts. Request a new code.");
     }
     // checks if otp matches db
@@ -62,6 +62,6 @@ export const verifyOTP = async (
     }
 
     // OTP is valid, delete it from the database and return user info from the token
-    db.otp_verification.deleteMany({ where: { userId: payload.userId } });
+    await db.otp_verification.deleteMany({ where: { userId: payload.userId } });
     return { data: { userId: payload.userId, role: payload.role } };
 }
