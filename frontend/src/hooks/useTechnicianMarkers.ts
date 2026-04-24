@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAllTechniciansQuery } from "../hooks/useTechnicians";
 import type { Technician } from "../types/technicians";
-import type { StaticMarker } from "../types/location";
 
 const SOCKET_URL = import.meta.env.VITE_BACKEND_URL;
 if (!SOCKET_URL) console.error("Failed to load socket URL!");
@@ -19,9 +18,15 @@ export function useLiveTechnicians() {
 		const socket: Socket = io(SOCKET_URL, { transports: ["websocket"] });
 
 		socket.on("technician-update", (updatedTech: Technician) => {
-			setTechnicians((prev) =>
-				prev.map((t) => (t.id === updatedTech.id ? updatedTech : t))
-			);
+			setTechnicians((prev) => {
+				const exists = prev.some((t) => t.id === updatedTech.id);
+				if (exists) {
+					return prev.map((t) =>
+						t.id === updatedTech.id ? { ...t, ...updatedTech } : t,
+					);
+				}
+				return [...prev, updatedTech];
+			});
 		});
 
 		return () => {
@@ -30,15 +35,5 @@ export function useLiveTechnicians() {
 		};
 	}, []);
 
-	const markers = useMemo((): StaticMarker[] => {
-		return technicians
-			.filter((t) => t.status !== "Offline" && t.status !== "Break")
-			.map((t) => ({
-				coords: t.coords,
-				type: "TECHNICIAN",
-				label: t.name,
-			}));
-	}, [technicians]);
-
-	return { markers, technicians, isLoading };
+	return { technicians, isLoading };
 }

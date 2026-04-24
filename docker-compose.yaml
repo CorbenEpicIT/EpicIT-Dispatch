@@ -5,8 +5,12 @@ services:
     command: >
       sh -c "npm install &&
              npx prisma generate &&
-             npx prisma migrate reset --force &&
-             npx tsx prisma/seed.ts &&
+             if [ \"$$NODE_ENV\" = 'development' ]; then
+               npx prisma migrate reset --force &&
+               npx tsx prisma/seed.ts;
+             else
+               npx prisma migrate deploy;
+             fi &&
              npm run build &&
              npm run start"
     ports:
@@ -35,6 +39,31 @@ services:
     networks:
       - hvacnet
 
+  user-simulator:
+    image: node:20
+    container_name: user-simulator
+    command: >
+      sh -c "npm install &&
+             npm run build &&
+             npm run start"
+    ports:
+      - "5172:5172"
+    env_file:
+      - ./user-simulator/.env
+    environment:
+      BACKEND_URL: "http://backend:3000"
+      SIM_SERVER_PORT: "5172"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./user-simulator:/app
+      - /app/node_modules
+      - /app/ui/node_modules
+    working_dir: /app
+    networks:
+      - hvacnet
+
   db:
     image: postgres:16
     container_name: hvac-db
@@ -58,19 +87,21 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
+    restart: unless-stopped
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
+        - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - prometheus_data:/prometheus
+    command:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus'
+        - '--storage.tsdb.retention.time=15d'
     ports:
-      - "9090:9090"
-    depends_on:
-      - backend
+        - "9090:9090"
     networks:
-      - hvacnet
+        - hvacnet
+    depends_on:
+        backend:
+            condition: service_started
 
   loki:
     image: grafana/loki:latest
@@ -84,16 +115,28 @@ services:
     networks:
       - hvacnet
 
+  promtail-config-init:
+    image: alpine:latest
+    env_file:
+      - ./monitoring/.env
+    volumes:
+      - ./monitoring/promtail-config.yaml:/template/promtail-config.yaml:ro
+      - promtail_config:/output
+    command: sh -c "apk add --no-cache gettext && envsubst < /template/promtail-config.yaml > /output/config.yml"
+
   promtail:
     image: grafana/promtail:latest
     container_name: promtail
     command: -config.file=/etc/promtail/config.yml
     volumes:
-      - ./monitoring/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - promtail_config:/etc/promtail:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - loki
+      loki:
+        condition: service_started
+      promtail-config-init:
+        condition: service_completed_successfully
     networks:
       - hvacnet
 
@@ -115,9 +158,11 @@ services:
     networks:
       - hvacnet
 
+
 volumes:
   pgdata:
   prometheus_data:
+  promtail_config:
   loki_data:
   grafana_data:
 

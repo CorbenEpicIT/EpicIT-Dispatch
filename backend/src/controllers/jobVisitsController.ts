@@ -376,7 +376,9 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 					...(parsed.actual_end_at !== undefined && {
 						actual_end_at: parsed.actual_end_at,
 					}),
-					...(parsed.status !== undefined && { status: parsed.status }),
+					...(parsed.status !== undefined && {
+						status: parsed.status,
+					}),
 				},
 				include: {
 					job: true,
