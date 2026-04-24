@@ -20,6 +20,7 @@ export default function TechnicianMapPage() {
 					v.job != null
 			)
 			.map((v) => ({
+				id: v.id,
 				coords: v.job!.coords,
 				type: "CLIENT" as const,
 				label: v.job!.client?.name ?? "",

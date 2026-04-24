@@ -82,8 +82,6 @@ export const getBuffer = async (
 	return fetchBuffer(extractKey(url));
 };
 
-export const deleteFile = async (url: string): Promise<void> => {
-	const key = extractKey(url);
 function keyFromUrl(url: string): string {
 	const base = url.split("?")[0];
 	return base.split(`${WASABI_BUCKET}/`).pop() ?? base;

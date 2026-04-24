@@ -419,7 +419,6 @@ const DynamicMap = ({
 				map.once("style.load", fitBounds);
 			}
 		}
-	}, [staticMarkers]);
 	}, [staticMarkers, contextLost]);
 
 	// Route sync: add/update/remove a line layer per active tech route.

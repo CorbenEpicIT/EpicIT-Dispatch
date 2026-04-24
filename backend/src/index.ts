@@ -140,7 +140,7 @@ import {
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
 import { db } from "./db.js";
-import { getScopedDb } from "./lib/context.js";
+import { getScopedDb, getUserContext } from "./lib/context.js";
 import {
 	httpMetricsMiddleware,
 	prometheusExporter,
@@ -537,7 +537,8 @@ app.use("/org", verifyToken, requireRole("dispatcher"), orgRouter);
 app.get("/quotes/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const quote = await getQuoteById(id);
+		const organizationId = req.user!.organization_id as string;
+		const quote = await getQuoteById(id, organizationId);
 
 		if (!quote) {
 			return res
@@ -558,7 +559,8 @@ app.get("/quotes/:id", async (req, res, next) => {
 
 app.get("/quotes/:id/pdf", async (req, res, next) => {
 	try {
-		const buffer = await generateQuotePdf(req.params.id);
+		const organizationId = req.user!.organization_id as string;
+		const buffer = await generateQuotePdf(req.params.id, organizationId);
 		res.setHeader("Content-Type", "application/pdf");
 		res.setHeader(
 			"Content-Disposition",
@@ -582,7 +584,8 @@ app.get("/quotes/:id/pdf", async (req, res, next) => {
 app.get("/clients/:clientId/quotes", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
-		const quotes = await getQuotesByClientId(clientId);
+		const organizationId = req.user!.organization_id as string;
+		const quotes = await getQuotesByClientId(clientId, organizationId);
 		res.json(createSuccessResponse(quotes, { count: quotes.length }));
 	} catch (err) {
 		next(err);
@@ -604,11 +607,13 @@ app.post("/quotes/:id/send", async (req, res, next) => {
 				);
 		}
 
-		await sendQuoteEmail(id, recipientEmail);
+		const organizationId = req.user!.organization_id as string;
+		await sendQuoteEmail(id, recipientEmail, organizationId);
 
 		const context = getUserContext(req);
 		const result = await updateQuote(
 			{ params: { id }, body: { status: "Sent" } } as any,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -634,8 +639,9 @@ app.post("/quotes/:id/send", async (req, res, next) => {
 
 app.post("/quotes", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertQuote(req, context);
+		const result = await insertQuote(req, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -656,8 +662,9 @@ app.post("/quotes", async (req, res, next) => {
 
 app.put("/quotes/:id", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateQuote(req, context);
+		const result = await updateQuote(req, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -680,8 +687,9 @@ app.put("/quotes/:id", async (req, res, next) => {
 app.delete("/quotes/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteQuote(id, context);
+		const result = await deleteQuote(id, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -703,7 +711,8 @@ app.delete("/quotes/:id", async (req, res, next) => {
 app.get("/quotes/:quoteId/line-items", async (req, res, next) => {
 	try {
 		const { quoteId } = req.params;
-		const items = await getQuoteItems(quoteId);
+		const organizationId = req.user!.organization_id as string;
+		const items = await getQuoteItems(quoteId, organizationId);
 		res.json(createSuccessResponse(items, { count: items.length }));
 	} catch (err) {
 		next(err);
@@ -713,7 +722,8 @@ app.get("/quotes/:quoteId/line-items", async (req, res, next) => {
 app.get("/quotes/:quoteId/line-items/:itemId", async (req, res, next) => {
 	try {
 		const { quoteId, itemId } = req.params;
-		const item = await getQuoteItemById(quoteId, itemId);
+		const organizationId = req.user!.organization_id as string;
+		const item = await getQuoteItemById(quoteId, itemId, organizationId);
 
 		if (!item) {
 			return res
@@ -735,8 +745,9 @@ app.get("/quotes/:quoteId/line-items/:itemId", async (req, res, next) => {
 app.post("/quotes/:quoteId/line-items", async (req, res, next) => {
 	try {
 		const { quoteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertQuoteItem(quoteId, req.body, context);
+		const result = await insertQuoteItem(quoteId, req.body, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -759,11 +770,13 @@ app.post("/quotes/:quoteId/line-items", async (req, res, next) => {
 app.put("/quotes/:quoteId/line-items/:itemId", async (req, res, next) => {
 	try {
 		const { quoteId, itemId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await updateQuoteItem(
 			quoteId,
 			itemId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -788,8 +801,9 @@ app.put("/quotes/:quoteId/line-items/:itemId", async (req, res, next) => {
 app.delete("/quotes/:quoteId/line-items/:itemId", async (req, res, next) => {
 	try {
 		const { quoteId, itemId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteQuoteItem(quoteId, itemId, context);
+		const result = await deleteQuoteItem(quoteId, itemId, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -813,7 +827,8 @@ app.delete("/quotes/:quoteId/line-items/:itemId", async (req, res, next) => {
 app.get("/quotes/:quoteId/notes", async (req, res, next) => {
 	try {
 		const { quoteId } = req.params;
-		const notes = await quoteNotesController.getQuoteNotes(quoteId);
+		const organizationId = req.user!.organization_id as string;
+		const notes = await quoteNotesController.getQuoteNotes(quoteId, organizationId);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
 	} catch (err) {
 		next(err);
@@ -823,7 +838,8 @@ app.get("/quotes/:quoteId/notes", async (req, res, next) => {
 app.get("/quotes/:quoteId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { quoteId, noteId } = req.params;
-		const note = await quoteNotesController.getNoteById(quoteId, noteId);
+		const organizationId = req.user!.organization_id as string;
+		const note = await quoteNotesController.getNoteById(quoteId, noteId, organizationId);
 
 		if (!note) {
 			return res
@@ -842,10 +858,12 @@ app.get("/quotes/:quoteId/notes/:noteId", async (req, res, next) => {
 app.post("/quotes/:quoteId/notes", async (req, res, next) => {
 	try {
 		const { quoteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await quoteNotesController.insertQuoteNote(
 			quoteId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -870,11 +888,13 @@ app.post("/quotes/:quoteId/notes", async (req, res, next) => {
 app.put("/quotes/:quoteId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { quoteId, noteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await quoteNotesController.updateQuoteNote(
 			quoteId,
 			noteId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -899,10 +919,12 @@ app.put("/quotes/:quoteId/notes/:noteId", async (req, res, next) => {
 app.delete("/quotes/:quoteId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { quoteId, noteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await quoteNotesController.deleteQuoteNote(
 			quoteId,
 			noteId,
+			organizationId,
 			context,
 		);
 
@@ -927,7 +949,8 @@ app.delete("/quotes/:quoteId/notes/:noteId", async (req, res, next) => {
 
 app.get("/jobs", async (req, res, next) => {
 	try {
-		const jobs = await getAllJobs();
+		const organizationId = req.user!.organization_id as string;
+		const jobs = await getAllJobs(organizationId);
 		res.json(createSuccessResponse(jobs, { count: jobs.length }));
 	} catch (err) {
 		next(err);
@@ -937,7 +960,8 @@ app.get("/jobs", async (req, res, next) => {
 app.get("/jobs/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const job = await getJobById(id);
+		const organizationId = req.user!.organization_id as string;
+		const job = await getJobById(id, organizationId);
 
 		if (!job) {
 			return res
@@ -977,8 +1001,9 @@ app.post("/jobs", async (req, res, next) => {
 
 app.patch("/jobs/:id", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateJob(req, context);
+		const result = await updateJob(req, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1000,8 +1025,9 @@ app.patch("/jobs/:id", async (req, res, next) => {
 app.delete("/jobs/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteJob(id, context);
+		const result = await deleteJob(id, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1023,7 +1049,8 @@ app.delete("/jobs/:id", async (req, res, next) => {
 
 app.get("/job-visits", async (req, res, next) => {
 	try {
-		const visits = await getAllJobVisits();
+		const organizationId = req.user!.organization_id as string;
+		const visits = await getAllJobVisits(organizationId);
 		res.json(createSuccessResponse(visits, { count: visits.length }));
 	} catch (err) {
 		next(err);
@@ -1033,7 +1060,8 @@ app.get("/job-visits", async (req, res, next) => {
 app.get("/job-visits/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const visit = await getJobVisitById(id);
+		const organizationId = req.user!.organization_id as string;
+		const visit = await getJobVisitById(id, organizationId);
 
 		if (!visit) {
 			return res
@@ -1055,7 +1083,8 @@ app.get("/job-visits/:id", async (req, res, next) => {
 app.get("/jobs/:jobId/visits", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
-		const visits = await getJobVisitsByJobId(jobId);
+		const organizationId = req.user!.organization_id as string;
+		const visits = await getJobVisitsByJobId(jobId, organizationId);
 		res.json(createSuccessResponse(visits, { count: visits.length }));
 	} catch (err) {
 		next(err);
@@ -1065,7 +1094,8 @@ app.get("/jobs/:jobId/visits", async (req, res, next) => {
 app.get("/technicians/:techId/visits", async (req, res, next) => {
 	try {
 		const { techId } = req.params;
-		const visits = await getJobVisitsByTechId(techId);
+		const organizationId = req.user!.organization_id as string;
+		const visits = await getJobVisitsByTechId(techId, organizationId);
 		res.json(createSuccessResponse(visits, { count: visits.length }));
 	} catch (err) {
 		next(err);
@@ -1091,7 +1121,8 @@ app.get(
 					);
 			}
 
-			const visits = await getJobVisitsByDateRange(start, end);
+			const organizationId = req.user!.organization_id as string;
+			const visits = await getJobVisitsByDateRange(start, end, organizationId);
 			res.json(createSuccessResponse(visits, { count: visits.length }));
 		} catch (err) {
 			next(err);
@@ -1101,8 +1132,9 @@ app.get(
 
 app.post("/job-visits", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertJobVisit(req, context);
+		const result = await insertJobVisit(req, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1123,8 +1155,9 @@ app.post("/job-visits", async (req, res, next) => {
 
 app.put("/job-visits/:id", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateJobVisit(req, context);
+		const result = await updateJobVisit(req, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1162,7 +1195,8 @@ app.put("/job-visits/:id/technicians", async (req, res, next) => {
 				);
 		}
 
-		const result = await assignTechniciansToVisit(id, tech_ids, context);
+		const organizationId = req.user!.organization_id as string;
+		const result = await assignTechniciansToVisit(id, tech_ids, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1200,7 +1234,8 @@ app.post("/job-visits/:id/accept", async (req, res, next) => {
 				);
 		}
 
-		const result = await acceptJobVisit(id, tech_id, context);
+		const organizationId = req.user!.organization_id as string;
+		const result = await acceptJobVisit(id, tech_id, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1222,8 +1257,9 @@ app.post("/job-visits/:id/accept", async (req, res, next) => {
 app.delete("/job-visits/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteJobVisit(id, context);
+		const result = await deleteJobVisit(id, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1249,7 +1285,8 @@ app.delete("/job-visits/:id", async (req, res, next) => {
 app.get("/jobs/:jobId/notes", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
-		const notes = await getJobNotes(jobId);
+		const organizationId = req.user!.organization_id as string;
+		const notes = await getJobNotes(jobId, organizationId);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
 	} catch (err) {
 		next(err);
@@ -1258,8 +1295,10 @@ app.get("/jobs/:jobId/notes", async (req, res, next) => {
 
 app.get("/jobs/:jobId/visits/:visitId/invoices", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const invoices = await invoicesController.getInvoicesByVisitId(
 			req.params.visitId,
+			organizationId,
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
@@ -1270,7 +1309,8 @@ app.get("/jobs/:jobId/visits/:visitId/invoices", async (req, res, next) => {
 app.get("/jobs/:jobId/visits/:visitId/notes", async (req, res, next) => {
 	try {
 		const { jobId, visitId } = req.params;
-		const notes = await getJobNotesByVisitId(jobId, visitId);
+		const organizationId = req.user!.organization_id as string;
+		const notes = await getJobNotesByVisitId(jobId, visitId, organizationId);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
 	} catch (err) {
 		next(err);
@@ -1280,8 +1320,9 @@ app.get("/jobs/:jobId/visits/:visitId/notes", async (req, res, next) => {
 app.post("/jobs/:jobId/notes", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertJobNote(jobId, req.body, context);
+		const result = await insertJobNote(jobId, req.body, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1303,8 +1344,9 @@ app.post("/jobs/:jobId/notes", async (req, res, next) => {
 app.put("/jobs/:jobId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { jobId, noteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateJobNote(jobId, noteId, req.body, context);
+		const result = await updateJobNote(jobId, noteId, req.body, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1326,8 +1368,9 @@ app.put("/jobs/:jobId/notes/:noteId", async (req, res, next) => {
 app.delete("/jobs/:jobId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { jobId, noteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteJobNote(jobId, noteId, context);
+		const result = await deleteJobNote(jobId, noteId, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -1351,7 +1394,8 @@ app.delete("/jobs/:jobId/notes/:noteId", async (req, res, next) => {
 
 app.get("/recurring-plans", async (req, res, next) => {
 	try {
-		const plans = await recurringPlansController.getAllRecurringPlans();
+		const organizationId = req.user!.organization_id as string;
+		const plans = await recurringPlansController.getAllRecurringPlans(organizationId);
 		res.json(createSuccessResponse(plans, { count: plans.length }));
 	} catch (err) {
 		next(err);
@@ -1361,7 +1405,8 @@ app.get("/recurring-plans", async (req, res, next) => {
 app.get("/recurring-plans/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const plan = await recurringPlansController.getRecurringPlanById(id);
+		const organizationId = req.user!.organization_id as string;
+		const plan = await recurringPlansController.getRecurringPlanById(id, organizationId);
 
 		if (!plan) {
 			return res
@@ -1382,9 +1427,11 @@ app.get("/recurring-plans/:id", async (req, res, next) => {
 
 app.post("/recurring-plans", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.insertRecurringPlan(
 			req,
+			organizationId,
 			context,
 		);
 
@@ -1409,8 +1456,9 @@ app.post("/recurring-plans", async (req, res, next) => {
 app.get("/jobs/:jobId/recurring-plan", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const plan =
-			await recurringPlansController.getRecurringPlanByJobId(jobId);
+			await recurringPlansController.getRecurringPlanByJobId(jobId, organizationId);
 
 		if (!plan) {
 			return res
@@ -1432,10 +1480,12 @@ app.get("/jobs/:jobId/recurring-plan", async (req, res, next) => {
 app.put("/jobs/:jobId/recurring-plan", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.updateRecurringPlan(
 			jobId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -1460,11 +1510,13 @@ app.put("/jobs/:jobId/recurring-plan", async (req, res, next) => {
 app.put("/jobs/:jobId/recurring-plan/template", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result =
 			await recurringPlansController.updateRecurringPlanLineItems(
 				jobId,
 				req.body,
+				organizationId,
 				context,
 			);
 
@@ -1489,9 +1541,11 @@ app.put("/jobs/:jobId/recurring-plan/template", async (req, res, next) => {
 app.post("/jobs/:jobId/recurring-plan/pause", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.pauseRecurringPlan(
 			jobId,
+			organizationId,
 			context,
 		);
 
@@ -1516,9 +1570,11 @@ app.post("/jobs/:jobId/recurring-plan/pause", async (req, res, next) => {
 app.post("/jobs/:jobId/recurring-plan/resume", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.resumeRecurringPlan(
 			jobId,
+			organizationId,
 			context,
 		);
 
@@ -1543,9 +1599,11 @@ app.post("/jobs/:jobId/recurring-plan/resume", async (req, res, next) => {
 app.post("/jobs/:jobId/recurring-plan/cancel", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.cancelRecurringPlan(
 			jobId,
+			organizationId,
 			context,
 		);
 
@@ -1570,9 +1628,11 @@ app.post("/jobs/:jobId/recurring-plan/cancel", async (req, res, next) => {
 app.post("/jobs/:jobId/recurring-plan/complete", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.completeRecurringPlan(
 			jobId,
+			organizationId,
 			context,
 		);
 
@@ -1603,9 +1663,11 @@ app.put(
 	async (req, res, next) => {
 		try {
 			const { jobId } = req.params;
+			const organizationId = req.user!.organization_id as string;
 			const result = await recurringPlansController.upsertInvoiceSchedule(
 				jobId,
 				req.body,
+				organizationId,
 				getUserContext(req),
 			);
 			if (result.err) {
@@ -1626,8 +1688,9 @@ app.delete(
 	async (req, res, next) => {
 		try {
 			const { jobId } = req.params;
+			const organizationId = req.user!.organization_id as string;
 			const result =
-				await recurringPlansController.deleteInvoiceSchedule(jobId);
+				await recurringPlansController.deleteInvoiceSchedule(jobId, organizationId);
 			if (result.err) {
 				res.status(404).json(
 					createErrorResponse("NOT_FOUND", result.err),
@@ -1650,9 +1713,10 @@ app.delete(
 app.get("/jobs/:jobId/recurring-plan/notes", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 
 		const plan =
-			await recurringPlansController.getRecurringPlanByJobId(jobId);
+			await recurringPlansController.getRecurringPlanByJobId(jobId, organizationId);
 
 		if (!plan) {
 			return res
@@ -1667,6 +1731,7 @@ app.get("/jobs/:jobId/recurring-plan/notes", async (req, res, next) => {
 
 		const notes = await recurringPlanNotesController.getRecurringPlanNotes(
 			plan.id,
+			organizationId,
 		);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
 	} catch (err) {
@@ -1676,10 +1741,12 @@ app.get("/jobs/:jobId/recurring-plan/notes", async (req, res, next) => {
 
 app.post("/jobs/:jobId/recurring-plan/notes", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result =
 			await recurringPlanNotesController.insertRecurringPlanNote(
 				req,
+				organizationId,
 				context,
 			);
 
@@ -1703,10 +1770,12 @@ app.post("/jobs/:jobId/recurring-plan/notes", async (req, res, next) => {
 
 app.put("/jobs/:jobId/recurring-plan/notes/:noteId", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result =
 			await recurringPlanNotesController.updateRecurringPlanNote(
 				req,
+				organizationId,
 				context,
 			);
 
@@ -1733,11 +1802,13 @@ app.delete(
 	async (req, res, next) => {
 		try {
 			const { jobId, noteId } = req.params;
+			const organizationId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result =
 				await recurringPlanNotesController.deleteRecurringPlanNote(
 					jobId,
 					noteId,
+					organizationId,
 					context,
 				);
 
@@ -1767,8 +1838,9 @@ app.delete(
 app.get("/jobs/:jobId/occurrences", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const occurrences =
-			await recurringPlansController.getOccurrencesByJobId(jobId);
+			await recurringPlansController.getOccurrencesByJobId(jobId, organizationId);
 		res.json(
 			createSuccessResponse(occurrences, { count: occurrences.length }),
 		);
@@ -1780,10 +1852,12 @@ app.get("/jobs/:jobId/occurrences", async (req, res, next) => {
 app.post("/jobs/:jobId/occurrences/generate", async (req, res, next) => {
 	try {
 		const { jobId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.generateOccurrences(
 			jobId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -1808,10 +1882,12 @@ app.post("/jobs/:jobId/occurrences/generate", async (req, res, next) => {
 app.post("/occurrences/:occurrenceId/skip", async (req, res, next) => {
 	try {
 		const { occurrenceId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.skipOccurrence(
 			occurrenceId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -1836,10 +1912,12 @@ app.post("/occurrences/:occurrenceId/skip", async (req, res, next) => {
 app.put("/occurrences/:occurrenceId/reschedule", async (req, res, next) => {
 	try {
 		const { occurrenceId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.rescheduleOccurrence(
 			occurrenceId,
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -1863,9 +1941,11 @@ app.put("/occurrences/:occurrenceId/reschedule", async (req, res, next) => {
 
 app.post("/occurrences/bulk-skip", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await recurringPlansController.bulkSkipOccurrences(
 			req.body,
+			organizationId,
 			context,
 		);
 
@@ -1891,10 +1971,12 @@ app.post(
 	async (req, res, next) => {
 		try {
 			const { occurrenceId } = req.params;
+			const organizationId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result =
 				await recurringPlansController.generateVisitFromOccurrence(
 					occurrenceId,
+					organizationId,
 					context,
 				);
 
@@ -1923,7 +2005,8 @@ app.post(
 
 app.get("/invoices", async (req, res, next) => {
 	try {
-		const invoices = await invoicesController.getAllInvoices();
+		const organizationId = req.user!.organization_id as string;
+		const invoices = await invoicesController.getAllInvoices(organizationId);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
 		next(err);
@@ -1932,7 +2015,8 @@ app.get("/invoices", async (req, res, next) => {
 
 app.get("/invoices/:id", async (req, res, next) => {
 	try {
-		const invoice = await invoicesController.getInvoiceById(req.params.id);
+		const organizationId = req.user!.organization_id as string;
+		const invoice = await invoicesController.getInvoiceById(req.params.id, organizationId);
 		if (!invoice)
 			return res
 				.status(404)
@@ -1950,7 +2034,8 @@ app.get("/invoices/:id", async (req, res, next) => {
 
 app.get("/invoices/:id/pdf", async (req, res, next) => {
 	try {
-		const buffer = await generateInvoicePdf(req.params.id);
+		const organizationId = req.user!.organization_id as string;
+		const buffer = await generateInvoicePdf(req.params.id, organizationId);
 		res.setHeader("Content-Type", "application/pdf");
 		res.setHeader(
 			"Content-Disposition",
@@ -1973,8 +2058,10 @@ app.get("/invoices/:id/pdf", async (req, res, next) => {
 
 app.get("/clients/:clientId/invoices", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const invoices = await invoicesController.getInvoicesByClientId(
 			req.params.clientId,
+			organizationId,
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
@@ -1984,8 +2071,10 @@ app.get("/clients/:clientId/invoices", async (req, res, next) => {
 
 app.get("/jobs/:jobId/invoices", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const invoices = await invoicesController.getInvoicesByJobId(
 			req.params.jobId,
+			organizationId,
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
@@ -2008,11 +2097,13 @@ app.post("/invoices/:id/send", async (req, res, next) => {
 				);
 		}
 
-		await sendInvoiceEmail(id, recipientEmail);
+		const organizationId = req.user!.organization_id as string;
+		await sendInvoiceEmail(id, recipientEmail, organizationId);
 
 		const context = getUserContext(req);
 		const result = await invoicesController.updateInvoice(
 			{ params: { id }, body: { status: "Sent" } } as any,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -2038,8 +2129,9 @@ app.post("/invoices/:id/send", async (req, res, next) => {
 
 app.post("/invoices", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await invoicesController.insertInvoice(req, context);
+		const result = await invoicesController.insertInvoice(req, organizationId, context);
 		if (result.err)
 			return res
 				.status(400)
@@ -2057,8 +2149,9 @@ app.post("/invoices", async (req, res, next) => {
 
 app.patch("/invoices/:id", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await invoicesController.updateInvoice(req, context);
+		const result = await invoicesController.updateInvoice(req, organizationId, context);
 		if (result.err) {
 			const status = result.err.includes("not found") ? 404 : 400;
 			return res
@@ -2078,9 +2171,11 @@ app.patch("/invoices/:id", async (req, res, next) => {
 
 app.delete("/invoices/:id", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await invoicesController.deleteInvoice(
 			req.params.id,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -2099,8 +2194,10 @@ app.delete("/invoices/:id", async (req, res, next) => {
 
 app.get("/invoices/:invoiceId/payments", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const payments = await invoicesController.getInvoicePayments(
 			req.params.invoiceId,
+			organizationId,
 		);
 		res.json(createSuccessResponse(payments, { count: payments.length }));
 	} catch (err) {
@@ -2110,10 +2207,12 @@ app.get("/invoices/:invoiceId/payments", async (req, res, next) => {
 
 app.post("/invoices/:invoiceId/payments", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await invoicesController.insertInvoicePayment(
 			req.params.invoiceId,
 			req.body,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -2137,10 +2236,12 @@ app.delete(
 	"/invoices/:invoiceId/payments/:paymentId",
 	async (req, res, next) => {
 		try {
+			const organizationId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result = await invoicesController.deleteInvoicePayment(
 				req.params.invoiceId,
 				req.params.paymentId,
+				organizationId,
 				context,
 			);
 			if (result.err) {
@@ -2165,8 +2266,10 @@ app.delete(
 
 app.get("/invoices/:invoiceId/notes", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const notes = await invoicesController.getInvoiceNotes(
 			req.params.invoiceId,
+			organizationId,
 		);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
 	} catch (err) {
@@ -2176,10 +2279,12 @@ app.get("/invoices/:invoiceId/notes", async (req, res, next) => {
 
 app.post("/invoices/:invoiceId/notes", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await invoicesController.insertInvoiceNote(
 			req.params.invoiceId,
 			req.body,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -2201,11 +2306,13 @@ app.post("/invoices/:invoiceId/notes", async (req, res, next) => {
 
 app.put("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await invoicesController.updateInvoiceNote(
 			req.params.invoiceId,
 			req.params.noteId,
 			req.body,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -2227,10 +2334,12 @@ app.put("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
 
 app.delete("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await invoicesController.deleteInvoiceNote(
 			req.params.invoiceId,
 			req.params.noteId,
+			organizationId,
 			context,
 		);
 		if (result.err) {
@@ -2253,7 +2362,8 @@ app.delete("/invoices/:invoiceId/notes/:noteId", async (req, res, next) => {
 
 app.get("/clients", async (req, res, next) => {
 	try {
-		const clients = await getAllClients();
+		const organizationId = req.user!.organization_id as string;
+		const clients = await getAllClients(organizationId);
 		res.json(createSuccessResponse(clients, { count: clients.length }));
 	} catch (err) {
 		next(err);
@@ -2263,7 +2373,8 @@ app.get("/clients", async (req, res, next) => {
 app.get("/clients/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const client = await getClientById(id);
+		const organizationId = req.user!.organization_id as string;
+		const client = await getClientById(id, organizationId);
 
 		if (!client) {
 			return res
@@ -2284,8 +2395,9 @@ app.get("/clients/:id", async (req, res, next) => {
 
 app.post("/clients", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertClient(req.body, context);
+		const result = await insertClient(req.body, organizationId, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -2312,8 +2424,9 @@ app.post("/clients", async (req, res, next) => {
 app.put("/clients/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateClient(id, req.body, context);
+		const result = await updateClient(id, req.body, organizationId, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -2340,8 +2453,9 @@ app.put("/clients/:id", async (req, res, next) => {
 app.delete("/clients/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteClient(id, context);
+		const result = await deleteClient(id, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -2368,9 +2482,11 @@ app.delete("/clients/:id", async (req, res, next) => {
 app.get("/contacts/search", async (req, res, next) => {
 	try {
 		const { q, exclude_client_id } = req.query;
+		const organizationId = req.user!.organization_id as string;
 
 		const result = await searchContacts(
 			q as string,
+			organizationId,
 			exclude_client_id as string | undefined,
 		);
 
@@ -2389,7 +2505,8 @@ app.get("/contacts/search", async (req, res, next) => {
 app.get("/clients/:clientId/contacts", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
-		const contacts = await getClientContacts(clientId);
+		const organizationId = req.user!.organization_id as string;
+		const contacts = await getClientContacts(clientId, organizationId);
 		res.json(createSuccessResponse(contacts, { count: contacts.length }));
 	} catch (err) {
 		next(err);
@@ -2399,7 +2516,8 @@ app.get("/clients/:clientId/contacts", async (req, res, next) => {
 app.get("/contacts/:contactId", async (req, res, next) => {
 	try {
 		const { contactId } = req.params;
-		const contact = await getContactById(contactId);
+		const organizationId = req.user!.organization_id as string;
+		const contact = await getContactById(contactId, organizationId);
 
 		if (!contact) {
 			return res
@@ -2420,7 +2538,8 @@ app.get("/contacts/:contactId", async (req, res, next) => {
 
 app.get("/contacts", async (req, res, next) => {
 	try {
-		const contacts = await getAllContacts();
+		const organizationId = req.user!.organization_id as string;
+		const contacts = await getAllContacts(organizationId);
 		res.json(createSuccessResponse(contacts, { count: contacts.length }));
 	} catch (err) {
 		next(err);
@@ -2429,8 +2548,9 @@ app.get("/contacts", async (req, res, next) => {
 
 app.post("/contacts", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertContact(req.body, context);
+		const result = await insertContact(req.body, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.existingContact ? 409 : 400;
@@ -2455,8 +2575,9 @@ app.post("/contacts", async (req, res, next) => {
 app.put("/contacts/:contactId", async (req, res, next) => {
 	try {
 		const { contactId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateContact(contactId, req.body, context);
+		const result = await updateContact(contactId, req.body, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -2480,8 +2601,9 @@ app.put("/contacts/:contactId", async (req, res, next) => {
 app.delete("/contacts/:contactId", async (req, res, next) => {
 	try {
 		const { contactId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteContact(contactId, context);
+		const result = await deleteContact(contactId, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -2505,10 +2627,12 @@ app.post("/clients/:clientId/contacts/link", async (req, res, next) => {
 		const { contact_id, relationship, is_primary, is_billing } = req.body;
 		const context = getUserContext(req);
 
+		const organizationId = req.user!.organization_id as string;
 		const result = await linkContactToClient(
 			contact_id,
 			clientId,
 			{ relationship, is_primary, is_billing },
+			organizationId,
 			context,
 		);
 
@@ -2541,10 +2665,12 @@ app.put(
 		try {
 			const { clientId, contactId } = req.params;
 			const context = getUserContext(req);
+			const organizationId = req.user!.organization_id as string;
 			const result = await updateClientContact(
 				contactId,
 				clientId,
 				req.body,
+				organizationId,
 				context,
 			);
 
@@ -2576,9 +2702,11 @@ app.delete(
 		try {
 			const { clientId, contactId } = req.params;
 			const context = getUserContext(req);
+			const organizationId = req.user!.organization_id as string;
 			const result = await unlinkContactFromClient(
 				contactId,
 				clientId,
+				organizationId,
 				context,
 			);
 
@@ -2612,7 +2740,8 @@ app.delete(
 app.get("/clients/:clientId/notes", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
-		const notes = await getClientNotes(clientId);
+		const organizationId = req.user!.organization_id as string;
+		const notes = await getClientNotes(clientId, organizationId);
 		res.json(createSuccessResponse(notes, { count: notes.length }));
 	} catch (err) {
 		next(err);
@@ -2622,7 +2751,8 @@ app.get("/clients/:clientId/notes", async (req, res, next) => {
 app.get("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { clientId, noteId } = req.params;
-		const note = await getNoteById(clientId, noteId);
+		const organizationId = req.user!.organization_id as string;
+		const note = await getNoteById(clientId, noteId, organizationId);
 
 		if (!note) {
 			return res
@@ -2641,8 +2771,9 @@ app.get("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 app.post("/clients/:clientId/notes", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertNote(clientId, req.body, context);
+		const result = await insertNote(clientId, req.body, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -2664,8 +2795,9 @@ app.post("/clients/:clientId/notes", async (req, res, next) => {
 app.put("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { clientId, noteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateNote(clientId, noteId, req.body, context);
+		const result = await updateNote(clientId, noteId, req.body, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -2687,8 +2819,9 @@ app.put("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 app.delete("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 	try {
 		const { clientId, noteId } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteNote(clientId, noteId, context);
+		const result = await deleteNote(clientId, noteId, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -2713,7 +2846,8 @@ app.delete("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 app.get("/clients/:clientId/jobs", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
-		const jobs = await getJobsByClientId(clientId);
+		const organizationId = req.user!.organization_id as string;
+		const jobs = await getJobsByClientId(clientId, organizationId);
 		res.json(createSuccessResponse(jobs, { count: jobs.length }));
 	} catch (err) {
 		next(err);
@@ -2726,7 +2860,8 @@ app.get("/clients/:clientId/jobs", async (req, res, next) => {
 
 app.get("/technicians", async (req, res, next) => {
 	try {
-		const technicians = await getAllTechnicians();
+		const organizationId = req.user!.organization_id as string;
+		const technicians = await getAllTechnicians(organizationId);
 		res.json(
 			createSuccessResponse(technicians, { count: technicians.length }),
 		);
@@ -2738,7 +2873,8 @@ app.get("/technicians", async (req, res, next) => {
 app.get("/technicians/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const technician = await getTechnicianById(id);
+		const organizationId = req.user!.organization_id as string;
+		const technician = await getTechnicianById(id, organizationId);
 
 		if (!technician) {
 			return res
@@ -2759,8 +2895,9 @@ app.get("/technicians/:id", async (req, res, next) => {
 
 app.post("/technicians", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertTechnician(req.body, context);
+		const result = await insertTechnician(req.body, organizationId, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -2787,8 +2924,9 @@ app.post("/technicians", async (req, res, next) => {
 app.post("/technicians/:id/ping", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateTechnician(id, req.body, context);
+		const result = await updateTechnician(id, req.body, organizationId, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -2816,8 +2954,9 @@ app.post("/technicians/:id/ping", async (req, res, next) => {
 app.put("/technicians/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateTechnician(id, req.body, context);
+		const result = await updateTechnician(id, req.body, organizationId, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -2844,8 +2983,9 @@ app.put("/technicians/:id", async (req, res, next) => {
 app.delete("/technicians/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteTechnician(id, context);
+		const result = await deleteTechnician(id, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -2869,7 +3009,8 @@ app.delete("/technicians/:id", async (req, res, next) => {
 // ============================================
 app.get("/dispatchers", async (req, res, next) => {
 	try {
-		const dispatcher = await getAllDispatchers();
+		const organizationId = req.user!.organization_id as string;
+		const dispatcher = await getAllDispatchers(organizationId);
 		res.json(
 			createSuccessResponse(dispatcher, { count: dispatcher.length }),
 		);
@@ -2881,7 +3022,8 @@ app.get("/dispatchers", async (req, res, next) => {
 app.get("/dispatchers/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
-		const dispatcher = await getDispatcherById(id);
+		const organizationId = req.user!.organization_id as string;
+		const dispatcher = await getDispatcherById(id, organizationId);
 
 		if (!dispatcher) {
 			return res
@@ -2902,8 +3044,9 @@ app.get("/dispatchers/:id", async (req, res, next) => {
 
 app.post("/dispatcher", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await insertTechnician(req.body, context);
+		const result = await insertTechnician(req.body, organizationId, context);
 
 		if (result.err) {
 			const isDuplicate = result.err
@@ -2985,10 +3128,11 @@ app.delete("/dispatchers/:id", async (req, res, next) => {
 app.get("/inventory", async (req, res, next) => {
 	try {
 		const { low_stock, sort } = req.query;
+		const organizationId = req.user!.organization_id as string;
 		const items =
 			low_stock === "true"
-				? await getLowStockInventory()
-				: await getAllInventory(sort as string | undefined);
+				? await getLowStockInventory(organizationId)
+				: await getAllInventory(organizationId, sort as string | undefined);
 		const signed = await Promise.all(
 			items.map(async (item) => ({
 				...item,
@@ -3003,8 +3147,9 @@ app.get("/inventory", async (req, res, next) => {
 
 app.post("/inventory", async (req, res, next) => {
 	try {
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await createInventoryItem(req.body, context);
+		const result = await createInventoryItem(req.body, organizationId, context);
 
 		if (result.err) {
 			return res
@@ -3030,8 +3175,9 @@ app.post("/inventory", async (req, res, next) => {
 app.patch("/inventory/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateInventoryItem(id, req.body, context);
+		const result = await updateInventoryItem(id, req.body, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -3058,8 +3204,9 @@ app.patch("/inventory/:id", async (req, res, next) => {
 app.delete("/inventory/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await deleteInventoryItem(id, context);
+		const result = await deleteInventoryItem(id, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -3082,8 +3229,9 @@ app.delete("/inventory/:id", async (req, res, next) => {
 app.patch("/inventory/:id/stock", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await adjustInventoryStock(id, req.body, context);
+		const result = await adjustInventoryStock(id, req.body, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
@@ -3156,8 +3304,9 @@ app.post(
 app.patch("/inventory/:id/threshold", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const organizationId = req.user!.organization_id as string;
 		const context = getUserContext(req);
-		const result = await updateInventoryThreshold(id, req.body, context);
+		const result = await updateInventoryThreshold(id, req.body, organizationId, context);
 
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;

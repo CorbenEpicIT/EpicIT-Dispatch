@@ -79,7 +79,7 @@ export const generateOTPToken = (user: User, role: string) => {
         throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
     }
     return jwt.sign(
-        { userId: user.id, role, organization_id: user.organization_id, stage: 'pending_otp', otp },
+        { userId: user.id, role, organization_id: user.organization_id, stage: 'pending_otp' },
         JWT_SECRET,
         { expiresIn: '10m' }
     );

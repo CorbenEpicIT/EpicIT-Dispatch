@@ -33,7 +33,7 @@ interface ScheduleBoardCardProps {
 	left: number;
 	width: number;
 	zIndex: number;
-	onClick: () => void;
+	onClick: (e: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => void;
 	onMouseEnter: () => void;
 	onMouseLeave: (e: React.MouseEvent) => void;
 	onDragStart: (e: React.DragEvent) => void;
@@ -138,7 +138,7 @@ export default function ScheduleBoardCard({
 			onKeyDown={(e) => {
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
-					onClick();
+					onClick(e);
 				}
 			}}
 			onMouseEnter={onMouseEnter}
