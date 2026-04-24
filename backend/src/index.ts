@@ -142,7 +142,7 @@ import { log } from "./services/appLogger.js";
 import { db } from "./db.js";
 import {
 	httpMetricsMiddleware,
-	register as metricsRegister,
+	prometheusExporter,
 } from "./services/metricsService.js";
 import pinoHttp from "pino-http";
 import http from "http";
@@ -295,12 +295,8 @@ app.use(express.json());
 app.use(pinoHttp({ logger: log }));
 app.use(httpMetricsMiddleware);
 
-app.get("/metrics", async (_req, res) => {
-	res.set("Content-Type", metricsRegister.contentType);
-	res.end(await metricsRegister.metrics());
-});
+app.get("/metrics", (req, res) => prometheusExporter.getMetricsRequestHandler(req, res));
 app.use(requestLogger);
-app.use(httpMetricsMiddleware);
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
 if (!frontend) {
@@ -329,11 +325,6 @@ if (!port) {
 // ============================================
 // AUTH ROUTES (public — no verifyToken)
 // ============================================
-
-app.get("/metrics", async (_req, res) => {
-	res.set("Content-Type", metricsRegister.contentType);
-	res.end(await metricsRegister.metrics());
-});
 
 app.post("/login", async (req, res, next) => {
 	try {

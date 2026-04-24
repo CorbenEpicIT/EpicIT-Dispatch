@@ -64,7 +64,7 @@ services:
     container_name: prometheus
     restart: unless-stopped
     volumes:
-        - prometheus_config:/etc/prometheus:ro
+        - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
         - prometheus_data:/prometheus
     command:
         - '--config.file=/etc/prometheus/prometheus.yml'
@@ -77,8 +77,6 @@ services:
     depends_on:
         backend:
             condition: service_started
-        prometheus-config-init:
-            condition: service_completed_successfully
 
   loki:
     image: grafana/loki:latest
@@ -92,16 +90,28 @@ services:
     networks:
       - hvacnet
 
+  promtail-config-init:
+    image: alpine:latest
+    env_file:
+      - ./monitoring/.env
+    volumes:
+      - ./monitoring/promtail-config.yaml:/template/promtail-config.yaml:ro
+      - promtail_config:/output
+    command: sh -c "apk add --no-cache gettext && envsubst < /template/promtail-config.yaml > /output/config.yml"
+
   promtail:
     image: grafana/promtail:latest
     container_name: promtail
     command: -config.file=/etc/promtail/config.yml
     volumes:
-      - ./monitoring/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - promtail_config:/etc/promtail:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - loki
+      loki:
+        condition: service_started
+      promtail-config-init:
+        condition: service_completed_successfully
     networks:
       - hvacnet
 
@@ -123,37 +133,11 @@ services:
     networks:
       - hvacnet
 
-  prometheus-config-init:
-    image: alpine:latest
-    env_file:
-        - ./monitoring/.env
-    volumes:
-        - ./monitoring/prometheus.yml:/template/prometheus.yml:ro
-        - prometheus_config:/output
-    command: sh -c "apk add --no-cache gettext && envsubst < /template/prometheus.yml > /output/prometheus.yml"
-
-  node_exporter:
-    image: prom/node-exporter:latest
-    container_name: node_exporter
-    restart: unless-stopped
-    volumes:
-        - /proc:/host/proc:ro
-        - /sys:/host/sys:ro
-        - /:/rootfs:ro
-    command:
-        - '--path.procfs=/host/proc'
-        - '--path.rootfs=/rootfs'
-        - '--path.sysfs=/host/sys'
-        - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    ports:
-        - "9100:9100"
-    networks:
-        - hvacnet
 
 volumes:
   pgdata:
   prometheus_data:
-  prometheus_config:
+  promtail_config:
   loki_data:
   grafana_data:
 
