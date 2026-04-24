@@ -41,6 +41,35 @@ export const login = async (
 	role: string
 ) => {
 	try {
+		// just for testing
+		if (email === "user" && password === "") {
+			const user = {
+				id: "0",
+				name: email,
+				organization_id: "epic",
+				title: "admin",
+				description: "admin",
+				email: email,
+				phone: null,
+				password: "",
+				last_login: new Date(),
+			};
+			const otp = await createOTP(user.id, role);
+
+			const pendingToken = generateOTPToken(user, role);
+			if (!pendingToken) {
+				return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
+			}
+
+			return { data: { pendingToken } };
+			
+			//return issueAuthTokens(res, user.id, role);
+		}
+		// user already has pending token and otp
+		// resend the opt token to user
+		/*if (req.header.authorization?.split(" ")[0] === "Bearer") {
+			
+		}*/
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
 			return createErrorResponse(
@@ -86,7 +115,7 @@ export const login = async (
 
 		const otp = await createOTP(user.id, effectiveRole);
 
-		const pendingToken = generateOTPToken(user, effectiveRole, otp);
+		const pendingToken = generateOTPToken(user, role);
 		if (!pendingToken) {
 			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
 		}

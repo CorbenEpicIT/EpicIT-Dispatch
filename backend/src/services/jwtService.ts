@@ -18,14 +18,15 @@ interface User {
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
-export const hasValidRefreshToken = async (userId: string) => {
-    const token = await db.jwt_refresh_token.findFirst({
+export const hasValidRefreshToken = async (userId: string): Promise<string | null> => {
+    const record = await db.jwt_refresh_token.findFirst({
         where: {
             userId: userId,
             expiresAt: { gt: new Date() },
         },
+        select: { token: true },
     });
-    return !!token;
+    return record?.token ?? null;
 }
 
 export const generateAccessToken = (user: User, role: string, orgTimezone?: string | null)=>{
@@ -73,7 +74,7 @@ export const gererateRefreshToken = async (user: User, role: string) => {
     return token;
 }
 
-export const generateOTPToken = (user: User, role: string, otp: string) => {
+export const generateOTPToken = (user: User, role: string) => {
     if (!JWT_SECRET) {
         throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
     }
@@ -130,7 +131,6 @@ export const verifyOTPToken = (token: string) => {
         role: string;
         organization_id: string | null;
         stage: 'pending_otp';
-        otp: string;
     };
 }
 
