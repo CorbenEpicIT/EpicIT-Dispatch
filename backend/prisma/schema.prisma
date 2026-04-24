@@ -200,6 +200,7 @@ model organization {
   technicians           technician[]
   dispatchers           dispatcher[]
   inventory_items       inventory_item[]
+  vehicles              vehicle[]
   logs                  log[]
 
   requests              request[]
@@ -602,12 +603,13 @@ model job_visit {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  visit_techs          job_visit_technician[]
-  notes                job_note[]              @relation("VisitNotes")
-  recurring_occurrence recurring_occurrence?   @relation("OccurrenceVisit")
-  line_items           job_visit_line_item[]
-  time_entries         visit_tech_time_entry[]
-  invoice_visits       invoice_visit[]
+  visit_techs            job_visit_technician[]
+  notes                  job_note[]              @relation("VisitNotes")
+  recurring_occurrence   recurring_occurrence?   @relation("OccurrenceVisit")
+  line_items             job_visit_line_item[]
+  time_entries           visit_tech_time_entry[]
+  invoice_visits         invoice_visit[]
+  vehicle_stock_usages   vehicle_stock_usage[]
 
   @@index([job_id])
   @@index([status])
@@ -697,13 +699,28 @@ model job_note {
   visit_id String?
   visit    job_visit? @relation("VisitNotes", fields: [visit_id], references: [id], onDelete: Cascade)
 
+  notify_technician Boolean @default(false)
+
   creator_tech           technician? @relation("JobNoteCreator", fields: [creator_tech_id], references: [id])
   creator_dispatcher     dispatcher? @relation("JobNoteCreator", fields: [creator_dispatcher_id], references: [id])
   last_editor_tech       technician? @relation("JobNoteEditor", fields: [last_editor_tech_id], references: [id])
   last_editor_dispatcher dispatcher? @relation("JobNoteEditor", fields: [last_editor_dispatcher_id], references: [id])
 
+  photos job_note_photo[]
+
   @@index([job_id])
   @@index([visit_id])
+}
+
+model job_note_photo {
+  id          String   @id @default(uuid())
+  note_id     String
+  note        job_note @relation(fields: [note_id], references: [id], onDelete: Cascade)
+  photo_url   String
+  photo_label String
+  created_at  DateTime @default(now())
+
+  @@index([note_id])
 }
 
 // ============================================================================
@@ -803,22 +820,29 @@ model recurring_occurrence {
   occurrence_end_at   DateTime
   
   status              occurrence_status @default(planned)
-  
+
+  // Per-occurrence scheduling constraints (copied from rule at generation; may be overridden on reschedule)
+  arrival_constraint   arrival_constraint @default(at)
+  finish_constraint    finish_constraint  @default(when_done)
+  arrival_time         String?            // HH:MM — for arrival_constraint = "at"
+  arrival_window_start String?            // HH:MM — for arrival_constraint = "between"
+  arrival_window_end   String?            // HH:MM — for arrival_constraint = "between" or "by"
+  finish_time          String?            // HH:MM — for finish_constraint = "at" or "by"
+
   // Link to actual generated visit
   job_visit_id        String?           @unique
   job_visit           job_visit?        @relation("OccurrenceVisit", fields: [job_visit_id], references: [id])
-  
+
   generated_at        DateTime?
   completed_at        DateTime?
   skipped_at          DateTime?
   skip_reason         String?
-  
+
   // Template versioning (optional)
   template_version    Int               @default(1)
   
   created_at          DateTime          @default(now())
   
-  @@unique([recurring_plan_id, occurrence_start_at])
   @@index([recurring_plan_id])
   @@index([occurrence_start_at])
   @@index([status])
@@ -919,11 +943,114 @@ model inventory_item {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  category       String?              // freetext, org-defined — no static enum
+  unit           String  @default("each") // freetext: "each", "ft", "lb", etc.
+
   visit_line_items job_visit_line_item[]
+  vehicle_stocks   vehicle_stock_item[]
 
   @@index([sku])
   @@index([is_active])
   @@index([organization_id])
+  @@index([created_at])
+}
+
+
+// ============================================================================
+// VEHICLES + VEHICLE STOCK
+// ============================================================================
+
+model vehicle {
+  id              String        @id @default(uuid())
+  organization_id String?
+  organization    organization? @relation(fields: [organization_id], references: [id])
+  name            String
+  type            String        // freetext: "van", "truck", "sedan", etc.
+  license_plate   String?
+  year            Int?
+  make            String?
+  model           String?
+  status          String        @default("active") // "active" | "inactive"
+  color           String?       // freetext: "Pearl White", "Fleet Blue", etc.
+  notes           String?       @db.Text
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  stock_items         vehicle_stock_item[]
+  current_technicians technician[]         @relation("CurrentVehicle")
+
+  @@index([organization_id])
+  @@index([status])
+}
+
+model vehicle_stock_item {
+  id                String         @id @default(uuid())
+  vehicle_id        String
+  vehicle           vehicle        @relation(fields: [vehicle_id], references: [id], onDelete: Cascade)
+  inventory_item_id String
+  inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id])
+  qty_on_hand       Decimal        @default(0) @db.Decimal(10, 2)
+  qty_min           Decimal        @default(0) @db.Decimal(10, 2)
+  updated_at        DateTime       @updatedAt
+  created_at        DateTime       @default(now())
+
+  usage_records     vehicle_stock_usage[]
+  restock_requests  vehicle_restock_request[]
+
+  @@unique([vehicle_id, inventory_item_id])
+  @@index([vehicle_id])
+  @@index([inventory_item_id])
+}
+
+model vehicle_stock_usage {
+  id                 String             @id @default(uuid())
+  stock_item_id      String
+  stock_item         vehicle_stock_item @relation(fields: [stock_item_id], references: [id])
+  visit_id           String
+  visit              job_visit          @relation(fields: [visit_id], references: [id])
+  technician_id      String
+  qty_used           Decimal            @db.Decimal(10, 2)
+  visit_line_item_id String?            // FK to job_visit_line_item created alongside usage
+  created_at         DateTime           @default(now())
+
+  @@index([stock_item_id])
+  @@index([visit_id])
+  @@index([technician_id])
+}
+
+model vehicle_restock_request {
+  id            String             @id @default(uuid())
+  stock_item_id String
+  stock_item    vehicle_stock_item @relation(fields: [stock_item_id], references: [id])
+  technician_id String
+  qty_requested Decimal?           @db.Decimal(10, 2)
+  note          String?
+  status        String             @default("pending") // "pending" | "fulfilled" | "dismissed"
+  created_at    DateTime           @default(now())
+  fulfilled_at  DateTime?
+
+  @@index([stock_item_id])
+  @@index([technician_id])
+  @@index([status])
+}
+
+// ============================================================================
+// TECHNICIAN NOTIFICATIONS
+// ============================================================================
+
+model technician_notification {
+  id            String     @id @default(uuid())
+  technician_id String
+  technician    technician @relation(fields: [technician_id], references: [id], onDelete: Cascade)
+  type          String     // "visit_assigned" | "visit_changed" | "visit_cancelled" | "dispatch_message"
+  title         String
+  body          String     @db.Text
+  action_url    String?
+  read_at       DateTime?
+  created_at    DateTime   @default(now())
+
+  @@index([technician_id])
+  @@index([technician_id, read_at])
   @@index([created_at])
 }
 
@@ -949,8 +1076,12 @@ model technician {
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
 
-  visit_techs  job_visit_technician[]
-  time_entries visit_tech_time_entry[]
+  current_vehicle_id String?
+  current_vehicle    vehicle? @relation("CurrentVehicle", fields: [current_vehicle_id], references: [id])
+
+  visit_techs    job_visit_technician[]
+  time_entries   visit_tech_time_entry[]
+  notifications  technician_notification[]
 
   created_client_notes      client_note[]  @relation("ClientNoteCreator")
   last_edited_client_notes  client_note[]  @relation("ClientNoteEditor")

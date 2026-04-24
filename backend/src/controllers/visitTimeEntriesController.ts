@@ -1,9 +1,10 @@
 import { db } from "../db.js";
 import { log } from "../services/appLogger.js";
 import { logActivity } from "../services/logger.js";
-import type { UserContext } from "./jobVisitsController.js";
+import type { UserContext } from "../lib/context.js";
 
-const CLOCK_IN_TRANSITIONS = ["Scheduled", "Driving", "OnSite"];
+const CLOCK_IN_ALLOWED = ["OnSite", "InProgress", "Paused"];
+const CLOCK_IN_AUTO_ADVANCE = ["OnSite", "Paused"];
 
 export const clockInVisit = async (
 	visitId: string,
@@ -16,6 +17,10 @@ export const clockInVisit = async (
 			include: { job: { select: { id: true, job_number: true } } },
 		});
 		if (!visit) return { err: "Job visit not found" };
+
+		if (!CLOCK_IN_ALLOWED.includes(visit.status)) {
+			return { err: "VISIT_NOT_READY: Visit must be OnSite, InProgress, or Paused before clocking in" };
+		}
 
 		const assignment = await db.job_visit_technician.findUnique({
 			where: { visit_id_tech_id: { visit_id: visitId, tech_id: techId } },
@@ -39,13 +44,13 @@ export const clockInVisit = async (
 				include: { tech: { select: { id: true, name: true } } },
 			});
 
-			// Transition visit to InProgress if applicable
-			if (CLOCK_IN_TRANSITIONS.includes(visit.status)) {
+			// Auto-advance: OnSite → InProgress (begin), Paused → InProgress (resume)
+			if (CLOCK_IN_AUTO_ADVANCE.includes(visit.status)) {
 				await tx.job_visit.update({
 					where: { id: visitId },
 					data: {
 						status: "InProgress",
-						actual_start_at: visit.actual_start_at ?? now,
+						...(visit.status === "OnSite" && { actual_start_at: visit.actual_start_at ?? now }),
 					},
 				});
 				await tx.job.update({
@@ -153,6 +158,19 @@ export const clockOutVisit = async (
 				},
 			});
 
+			// Auto-Paused when last tech clocks out of an InProgress visit
+			let statusChangedToPaused = false;
+			if (remainingOpen === null) {
+				const currentVisit = await tx.job_visit.findUnique({
+					where: { id: visitId },
+					select: { status: true },
+				});
+				if (currentVisit?.status === "InProgress") {
+					await tx.job_visit.update({ where: { id: visitId }, data: { status: "Paused" } });
+					statusChangedToPaused = true;
+				}
+			}
+
 			await logActivity({
 				event_type: "visit_time_entry.clocked_out",
 				action: "updated",
@@ -166,7 +184,7 @@ export const clockOutVisit = async (
 				},
 			});
 
-			return { entry: closedEntry, line_item: lineItem, is_last_tech: remainingOpen === null };
+			return { entry: closedEntry, line_item: lineItem, is_last_tech: remainingOpen === null, statusChangedToPaused };
 		});
 
 		return { err: "", item: result };

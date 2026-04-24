@@ -47,13 +47,14 @@ export function extractVisits(jobs: Job[]): VisitWithJob[] {
 
 export function extractOccurrences(jobs: Job[]): OccurrenceWithPlan[] {
 	const now = new Date();
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 	return jobs.flatMap((job_obj) => {
 		const plan = job_obj.recurring_plan as RecurringPlan | undefined | null;
 		if (!plan?.occurrences?.length) return [];
 		return plan.occurrences
 			.filter((occ) => {
 				if (occ.job_visit_id) return false;
-				if (new Date(occ.occurrence_start_at) < now) return false;
+				if (new Date(occ.occurrence_start_at) < startOfToday) return false;
 				if (occ.status === "skipped" || occ.status === "cancelled") return false;
 				return occ.status === "planned";
 			})

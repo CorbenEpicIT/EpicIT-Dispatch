@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleBoardCard, { type AssignedTech } from "./ScheduleBoardCard";
+import VisitClickPopup from "./VisitClickPopup";
+import OccurrenceClickPopup from "./OccurrenceClickPopup";
+import ReschedulePopup from "./ReschedulePopup";
+import OccurrenceReschedulePopup from "./OccurrenceReschedulePopup";
 import {
 	resolveOverlapLayout,
 	calcCardTop,
@@ -9,6 +13,7 @@ import {
 	calcCardHeight,
 	visitStartLabel,
 	visitEndLabel,
+	visitConstraintTimeLabel,
 	getPriorityColor,
 	SLOT_H,
 	DAY_START,
@@ -24,6 +29,38 @@ import type { RescheduleOccurrenceInput, VisitGenerationResult } from "../../../
 // Shared across all column instances — only one drag is ever active at a time.
 let sharedDragOffsetY = 0;
 export function setSharedDragOffset(v: number) { sharedDragOffsetY = v; }
+let sharedDraggedVisit: VisitWithJob | null = null;
+let sharedDraggedOccurrence: OccurrenceWithPlan | null = null;
+
+// ── Pending drag confirmation state ──────────────────────────────────────────
+
+interface PendingDrop {
+	type: "visit" | "occurrence";
+	id: string;
+	jobId: string;
+	isRecurring: boolean;
+	entityName: string;
+	oldTimeLabel: string;
+	newTimeLabel: string;
+	priorityColor: string;
+	visitObj?: VisitWithJob;
+	occurrenceObj?: OccurrenceWithPlan;
+	updateData?: UpdateJobVisitInput;
+	occurrenceInput?: RescheduleOccurrenceInput;
+	clientX: number;
+	clientY: number;
+}
+
+// ── Pending click-triggered reschedule state ──────────────────────────────────
+
+interface PendingClickReschedule {
+	type: "visit" | "occurrence";
+	visit?: VisitWithJob;
+	occurrence?: OccurrenceWithPlan;
+	anchorRect: DOMRect;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface ScheduleBoardDayColumnProps {
 	dateStr: string;
@@ -74,6 +111,15 @@ function minutesToLabel(mins: number): string {
 	return `${displayH}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+function fmtTime(d: Date): string {
+	return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/** YYYY-MM-DD string for a given Date */
+function toDateStr(d: Date): string {
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function ScheduleBoardDayColumn({
 	dateStr,
 	dayIndex,
@@ -99,18 +145,24 @@ export default function ScheduleBoardDayColumn({
 	const navigate = useNavigate();
 	const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 	const [clickedCardId, setClickedCardId] = useState<string | null>(null);
+	const [clickedCardRect, setClickedCardRect] = useState<DOMRect | null>(null);
 	const [hoveredOccurrenceId, setHoveredOccurrenceId] = useState<string | null>(null);
 	const [clickedOccurrenceId, setClickedOccurrenceId] = useState<string | null>(null);
+	const [clickedOccurrenceRect, setClickedOccurrenceRect] = useState<DOMRect | null>(null);
 	const [generatingVisitId, setGeneratingVisitId] = useState<string | null>(null);
 	const [dragOverMinutes, setDragOverMinutes] = useState<number | null>(null);
-	const columnRef = useRef<HTMLDivElement>(null);
-	const popupRef = useRef<HTMLDivElement>(null);
-	const occurrencePopupRef = useRef<HTMLDivElement>(null);
-	const dragOffsetY = useRef(0);
+	const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
+	const [draggingId, setDraggingId] = useState<string | null>(null);
+	const [pendingClickReschedule, setPendingClickReschedule] = useState<PendingClickReschedule | null>(null);
 
-	const totalSlots = DAY_END - DAY_START;
+	const columnRef          = useRef<HTMLDivElement>(null);
+	const popupRef           = useRef<HTMLDivElement>(null);
+	const occurrencePopupRef = useRef<HTMLDivElement>(null);
+	const dragOffsetY        = useRef(0);
+
+	const totalSlots  = DAY_END - DAY_START;
 	const columnHeight = totalSlots * SLOT_H;
-	const halfSlotH = SLOT_H / 2;
+	const halfSlotH   = SLOT_H / 2;
 
 	// Close visit popup on outside click
 	useEffect(() => {
@@ -150,8 +202,40 @@ export default function ScheduleBoardDayColumn({
 		return out;
 	})();
 
-	// Resolve time-collision cascade positions
-	const slots = resolveOverlapLayout(uniqueVisits, colWidth);
+	// Combined overlap layout — visits and occurrences compete for the same column space.
+	// Occurrences use occurrence_start_at/end_at; map to the scheduled_* shape resolveOverlapLayout expects.
+	const visitLayoutItems = showVisits ? uniqueVisits.map((v) => ({
+		_kind: "visit" as const,
+		id: v.id,
+		arrival_constraint: v.arrival_constraint,
+		finish_constraint: v.finish_constraint,
+		arrival_time: v.arrival_time,
+		arrival_window_start: v.arrival_window_start,
+		arrival_window_end: v.arrival_window_end,
+		scheduled_start_at: v.scheduled_start_at,
+		scheduled_end_at: v.scheduled_end_at,
+	})) : [];
+
+	const occLayoutItems = showOccurrences ? occurrences.map((occ) => ({
+		_kind: "occ" as const,
+		id: occ.id,
+		arrival_constraint: occ.arrival_constraint,
+		finish_constraint: occ.finish_constraint,
+		arrival_time: occ.arrival_time,
+		arrival_window_start: occ.arrival_window_start,
+		arrival_window_end: occ.arrival_window_end,
+		scheduled_start_at: occ.occurrence_start_at,
+		scheduled_end_at: occ.occurrence_end_at,
+	})) : [];
+
+	const combinedSlots = resolveOverlapLayout([...visitLayoutItems, ...occLayoutItems], colWidth);
+
+	const visitPositions = new Map<string, { left: number; width: number }>();
+	const occPositions   = new Map<string, { left: number; width: number }>();
+	for (const { visit: item, left, width } of combinedSlots) {
+		if (item._kind === "visit") visitPositions.set(item.id, { left, width });
+		else occPositions.set(item.id, { left, width });
+	}
 
 	// ── Overflow pill counts ──────────────────────────────────────────────────
 	const visibleBottom = scrollTop + visibleHeight;
@@ -181,6 +265,16 @@ export default function ScheduleBoardDayColumn({
 	// ── Drag handlers ─────────────────────────────────────────────────────────
 
 	function handleDragStart(e: React.DragEvent, visit: VisitWithJob) {
+		sharedDraggedVisit = visit;
+		setDraggingId(visit.id);
+		const el = e.currentTarget as HTMLElement;
+		function onDragEnd() {
+			el.removeEventListener("dragend", onDragEnd);
+			sharedDraggedVisit = null;
+			setDraggingId(null);
+		}
+		el.addEventListener("dragend", onDragEnd);
+
 		const startMs = new Date(visit.scheduled_start_at).getTime();
 		const endMs   = new Date(visit.scheduled_end_at).getTime();
 		if (columnRef.current) {
@@ -201,12 +295,26 @@ export default function ScheduleBoardDayColumn({
 				arrival_time: visit.arrival_time ?? null,
 				arrival_window_start: visit.arrival_window_start ?? null,
 				arrival_window_end: visit.arrival_window_end ?? null,
+				finish_constraint: visit.finish_constraint,
+				finish_time: visit.finish_time ?? null,
+				isRecurring: !!visit.job_obj?.recurring_plan,
+				entityName: visit.job_obj?.name ?? "Visit",
 			})
 		);
 		e.dataTransfer.effectAllowed = "move";
 	}
 
 	function handleOccurrenceDragStart(e: React.DragEvent, occ: OccurrenceWithPlan) {
+		sharedDraggedOccurrence = occ;
+		setDraggingId(occ.id);
+		const el = e.currentTarget as HTMLElement;
+		function onDragEnd() {
+			el.removeEventListener("dragend", onDragEnd);
+			sharedDraggedOccurrence = null;
+			setDraggingId(null);
+		}
+		el.addEventListener("dragend", onDragEnd);
+
 		const startMs = new Date(occ.occurrence_start_at).getTime();
 		const endMs   = new Date(occ.occurrence_end_at).getTime();
 		if (columnRef.current) {
@@ -223,6 +331,13 @@ export default function ScheduleBoardDayColumn({
 				jobId: occ.job_obj.id,
 				durationMs: endMs - startMs,
 				startMs,
+				entityName: occ.plan.name,
+				arrival_constraint: occ.arrival_constraint,
+				arrival_time: occ.arrival_time ?? null,
+				arrival_window_start: occ.arrival_window_start ?? null,
+				arrival_window_end: occ.arrival_window_end ?? null,
+				finish_constraint: occ.finish_constraint,
+				finish_time: occ.finish_time ?? null,
 			})
 		);
 		e.dataTransfer.effectAllowed = "move";
@@ -241,9 +356,10 @@ export default function ScheduleBoardDayColumn({
 		setDragOverMinutes(null);
 	}
 
-	async function handleDrop(e: React.DragEvent) {
+	function handleDrop(e: React.DragEvent) {
 		e.preventDefault();
 		setDragOverMinutes(null);
+		setDraggingId(null);
 		if (!columnRef.current) return;
 		const raw = e.dataTransfer.getData("text/plain");
 		if (!raw) return;
@@ -259,6 +375,10 @@ export default function ScheduleBoardDayColumn({
 			arrival_time?: string | null;
 			arrival_window_start?: string | null;
 			arrival_window_end?: string | null;
+			finish_constraint?: string;
+			finish_time?: string | null;
+			isRecurring?: boolean;
+			entityName?: string;
 		};
 
 		const rect = columnRef.current.getBoundingClientRect();
@@ -269,32 +389,59 @@ export default function ScheduleBoardDayColumn({
 		const newStart = new Date(year, month - 1, day, DAY_START + Math.floor(clampedMins / 60), clampedMins % 60, 0, 0);
 
 		// ── No-op check: dropped in same position as origin ───────────────────
-		const origDate = new Date(parsed.startMs);
-		const origDateStr = `${origDate.getFullYear()}-${String(origDate.getMonth() + 1).padStart(2, "0")}-${String(origDate.getDate()).padStart(2, "0")}`;
+		const origDate    = new Date(parsed.startMs);
+		const origDateStr = toDateStr(origDate);
 		const origMinsFromDayStart = (origDate.getHours() - DAY_START) * 60 + origDate.getMinutes();
 		const origSnappedMins = snapTo15Min(origMinsFromDayStart);
 		if (dateStr === origDateStr && clampedMins === origSnappedMins) return;
 
-		// ── Occurrence drag: direct reschedule, no popup ──────────────────────
+		const newEnd = new Date(newStart.getTime() + parsed.durationMs);
+
+		// Constraint-aware labels: use arrival/finish constraint fields if present,
+		// falling back to raw scheduled times. "when_done" shows "· WD" instead of
+		// a fabricated end time derived from card height.
+		const finishConstraint = parsed.finish_constraint ?? "when_done";
+		const oldTimeLabel = visitConstraintTimeLabel({
+			arrival_constraint: parsed.arrival_constraint ?? "anytime",
+			arrival_time: parsed.arrival_time,
+			arrival_window_start: parsed.arrival_window_start,
+			arrival_window_end: parsed.arrival_window_end,
+			finish_constraint: finishConstraint,
+			finish_time: parsed.finish_time,
+			scheduled_start_at: origDate,
+			scheduled_end_at: new Date(parsed.startMs + parsed.durationMs),
+		});
+		const newTimeLabel =
+			finishConstraint === "when_done"
+				? `${fmtTime(newStart)} · WD`
+				: `${fmtTime(newStart)} – ${fmtTime(newEnd)}`;
+
+		// ── Occurrence drag ───────────────────────────────────────────────────
 		if (parsed.type === "occurrence") {
-			const newEnd = new Date(newStart.getTime() + parsed.durationMs);
-			onDropHandled?.();
-			try {
-				await rescheduleOccurrence({
-					occurrenceId: parsed.occurrenceId!,
-					jobId: parsed.jobId!,
-					input: { new_start_at: newStart.toISOString(), new_end_at: newEnd.toISOString() },
-				});
-				onRescheduleConfirmed?.();
-			} catch {
-				// revert via query invalidation
-			}
+			const droppedOcc = sharedDraggedOccurrence ?? occurrences.find((o) => o.id === parsed.occurrenceId);
+			sharedDraggedOccurrence = null;
+			setPendingDrop({
+				type: "occurrence",
+				id: parsed.occurrenceId!,
+				jobId: parsed.jobId!,
+				isRecurring: true, // occurrences always belong to a recurring plan
+				entityName: parsed.entityName ?? "Occurrence",
+				oldTimeLabel,
+				newTimeLabel,
+				priorityColor: getPriorityColor(droppedOcc?.job_obj?.priority),
+				occurrenceObj: droppedOcc ?? undefined,
+				occurrenceInput: {
+					new_start_at: newStart.toISOString(),
+					new_end_at: newEnd.toISOString(),
+				},
+				clientX: e.clientX,
+				clientY: e.clientY,
+			});
 			return;
 		}
 
 		// ── Visit drag ────────────────────────────────────────────────────────
-		const { visitId, durationMs, arrival_constraint, arrival_time, arrival_window_start, arrival_window_end } = parsed;
-		const newEnd  = new Date(newStart.getTime() + durationMs);
+		const { visitId, arrival_constraint, arrival_time, arrival_window_start, arrival_window_end } = parsed;
 		const newHHMM = minsToHHMM(clampedMins);
 
 		const data: UpdateJobVisitInput = {
@@ -306,7 +453,6 @@ export default function ScheduleBoardDayColumn({
 		if (arrival_constraint === "at") {
 			data.arrival_time = newHHMM;
 		} else if (arrival_constraint === "between") {
-			// Shift the whole window, preserving its duration
 			const origStartMins = hhmmToMins(arrival_window_start);
 			const origEndMins   = hhmmToMins(arrival_window_end);
 			const windowDur     = origStartMins !== null && origEndMins !== null
@@ -317,7 +463,6 @@ export default function ScheduleBoardDayColumn({
 		} else if (arrival_constraint === "by") {
 			data.arrival_window_end = newHHMM;
 		}
-		// "anytime" dropped onto time grid → convert to timed "at" constraint
 		if (arrival_constraint === "anytime") {
 			data.arrival_constraint = "at";
 			data.arrival_time = newHHMM;
@@ -325,16 +470,79 @@ export default function ScheduleBoardDayColumn({
 			data.finish_time = null;
 		}
 
-		onDropHandled?.();
-		try {
-			await updateVisit({ id: visitId!, data });
-			onRescheduleConfirmed?.();
-		} catch {
-			// mutation failure — data reverts via query invalidation
-		}
+		const droppedVisit = sharedDraggedVisit ?? uniqueVisits.find((v) => v.id === visitId);
+		sharedDraggedVisit = null;
+		setPendingDrop({
+			type: "visit",
+			id: visitId!,
+			jobId: parsed.jobId!,
+			isRecurring: parsed.isRecurring ?? false,
+			entityName: parsed.entityName ?? "Visit",
+			oldTimeLabel,
+			newTimeLabel,
+			priorityColor: getPriorityColor(droppedVisit?.job_obj?.priority),
+			visitObj: droppedVisit ?? undefined,
+			updateData: data,
+			clientX: e.clientX,
+			clientY: e.clientY,
+		});
 	}
 
-	// ── Occurrence generate-visit handler ────────────────────────────────────
+	// ── Drag-triggered reschedule handlers ───────────────────────────────────
+
+	async function handleDragRescheduleVisitSave(data: UpdateJobVisitInput) {
+		if (!pendingDrop) return;
+		onDropHandled?.();
+		try {
+			await updateVisit({ id: pendingDrop.id, data });
+			onRescheduleConfirmed?.();
+		} catch {
+			// reverts via query invalidation
+		}
+		setPendingDrop(null);
+	}
+
+	async function handleDragRescheduleOccurrenceSave(
+		input: RescheduleOccurrenceInput & { scope: "this" | "future" },
+	) {
+		if (!pendingDrop) return;
+		onDropHandled?.();
+		try {
+			await rescheduleOccurrence({
+				occurrenceId: pendingDrop.id,
+				jobId: pendingDrop.jobId,
+				input,
+			});
+			onRescheduleConfirmed?.();
+		} catch {
+			// reverts via query invalidation
+		}
+		setPendingDrop(null);
+	}
+
+	async function handleDragRescheduleOccurrenceGenerate(
+		input: Omit<RescheduleOccurrenceInput, "scope">,
+	) {
+		if (!pendingDrop?.occurrenceObj) return;
+		const occ = pendingDrop.occurrenceObj;
+		onDropHandled?.();
+		setGeneratingVisitId(pendingDrop.id);
+		try {
+			await rescheduleOccurrence({
+				occurrenceId: occ.id,
+				jobId: occ.job_obj.id,
+				input: { ...input, scope: "this" },
+			});
+			await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
+			onRescheduleConfirmed?.();
+		} catch {
+			// reverts via query invalidation
+		}
+		setGeneratingVisitId(null);
+		setPendingDrop(null);
+	}
+
+	// ── Occurrence generate-visit handler ─────────────────────────────────────
 
 	async function handleGenerateVisitFromOccurrence(occ: OccurrenceWithPlan) {
 		setGeneratingVisitId(occ.id);
@@ -350,7 +558,66 @@ export default function ScheduleBoardDayColumn({
 		setGeneratingVisitId(null);
 	}
 
-	// ── Popup ─────────────────────────────────────────────────────────────────
+	// ── Clock-button reschedule handlers ─────────────────────────────────────
+
+	function handleVisitRescheduleClick() {
+		const visit = clickedVisit;
+		if (!visit || !clickedCardRect) return;
+		setClickedCardId(null);
+		setPendingClickReschedule({ type: "visit", visit, anchorRect: clickedCardRect });
+	}
+
+	function handleOccurrenceRescheduleClick() {
+		const occ = clickedOccurrence;
+		if (!occ || !clickedOccurrenceRect) return;
+		setClickedOccurrenceId(null);
+		setPendingClickReschedule({ type: "occurrence", occurrence: occ, anchorRect: clickedOccurrenceRect });
+	}
+
+	async function handleClickRescheduleVisitSave(data: UpdateJobVisitInput) {
+		if (!pendingClickReschedule?.visit) return;
+		try {
+			await updateVisit({ id: pendingClickReschedule.visit.id, data });
+		} catch {
+			// reverts via query invalidation
+		}
+		setPendingClickReschedule(null);
+	}
+
+	async function handleClickRescheduleOccurrenceSave(input: RescheduleOccurrenceInput & { scope: "this" | "future" }) {
+		if (!pendingClickReschedule?.occurrence) return;
+		const occ = pendingClickReschedule.occurrence;
+		try {
+			await rescheduleOccurrence({
+				occurrenceId: occ.id,
+				jobId: occ.job_obj.id,
+				input,
+			});
+		} catch {
+			// reverts via query invalidation
+		}
+		setPendingClickReschedule(null);
+	}
+
+	async function handleClickRescheduleOccurrenceGenerate(input: Omit<RescheduleOccurrenceInput, "scope">) {
+		if (!pendingClickReschedule?.occurrence) return;
+		const occ = pendingClickReschedule.occurrence;
+		setGeneratingVisitId(occ.id);
+		try {
+			await rescheduleOccurrence({
+				occurrenceId: occ.id,
+				jobId: occ.job_obj.id,
+				input: { ...input, scope: "this" },
+			});
+			await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
+		} catch {
+			// reverts via query invalidation
+		}
+		setGeneratingVisitId(null);
+		setPendingClickReschedule(null);
+	}
+
+	// ── Popup derivations ─────────────────────────────────────────────────────
 
 	const clickedVisit = clickedCardId
 		? uniqueVisits.find((v) => v.id === clickedCardId) ?? null
@@ -360,7 +627,7 @@ export default function ScheduleBoardDayColumn({
 		? occurrences.find((o) => o.id === clickedOccurrenceId) ?? null
 		: null;
 
-	// Popup goes right for columns 0–3, left for columns 4–6 (avoids right-edge overflow)
+	// Popup goes right for columns 0–3, left for columns 4–6
 	const popupOnLeft = dayIndex >= 4;
 
 	const dropIndicatorTop =
@@ -369,184 +636,465 @@ export default function ScheduleBoardDayColumn({
 			: null;
 
 	return (
-		<div
-			ref={columnRef}
-			style={{
-				position: "relative",
-				height: columnHeight,
-				backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent",
-				borderLeft: "1px solid #3f3f46",
-				borderBottom: "1px solid #3f3f46",
-				overflow: "visible",
-			}}
-			onDragOver={handleDragOver}
-			onDragLeave={handleDragLeave}
-			onDrop={handleDrop}
-		>
-			{/* Hour grid lines */}
-			{Array.from({ length: totalSlots }, (_, i) => (
-				<div
-					key={i}
-					style={{
-						position: "absolute",
-						top: i * SLOT_H,
-						left: 0,
-						right: 0,
-						height: 1,
-						backgroundColor: "#3f3f46",
-					}}
-				/>
-			))}
-
-			{/* Half-hour grid lines */}
-			{Array.from({ length: totalSlots }, (_, i) => (
-				<div
-					key={`half-${i}`}
-					style={{
-						position: "absolute",
-						top: i * SLOT_H + halfSlotH,
-						left: 0,
-						right: 0,
-						height: 1,
-						backgroundColor: "#27272a",
-					}}
-				/>
-			))}
-
-			{/* Drop indicator */}
-			{dropIndicatorTop !== null && (
-				<>
+		<>
+			<div
+				ref={columnRef}
+				style={{
+					position: "relative",
+					height: columnHeight,
+					backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent",
+					borderLeft: "1px solid #3f3f46",
+					borderBottom: "1px solid #3f3f46",
+					overflow: "visible",
+				}}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={handleDrop}
+			>
+				{/* Hour grid lines */}
+				{Array.from({ length: totalSlots }, (_, i) => (
 					<div
+						key={i}
 						style={{
 							position: "absolute",
-							top: dropIndicatorTop,
-							left: LEFT_PAD,
-							right: RIGHT_PAD,
-							height: 2,
-							backgroundColor: "#3b82f6",
-							borderRadius: 1,
+							top: i * SLOT_H,
+							left: 0,
+							right: 0,
+							height: 1,
+							backgroundColor: "#3f3f46",
+						}}
+					/>
+				))}
+
+				{/* Half-hour grid lines */}
+				{Array.from({ length: totalSlots }, (_, i) => (
+					<div
+						key={`half-${i}`}
+						style={{
+							position: "absolute",
+							top: i * SLOT_H + halfSlotH,
+							left: 0,
+							right: 0,
+							height: 1,
+							backgroundColor: "#27272a",
+						}}
+					/>
+				))}
+
+				{/* Drop indicator */}
+				{dropIndicatorTop !== null && (
+					<>
+						<div
+							style={{
+								position: "absolute",
+								top: dropIndicatorTop,
+								left: LEFT_PAD,
+								right: RIGHT_PAD,
+								height: 2,
+								backgroundColor: "#3b82f6",
+								borderRadius: 1,
+								zIndex: 50,
+								pointerEvents: "none",
+							}}
+						/>
+						<span
+							style={{
+								position: "absolute",
+								top: dropIndicatorTop - 9,
+								left: LEFT_PAD,
+								fontSize: 8,
+								fontWeight: 700,
+								color: "#60a5fa",
+								lineHeight: 1,
+								pointerEvents: "none",
+								zIndex: 51,
+							}}
+						>
+							{minutesToLabel(dragOverMinutes!)}
+						</span>
+					</>
+				)}
+
+				{/* Visit cards */}
+				{showVisits && uniqueVisits.map((visit) => {
+					const { left, width } = visitPositions.get(visit.id) ?? { left: LEFT_PAD, width: colWidth - LEFT_PAD - RIGHT_PAD };
+					const isHovered = hoveredCardId === visit.id;
+					const openEnded = visit.finish_constraint === "when_done";
+					const top    = calcCardTop(visit);
+					const height = calcCardHeight(visit, openEnded);
+					const zIndex = isHovered ? 30 : 1;
+
+					const assignedTechs: AssignedTech[] = (visit.visit_techs ?? []).map((vt) => ({
+						id: vt.tech_id,
+						name: technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id,
+						color: techColorMap.get(vt.tech_id) ?? "#6b7280",
+						inFilter: isAllSelected || selectedTechs.has(vt.tech_id),
+					}));
+
+					return (
+						<ScheduleBoardCard
+							key={visit.id}
+							visitName={visit.job_obj?.name ?? "Visit"}
+							startLabel={visitStartLabel(visit)}
+							endLabel={openEnded ? null : visitEndLabel(visit)}
+							openEnded={openEnded}
+							priorityColor={getPriorityColor(visit.job_obj?.priority)}
+							assignedTechs={assignedTechs}
+							isHovered={isHovered}
+							opacity={
+								pendingDrop?.id === visit.id ? 0
+								: draggingId === visit.id ? 0.35
+								: 1
+							}
+							top={top}
+							height={height}
+							left={left}
+							width={width}
+							zIndex={zIndex}
+							onClick={(e) => {
+								setClickedOccurrenceId(null);
+								setClickedOccurrenceRect(null);
+								const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+								const next = clickedCardId === visit.id ? null : visit.id;
+								setClickedCardId(next);
+								setClickedCardRect(next ? rect : null);
+							}}
+							onMouseEnter={() => setHoveredCardId(visit.id)}
+							onMouseLeave={(e) => {
+								const related = e.relatedTarget as Node | null;
+								const card = e.currentTarget as HTMLElement;
+								if (!related || !card.contains(related)) setHoveredCardId(null);
+							}}
+							onDragStart={(e) => handleDragStart(e, visit)}
+						/>
+					);
+				})}
+
+				{/* Occurrence cards */}
+				{showOccurrences && occurrences.map((occ) => {
+					const top         = calcTopFromDatetime(occ.occurrence_start_at);
+					const occOpenEnded = occ.finish_constraint === "when_done";
+					const height = (() => {
+						if (occOpenEnded) return Math.min(2 * SLOT_H, columnHeight - top);
+						const s = new Date(occ.occurrence_start_at);
+						const e = new Date(occ.occurrence_end_at);
+						const durationHours = (e.getHours() + e.getMinutes() / 60) - (s.getHours() + s.getMinutes() / 60);
+						const maxHours = (columnHeight - top) / SLOT_H;
+						return Math.max(SLOT_H / 2, Math.min(durationHours, maxHours) * SLOT_H);
+					})();
+					const { left: occLeft, width: occWidth } = occPositions.get(occ.id) ?? { left: LEFT_PAD, width: colWidth - LEFT_PAD - RIGHT_PAD };
+					const isHov    = hoveredOccurrenceId === occ.id;
+					const isClicked = clickedOccurrenceId === occ.id;
+					const isGenerating = generatingVisitId === occ.id;
+
+					const startD = new Date(occ.occurrence_start_at);
+					const endD   = new Date(occ.occurrence_end_at);
+					const timeLabel = startD.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+						+ " – " + (occ.finish_constraint === "when_done"
+							? "When Done"
+							: endD.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+
+					const showOccTime      = height >= 40;
+					const showOccRecurring = height >= 56;
+					const occContentH      = height - 8;
+					const optionalH        = (showOccTime ? 11 + 2 : 0) + (showOccRecurring ? 8 + 2 : 0);
+					const occTitleLines    = Math.max(1, Math.floor((occContentH - optionalH) / 12));
+
+					return (
+						<div
+							key={`occ-${occ.id}`}
+							draggable
+							onDragStart={(e) => handleOccurrenceDragStart(e, occ)}
+							onClick={(e) => {
+								setClickedCardId(null);
+								setClickedCardRect(null);
+								const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+								const next = isClicked ? null : occ.id;
+								setClickedOccurrenceId(next);
+								setClickedOccurrenceRect(next ? rect : null);
+							}}
+							onMouseEnter={() => setHoveredOccurrenceId(occ.id)}
+							onMouseLeave={() => setHoveredOccurrenceId(null)}
+							style={{
+								position: "absolute",
+								top,
+								left: occLeft,
+								width: occWidth,
+								height,
+								zIndex: isHov ? 30 : 1,
+								backgroundColor: "#252838",
+								borderRadius: 4,
+								overflow: "hidden",
+								boxSizing: "border-box",
+								cursor: isGenerating ? "default" : "grab",
+								display: "flex",
+								opacity: pendingDrop?.id === occ.id ? 0
+									: draggingId === occ.id ? 0.35
+									: isGenerating ? 0.5
+									: 1,
+								pointerEvents: pendingDrop?.id === occ.id ? "none" : "auto",
+								transition: "box-shadow 0.15s ease-out, transform 0.15s ease-out, opacity 0.1s ease-out",
+								boxShadow: isHov
+									? "0 0 0 1px rgba(167,139,250,0.2), 0 4px 16px rgba(0,0,0,0.5)"
+									: "0 1px 3px rgba(0,0,0,0.3)",
+								transform: isHov ? "translateY(-1px)" : "none",
+							}}
+						>
+							{/* Priority strip */}
+							<div style={{ width: 4, flexShrink: 0, backgroundColor: getPriorityColor(occ.job_obj?.priority) }} />
+
+							{/* Body */}
+							{height >= 20 && (
+								<div style={{
+									flex: 1,
+									minWidth: 0,
+									padding: occOpenEnded ? "4px 5px 10px 5px" : "4px 5px",
+									display: "flex",
+									flexDirection: "column",
+									gap: 2,
+									overflow: "hidden",
+								}}>
+									<span style={{
+										fontSize: 10,
+										fontWeight: 600,
+										color: "#c4b5fd",
+										fontStyle: "italic",
+										lineHeight: 1.2,
+										overflow: "hidden",
+										display: "-webkit-box",
+										WebkitBoxOrient: "vertical",
+										WebkitLineClamp: occTitleLines,
+									} as React.CSSProperties}>
+										{occ.job_obj?.name}
+									</span>
+									{showOccTime && (
+										<span style={{
+											fontSize: 9,
+											color: "rgba(196,181,253,0.55)",
+											lineHeight: 1.2,
+											whiteSpace: "nowrap",
+											overflow: "hidden",
+											textOverflow: "ellipsis",
+										}}>
+											{timeLabel}
+										</span>
+									)}
+									{showOccRecurring && (
+										<span style={{
+											fontSize: 8,
+											fontWeight: 600,
+											color: "rgba(167,139,250,0.5)",
+											textTransform: "uppercase",
+											letterSpacing: "0.06em",
+											lineHeight: 1,
+										}}>
+											Recurring
+										</span>
+									)}
+								</div>
+							)}
+
+							{/* Open-ended indicator — fade + dashed bottom edge */}
+							{occOpenEnded && (
+								<>
+									<div style={{
+										position: "absolute",
+										bottom: 0, left: 0, right: 0,
+										height: 20,
+										background: "linear-gradient(to bottom, transparent, rgba(0,0,0,0.32))",
+										pointerEvents: "none",
+									}} />
+									<div style={{
+										position: "absolute",
+										bottom: 0, left: 0, right: 0,
+										height: 3,
+										boxSizing: "border-box",
+										borderBottom: "3px dashed rgba(255,255,255,0.38)",
+										pointerEvents: "none",
+									}} />
+								</>
+							)}
+						</div>
+					);
+				})}
+
+				{/* Visit click popup */}
+				{clickedVisit && (
+					<VisitClickPopup
+						visit={clickedVisit}
+						popupRef={popupRef}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						style={{
+							position: "absolute",
+							top: Math.min(calcCardTop(clickedVisit), columnHeight - 240),
+							...(popupOnLeft
+								? { right: colWidth + 4 }
+								: { left: colWidth + 4 }),
+						}}
+						onClose={() => setClickedCardId(null)}
+						onViewVisit={() => navigate(`/dispatch/jobs/${clickedVisit.job_obj.id}/visits/${clickedVisit.id}`)}
+						onViewJob={() => navigate(`/dispatch/jobs/${clickedVisit.job_obj.id}`)}
+						onRescheduleClick={handleVisitRescheduleClick}
+					/>
+				)}
+
+				{/* Occurrence click popup */}
+				{clickedOccurrence && (
+					<OccurrenceClickPopup
+						occurrence={clickedOccurrence}
+						popupRef={occurrencePopupRef}
+						isGenerating={generatingVisitId === clickedOccurrence.id}
+						style={{
+							position: "absolute",
+							top: Math.min(calcTopFromDatetime(clickedOccurrence.occurrence_start_at), columnHeight - 260),
+							...(popupOnLeft
+								? { right: colWidth + 4 }
+								: { left: colWidth + 4 }),
+						}}
+						onClose={() => setClickedOccurrenceId(null)}
+						onViewPlan={() => navigate(`/dispatch/recurring-plans/${clickedOccurrence.plan.id}`)}
+						onGenerate={() => handleGenerateVisitFromOccurrence(clickedOccurrence)}
+						onRescheduleClick={handleOccurrenceRescheduleClick}
+					/>
+				)}
+
+				{/* Above-fold overflow pill */}
+				{aboveCount > 0 && visibleHeight > 0 && (
+					<button
+						onClick={() => onScrollToY(topmostAboveTop - 8)}
+						style={{
+							position: "absolute",
+							left: "50%",
+							transform: "translateX(-50%)",
+							top: scrollTop + 4,
 							zIndex: 50,
-							pointerEvents: "none",
-						}}
-					/>
-					<span
-						style={{
-							position: "absolute",
-							top: dropIndicatorTop - 9,
-							left: LEFT_PAD,
-							fontSize: 8,
-							fontWeight: 700,
-							color: "#60a5fa",
-							lineHeight: 1,
-							pointerEvents: "none",
-							zIndex: 51,
-						}}
-					>
-						{minutesToLabel(dragOverMinutes!)}
-					</span>
-				</>
-			)}
-
-			{/* Visit cards — one per unique visit, time-collision cascade */}
-			{showVisits && slots.map(({ visit, left, width }) => {
-				const isHovered = hoveredCardId === visit.id;
-				const openEnded = visit.finish_constraint === "when_done";
-				const top    = calcCardTop(visit);
-				const height = calcCardHeight(visit, openEnded);
-				const zIndex = isHovered ? 30 : 1;
-
-				const assignedTechs: AssignedTech[] = (visit.visit_techs ?? []).map((vt) => ({
-					id: vt.tech_id,
-					name: technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id,
-					color: techColorMap.get(vt.tech_id) ?? "#6b7280",
-					inFilter: isAllSelected || selectedTechs.has(vt.tech_id),
-				}));
-
-				return (
-					<ScheduleBoardCard
-						key={visit.id}
-						visitName={visit.job_obj?.name ?? "Visit"}
-						startLabel={visitStartLabel(visit)}
-						endLabel={openEnded ? null : visitEndLabel(visit)}
-						openEnded={openEnded}
-						priorityColor={getPriorityColor(visit.job_obj?.priority)}
-						assignedTechs={assignedTechs}
-						isHovered={isHovered}
-						top={top}
-						height={height}
-						left={left}
-						width={width}
-						zIndex={zIndex}
-						onClick={() => {
-							setClickedOccurrenceId(null);
-							setClickedCardId(clickedCardId === visit.id ? null : visit.id);
-						}}
-						onMouseEnter={() => setHoveredCardId(visit.id)}
-						onMouseLeave={(e) => {
-							const related = e.relatedTarget as Node | null;
-							const card = e.currentTarget as HTMLElement;
-							if (!related || !card.contains(related)) setHoveredCardId(null);
-						}}
-						onDragStart={(e) => handleDragStart(e, visit)}
-					/>
-				);
-			})}
-
-			{/* Occurrence cards */}
-			{showOccurrences && occurrences.map((occ) => {
-				const top      = calcTopFromDatetime(occ.occurrence_start_at);
-				const height   = Math.min(2 * SLOT_H, columnHeight - top);
-				const occWidth = colWidth - LEFT_PAD - RIGHT_PAD;
-				const isHov    = hoveredOccurrenceId === occ.id;
-				const isClicked = clickedOccurrenceId === occ.id;
-				const isGenerating = generatingVisitId === occ.id;
-
-				const startD = new Date(occ.occurrence_start_at);
-				const endD   = new Date(occ.occurrence_end_at);
-				const timeLabel = startD.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-					+ " – " + endD.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-
-				return (
-					<div
-						key={`occ-${occ.id}`}
-						draggable
-						onDragStart={(e) => handleOccurrenceDragStart(e, occ)}
-						onClick={() => {
-							setClickedCardId(null);
-							setClickedOccurrenceId(isClicked ? null : occ.id);
-						}}
-						onMouseEnter={() => setHoveredOccurrenceId(occ.id)}
-						onMouseLeave={() => setHoveredOccurrenceId(null)}
-						style={{
-							position: "absolute",
-							top,
-							left: LEFT_PAD,
-							width: occWidth,
-							height,
-							zIndex: isHov ? 30 : 1,
-							backgroundColor: "#252838",
-							borderRadius: 4,
-							overflow: "hidden",
-							boxSizing: "border-box",
-							cursor: isGenerating ? "default" : "grab",
 							display: "flex",
-							opacity: isGenerating ? 0.5 : 1,
-							transition: "box-shadow 0.15s ease-out, transform 0.15s ease-out",
-							boxShadow: isHov
-								? "0 0 0 1px rgba(167,139,250,0.2), 0 4px 16px rgba(0,0,0,0.5)"
-								: "0 1px 3px rgba(0,0,0,0.3)",
-							transform: isHov ? "translateY(-1px)" : "none",
+							alignItems: "center",
+							gap: 3,
+							height: 20,
+							padding: "0 7px",
+							background: "#1c1c1f",
+							border: "1px solid #3f3f46",
+							borderRadius: 999,
+							fontSize: 10,
+							fontWeight: 600,
+							color: "#a1a1aa",
+							cursor: "pointer",
+							whiteSpace: "nowrap",
+							boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
+							fontFamily: "inherit",
 						}}
 					>
-						{/* Priority strip */}
-						<div style={{ width: 4, flexShrink: 0, backgroundColor: getPriorityColor(occ.job_obj?.priority) }} />
+						<ChevronUp size={10} strokeWidth={2.5} />
+						{aboveCount}
+					</button>
+				)}
 
-						{/* Body */}
-						{height >= 20 && (
+				{/* Below-fold overflow pill */}
+				{belowCount > 0 && visibleHeight > 0 && (
+					<button
+						onClick={() => onScrollToY(bottommostBelowTop - 8)}
+						style={{
+							position: "absolute",
+							left: "50%",
+							transform: "translateX(-50%)",
+							top: scrollTop + visibleHeight - 28,
+							zIndex: 50,
+							display: "flex",
+							alignItems: "center",
+							gap: 3,
+							height: 20,
+							padding: "0 7px",
+							background: "#1c1c1f",
+							border: "1px solid #3f3f46",
+							borderRadius: 999,
+							fontSize: 10,
+							fontWeight: 600,
+							color: "#a1a1aa",
+							cursor: "pointer",
+							whiteSpace: "nowrap",
+							boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
+							fontFamily: "inherit",
+						}}
+					>
+						<ChevronDown size={10} strokeWidth={2.5} />
+						{belowCount}
+					</button>
+				)}
+
+				{/* Ghost card at drop target position */}
+				{pendingDrop && (() => {
+					const ghostStart = pendingDrop.type === "visit"
+						? pendingDrop.updateData?.scheduled_start_at
+						: pendingDrop.occurrenceInput?.new_start_at;
+					const ghostEnd = pendingDrop.type === "visit"
+						? pendingDrop.updateData?.scheduled_end_at
+						: pendingDrop.occurrenceInput?.new_end_at;
+					if (!ghostStart) return null;
+
+					const ghostTop = calcTopFromDatetime(ghostStart);
+
+					// Match the sizing logic of the actual rendered cards exactly.
+					let ghostHeight: number;
+					if (pendingDrop.type === "visit" && pendingDrop.visitObj) {
+						const ud = pendingDrop.updateData!;
+						const vObj = pendingDrop.visitObj;
+						const ghostVisit = {
+							...vObj,
+							scheduled_start_at: ghostStart,
+							scheduled_end_at:   ghostEnd ?? vObj.scheduled_end_at,
+							arrival_constraint: ud.arrival_constraint  ?? vObj.arrival_constraint,
+							arrival_time:       ud.arrival_time !== undefined ? ud.arrival_time : vObj.arrival_time,
+							arrival_window_start: ud.arrival_window_start !== undefined ? ud.arrival_window_start : vObj.arrival_window_start,
+							arrival_window_end:   ud.arrival_window_end   !== undefined ? ud.arrival_window_end   : vObj.arrival_window_end,
+							finish_constraint:  ud.finish_constraint ?? vObj.finish_constraint,
+						};
+						const openEnded = ghostVisit.finish_constraint === "when_done";
+						ghostHeight = calcCardHeight(ghostVisit, openEnded);
+					} else {
+						// Occurrences: cap at 2 hours, same as the real occurrence card rendering
+						ghostHeight = Math.min(2 * SLOT_H, columnHeight - ghostTop);
+					}
+
+					const origSlot = combinedSlots.find((s) => s.visit.id === pendingDrop.id);
+					const ghostLeft = origSlot?.left ?? LEFT_PAD;
+					const ghostWidth = origSlot?.width ?? (colWidth - LEFT_PAD - RIGHT_PAD);
+
+					return (
+						<div
+							key="ghost-drop"
+							style={{
+								position: "absolute",
+								top: ghostTop,
+								left: pendingDrop.type === "occurrence" ? LEFT_PAD : ghostLeft,
+								width: pendingDrop.type === "occurrence" ? colWidth - LEFT_PAD - RIGHT_PAD : ghostWidth,
+								height: ghostHeight,
+								opacity: 0.5,
+								border: "1px dashed #3b82f6",
+								borderRadius: 4,
+								backgroundColor: pendingDrop.type === "occurrence" ? "#252838" : "#1e2433",
+								boxShadow: "inset 0 0 0 999px rgba(59,130,246,0.08)",
+								zIndex: 25,
+								pointerEvents: "none",
+								display: "flex",
+								alignItems: "stretch",
+								overflow: "hidden",
+								boxSizing: "border-box",
+							}}
+						>
+							{/* Priority strip */}
+							<div style={{
+								width: 4,
+								flexShrink: 0,
+								backgroundColor: pendingDrop.priorityColor,
+								opacity: 0.7,
+							}} />
+							{/* Name + time */}
 							<div style={{
 								flex: 1,
 								minWidth: 0,
-								padding: "4px 5px",
+								padding: "4px 6px",
 								display: "flex",
 								flexDirection: "column",
 								gap: 2,
@@ -555,321 +1103,169 @@ export default function ScheduleBoardDayColumn({
 								<span style={{
 									fontSize: 10,
 									fontWeight: 600,
-									color: "#c4b5fd",
-									fontStyle: "italic",
-									lineHeight: 1.2,
+									color: pendingDrop.type === "occurrence" ? "#c4b5fd" : "#e4e4e7",
+									fontStyle: pendingDrop.type === "occurrence" ? "italic" : "normal",
 									overflow: "hidden",
 									whiteSpace: "nowrap",
 									textOverflow: "ellipsis",
+									lineHeight: 1.2,
 								}}>
-									{occ.job_obj?.name}
+									{pendingDrop.entityName}
 								</span>
-								{height >= 40 && (
+								{ghostHeight >= 34 && (
 									<span style={{
 										fontSize: 9,
-										color: "rgba(196,181,253,0.55)",
+										color: "#60a5fa",
 										lineHeight: 1.2,
 										whiteSpace: "nowrap",
 									}}>
-										{timeLabel}
-									</span>
-								)}
-								{height >= 56 && (
-									<span style={{
-										fontSize: 8,
-										fontWeight: 600,
-										color: "rgba(167,139,250,0.5)",
-										textTransform: "uppercase",
-										letterSpacing: "0.06em",
-										lineHeight: 1,
-									}}>
-										Recurring
+										{pendingDrop.newTimeLabel}
 									</span>
 								)}
 							</div>
-						)}
-					</div>
+						</div>
+					);
+				})()}
+			</div>
+
+			{/* ── Fixed-position overlays (escape column bounds) ────────────────── */}
+
+			{/* Drag-triggered visit reschedule */}
+			{pendingDrop?.type === "visit" && pendingDrop.visitObj && (() => {
+				const vObj = pendingDrop.visitObj!;
+				const ud = pendingDrop.updateData!;
+				const syntheticVisit: VisitWithJob = {
+					...vObj,
+					scheduled_start_at: ud.scheduled_start_at ?? vObj.scheduled_start_at,
+					scheduled_end_at:   ud.scheduled_end_at   ?? vObj.scheduled_end_at,
+					arrival_constraint: ud.arrival_constraint  ?? vObj.arrival_constraint,
+					arrival_time:       ud.arrival_time !== undefined ? ud.arrival_time : vObj.arrival_time,
+					arrival_window_start: ud.arrival_window_start !== undefined ? ud.arrival_window_start : vObj.arrival_window_start,
+					arrival_window_end:   ud.arrival_window_end   !== undefined ? ud.arrival_window_end   : vObj.arrival_window_end,
+					finish_constraint:  ud.finish_constraint ?? vObj.finish_constraint,
+					finish_time:        ud.finish_time !== undefined ? ud.finish_time : vObj.finish_time,
+				};
+				const origDateStr = toDateStr(new Date(vObj.scheduled_start_at));
+				const anchorRect = {
+					top: pendingDrop.clientY - 20, bottom: pendingDrop.clientY + 20,
+					left: pendingDrop.clientX, right: pendingDrop.clientX + 1,
+					width: 1, height: 40, x: pendingDrop.clientX, y: pendingDrop.clientY - 20,
+					toJSON: () => ({}),
+				} as DOMRect;
+				return (
+					<ReschedulePopup
+						visit={syntheticVisit}
+						oldDateStr={origDateStr}
+						newDateStr={dateStr}
+						allVisitsOnNewDay={visits}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						anchorRect={anchorRect}
+						fromLabel={pendingDrop.oldTimeLabel}
+						toLabel={pendingDrop.newTimeLabel}
+						onSave={handleDragRescheduleVisitSave}
+						onUndo={() => setPendingDrop(null)}
+					/>
 				);
-			})}
+			})()}
 
-			{/* Click popup */}
-			{clickedVisit && (
-				<div
-					ref={popupRef}
-					style={{
-						position: "absolute",
-						top: Math.min(calcCardTop(clickedVisit), columnHeight - 240),
-						...(popupOnLeft
-							? { right: colWidth + 4 }
-							: { left: colWidth + 4 }),
-						width: 224,
-						zIndex: 100,
-						backgroundColor: "#18181b",
-						border: "1px solid #3f3f46",
-						borderRadius: 8,
-						boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-						padding: "10px 12px",
-					}}
-				>
-					<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-						<span style={{ fontSize: 12, fontWeight: 700, color: "#f4f4f5", lineHeight: 1.3, flex: 1 }}>
-							{clickedVisit.job_obj?.name}
-						</span>
-						<button
-							onClick={() => setClickedCardId(null)}
-							style={{ fontSize: 16, color: "#52525b", background: "none", border: "none", cursor: "pointer", padding: "0 0 0 6px", lineHeight: 1, transition: "color 0.1s" }}
-							onMouseEnter={(e) => (e.currentTarget.style.color = "#a1a1aa")}
-							onMouseLeave={(e) => (e.currentTarget.style.color = "#52525b")}
-						>
-							×
-						</button>
-					</div>
+			{/* Drag-triggered occurrence reschedule */}
+			{pendingDrop?.type === "occurrence" && pendingDrop.occurrenceObj && (() => {
+				const oObj = pendingDrop.occurrenceObj!;
+				const oi = pendingDrop.occurrenceInput!;
+				const syntheticOcc: OccurrenceWithPlan = (() => {
+					const newStart     = new Date(oi.new_start_at ?? oObj.occurrence_start_at);
+					const newEnd       = new Date(oi.new_end_at   ?? oObj.occurrence_end_at);
+					const newStartMins = newStart.getHours() * 60 + newStart.getMinutes();
+					const newEndMins   = newEnd.getHours()   * 60 + newEnd.getMinutes();
+					const newHHMM      = minsToHHMM(newStartMins);
 
-					<span
-						style={{
-							display: "inline-block",
-							fontSize: 9,
-							fontWeight: 600,
-							padding: "1px 6px",
-							borderRadius: 10,
-							marginBottom: 6,
-							backgroundColor: "rgba(59,130,246,0.15)",
-							color: "#93c5fd",
-							textTransform: "uppercase",
-							letterSpacing: "0.04em",
-						}}
-					>
-						{clickedVisit.status}
-					</span>
+					// Shift arrival constraint fields to the new drop time, preserving window duration.
+					// Mirrors the same logic applied to visit drags above.
+					let arrival_time         = oObj.arrival_time;
+					let arrival_window_start = oObj.arrival_window_start;
+					let arrival_window_end   = oObj.arrival_window_end;
+					let finish_time          = oObj.finish_time;
 
-					<div style={{ fontSize: 10, color: "#d4d4d8", marginBottom: 6 }}>
-						{visitStartLabel(clickedVisit)}
-						{clickedVisit.finish_constraint !== "when_done"
-							? ` – ${visitEndLabel(clickedVisit)}`
-							: " · finish when done"}
-					</div>
+					if (oObj.arrival_constraint === "at") {
+						arrival_time = newHHMM;
+					} else if (oObj.arrival_constraint === "between") {
+						const origStartMins = hhmmToMins(oObj.arrival_window_start);
+						const origEndMins   = hhmmToMins(oObj.arrival_window_end);
+						const windowDur     = origStartMins !== null && origEndMins !== null
+							? origEndMins - origStartMins : 60;
+						arrival_window_start = newHHMM;
+						arrival_window_end   = minsToHHMM(newStartMins + windowDur);
+					} else if (oObj.arrival_constraint === "by") {
+						arrival_window_end = newHHMM;
+					}
 
-					{(clickedVisit.visit_techs?.length ?? 0) > 0 && (
-						<div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-							{clickedVisit.visit_techs!.map((vt) => {
-								const color = techColorMap.get(vt.tech_id) ?? "#6b7280";
-								const name  = technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id;
-								return (
-									<span
-										key={vt.tech_id}
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: 3,
-											fontSize: 9,
-											color: "#e4e4e7",
-											backgroundColor: color + "33",
-											border: `1px solid ${color}55`,
-											borderRadius: 10,
-											padding: "1px 6px",
-										}}
-									>
-										<span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color }} />
-										{name}
-									</span>
-								);
-							})}
-						</div>
-					)}
+					if (oObj.finish_constraint === "at" || oObj.finish_constraint === "by") {
+						finish_time = minsToHHMM(newEndMins);
+					}
 
-					<button
-						onClick={() => navigate(`/dispatch/jobs/${clickedVisit.job_obj.id}/visits/${clickedVisit.id}`)}
-						style={{
-							width: "100%",
-							padding: "6px 0",
-							fontSize: 11,
-							fontWeight: 600,
-							color: "#fff",
-							backgroundColor: "#3b82f6",
-							border: "none",
-							borderRadius: 5,
-							cursor: "pointer",
-							transition: "background-color 0.1s",
-						}}
-						onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
-						onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
-					>
-						View Visit →
-					</button>
-				</div>
+					return {
+						...oObj,
+						occurrence_start_at:  oi.new_start_at ?? oObj.occurrence_start_at,
+						occurrence_end_at:    oi.new_end_at   ?? oObj.occurrence_end_at,
+						arrival_time,
+						arrival_window_start,
+						arrival_window_end,
+						finish_time,
+					};
+				})();
+				const origDateStr = toDateStr(new Date(oObj.occurrence_start_at));
+				const anchorRect = {
+					top: pendingDrop.clientY - 20, bottom: pendingDrop.clientY + 20,
+					left: pendingDrop.clientX, right: pendingDrop.clientX + 1,
+					width: 1, height: 40, x: pendingDrop.clientX, y: pendingDrop.clientY - 20,
+					toJSON: () => ({}),
+				} as DOMRect;
+				return (
+					<OccurrenceReschedulePopup
+						occurrence={syntheticOcc}
+						oldDateStr={origDateStr}
+						newDateStr={dateStr}
+						allOccurrencesOnNewDay={occurrences}
+						anchorRect={anchorRect}
+						fromLabel={pendingDrop.oldTimeLabel}
+						toLabel={pendingDrop.newTimeLabel}
+						onReschedule={handleDragRescheduleOccurrenceSave}
+						onGenerate={handleDragRescheduleOccurrenceGenerate}
+						onCancel={() => setPendingDrop(null)}
+						isGenerating={generatingVisitId === pendingDrop.id}
+					/>
+				);
+			})()}
+
+			{/* Clock-button triggered visit reschedule */}
+			{pendingClickReschedule?.type === "visit" && pendingClickReschedule.visit && (
+				<ReschedulePopup
+					visit={pendingClickReschedule.visit}
+					oldDateStr={dateStr}
+					newDateStr={toDateStr(new Date(pendingClickReschedule.visit.scheduled_start_at))}
+					allVisitsOnNewDay={visits}
+					technicians={technicians}
+					techColorMap={techColorMap}
+					anchorRect={pendingClickReschedule.anchorRect}
+					onSave={handleClickRescheduleVisitSave}
+					onUndo={() => setPendingClickReschedule(null)}
+				/>
 			)}
 
-			{/* Occurrence click popup */}
-			{clickedOccurrence && (
-				<div
-					ref={occurrencePopupRef}
-					style={{
-						position: "absolute",
-						top: Math.min(calcTopFromDatetime(clickedOccurrence.occurrence_start_at), columnHeight - 260),
-						...(popupOnLeft
-							? { right: colWidth + 4 }
-							: { left: colWidth + 4 }),
-						width: 236,
-						zIndex: 100,
-						backgroundColor: "#18181b",
-						border: "1px solid #3f3f46",
-						borderRadius: 8,
-						boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-						padding: "10px 12px",
-					}}
-				>
-					<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-						<div style={{ flex: 1, minWidth: 0 }}>
-							<div style={{ fontSize: 12, fontWeight: 700, color: "#f4f4f5", lineHeight: 1.3, marginBottom: 1 }}>
-								{clickedOccurrence.plan.name}
-							</div>
-							<div style={{
-								fontSize: 10,
-								color: "#a1a1aa",
-								whiteSpace: "nowrap",
-								overflow: "hidden",
-								textOverflow: "ellipsis",
-							}}>
-								{clickedOccurrence.job_obj?.name}
-							</div>
-						</div>
-						<button
-							onClick={() => setClickedOccurrenceId(null)}
-							style={{ fontSize: 16, color: "#52525b", background: "none", border: "none", cursor: "pointer", padding: "0 0 0 6px", lineHeight: 1, transition: "color 0.1s" }}
-							onMouseEnter={(e) => (e.currentTarget.style.color = "#a1a1aa")}
-							onMouseLeave={(e) => (e.currentTarget.style.color = "#52525b")}
-						>
-							×
-						</button>
-					</div>
-
-					<span style={{
-						display: "inline-block",
-						fontSize: 9,
-						fontWeight: 600,
-						padding: "1px 6px",
-						borderRadius: 10,
-						marginBottom: 6,
-						backgroundColor: "rgba(139,92,246,0.15)",
-						color: "#a78bfa",
-						textTransform: "uppercase",
-						letterSpacing: "0.04em",
-					}}>
-						Planned
-					</span>
-
-					<div style={{ fontSize: 10, color: "#d4d4d8", marginBottom: 10 }}>
-						{new Date(clickedOccurrence.occurrence_start_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-						{" – "}
-						{new Date(clickedOccurrence.occurrence_end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-					</div>
-
-					<div style={{ display: "flex", gap: 5 }}>
-						<button
-							onClick={() => navigate(`/dispatch/recurring-plans/${clickedOccurrence.plan.id}`)}
-							style={{
-								flex: 1,
-								padding: "6px 0",
-								fontSize: 11,
-								fontWeight: 600,
-								color: "#a78bfa",
-								backgroundColor: "rgba(139,92,246,0.12)",
-								border: "1px solid rgba(139,92,246,0.25)",
-								borderRadius: 5,
-								cursor: "pointer",
-								transition: "background-color 0.1s",
-							}}
-							onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(139,92,246,0.2)")}
-							onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(139,92,246,0.12)")}
-						>
-							View Plan →
-						</button>
-						<button
-							onClick={() => handleGenerateVisitFromOccurrence(clickedOccurrence)}
-							style={{
-								flex: 1,
-								padding: "6px 0",
-								fontSize: 11,
-								fontWeight: 600,
-								color: "#fff",
-								backgroundColor: "#3b82f6",
-								border: "none",
-								borderRadius: 5,
-								cursor: "pointer",
-								transition: "background-color 0.1s",
-							}}
-							onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
-							onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
-						>
-							Generate Visit
-						</button>
-					</div>
-				</div>
+			{/* Clock-button triggered occurrence reschedule */}
+			{pendingClickReschedule?.type === "occurrence" && pendingClickReschedule.occurrence && (
+				<OccurrenceReschedulePopup
+					occurrence={pendingClickReschedule.occurrence}
+					oldDateStr={dateStr}
+					newDateStr={dateStr}
+					anchorRect={pendingClickReschedule.anchorRect}
+					onReschedule={handleClickRescheduleOccurrenceSave}
+					onGenerate={handleClickRescheduleOccurrenceGenerate}
+					onCancel={() => setPendingClickReschedule(null)}
+					isGenerating={generatingVisitId === pendingClickReschedule.occurrence.id}
+				/>
 			)}
-
-			{/* Above-fold overflow pill */}
-			{aboveCount > 0 && visibleHeight > 0 && (
-				<button
-					onClick={() => onScrollToY(topmostAboveTop - 8)}
-					style={{
-						position: "absolute",
-						left: "50%",
-						transform: "translateX(-50%)",
-						top: scrollTop + 4,
-						zIndex: 50,
-						display: "flex",
-						alignItems: "center",
-						gap: 3,
-						height: 20,
-						padding: "0 7px",
-						background: "#1c1c1f",
-						border: "1px solid #3f3f46",
-						borderRadius: 999,
-						fontSize: 10,
-						fontWeight: 600,
-						color: "#a1a1aa",
-						cursor: "pointer",
-						whiteSpace: "nowrap",
-						boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
-						fontFamily: "inherit",
-					}}
-				>
-					<ChevronUp size={10} strokeWidth={2.5} />
-					{aboveCount}
-				</button>
-			)}
-
-			{/* Below-fold overflow pill */}
-			{belowCount > 0 && visibleHeight > 0 && (
-				<button
-					onClick={() => onScrollToY(bottommostBelowTop - 8)}
-					style={{
-						position: "absolute",
-						left: "50%",
-						transform: "translateX(-50%)",
-						top: scrollTop + visibleHeight - 28,
-						zIndex: 50,
-						display: "flex",
-						alignItems: "center",
-						gap: 3,
-						height: 20,
-						padding: "0 7px",
-						background: "#1c1c1f",
-						border: "1px solid #3f3f46",
-						borderRadius: 999,
-						fontSize: 10,
-						fontWeight: 600,
-						color: "#a1a1aa",
-						cursor: "pointer",
-						whiteSpace: "nowrap",
-						boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
-						fontFamily: "inherit",
-					}}
-				>
-					<ChevronDown size={10} strokeWidth={2.5} />
-					{belowCount}
-				</button>
-			)}
-		</div>
+		</>
 	);
 }

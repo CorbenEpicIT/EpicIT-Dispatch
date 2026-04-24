@@ -24,16 +24,16 @@ import type { Job } from "../../../types/jobs";
 import type { Technician } from "../../../types/technicians";
 import { useUpdateJobVisitMutation } from "../../../hooks/useJobs";
 import { useRescheduleOccurrenceMutation, useGenerateVisitFromOccurrenceMutation } from "../../../hooks/useRecurringPlans";
+import VisitClickPopup from "./VisitClickPopup";
 
 interface ScheduleBoardProps {
 	jobs: Job[];
 	technicians: Technician[];
 }
 
-/** An occurrence whose occurrence_start_at is local midnight — treated as "anytime" (no specific time). */
+/** An occurrence with no specific time requirement — keyed off the arrival_constraint field. */
 function isAnytimeOccurrence(occ: OccurrenceWithPlan): boolean {
-	const d = new Date(occ.occurrence_start_at);
-	return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+	return occ.arrival_constraint === "anytime";
 }
 
 const GUTTER_W  = 64;
@@ -191,8 +191,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 
 	const anytimeOccurrencesByDay = useMemo(() =>
 		allOccs.filter(isAnytimeOccurrence).reduce((acc, occ) => {
-			const d = new Date(occ.occurrence_start_at);
-			const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+			const dateStr = new Date(occ.occurrence_start_at).toISOString().split("T")[0];
 			if (!acc[dateStr]) acc[dateStr] = [];
 			acc[dateStr].push(occ);
 			return acc;
@@ -1185,114 +1184,17 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 			{clickedAnytimeVisit && (() => {
 				const v   = clickedAnytimeVisit.visit;
 				const pos = getAnytimePopupPos(clickedAnytimeVisit.rect);
-				const timeStart = visitStartLabel(v);
 				return (
-					<div
-						ref={anytimePopupRef}
-						style={{
-							position: "fixed",
-							top: pos.top,
-							left: pos.left,
-							width: 224,
-							zIndex: 1000,
-							backgroundColor: "#18181b",
-							border: "1px solid #3f3f46",
-							borderRadius: 8,
-							boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-							padding: "10px 12px",
-							fontFamily: "inherit",
-						}}
-					>
-						{/* Header */}
-						<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-							<span style={{ fontSize: 12, fontWeight: 700, color: "#f4f4f5", lineHeight: 1.3, flex: 1 }}>
-								{v.job_obj?.name}
-							</span>
-							<button
-								aria-label="Close"
-								onClick={() => setClickedAnytimeVisit(null)}
-								style={{ fontSize: 16, color: "#52525b", background: "none", border: "none", cursor: "pointer", padding: "0 0 0 6px", lineHeight: 1, transition: "color 0.1s" }}
-								onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#a1a1aa")}
-								onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#52525b")}
-							>
-								×
-							</button>
-						</div>
-
-						{/* Status badge */}
-						<span style={{
-							display: "inline-block",
-							fontSize: 9,
-							fontWeight: 600,
-							padding: "1px 6px",
-							borderRadius: 10,
-							marginBottom: 6,
-							backgroundColor: "rgba(59,130,246,0.15)",
-							color: "#93c5fd",
-							textTransform: "uppercase",
-							letterSpacing: "0.04em",
-						}}>
-							{v.status}
-						</span>
-
-						{/* Time */}
-						<div style={{ fontSize: 10, color: "#d4d4d8", marginBottom: 6 }}>
-							{timeStart
-								? `${timeStart}${v.finish_constraint !== "when_done" ? ` – ${visitEndLabel(v)}` : " · finish when done"}`
-								: "Anytime"}
-						</div>
-
-						{/* Tech pills */}
-						{(v.visit_techs?.length ?? 0) > 0 && (
-							<div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-								{v.visit_techs!.map((vt) => {
-									const color = techColorMap.get(vt.tech_id) ?? "#6b7280";
-									const name  = technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id;
-									return (
-										<span
-											key={vt.tech_id}
-											style={{
-												display: "inline-flex",
-												alignItems: "center",
-												gap: 3,
-												fontSize: 9,
-												color: "#e4e4e7",
-												backgroundColor: color + "33",
-												border: `1px solid ${color}55`,
-												borderRadius: 10,
-												padding: "1px 6px",
-											}}
-										>
-											<span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color }} />
-											{name}
-										</span>
-									);
-								})}
-							</div>
-						)}
-
-						{/* Navigate button */}
-						<button
-							onClick={() => navigate(`/dispatch/jobs/${v.job_obj.id}/visits/${v.id}`)}
-							style={{
-								width: "100%",
-								padding: "6px 0",
-								fontSize: 11,
-								fontWeight: 600,
-								color: "#fff",
-								backgroundColor: "#3b82f6",
-								border: "none",
-								borderRadius: 5,
-								cursor: "pointer",
-								fontFamily: "inherit",
-								transition: "background-color 0.1s",
-							}}
-							onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "#2563eb")}
-							onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "#3b82f6")}
-						>
-							View Visit →
-						</button>
-					</div>
+					<VisitClickPopup
+						visit={v}
+						style={{ position: "fixed", top: pos.top, left: pos.left }}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						popupRef={anytimePopupRef}
+						onClose={() => setClickedAnytimeVisit(null)}
+						onViewVisit={() => { setClickedAnytimeVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}/visits/${v.id}`); }}
+						onViewJob={() => { setClickedAnytimeVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}`); }}
+					/>
 				);
 			})()}
 	</div>

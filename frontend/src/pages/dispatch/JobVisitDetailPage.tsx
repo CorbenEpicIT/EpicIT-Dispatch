@@ -740,7 +740,7 @@ export default function JobVisitDetailPage() {
 								<button
 									key={invoice.id}
 									onClick={() => navigate(`/dispatch/invoices/${invoice.id}`)}
-									className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-750 transition-all cursor-pointer text-left group w-full"
+									className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group w-full"
 								>
 									<div className="flex items-center justify-between gap-6 mb-2">
 										<span className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors tabular-nums">
@@ -824,7 +824,7 @@ export default function JobVisitDetailPage() {
 						
 								key={vt.tech_id}
 								onClick={() => navigate(`/dispatch/technicians/${vt.tech_id}`)}
-								className="relative bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group w-52 flex-shrink-0"
+								className="relative bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group w-52 flex-shrink-0"
 							>
 								<div className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${vt.tech.status === "Available" ? "bg-green-400" : vt.tech.status === "Busy" ? "bg-red-400" : vt.tech.status === "Offline" ? "bg-zinc-500" : "bg-blue-400"}`} />
 								<div className="flex items-center gap-2 mb-2">

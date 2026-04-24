@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import MonthMiniCard from "./MonthMiniCard";
 import ReschedulePopup from "./ReschedulePopup";
 import OccurrenceReschedulePopup from "./OccurrenceReschedulePopup";
+import VisitClickPopup from "./VisitClickPopup";
+import OccurrenceClickPopup from "./OccurrenceClickPopup";
 import { visitStartLabel, visitEndLabel, getPriorityColor, SCROLL_ZONE_W, SCROLL_DELAY_MS } from "./scheduleBoardUtils";
 import { formatTime } from "./dashboardCalendarUtils";
 import type { UpdateJobVisitInput } from "../../../types/jobs";
@@ -171,6 +173,12 @@ export default function MonthGrid({
 	const [clickedVisit, setClickedVisit] = useState<ClickedVisit | null>(null);
 	const [clickedOccurrence, setClickedOccurrence] = useState<ClickedOccurrence | null>(null);
 	const [generatingVisitId, setGeneratingVisitId] = useState<string | null>(null);
+	const [pendingClickReschedule, setPendingClickReschedule] = useState<{
+		type: "visit" | "occurrence";
+		visit?: VisitWithJob;
+		occurrence?: OccurrenceWithPlan;
+		anchorRect: DOMRect;
+	} | null>(null);
 	const expandedRef = useRef<HTMLDivElement>(null);
 	const popupRef = useRef<HTMLDivElement>(null);
 	const occurrencePopupRef = useRef<HTMLDivElement>(null);
@@ -451,14 +459,14 @@ export default function MonthGrid({
 		setPendingDrop(null);
 	}
 
-	async function handleOccurrenceSave(newStartAt: string, newEndAt: string | undefined) {
+	async function handleOccurrenceSave(input: RescheduleOccurrenceInput & { scope: "this" | "future" }) {
 		if (!pendingOccurrenceDrop) return;
 		const { occurrence } = pendingOccurrenceDrop;
 		try {
 			await rescheduleOccurrence({
 				occurrenceId: occurrence.id,
 				jobId: occurrence.job_obj.id,
-				input: { new_start_at: newStartAt, new_end_at: newEndAt },
+				input,
 			});
 			monthDragOriginRef.current = null;
 			monthHasPendingPopupRef.current = false;
@@ -468,7 +476,7 @@ export default function MonthGrid({
 		setPendingOccurrenceDrop(null);
 	}
 
-	async function handleOccurrenceGenerate(newStartAt: string, newEndAt: string | undefined) {
+	async function handleOccurrenceGenerate(input: Omit<RescheduleOccurrenceInput, "scope">) {
 		if (!pendingOccurrenceDrop) return;
 		const { occurrence } = pendingOccurrenceDrop;
 		setGeneratingVisitId(occurrence.id);
@@ -477,7 +485,7 @@ export default function MonthGrid({
 			await rescheduleOccurrence({
 				occurrenceId: occurrence.id,
 				jobId: occurrence.job_obj.id,
-				input: { new_start_at: newStartAt, new_end_at: newEndAt },
+				input,
 			});
 			await generateVisitFromOccurrence({
 				occurrenceId: occurrence.id,
@@ -524,7 +532,8 @@ export default function MonthGrid({
 					priorityColor={getPriorityColor(v.job_obj?.priority)}
 					timeLabel={timeLabel}
 					techs={techs}
-					isDragging={draggingVisitId === v.id || pendingDrop?.visit.id === v.id}
+					isDragging={draggingVisitId === v.id}
+					isGhost={pendingDrop?.visit.id === v.id}
 					onDragStart={(e) => handleDragStart(e, v, dateStr)}
 					onDragEnd={handleDragEnd}
 					onClick={(e) => {
@@ -548,7 +557,8 @@ export default function MonthGrid({
 					timeLabel={formatTime(occ.occurrence_start_at)}
 					techs={[]}
 					isOccurrence
-					isDragging={draggingOccurrenceId === occ.id || isGenerating || pendingOccurrenceDrop?.occurrence.id === occ.id}
+					isDragging={draggingOccurrenceId === occ.id || isGenerating}
+					isGhost={pendingOccurrenceDrop?.occurrence.id === occ.id}
 					onDragStart={(e) => handleOccurrenceDragStart(e, occ, dateStr)}
 					onDragEnd={handleDragEnd}
 					onClick={(e) => {
@@ -814,112 +824,17 @@ export default function MonthGrid({
 				const v   = clickedVisit.visit;
 				const pos = getPopupPos(clickedVisit.rect);
 				return (
-					<div
-						ref={popupRef}
-						style={{
-							position: "fixed",
-							top: pos.top,
-							left: pos.left,
-							width: POPUP_W,
-							zIndex: 1000,
-							backgroundColor: "#18181b",
-							border: "1px solid #3f3f46",
-							borderRadius: 8,
-							boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-							padding: "10px 12px",
-							fontFamily: "inherit",
-						}}
-					>
-						{/* Header */}
-						<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-							<span style={{ fontSize: 12, fontWeight: 700, color: "#f4f4f5", lineHeight: 1.3, flex: 1 }}>
-								{v.job_obj?.name}
-							</span>
-							<button
-								onClick={() => setClickedVisit(null)}
-								style={{ fontSize: 16, color: "#52525b", background: "none", border: "none", cursor: "pointer", padding: "0 0 0 6px", lineHeight: 1, transition: "color 0.1s" }}
-								onMouseEnter={(e) => (e.currentTarget.style.color = "#a1a1aa")}
-								onMouseLeave={(e) => (e.currentTarget.style.color = "#52525b")}
-							>
-								×
-							</button>
-						</div>
-
-						{/* Status badge */}
-						<span style={{
-							display: "inline-block",
-							fontSize: 9,
-							fontWeight: 600,
-							padding: "1px 6px",
-							borderRadius: 10,
-							marginBottom: 6,
-							backgroundColor: "rgba(59,130,246,0.15)",
-							color: "#93c5fd",
-							textTransform: "uppercase",
-							letterSpacing: "0.04em",
-						}}>
-							{v.status}
-						</span>
-
-						{/* Time */}
-						<div style={{ fontSize: 10, color: "#d4d4d8", marginBottom: 6 }}>
-							{visitStartLabel(v)}
-							{v.finish_constraint !== "when_done"
-								? ` – ${visitEndLabel(v)}`
-								: " · finish when done"}
-						</div>
-
-						{/* Tech pills */}
-						{(v.visit_techs?.length ?? 0) > 0 && (
-							<div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-								{v.visit_techs!.map((vt) => {
-									const color = techColorMap.get(vt.tech_id) ?? "#6b7280";
-									const name  = technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id;
-									return (
-										<span
-											key={vt.tech_id}
-											style={{
-												display: "inline-flex",
-												alignItems: "center",
-												gap: 3,
-												fontSize: 9,
-												color: "#e4e4e7",
-												backgroundColor: color + "33",
-												border: `1px solid ${color}55`,
-												borderRadius: 10,
-												padding: "1px 6px",
-											}}
-										>
-											<span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color }} />
-											{name}
-										</span>
-									);
-								})}
-							</div>
-						)}
-
-						{/* Navigate button */}
-						<button
-							onClick={() => navigate(`/dispatch/jobs/${v.job_obj.id}/visits/${v.id}`)}
-							style={{
-								width: "100%",
-								padding: "6px 0",
-								fontSize: 11,
-								fontWeight: 600,
-								color: "#fff",
-								backgroundColor: "#3b82f6",
-								border: "none",
-								borderRadius: 5,
-								cursor: "pointer",
-								fontFamily: "inherit",
-								transition: "background-color 0.1s",
-							}}
-							onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
-							onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
-						>
-							View Visit →
-						</button>
-					</div>
+					<VisitClickPopup
+						visit={v}
+						style={{ position: "fixed", top: pos.top, left: pos.left }}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						popupRef={popupRef}
+						onClose={() => setClickedVisit(null)}
+						onViewVisit={() => { setClickedVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}/visits/${v.id}`); }}
+						onViewJob={() => { setClickedVisit(null); navigate(`/dispatch/jobs/${v.job_obj.id}`); }}
+						onRescheduleClick={() => { setClickedVisit(null); setPendingClickReschedule({ type: "visit", visit: v, anchorRect: clickedVisit.rect }); }}
+					/>
 				);
 			})()}
 
@@ -944,6 +859,7 @@ export default function MonthGrid({
 					occurrence={pendingOccurrenceDrop.occurrence}
 					oldDateStr={pendingOccurrenceDrop.fromDateStr}
 					newDateStr={pendingOccurrenceDrop.newDateStr}
+					allOccurrencesOnNewDay={effectiveOccurrencesByDay[pendingOccurrenceDrop.newDateStr] ?? []}
 					anchorRect={pendingOccurrenceDrop.anchorRect}
 					onReschedule={handleOccurrenceSave}
 					onGenerate={handleOccurrenceGenerate}
@@ -957,118 +873,63 @@ export default function MonthGrid({
 				const { occ, rect } = clickedOccurrence;
 				const pos = getPopupPos(rect);
 				return (
-					<div
-						ref={occurrencePopupRef}
-						style={{
-							position: "fixed",
-							top: pos.top,
-							left: pos.left,
-							width: POPUP_W,
-							zIndex: 1000,
-							backgroundColor: "#18181b",
-							border: "1px solid #3f3f46",
-							borderRadius: 8,
-							boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-							padding: "10px 12px",
-							fontFamily: "inherit",
+					<OccurrenceClickPopup
+						occurrence={occ}
+						style={{ position: "fixed", top: pos.top, left: pos.left }}
+						popupRef={occurrencePopupRef}
+						isGenerating={generatingVisitId === occ.id}
+						onClose={() => setClickedOccurrence(null)}
+						onViewPlan={() => { setClickedOccurrence(null); navigate(`/dispatch/recurring-plans/${occ.plan.id}`); }}
+						onGenerate={handleGenerateVisitFromClickedOccurrence}
+						onRescheduleClick={() => { setClickedOccurrence(null); setPendingClickReschedule({ type: "occurrence", occurrence: occ, anchorRect: rect }); }}
+					/>
+				);
+			})()}
+
+			{/* Click-reschedule: visit (clock button) */}
+			{pendingClickReschedule?.type === "visit" && pendingClickReschedule.visit && (() => {
+				const v  = pendingClickReschedule.visit;
+				const nd = new Date(v.scheduled_start_at).toISOString().split("T")[0];
+				return (
+					<ReschedulePopup
+						visit={v}
+						oldDateStr={nd}
+						newDateStr={nd}
+						allVisitsOnNewDay={visitsByDay[nd] ?? []}
+						technicians={technicians}
+						techColorMap={techColorMap}
+						anchorRect={pendingClickReschedule.anchorRect}
+						onSave={async (data) => { try { await updateVisit({ id: v.id, data }); } catch {} setPendingClickReschedule(null); }}
+						onUndo={() => setPendingClickReschedule(null)}
+					/>
+				);
+			})()}
+
+			{/* Click-reschedule: occurrence (clock button) */}
+			{pendingClickReschedule?.type === "occurrence" && pendingClickReschedule.occurrence && (() => {
+				const occ = pendingClickReschedule.occurrence;
+				const nd  = new Date(occ.occurrence_start_at).toISOString().split("T")[0];
+				return (
+					<OccurrenceReschedulePopup
+						occurrence={occ}
+						oldDateStr={nd}
+						newDateStr={nd}
+						anchorRect={pendingClickReschedule.anchorRect}
+						onReschedule={async (input) => {
+							try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input }); } catch {}
+							setPendingClickReschedule(null);
 						}}
-					>
-						{/* Header */}
-						<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-							<div style={{ flex: 1, minWidth: 0 }}>
-								<div style={{ fontSize: 12, fontWeight: 700, color: "#f4f4f5", lineHeight: 1.3, marginBottom: 1 }}>
-									{occ.plan.name}
-								</div>
-								<div style={{
-									fontSize: 10,
-									color: "#a1a1aa",
-									whiteSpace: "nowrap",
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-								}}>
-									{occ.job_obj?.name}
-								</div>
-							</div>
-							<button
-								onClick={() => setClickedOccurrence(null)}
-								style={{ fontSize: 16, color: "#52525b", background: "none", border: "none", cursor: "pointer", padding: "0 0 0 6px", lineHeight: 1, transition: "color 0.1s" }}
-								onMouseEnter={(e) => (e.currentTarget.style.color = "#a1a1aa")}
-								onMouseLeave={(e) => (e.currentTarget.style.color = "#52525b")}
-							>
-								×
-							</button>
-						</div>
-
-						{/* Status badge */}
-						<span style={{
-							display: "inline-block",
-							fontSize: 9,
-							fontWeight: 600,
-							padding: "1px 6px",
-							borderRadius: 10,
-							marginBottom: 6,
-							backgroundColor: "rgba(139,92,246,0.15)",
-							color: "#a78bfa",
-							textTransform: "uppercase",
-							letterSpacing: "0.04em",
-						}}>
-							Planned
-						</span>
-
-						{/* Time */}
-						<div style={{ fontSize: 10, color: "#d4d4d8", marginBottom: 10 }}>
-							{formatTime(occ.occurrence_start_at)}
-							{" – "}
-							{formatTime(occ.occurrence_end_at)}
-						</div>
-
-						{/* Buttons */}
-						<div style={{ display: "flex", gap: 5 }}>
-							<button
-								onClick={() => {
-									setClickedOccurrence(null);
-									navigate(`/dispatch/recurring-plans/${occ.plan.id}`);
-								}}
-								style={{
-									flex: 1,
-									padding: "6px 0",
-									fontSize: 11,
-									fontWeight: 600,
-									color: "#a78bfa",
-									backgroundColor: "rgba(139,92,246,0.12)",
-									border: "1px solid rgba(139,92,246,0.25)",
-									borderRadius: 5,
-									cursor: "pointer",
-									fontFamily: "inherit",
-									transition: "background-color 0.1s",
-								}}
-								onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(139,92,246,0.2)")}
-								onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(139,92,246,0.12)")}
-							>
-								View Plan →
-							</button>
-							<button
-								onClick={handleGenerateVisitFromClickedOccurrence}
-								style={{
-									flex: 1,
-									padding: "6px 0",
-									fontSize: 11,
-									fontWeight: 600,
-									color: "#fff",
-									backgroundColor: "#3b82f6",
-									border: "none",
-									borderRadius: 5,
-									cursor: "pointer",
-									fontFamily: "inherit",
-									transition: "background-color 0.1s",
-								}}
-								onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
-								onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
-							>
-								Generate Visit
-							</button>
-						</div>
-					</div>
+						onGenerate={async (input) => {
+							setGeneratingVisitId(occ.id);
+							setPendingClickReschedule(null);
+							try {
+								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
+								await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
+							} catch {}
+							setGeneratingVisitId(null);
+						}}
+						onCancel={() => setPendingClickReschedule(null)}
+					/>
 				);
 			})()}
 		</div>

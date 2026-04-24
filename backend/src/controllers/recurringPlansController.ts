@@ -192,7 +192,7 @@ async function generateOccurrencesForPlan(
 			continue;
 		}
 
-		// Create occurrence
+		// Create occurrence — copy constraint fields from rule
 		await tx.recurring_occurrence.create({
 			data: {
 				recurring_plan_id: planId,
@@ -200,6 +200,12 @@ async function generateOccurrencesForPlan(
 				occurrence_end_at: date.end,
 				status: "planned",
 				template_version: 1, // TODO: Implement versioning
+				arrival_constraint:   rule.arrival_constraint,
+				finish_constraint:    rule.finish_constraint,
+				arrival_time:         rule.arrival_time,
+				arrival_window_start: rule.arrival_window_start,
+				arrival_window_end:   rule.arrival_window_end,
+				finish_time:          rule.finish_time,
 			},
 		});
 
@@ -318,6 +324,8 @@ function addMinutes(date: Date, minutes: number): Date {
 // ============================================================================
 
 export const getAllRecurringPlans = async () => {
+	const now = new Date();
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 	return await db.recurring_plan.findMany({
 		include: {
 			client: {
@@ -346,7 +354,7 @@ export const getAllRecurringPlans = async () => {
 			occurrences: {
 				where: {
 					occurrence_start_at: {
-						gte: new Date(),
+						gte: startOfToday,
 					},
 				},
 				orderBy: { occurrence_start_at: "asc" },
@@ -1514,27 +1522,60 @@ export const rescheduleOccurrence = async (
 			? new Date(parsed.new_end_at)
 			: occurrence.occurrence_end_at;
 
-		const conflictingOccurrence = await db.recurring_occurrence.findFirst({
-			where: {
-				recurring_plan_id: occurrence.recurring_plan_id,
-				occurrence_start_at: newStartDate,
-				id: { not: occurrenceId },
-			},
-		});
-
-		if (conflictingOccurrence) {
-			return {
-				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
-			};
-		}
+		// Build optional constraint update data
+		const constraintData = {
+			...(parsed.arrival_constraint   !== undefined && { arrival_constraint:   parsed.arrival_constraint }),
+			...(parsed.finish_constraint    !== undefined && { finish_constraint:    parsed.finish_constraint }),
+			...(parsed.arrival_time         !== undefined && { arrival_time:         parsed.arrival_time }),
+			...(parsed.arrival_window_start !== undefined && { arrival_window_start: parsed.arrival_window_start }),
+			...(parsed.arrival_window_end   !== undefined && { arrival_window_end:   parsed.arrival_window_end }),
+			...(parsed.finish_time          !== undefined && { finish_time:          parsed.finish_time }),
+		};
 
 		const updated = await db.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
 				occurrence_start_at: newStartDate,
 				occurrence_end_at: newEndDate,
+				...constraintData,
 			},
 		});
+
+		// ── "This & all future" — shift future planned occurrences by the same delta ──
+		if (parsed.scope === "future") {
+			const deltaMs = newStartDate.getTime() - occurrence.occurrence_start_at.getTime();
+			const futureOccurrences = await db.recurring_occurrence.findMany({
+				where: {
+					recurring_plan_id: occurrence.recurring_plan_id,
+					occurrence_start_at: { gt: occurrence.occurrence_start_at },
+					status: "planned",
+					id: { not: occurrenceId },
+				},
+				select: { id: true, occurrence_start_at: true, occurrence_end_at: true },
+			});
+			if (futureOccurrences.length > 0) {
+				await db.$transaction(
+					futureOccurrences.map((o) =>
+						db.recurring_occurrence.update({
+							where: { id: o.id },
+							data: {
+								occurrence_start_at: new Date(o.occurrence_start_at.getTime() + deltaMs),
+								occurrence_end_at: new Date(o.occurrence_end_at.getTime() + deltaMs),
+								...constraintData,
+							},
+						}),
+					),
+				);
+			}
+
+			// Update the rule so newly generated occurrences also inherit the constraint change
+			if (Object.keys(constraintData).length > 0) {
+				await db.recurring_rule.updateMany({
+					where: { recurring_plan_id: occurrence.recurring_plan_id },
+					data: constraintData,
+				});
+			}
+		}
 
 		await logActivity({
 			event_type: "recurring_occurrence.rescheduled",
@@ -1700,12 +1741,12 @@ export const generateVisitFromOccurrence = async (
 					scheduled_start_at: occurrence.occurrence_start_at,
 					scheduled_end_at: occurrence.occurrence_end_at,
 
-					arrival_constraint: rule.arrival_constraint,
-					finish_constraint: rule.finish_constraint,
-					arrival_time: rule.arrival_time,
-					arrival_window_start: rule.arrival_window_start,
-					arrival_window_end: rule.arrival_window_end,
-					finish_time: rule.finish_time,
+					arrival_constraint: occurrence.arrival_constraint,
+					finish_constraint: occurrence.finish_constraint,
+					arrival_time: occurrence.arrival_time,
+					arrival_window_start: occurrence.arrival_window_start,
+					arrival_window_end: occurrence.arrival_window_end,
+					finish_time: occurrence.finish_time,
 
 					status: "Scheduled",
 					subtotal: subtotal,

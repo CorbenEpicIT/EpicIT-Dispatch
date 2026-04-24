@@ -2,23 +2,21 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { JobVisit } from "../../types/jobs";
 import { VisitStatusColors, VisitStatusLabels } from "../../types/jobs";
+import { formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 
 interface Props {
 	todayVisits: JobVisit[];
 	tomorrowVisits: JobVisit[];
+	tz?: string;
 	isLoading: boolean;
 	error: Error | null;
 }
 
-function formatTimeRange(visit: JobVisit): string {
-	const start = new Date(visit.scheduled_start_at);
-	const end = new Date(visit.scheduled_end_at);
-	const fmt = (d: Date) =>
-		d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
-	return `${fmt(start)} – ${fmt(end)}`;
+function formatTimeRange(visit: JobVisit, tz: string): string {
+	return `${formatTime(visit.scheduled_start_at, tz)} – ${formatTime(visit.scheduled_end_at, tz)}`.toLowerCase();
 }
 
-export default function TechScheduleSection({ todayVisits, tomorrowVisits, isLoading, error }: Props) {
+export default function TechScheduleSection({ todayVisits, tomorrowVisits, tz = FALLBACK_TIMEZONE, isLoading, error }: Props) {
 	const navigate = useNavigate();
 
 	const sortedToday = useMemo(() => {
@@ -108,7 +106,7 @@ export default function TechScheduleSection({ todayVisits, tomorrowVisits, isLoa
 										<p className="text-xs text-blue-400 mb-0.5">{visit.job.address}</p>
 									)}
 									<p className="text-xs text-zinc-500 italic">
-										{isAnytime ? "Anytime today" : formatTimeRange(visit)}
+										{isAnytime ? "Anytime today" : formatTimeRange(visit, tz)}
 									</p>
 								</div>
 							);
@@ -131,10 +129,7 @@ export default function TechScheduleSection({ todayVisits, tomorrowVisits, isLoa
 							<p className="text-xs text-zinc-500 mt-0.5 truncate">
 								{tomorrowEarliest.arrival_constraint === "anytime"
 									? "Anytime"
-									: new Date(tomorrowEarliest.scheduled_start_at).toLocaleTimeString("en-US", {
-											hour: "numeric",
-											minute: "2-digit",
-										}).toLowerCase()}
+									: formatTime(tomorrowEarliest.scheduled_start_at, tz).toLowerCase()}
 								{tomorrowEarliest.job?.address ? ` · ${tomorrowEarliest.job.address}` : ""}
 							</p>
 						</div>

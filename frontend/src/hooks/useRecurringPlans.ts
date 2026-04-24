@@ -22,6 +22,7 @@ import type {
 	UpdateRecurringPlanNoteInput,
 } from "../types/recurringPlans";
 import * as recurringPlanApi from "../api/recurringPlans";
+import type { Job } from "../types/jobs";
 
 // ============================================
 // RECURRING PLAN QUERIES
@@ -280,6 +281,12 @@ export const useGenerateOccurrencesMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs", variables.jobId, "recurringPlan"],
 			});
+			await queryClient.invalidateQueries({
+				queryKey: ["recurringPlans"],
+			});
+			await queryClient.invalidateQueries({
+				queryKey: ["jobs"],
+			});
 		},
 	});
 };
@@ -329,8 +336,23 @@ export const useRescheduleOccurrenceMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ occurrenceId, input }) =>
 			recurringPlanApi.rescheduleOccurrence(occurrenceId, input),
-		onSuccess: async (_, variables) => {
+		onSuccess: async (updatedOccurrence, variables) => {
 			const { jobId } = variables;
+
+			// Immediately patch the jobs cache so the card appears on the new date
+			// without waiting for the network refetch to complete.
+			queryClient.setQueriesData<Job[]>({ queryKey: ["jobs"] }, (old) => {
+				if (!old) return old;
+				return old.map((job) => {
+					if (job.id !== jobId) return job;
+					const plan = job.recurring_plan;
+					if (!plan?.occurrences) return job;
+					const updatedOccs = plan.occurrences.map((occ) =>
+						occ.id === updatedOccurrence.id ? { ...occ, ...updatedOccurrence } : occ
+					);
+					return { ...job, recurring_plan: { ...plan, occurrences: updatedOccs } };
+				});
+			});
 
 			await queryClient.invalidateQueries({
 				queryKey: ["jobs", jobId, "occurrences"],

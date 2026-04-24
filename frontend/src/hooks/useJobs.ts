@@ -158,6 +158,17 @@ export const useJobVisitsByTechIdQuery = (techId: string): UseQueryResult<JobVis
 	});
 };
 
+export const useClientVisitHistoryQuery = (
+	clientId: string | null | undefined,
+	limit = 5,
+): UseQueryResult<JobVisit[], Error> => {
+	return useQuery({
+		queryKey: ["clients", clientId, "visit-history", limit],
+		queryFn: () => jobApi.getClientVisitHistory(clientId!, limit),
+		enabled: !!clientId,
+	});
+};
+
 export const useJobVisitsByDateRangeQuery = (
 	startDate: Date,
 	endDate: Date,
@@ -406,6 +417,7 @@ export const useClockInMutation = (): UseMutationResult<
 		mutationFn: ({ visitId, techId }) => jobApi.clockInVisit(visitId, techId),
 		onSuccess: async (_, variables) => {
 			await queryClient.invalidateQueries({ queryKey: ["technicians", variables.techId, "visits"] });
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits", variables.visitId] });
 		},
 	});
 };
@@ -522,3 +534,6 @@ export const useDeleteJobNoteMutation = (): UseMutationResult<
 		},
 	});
 };
+
+export const useUploadNotePhotoMutation = (): UseMutationResult<string, Error, File> =>
+	useMutation({ mutationFn: jobApi.uploadNotePhoto });

@@ -47,3 +47,6 @@ request.rest
 
 # Playwright MCP
 .playwright-mcp
+
+# claude
+.claude

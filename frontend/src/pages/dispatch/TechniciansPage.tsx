@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Search, Plus, Share, X } from "lucide-react";
+import { Search, Plus, Share, X, LayoutGrid, LayoutList, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAllTechniciansQuery, useCreateTechnicianMutation } from "../../hooks/useTechnicians";
 import CreateTechnician from "../../components/technicians/CreateTechnician";
 import TechnicianCard from "../../components/technicians/TechnicianCard";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
+
+type viewMode = "list" | "card"; 
 
 export default function TechniciansPage() {
 	const navigate = useNavigate();
@@ -15,10 +17,18 @@ export default function TechniciansPage() {
 		data: technicians,
 		isLoading: isFetchLoading,
 		error: fetchError,
+		refetch: refetchTechnicians,
 	} = useAllTechniciansQuery();
 	const { mutateAsync: createTechnician } = useCreateTechnicianMutation();
 	const [searchInput, setSearchInput] = useState("");
 	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [viewMode, setViewMode] = useState<viewMode>("card");
+	const [perPage, setPerPage] = useState(12);
+	const [currentPage, setCurrentPage] = useState(1);
+	const [showAvailable, setShowAvailable] = useState(true);
+	const [showBusy, setShowBusy] = useState(true);
+	const [showBreak, setShowBreak] = useState(true);
+	const [showOffline, setShowOffline] = useState(true);
 
 	const queryParams = new URLSearchParams(location.search);
 	const searchFilter = queryParams.get('search');
@@ -27,6 +37,10 @@ export default function TechniciansPage() {
 	useEffect(() => {
 		setSearchInput(searchFilter || "");
 	}, [searchFilter]);
+
+	useEffect(() => {
+		setCurrentPage(1);
+	}, [searchFilter, searchInput, statusFilter, perPage, showAvailable, showBusy, showBreak, showOffline]);
 
 	// Use searchInput for instant preview, searchFilter for committed filter
 	const activeSearch = searchInput || searchFilter;
@@ -51,7 +65,16 @@ export default function TechniciansPage() {
 		.sort((a, b) => {
 			const statusOrder = { Available: 0, Busy: 1, Break: 2, Offline: 3 };
 			return statusOrder[a.status] - statusOrder[b.status];
-		});
+		})
+		.filter(t =>
+			(t.status === "Available" && showAvailable) ||
+			(t.status === "Busy" && showBusy) ||
+			(t.status === "Break" && showBreak) ||
+			(t.status === "Offline" && showOffline)
+		) ?? [];
+
+	const totalPages = perPage === 0 ? 1: Math.ceil(filteredTechnicians.length / perPage);
+	const pagedTechnicians = perPage === 0 ? filteredTechnicians : filteredTechnicians.slice((currentPage - 1) * perPage, currentPage * perPage);
 
 	const handleSearchSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -87,10 +110,10 @@ export default function TechniciansPage() {
 
 	return (
 		<div className="text-white">
-			<div className="flex flex-wrap items-center justify-between gap-4 mb-2">
+			<div className="flex flex-wrap items-center justify-between gap-3 mb-3">
 				<div>
 					<h2 className="text-2xl font-semibold">Technicians</h2>
-					<div className="flex gap-3 text-xs">
+					<div className="flex gap-3 text-xs mt-0.5">
 						<span className="text-green-400">
 							● Available: {statusCounts.Available || 0}
 						</span>
@@ -106,8 +129,28 @@ export default function TechniciansPage() {
 					</div>
 				</div>
 
-				<div className="flex gap-2 text-nowrap">
-					<form onSubmit={handleSearchSubmit} className="relative w-full min-w-[250px]">
+				<div className="flex flex-wrap items-center gap-2">
+					<button
+						className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+						onClick={() => setIsModalOpen(true)}
+					>
+						<Plus size={16} className="text-white" />
+						New Technician
+					</button>
+					<button
+						className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+						onClick={() => { refetchTechnicians(); }}
+					>
+						Refresh
+					</button>
+					<button className="flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors">
+						<Share size={16} className="text-white" />
+						Export
+					</button>
+				</div>
+			</div>
+			<div className="flex flex-wrap items-center gap-2 mb-4">
+				<form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-[180px]">
 						<Search
 							size={18}
 							className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
@@ -123,19 +166,49 @@ export default function TechniciansPage() {
 						/>
 					</form>
 
-					<button
-						className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => setIsModalOpen(true)}
-					>
-						<Plus size={16} className="text-white" />
-						New Technician
-					</button>
+					<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
 
-					<button className="flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors">
-						<Share size={16} className="text-white" />
-						Export
-					</button>
-				</div>
+					<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
+						{([
+							{ label: "Available", state: showAvailable, set: setShowAvailable, active: "bg-green-600" },
+							{ label: "Busy", state: showBusy, set: setShowBusy, active: "bg-yellow-600" },
+							{ label: "Break", state: showBreak, set: setShowBreak, active: "bg-blue-600" },
+							{ label: "Offline", state: showOffline, set: setShowOffline, active: "bg-red-600" },
+						] as const).map(({ label, state, set, active }) => (
+							<button
+								key={label}
+								onClick={() => set(!state)}
+								className={`px-3 py-1 text-xs rounded font-medium cursor-pointer transition-colors ${
+									state ? `${active} text-white` : "text-zinc-400 hover:text-white"
+								}`}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+
+					<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+
+					<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
+						<button
+							onClick={() => setViewMode("card")}
+							title="Card View"
+							className={`p-1.5 rounded cursor-pointer transition-colors ${
+								viewMode === "card" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
+							}`}
+						>
+							<LayoutGrid size={15} />
+						</button>
+						<button
+							onClick={() => setViewMode("list")}
+							title="List View"
+							className={`p-1.5 rounded cursor-pointer transition-colors ${
+								viewMode === "list" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
+							}`}
+						>
+							<LayoutList size={15} />
+						</button>
+					</div>
 			</div>
 
 			{/*Filter Bar with Chips*/}
@@ -232,16 +305,100 @@ export default function TechniciansPage() {
 			)}
 
 			{/* Technician Cards Grid */}
-			{!isFetchLoading && !fetchError && filteredTechnicians && filteredTechnicians.length > 0 && (
-				<div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(288px,1fr))]">
-					{filteredTechnicians.map((technician) => (
-						<TechnicianCard
-							key={technician.id}
-							technician={technician}
-							onClick={() => { navigate(`/dispatch/technicians/${technician.id}`); }}
-						/>
-					))}
-				</div>
+			{!isFetchLoading && !fetchError && filteredTechnicians.length > 0 && (
+				<>
+					<div
+						className={
+							viewMode === "card"
+								? "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(288px,1fr))]"
+								: "flex flex-col gap-4"
+						}
+					>
+						{pagedTechnicians.map((technician) => (
+							<TechnicianCard
+								key={technician.id}
+								technician={technician}
+								onClick={() => navigate(`/dispatch/technicians/${technician.id}`)}
+								viewMode={viewMode}
+							/>
+						))}
+					</div>
+
+					{/* Pagination footer */}
+					<div className="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-zinc-800">
+						<div className="flex items-center gap-4">
+							<span className="text-sm text-zinc-400">
+								{perPage === 0
+									? `Showing all ${filteredTechnicians.length}`
+									: `Showing ${(currentPage - 1) * perPage + 1}–${Math.min(currentPage * perPage, filteredTechnicians.length)} of ${filteredTechnicians.length}`}
+							</span>
+							<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
+								{[12, 24, 48].map((n) => (
+									<button
+										key={n}
+										onClick={() => setPerPage(n)}
+										className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
+											perPage === n ? "bg-zinc-600 text-white" : "text-zinc-400 hover:text-white"
+										}`}
+									>
+										{n}
+									</button>
+								))}
+								<button
+									onClick={() => setPerPage(0)}
+									className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
+										perPage === 0 ? "bg-zinc-600 text-white" : "text-zinc-400 hover:text-white"
+									}`}
+								>
+									All
+								</button>
+							</div>
+						</div>
+
+						{perPage !== 0 && totalPages > 1 && (
+							<div className="flex items-center gap-1.5">
+								<button
+									onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+									disabled={currentPage === 1}
+									className="p-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+								>
+									<ChevronLeft size={16} />
+								</button>
+								{Array.from({ length: totalPages }, (_, i) => i + 1)
+									.filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+									.reduce<(number | "...")[]>((acc, p, i, arr) => {
+										if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+										acc.push(p);
+										return acc;
+									}, [])
+									.map((p, i) =>
+										p === "..." ? (
+											<span key={`ellipsis-${i}`} className="px-1.5 text-zinc-500 text-sm">…</span>
+										) : (
+											<button
+												key={p}
+												onClick={() => setCurrentPage(p as number)}
+												className={`min-w-[36px] px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
+													currentPage === p
+														? "bg-blue-600 border-blue-600 text-white"
+														: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white"
+												}`}
+											>
+												{p}
+											</button>
+										)
+									)}
+								<button
+									onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+									disabled={currentPage === totalPages}
+									className="p-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+								>
+									<ChevronRight size={16} />
+								</button>
+							</div>
+						)}
+					</div>
+				</>
 			)}
 			<CreateTechnician
 				isModalOpen={isModalOpen}
