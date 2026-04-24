@@ -181,6 +181,26 @@ const errorHandler = (
 	);
 };
 
+const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+	const timestamp = new Date().toISOString();
+	console.log(`[${timestamp}] ${req.method} ${req.path}`);
+	next();
+};
+
+const metricsMiddleware = (req: Request, res: Response, next: NextFunction) => {
+	const end = httpRequestDuration.startTimer();
+	res.on("finish", () => {
+		const labels = {
+			method: req.method,
+			route: req.route?.path ?? req.path,
+			status_code: String(res.statusCode),
+		};
+		end(labels);
+		httpRequestsTotal.inc(labels);
+	});
+	next();
+};
+
 const notFoundHandler = (req: Request, res: Response) => {
 	res.status(404).json(
 		createErrorResponse(
@@ -280,6 +300,8 @@ app.get("/metrics", async (_req, res) => {
 	res.set("Content-Type", metricsRegister.contentType);
 	res.end(await metricsRegister.metrics());
 });
+app.use(requestLogger);
+app.use(metricsMiddleware);
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
 if (!frontend) {
@@ -308,6 +330,11 @@ if (!port) {
 // ============================================
 // AUTH ROUTES (public — no verifyToken)
 // ============================================
+
+app.get("/metrics", async (_req, res) => {
+	res.set("Content-Type", metricsRegister.contentType);
+	res.end(await metricsRegister.metrics());
+});
 
 app.post("/login", async (req, res, next) => {
 	try {
@@ -795,7 +822,12 @@ app.get("/quotes/:id/pdf", async (req, res, next) => {
 		if (err?.status === 404)
 			return res
 				.status(404)
-				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Quote not found"));
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Quote not found",
+					),
+				);
 		next(err);
 	}
 });
@@ -817,7 +849,12 @@ app.post("/quotes/:id/send", async (req, res, next) => {
 		if (!recipientEmail) {
 			return res
 				.status(400)
-				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"recipient_email is required",
+					),
+				);
 		}
 
 		await sendQuoteEmail(id, recipientEmail);
@@ -831,7 +868,12 @@ app.post("/quotes/:id/send", async (req, res, next) => {
 			const status = result.err.includes("not found") ? 404 : 400;
 			return res
 				.status(status)
-				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
 		}
 		res.json(createSuccessResponse(result.item));
 	} catch (err: any) {
@@ -2172,7 +2214,12 @@ app.get("/invoices/:id/pdf", async (req, res, next) => {
 		if (err?.status === 404)
 			return res
 				.status(404)
-				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Invoice not found"));
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Invoice not found",
+					),
+				);
 		next(err);
 	}
 });
@@ -2206,7 +2253,12 @@ app.post("/invoices/:id/send", async (req, res, next) => {
 		if (!recipientEmail) {
 			return res
 				.status(400)
-				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"recipient_email is required",
+					),
+				);
 		}
 
 		await sendInvoiceEmail(id, recipientEmail);
@@ -2220,7 +2272,12 @@ app.post("/invoices/:id/send", async (req, res, next) => {
 			const status = result.err.includes("not found") ? 404 : 400;
 			return res
 				.status(status)
-				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
 		}
 		res.json(createSuccessResponse(result.item));
 	} catch (err: any) {

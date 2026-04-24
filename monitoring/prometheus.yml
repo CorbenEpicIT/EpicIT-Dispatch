@@ -1,9 +1,23 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 60s
+  evaluation_interval: 60s
+
+remote_write:
+  - url: ${GRAFANA_CLOUD_PROM_URL}
+    basic_auth:
+      username: ${GRAFANA_CLOUD_PROM_USERNAME}
+      password: ${GRAFANA_CLOUD_PROM_PASSWORD}
 
 scrape_configs:
-  - job_name: hvac-backend
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ["backend:3000"]
-    metrics_path: /metrics
+      - targets: ['localhost:9090']
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['node_exporter:9100']
+
+  - job_name: 'backend'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['backend:3000']

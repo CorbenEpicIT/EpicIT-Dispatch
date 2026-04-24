@@ -188,6 +188,8 @@ model organization {
   name     String
   tax_rate Decimal @default(0) @db.Decimal(5, 4)
 
+  logo_key String?
+  
   clients               client[]
   contacts              contact[]
   technicians           technician[]
@@ -877,6 +879,7 @@ model inventory_item {
   sku        String?  @unique
   is_active  Boolean  @default(true)
   low_stock_threshold Int?
+  image_keys          String[] @default([])
 
   image_urls           String[]  @default([])
   alert_emails_enabled Boolean   @default(false)
