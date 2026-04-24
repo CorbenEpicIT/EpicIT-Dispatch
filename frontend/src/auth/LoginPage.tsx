@@ -1,16 +1,24 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "./authStore";
-import { use, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { loginCall, verifyOTPCall } from "../api/authenticate.ts"
+import { reSplitAlphaNumeric } from "@tanstack/react-table";
 
 export default function LoginPage() {
 	const { login } = useAuthStore();
-	const [role, setRole] = useState<"dispatch" | "technician">("dispatch");
-	const [name, setName] = useState("user");
-	const [password, setPassword] = useState("");
+	const [role, setRole] = useState<"dispatcher" | "technician">("dispatcher");
+
+	const DEV_CREDENTIALS = {
+		dispatcher: { name: "admin@epichvac.com", password: "password123" },
+		technician: { name: "john.smith@epichvac.com", password: "password123" },
+	};
+
+	const [name, setName] = useState(DEV_CREDENTIALS.dispatcher.name);
+	const [password, setPassword] = useState(DEV_CREDENTIALS.dispatcher.password);
 	const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 	const [otpSent, setOtpSent] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
+	const [loginError, setLoginError] = useState("");
 	const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 	const navigate = useNavigate();
 
@@ -19,11 +27,22 @@ export default function LoginPage() {
 		try {
 			setIsLoading(true);
 			const result = await loginCall({ email: name, password: password, role: role });
-			console.log("login result:",result);
+			// First login: OTP skipped, redirect straight to password reset
+			if (result.forcePasswordReset && result.resetToken && result.token) {
+				const parts = result.token.split(".");
+				if (parts.length === 3) {
+					const payload = JSON.parse(atob(parts[1]));
+					const orgTimezone = payload.organization_timezone ?? "America/Chicago";
+					login(role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+				}
+				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
+				return;
+			}
 			setOtpSent(true);
 		} catch (error) {
-			console.error("Login failed:", error);
-		}finally {
+			setLoginError("Login failed");
+			//console.error("Login failed:", error);
+		} finally {
 			setIsLoading(false);
 		}
 	};
@@ -32,14 +51,22 @@ export default function LoginPage() {
 		e.preventDefault();
 		try {
 			const result = await verifyOTPCall(otp.join(""));
-			console.log("otp verification result:", result);
-			login(role, name || "User");
-			if (role === "dispatch") navigate("/dispatch");
+			const parts = result.token?.split(".");
+			if (!parts || parts.length !== 3) throw new Error("Malformed token received from server");
+			const payload = JSON.parse(atob(parts[1]));
+			if (!payload.uid) throw new Error("Token is missing user ID — contact support");
+			const orgTimezone = payload.organization_timezone ?? "America/Chicago";
+			login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+			if (result.forcePasswordReset && result.resetToken) {
+				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
+				return;
+			}
+			if (role === "dispatcher") navigate("/dispatch");
 			else navigate("/technician");
-		}catch (error) {
+		} catch (error) {
 			console.error("OTP verification failed:", error);
 		}
-	}
+	};
 
 	// seperate from login so that it doesn't need args
 	const resendOTP = async () => {
@@ -138,7 +165,12 @@ export default function LoginPage() {
 					onSubmit={handleLogin}
 					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4"
 				>
-					<h2 className="text-xl font-semibold text-center">Service Login</h2>
+				<h2 className="text-xl font-semibold text-center">Service Login</h2>
+				{loginError && (
+					<p className="text-red-500 text-sm text-center">{loginError}</p>
+				)
+
+				}
 				<input
 					type="text"
 					placeholder="Name"
@@ -155,10 +187,15 @@ export default function LoginPage() {
 				/>
 				<select
 					value={role}
-					onChange={(e) => setRole(e.target.value as any)}
+					onChange={(e) => {
+						const newRole = e.target.value as "dispatcher" | "technician";
+						setRole(newRole);
+						setName(DEV_CREDENTIALS[newRole].name);
+						setPassword(DEV_CREDENTIALS[newRole].password);
+					}}
 					className="w-full border rounded px-3 py-2"
 				>
-					<option value="dispatch">Dispatch/Admin</option>
+					<option value="dispatcher">Dispatch/Admin</option>
 					<option value="technician">Technician</option>
 				</select>
 				<button
@@ -167,6 +204,10 @@ export default function LoginPage() {
 				>
 					Login
 				</button>
+				<p className="text-sm text-gray-500 text-center">
+					New organization?{" "}
+					<Link to="/register" className="text-blue-600 hover:underline">Create account</Link>
+				</p>
 			</form>
 		)}
 		</div>

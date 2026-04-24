@@ -166,6 +166,7 @@ const DynamicMap = ({
 }: DynamicMapProps) => {
 	const mapRef = useRef<mapboxgl.Map | null>(null);
 	const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+	const hasFitRef = useRef(false);
 	const markerFingerprintsRef = useRef<Map<string, string>>(new Map());
 	const animationsRef = useRef<Map<string, MarkerAnimation>>(new Map());
 	const lastUpdateAtRef = useRef<Map<string, number>>(new Map());
@@ -404,6 +405,21 @@ const DynamicMap = ({
 				lastUpdateAtRef.current.delete(id);
 			}
 		});
+		// Autofit based on the markers instead of fixed, if there are markers
+		if (staticMarkers.length > 0 && !hasFitRef.current) {
+			hasFitRef.current = true;
+			const bounds = new mapboxgl.LngLatBounds();
+			staticMarkers.forEach((m) => bounds.extend(m.coords));
+
+			const fitBounds = () => map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+
+			if (map.isStyleLoaded()) {
+				fitBounds();
+			} else {
+				map.once("style.load", fitBounds);
+			}
+		}
+	}, [staticMarkers]);
 	}, [staticMarkers, contextLost]);
 
 	// Route sync: add/update/remove a line layer per active tech route.

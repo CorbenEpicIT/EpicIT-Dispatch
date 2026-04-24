@@ -1,9 +1,18 @@
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import type { Decimal } from "@prisma/client/runtime/client";
 
 // ── PDF prop types ────────────────────────────────────────────────────────────
 
 type Numeric = Decimal | number | string | null | undefined;
+
+interface OrgPdfProps {
+	name: string;
+	logo_url?: string | null;
+	phone?: string | null;
+	address?: string | null;
+	email?: string | null;
+	website?: string | null;
+}
 
 interface QuotePdfLineItem {
 	id?: string;
@@ -76,6 +85,9 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 	Cancelled: { bg: "#fee2e2", text: "#991b1b" },
 };
 
+// Sent and Viewed are internal workflow states — not meaningful to the quote recipient
+const HIDE_BADGE_STATUSES = new Set(["Sent", "Viewed"]);
+
 const badgeColors = (status: string) =>
 	STATUS_COLORS[status] ?? { bg: "#f3f4f6", text: "#6b7280" };
 
@@ -92,29 +104,41 @@ const s = StyleSheet.create({
 		backgroundColor: "#ffffff",
 	},
 
-	// header — flex: 1 on companyBlock so it fills available space without
-	// pushing into the document title; flexShrink: 0 on docTitleBlock protects it
+	// header
 	header: {
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "flex-start",
-		marginBottom: 28,
+		marginBottom: 20,
 		paddingBottom: 16,
 		borderBottomWidth: 2,
 		borderBottomColor: "#1e3a5f",
 	},
 	companyBlock: {
-		flexDirection: "column",
+		flexDirection: "row",
+		alignItems: "flex-start",
 		flex: 1,
 		paddingRight: 20,
+	},
+	orgLogo: {
+		width: 36,
+		height: 36,
+		marginRight: 8,
+	},
+	companyTextBlock: {
+		flexDirection: "column",
 	},
 	companyName: {
 		fontSize: 16,
 		fontFamily: "Helvetica-Bold",
 		color: "#1e3a5f",
-		marginBottom: 2,
+		marginBottom: 3,
 	},
-	companyTagline: { fontSize: 8, color: "#6b7280" },
+	companyDetail: {
+		fontSize: 8,
+		color: "#6b7280",
+		marginBottom: 1,
+	},
 	docTitleBlock: {
 		alignItems: "flex-end",
 		flexShrink: 0,
@@ -127,18 +151,38 @@ const s = StyleSheet.create({
 	},
 	docNumber: { fontSize: 11, color: "#374151", fontFamily: "Helvetica-Bold" },
 
-	// info columns — explicit gap via paddingRight on left column
+	// section divider
+	sectionDivider: {
+		borderTopWidth: 1,
+		borderTopColor: "#e5e7eb",
+		marginBottom: 20,
+	},
+
+	// info columns
 	infoRow: {
 		flexDirection: "row",
-		marginBottom: 24,
+		paddingBottom: 16,
 	},
 	infoColLeft: {
 		width: "50%",
 		paddingRight: 16,
+		borderRightWidth: 1,
+		borderRightColor: "#e5e7eb",
 	},
 	infoColRight: {
 		width: "50%",
+		paddingLeft: 16,
 	},
+	// Section heading — used for BILL TO and QUOTE DETAILS titles
+	sectionHeading: {
+		fontSize: 9,
+		fontFamily: "Helvetica-Bold",
+		color: "#1e3a5f",
+		textTransform: "uppercase",
+		letterSpacing: 1,
+		marginBottom: 7,
+	},
+	// Small muted label — kept for legacy use if needed
 	sectionLabel: {
 		fontSize: 7,
 		fontFamily: "Helvetica-Bold",
@@ -152,10 +196,9 @@ const s = StyleSheet.create({
 		color: "#111827",
 		marginBottom: 2,
 	},
-	// infoText in a column-flex container naturally fills parent width and wraps
 	infoText: { fontSize: 9, color: "#374151", marginBottom: 2 },
 
-	// metaRow: fixed label + flex: 1 value so long text wraps within the column
+	// metaRow
 	metaRow: { flexDirection: "row", marginBottom: 3 },
 	metaLabel: { fontSize: 8, color: "#6b7280", width: 68, flexShrink: 0 },
 	metaValue: {
@@ -175,8 +218,8 @@ const s = StyleSheet.create({
 	},
 	badgeText: { fontSize: 8, fontFamily: "Helvetica-Bold" },
 
-	// table — header cells wrapped in View to match data row structure
-	tableContainer: { marginBottom: 16 },
+	// table
+	tableContainer: { paddingBottom: 16 },
 	tableHead: {
 		flexDirection: "row",
 		backgroundColor: "#1e3a5f",
@@ -195,8 +238,7 @@ const s = StyleSheet.create({
 	tdText: { fontSize: 9, color: "#374151" },
 	tdMuted: { fontSize: 8, color: "#9ca3af", marginTop: 1 },
 
-	// columns: name + desc absorb leftover space; numerics are fixed-ish widths
-	// total must = 100%: 36 + 30 + 10 + 12 + 12 = 100
+	// columns: 36 + 30 + 10 + 12 + 12 = 100%
 	colName: { width: "36%" },
 	colDesc: { width: "30%" },
 	colQty: { width: "10%", textAlign: "right" },
@@ -204,7 +246,7 @@ const s = StyleSheet.create({
 	colTotal: { width: "12%", textAlign: "right" },
 
 	// totals
-	totalsWrapper: { alignItems: "flex-end", marginBottom: 20 },
+	totalsWrapper: { alignItems: "flex-end", paddingBottom: 16 },
 	totalRow: {
 		flexDirection: "row",
 		width: 230,
@@ -242,12 +284,11 @@ const s = StyleSheet.create({
 		textAlign: "right",
 	},
 
-	// notes
-	noteSection: { marginTop: 8 },
-	noteSectionLabel: {
-		fontSize: 7,
+	// notes section title
+	sectionTitle: {
+		fontSize: 9,
 		fontFamily: "Helvetica-Bold",
-		color: "#6b7280",
+		color: "#374151",
 		marginBottom: 6,
 	},
 	noteBox: {
@@ -260,7 +301,7 @@ const s = StyleSheet.create({
 	},
 	noteText: { fontSize: 9, color: "#374151", lineHeight: 1.5 },
 
-	// status overlays — absolute-positioned, rendered inside <Page>
+	// draft watermark
 	draftWatermark: {
 		position: "absolute",
 		top: 300,
@@ -294,7 +335,7 @@ const s = StyleSheet.create({
 
 // ── component ────────────────────────────────────────────────────────────────
 
-export function QuotePdfTemplate({ quote }: { quote: QuotePdfProps }) {
+export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: OrgPdfProps }) {
 	const bc = badgeColors(quote.status);
 	const contact = quote.client?.contacts?.[0]?.contact;
 
@@ -317,8 +358,16 @@ export function QuotePdfTemplate({ quote }: { quote: QuotePdfProps }) {
 				{/* ── Header ── */}
 				<View style={s.header}>
 					<View style={s.companyBlock}>
-						<Text style={s.companyName}>Epic HVAC Services</Text>
-						<Text style={s.companyTagline}>La Crosse, WI · Licensed & Insured</Text>
+						{org.logo_url && (
+							<Image src={org.logo_url} style={s.orgLogo} />
+						)}
+						<View style={s.companyTextBlock}>
+							<Text style={s.companyName}>{org.name}</Text>
+							{org.address && <Text style={s.companyDetail}>{org.address}</Text>}
+							{org.phone && <Text style={s.companyDetail}>{org.phone}</Text>}
+							{org.email && <Text style={s.companyDetail}>{org.email}</Text>}
+							{org.website && <Text style={s.companyDetail}>{org.website}</Text>}
+						</View>
 					</View>
 					<View style={s.docTitleBlock}>
 						<Text style={s.docTitle}>QUOTE</Text>
@@ -328,9 +377,8 @@ export function QuotePdfTemplate({ quote }: { quote: QuotePdfProps }) {
 
 				{/* ── Bill To + Quote Details ── */}
 				<View style={s.infoRow}>
-					{/* Left: Bill To */}
 					<View style={s.infoColLeft}>
-						<Text style={s.sectionLabel}>Bill To</Text>
+						<Text style={s.sectionHeading}>Bill To</Text>
 						<Text style={s.clientName}>{quote.client?.name ?? "—"}</Text>
 						{quote.client?.address && (
 							<Text style={s.infoText}>{quote.client.address}</Text>
@@ -340,16 +388,13 @@ export function QuotePdfTemplate({ quote }: { quote: QuotePdfProps }) {
 						{contact?.phone && <Text style={s.infoText}>{contact.phone}</Text>}
 					</View>
 
-					{/* Right: Quote Details */}
 					<View style={s.infoColRight}>
-						<Text style={s.sectionLabel}>Quote Details</Text>
-						<View style={[s.badge, { backgroundColor: bc.bg }]}>
-							<Text style={[s.badgeText, { color: bc.text }]}>{quote.status}</Text>
-						</View>
-						<View style={s.metaRow}>
-							<Text style={s.metaLabel}>Quote #</Text>
-							<Text style={s.metaValue}>{quote.quote_number}</Text>
-						</View>
+						<Text style={s.sectionHeading}>Quote Details</Text>
+						{!HIDE_BADGE_STATUSES.has(quote.status) && (
+							<View style={[s.badge, { backgroundColor: bc.bg }]}>
+								<Text style={[s.badgeText, { color: bc.text }]}>{quote.status}</Text>
+							</View>
+						)}
 						<View style={s.metaRow}>
 							<Text style={s.metaLabel}>Date</Text>
 							<Text style={s.metaValue}>{fmtDate(quote.created_at)}</Text>
@@ -371,7 +416,6 @@ export function QuotePdfTemplate({ quote }: { quote: QuotePdfProps }) {
 
 				{/* ── Line Items ── */}
 				<View style={s.tableContainer}>
-					{/* Header row — View-wrapped cells match the data row structure */}
 					<View style={s.tableHead}>
 						<View style={s.colName}>
 							<Text style={s.thText}>Item</Text>
@@ -459,19 +503,22 @@ export function QuotePdfTemplate({ quote }: { quote: QuotePdfProps }) {
 
 				{/* ── Notes ── */}
 				{(quote.notes ?? []).length > 0 && (
-					<View style={s.noteSection}>
-						<Text style={s.noteSectionLabel}>Notes</Text>
-						{(quote.notes ?? []).map((note: QuotePdfNote, i: number) => (
-							<View key={note.id ?? i} style={s.noteBox}>
-								<Text style={s.noteText}>{note.content}</Text>
-							</View>
-						))}
-					</View>
+					<>
+						<View style={s.sectionDivider} />
+						<View>
+							<Text style={s.sectionTitle}>Notes</Text>
+							{(quote.notes ?? []).map((note: QuotePdfNote, i: number) => (
+								<View key={note.id ?? i} style={s.noteBox}>
+									<Text style={s.noteText}>{note.content}</Text>
+								</View>
+							))}
+						</View>
+					</>
 				)}
 
 				{/* ── Footer ── */}
 				<View style={s.footer} fixed>
-					<Text style={s.footerText}>Epic HVAC Services · La Crosse, WI</Text>
+					<Text style={s.footerText}>{org.name}</Text>
 					<Text
 						style={s.footerText}
 						render={({ pageNumber, totalPages }) =>

@@ -16,11 +16,13 @@ interface AuthResponse {
     pendingToken: string;
     token: string,
     expiresIn: number,
-    refreshToken?: string,   // for refresh token rotation
-    user?: {                 // avoids a second /me API call after login
+    refreshToken?: string,
+    user?: {
         email: string,
         role: string
-    }
+    },
+    forcePasswordReset?: boolean,
+    resetToken?: string,
 }
 
 export const loginCall = async (input: User): Promise<AuthResponse> => {
@@ -35,10 +37,12 @@ export const loginCall = async (input: User): Promise<AuthResponse> => {
         throw new Error(response.data.error?.message || "Login failed");
     }
     const data = response.data.data!;
-    
-    // Store the token and set it as default header for all future requests
-    localStorage.setItem("accessToken", data.pendingToken);
-    api.defaults.headers.common["Authorization"] = `Bearer ${data.pendingToken}`;
+
+    // First login skips OTP and returns a full token directly.
+    // Normal login returns a pendingToken for the OTP step.
+    const tokenToStore = data.token ?? data.pendingToken;
+    localStorage.setItem("accessToken", tokenToStore);
+    api.defaults.headers.common["Authorization"] = `Bearer ${tokenToStore}`;
     console.log(localStorage.getItem("accessToken"));
     console.log("api headers", api.defaults.headers.common["Authorization"]);
     
@@ -55,7 +59,7 @@ export const verifyOTPCall = async (otp: string): Promise<AuthResponse> => {
     console.log("OTP verification response:", response.data);
     localStorage.setItem("accessToken", response.data.data!.token);
     api.defaults.headers.common["Authorization"] = `Bearer ${response.data.data!.token}`;
-    console.log("OTP verification successful, access token stored.");
+
     return response.data.data!;
 }
 
@@ -67,5 +71,24 @@ export const logoutCall = async (): Promise<AuthResponse> => {
     }
     localStorage.removeItem("accessToken");
     delete api.defaults.headers.common.Authorization;
+    return response.data.data!;
+}
+
+export const requestPasswordResetCall = async (id: string, role: string): Promise<{ message: string }> => {
+    const endpoint = role === "technician" ? `/technicians/${id}/reset-password` : `/dispatchers/${id}/reset-password`;
+    const response = await api.post<ApiResponse<{ message: string }>>(endpoint);
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "Password reset request failed");
+    }
+    return response.data.data!;
+}
+
+export const resetPasswordCall = async (token: string, newPassword: string, role: string): Promise<{ message: string }> => {
+    const response = await api.post<ApiResponse<{ message: string }>>('/reset-password', { token, newPassword, role });   
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "Password reset failed");
+    }
     return response.data.data!;
 }

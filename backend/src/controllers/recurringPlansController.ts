@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	Prisma,
 	recurring_frequency,
@@ -7,6 +6,7 @@ import {
 } from "../../generated/prisma/client.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { getScopedDb } from "../lib/context.js";
 import {
 	createRecurringPlanSchema,
 	updateRecurringPlanSchema,
@@ -24,12 +24,78 @@ import {
 	OccurrenceGenerationResult,
 	VisitGenerationResult,
 } from "../types/common.js";
-import { addDays, addWeeks, addMonths, addYears, parseISO } from "date-fns";
+import { addDays } from "date-fns";
 import {
 	calculateNextInvoiceAt,
 	type ScheduleFrequency,
 } from "../lib/invoiceSchedule.js";
 import { log } from "../services/appLogger.js";
+
+// ─── Timezone-safe date helpers ───────────────────────────────────────────────
+// All occurrence generation works with "YYYY-MM-DD" calendar-date strings in the
+// plan's IANA timezone so that day/weekday/month checks are correct regardless of
+// the server's system timezone (which is always UTC in production).
+
+/** Convert a UTC instant to a "YYYY-MM-DD" calendar-date string in an IANA timezone. */
+function toDateStr(date: Date, timezone: string): string {
+	return date.toLocaleDateString("en-CA", { timeZone: timezone }); // "YYYY-MM-DD"
+}
+
+/** Return the later of two "YYYY-MM-DD" strings (lexicographic = chronological). */
+function laterDate(a: string, b: string): string {
+	return a > b ? a : b;
+}
+
+/** Add N calendar days to a "YYYY-MM-DD" string. */
+function dateStrAddDays(dateStr: string, days: number): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
+}
+
+/** Add N calendar months to a "YYYY-MM-DD" string (end-of-month clamped by JS Date). */
+function dateStrAddMonths(dateStr: string, months: number): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(Date.UTC(y, m - 1 + months, d)).toISOString().split("T")[0];
+}
+
+/** Add N calendar years to a "YYYY-MM-DD" string. */
+function dateStrAddYears(dateStr: string, years: number): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(Date.UTC(y + years, m - 1, d)).toISOString().split("T")[0];
+}
+
+/**
+ * Convert a local date + time in an IANA timezone to a UTC Date.
+ * Uses only the Intl API — no external dependencies required.
+ *
+ * @param dateStr  "YYYY-MM-DD" calendar date in the given timezone
+ * @param hhmm     "HH:MM" local wall-clock time
+ * @param timezone IANA timezone string, e.g. "America/Chicago"
+ */
+function localToUTC(dateStr: string, hhmm: string, timezone: string): Date {
+	// Treat the desired local time as a UTC instant (initial approximation)
+	const approx = new Date(`${dateStr}T${hhmm}:00Z`);
+	// Ask Intl what local clock the timezone shows for that UTC instant
+	// 'sv' locale produces "YYYY-MM-DD HH:MM:SS" — easy to parse back as UTC
+	const localRepr = approx.toLocaleString("sv", { timeZone: timezone });
+	const localTime = new Date(localRepr.replace(" ", "T") + "Z");
+	// offsetMs = local reading − UTC instant (positive for UTC+, negative for UTC−)
+	const offsetMs = localTime.getTime() - approx.getTime();
+	// Subtract the offset to get the UTC instant that equals the desired local time
+	return new Date(approx.getTime() - offsetMs);
+}
+
+/** Parse "HH:MM" to total minutes from midnight. */
+function parseHHMM(hhmm: string): number {
+	const [h, m] = hhmm.split(":").map(Number);
+	return h * 60 + m;
+}
+
+/** Convert total minutes from midnight to "HH:MM" (clamped to 23:59). */
+function formatHHMM(totalMinutes: number): string {
+	const clamped = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
+	return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
 
 export interface UserContext {
 	techId?: string;
@@ -42,8 +108,9 @@ type RecurringRuleWithWeekdays = Prisma.recurring_ruleGetPayload<{
 	include: { by_weekday: true };
 }>;
 
-async function generateJobNumber(): Promise<string> {
-	const lastJob = await db.job.findFirst({
+async function generateJobNumber(organizationId: string): Promise<string> {
+	const sdb = getScopedDb(organizationId);
+	const lastJob = await sdb.job.findFirst({
 		where: {
 			job_number: {
 				startsWith: "J-",
@@ -72,7 +139,8 @@ async function generateJobNumber(): Promise<string> {
 async function generateOccurrencesForPlan(
 	planId: string,
 	daysAhead: number,
-	tx: Prisma.TransactionClient,
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	tx: any,
 ): Promise<OccurrenceGenerationResult> {
 	const plan = await tx.recurring_plan.findUnique({
 		where: { id: planId },
@@ -106,6 +174,7 @@ async function generateOccurrencesForPlan(
 		new Date(plan.starts_at),
 		startDate,
 		generationEndDate,
+		plan.timezone ?? "UTC",
 	);
 
 	let generated = 0;
@@ -125,7 +194,7 @@ async function generateOccurrencesForPlan(
 			continue;
 		}
 
-		// Create occurrence
+		// Create occurrence — copy constraint fields from rule
 		await tx.recurring_occurrence.create({
 			data: {
 				recurring_plan_id: planId,
@@ -133,6 +202,12 @@ async function generateOccurrencesForPlan(
 				occurrence_end_at: date.end,
 				status: "planned",
 				template_version: 1, // TODO: Implement versioning
+				arrival_constraint:   rule.arrival_constraint,
+				finish_constraint:    rule.finish_constraint,
+				arrival_time:         rule.arrival_time,
+				arrival_window_start: rule.arrival_window_start,
+				arrival_window_end:   rule.arrival_window_end,
+				finish_time:          rule.finish_time,
 			},
 		});
 
@@ -152,137 +227,89 @@ function calculateOccurrenceDates(
 	planStartDate: Date,
 	rangeStart: Date,
 	rangeEnd: Date,
+	timezone: string,
 ): Array<{ start: Date; end: Date }> {
 	const dates: Array<{ start: Date; end: Date }> = [];
-	let currentDate = new Date(
-		Math.max(planStartDate.getTime(), rangeStart.getTime()),
+
+	// Work with calendar-date strings in the plan's timezone so that day/weekday/
+	// month comparisons are correct independent of the server's system timezone.
+	const startDateStr = laterDate(
+		toDateStr(planStartDate, timezone),
+		toDateStr(rangeStart, timezone),
 	);
+	const endDateStr = toDateStr(rangeEnd, timezone);
+	let currentDateStr = startDateStr;
 
-	let startHours = 9; // Default 9 AM
-	let startMinutes = 0;
-
-	// Determine start time based on arrival constraint
+	// ── Derive visit start time (HH:MM) from arrival constraint ─────────────
+	let startHHMM = "09:00";
 	if (rule.arrival_constraint === "at" && rule.arrival_time) {
-		const [h, m] = rule.arrival_time.split(":").map(Number);
-		startHours = h;
-		startMinutes = m;
-	} else if (
-		rule.arrival_constraint === "between" &&
-		rule.arrival_window_start
-	) {
-		const [h, m] = rule.arrival_window_start.split(":").map(Number);
-		startHours = h;
-		startMinutes = m;
+		startHHMM = rule.arrival_time;
+	} else if (rule.arrival_constraint === "between" && rule.arrival_window_start) {
+		startHHMM = rule.arrival_window_start;
 	} else if (rule.arrival_constraint === "by" && rule.arrival_window_end) {
-		// For "by" constraint, calculate a reasonable start time before deadline
-		// Default to 4 hours before deadline, or 9 AM if deadline is earlier
-		const [deadlineH, deadlineM] = rule.arrival_window_end
-			.split(":")
-			.map(Number);
-		const deadlineMinutes = deadlineH * 60 + deadlineM;
-		const startTimeMinutes = Math.max(540, deadlineMinutes - 240); // 540 = 9:00 AM, 240 = 4 hours
-		startHours = Math.floor(startTimeMinutes / 60);
-		startMinutes = startTimeMinutes % 60;
+		// 4 hours before deadline, floor at 9 AM
+		const startM = Math.max(9 * 60, parseHHMM(rule.arrival_window_end) - 240);
+		startHHMM = formatHHMM(startM);
 	}
 
+	// ── Derive duration and end time from finish constraint ──────────────────
+	let durationMinutes = 120; // default 2 hours
+	if (
+		(rule.finish_constraint === "at" || rule.finish_constraint === "by") &&
+		rule.finish_time
+	) {
+		durationMinutes = Math.max(0, parseHHMM(rule.finish_time) - parseHHMM(startHHMM)) || 120;
+	}
+
+	// ── Day-of-week map (JS getUTCDay: 0=Sun…6=Sat) ─────────────────────────
 	const weekdayMap: Record<weekday, number> = {
-		MO: 1,
-		TU: 2,
-		WE: 3,
-		TH: 4,
-		FR: 5,
-		SA: 6,
-		SU: 0,
+		MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0,
 	};
 
-	while (currentDate <= rangeEnd) {
-		let shouldInclude = false;
+	while (currentDateStr <= endDateStr) {
+		const [year, month, day] = currentDateStr.split("-").map(Number);
+		// Build a UTC-midnight Date just to derive the day of week — no local time involved
+		const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
+		let shouldInclude = false;
 		switch (rule.frequency) {
 			case "daily":
 				shouldInclude = true;
 				break;
-
 			case "weekly":
-				const currentDay = currentDate.getDay();
-				shouldInclude = rule.by_weekday.some(
-					(wd) => weekdayMap[wd.weekday] === currentDay,
-				);
+				shouldInclude = rule.by_weekday.some((wd) => weekdayMap[wd.weekday] === dow);
 				break;
-
 			case "monthly":
-				if (rule.by_month_day !== null) {
-					shouldInclude = currentDate.getDate() === rule.by_month_day;
-				}
+				shouldInclude = rule.by_month_day !== null && day === rule.by_month_day;
 				break;
-
 			case "yearly":
-				if (rule.by_month !== null && rule.by_month_day !== null) {
-					shouldInclude =
-						currentDate.getMonth() + 1 === rule.by_month &&
-						currentDate.getDate() === rule.by_month_day;
-				}
+				shouldInclude =
+					rule.by_month !== null &&
+					rule.by_month_day !== null &&
+					month === rule.by_month &&
+					day === rule.by_month_day;
 				break;
 		}
 
 		if (shouldInclude) {
-			const occurrenceStart = new Date(currentDate);
-			occurrenceStart.setHours(startHours, startMinutes, 0, 0);
-
-			// Calculate end time based on finish constraint
-			let endHours = startHours;
-			let endMinutes = startMinutes;
-			let durationMinutes = 120; // Default 2 hours
-
-			if (rule.finish_constraint === "at" && rule.finish_time) {
-				const [h, m] = rule.finish_time.split(":").map(Number);
-				endHours = h;
-				endMinutes = m;
-				durationMinutes =
-					endHours * 60 +
-					endMinutes -
-					(startHours * 60 + startMinutes);
-			} else if (rule.finish_constraint === "by" && rule.finish_time) {
-				const [h, m] = rule.finish_time.split(":").map(Number);
-				endHours = h;
-				endMinutes = m;
-				durationMinutes =
-					endHours * 60 +
-					endMinutes -
-					(startHours * 60 + startMinutes);
-			} else {
-				// Default duration for "when_done" or unspecified
-				const endTimeMinutes =
-					startHours * 60 + startMinutes + durationMinutes;
-				endHours = Math.floor(endTimeMinutes / 60) % 24;
-				endMinutes = endTimeMinutes % 60;
-			}
-
-			if (durationMinutes <= 0) {
-				durationMinutes = 120; // Fallback to 2 hours
-			}
-
-			const occurrenceEnd = addMinutes(occurrenceStart, durationMinutes);
-
-			dates.push({
-				start: occurrenceStart,
-				end: occurrenceEnd,
-			});
+			const occurrenceStart = localToUTC(currentDateStr, startHHMM, timezone);
+			const occurrenceEnd   = addMinutes(occurrenceStart, durationMinutes);
+			dates.push({ start: occurrenceStart, end: occurrenceEnd });
 		}
 
-		// Increment date based on frequency and interval
+		// Advance to the next candidate calendar date
 		switch (rule.frequency) {
 			case "daily":
-				currentDate = addDays(currentDate, rule.interval);
+				currentDateStr = dateStrAddDays(currentDateStr, rule.interval);
 				break;
 			case "weekly":
-				currentDate = addDays(currentDate, 1); // Check each day for weekly
+				currentDateStr = dateStrAddDays(currentDateStr, 1); // check every day, filter by weekday above
 				break;
 			case "monthly":
-				currentDate = addMonths(currentDate, rule.interval);
+				currentDateStr = dateStrAddMonths(currentDateStr, rule.interval);
 				break;
 			case "yearly":
-				currentDate = addYears(currentDate, rule.interval);
+				currentDateStr = dateStrAddYears(currentDateStr, rule.interval);
 				break;
 		}
 	}
@@ -298,8 +325,11 @@ function addMinutes(date: Date, minutes: number): Date {
 // RECURRING PLAN CRUD
 // ============================================================================
 
-export const getAllRecurringPlans = async () => {
-	return await db.recurring_plan.findMany({
+export const getAllRecurringPlans = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const now = new Date();
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+	return await sdb.recurring_plan.findMany({
 		include: {
 			client: {
 				select: {
@@ -327,7 +357,7 @@ export const getAllRecurringPlans = async () => {
 			occurrences: {
 				where: {
 					occurrence_start_at: {
-						gte: new Date(),
+						gte: startOfToday,
 					},
 				},
 				orderBy: { occurrence_start_at: "asc" },
@@ -338,8 +368,9 @@ export const getAllRecurringPlans = async () => {
 	});
 };
 
-export const getRecurringPlanByJobId = async (jobId: string) => {
-	return await db.recurring_plan.findFirst({
+export const getRecurringPlanByJobId = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.recurring_plan.findFirst({
 		where: {
 			job_container: {
 				id: jobId,
@@ -371,8 +402,9 @@ export const getRecurringPlanByJobId = async (jobId: string) => {
 	});
 };
 
-export const getRecurringPlanById = async (planId: string) => {
-	return await db.recurring_plan.findUnique({
+export const getRecurringPlanById = async (planId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.recurring_plan.findUnique({
 		where: { id: planId },
 		include: {
 			client: {
@@ -420,12 +452,13 @@ export const getRecurringPlanById = async (planId: string) => {
 
 export const insertRecurringPlan = async (
 	req: Request,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createRecurringPlanSchema.parse(req.body);
-
-		const created = await db.$transaction(async (tx) => {
+		const sdb = getScopedDb(organizationId);
+		const created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.findUnique({
 				where: { id: parsed.client_id },
 			});
@@ -434,7 +467,7 @@ export const insertRecurringPlan = async (
 				throw new Error("Client not found");
 			}
 
-			const jobNumber = await generateJobNumber();
+			const jobNumber = await generateJobNumber(organizationId);
 
 			// Create job container first (without recurring_plan_id)
 			const job = await tx.job.create({
@@ -572,6 +605,7 @@ export const insertRecurringPlan = async (
 				action: "created",
 				entity_type: "recurring_plan",
 				entity_id: plan.id,
+				organization_id: client.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -635,12 +669,13 @@ export const insertRecurringPlan = async (
 export const updateRecurringPlan = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRecurringPlanSchema.parse(data);
-
-		const existing = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -677,7 +712,7 @@ export const updateRecurringPlan = async (
 			"coords",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const plan = await tx.recurring_plan.update({
 				where: { id: existing.id },
 				data: {
@@ -927,6 +962,7 @@ export const updateRecurringPlan = async (
 					action: "updated",
 					entity_type: "recurring_plan",
 					entity_id: existing.id,
+					organization_id: existing.organization_id,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -1014,12 +1050,13 @@ export const updateRecurringPlan = async (
 export const updateRecurringPlanLineItems = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRecurringPlanLineItemsSchema.parse(data);
-
-		const plan = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const plan = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -1034,7 +1071,7 @@ export const updateRecurringPlanLineItems = async (
 			return { err: "Recurring plan not found" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const existingItemIds = new Set(
 				plan.line_items.map((item) => item.id),
 			);
@@ -1089,6 +1126,7 @@ export const updateRecurringPlanLineItems = async (
 				action: "updated",
 				entity_type: "recurring_plan",
 				entity_id: plan.id,
+				organization_id: plan.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1136,12 +1174,14 @@ export const updateRecurringPlanLineItems = async (
 export const upsertInvoiceSchedule = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateInvoiceScheduleSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const plan = await db.recurring_plan.findFirst({
+		const plan = await sdb.recurring_plan.findFirst({
 			where: { job_container: { id: jobId } },
 		});
 
@@ -1157,7 +1197,7 @@ export const upsertInvoiceSchedule = async (
 					)
 				: null;
 
-		const schedule = await db.invoice_schedule.upsert({
+		const schedule = await sdb.invoice_schedule.upsert({
 			where: { recurring_plan_id: plan.id },
 			create: {
 				recurring_plan_id: plan.id,
@@ -1200,14 +1240,15 @@ export const upsertInvoiceSchedule = async (
 	}
 };
 
-export const deleteInvoiceSchedule = async (jobId: string) => {
-	const plan = await db.recurring_plan.findFirst({
+export const deleteInvoiceSchedule = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const plan = await sdb.recurring_plan.findFirst({
 		where: { job_container: { id: jobId } },
 	});
 
 	if (!plan) return { err: "Recurring plan not found" };
 
-	await db.invoice_schedule.deleteMany({
+	await sdb.invoice_schedule.deleteMany({
 		where: { recurring_plan_id: plan.id },
 	});
 
@@ -1220,24 +1261,28 @@ export const deleteInvoiceSchedule = async (jobId: string) => {
 
 export const pauseRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
-	return updateRecurringPlan(jobId, { status: "Paused" }, context);
+	return updateRecurringPlan(jobId, { status: "Paused" }, organizationId, context);
 };
 
 export const resumeRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
-	return updateRecurringPlan(jobId, { status: "Active" }, context);
+	return updateRecurringPlan(jobId, { status: "Active" }, organizationId, context);
 };
 
 export const cancelRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const plan = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const plan = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -1249,7 +1294,7 @@ export const cancelRecurringPlan = async (
 			return { err: "Recurring plan not found" };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// Cancel all future planned occurrences
 			await tx.recurring_occurrence.updateMany({
 				where: {
@@ -1276,6 +1321,7 @@ export const cancelRecurringPlan = async (
 				action: "updated",
 				entity_type: "recurring_plan",
 				entity_id: plan.id,
+				organization_id: plan.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1301,17 +1347,19 @@ export const cancelRecurringPlan = async (
 
 export const completeRecurringPlan = async (
 	jobId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
-	return updateRecurringPlan(jobId, { status: "Completed" }, context);
+	return updateRecurringPlan(jobId, { status: "Completed" }, organizationId, context);
 };
 
 // ============================================================================
 // OCCURRENCE MANAGEMENT
 // ============================================================================
 
-export const getOccurrencesByJobId = async (jobId: string) => {
-	const plan = await db.recurring_plan.findFirst({
+export const getOccurrencesByJobId = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const plan = await sdb.recurring_plan.findFirst({
 		where: {
 			job_container: {
 				id: jobId,
@@ -1323,7 +1371,7 @@ export const getOccurrencesByJobId = async (jobId: string) => {
 		return [];
 	}
 
-	return await db.recurring_occurrence.findMany({
+	return await sdb.recurring_occurrence.findMany({
 		where: { recurring_plan_id: plan.id },
 		include: {
 			job_visit: {
@@ -1343,12 +1391,14 @@ export const getOccurrencesByJobId = async (jobId: string) => {
 export const generateOccurrences = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = generateOccurrencesSchema.parse(data);
 
-		const plan = await db.recurring_plan.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const plan = await sdb.recurring_plan.findFirst({
 			where: {
 				job_container: {
 					id: jobId,
@@ -1364,7 +1414,7 @@ export const generateOccurrences = async (
 			return { err: "Can only generate occurrences for active plans" };
 		}
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			return await generateOccurrencesForPlan(
 				plan.id,
 				parsed.days_ahead,
@@ -1377,6 +1427,7 @@ export const generateOccurrences = async (
 			action: "created",
 			entity_type: "recurring_plan",
 			entity_id: plan.id,
+			organization_id: plan.organization_id,
 			actor_type: context?.techId
 				? "technician"
 				: context?.dispatcherId
@@ -1411,12 +1462,13 @@ export const generateOccurrences = async (
 export const skipOccurrence = async (
 	occurrenceId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = skipOccurrenceSchema.parse(data);
-
-		const occurrence = await db.recurring_occurrence.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const occurrence = await sdb.recurring_occurrence.findUnique({
 			where: { id: occurrenceId },
 		});
 
@@ -1428,7 +1480,7 @@ export const skipOccurrence = async (
 			return { err: "Can only skip planned occurrences" };
 		}
 
-		const updated = await db.recurring_occurrence.update({
+		const updated = await sdb.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
 				status: "skipped",
@@ -1473,12 +1525,14 @@ export const skipOccurrence = async (
 export const rescheduleOccurrence = async (
 	occurrenceId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = rescheduleOccurrenceSchema.parse(data);
 
-		const occurrence = await db.recurring_occurrence.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const occurrence = await sdb.recurring_occurrence.findUnique({
 			where: { id: occurrenceId },
 		});
 
@@ -1495,27 +1549,60 @@ export const rescheduleOccurrence = async (
 			? new Date(parsed.new_end_at)
 			: occurrence.occurrence_end_at;
 
-		const conflictingOccurrence = await db.recurring_occurrence.findFirst({
-			where: {
-				recurring_plan_id: occurrence.recurring_plan_id,
-				occurrence_start_at: newStartDate,
-				id: { not: occurrenceId },
-			},
-		});
+		// Build optional constraint update data
+		const constraintData = {
+			...(parsed.arrival_constraint   !== undefined && { arrival_constraint:   parsed.arrival_constraint }),
+			...(parsed.finish_constraint    !== undefined && { finish_constraint:    parsed.finish_constraint }),
+			...(parsed.arrival_time         !== undefined && { arrival_time:         parsed.arrival_time }),
+			...(parsed.arrival_window_start !== undefined && { arrival_window_start: parsed.arrival_window_start }),
+			...(parsed.arrival_window_end   !== undefined && { arrival_window_end:   parsed.arrival_window_end }),
+			...(parsed.finish_time          !== undefined && { finish_time:          parsed.finish_time }),
+		};
 
-		if (conflictingOccurrence) {
-			return {
-				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
-			};
-		}
-
-		const updated = await db.recurring_occurrence.update({
+		const updated = await sdb.recurring_occurrence.update({
 			where: { id: occurrenceId },
 			data: {
 				occurrence_start_at: newStartDate,
 				occurrence_end_at: newEndDate,
+				...constraintData,
 			},
 		});
+
+		// ── "This & all future" — shift future planned occurrences by the same delta ──
+		if (parsed.scope === "future") {
+			const deltaMs = newStartDate.getTime() - occurrence.occurrence_start_at.getTime();
+			const futureOccurrences = await sdb.recurring_occurrence.findMany({
+				where: {
+					recurring_plan_id: occurrence.recurring_plan_id,
+					occurrence_start_at: { gt: occurrence.occurrence_start_at },
+					status: "planned",
+					id: { not: occurrenceId },
+				},
+				select: { id: true, occurrence_start_at: true, occurrence_end_at: true },
+			});
+			if (futureOccurrences.length > 0) {
+				await sdb.$transaction(
+					futureOccurrences.map((o) =>
+						sdb.recurring_occurrence.update({
+							where: { id: o.id },
+							data: {
+								occurrence_start_at: new Date(o.occurrence_start_at.getTime() + deltaMs),
+								occurrence_end_at: new Date(o.occurrence_end_at.getTime() + deltaMs),
+								...constraintData,
+							},
+						}),
+					),
+				);
+			}
+
+			// Update the rule so newly generated occurrences also inherit the constraint change
+			if (Object.keys(constraintData).length > 0) {
+				await sdb.recurring_rule.updateMany({
+					where: { recurring_plan_id: occurrence.recurring_plan_id },
+					data: constraintData,
+				});
+			}
+		}
 
 		await logActivity({
 			event_type: "recurring_occurrence.rescheduled",
@@ -1570,12 +1657,14 @@ export const rescheduleOccurrence = async (
 
 export const bulkSkipOccurrences = async (
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = bulkSkipOccurrencesSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			const updated = await tx.recurring_occurrence.updateMany({
 				where: {
 					id: { in: parsed.occurrence_ids },
@@ -1630,10 +1719,12 @@ export const bulkSkipOccurrences = async (
 
 export const generateVisitFromOccurrence = async (
 	occurrenceId: string,
+	organizationId: string,
 	context?: UserContext,
 ): Promise<{ err: string; item?: VisitGenerationResult }> => {
 	try {
-		const occurrence = await db.recurring_occurrence.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const occurrence = await sdb.recurring_occurrence.findUnique({
 			where: { id: occurrenceId },
 			include: {
 				recurring_plan: {
@@ -1667,7 +1758,7 @@ export const generateVisitFromOccurrence = async (
 		const plan = occurrence.recurring_plan;
 		const rule = plan.rules[0];
 
-		const result = await db.$transaction(async (tx) => {
+		const result = await sdb.$transaction(async (tx) => {
 			// Calculate subtotal from template line items
 			const subtotal = plan.line_items.reduce(
 				(sum, item) =>
@@ -1681,12 +1772,12 @@ export const generateVisitFromOccurrence = async (
 					scheduled_start_at: occurrence.occurrence_start_at,
 					scheduled_end_at: occurrence.occurrence_end_at,
 
-					arrival_constraint: rule.arrival_constraint,
-					finish_constraint: rule.finish_constraint,
-					arrival_time: rule.arrival_time,
-					arrival_window_start: rule.arrival_window_start,
-					arrival_window_end: rule.arrival_window_end,
-					finish_time: rule.finish_time,
+					arrival_constraint: occurrence.arrival_constraint,
+					finish_constraint: occurrence.finish_constraint,
+					arrival_time: occurrence.arrival_time,
+					arrival_window_start: occurrence.arrival_window_start,
+					arrival_window_end: occurrence.arrival_window_end,
+					finish_time: occurrence.finish_time,
 
 					status: "Scheduled",
 					subtotal: subtotal,
@@ -1726,6 +1817,7 @@ export const generateVisitFromOccurrence = async (
 				action: "created",
 				entity_type: "job_visit",
 				entity_id: visit.id,
+				organization_id: plan.organization_id,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

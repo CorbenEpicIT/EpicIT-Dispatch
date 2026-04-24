@@ -6,6 +6,7 @@ interface TimePickerProps {
 	value: Date | null;
 	onChange: (v: Date) => void;
 	dropdownPosition?: "above" | "below";
+	compact?: boolean;
 }
 
 type Section = "hour" | "minute" | "period";
@@ -42,6 +43,7 @@ export default function TimePicker({
 	value,
 	onChange,
 	dropdownPosition = "below",
+	compact = false,
 }: TimePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [focusedSection, setFocusedSection] = useState<Section | null>(null);
@@ -150,12 +152,16 @@ export default function TimePicker({
 
 	useEffect(() => {
 		if (!open) return;
-		const handler = () => setOpen(false);
-		window.addEventListener("scroll", handler, true);
-		window.addEventListener("resize", handler);
+		const scrollHandler = (e: Event) => {
+			if (popupRef.current?.contains(e.target as Node)) return;
+			setOpen(false);
+		};
+		const resizeHandler = () => setOpen(false);
+		window.addEventListener("scroll", scrollHandler, true);
+		window.addEventListener("resize", resizeHandler);
 		return () => {
-			window.removeEventListener("scroll", handler, true);
-			window.removeEventListener("resize", handler);
+			window.removeEventListener("scroll", scrollHandler, true);
+			window.removeEventListener("resize", resizeHandler);
 		};
 	}, [open]);
 
@@ -366,10 +372,12 @@ export default function TimePicker({
 		[focusedSection, hour, minute, period, commit]
 	);
 
-	const seg = (label: string, sec: Section) => (
+	const seg = (label: string, sec: Section, small = false) => (
 		<span
 			onClick={() => switchSection(sec)}
-			className={`cursor-pointer px-1 rounded font-mono text-sm select-none transition-colors ${
+			className={`cursor-pointer rounded font-mono select-none transition-colors ${
+				small ? "px-0.5 text-[10px]" : "px-1 text-sm"
+			} ${
 				focusedSection === sec
 					? "bg-blue-600 text-white"
 					: isIncomplete && (label === "--" || label.includes("_"))
@@ -518,26 +526,96 @@ export default function TimePicker({
 
 	return (
 		<div className="relative w-full" ref={containerRef} onBlur={handleBlur}>
-			<div
-				ref={anchorRef}
-				className="border border-zinc-700 bg-zinc-900 rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-zinc-600 focus-within:border-blue-500 transition-colors cursor-default"
-				tabIndex={0}
-			>
-				<Clock
-					size={14}
-					className="text-zinc-400 flex-shrink-0 cursor-pointer hover:text-zinc-200 transition-colors"
-					onClick={() => (open ? setOpen(false) : openPopup())}
-				/>
-				<div className="flex items-center gap-0.5">
-					{seg(hour, "hour")}
-					<span className="text-zinc-400 text-sm select-none">:</span>
-					{seg(minute, "minute")}
-					<span className="text-zinc-400 text-sm select-none mx-0.5">
-						{" "}
-					</span>
-					{seg(period, "period")}
+			{compact ? (
+				<div
+					ref={anchorRef}
+					style={{
+						background: "#27272a",
+						border: `1px solid ${focusedSection ? "#3b82f6" : "#3f3f46"}`,
+						borderRadius: 4,
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						padding: "4px 6px",
+						cursor: "pointer",
+						width: "100%",
+						boxSizing: "border-box",
+						transition: "border-color 0.15s",
+					}}
+					tabIndex={0}
+					onClick={() => !open && openPopup()}
+					onMouseEnter={(e) => {
+						if (!focusedSection)
+							(
+								e.currentTarget as HTMLElement
+							).style.borderColor = "#52525b";
+					}}
+					onMouseLeave={(e) => {
+						if (!focusedSection)
+							(
+								e.currentTarget as HTMLElement
+							).style.borderColor = open
+								? "#52525b"
+								: "#3f3f46";
+					}}
+				>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 1,
+						}}
+					>
+						{seg(hour, "hour", true)}
+						<span
+							style={{
+								color: "#52525b",
+								fontSize: 10,
+								userSelect: "none",
+								lineHeight: 1,
+							}}
+						>
+							:
+						</span>
+						{seg(minute, "minute", true)}
+						<span style={{ width: 3, flexShrink: 0 }} />
+						{seg(period, "period", true)}
+					</div>
+					<Clock
+						size={10}
+						style={{
+							color: "#c9c9c9",
+							flexShrink: 0,
+							marginLeft: 4,
+						}}
+					/>
 				</div>
-			</div>
+			) : (
+				<div
+					ref={anchorRef}
+					className="border border-zinc-700 bg-zinc-900 rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-zinc-600 focus-within:border-blue-500 transition-colors cursor-default"
+					tabIndex={0}
+				>
+					<Clock
+						size={14}
+						className="text-zinc-400 flex-shrink-0 cursor-pointer hover:text-zinc-200 transition-colors"
+						onClick={() =>
+							open ? setOpen(false) : openPopup()
+						}
+					/>
+					<div className="flex items-center gap-0.5">
+						{seg(hour, "hour")}
+						<span className="text-zinc-400 text-sm select-none">
+							:
+						</span>
+						{seg(minute, "minute")}
+						<span className="text-zinc-400 text-sm select-none mx-0.5">
+							{" "}
+						</span>
+						{seg(period, "period")}
+					</div>
+				</div>
+			)}
 
 			{popup}
 

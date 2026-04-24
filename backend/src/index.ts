@@ -7,6 +7,8 @@ import {
 	createSuccessResponse,
 	createErrorResponse,
 } from "./types/responses.js";
+import * as notificationsController from "./controllers/notificationsController.js";
+import { startVisitReminderInterval } from "./services/notifications.js";
 import {
 	getAllRequests,
 	getRequestById,
@@ -130,16 +132,15 @@ import { sendQuoteEmail, sendInvoiceEmail } from "./services/emailService.js";
 
 import {
 	login,
-	register,
 	logout,
-	checkRole,
 	checkToken,
-	checkRefreshToken,
 	issueAuthTokens,
+	resetPassword,
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
 import { db } from "./db.js";
+import { getScopedDb } from "./lib/context.js";
 import {
 	httpMetricsMiddleware,
 	prometheusExporter,
@@ -147,13 +148,29 @@ import {
 import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
+import { initSocket } from "./services/socketService.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
+// ============================================
+// Routers
+// ============================================
+import clientsContactsRouter from "./routes/clientsContacts.js";
+import dispatchersRouter from "./routes/dispatchers.js";
+import draftsRouter from "./routes/drafts.js";
+import emailRouter from "./routes/email.js";
+import inventoryRouter from "./routes/inventory.js";
+import invoicesRouter from "./routes/invoices.js";
+import jobsRouter from "./routes/jobs.js";
+import jobVisitsRouter from "./routes/jobVisits.js";
+import occurrencesRouter from "./routes/occurrences.js";
+import orgRouter from "./routes/org.js";
+import organizationsRouter from "./routes/organizations.js";
+import quotesRouter from "./routes/quotes.js";
+import recurringPlansRouter from "./routes/recurringPlans.js";
+import reportsRouter from "./routes/reports.js";
+import requestsRouter from "./routes/requests.js";
+import techniciansRouter from "./routes/technicians.js";
+import vehiclesRouter from "./routes/vehicles.js";
+import notificationsRouter from "./routes/notifications.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -248,7 +265,11 @@ const requireRole = (...roles: string[]) => {
 					),
 				);
 		}
-		if (!roles.includes(req.user.role)) {
+		// adds admin permissions to dispatchers since they have the same UI access
+		const effective = roles.includes("dispatcher")
+			? [...roles, "admin"]
+			: roles;
+		if (!effective.includes(req.user.role)) {
 			return res
 				.status(403)
 				.json(
@@ -259,29 +280,6 @@ const requireRole = (...roles: string[]) => {
 				);
 		}
 		next();
-	};
-};
-
-// ============================================
-// HELPER
-// ============================================
-
-const getUserContext = (req: Request): UserContext => {
-	const userId = req.headers["x-user-id"] as string;
-	const userType = req.headers["x-user-type"] as "tech" | "dispatcher";
-	/*
-	const ipAddress = 
-		(req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-		req.socket.remoteAddress ||
-		undefined;
-	*/
-	const userAgent = req.headers["user-agent"] || undefined;
-
-	return {
-		techId: userType === "tech" ? userId : undefined,
-		dispatcherId: userType === "dispatcher" ? userId : undefined,
-		ipAddress: undefined,
-		userAgent,
 	};
 };
 
@@ -314,6 +312,17 @@ app.use(cors(corsOptions));
 const server = http.createServer(app);
 const io = new Server(server, {
 	cors: corsOptions,
+});
+initSocket(io);
+
+// Inject io into notifications so createNotification can emit in real-time
+notificationsController.setSocketIo(io);
+startVisitReminderInterval();
+
+// Each technician joins their personal room on connect
+io.on("connection", (socket) => {
+	const techId = socket.handshake.query["techId"] as string | undefined;
+	if (techId) socket.join(`tech:${techId}`);
 });
 
 let port: string | undefined = process.env["SERVER_PORT"];
@@ -428,355 +437,103 @@ app.post("/otp-verify", async (req, res, next) => {
 	}
 });
 
+app.post("/reset-password", async (req, res, next) => {
+	try {
+		const { token, newPassword, role } = req.body;
+		const result = await resetPassword(token, newPassword, role);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
 // ============================================
 // DRAFT ROUTES
 // ============================================
-
-app.get("/drafts", async (req, res, next) => {
-	try {
-		const result = await draftsController.getAllDrafts(req);
-
-		if (result.err) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.json(
-			createSuccessResponse(result.items, {
-				count: result.items!.length,
-			}),
-		);
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/drafts/:id", async (req, res, next) => {
-	try {
-		const { id } = req.params;
-		const result = await draftsController.getDraftById(id);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
-		}
-
-		res.json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.post("/drafts", async (req, res, next) => {
-	try {
-		const result = await draftsController.insertDraft(req);
-
-		if (result.err) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.status(201).json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.put("/drafts/:id", async (req, res, next) => {
-	try {
-		const { id } = req.params;
-		const result = await draftsController.updateDraft(id, req);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.delete("/drafts/:id", async (req, res, next) => {
-	try {
-		const { id } = req.params;
-		const result = await draftsController.deleteDraft(id);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
-		}
-
-		res.status(200).json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
+app.use("/drafts", verifyToken, draftsRouter);
 
 // ============================================
 // REQUEST ROUTES
 // ============================================
-
-app.get("/requests", async (req, res, next) => {
-	// requireRole("dispatch"),           temp removal until further implementation
-	try {
-		const requests = await getAllRequests();
-		res.json(createSuccessResponse(requests, { count: requests.length }));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/requests/:id", async (req, res, next) => {
-	try {
-		const { id } = req.params;
-		const request = await getRequestById(id);
-
-		if (!request) {
-			return res
-				.status(404)
-				.json(
-					createErrorResponse(
-						ErrorCodes.NOT_FOUND,
-						"Request not found",
-					),
-				);
-		}
-
-		res.json(createSuccessResponse(request));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/clients/:clientId/requests", async (req, res, next) => {
-	try {
-		const { clientId } = req.params;
-		const requests = await getRequestsByClientId(clientId);
-		res.json(createSuccessResponse(requests, { count: requests.length }));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.post("/requests", async (req, res, next) => {
-	try {
-		const context = getUserContext(req);
-		const result = await insertRequest(req, context);
-
-		if (result.err) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.status(201).json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.put("/requests/:id", async (req, res, next) => {
-	try {
-		const context = getUserContext(req);
-		const result = await updateRequest(req, context);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.delete("/requests/:id", async (req, res, next) => {
-	try {
-		const { id } = req.params;
-		const context = getUserContext(req);
-		const result = await deleteRequest(id, context);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
-		}
-
-		res.status(200).json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-// ============================================
-// REQUEST NOTE ROUTES
-// ============================================
-app.get("/requests/:requestId/notes", async (req, res, next) => {
-	try {
-		const { requestId } = req.params;
-		const notes = await requestNotesController.getRequestNotes(requestId);
-		res.json(createSuccessResponse(notes, { count: notes.length }));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/requests/:requestId/notes/:noteId", async (req, res, next) => {
-	try {
-		const { requestId, noteId } = req.params;
-		const note = await requestNotesController.getNoteById(
-			requestId,
-			noteId,
-		);
-
-		if (!note) {
-			return res
-				.status(404)
-				.json(
-					createErrorResponse(ErrorCodes.NOT_FOUND, "Note not found"),
-				);
-		}
-
-		res.json(createSuccessResponse(note));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.post("/requests/:requestId/notes", async (req, res, next) => {
-	try {
-		const { requestId } = req.params;
-		const context = getUserContext(req);
-		const result = await requestNotesController.insertRequestNote(
-			requestId,
-			req.body,
-			context,
-		);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.status(201).json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.put("/requests/:requestId/notes/:noteId", async (req, res, next) => {
-	try {
-		const { requestId, noteId } = req.params;
-		const context = getUserContext(req);
-		const result = await requestNotesController.updateRequestNote(
-			requestId,
-			noteId,
-			req.body,
-			context,
-		);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						result.err,
-					),
-				);
-		}
-
-		res.json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.delete("/requests/:requestId/notes/:noteId", async (req, res, next) => {
-	try {
-		const { requestId, noteId } = req.params;
-		const context = getUserContext(req);
-		const result = await requestNotesController.deleteRequestNote(
-			requestId,
-			noteId,
-			context,
-		);
-
-		if (result.err) {
-			const statusCode = result.err.includes("not found") ? 404 : 400;
-			return res
-				.status(statusCode)
-				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
-		}
-
-		res.status(200).json(
-			createSuccessResponse({ message: result.message }),
-		);
-	} catch (err) {
-		next(err);
-	}
-});
+app.use("/requests", verifyToken, requestsRouter);
 
 // ============================================
 // QUOTE ROUTES
 // ============================================
+app.use("/quotes", verifyToken, quotesRouter);
 
-app.get("/quotes", async (req, res, next) => {
-	try {
-		const quotes = await getAllQuotes();
-		res.json(createSuccessResponse(quotes, { count: quotes.length }));
-	} catch (err) {
-		next(err);
-	}
-});
+// ============================================
+// JOBS
+// ============================================
+app.use("/jobs", verifyToken, jobsRouter);
 
+// ============================================
+// JOB VISITS
+// ============================================
+app.use("/job-visits", verifyToken, jobVisitsRouter);
+
+// ============================================
+// RECURRING PLANS
+// ============================================
+app.use("/recurring-plans", verifyToken, recurringPlansRouter);
+
+// ============================================
+// OCCURRENCE ROUTES
+// ============================================
+app.use("/occurrences", verifyToken, occurrencesRouter);
+
+// ============================================
+// INVOICE ROUTES
+// ============================================
+app.use("/invoices", verifyToken, invoicesRouter);
+
+// ============================================
+// ORGANIZATION (public — must be before "/" catch-all)
+// ============================================
+app.use("/organizations", organizationsRouter);
+
+// ============================================
+// CLIENTS + CONTACTS
+// ============================================
+// since its mounted at / everything will be sent here
+// which can cause performance issues if scaled
+app.use("/", verifyToken, clientsContactsRouter);
+
+// ============================================
+// TECHNICIANS
+// ============================================
+app.use("/technicians", verifyToken, techniciansRouter);
+app.use("/technicians", verifyToken, notificationsRouter);
+
+// ============================================
+// DISPATCHERS
+// ============================================
+app.use("/dispatchers", verifyToken, dispatchersRouter);
+
+// ============================================
+// Email
+// ============================================
+app.use("/email", verifyToken, emailRouter);
+
+// ============================================
+// INVENTORY
+// ============================================
+app.use("/inventory", verifyToken, inventoryRouter);
+
+// ── Org settings ─────────────────────────────────────────────────────────────
+app.use("/org", verifyToken, requireRole("dispatcher"), orgRouter);
 app.get("/quotes/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
@@ -3427,134 +3184,12 @@ app.patch("/inventory/:id/threshold", async (req, res, next) => {
 // ============================================
 // REPORTS
 // ============================================
-
-app.get("/reports/overview", async (req, res, next) => {
-	try {
-		const { startDate, endDate } = req.query as {
-			startDate: string;
-			endDate: string;
-		};
-
-		if (!startDate || !endDate) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						"startDate and endDate are required",
-					),
-				);
-		}
-
-		const overview = await getOverviewMetrics(startDate, endDate);
-		res.json(createSuccessResponse(overview));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/reports/revenue-ytd", async (req, res, next) => {
-	try {
-		const { year } = req.query as {
-			year?: string;
-		};
-
-		const revenueYTD = await getRevenueYTD(
-			year ? parseInt(year, 10) : undefined,
-		);
-		res.json(createSuccessResponse(revenueYTD));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/reports/revenue-by-job-type", async (req, res, next) => {
-	try {
-		const { startDate, endDate } = req.query as {
-			startDate: string;
-			endDate: string;
-		};
-
-		if (!startDate || !endDate) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						"startDate and endDate are required",
-					),
-				);
-		}
-
-		const revenueByJobType = await getRevenueByJobType(startDate, endDate);
-		res.json(createSuccessResponse(revenueByJobType));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/reports/unscheduled-revenue", async (req, res, next) => {
-	try {
-		const unscheduledRevenue = await getUnscheduledRevenue();
-		res.json(createSuccessResponse(unscheduledRevenue));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/reports/quote-pipeline", async (req, res, next) => {
-	try {
-		const { startDate, endDate } = req.query as {
-			startDate: string;
-			endDate: string;
-		};
-
-		if (!startDate || !endDate) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						"startDate and endDate are required",
-					),
-				);
-		}
-
-		const quotePipeline = await getQuotePipeline(startDate, endDate);
-		res.json(createSuccessResponse(quotePipeline));
-	} catch (err) {
-		next(err);
-	}
-});
-
-app.get("/reports/arrival-performance", async (req, res, next) => {
-	try {
-		const { startDate, endDate } = req.query as {
-			startDate: string;
-			endDate: string;
-		};
-
-		if (!startDate || !endDate) {
-			return res
-				.status(400)
-				.json(
-					createErrorResponse(
-						ErrorCodes.VALIDATION_ERROR,
-						"startDate and endDate are required",
-					),
-				);
-		}
-
-		const data = await getArrivalPerformance(startDate, endDate);
-		res.json(createSuccessResponse(data));
-	} catch (err) {
-		next(err);
-	}
-});
+app.use("/reports", verifyToken, reportsRouter);
 
 // ============================================
-// ERROR HANDLERS (Must be last)
+// VEHICLES
 // ============================================
+app.use("/vehicles", verifyToken, vehiclesRouter);
 
 // ============================================================
 // ACTIVITY FEED
@@ -3577,7 +3212,9 @@ app.get("/logs/recent", async (req, res, next) => {
 			"recurring_plan.created",
 			"recurring_occurrence.generated",
 		];
-		const logs = await db.log.findMany({
+		const orgId = req.user!.organization_id as string;
+		const sdb = getScopedDb(orgId);
+		const logs = await sdb.log.findMany({
 			where: { event_type: { in: FEED_EVENTS } },
 			orderBy: { timestamp: "desc" },
 			take: limit,

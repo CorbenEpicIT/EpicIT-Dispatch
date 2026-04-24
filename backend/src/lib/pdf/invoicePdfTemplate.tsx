@@ -1,9 +1,18 @@
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import type { Decimal } from "@prisma/client/runtime/client";
 
 // ── PDF prop types ────────────────────────────────────────────────────────────
 
 type Numeric = Decimal | number | string | null | undefined;
+
+interface OrgPdfProps {
+	name: string;
+	logo_url?: string | null;
+	phone?: string | null;
+	address?: string | null;
+	email?: string | null;
+	website?: string | null;
+}
 
 interface InvoicePdfLineItem {
 	id?: string;
@@ -95,6 +104,9 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 	Void: { bg: "#fee2e2", text: "#991b1b" },
 };
 
+// Sent and Viewed are internal workflow states — not meaningful to the invoice recipient
+const HIDE_BADGE_STATUSES = new Set(["Sent", "Viewed"]);
+
 const badgeColors = (status: string) =>
 	STATUS_COLORS[status] ?? { bg: "#f3f4f6", text: "#6b7280" };
 
@@ -110,27 +122,42 @@ const s = StyleSheet.create({
 		paddingHorizontal: 44,
 		backgroundColor: "#ffffff",
 	},
+
+	// header
 	header: {
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "flex-start",
-		marginBottom: 28,
+		marginBottom: 20,
 		paddingBottom: 16,
 		borderBottomWidth: 2,
 		borderBottomColor: "#1e3a5f",
 	},
 	companyBlock: {
-		flexDirection: "column",
+		flexDirection: "row",
+		alignItems: "flex-start",
 		flex: 1,
 		paddingRight: 20,
+	},
+	orgLogo: {
+		width: 36,
+		height: 36,
+		marginRight: 8,
+	},
+	companyTextBlock: {
+		flexDirection: "column",
 	},
 	companyName: {
 		fontSize: 16,
 		fontFamily: "Helvetica-Bold",
 		color: "#1e3a5f",
-		marginBottom: 2,
+		marginBottom: 3,
 	},
-	companyTagline: { fontSize: 8, color: "#6b7280" },
+	companyDetail: {
+		fontSize: 8,
+		color: "#6b7280",
+		marginBottom: 1,
+	},
 	docTitleBlock: {
 		alignItems: "flex-end",
 		flexShrink: 0,
@@ -142,22 +169,45 @@ const s = StyleSheet.create({
 		marginBottom: 4,
 	},
 	docNumber: { fontSize: 11, color: "#374151", fontFamily: "Helvetica-Bold" },
+
+	// section divider
+	sectionDivider: {
+		borderTopWidth: 1,
+		borderTopColor: "#e5e7eb",
+		marginBottom: 20,
+	},
+
+	// info columns
 	infoRow: {
 		flexDirection: "row",
-		marginBottom: 24,
+		paddingBottom: 16,
 	},
 	infoColLeft: {
 		width: "50%",
 		paddingRight: 16,
+		borderRightWidth: 1,
+		borderRightColor: "#e5e7eb",
 	},
 	infoColRight: {
 		width: "50%",
+		paddingLeft: 16,
 	},
+	// Section heading — used for BILL TO and INVOICE DETAILS titles
+	sectionHeading: {
+		fontSize: 9,
+		fontFamily: "Helvetica-Bold",
+		color: "#1e3a5f",
+		textTransform: "uppercase",
+		letterSpacing: 1,
+		marginBottom: 7,
+	},
+	// Small muted label — kept for legacy use if needed
 	sectionLabel: {
 		fontSize: 7,
 		fontFamily: "Helvetica-Bold",
 		color: "#6b7280",
 		marginBottom: 5,
+		textTransform: "uppercase",
 	},
 	clientName: {
 		fontSize: 11,
@@ -167,7 +217,7 @@ const s = StyleSheet.create({
 	},
 	infoText: { fontSize: 9, color: "#374151", marginBottom: 2 },
 
-	// metaRow: fixed-width shrink-proof label + flex: 1 value so long strings wrap
+	// metaRow
 	metaRow: { flexDirection: "row", marginBottom: 3 },
 	metaLabel: { fontSize: 8, color: "#6b7280", width: 68, flexShrink: 0 },
 	metaValue: {
@@ -187,9 +237,8 @@ const s = StyleSheet.create({
 	},
 	badgeText: { fontSize: 8, fontFamily: "Helvetica-Bold" },
 
-	// table — header cells wrapped in View to match data row structure so row
-	// heights grow consistently for multi-line content
-	tableContainer: { marginBottom: 16 },
+	// table
+	tableContainer: { paddingBottom: 16 },
 	tableHead: {
 		flexDirection: "row",
 		backgroundColor: "#1e3a5f",
@@ -216,7 +265,7 @@ const s = StyleSheet.create({
 	colTotal: { width: "12%", textAlign: "right" },
 
 	// totals
-	totalsWrapper: { alignItems: "flex-end", marginBottom: 20 },
+	totalsWrapper: { alignItems: "flex-end", paddingBottom: 16 },
 	totalRow: { flexDirection: "row", width: 230, paddingVertical: 2 },
 	totalLabel: {
 		width: 140,
@@ -284,13 +333,12 @@ const s = StyleSheet.create({
 		textAlign: "right",
 	},
 
-	// payments section
+	// payments / notes section title
 	sectionTitle: {
 		fontSize: 9,
 		fontFamily: "Helvetica-Bold",
 		color: "#374151",
 		marginBottom: 6,
-		marginTop: 16,
 	},
 	payHead: {
 		flexDirection: "row",
@@ -311,7 +359,7 @@ const s = StyleSheet.create({
 	payColRef: { width: "42%", paddingRight: 8 },
 	payColAmount: { width: "18%", textAlign: "right", flexShrink: 0 },
 
-	// status overlays — absolute-positioned, rendered inside <Page>
+	// status overlays
 	draftWatermark: {
 		position: "absolute",
 		top: 300,
@@ -415,7 +463,7 @@ const s = StyleSheet.create({
 
 // ── component ────────────────────────────────────────────────────────────────
 
-export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
+export function InvoicePdfTemplate({ invoice, org }: { invoice: InvoicePdfProps; org: OrgPdfProps }) {
 	const bc = badgeColors(invoice.status);
 	const contact = invoice.client?.contacts?.[0]?.contact;
 
@@ -461,77 +509,57 @@ export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
 				{/* ── Header ── */}
 				<View style={s.header}>
 					<View style={s.companyBlock}>
-						<Text style={s.companyName}>Epic HVAC Services</Text>
-						<Text style={s.companyTagline}>
-							La Crosse, WI · Licensed & Insured
-						</Text>
+						{org.logo_url && (
+							<Image src={org.logo_url} style={s.orgLogo} />
+						)}
+						<View style={s.companyTextBlock}>
+							<Text style={s.companyName}>{org.name}</Text>
+							{org.address && <Text style={s.companyDetail}>{org.address}</Text>}
+							{org.phone && <Text style={s.companyDetail}>{org.phone}</Text>}
+							{org.email && <Text style={s.companyDetail}>{org.email}</Text>}
+							{org.website && <Text style={s.companyDetail}>{org.website}</Text>}
+						</View>
 					</View>
 					<View style={s.docTitleBlock}>
 						<Text style={s.docTitle}>INVOICE</Text>
-						<Text style={s.docNumber}>
-							{invoice.invoice_number}
-						</Text>
+						<Text style={s.docNumber}>{invoice.invoice_number}</Text>
 					</View>
 				</View>
 
 				{/* ── Bill To + Invoice Details ── */}
 				<View style={s.infoRow}>
-					{/* Left: Bill To */}
 					<View style={s.infoColLeft}>
-						<Text style={s.sectionLabel}>Bill To</Text>
-						<Text style={s.clientName}>
-							{invoice.client?.name ?? "—"}
-						</Text>
+						<Text style={s.sectionHeading}>Bill To</Text>
+						<Text style={s.clientName}>{invoice.client?.name ?? "—"}</Text>
 						{invoice.client?.address && (
-							<Text style={s.infoText}>
-								{invoice.client.address}
-							</Text>
+							<Text style={s.infoText}>{invoice.client.address}</Text>
 						)}
-						{contact?.name && (
-							<Text style={s.infoText}>{contact.name}</Text>
-						)}
-						{contact?.email && (
-							<Text style={s.infoText}>{contact.email}</Text>
-						)}
-						{contact?.phone && (
-							<Text style={s.infoText}>{contact.phone}</Text>
-						)}
+						{contact?.name && <Text style={s.infoText}>{contact.name}</Text>}
+						{contact?.email && <Text style={s.infoText}>{contact.email}</Text>}
+						{contact?.phone && <Text style={s.infoText}>{contact.phone}</Text>}
 					</View>
 
-					{/* Right: Invoice Details */}
 					<View style={s.infoColRight}>
-						<Text style={s.sectionLabel}>Invoice Details</Text>
-						<View style={[s.badge, { backgroundColor: bc.bg }]}>
-							<Text style={[s.badgeText, { color: bc.text }]}>
-								{invoice.status}
-							</Text>
-						</View>
-						<View style={s.metaRow}>
-							<Text style={s.metaLabel}>Invoice #</Text>
-							<Text style={s.metaValue}>
-								{invoice.invoice_number}
-							</Text>
-						</View>
+						<Text style={s.sectionHeading}>Invoice Details</Text>
+						{!HIDE_BADGE_STATUSES.has(invoice.status) && (
+							<View style={[s.badge, { backgroundColor: bc.bg }]}>
+								<Text style={[s.badgeText, { color: bc.text }]}>{invoice.status}</Text>
+							</View>
+						)}
 						<View style={s.metaRow}>
 							<Text style={s.metaLabel}>Date</Text>
-							<Text style={s.metaValue}>
-								{fmtDate(invoice.created_at)}
-							</Text>
+							<Text style={s.metaValue}>{fmtDate(invoice.created_at)}</Text>
 						</View>
 						{invoice.due_date && (
 							<View style={s.metaRow}>
 								<Text style={s.metaLabel}>Due Date</Text>
-								<Text style={s.metaValue}>
-									{fmtDate(invoice.due_date)}
-								</Text>
+								<Text style={s.metaValue}>{fmtDate(invoice.due_date)}</Text>
 							</View>
 						)}
 						{invoice.paid_at && (
 							<View style={s.metaRow}>
 								<Text style={s.metaLabel}>Paid On</Text>
-								<Text style={s.metaValue}>
-									{fmtDate(invoice.paid_at)}
-								</Text>
+								<Text style={s.metaValue}>{fmtDate(invoice.paid_at)}</Text>
 							</View>
 						)}
 						{invoice.memo && (
@@ -547,15 +575,13 @@ export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
 				{isPastDue && (
 					<View style={s.overdueBanner}>
 						<Text style={s.overdueBannerText}>
-							OVERDUE — Payment is past due. Please remit
-							immediately.
+							OVERDUE — Payment is past due. Please remit immediately.
 						</Text>
 					</View>
 				)}
 
 				{/* ── Line Items ── */}
 				<View style={s.tableContainer}>
-					{/* Header row — View-wrapped cells mirror data row structure */}
 					<View style={s.tableHead}>
 						<View style={s.colName}>
 							<Text style={s.thText}>Item</Text>
@@ -564,29 +590,20 @@ export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
 							<Text style={s.thText}>Description</Text>
 						</View>
 						<View style={s.colQty}>
-							<Text style={[s.thText, { textAlign: "right" }]}>
-								Qty
-							</Text>
+							<Text style={[s.thText, { textAlign: "right" }]}>Qty</Text>
 						</View>
 						<View style={s.colUnit}>
-							<Text style={[s.thText, { textAlign: "right" }]}>
-								Unit Price
-							</Text>
+							<Text style={[s.thText, { textAlign: "right" }]}>Unit Price</Text>
 						</View>
 						<View style={s.colTotal}>
-							<Text style={[s.thText, { textAlign: "right" }]}>
-								Total
-							</Text>
+							<Text style={[s.thText, { textAlign: "right" }]}>Total</Text>
 						</View>
 					</View>
 
 					{(invoice.line_items ?? []).map((item: InvoicePdfLineItem, i: number) => (
 						<View
 							key={item.id ?? i}
-							style={[
-								s.tableRow,
-								i % 2 === 1 ? s.tableRowAlt : {},
-							]}
+							style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}
 							wrap={false}
 						>
 							<View style={s.colName}>
@@ -594,29 +611,21 @@ export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
 							</View>
 							<View style={s.colDesc}>
 								{item.description ? (
-									<Text style={s.tdMuted}>
-										{item.description}
-									</Text>
+									<Text style={s.tdMuted}>{item.description}</Text>
 								) : null}
 							</View>
 							<View style={s.colQty}>
-								<Text
-									style={[s.tdText, { textAlign: "right" }]}
-								>
+								<Text style={[s.tdText, { textAlign: "right" }]}>
 									{toNum(item.quantity)}
 								</Text>
 							</View>
 							<View style={s.colUnit}>
-								<Text
-									style={[s.tdText, { textAlign: "right" }]}
-								>
+								<Text style={[s.tdText, { textAlign: "right" }]}>
 									{fmt(item.unit_price)}
 								</Text>
 							</View>
 							<View style={s.colTotal}>
-								<Text
-									style={[s.tdText, { textAlign: "right" }]}
-								>
+								<Text style={[s.tdText, { textAlign: "right" }]}>
 									{fmt(item.total)}
 								</Text>
 							</View>
@@ -672,12 +681,7 @@ export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
 							<Text
 								style={[
 									s.balanceValue,
-									{
-										color:
-											balanceDue > 0
-												? "#dc2626"
-												: "#059669",
-									},
+									{ color: balanceDue > 0 ? "#dc2626" : "#059669" },
 								]}
 							>
 								{fmt(balanceDue)}
@@ -688,81 +692,68 @@ export function InvoicePdfTemplate({ invoice }: { invoice: InvoicePdfProps }) {
 
 				{/* ── Payment History ── */}
 				{payments.length > 0 && (
-					<View>
-						<Text style={s.sectionTitle}>Payment History</Text>
-						<View style={s.payHead}>
-							<View style={s.payColDate}>
-								<Text style={s.thText}>Date</Text>
-							</View>
-							<View style={s.payColMethod}>
-								<Text style={s.thText}>Method</Text>
-							</View>
-							<View style={s.payColRef}>
-								<Text style={s.thText}>Reference</Text>
-							</View>
-							<View style={s.payColAmount}>
-								<Text
-									style={[s.thText, { textAlign: "right" }]}
-								>
-									Amount
-								</Text>
-							</View>
-						</View>
-						{payments.map((p: InvoicePdfPayment, i: number) => (
-							<View key={p.id ?? i} style={s.payRow} wrap={false}>
+					<>
+						<View style={s.sectionDivider} />
+						<View>
+							<Text style={s.sectionTitle}>Payment History</Text>
+							<View style={s.payHead}>
 								<View style={s.payColDate}>
-									<Text style={s.tdText}>
-										{fmtDate(p.paid_at)}
-									</Text>
+									<Text style={s.thText}>Date</Text>
 								</View>
 								<View style={s.payColMethod}>
-									<Text style={s.tdText}>
-										{(p.method != null ? METHOD_LABEL[p.method] : null) ??
-											p.method ??
-											"—"}
-									</Text>
+									<Text style={s.thText}>Method</Text>
 								</View>
 								<View style={s.payColRef}>
-									<Text style={s.tdText}>
-										{p.reference_number ?? "—"}
-									</Text>
+									<Text style={s.thText}>Reference</Text>
 								</View>
 								<View style={s.payColAmount}>
-									<Text
-										style={[
-											s.tdText,
-											{ textAlign: "right" },
-										]}
-									>
-										{fmt(p.amount)}
-									</Text>
+									<Text style={[s.thText, { textAlign: "right" }]}>Amount</Text>
 								</View>
 							</View>
-						))}
-					</View>
+							{payments.map((p: InvoicePdfPayment, i: number) => (
+								<View key={p.id ?? i} style={s.payRow} wrap={false}>
+									<View style={s.payColDate}>
+										<Text style={s.tdText}>{fmtDate(p.paid_at)}</Text>
+									</View>
+									<View style={s.payColMethod}>
+										<Text style={s.tdText}>
+											{(p.method != null ? METHOD_LABEL[p.method] : null) ??
+												p.method ??
+												"—"}
+										</Text>
+									</View>
+									<View style={s.payColRef}>
+										<Text style={s.tdText}>{p.reference_number ?? "—"}</Text>
+									</View>
+									<View style={s.payColAmount}>
+										<Text style={[s.tdText, { textAlign: "right" }]}>
+											{fmt(p.amount)}
+										</Text>
+									</View>
+								</View>
+							))}
+						</View>
+					</>
 				)}
 
 				{/* ── Notes ── */}
 				{(invoice.notes ?? []).length > 0 && (
-					<View style={{ marginTop: 16 }}>
-						<Text style={s.sectionTitle}>Notes</Text>
-						{(invoice.notes ?? []).map(
-							(note: InvoicePdfNote, i: number) => (
+					<>
+						<View style={s.sectionDivider} />
+						<View>
+							<Text style={s.sectionTitle}>Notes</Text>
+							{(invoice.notes ?? []).map((note: InvoicePdfNote, i: number) => (
 								<View key={note.id ?? i} style={s.noteBox}>
-									<Text style={s.noteText}>
-										{note.content}
-									</Text>
+									<Text style={s.noteText}>{note.content}</Text>
 								</View>
-							),
-						)}
-					</View>
+							))}
+						</View>
+					</>
 				)}
 
 				{/* ── Footer ── */}
 				<View style={s.footer} fixed>
-					<Text style={s.footerText}>
-						Epic HVAC Services · La Crosse, WI
-					</Text>
+					<Text style={s.footerText}>{org.name}</Text>
 					<Text
 						style={s.footerText}
 						render={({ pageNumber, totalPages }) =>

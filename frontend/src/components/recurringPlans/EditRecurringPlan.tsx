@@ -17,7 +17,7 @@ import {
 } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import { useUpdateRecurringPlanMutation } from "../../hooks/useRecurringPlans";
-import type { GeocodeResult } from "../../types/location";
+import type { GeocodeResult, Coordinates } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 
@@ -297,12 +297,18 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 			});
 
 			setClientId(plan.client_id);
+			// Normalize coords from DB — seed data (and legacy records) use `lng`; app uses `lon`
+			const rawCoords = plan.coords as { lat?: number; lon?: number; lng?: number } | null | undefined;
+			const resolvedLon = rawCoords?.lon ?? rawCoords?.lng;
+			const normalizedCoords: Coordinates | undefined =
+				rawCoords != null &&
+				typeof rawCoords.lat === "number" &&
+				typeof resolvedLon === "number"
+					? { lat: rawCoords.lat, lon: resolvedLon }
+					: undefined;
 			setGeoData(
 				plan.address
-					? ({
-							address: plan.address,
-							coords: plan.coords || undefined,
-						} as GeocodeResult)
+					? ({ address: plan.address, coords: normalizedCoords } as GeocodeResult)
 					: undefined
 			);
 
@@ -451,6 +457,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 				payment_terms_days: getValue("billingConfig").paymentTermsDays,
 				auto_send: false,
 				memo_template: getValue("billingConfig").memoTemplate || undefined,
+				auto_send: false,
 			} : undefined,
 			rule: preparedRule,
 			line_items: preparedLineItems,

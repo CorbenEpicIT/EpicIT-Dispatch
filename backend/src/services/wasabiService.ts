@@ -38,9 +38,10 @@ export const uploadFile = async (
 	file: Buffer,
 	contentType: string,
 	originalName: string,
+	folder: string = "inventory",
 ): Promise<string> => {
 	const ext = originalName.split(".").pop() || "jpg";
-	const key = `inventory/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+	const key = `${folder}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
 
 	await getClient().send(
 		new PutObjectCommand({
@@ -54,6 +55,35 @@ export const uploadFile = async (
 	return `https://s3.${WASABI_REGION}.wasabisys.com/${WASABI_BUCKET}/${key}`;
 };
 
+function extractKey(url: string): string {
+	return url.split(`${WASABI_BUCKET}/`).pop() ?? url;
+}
+
+export const fetchBuffer = async (
+	key: string,
+): Promise<{ buffer: Buffer; contentType: string }> => {
+	const data = await getClient().send(
+		new GetObjectCommand({ Bucket: WASABI_BUCKET, Key: key }),
+	);
+	const chunks: Uint8Array[] = [];
+	for await (const chunk of data.Body as AsyncIterable<Uint8Array>) {
+		chunks.push(chunk);
+	}
+	return {
+		buffer: Buffer.concat(chunks),
+		contentType: data.ContentType ?? "application/octet-stream",
+	};
+};
+
+//getBuffer supports pdf generation.
+export const getBuffer = async (
+	url: string,
+): Promise<{ buffer: Buffer; contentType: string }> => {
+	return fetchBuffer(extractKey(url));
+};
+
+export const deleteFile = async (url: string): Promise<void> => {
+	const key = extractKey(url);
 function keyFromUrl(url: string): string {
 	const base = url.split("?")[0];
 	return base.split(`${WASABI_BUCKET}/`).pop() ?? base;

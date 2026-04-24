@@ -1,5 +1,5 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobSchema,
 	updateJobSchema,
@@ -12,15 +12,9 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
 import { log } from "../services/appLogger.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-async function generateJobNumber(): Promise<string> {
-	const lastJob = await db.job.findFirst({
+async function generateJobNumber(organizationId: string): Promise<string> {
+	const sdb = getScopedDb(organizationId);
+	const lastJob = await sdb.job.findFirst({
 		where: {
 			job_number: {
 				startsWith: "J-",
@@ -46,8 +40,11 @@ async function generateJobNumber(): Promise<string> {
 // JOB CRUD
 // ============================================================================
 
-export const getAllJobs = async () => {
-	return await db.job.findMany({
+export const getAllJobs = async (organizationId: string) => {
+	const now = new Date();
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job.findMany({
 		include: {
 			client: {
 				select: {
@@ -92,7 +89,7 @@ export const getAllJobs = async () => {
 					occurrences: {
 						where: {
 							occurrence_start_at: {
-								gte: new Date(),
+								gte: startOfToday,
 							},
 							status: "planned",
 						},
@@ -106,8 +103,9 @@ export const getAllJobs = async () => {
 	});
 };
 
-export const getJobById = async (id: string) => {
-	return await db.job.findUnique({
+export const getJobById = async (id: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job.findFirst({
 		where: { id },
 		include: {
 			client: {
@@ -201,8 +199,9 @@ export const getJobById = async (id: string) => {
 	});
 };
 
-export const getJobsByClientId = async (clientId: string) => {
-	return await db.job.findMany({
+export const getJobsByClientId = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job.findMany({
 		where: { client_id: clientId },
 		include: {
 			client: true,
@@ -237,8 +236,9 @@ export const getJobsByClientId = async (clientId: string) => {
 export const insertJob = async (req: Request, context?: UserContext) => {
 	try {
 		const parsed = createJobSchema.parse(req.body);
-
-		const created = await db.$transaction(async (tx) => {
+		const organizationId = req.user!.organization_id as string;
+		const sdb = getScopedDb(organizationId);
+		const created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.findUnique({
 				where: { id: parsed.client_id },
 			});
@@ -403,10 +403,11 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 				throw new Error("Job description is required");
 			}
 
-			const jobNumber = await generateJobNumber();
+			const jobNumber = await generateJobNumber(organizationId);
 
 			const job = await tx.job.create({
 				data: {
+					organization_id: organizationId,
 					job_number: jobNumber,
 					name: name,
 					description: description,
@@ -462,6 +463,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 				action: "created",
 				entity_type: "job",
 				entity_id: job.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -588,12 +590,13 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const updateJob = async (req: Request, context?: UserContext) => {
+export const updateJob = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const id = req.params.id as string;
 		const parsed = updateJobSchema.parse(req.body);
 
-		const existing = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job.findFirst({
 			where: { id },
 			include: { line_items: true },
 		});
@@ -624,7 +627,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 			"coords",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// BULK LINE ITEMS UPDATE
 			if (parsed.line_items !== undefined) {
 				const incomingItems = parsed.line_items || [];
@@ -654,6 +657,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 						action: "deleted",
 						entity_type: "job_line_item",
 						entity_id: item.id,
+						organization_id: organizationId,
 						actor_type: context?.techId
 							? "technician"
 							: context?.dispatcherId
@@ -746,6 +750,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 									action: "updated",
 									entity_type: "job_line_item",
 									entity_id: item.id,
+									organization_id: organizationId,
 									actor_type: context?.techId
 										? "technician"
 										: context?.dispatcherId
@@ -779,6 +784,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 							action: "created",
 							entity_type: "job_line_item",
 							entity_id: newItem.id,
+							organization_id: organizationId,
 							actor_type: context?.techId
 								? "technician"
 								: context?.dispatcherId
@@ -874,6 +880,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 					action: "updated",
 					entity_type: "job",
 					entity_id: id,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -903,9 +910,10 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const deleteJob = async (id: string, context?: UserContext) => {
+export const deleteJob = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const existing = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job.findFirst({
 			where: { id },
 		});
 
@@ -913,12 +921,13 @@ export const deleteJob = async (id: string, context?: UserContext) => {
 			return { err: "Job not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "job.deleted",
 				action: "deleted",
 				entity_type: "job",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -950,15 +959,17 @@ export const deleteJob = async (id: string, context?: UserContext) => {
 // JOB LINE ITEMS
 // ============================================================================
 
-export const getJobLineItems = async (jobId: string) => {
-	return await db.job_line_item.findMany({
+export const getJobLineItems = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job_line_item.findMany({
 		where: { job_id: jobId },
 		orderBy: { created_at: "asc" },
 	});
 };
 
-export const getJobLineItemById = async (jobId: string, itemId: string) => {
-	return await db.job_line_item.findFirst({
+export const getJobLineItemById = async (jobId: string, itemId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.job_line_item.findFirst({
 		where: {
 			id: itemId,
 			job_id: jobId,
@@ -969,12 +980,14 @@ export const getJobLineItemById = async (jobId: string, itemId: string) => {
 export const insertJobLineItem = async (
 	jobId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createJobLineItemSchema.parse(data);
 
-		const job = await db.job.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const job = await sdb.job.findFirst({
 			where: { id: jobId },
 		});
 
@@ -982,7 +995,7 @@ export const insertJobLineItem = async (
 			return { err: "Job not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			// Calculate total if not provided
 			const total =
 				parsed.total !== undefined
@@ -1007,6 +1020,7 @@ export const insertJobLineItem = async (
 				action: "created",
 				entity_type: "job_line_item",
 				entity_id: item.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1043,12 +1057,13 @@ export const updateJobLineItem = async (
 	jobId: string,
 	itemId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateJobLineItemSchema.parse(data);
-
-		const existing = await db.job_line_item.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job_line_item.findFirst({
 			where: {
 				id: itemId,
 				job_id: jobId,
@@ -1089,7 +1104,7 @@ export const updateJobLineItem = async (
 			changes.total = { old: existing.total, new: parsed.total };
 		}
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// Recalculate total if quantity or unit_price changed
 			const total =
 				parsed.total ??
@@ -1157,10 +1172,12 @@ export const updateJobLineItem = async (
 export const deleteJobLineItem = async (
 	jobId: string,
 	itemId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.job_line_item.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.job_line_item.findFirst({
 			where: {
 				id: itemId,
 				job_id: jobId,
@@ -1171,7 +1188,7 @@ export const deleteJobLineItem = async (
 			return { err: "Item not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "job_line_item.deleted",
 				action: "deleted",

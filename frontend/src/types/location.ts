@@ -10,6 +10,7 @@ export interface StaticMarker {
 	coords: Coordinates;
 	type: MarkerTypeValue;
 	label?: string;
+	onClick?: () => void;
 	color?: string;
 	statusDotColor?: string;
 	variant?: "default" | "dimmed";

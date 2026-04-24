@@ -1,4 +1,4 @@
-import { db } from "../db.js";
+import { getScopedDb } from "../lib/context.js";
 
 // ============================================================================
 // OVERVIEW METRICS
@@ -7,15 +7,16 @@ import { db } from "../db.js";
 export const getOverviewMetrics = async (
 	startDate: string,
 	endDate: string,
+	organizationId: string,
 ) => {
 	const start = new Date(startDate);
 	const end = new Date(endDate);
-
+	const sdb = getScopedDb(organizationId);
 	// Last Month
 	const previousStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
 	const previousEnd = new Date(start.getFullYear(), start.getMonth(), 0, 23, 59, 59, 999);
 
-	// Current period 
+	// Current period
 	const [
 		avgResponseTimeResult,
 		convertedQuotes,
@@ -25,47 +26,54 @@ export const getOverviewMetrics = async (
 		avgJobValue,
 		grossRevenueResult,
 	] = await Promise.all([
-		db.$queryRaw<[{ avg_days: number | null }]>`
+		sdb.$queryRaw<[{ avg_days: number | null }]>`
 			SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (q.created_at - r.created_at)) / 86400), 0)::float AS avg_days
 			FROM quote q
 			JOIN request r ON r.id = q.request_id
 			WHERE q.created_at >= ${start}
 				AND q.created_at <= ${end}
 				AND q.request_id IS NOT NULL
+				AND q.organization_id = ${organizationId}
 		`,
-		db.quote.count({
+		sdb.quote.count({
 			where: {
+				organization_id: organizationId,
 				status: "Approved",
 				approved_at: { gte: start, lte: end },
 			},
 		}),
-		db.quote.count({
+		sdb.quote.count({
 			where: {
+				organization_id: organizationId,
 				created_at: { gte: start, lte: end },
 			},
 		}),
-		db.job.count({
+		sdb.job.count({
 			where: {
+				organization_id: organizationId,
 				recurring_plan_id: null,
 				created_at: { gte: start, lte: end },
 			},
 		}),
-		db.job.count({
+		sdb.job.count({
 			where: {
+				organization_id: organizationId,
 				recurring_plan_id: { not: null },
 				created_at: { gte: start, lte: end },
 			},
 		}),
-		db.job.aggregate({
+		sdb.job.aggregate({
 			where: {
+				organization_id: organizationId,
 				created_at: { gte: start, lte: end },
 			},
 			_avg: { estimated_total: true },
 		}),
-		db.job_visit.aggregate({
+		sdb.job_visit.aggregate({
 			where: {
 				status: "Completed",
 				actual_end_at: { gte: start, lte: end },
+				job: { organization_id: organizationId },
 			},
 			_sum: { total: true },
 		}),
@@ -81,55 +89,62 @@ export const getOverviewMetrics = async (
 		prevAvgJobValue,
 		prevGrossRevenueResult,
 	] = await Promise.all([
-		db.$queryRaw<[{ avg_days: number | null }]>`
+		sdb.$queryRaw<[{ avg_days: number | null }]>`
 			SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (q.created_at - r.created_at)) / 86400), 0)::float AS avg_days
 			FROM quote q
 			JOIN request r ON r.id = q.request_id
 			WHERE q.created_at >= ${previousStart}
 				AND q.created_at <= ${previousEnd}
 				AND q.request_id IS NOT NULL
+				AND q.organization_id = ${organizationId}
 		`,
-		db.quote.count({
+		sdb.quote.count({
 			where: {
+				organization_id: organizationId,
 				status: "Approved",
 				approved_at: { gte: previousStart, lte: previousEnd },
 			},
 		}),
-		db.quote.count({
+		sdb.quote.count({
 			where: {
+				organization_id: organizationId,
 				created_at: { gte: previousStart, lte: previousEnd },
 			},
 		}),
-		db.job.count({
+		sdb.job.count({
 			where: {
+				organization_id: organizationId,
 				recurring_plan_id: null,
 				created_at: { gte: previousStart, lte: previousEnd },
 			},
 		}),
-		db.job.count({
+		sdb.job.count({
 			where: {
+				organization_id: organizationId,
 				recurring_plan_id: { not: null },
 				created_at: { gte: previousStart, lte: previousEnd },
 			},
 		}),
-		db.job.aggregate({
+		sdb.job.aggregate({
 			where: {
+				organization_id: organizationId,
 				created_at: { gte: previousStart, lte: previousEnd },
 			},
 			_avg: { estimated_total: true },
 		}),
-		db.job_visit.aggregate({
+		sdb.job_visit.aggregate({
 			where: {
 				status: "Completed",
 				actual_end_at: { gte: previousStart, lte: previousEnd },
+				job: { organization_id: organizationId },
 			},
 			_sum: { total: true },
 		}),
 	]);
 
 	// Calculates all unscheduled jobs
-	const backlogResult = await db.job.aggregate({
-		where: { status: "Unscheduled" },
+	const backlogResult = await sdb.job.aggregate({
+		where: { organization_id: organizationId, status: "Unscheduled" },
 		_sum: { estimated_total: true },
 	});
 
@@ -216,36 +231,43 @@ interface MonthlyRevenueRow {
 }
 
 export const getRevenueYTD = async (
+	organizationId: string,
 	year?: number,
 ) => {
 	const currentYear = year ?? new Date().getFullYear();
 	const previousYear = currentYear - 1;
 
+	const sdb = getScopedDb(organizationId);
+
 	const previousYearStart = new Date(`${previousYear}-01-01T00:00:00.000Z`);
 	const currentYearEnd = new Date(`${currentYear + 1}-01-01T00:00:00.000Z`);
 
 	const [monthlyRevenue, monthlyForecast] = await Promise.all([
-		db.$queryRaw<MonthlyRevenueRow[]>`
+		sdb.$queryRaw<MonthlyRevenueRow[]>`
 			SELECT
 				EXTRACT(MONTH FROM jv.actual_end_at)::int AS month,
 				EXTRACT(YEAR FROM jv.actual_end_at)::int AS year,
 				SUM(jv.total)::text AS total
 			FROM job_visit jv
+			JOIN job j ON j.id = jv.job_id
 			WHERE jv.status = 'Completed'
 				AND jv.actual_end_at >= ${previousYearStart}
 				AND jv.actual_end_at < ${currentYearEnd}
+				AND j.organization_id = ${organizationId}
 			GROUP BY year, month
 			ORDER BY year, month
 		`,
-		db.$queryRaw<MonthlyRevenueRow[]>`
+		sdb.$queryRaw<MonthlyRevenueRow[]>`
 			SELECT
 				EXTRACT(MONTH FROM jv.scheduled_start_at)::int AS month,
 				EXTRACT(YEAR FROM jv.scheduled_start_at)::int AS year,
 				SUM(jv.total)::text AS total
 			FROM job_visit jv
+			JOIN job j ON j.id = jv.job_id
 			WHERE jv.status IN ('Scheduled', 'InProgress')
 				AND jv.scheduled_start_at >= ${previousYearStart}
 				AND jv.scheduled_start_at < ${currentYearEnd}
+				AND j.organization_id = ${organizationId}
 			GROUP BY year, month
 			ORDER BY year, month
 		`,
@@ -287,28 +309,32 @@ export const getRevenueYTD = async (
 export const getRevenueByJobType = async (
 	startDate: string,
 	endDate: string,
+	organizationId: string,
 ) => {
 	const start = new Date(startDate);
 	const end = new Date(endDate);
 
+	const sdb = getScopedDb(organizationId);
+
 	const baseWhere = {
 		status: "Completed" as const,
 		actual_end_at: { gte: start, lte: end },
+		job: { organization_id: organizationId },
 	};
 
 	const [oneTimeResult, recurringResult] = await Promise.all([
-		db.job_visit.aggregate({
+		sdb.job_visit.aggregate({
 			_sum: { total: true },
 			where: {
 				...baseWhere,
-				job: { recurring_plan_id: null },
+				job: { organization_id: organizationId, recurring_plan_id: null },
 			},
 		}),
-		db.job_visit.aggregate({
+		sdb.job_visit.aggregate({
 			_sum: { total: true },
 			where: {
 				...baseWhere,
-				job: { recurring_plan_id: { not: null } },
+				job: { organization_id: organizationId, recurring_plan_id: { not: null } },
 			},
 		}),
 	]);
@@ -329,8 +355,9 @@ export const getRevenueByJobType = async (
 // UNSCHEDULED REVENUE
 // ============================================================================
 
-export const getUnscheduledRevenue = async () => {
-	const results = await db.$queryRaw<{ bucket: string, count: number, revenue: string }[]>`
+export const getUnscheduledRevenue = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const results = await sdb.$queryRaw<{ bucket: string, count: number, revenue: string }[]>`
 		SELECT
 			CASE
 				WHEN EXTRACT(DAY FROM (NOW() - created_at)) > 30 THEN 'critical'
@@ -341,6 +368,7 @@ export const getUnscheduledRevenue = async () => {
 			COALESCE(SUM(estimated_total), 0)::text AS revenue
 		FROM job
 		WHERE status = 'Unscheduled'
+			AND organization_id = ${organizationId}
 		GROUP BY bucket
 	`;
 
@@ -381,21 +409,25 @@ export const getUnscheduledRevenue = async () => {
 export const getArrivalPerformance = async (
 	startDate: string,
 	endDate: string,
+	organizationId: string,
 ) => {
 	const start = new Date(startDate);
 	const end   = new Date(endDate);
 	start.setUTCHours(0, 0, 0, 0);
 	end.setUTCHours(23, 59, 59, 999);
 
-	const result = await db.$queryRaw<[{ early: number, on_time: number, late: number }]>`
+	const sdb = getScopedDb(organizationId);
+	const result = await sdb.$queryRaw<[{ early: number, on_time: number, late: number }]>`
 		SELECT
 			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) < -900 THEN 1 END)::int AS early,
 			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) > 1800 THEN 1 END)::int AS late,
 			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) BETWEEN -900 AND 1800 THEN 1 END)::int AS on_time
-		FROM job_visit
-		WHERE actual_start_at IS NOT NULL
-			AND actual_start_at >= ${start}
-			AND actual_start_at <= ${end}
+		FROM job_visit jv
+		JOIN job j ON j.id = jv.job_id
+		WHERE jv.actual_start_at IS NOT NULL
+			AND jv.actual_start_at >= ${start}
+			AND jv.actual_start_at <= ${end}
+			AND j.organization_id = ${organizationId}
 	`;
 
 	const stats = result[0] || { early: 0, on_time: 0, late: 0 };
@@ -415,7 +447,7 @@ export const getArrivalPerformance = async (
 // QUOTE PIPELINE
 // ============================================================================
 
-export const getQuotePipeline = async (startDate: string, endDate: string) => {
+export const getQuotePipeline = async (startDate: string, endDate: string, organizationId: string) => {
 	const start = new Date(startDate);
 	const end   = new Date(endDate);
 	start.setUTCHours(0, 0, 0, 0);
@@ -423,9 +455,11 @@ export const getQuotePipeline = async (startDate: string, endDate: string) => {
 
 	const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
 
-	const grouped = await db.quote.groupBy({
+	const sdb = getScopedDb(organizationId);
+	const grouped = await sdb.quote.groupBy({
 		by: ["status"],
 		where: {
+			organization_id: organizationId,
 			status: { in: [...OPEN_STATUSES] },
 			created_at: { gte: start, lte: end },
 		},

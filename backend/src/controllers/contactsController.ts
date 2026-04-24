@@ -1,5 +1,5 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createContactSchema,
 	updateContactSchema,
@@ -10,19 +10,13 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
 // ============================================================================
 // CONTACT CRUD
 // ============================================================================
 
-export const getClientContacts = async (clientId: string) => {
-	return await db.client_contact.findMany({
+export const getClientContacts = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.client_contact.findMany({
 		where: { client_id: clientId },
 		include: {
 			contact: true,
@@ -31,8 +25,9 @@ export const getClientContacts = async (clientId: string) => {
 	});
 };
 
-export const getContactById = async (contactId: string) => {
-	return await db.contact.findUnique({
+export const getContactById = async (contactId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.contact.findFirst({
 		where: { id: contactId },
 		include: {
 			client_contacts: {
@@ -49,8 +44,9 @@ export const getContactById = async (contactId: string) => {
 	});
 };
 
-export const getAllContacts = async () => {
-	return await db.contact.findMany({
+export const getAllContacts = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.contact.findMany({
 		where: { is_active: true },
 		include: {
 			client_contacts: {
@@ -68,13 +64,14 @@ export const getAllContacts = async () => {
 	});
 };
 
-export const insertContact = async (data: unknown, context?: UserContext) => {
+export const insertContact = async (data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createContactSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
 		// Check for duplicate (same email or phone)
 		if (parsed.email || parsed.phone) {
-			const existing = await db.contact.findFirst({
+			const existing = await sdb.contact.findFirst({
 				where: {
 					OR: [
 						...(parsed.email ? [{ email: parsed.email }] : []),
@@ -100,9 +97,10 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 			}
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const contact = await tx.contact.create({
 				data: {
+					organization_id: organizationId,
 					name: parsed.name,
 					email: parsed.email || null,
 					phone: parsed.phone || null,
@@ -113,8 +111,8 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 
 			// If client_id provided, create the link
 			if (parsed.client_id) {
-				const client = await tx.client.findUnique({
-					where: { id: parsed.client_id },
+				const client = await tx.client.findFirst({
+					where: { id: parsed.client_id, organization_id: organizationId },
 				});
 
 				if (!client) {
@@ -131,8 +129,8 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 					},
 				});
 
-				await tx.client.update({
-					where: { id: parsed.client_id },
+				await tx.client.updateMany({
+					where: { id: parsed.client_id, organization_id: organizationId },
 					data: { last_activity: new Date() },
 				});
 			}
@@ -142,6 +140,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 				action: "created",
 				entity_type: "contact",
 				entity_id: contact.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -160,7 +159,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 				user_agent: context?.userAgent,
 			});
 
-			return tx.contact.findUnique({
+			return tx.contact.findFirst({
 				where: { id: contact.id },
 				include: {
 					client_contacts: {
@@ -189,12 +188,14 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 export const updateContact = async (
 	contactId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateContactSchema.parse(data);
 
-		const existing = await db.contact.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.contact.findFirst({
 			where: { id: contactId },
 		});
 
@@ -207,7 +208,7 @@ export const updateContact = async (
 			(parsed.email && parsed.email !== existing.email) ||
 			(parsed.phone && parsed.phone !== existing.phone)
 		) {
-			const duplicate = await db.contact.findFirst({
+			const duplicate = await sdb.contact.findFirst({
 				where: {
 					AND: [
 						{ id: { not: contactId } },
@@ -240,9 +241,9 @@ export const updateContact = async (
 			"is_active",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
-			const contact = await tx.contact.update({
-				where: { id: contactId },
+		const updated = await sdb.$transaction(async (tx) => {
+			await tx.contact.updateMany({
+				where: { id: contactId, organization_id: organizationId },
 				data: {
 					...(parsed.name !== undefined && { name: parsed.name }),
 					...(parsed.email !== undefined && { email: parsed.email }),
@@ -260,6 +261,7 @@ export const updateContact = async (
 					action: "updated",
 					entity_type: "contact",
 					entity_id: contactId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -272,8 +274,8 @@ export const updateContact = async (
 				});
 			}
 
-			return tx.contact.findUnique({
-				where: { id: contact.id },
+			return tx.contact.findFirst({
+				where: { id: contactId },
 				include: {
 					client_contacts: {
 						include: {
@@ -299,10 +301,12 @@ export const updateContact = async (
 
 export const deleteContact = async (
 	contactId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.contact.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.contact.findFirst({
 			where: { id: contactId },
 			include: {
 				client_contacts: true,
@@ -320,12 +324,13 @@ export const deleteContact = async (
 			};
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "contact.deleted",
 				action: "deleted",
 				entity_type: "contact",
 				entity_id: contactId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -341,8 +346,8 @@ export const deleteContact = async (
 				user_agent: context?.userAgent,
 			});
 
-			await tx.contact.delete({
-				where: { id: contactId },
+			await tx.contact.deleteMany({
+				where: { id: contactId, organization_id: organizationId },
 			});
 		});
 
@@ -361,15 +366,17 @@ export const linkContactToClient = async (
 	contactId: string,
 	clientId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = linkContactSchema.parse(data);
 
-		const contact = await db.contact.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const contact = await sdb.contact.findFirst({
 			where: { id: contactId },
 		});
-		const client = await db.client.findUnique({
+		const client = await sdb.client.findFirst({
 			where: { id: clientId },
 		});
 
@@ -381,7 +388,7 @@ export const linkContactToClient = async (
 		}
 
 		// Check if already linked
-		const existing = await db.client_contact.findUnique({
+		const existing = await sdb.client_contact.findUnique({
 			where: {
 				client_id_contact_id: {
 					client_id: clientId,
@@ -394,7 +401,7 @@ export const linkContactToClient = async (
 			return { err: "Contact already linked to this client" };
 		}
 
-		const linked = await db.$transaction(async (tx) => {
+		const linked = await sdb.$transaction(async (tx) => {
 			const link = await tx.client_contact.create({
 				data: {
 					client_id: clientId,
@@ -405,8 +412,8 @@ export const linkContactToClient = async (
 				},
 			});
 
-			await tx.client.update({
-				where: { id: clientId },
+			await tx.client.updateMany({
+				where: { id: clientId, organization_id: organizationId },
 				data: { last_activity: new Date() },
 			});
 
@@ -415,6 +422,7 @@ export const linkContactToClient = async (
 				action: "updated",
 				entity_type: "contact",
 				entity_id: contactId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -450,12 +458,14 @@ export const updateClientContact = async (
 	contactId: string,
 	clientId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
+		const sdb = getScopedDb(organizationId);
 		const parsed = updateClientContactSchema.parse(data);
 
-		const existing = await db.client_contact.findUnique({
+		const existing = await sdb.client_contact.findUnique({
 			where: {
 				client_id_contact_id: {
 					client_id: clientId,
@@ -474,7 +484,7 @@ export const updateClientContact = async (
 			"is_billing",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const link = await tx.client_contact.update({
 				where: {
 					client_id_contact_id: {
@@ -532,10 +542,12 @@ export const updateClientContact = async (
 export const unlinkContactFromClient = async (
 	contactId: string,
 	clientId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.client_contact.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.client_contact.findUnique({
 			where: {
 				client_id_contact_id: {
 					client_id: clientId,
@@ -548,7 +560,7 @@ export const unlinkContactFromClient = async (
 			return { err: "Contact not linked to this client" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.client_contact.delete({
 				where: {
 					client_id_contact_id: {
@@ -585,6 +597,7 @@ export const unlinkContactFromClient = async (
 
 export const searchContacts = async (
 	query: string,
+	organizationId: string,
 	excludeClientId?: string,
 ) => {
 	try {
@@ -592,6 +605,7 @@ export const searchContacts = async (
 			return { err: "", items: [] };
 		}
 
+		const sdb = getScopedDb(organizationId);
 		const where: Prisma.contactWhereInput = {
 			is_active: true,
 			OR: [
@@ -610,14 +624,14 @@ export const searchContacts = async (
 			};
 		}
 
-		const contacts = await db.contact.findMany({
+		const contacts = await sdb.contact.findMany({
 			where,
 			select: {
 				id: true,
 				name: true,
 				email: true,
 				phone: true,
-				},
+			},
 			take: 10, // Limit results
 			orderBy: {
 				name: "asc",
