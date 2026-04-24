@@ -1045,7 +1045,7 @@ model invoice {
   status                   invoice_status @default(Draft)
   recurring_plan_id        String?
   recurring_plan           recurring_plan? @relation(fields: [recurring_plan_id], references: [id], onDelete: SetNull)
-  issue_date               DateTime       @default(now())
+  issue_date               DateTime?
   due_date                 DateTime?
   payment_terms_days       Int?
   issued_at                DateTime?

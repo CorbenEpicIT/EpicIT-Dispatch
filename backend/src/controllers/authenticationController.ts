@@ -60,7 +60,7 @@ export const login = async (
 			};
 			const otp = await createOTP(user.id, role);
 
-			const pendingToken = generateOTPToken(user, role, otp);
+			const pendingToken = generateOTPToken(user, role);
 			if (!pendingToken) {
 				return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
 			}
@@ -112,7 +112,7 @@ export const login = async (
 
 		const otp = await createOTP(user.id, role);
 
-		const pendingToken = generateOTPToken(user, role, otp);
+		const pendingToken = generateOTPToken(user, role);
 		if (!pendingToken) {
 			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
 		}
