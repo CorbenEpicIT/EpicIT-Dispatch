@@ -39,6 +39,31 @@ services:
     networks:
       - hvacnet
 
+  user-simulator:
+    image: node:20
+    container_name: user-simulator
+    command: >
+      sh -c "npm install &&
+             npm run build &&
+             npm run start"
+    ports:
+      - "5172:5172"
+    env_file:
+      - ./user-simulator/.env
+    environment:
+      BACKEND_URL: "http://backend:3000"
+      SIM_SERVER_PORT: "5172"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./user-simulator:/app
+      - /app/node_modules
+      - /app/ui/node_modules
+    working_dir: /app
+    networks:
+      - hvacnet
+
   db:
     image: postgres:16
     container_name: hvac-db

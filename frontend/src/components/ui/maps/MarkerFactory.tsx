@@ -22,16 +22,39 @@ const CreateMarker = (m: StaticMarker) => {
 		}
 	}
 
+	const borderStyle = m.color
+		? { borderColor: m.color, borderWidth: "3px", borderStyle: "solid" as const }
+		: undefined;
+
+	const dimmed = m.variant === "dimmed";
+
 	const reactElement = (
-		<div className="flex flex-col">
+		<div className={`flex flex-col items-center ${dimmed ? "opacity-80" : ""}`}>
 			<div className="relative mx-auto">
 				<div
-					className={`w-8 h-8 rounded-full shadow-md border-3 border-white ${bgColor}`}
+					className={`${dimmed ? "w-6 h-6" : "w-8 h-8"} rounded-full shadow-md ${m.color ? "" : "border-3 border-white"} ${bgColor}`}
+					style={borderStyle}
 				></div>
-				<div className="absolute top-0 left-0 w-8 h-8">{icon}</div>
+				<div
+					className={`absolute top-0 left-0 ${dimmed ? "w-6 h-6" : "w-8 h-8"} flex items-center justify-center`}
+				>
+					{icon}
+				</div>
+				{m.statusDotColor && (
+					<div
+						className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950 ${m.statusDotColor}`}
+					></div>
+				)}
 			</div>
 
-			<h1 className="font-bold text-shadow-lg">{m.label}</h1>
+			{m.label && (
+				<div
+					className="mt-1 px-2 py-0.5 rounded-md bg-zinc-900/85 border border-zinc-700 text-white text-xs font-semibold whitespace-nowrap shadow-md"
+					style={{ pointerEvents: "none" }}
+				>
+					{m.label}
+				</div>
+			)}
 		</div>
 	);
 

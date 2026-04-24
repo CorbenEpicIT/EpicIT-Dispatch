@@ -1,82 +1,209 @@
-import http from "../services/httpService.js";
+import { config } from "../config.js";
+import * as api from "../services/backendApi.js";
 import { getDirections } from "../services/mapboxService.js";
-import { Job } from "../types/jobs.js";
-import { Coordinates } from "../types/location.js";
-import { NavigationRoute } from "../types/navigation.js";
-import {
-	Technician,
-	TechnicianStartingPointValues,
-} from "../types/technicians.js";
+import { buildInterpolator, type RouteInterpolator } from "../lib/routeInterpolator.js";
+import type { Coordinates } from "../types/location.js";
+import type { JobVisit } from "../types/jobs.js";
+
+export type TechState = "Idle" | "Driving" | "OnSite" | "Working";
+
+export type TechSnapshot = {
+	techId: string;
+	name: string;
+	state: TechState;
+	currentVisitId: string | null;
+	coords: Coordinates;
+	isActive: boolean;
+};
+
+function visitStart(v: JobVisit): Date {
+	return new Date(v.scheduled_start_at);
+}
 
 export class TechnicianOperator {
-	private BACKEND_URL = process.env.BACKEND_URL;
-	private lastRoute: NavigationRoute | null = null;
-	private nextCoordinate: Coordinates | null = null;
-	public tech: Technician;
-	public activeJob: Job | null = null;
+	public readonly techId: string;
+	public readonly name: string;
+	public isActive = false;
 
-	private updateLocation(to: Coordinates) {
-		http.post(`${this.BACKEND_URL}/technicians/${this.tech.id}/ping`, {
-			coords: to,
-		}).then((p) => {
-			if (p.status == 200) {
-				this.tech.coords = to;
-			}
-		});
+	public coords: Coordinates;
+	public state: TechState = "Idle";
+
+	public currentVisit: JobVisit | null = null;
+	private interpolator: RouteInterpolator | null = null;
+	private phaseStartedAt = 0; // ms epoch when current phase began
+	private idlePollCounter = 0;
+	private tickBusy = false;
+
+	constructor(args: { techId: string; name: string; coords: Coordinates }) {
+		this.techId = args.techId;
+		this.name = args.name;
+		this.coords = args.coords;
 	}
 
-	private stepIndex = 0;
+	snapshot(): TechSnapshot {
+		return {
+			techId: this.techId,
+			name: this.name,
+			state: this.state,
+			currentVisitId: this.currentVisit?.id ?? null,
+			coords: this.coords,
+			isActive: this.isActive,
+		};
+	}
 
-	public async advanceLocation() {
-		if (!this.lastRoute) {
-			const resp = await getDirections(
-				this.tech.coords,
-				this.activeJob!.coords
+	/** Reset all in-memory sim state for this tech. Caller handles backend reset. */
+	resetToIdle(coords: Coordinates) {
+		this.state = "Idle";
+		this.currentVisit = null;
+		this.interpolator = null;
+		this.phaseStartedAt = 0;
+		this.idlePollCounter = 0;
+		this.coords = coords;
+	}
+
+	async tick(): Promise<void> {
+		if (!this.isActive || this.tickBusy) return;
+		this.tickBusy = true;
+		try {
+			switch (this.state) {
+				case "Idle":
+					await this.tickIdle();
+					break;
+				case "Driving":
+					await this.tickDriving();
+					break;
+				case "OnSite":
+					await this.tickOnSite();
+					break;
+				case "Working":
+					await this.tickWorking();
+					break;
+			}
+		} catch (e) {
+			console.error(
+				`[tech ${this.name}] tick error in state ${this.state}:`,
+				(e as Error).message,
 			);
+		} finally {
+			this.tickBusy = false;
+		}
+	}
 
-			if (!resp || resp.code != "Ok")
-				throw new Error("Failed to advance location.");
+	private async tickIdle(): Promise<void> {
+		// Throttle polling for new work.
+		if (this.idlePollCounter > 0) {
+			this.idlePollCounter--;
+			return;
+		}
+		this.idlePollCounter = config.idlePollTicks;
 
-			this.lastRoute = resp.routes[0];
-			this.stepIndex = 0;
+		const visits = await api.getTechnicianVisits(this.techId);
+		const scheduled = visits
+			.filter((v) => v.status === "Scheduled")
+			.sort(
+				(a, b) => visitStart(a).getTime() - visitStart(b).getTime(),
+			);
+		const next = scheduled[0];
+		if (!next) return;
+
+		const destCoords = this.visitCoords(next);
+		if (!destCoords) {
+			console.warn(
+				`[tech ${this.name}] visit ${next.id} has no coords; skipping`,
+			);
+			return;
 		}
 
-		const steps = this.lastRoute.legs[0].steps;
+		const route = await getDirections(this.coords, destCoords);
+		if (!route) {
+			console.warn(
+				`[tech ${this.name}] mapbox route failed; cannot start visit ${next.id}`,
+			);
+			return;
+		}
 
-		if (this.stepIndex >= steps.length) return; // arrived
+		this.interpolator = buildInterpolator(
+			route.geometry,
+			config.travelDurationSec,
+		);
 
-		const maneuver = steps[this.stepIndex].maneuver;
+		await api.updateJobVisit(next.id, {
+			status: "Driving",
+			actual_start_at: new Date().toISOString(),
+		});
 
-		this.nextCoordinate = {
-			lat: maneuver.location[1],
-			lon: maneuver.location[0],
-		};
-
-		this.updateLocation(this.nextCoordinate);
-
-		this.stepIndex++;
-
-		// console.log(this.lastRoute.distance);
+		this.currentVisit = next;
+		this.state = "Driving";
+		this.phaseStartedAt = Date.now();
+		console.log(
+			`[tech ${this.name}] Idle → Driving (visit ${next.id})`,
+		);
 	}
 
-	public tick() {
-		if (this.activeJob) this.advanceLocation();
+	private async tickDriving(): Promise<void> {
+		if (!this.currentVisit || !this.interpolator) {
+			this.state = "Idle";
+			return;
+		}
+
+		const elapsedSec = (Date.now() - this.phaseStartedAt) / 1000;
+		const pos = this.interpolator.at(elapsedSec);
+		this.coords = pos;
+		await api.pingTechnician(this.techId, pos);
+
+		if (elapsedSec >= config.travelDurationSec) {
+			await api.updateJobVisit(this.currentVisit.id, { status: "OnSite" });
+			this.state = "OnSite";
+			this.phaseStartedAt = Date.now();
+			this.interpolator = null;
+			console.log(
+				`[tech ${this.name}] Driving → OnSite (visit ${this.currentVisit.id})`,
+			);
+		}
 	}
 
-	constructor(id: string, name?: string, startingPoint?: Coordinates) {
-		if (!this.BACKEND_URL) console.error("Backend URL not provided!");
+	private async tickOnSite(): Promise<void> {
+		if (!this.currentVisit) {
+			this.state = "Idle";
+			return;
+		}
+		const elapsedSec = (Date.now() - this.phaseStartedAt) / 1000;
+		if (elapsedSec >= config.dwellOnsiteSec) {
+			await api.updateJobVisit(this.currentVisit.id, {
+				status: "InProgress",
+			});
+			this.state = "Working";
+			this.phaseStartedAt = Date.now();
+			console.log(
+				`[tech ${this.name}] OnSite → Working (visit ${this.currentVisit.id})`,
+			);
+		}
+	}
 
-		this.tech = {
-			id: id,
-			name: name || id,
-			title: "Technician",
-			email: "test@test.com",
-			description: "Testing",
-			phone: "000",
-			coords: startingPoint || TechnicianStartingPointValues[0],
-			status: "Available",
-			hire_date: new Date(),
-			last_login: new Date(),
-		};
+	private async tickWorking(): Promise<void> {
+		if (!this.currentVisit) {
+			this.state = "Idle";
+			return;
+		}
+		const elapsedSec = (Date.now() - this.phaseStartedAt) / 1000;
+		if (elapsedSec >= config.workDurationSec) {
+			await api.updateJobVisit(this.currentVisit.id, {
+				status: "Completed",
+				actual_end_at: new Date().toISOString(),
+			});
+			console.log(
+				`[tech ${this.name}] Working → Completed (visit ${this.currentVisit.id})`,
+			);
+			this.currentVisit = null;
+			this.state = "Idle";
+			this.idlePollCounter = 0; // check for next visit immediately
+		}
+	}
+
+	private visitCoords(v: JobVisit): Coordinates | null {
+		const c = v.job?.coords;
+		if (!c) return null;
+		if (typeof c.lat !== "number" || typeof c.lon !== "number") return null;
+		return { lat: c.lat, lon: c.lon };
 	}
 }

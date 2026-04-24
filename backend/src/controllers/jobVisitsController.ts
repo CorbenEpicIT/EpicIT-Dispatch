@@ -355,6 +355,9 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 					...(parsed.actual_end_at !== undefined && {
 						actual_end_at: parsed.actual_end_at,
 					}),
+					...(parsed.status !== undefined && {
+						status: parsed.status,
+					}),
 				},
 				include: {
 					job: true,

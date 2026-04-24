@@ -69,6 +69,7 @@ export interface VisitTechnician {
 			description: string;
 			status: JobStatus;
 			address: string;
+			coords: Coordinates;
 			priority: Priority;
 			created_at: Date;
 			client_id: string;
