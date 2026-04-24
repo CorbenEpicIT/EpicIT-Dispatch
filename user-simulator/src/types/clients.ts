@@ -37,7 +37,6 @@ export interface ClientWithPrimaryContact {
 			name: string;
 			email: string | null;
 			phone: string | null;
-			title: string | null;
 		};
 	}>;
 }
@@ -115,8 +114,6 @@ export interface Contact {
 	name: string;
 	email: string | null;
 	phone: string | null;
-	company: string | null;
-	title: string | null;
 	type: string | null; // "customer", "vendor", "property_manager", etc.
 	is_active: boolean;
 	created_at: Date;
@@ -142,8 +139,6 @@ export interface CreateContactInput {
 	name: string;
 	email?: string;
 	phone?: string;
-	company?: string;
-	title?: string;
 	type?: string;
 
 	client_id?: string;
@@ -156,9 +151,7 @@ export interface UpdateContactInput {
 	name?: string;
 	email?: string;
 	phone?: string;
-	company?: string;
 	relationship?: string;
-	title?: string;
 	type?: string;
 	is_active?: boolean;
 }
@@ -179,8 +172,6 @@ export const CreateContactSchema = z.object({
 	name: z.string().min(1, "Contact name is required"),
 	email: z.string().email("Invalid email address").optional().or(z.literal("")),
 	phone: z.string().optional().or(z.literal("")),
-	company: z.string().optional().or(z.literal("")),
-	title: z.string().optional().or(z.literal("")),
 	type: z.string().optional().or(z.literal("")),
 
 	client_id: z.string().uuid().optional(),
@@ -194,8 +185,6 @@ export const UpdateContactSchema = z
 		name: z.string().min(1, "Contact name is required").optional(),
 		email: z.string().email("Invalid email address").optional().or(z.literal("")),
 		phone: z.string().optional().or(z.literal("")),
-		company: z.string().optional().or(z.literal("")),
-		title: z.string().optional().or(z.literal("")),
 		type: z.string().optional().or(z.literal("")),
 		is_active: z.boolean().optional(),
 	})
@@ -204,8 +193,6 @@ export const UpdateContactSchema = z
 			data.name !== undefined ||
 			data.email !== undefined ||
 			data.phone !== undefined ||
-			data.company !== undefined ||
-			data.title !== undefined ||
 			data.type !== undefined ||
 			data.is_active !== undefined,
 		{ message: "At least one field must be provided for update" }

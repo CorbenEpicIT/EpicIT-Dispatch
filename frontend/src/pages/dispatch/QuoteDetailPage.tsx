@@ -11,8 +11,10 @@ import {
 	Briefcase,
 	Trash2,
 	Link2Off,
+	Download,
+	Loader2,
 } from "lucide-react";
-import { useQuoteByIdQuery, useDeleteQuoteMutation } from "../../hooks/useQuotes";
+import { useQuoteByIdQuery, useUpdateQuoteMutation, useDeleteQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import { QuoteStatusColors } from "../../types/quotes";
 import type { QuoteStatus } from "../../types/quotes";
@@ -23,11 +25,14 @@ import ConvertToJob from "../../components/quotes/ConvertToJob";
 import NoteManager from "../../components/quotes/QuoteNoteManager";
 import { useState, useRef, useEffect } from "react";
 import { formatCurrency } from "../../util/util";
+import { downloadQuotePdf, sendQuote } from "../../api/quotes";
+import SendDocumentModal from "../../components/ui/SendDocumentModal";
 
 export default function QuoteDetailPage() {
 	const { quoteId } = useParams<{ quoteId: string }>();
 	const navigate = useNavigate();
 	const { data: quote, isLoading } = useQuoteByIdQuery(quoteId!);
+	const { mutateAsync: updateQuote } = useUpdateQuoteMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
 	const deleteQuote = useDeleteQuoteMutation();
 
@@ -35,6 +40,8 @@ export default function QuoteDetailPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isConvertToJobModalOpen, setIsConvertToJobModalOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
+	const [isPdfLoading, setIsPdfLoading] = useState(false);
+	const [isSendModalOpen, setIsSendModalOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -74,15 +81,44 @@ export default function QuoteDetailPage() {
 	};
 	const handleSendToClient = () => {
 		setShowActionsMenu(false);
-		console.log("Send to client");
+		setIsSendModalOpen(true);
 	};
-	const handleMarkAsApproved = () => {
+
+	const handleSendConfirm = async (email: string) => {
+		await sendQuote(quote.id, email);
+	};
+	const handleMarkAsIssued = async () => {
 		setShowActionsMenu(false);
-		console.log("Mark as approved");
+		try {
+			await updateQuote({ id: quote.id, data: { status: "Issued" } });
+		} catch (error) {
+			console.error("Failed to mark as issued:", error);
+		}
+	};
+
+	const handleMarkAsApproved = async () => {
+		setShowActionsMenu(false);
+		try {
+			await updateQuote({ id: quote.id, data: { status: "Approved" } });
+		} catch (error) {
+			console.error("Failed to mark as approved:", error);
+		}
 	};
 	const handleConvertToJob = () => {
 		setShowActionsMenu(false);
 		setIsConvertToJobModalOpen(true);
+	};
+
+	const handleDownloadPdf = async () => {
+		setShowActionsMenu(false);
+		setIsPdfLoading(true);
+		try {
+			await downloadQuotePdf(quote.id, quote.quote_number);
+		} catch (error) {
+			console.error("Failed to download PDF:", error);
+		} finally {
+			setIsPdfLoading(false);
+		}
 	};
 
 	const handleDelete = async () => {
@@ -146,26 +182,45 @@ export default function QuoteDetailPage() {
 										<Edit2 size={16} />{" "}
 										Edit Quote
 									</button>
+									{quote.status === "Draft" && (
+										<button
+											onClick={handleMarkAsIssued}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 text-blue-400 hover:text-blue-300"
+										>
+											<CheckCircle size={16} />
+											Mark as Issued
+										</button>
+									)}
+									{quote.status !== "Approved" && quote.status !== "Rejected" && quote.status !== "Revised" && quote.status !== "Expired" && quote.status !== "Cancelled" && (
+										<button
+											onClick={handleSendToClient}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+										>
+											<Send size={16} />
+											Send to Client
+										</button>
+									)}
 									<button
-										onClick={
-											handleSendToClient
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+										onClick={handleDownloadPdf}
+										disabled={isPdfLoading}
+										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 									>
-										<Send size={16} />{" "}
-										Send to Client
+										{isPdfLoading ? (
+											<Loader2 size={16} className="animate-spin" />
+										) : (
+											<Download size={16} />
+										)}
+										{isPdfLoading ? "Generating..." : "Download PDF"}
 									</button>
-									<button
-										onClick={
-											handleMarkAsApproved
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										<CheckCircle
-											size={16}
-										/>{" "}
-										Mark as Approved
-									</button>
+									{(quote.status === "Issued" || quote.status === "Sent" || quote.status === "Viewed") && (
+										<button
+											onClick={handleMarkAsApproved}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-2"
+										>
+											<CheckCircle size={16} />
+											Mark as Approved
+										</button>
+									)}
 									<button
 										onClick={
 											handleConvertToJob
@@ -224,7 +279,7 @@ export default function QuoteDetailPage() {
 								<h3 className="text-zinc-400 text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-white break-words whitespace-pre-wrap">
 									{quote.description ||
 										"No description provided"}
 								</p>
@@ -335,101 +390,67 @@ export default function QuoteDetailPage() {
 								</p>
 							</div>
 						) : (
-							<div className="space-y-1">
+							<div>
+								{/* Header row */}
 								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
-									<div className="col-span-5">
-										Description
-									</div>
-									<div className="col-span-1 text-center">
-										Type
-									</div>
-									<div className="col-span-2 text-right">
-										Qty
-									</div>
-									<div className="col-span-2 text-right">
-										Unit Price
-									</div>
-									<div className="col-span-2 text-right">
-										Amount
-									</div>
+									<div className="col-span-5 min-w-0">Item / Description</div>
+									<div className="col-span-1 min-w-0 text-center">Type</div>
+									<div className="col-span-2 min-w-0 text-right">Qty</div>
+									<div className="col-span-2 min-w-0 text-right">Unit Price</div>
+									<div className="col-span-2 min-w-0 text-right">Amount</div>
 								</div>
-								{quote.line_items.map(
-									(item, index) => (
-										<div
-											key={
-												item.id ||
-												index
-											}
-											className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-										>
-											<div className="col-span-5 text-sm">
-												<p className="text-white font-medium">
-													{
-														item.name
-													}
+								{/* Data rows — items-start so numeric cols don't stretch when description wraps */}
+								{quote.line_items.map((item, index) => (
+									<div
+										key={item.id || index}
+										className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors items-start"
+									>
+										<div className="col-span-5 min-w-0 text-sm">
+											<p className="text-white font-medium break-words">
+												{item.name}
+											</p>
+											{item.description && (
+												<p className="text-zinc-400 text-xs mt-0.5 break-words">
+													{item.description}
 												</p>
-												{item.description && (
-													<p className="text-zinc-400 text-xs mt-0.5">
-														{
-															item.description
-														}
-													</p>
-												)}
-											</div>
-											<div className="col-span-1 flex items-center justify-center">
-												{item.item_type && (
-													<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
-														{
-															item.item_type
-														}
-													</span>
-												)}
-											</div>
-											<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-												{
-													item.quantity
-												}
-											</div>
-											<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-												{formatCurrency(
-													Number(
-														item.unit_price
-													)
-												)}
-											</div>
-											<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
-												{formatCurrency(
-													Number(
-														item.quantity
-													) *
-														Number(
-															item.unit_price
-														)
-												)}
-											</div>
+											)}
 										</div>
-									)
-								)}
+										<div className="col-span-1 min-w-0 flex justify-center pt-0.5">
+											{item.item_type && (
+												<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
+													{item.item_type}
+												</span>
+											)}
+										</div>
+										<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
+											{Number(item.quantity).toLocaleString("en-US", {
+												minimumFractionDigits: 0,
+												maximumFractionDigits: 2,
+											})}
+										</div>
+										<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
+											{formatCurrency(Number(item.unit_price))}
+										</div>
+										<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums pt-0.5">
+											{formatCurrency(Number(item.quantity) * Number(item.unit_price))}
+										</div>
+									</div>
+								))}
 							</div>
 						)}
 					</div>
 
 					<div className="lg:col-span-1 space-y-6">
 						<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
-							<div className="flex justify-between text-sm">
-								<span className="text-zinc-400">
-									Total Items:
-								</span>
+							<div className="flex items-center justify-between gap-4 text-sm">
+								<span className="text-zinc-400 flex-shrink-0">Total Items:</span>
 								<span className="text-white font-medium tabular-nums">
-									{quote.line_items?.length ||
-										0}
+									{quote.line_items?.length || 0}
 								</span>
 							</div>
-							<div className="flex justify-between text-sm">
-								<span className="text-zinc-400">
-									Quote Number:
-								</span>
-								<span className="text-white font-medium">
+							<div className="flex items-center justify-between gap-4 text-sm">
+								<span className="text-zinc-400 flex-shrink-0">Quote #:</span>
+								<span className="text-white font-medium truncate">
 									{quote.quote_number}
 								</span>
 							</div>
@@ -691,6 +712,16 @@ export default function QuoteDetailPage() {
 							navigate(`/dispatch/jobs/${newJob.id}`);
 							return newJob.id;
 						}}
+					/>
+					<SendDocumentModal
+						isOpen={isSendModalOpen}
+						onClose={() => setIsSendModalOpen(false)}
+						onSend={handleSendConfirm}
+						docType="quote"
+						docNumber={quote.quote_number}
+						clientName={quote.client?.name ?? ""}
+						contactEmail={quote.client?.contacts?.[0]?.contact?.email}
+						contactName={quote.client?.contacts?.[0]?.contact?.name}
 					/>
 				</>
 			)}

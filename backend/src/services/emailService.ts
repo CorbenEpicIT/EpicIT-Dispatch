@@ -2,6 +2,10 @@ import postmark, { TemplatedMessage } from "postmark";
 import { db } from "../db.js";
 import { create } from "node:domain";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
+import { log } from "../services/appLogger.js";
+import { generateQuotePdf, generateInvoicePdf } from "../lib/pdf/pdfService.js";
+import { getQuoteById } from "../controllers/quotesController.js";
+import { getInvoiceById } from "../controllers/invoicesController.js";
 
 
 const POSTMARK_FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL;
@@ -26,7 +30,7 @@ export const sendEmail = async (
 			TemplateModel: templateModel,
 		} as TemplatedMessage);
 	} catch (error) {
-		console.error(error);
+		log.error({ err: error }, "Failed to send templated email");
 	}
 };
 
@@ -79,7 +83,225 @@ export const sendOTPEmail = async (to: string, otp: string) => {
 		});
 		return createSuccessResponse(null);
 	} catch (error) {
-		console.error(error);
+		log.error({ err: error }, "Failed to send OTP email");
 		return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending OTP email");
 	}
+};
+
+// ── Document emails ────────────────────────────────────────────────────────────
+
+const fmt = (v: unknown): string =>
+	`$${Number(v ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const generateQuoteEmailHtml = (
+	quoteNumber: string,
+	clientName: string,
+	total: string,
+	validUntil: string | null,
+): string => `
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 40px; margin: 0;">
+    <div style="max-width: 560px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+      <div style="background: #1e3a5f; padding: 28px 32px;">
+        <p style="color: #93c5fd; font-size: 13px; margin: 0 0 4px;">Epic HVAC Services</p>
+        <h1 style="color: white; font-size: 22px; margin: 0;">Quote ${quoteNumber}</h1>
+      </div>
+      <div style="padding: 32px;">
+        <p style="color: #374151; font-size: 15px; margin: 0 0 20px;">
+          Hi ${clientName},
+        </p>
+        <p style="color: #374151; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+          Thank you for the opportunity. Please find your quote attached to this email as a PDF.
+        </p>
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Quote Number</td>
+              <td style="color: #111827; font-size: 13px; font-weight: bold; text-align: right;">${quoteNumber}</td>
+            </tr>
+            <tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Total</td>
+              <td style="color: #111827; font-size: 13px; font-weight: bold; text-align: right;">${total}</td>
+            </tr>
+            ${validUntil ? `<tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Valid Until</td>
+              <td style="color: #111827; font-size: 13px; font-weight: bold; text-align: right;">${validUntil}</td>
+            </tr>` : ""}
+          </table>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0;">
+          If you have any questions or would like to proceed, please reply to this email or call us directly.
+        </p>
+      </div>
+      <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 16px 32px;">
+        <p style="color: #9ca3af; font-size: 12px; margin: 0;">Epic HVAC Services · La Crosse, WI</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+
+const generateInvoiceEmailHtml = (
+	invoiceNumber: string,
+	clientName: string,
+	total: string,
+	balanceDue: string,
+	dueDate: string | null,
+): string => `
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 40px; margin: 0;">
+    <div style="max-width: 560px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+      <div style="background: #1e3a5f; padding: 28px 32px;">
+        <p style="color: #93c5fd; font-size: 13px; margin: 0 0 4px;">Epic HVAC Services</p>
+        <h1 style="color: white; font-size: 22px; margin: 0;">Invoice ${invoiceNumber}</h1>
+      </div>
+      <div style="padding: 32px;">
+        <p style="color: #374151; font-size: 15px; margin: 0 0 20px;">
+          Hi ${clientName},
+        </p>
+        <p style="color: #374151; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+          Please find your invoice attached to this email as a PDF. A summary is included below.
+        </p>
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Invoice Number</td>
+              <td style="color: #111827; font-size: 13px; font-weight: bold; text-align: right;">${invoiceNumber}</td>
+            </tr>
+            <tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Invoice Total</td>
+              <td style="color: #111827; font-size: 13px; font-weight: bold; text-align: right;">${total}</td>
+            </tr>
+            <tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Balance Due</td>
+              <td style="color: #dc2626; font-size: 14px; font-weight: bold; text-align: right;">${balanceDue}</td>
+            </tr>
+            ${dueDate ? `<tr>
+              <td style="color: #6b7280; font-size: 13px; padding: 4px 0;">Due Date</td>
+              <td style="color: #111827; font-size: 13px; font-weight: bold; text-align: right;">${dueDate}</td>
+            </tr>` : ""}
+          </table>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0;">
+          Please reply to this email if you have any questions regarding this invoice.
+        </p>
+      </div>
+      <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 16px 32px;">
+        <p style="color: #9ca3af; font-size: 12px; margin: 0;">Epic HVAC Services · La Crosse, WI</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+
+const fmtDate = (d: Date | string | null | undefined): string | null => {
+	if (!d) return null;
+	return new Date(d).toLocaleDateString("en-US", {
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	});
+};
+
+/**
+ * Generate the quote PDF and send it to the recipient via Postmark.
+ * Throws on failure so the caller can surface a meaningful HTTP error.
+ */
+export const sendQuoteEmail = async (
+	quoteId: string,
+	recipientEmail: string,
+): Promise<void> => {
+	const [quote, pdfBuffer] = await Promise.all([
+		getQuoteById(quoteId),
+		generateQuotePdf(quoteId),
+	]);
+
+	if (!quote) throw Object.assign(new Error("Quote not found"), { status: 404 });
+
+	const clientName = (quote as typeof quote & { client: { name: string } | null }).client?.name ?? "Valued Customer";
+	const total = fmt(quote.total);
+	const validUntil = fmtDate(quote.valid_until);
+
+	try {
+		await client.sendEmail({
+			From: POSTMARK_FROM_EMAIL,
+			To: recipientEmail,
+			Subject: `Quote ${quote.quote_number} from Epic HVAC Services`,
+			HtmlBody: generateQuoteEmailHtml(quote.quote_number, clientName, total, validUntil),
+			TextBody: `Hi ${clientName},\n\nPlease find your quote ${quote.quote_number} attached. Total: ${total}${validUntil ? `. Valid until: ${validUntil}` : ""}.\n\nEpic HVAC Services`,
+			MessageStream: "outbound",
+			Attachments: [
+				{
+					Name: `${quote.quote_number}.pdf`,
+					Content: pdfBuffer.toString("base64"),
+					ContentType: "application/pdf",
+					ContentID: "",
+				},
+			],
+		});
+	} catch (err: any) {
+		log.error(
+			{ quoteId, recipientEmail, postmarkCode: err.code, postmarkStatus: err.statusCode, message: err.message },
+			"Postmark failed to send quote email",
+		);
+		throw new Error(`Email delivery failed: ${err.message ?? "unknown Postmark error"}`);
+	}
+
+	log.info({ quoteId, recipientEmail }, "Quote email sent");
+};
+
+/**
+ * Generate the invoice PDF and send it to the recipient via Postmark.
+ * Throws on failure so the caller can surface a meaningful HTTP error.
+ */
+export const sendInvoiceEmail = async (
+	invoiceId: string,
+	recipientEmail: string,
+): Promise<void> => {
+	const [invoice, pdfBuffer] = await Promise.all([
+		getInvoiceById(invoiceId),
+		generateInvoicePdf(invoiceId),
+	]);
+
+	if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+
+	const clientName = invoice.client?.name ?? "Valued Customer";
+	const total = fmt(invoice.total);
+	const balanceDue = fmt(invoice.balance_due);
+	const dueDate = fmtDate(invoice.due_date);
+
+	try {
+		await client.sendEmail({
+			From: POSTMARK_FROM_EMAIL,
+			To: recipientEmail,
+			Subject: `Invoice ${invoice.invoice_number} from Epic HVAC Services`,
+			HtmlBody: generateInvoiceEmailHtml(
+				invoice.invoice_number,
+				clientName,
+				total,
+				balanceDue,
+				dueDate,
+			),
+			TextBody: `Hi ${clientName},\n\nPlease find invoice ${invoice.invoice_number} attached. Total: ${total}. Balance due: ${balanceDue}${dueDate ? `. Due: ${dueDate}` : ""}.\n\nEpic HVAC Services`,
+			MessageStream: "outbound",
+			Attachments: [
+				{
+					Name: `${invoice.invoice_number}.pdf`,
+					Content: pdfBuffer.toString("base64"),
+					ContentType: "application/pdf",
+					ContentID: "",
+				},
+			],
+		});
+	} catch (err: any) {
+		log.error(
+			{ invoiceId, recipientEmail, postmarkCode: err.code, postmarkStatus: err.statusCode, message: err.message },
+			"Postmark failed to send invoice email",
+		);
+		throw new Error(`Email delivery failed: ${err.message ?? "unknown Postmark error"}`);
+	}
+
+	log.info({ invoiceId, recipientEmail }, "Invoice email sent");
 };

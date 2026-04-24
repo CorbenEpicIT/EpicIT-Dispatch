@@ -72,6 +72,7 @@ export const useCreateJobMutation = (): UseMutationResult<Job, Error, CreateJobI
 			}
 
 			queryClient.setQueryData(["jobs", newJob.id], newJob);
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -201,6 +202,7 @@ export const useCreateJobVisitMutation = (): UseMutationResult<
 			}
 
 			queryClient.setQueryData(["jobVisits", newVisit.id], newVisit);
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -233,6 +235,7 @@ export const useUpdateJobVisitMutation = (): UseMutationResult<
 					});
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -258,6 +261,7 @@ export const useAssignTechniciansToVisitMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 
 			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -329,6 +333,7 @@ export const useStartJobVisitMutation = (): UseMutationResult<JobVisit, Error, s
 					});
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -355,6 +360,7 @@ export const usePauseJobVisitMutation = (): UseMutationResult<JobVisit, Error, s
 					});
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -381,6 +387,7 @@ export const useResumeJobVisitMutation = (): UseMutationResult<JobVisit, Error, 
 					});
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -410,6 +417,7 @@ export const useCompleteJobVisitMutation = (): UseMutationResult<JobVisit, Error
 					});
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -444,6 +452,7 @@ export const useCancelJobVisitMutation = (): UseMutationResult<
 					});
 				}
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };

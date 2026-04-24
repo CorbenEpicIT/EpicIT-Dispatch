@@ -98,10 +98,23 @@ import {
 	deleteTechnician,
 } from "./controllers/techniciansController.js";
 import {
+	getAllDispatchers,
+	getDispatcherById,
+	insertDispatcher,
+	updateDispatcher,
+	deleteDispatcher,
+} from "./controllers/dispatchersController.js";
+import {
 	getAllInventory,
 	getLowStockInventory,
 	updateInventoryThreshold,
+	createInventoryItem,
+	updateInventoryItem,
+	deleteInventoryItem,
+	adjustInventoryStock,
 } from "./controllers/inventoryController.js";
+import multer from "multer";
+import { uploadFile } from "./services/wasabiService.js";
 import {
 	getOverviewMetrics,
 	getRevenueYTD,
@@ -112,6 +125,8 @@ import {
 } from "./controllers/reportsController.js";
 import * as draftsController from "./controllers/draftsController.js";
 import * as invoicesController from "./controllers/invoicesController.js";
+import { generateQuotePdf, generateInvoicePdf } from "./lib/pdf/pdfService.js";
+import { sendQuoteEmail, sendInvoiceEmail } from "./services/emailService.js";
 
 import {
 	login,
@@ -120,12 +135,18 @@ import {
 	checkRole,
 	checkToken,
 	checkRefreshToken,
-	issueAuthTokens
+	issueAuthTokens,
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
+import { log } from "./services/appLogger.js";
+import { db } from "./db.js";
+import {
+	httpMetricsMiddleware,
+	register as metricsRegister,
+} from "./services/metricsService.js";
+import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
-import { required } from "zod/v4/core/util.cjs";
 
 export interface UserContext {
 	techId?: string;
@@ -144,7 +165,10 @@ const errorHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	console.error(`[ERROR] ${req.method} ${req.path}:`, err);
+	log.error(
+		{ err, method: req.method, path: req.path },
+		"Unhandled request error",
+	);
 
 	const statusCode = err.statusCode || 500;
 
@@ -155,12 +179,6 @@ const errorHandler = (
 			process.env.NODE_ENV === "development" ? err.stack : undefined,
 		),
 	);
-};
-
-const requestLogger = (req: Request, res: Response, next: NextFunction) => {
-	const timestamp = new Date().toISOString();
-	console.log(`[${timestamp}] ${req.method} ${req.path}`);
-	next();
 };
 
 const notFoundHandler = (req: Request, res: Response) => {
@@ -255,11 +273,17 @@ const getUserContext = (req: Request): UserContext => {
 const app = express();
 
 app.use(express.json());
-app.use(requestLogger);
+app.use(pinoHttp({ logger: log }));
+app.use(httpMetricsMiddleware);
+
+app.get("/metrics", async (_req, res) => {
+	res.set("Content-Type", metricsRegister.contentType);
+	res.end(await metricsRegister.metrics());
+});
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
 if (!frontend) {
-	console.warn("No frontend url configured. Defaulting...");
+	log.warn("No FRONTEND_URL configured, defaulting to http://localhost:5173");
 	frontend = "http://localhost:5173";
 }
 
@@ -277,7 +301,7 @@ const io = new Server(server, {
 
 let port: string | undefined = process.env["SERVER_PORT"];
 if (!port) {
-	console.warn("No port configured. Defaulting...");
+	log.warn("No SERVER_PORT configured, defaulting to 3000");
 	port = "3000";
 }
 
@@ -289,18 +313,20 @@ app.post("/login", async (req, res, next) => {
 	try {
 		const { email, password, role } = req.body;
 		const result = await login(res, email, password, role);
-		if (!result){
-			return res.status(401).json(
-				createErrorResponse(
-					ErrorCodes.INVALID_CREDENTIALS,
-					"Invalid credentials"
-				)
-			);
+		if (!result) {
+			return res
+				.status(401)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_CREDENTIALS,
+						"Invalid credentials",
+					),
+				);
 		}
 		if ("error" in result) {
 			return res.status(401).json(result);
 		}
-		
+
 		res.json(createSuccessResponse(result.data));
 	} catch (err) {
 		next(err);
@@ -311,13 +337,15 @@ app.post("/logout", async (req, res, next) => {
 	try {
 		const user = req.user || {};
 		const token = req.headers.authorization?.split(" ")[1];
-		if (!token){
-			return res.status(400).json(
-				createErrorResponse(
-					ErrorCodes.INVALID_TOKEN,
-					"No token provided"
-				)
-			);
+		if (!token) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"No token provided",
+					),
+				);
 		}
 		await logout(res, user, token);
 		res.json(createSuccessResponse(null));
@@ -331,34 +359,54 @@ app.post("/otp-verify", async (req, res, next) => {
 		const { otp } = req.body;
 		const pendingToken = req.headers.authorization?.split(" ")[1];
 		if (!pendingToken) {
-			return res.status(400).json(
-				createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Missing session token")
-			);
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_CREDENTIALS,
+						"Missing session token",
+					),
+				);
 		}
 		const result = await verifyOTP(otp, pendingToken!);
-		if (!result){
-			return res.status(400).json(
-				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Error verifying OTP")
-			);
+		if (!result) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"Error verifying OTP",
+					),
+				);
 		}
 		// log in user by generating access and refresh tokens
-		const  userId = result.data?.userId;
+		const userId = result.data?.userId;
 		const role = result.data?.role;
-		console.log("OTP verification successful for userId:", userId, "role:", role, "result data:", result.data);
+		log.info({ userId, role }, "OTP verification successful");
 		if (!userId || !role) {
-			return res.status(400).json(
-				createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid OTP session data")
-			);
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"Invalid OTP session data",
+					),
+				);
 		}
 		const response = await issueAuthTokens(res, userId, role);
-		if (!response){
-			return res.status(400).json(
-				createErrorResponse(ErrorCodes.SERVER_ERROR, "Error issuing auth tokens")
-			);
+		if (!response) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.SERVER_ERROR,
+						"Error issuing auth tokens",
+					),
+				);
 		}
-		
+
 		return res.json(createSuccessResponse(response.data));
-	}catch(err){
+	} catch (err) {
 		next(err);
 	}
 });
@@ -734,12 +782,63 @@ app.get("/quotes/:id", async (req, res, next) => {
 	}
 });
 
+app.get("/quotes/:id/pdf", async (req, res, next) => {
+	try {
+		const buffer = await generateQuotePdf(req.params.id);
+		res.setHeader("Content-Type", "application/pdf");
+		res.setHeader(
+			"Content-Disposition",
+			`attachment; filename="quote-${req.params.id}.pdf"`,
+		);
+		res.send(buffer);
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Quote not found"));
+		next(err);
+	}
+});
+
 app.get("/clients/:clientId/quotes", async (req, res, next) => {
 	try {
 		const { clientId } = req.params;
 		const quotes = await getQuotesByClientId(clientId);
 		res.json(createSuccessResponse(quotes, { count: quotes.length }));
 	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/quotes/:id/send", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const recipientEmail: string | undefined = req.body?.recipient_email;
+		if (!recipientEmail) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
+		}
+
+		await sendQuoteEmail(id, recipientEmail);
+
+		const context = getUserContext(req);
+		const result = await updateQuote(
+			{ params: { id }, body: { status: "Sent" } } as any,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, err.message));
 		next(err);
 	}
 });
@@ -1710,37 +1809,50 @@ app.post("/jobs/:jobId/recurring-plan/complete", async (req, res, next) => {
 // RECURRING PLAN INVOICE SCHEDULE ROUTES
 // ============================================
 
-app.put("/jobs/:jobId/recurring-plan/invoice-schedule", async (req, res, next) => {
-	try {
-		const { jobId } = req.params;
-		const result = await recurringPlansController.upsertInvoiceSchedule(
-			jobId,
-			req.body,
-			getUserContext(req),
-		);
-		if (result.err) {
-			res.status(400).json(createErrorResponse("VALIDATION_ERROR", result.err));
-			return;
+app.put(
+	"/jobs/:jobId/recurring-plan/invoice-schedule",
+	async (req, res, next) => {
+		try {
+			const { jobId } = req.params;
+			const result = await recurringPlansController.upsertInvoiceSchedule(
+				jobId,
+				req.body,
+				getUserContext(req),
+			);
+			if (result.err) {
+				res.status(400).json(
+					createErrorResponse("VALIDATION_ERROR", result.err),
+				);
+				return;
+			}
+			res.json(createSuccessResponse(result.item));
+		} catch (err) {
+			next(err);
 		}
-		res.json(createSuccessResponse(result.item));
-	} catch (err) {
-		next(err);
-	}
-});
+	},
+);
 
-app.delete("/jobs/:jobId/recurring-plan/invoice-schedule", async (req, res, next) => {
-	try {
-		const { jobId } = req.params;
-		const result = await recurringPlansController.deleteInvoiceSchedule(jobId);
-		if (result.err) {
-			res.status(404).json(createErrorResponse("NOT_FOUND", result.err));
-			return;
+app.delete(
+	"/jobs/:jobId/recurring-plan/invoice-schedule",
+	async (req, res, next) => {
+		try {
+			const { jobId } = req.params;
+			const result =
+				await recurringPlansController.deleteInvoiceSchedule(jobId);
+			if (result.err) {
+				res.status(404).json(
+					createErrorResponse("NOT_FOUND", result.err),
+				);
+				return;
+			}
+			res.json(
+				createSuccessResponse({ message: "Invoice schedule removed" }),
+			);
+		} catch (err) {
+			next(err);
 		}
-		res.json(createSuccessResponse({ message: "Invoice schedule removed" }));
-	} catch (err) {
-		next(err);
-	}
-});
+	},
+);
 
 // ============================================
 // RECURRING PLAN NOTES ROUTES
@@ -2047,6 +2159,24 @@ app.get("/invoices/:id", async (req, res, next) => {
 	}
 });
 
+app.get("/invoices/:id/pdf", async (req, res, next) => {
+	try {
+		const buffer = await generateInvoicePdf(req.params.id);
+		res.setHeader("Content-Type", "application/pdf");
+		res.setHeader(
+			"Content-Disposition",
+			`attachment; filename="invoice-${req.params.id}.pdf"`,
+		);
+		res.send(buffer);
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Invoice not found"));
+		next(err);
+	}
+});
+
 app.get("/clients/:clientId/invoices", async (req, res, next) => {
 	try {
 		const invoices = await invoicesController.getInvoicesByClientId(
@@ -2065,6 +2195,39 @@ app.get("/jobs/:jobId/invoices", async (req, res, next) => {
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
 	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/invoices/:id/send", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const recipientEmail: string | undefined = req.body?.recipient_email;
+		if (!recipientEmail) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "recipient_email is required"));
+		}
+
+		await sendInvoiceEmail(id, recipientEmail);
+
+		const context = getUserContext(req);
+		const result = await invoicesController.updateInvoice(
+			{ params: { id }, body: { status: "Sent" } } as any,
+			context,
+		);
+		if (result.err) {
+			const status = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err: any) {
+		if (err?.status === 404)
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, err.message));
 		next(err);
 	}
 });
@@ -2896,22 +3059,272 @@ app.delete("/technicians/:id", async (req, res, next) => {
 		next(err);
 	}
 });
+
+// ============================================
+// DISPATCHERS
+// ============================================
+app.get("/dispatchers", async (req, res, next) => {
+	try {
+		const dispatcher = await getAllDispatchers();
+		res.json(
+			createSuccessResponse(dispatcher, { count: dispatcher.length }),
+		);
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.get("/dispatchers/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const dispatcher = await getDispatcherById(id);
+
+		if (!dispatcher) {
+			return res
+				.status(404)
+				.json(
+					createErrorResponse(
+						ErrorCodes.NOT_FOUND,
+						"Dispatcher not found",
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(dispatcher));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.post("/dispatcher", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await insertTechnician(req.body, context);
+
+		if (result.err) {
+			const isDuplicate = result.err
+				.toLowerCase()
+				.includes("already exists");
+			return res
+				.status(isDuplicate ? 409 : 400)
+				.json(
+					createErrorResponse(
+						isDuplicate
+							? ErrorCodes.CONFLICT
+							: ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.put("/dispatchers/:id", async (req, res, next) => {
+	try {
+		/*const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await updateDispatcher(id, req.body, context);
+
+		if (result.err) {
+			const isDuplicate = result.err
+				.toLowerCase()
+				.includes("already exists");
+			return res
+				.status(isDuplicate ? 409 : 400)
+				.json(
+					createErrorResponse(
+						isDuplicate
+							? ErrorCodes.CONFLICT
+							: ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));*/
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/dispatchers/:id", async (req, res, next) => {
+	try {
+		/*const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await deleteDispatcher(id, context);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));
+		}
+
+		res.status(200).json(
+			createSuccessResponse({
+				message: result.message || "Technician deleted successfully",
+				id,
+			}),
+		);*/
+	} catch (err) {
+		next(err);
+	}
+});
+
 // ============================================
 // INVENTORY
 // ============================================
 
 app.get("/inventory", async (req, res, next) => {
 	try {
-		const { low_stock } = req.query;
+		const { low_stock, sort } = req.query;
 		const items =
 			low_stock === "true"
 				? await getLowStockInventory()
-				: await getAllInventory();
+				: await getAllInventory(sort as string | undefined);
 		res.json(createSuccessResponse(items, { count: items.length }));
 	} catch (err) {
 		next(err);
 	}
 });
+
+app.post("/inventory", async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const result = await createInventoryItem(req.body, context);
+
+		if (result.err) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.patch("/inventory/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await updateInventoryItem(id, req.body, context);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.delete("/inventory/:id", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await deleteInventoryItem(id, context);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse({ message: result.message }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+app.patch("/inventory/:id/stock", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const context = getUserContext(req);
+		const result = await adjustInventoryStock(id, req.body, context);
+
+		if (result.err) {
+			const statusCode = result.err.includes("not found") ? 404 : 400;
+			return res
+				.status(statusCode)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						result.err,
+					),
+				);
+		}
+
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+const inventoryUpload = multer({
+	storage: multer.memoryStorage(),
+	limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+	fileFilter: (_req, file, cb) => {
+		const allowed = ["image/jpeg", "image/png", "image/webp"];
+		if (allowed.includes(file.mimetype)) {
+			cb(null, true);
+		} else {
+			cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
+		}
+	},
+});
+
+app.post(
+	"/inventory/upload-image",
+	inventoryUpload.single("image"),
+	async (req, res, next) => {
+		try {
+			if (!req.file) {
+				return res
+					.status(400)
+					.json(
+						createErrorResponse(
+							ErrorCodes.VALIDATION_ERROR,
+							"No image file provided",
+						),
+					);
+			}
+
+			const url = await uploadFile(
+				req.file.buffer,
+				req.file.mimetype,
+				req.file.originalname,
+			);
+			res.json(createSuccessResponse({ url }));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
 
 app.patch("/inventory/:id/threshold", async (req, res, next) => {
 	try {
@@ -3069,9 +3482,40 @@ app.get("/reports/arrival-performance", async (req, res, next) => {
 // ERROR HANDLERS (Must be last)
 // ============================================
 
+// ============================================================
+// ACTIVITY FEED
+// ============================================================
+
+app.get("/logs/recent", async (req, res, next) => {
+	try {
+		const limit = Math.min(Number(req.query.limit) || 25, 50);
+		const FEED_EVENTS = [
+			"job.created",
+			"job_visit.created",
+			"job_visit.updated",
+			"job_visit.technicians_assigned",
+			"request.created",
+			"quote.created",
+			"quote.updated",
+			"invoice.created",
+			"invoice.updated",
+			"invoice_payment.created",
+			"recurring_plan.created",
+			"recurring_occurrence.generated",
+		];
+		const logs = await db.log.findMany({
+			where: { event_type: { in: FEED_EVENTS } },
+			orderBy: { timestamp: "desc" },
+			take: limit,
+		});
+		res.json(createSuccessResponse(logs, { count: logs.length }));
+	} catch (err) {
+		next(err);
+	}
+});
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 server.listen(port, () => {
-	console.log(`✓ Server running on http://localhost:${port}`);
+	log.info({ port }, "Server started");
 });

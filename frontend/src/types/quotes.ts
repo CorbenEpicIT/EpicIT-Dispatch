@@ -18,6 +18,7 @@ import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
 
 export const QuoteStatusValues = [
 	"Draft",
+	"Issued",
 	"Sent",
 	"Viewed",
 	"Approved",
@@ -31,6 +32,7 @@ export type QuoteStatus = (typeof QuoteStatusValues)[number];
 
 export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 	Draft: "Draft",
+	Issued: "Issued",
 	Sent: "Sent",
 	Viewed: "Viewed",
 	Approved: "Approved",
@@ -41,14 +43,15 @@ export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 };
 
 export const QuoteStatusColors: Record<QuoteStatus, string> = {
-	Draft: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Sent: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Viewed: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-	Approved: "bg-green-500/20 text-green-400 border-green-500/30",
-	Rejected: "bg-red-500/20 text-red-400 border-red-500/30",
-	Revised: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Expired: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Cancelled: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+	Draft:     "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+	Issued:    "bg-blue-500/20 text-blue-400 border-blue-500/30",
+	Sent:      "bg-green-500/20 text-green-400 border-green-500/30",
+	Viewed:    "bg-teal-500/20 text-teal-400 border-teal-500/30",
+	Approved:  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+	Rejected:  "bg-red-500/20 text-red-400 border-red-500/30",
+	Revised:   "bg-amber-500/20 text-amber-400 border-amber-500/30",
+	Expired:   "bg-orange-500/20 text-orange-400 border-orange-500/30",
+	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
 // ============================================================================
@@ -100,6 +103,7 @@ export interface Quote {
 
 	created_at: Date;
 	updated_at: Date;
+	issued_at: Date | null;
 	sent_at: Date | null;
 	viewed_at: Date | null;
 	approved_at: Date | null;

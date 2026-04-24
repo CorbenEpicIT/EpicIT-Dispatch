@@ -11,6 +11,8 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
+import { assertValidInvoiceTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 
 export interface UserContext {
 	techId?: string;
@@ -90,11 +92,11 @@ async function syncInvoicePaymentTotals(
 
 	// Only auto-transition to PartiallyPaid or Paid.
 	// Disputed and Void are set manually and must not be overwritten here.
-	// Draft/Sent/Viewed are preserved when payments are removed.
+	// Draft/Issued/Sent/Viewed are preserved when payments are removed.
 	let status = invoice.status;
 	if (status !== "Disputed" && status !== "Void") {
 		if (amountPaid <= 0) {
-			// Only revert auto-set payment statuses; leave Draft/Sent/Viewed alone.
+			// Only revert auto-set payment statuses; leave other lifecycle states alone.
 			if (status === "PartiallyPaid" || status === "Paid") {
 				status = "Sent";
 			}
@@ -210,7 +212,6 @@ const invoiceInclude = {
 							name: true,
 							email: true,
 							phone: true,
-							title: true,
 						},
 					},
 				},
@@ -561,7 +562,7 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 			};
 		}
 		if (e instanceof Error) return { err: e.message };
-		console.error("Insert invoice error:", e);
+		log.error({ err: e }, "Insert invoice error");
 		return { err: "Internal server error" };
 	}
 };
@@ -583,6 +584,18 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 
 		if (parsed.status === "Void" && !parsed.void_reason) {
 			return { err: "void_reason is required when voiding an invoice" };
+		}
+
+		// Enforce valid status transitions
+		if (parsed.status && parsed.status !== existing.status) {
+			try {
+				assertValidInvoiceTransition(existing.status, parsed.status);
+			} catch (e) {
+				if (e instanceof InvalidTransitionError) {
+					return { err: e.message };
+				}
+				throw e;
+			}
 		}
 
 		const { line_items: _li, ...parsedScalars } = parsed;
@@ -717,6 +730,8 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 					...(parsed.void_reason !== undefined && {
 						void_reason: parsed.void_reason,
 					}),
+					...(parsed.status === "Issued" &&
+						!existing.issued_at && { issued_at: new Date() }),
 					...(parsed.status === "Sent" &&
 						!existing.sent_at && { sent_at: new Date() }),
 					...(parsed.status === "Sent" &&
@@ -749,7 +764,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 						? "technician"
 						: "system",
 				actor_id: context?.dispatcherId ?? context?.techId,
-				changes,
+				changes: { ...changes, _invoice_number: { old: null, new: existing.invoice_number } },
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
 			});
@@ -762,7 +777,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Update invoice error:", e);
+		log.error({ err: e }, "Update invoice error");
 		return { err: "Internal server error" };
 	}
 };
@@ -802,7 +817,7 @@ export const deleteInvoice = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (e) {
-		console.error("Delete invoice error:", e);
+		log.error({ err: e }, "Delete invoice error");
 		return { err: "Internal server error" };
 	}
 };
@@ -872,6 +887,7 @@ export const insertInvoicePayment = async (
 				invoice_id: { old: null, new: invoiceId },
 				amount: { old: null, new: parsed.amount },
 				method: { old: null, new: parsed.method ?? null },
+				_invoice_number: { old: null, new: invoice.invoice_number },
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,
@@ -884,7 +900,7 @@ export const insertInvoicePayment = async (
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Insert invoice payment error:", e);
+		log.error({ err: e }, "Insert invoice payment error");
 		return { err: "Internal server error" };
 	}
 };
@@ -933,7 +949,7 @@ export const deleteInvoicePayment = async (
 
 		return { err: "", item: { id: paymentId } };
 	} catch (e) {
-		console.error("Delete invoice payment error:", e);
+		log.error({ err: e }, "Delete invoice payment error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1017,7 +1033,7 @@ export const insertInvoiceNote = async (
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Insert invoice note error:", e);
+		log.error({ err: e }, "Insert invoice note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1088,7 +1104,7 @@ export const updateInvoiceNote = async (
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		console.error("Update invoice note error:", e);
+		log.error({ err: e }, "Update invoice note error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1127,7 +1143,7 @@ export const deleteInvoiceNote = async (
 
 		return { err: "", message: "Note deleted successfully" };
 	} catch (e) {
-		console.error("Delete invoice note error:", e);
+		log.error({ err: e }, "Delete invoice note error");
 		return { err: "Internal server error" };
 	}
 };

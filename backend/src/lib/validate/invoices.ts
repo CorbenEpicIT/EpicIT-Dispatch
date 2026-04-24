@@ -6,6 +6,7 @@ import z from "zod";
 
 const invoiceStatusEnum = z.enum([
 	"Draft",
+	"Issued",
 	"Sent",
 	"Viewed",
 	"PartiallyPaid",

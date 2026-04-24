@@ -6,6 +6,8 @@ import {
 } from "../lib/validate/jobVisits.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { log } from "../services/appLogger.js";
+import { deductInventoryForVisit } from "./inventoryController.js";
 
 export interface UserContext {
 	techId?: string;
@@ -246,6 +248,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 					},
 					status: { old: null, new: visit.status },
 					job_id: { old: null, new: parsed.job_id },
+					_job_number: { old: null, new: job.job_number },
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -276,7 +279,7 @@ export const insertJobVisit = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Error inserting job visit:", e);
+		log.error({ err: e }, "Error inserting job visit");
 		return { err: "Internal server error" };
 	}
 };
@@ -313,7 +316,6 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 			"actual_end_at",
 			"status",
 		] as const);
-
 		const updated = await db.$transaction(async (tx) => {
 			// ── Scalar field update ───────────────────────────────────────
 			const visit = await tx.job_visit.update({
@@ -446,6 +448,26 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 						data: { status: newJobStatus },
 					});
 				}
+
+				const deductOn = existingVisit.job.deduct_inventory_on;
+				if (
+					parsed.status === "Completed" &&
+					existingVisit.status !== "Completed" &&
+					deductOn === "visit_completion"
+				) {
+					await deductInventoryForVisit(id, tx, context);
+				}
+
+				// Inventory deduction on job completion (all visits done)
+				if (
+					newJobStatus === "Completed" &&
+					existingVisit.job.status !== "Completed" &&
+					deductOn === "job_completion"
+				) {
+					for (const v of allVisits) {
+						await deductInventoryForVisit(v.id, tx, context);
+					}
+				}
 			}
 
 			// ── Activity log ──────────────────────────────────────────────
@@ -461,7 +483,11 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 							? "dispatcher"
 							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
-					changes,
+					changes: {
+						...changes,
+						_job_id: { old: null, new: existingVisit.job_id },
+						_job_number: { old: null, new: existingVisit.job.job_number },
+					},
 					ip_address: context?.ipAddress,
 					user_agent: context?.userAgent,
 				});
@@ -488,7 +514,7 @@ export const updateJobVisit = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Failed to update job visit:", e);
+		log.error({ err: e }, "Failed to update job visit");
 		return { err: "Failed to update job visit" };
 	}
 };
@@ -502,6 +528,7 @@ export const assignTechniciansToVisit = async (
 		const visit = await db.job_visit.findUnique({
 			where: { id: visitId },
 			include: {
+				job: { select: { job_number: true } },
 				visit_techs: {
 					include: { tech: true },
 				},
@@ -514,7 +541,7 @@ export const assignTechniciansToVisit = async (
 
 		const existingTechs = await db.technician.findMany({
 			where: { id: { in: techIds } },
-			select: { id: true },
+			select: { id: true, name: true },
 		});
 
 		const existingIds = new Set(existingTechs.map((t) => t.id));
@@ -526,7 +553,8 @@ export const assignTechniciansToVisit = async (
 			};
 		}
 
-		const oldTechIds = visit.visit_techs.map((vt) => vt.tech_id);
+		const oldTechNames = visit.visit_techs.map((vt) => vt.tech.name);
+		const newTechNames = existingTechs.map((t) => t.name);
 
 		await db.$transaction(async (tx) => {
 			await tx.job_visit_technician.deleteMany({
@@ -553,9 +581,11 @@ export const assignTechniciansToVisit = async (
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					technicians: {
-						old: oldTechIds,
-						new: techIds,
+						old: oldTechNames,
+						new: newTechNames,
 					},
+					_job_id: { old: null, new: visit.job_id },
+					_job_number: { old: null, new: visit.job.job_number },
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -579,7 +609,7 @@ export const assignTechniciansToVisit = async (
 
 		return { err: "", item: updated };
 	} catch (e) {
-		console.error("Failed to assign technicians:", e);
+		log.error({ err: e }, "Failed to assign technicians");
 		return { err: "Failed to assign technicians" };
 	}
 };
@@ -651,7 +681,7 @@ export const acceptJobVisit = async (
 
 		return { err: "", item: updated };
 	} catch (e) {
-		console.error("Failed to accept job visit:", e);
+		log.error({ err: e }, "Failed to accept job visit");
 		return { err: "Failed to accept job visit" };
 	}
 };
@@ -718,7 +748,7 @@ export const deleteJobVisit = async (id: string, context?: UserContext) => {
 
 		return { err: "", message: "Job visit deleted successfully" };
 	} catch (e) {
-		console.error("Failed to delete job visit:", e);
+		log.error({ err: e }, "Failed to delete job visit");
 		return { err: "Failed to delete job visit" };
 	}
 };

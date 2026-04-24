@@ -7,6 +7,7 @@ import type { BaseNote, TechReference, DispatcherReference, PricingBreakdown } f
 
 export const InvoiceStatusValues = [
 	"Draft",
+	"Issued",
 	"Sent",
 	"Viewed",
 	"PartiallyPaid",
@@ -19,6 +20,7 @@ export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
 
 export const InvoiceStatusLabels: Record<InvoiceStatus, string> = {
 	Draft: "Draft",
+	Issued: "Issued",
 	Sent: "Sent",
 	Viewed: "Viewed",
 	PartiallyPaid: "Partially Paid",
@@ -28,17 +30,18 @@ export const InvoiceStatusLabels: Record<InvoiceStatus, string> = {
 };
 
 export const InvoiceStatusColors: Record<InvoiceStatus, string> = {
-	Draft: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Sent: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Viewed: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-	PartiallyPaid: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Paid: "bg-green-500/20 text-green-400 border-green-500/30",
-	Disputed: "bg-red-500/20 text-red-400 border-red-500/30",
-	Void: "bg-zinc-700/20 text-zinc-500 border-zinc-700/30",
+	Draft:        "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+	Issued:       "bg-blue-500/20 text-blue-400 border-blue-500/30",
+	Sent:         "bg-green-500/20 text-green-400 border-green-500/30",
+	Viewed:       "bg-teal-500/20 text-teal-400 border-teal-500/30",
+	PartiallyPaid:"bg-amber-500/20 text-amber-400 border-amber-500/30",
+	Paid:         "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+	Disputed:     "bg-orange-500/20 text-orange-400 border-orange-500/30",
+	Void:         "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
 // Which statuses are auto-set by the system vs manually set by staff
-export const AutoSetStatuses: InvoiceStatus[] = ["PartiallyPaid", "Paid"];
+export const AutoSetStatuses: InvoiceStatus[] = ["Issued", "PartiallyPaid", "Paid"];
 export const ManualOnlyStatuses: InvoiceStatus[] = ["Disputed", "Void"];
 
 // ============================================================================
@@ -201,6 +204,7 @@ export interface Invoice extends PricingBreakdown {
 	issue_date: Date | string | null;
 	due_date?: Date | string | null;
 	payment_terms_days?: number | null;
+	issued_at?: Date | string | null;
 	sent_at?: Date | string | null;
 	viewed_at?: Date | string | null;
 	paid_at?: Date | string | null;
@@ -291,7 +295,8 @@ export function isOverdue(invoice: Pick<Invoice, "status" | "due_date">): boolea
 }
 
 export function isEditable(status: InvoiceStatus): boolean {
-	return status !== "Void";
+	// Only Draft is editable; Issued and beyond are finalized
+	return status === "Draft";
 }
 
 export function isDeletable(status: InvoiceStatus): boolean {

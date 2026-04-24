@@ -1187,8 +1187,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 									: undefined
 							}
 							importLabel={
-								importableCount > 0
-									? `Import ${importableCount} visit item${importableCount !== 1 ? "s" : ""}`
+								totalImportable > 0
+									? `Import ${totalImportable} line item${totalImportable !== 1 ? "s" : ""}`
 									: undefined
 							}
 							stickyHeader

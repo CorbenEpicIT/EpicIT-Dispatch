@@ -1,6 +1,7 @@
 import { Plus, Download } from "lucide-react";
 import LineItemCard, { type SourceJob } from "./LineItemCard";
 import type { BaseLineItem } from "../../../types/common";
+import type { InventoryItem } from "../../../types/inventory";
 
 interface LineItemsSectionProps {
 	lineItems: BaseLineItem[];
@@ -28,6 +29,7 @@ interface LineItemsSectionProps {
 	importLabel?: string;
 	// When true, the header row sticks to the top of the nearest scroll container
 	stickyHeader?: boolean;
+	inventoryItems?: InventoryItem[];
 }
 
 const LineItemsSection = ({
@@ -49,6 +51,7 @@ const LineItemsSection = ({
 	onImport,
 	importLabel,
 	stickyHeader = false,
+	inventoryItems,
 }: LineItemsSectionProps) => {
 	const canRemove = lineItems.length > minItems;
 
@@ -109,6 +112,7 @@ const LineItemsSection = ({
 						originalLineItemsMap={originalLineItemsMap}
 						onUpdateSource={onUpdateSource}
 						sourceJobs={sourceJobs}
+						inventoryItems={inventoryItems}
 					/>
 				))}
 			</div>

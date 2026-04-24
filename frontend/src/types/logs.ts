@@ -1,0 +1,16 @@
+export interface ActivityLog {
+	id: string;
+	event_type: string;
+	action: string;
+	entity_type: string;
+	entity_id: string;
+	actor_type: string;
+	actor_id: string | null;
+	actor_name: string | null;
+	changes: Record<string, { old: unknown; new: unknown }> | null;
+	timestamp: string;
+	ip_address: string | null;
+	user_agent: string | null;
+	reason: string | null;
+	organization_id: string | null;
+}

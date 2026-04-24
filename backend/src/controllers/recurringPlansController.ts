@@ -29,6 +29,7 @@ import {
 	calculateNextInvoiceAt,
 	type ScheduleFrequency,
 } from "../lib/invoiceSchedule.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -626,7 +627,7 @@ export const insertRecurringPlan = async (
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert recurring plan error:", e);
+		log.error({ err: e }, "Insert recurring plan error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1005,7 +1006,7 @@ export const updateRecurringPlan = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update recurring plan error:", e);
+		log.error({ err: e }, "Update recurring plan error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1123,7 +1124,7 @@ export const updateRecurringPlanLineItems = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update recurring plan line items error:", e);
+		log.error({ err: e }, "Update recurring plan line items error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1194,7 +1195,7 @@ export const upsertInvoiceSchedule = async (
 				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
-		console.error("Upsert invoice schedule error:", e);
+		log.error({ err: e }, "Upsert invoice schedule error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1293,7 +1294,7 @@ export const cancelRecurringPlan = async (
 
 		return { err: "", item: updated };
 	} catch (e) {
-		console.error("Cancel recurring plan error:", e);
+		log.error({ err: e }, "Cancel recurring plan error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1402,7 +1403,7 @@ export const generateOccurrences = async (
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Generate occurrences error:", e);
+		log.error({ err: e }, "Generate occurrences error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1464,7 +1465,7 @@ export const skipOccurrence = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Skip occurrence error:", e);
+		log.error({ err: e }, "Skip occurrence error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1544,7 +1545,7 @@ export const rescheduleOccurrence = async (
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
-			console.error("Reschedule occurrence validation error:", e.issues);
+			log.error({ err: e }, "Reschedule occurrence validation error");
 			return {
 				err: `Validation failed: ${e.issues
 					.map((err) => err.message)
@@ -1553,13 +1554,13 @@ export const rescheduleOccurrence = async (
 		}
 
 		if (e instanceof Error && "code" in e && (e as any).code === "P2002") {
-			console.error("Unique constraint violation:", e);
+			log.error({ err: e }, "Unique constraint violation");
 			return {
 				err: "Cannot reschedule: An occurrence from this recurring plan already exists at this date and time.",
 			};
 		}
 
-		console.error("Reschedule occurrence error:", e);
+		log.error({ err: e }, "Reschedule occurrence error");
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
@@ -1618,7 +1619,7 @@ export const bulkSkipOccurrences = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Bulk skip occurrences error:", e);
+		log.error({ err: e }, "Bulk skip occurrences error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1756,7 +1757,7 @@ export const generateVisitFromOccurrence = async (
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Generate visit from occurrence error:", e);
+		log.error({ err: e }, "Generate visit from occurrence error");
 		return { err: "Internal server error" };
 	}
 };

@@ -91,6 +91,7 @@ export const useCreateInvoiceMutation = (): UseMutationResult<
 
 			// Prime the detail cache so navigating to the invoice is instant
 			queryClient.setQueryData(["invoices", newInvoice.id], newInvoice);
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -130,6 +131,7 @@ export const useUpdateInvoiceMutation = (): UseMutationResult<
 					],
 				});
 			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -197,6 +199,7 @@ export const useCreateInvoicePaymentMutation = (): UseMutationResult<
 			// Invalidate the list so payment progress / status is current in
 			// the invoices table view as well.
 			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
