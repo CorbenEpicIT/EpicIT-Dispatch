@@ -25,35 +25,42 @@ export const formatCurrency = (amount: number) => {
 	}).format(amount);
 };
 
-export const formatDateTime = (date: Date | string) => {
+/** Fallback timezone used when org timezone is unavailable (e.g. before first login). */
+export const FALLBACK_TIMEZONE = "America/Chicago";
+
+export const formatDateTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	const d = typeof date === "string" ? new Date(date) : date;
 	return (
 		d.toLocaleDateString("en-US", {
 			month: "short",
 			day: "numeric",
 			year: "numeric",
+			timeZone: tz,
 		}) +
 		" at " +
 		d.toLocaleTimeString("en-US", {
 			hour: "numeric",
 			minute: "2-digit",
+			timeZone: tz,
 		})
 	);
 };
 
-export const formatDate = (date: Date | string) => {
+export const formatDate = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	return new Date(date).toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
+		timeZone: tz,
 	});
 };
 
-export const formatTime = (date: Date | string) => {
+export const formatTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	const d = typeof date === "string" ? new Date(date) : date;
 	return d.toLocaleTimeString("en-US", {
 		hour: "numeric",
 		minute: "2-digit",
+		timeZone: tz,
 	});
 };
 

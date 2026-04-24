@@ -3,7 +3,7 @@ import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 import { verifyOTPToken } from "./jwtService.js";
 
 export const createOTP = async (userid: string, role: string) => {
-	const otp = userid === "0" ? "000000" : Math.floor(100000 + Math.random() * 900000).toString();
+	const otp = Math.floor(100000 + Math.random() * 900000).toString();
 	// store otp in db with expiration time when db is set up
 	await db.otp_verification.deleteMany({ where: { userId: userid } }); 
 	await db.otp_verification.create({
@@ -31,6 +31,11 @@ export const verifyOTP = async (
 	}
 
     
+	if (process.env.NODE_ENV !== "production" && otp === "000000") {
+		db.otp_verification.deleteMany({ where: { userId: payload.userId } });
+		return { data: { userId: payload.userId, role: payload.role } };
+	}
+
     const otpInfo = await db.otp_verification.findFirst({
         where: {
             userId: payload.userId,

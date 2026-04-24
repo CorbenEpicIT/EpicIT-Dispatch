@@ -13,7 +13,7 @@ interface User {
     email: string;
     phone: string | null;
     password: string;
-    last_login: Date;
+    last_login: Date | null;
 }
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
@@ -29,7 +29,7 @@ export const hasValidRefreshToken = async (userId: string): Promise<string | nul
     return record?.token ?? null;
 }
 
-export const generateAccessToken = (user: User, role: string)=>{
+export const generateAccessToken = (user: User, role: string, orgTimezone?: string | null)=>{
         if (!JWT_SECRET) {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
@@ -37,10 +37,12 @@ export const generateAccessToken = (user: User, role: string)=>{
             {
                 uid: user.id,
                 email: user.email,
-                role: role
+                role: role,
+                organization_id: user.organization_id,
+                organization_timezone: orgTimezone ?? null,
             },
-            JWT_SECRET, 
-            {expiresIn : '15m'}  // token expires in an hour may change in future 
+            JWT_SECRET,
+            {expiresIn : '15m'}  // token expires in an hour may change in future
         );
 }
 
@@ -91,6 +93,8 @@ export const verifyToken = (token: string) => {
         uid: string;
         email: string;
         role: string;
+        organization_id: string | null;
+        organization_timezone: string | null;
     };
 }
 
@@ -138,16 +142,31 @@ export const refreshAccessToken = async (refreshToken: string) => {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
         
+        const dbUser = user.role === "technician"
+            ? await db.technician.findUnique({ where: { id: user.id }, select: { organization_id: true } })
+            : await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } });
+
+        let orgTimezone: string | null = null;
+        if (dbUser?.organization_id) {
+            const org = await db.organization.findUnique({
+                where: { id: dbUser.organization_id },
+                select: { timezone: true },
+            });
+            orgTimezone = org?.timezone ?? null;
+        }
+
         const jwtResult = jwt.sign(
                     {
                         uid: user.id,
                         email: user.email,
-                        role: user.role
+                        role: user.role,
+                        organization_id: dbUser?.organization_id ?? null,
+                        organization_timezone: orgTimezone,
                     },
-                    JWT_SECRET, 
-                    {expiresIn : '15m'} 
-                ); 
-        
+                    JWT_SECRET,
+                    {expiresIn : '15m'}
+                );
+
         return jwtResult;  
     } catch (e) {
         if (e instanceof jwt.JsonWebTokenError) {

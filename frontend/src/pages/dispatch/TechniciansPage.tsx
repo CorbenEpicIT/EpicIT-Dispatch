@@ -233,7 +233,7 @@ export default function TechniciansPage() {
 
 			{/* Technician Cards Grid */}
 			{!isFetchLoading && !fetchError && filteredTechnicians && filteredTechnicians.length > 0 && (
-				<div className="flex flex-wrap gap-4">
+				<div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(288px,1fr))]">
 					{filteredTechnicians.map((technician) => (
 						<TechnicianCard
 							key={technician.id}

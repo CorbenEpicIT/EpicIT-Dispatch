@@ -27,6 +27,8 @@ import FullMapPage from "./pages/dispatch/FullMapPage";
 import InvoicesPage from "./pages/dispatch/InvoicesPage";
 import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
 import AdminPage from "./pages/dispatch/AdminPage";
+import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./auth/authStore";
@@ -41,7 +43,8 @@ export default function AppRoutes() {
 	return (
 		<Routes>
 			<Route path="/login" element={<LoginPage />} />
-
+			<Route path="/verify-email" element={<VerifyEmailPage />} />
+			<Route path="/reset-password" element={<ResetPasswordPage />} />
 			<Route
 				path="/dispatch/*"
 				element={

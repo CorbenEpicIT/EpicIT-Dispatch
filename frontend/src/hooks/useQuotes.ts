@@ -173,7 +173,8 @@ export const useSendQuoteMutation = () => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (id: string) => sendQuote(id),
+		mutationFn: ({ id, recipientEmail }: { id: string; recipientEmail: string }) =>
+			sendQuote(id, recipientEmail),
 		onSuccess: (updatedQuote) => {
 			queryClient.invalidateQueries({
 				queryKey: ["quotes", updatedQuote.id],

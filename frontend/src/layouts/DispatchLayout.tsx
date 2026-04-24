@@ -32,7 +32,6 @@ export default function DispatchLayout() {
 	useEffect(() => {
 		navigationCount.current++;
 	}, [location.pathname]);
-
 	const handleBack = () => {
 		const path = location.pathname;
 		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -65,12 +64,12 @@ export default function DispatchLayout() {
 				onMouseEnter={() => setExpanded(true)}
 				onMouseLeave={() => setExpanded(false)}
 				className={`
-					flex flex-col flex-shrink-0
+					flex flex-col flex-shrink-0 overflow-hidden
 					border-r border-zinc-900
 					transition-all duration-300 ease-in-out
 					${expanded ? "w-40 lg:w-44" : "w-16"}`}
 			>
-				<nav className="flex-1 py-2 space-y-1">
+				<nav className="flex-1 py-2 space-y-1 overflow-y-auto overflow-x-hidden sidebar-nav">
 					<SideNavItem
 						expanded={expanded}
 						to="/dispatch"
@@ -144,7 +143,7 @@ export default function DispatchLayout() {
 						label="Settings"
 					/>
 					{/* Admin page only visible to dispatch role */
-						user?.role === "dispatch" /*&& isAdmin(user?.role)*/ && (
+						user?.role === "admin" && (
 							<SideNavItem
 								to="/dispatch/admin"
 								icon={<ShieldUser size={ICON_SIZE} />}
@@ -190,8 +189,8 @@ export default function DispatchLayout() {
 					</div>
 				</header>
 
-				<main className="flex-1 overflow-y-auto bg-zinc-950">
-					<div className="p-4 md:p-6 min-h-full">
+				<main className="flex-1 overflow-hidden bg-zinc-950">
+					<div className="p-4 md:p-6 h-full overflow-y-auto">
 						<Outlet />
 					</div>
 				</main>

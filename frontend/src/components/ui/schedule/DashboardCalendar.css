@@ -1,0 +1,100 @@
+/* ============================================================================
+   @schedule-x dark theme overrides
+   Reference: node_modules/@schedule-x/theme-default/dist/index.css
+   ============================================================================ */
+
+.sx-react-calendar-wrapper {
+	--sx-color-primary: #3b82f6;
+	--sx-color-primary-container: #1d4ed8;
+	--sx-color-on-primary: #ffffff;
+	--sx-color-surface: #18181b;
+	--sx-color-surface-variant: #27272a;
+	--sx-color-on-surface: #e4e4e7;
+	--sx-color-on-surface-variant: #a1a1aa;
+	--sx-color-outline: #52525b;
+	--sx-color-background: #09090b;
+	--sx-font-size-base: 0.875rem;
+	--sx-border-radius: 6px;
+}
+
+/* Remove default white backgrounds */
+.sx__month-grid-day,
+.sx__date-grid-day {
+	background-color: var(--sx-color-surface);
+}
+
+/* Today highlight */
+.sx__date-grid-day--today,
+.sx__month-grid-day--today {
+	background-color: #1e3a5f;
+}
+
+/* Event chip base */
+.sx__event {
+	border-radius: 4px;
+	font-size: 0.75rem;
+	padding: 2px 5px;
+}
+
+/* Occurrence badge — purple circle */
+.sx__event[data-type="occurrence-badge"] {
+	background: #7c3aed !important;
+	border: none;
+	border-radius: 50%;
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.65rem;
+	font-weight: 700;
+	color: white;
+	padding: 0;
+}
+
+/* Header / toolbar area */
+.sx__calendar-header {
+	background-color: var(--sx-color-surface);
+	border-bottom: 1px solid var(--sx-color-outline);
+}
+
+/* Day header row */
+.sx__week-grid__day-name,
+.sx__month-grid-day__header-day-name {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	font-weight: 600;
+}
+
+/* Month day numbers */
+.sx__month-grid-day__header-date {
+	color: #d4d4d8;
+}
+
+/* Navigation buttons */
+.sx__chevron-wrapper {
+	color: var(--sx-color-on-surface-variant);
+}
+.sx__chevron-wrapper:hover {
+	background-color: var(--sx-color-surface-variant);
+	border-radius: 4px;
+}
+
+/* Hide the date picker input from the calendar header */
+.sx-react-calendar-wrapper .sx__date-input-wrapper {
+	display: none;
+}
+
+/* Scrollbar */
+.sx__date-grid-day::-webkit-scrollbar {
+	width: 6px;
+}
+.sx__date-grid-day::-webkit-scrollbar-track {
+	background: transparent;
+}
+.sx__date-grid-day::-webkit-scrollbar-thumb {
+	background: #52525b;
+	border-radius: 3px;
+}

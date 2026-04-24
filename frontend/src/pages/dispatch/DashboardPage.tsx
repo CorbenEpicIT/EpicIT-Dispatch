@@ -18,7 +18,9 @@ import {
 	User,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
-import SmartCalendar from "../../components/ui/SmartCalendar";
+import WeekStrip from "../../components/ui/schedule/WeekStrip";
+import { useAuthStore } from "../../auth/authStore";
+import { FALLBACK_TIMEZONE } from "../../util/util";
 import { useAllJobsQuery, useCreateJobMutation } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
 import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
@@ -43,6 +45,8 @@ const FEED_FILTERS = [
 
 export default function DashboardPage() {
 	const navigate = useNavigate();
+	const { user } = useAuthStore();
+	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 
 	const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
 	const [isCreateQuoteModalOpen, setIsCreateQuoteModalOpen] = useState(false);
@@ -121,11 +125,11 @@ export default function DashboardPage() {
 				.filter(
 					(v) =>
 						v.status === "Completed" &&
-						new Date(v.actual_end_at || "").toDateString() ===
-							new Date().toDateString()
+						new Date(v.actual_end_at || "").toLocaleDateString("en-CA", { timeZone: tz }) ===
+							new Date().toLocaleDateString("en-CA", { timeZone: tz })
 				).length,
 		}),
-		[requests, quotes, jobs]
+		[requests, quotes, jobs, tz]
 	);
 
 	const activeTechnicians = useMemo(() => {
@@ -162,15 +166,13 @@ export default function DashboardPage() {
 						activeVisits.length +
 						upcomingVisits.filter(
 							(v) =>
-								new Date(
-									v.scheduled_start_at
-								).toDateString() ===
-								new Date().toDateString()
+								new Date(v.scheduled_start_at).toLocaleDateString("en-CA", { timeZone: tz }) ===
+								new Date().toLocaleDateString("en-CA", { timeZone: tz })
 						).length,
 				};
 			})
 			.sort((a, b) => (a.currentVisit ? -1 : 1));
-	}, [allTechnicians, jobs]);
+	}, [allTechnicians, jobs, tz]);
 
 	const getStatusColor = (status: string) => {
 		const colors: Record<string, string> = {
@@ -301,6 +303,7 @@ export default function DashboardPage() {
 			day: "numeric",
 			hour: "numeric",
 			minute: "2-digit",
+			timeZone: tz,
 		});
 	};
 
@@ -597,38 +600,32 @@ export default function DashboardPage() {
 							weekday: "long",
 							month: "long",
 							day: "numeric",
+							timeZone: tz,
 						})}
 					</p>
 				</div>
 
 				{/* Week Schedule Calendar */}
 				<Card className="mb-5 !p-0">
-					<div className="p-3 sm:p-4 ">
-						{jobsError ? (
-							<div className="flex items-center justify-center h-full">
-								<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-									<AlertCircle
-										size={16}
-										className="text-red-400"
-									/>
-									<p className="text-sm text-red-400">
-										Failed to load
-										calendar data
-									</p>
-								</div>
+					{jobsError ? (
+						<div className="flex items-center justify-center h-full">
+							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+								<AlertCircle
+									size={16}
+									className="text-red-400"
+								/>
+								<p className="text-sm text-red-400">
+									Failed to load
+									calendar data
+								</p>
 							</div>
-						) : (
-							<SmartCalendar
-								jobs={jobs}
-								view="week"
-								toolbar={{
-									left: "title",
-									center: "",
-									right: "today prev,next",
-								}}
-							/>
-						)}
-					</div>
+						</div>
+					) : (
+						<WeekStrip
+							jobs={jobs}
+							technicians={allTechnicians}
+						/>
+					)}
 				</Card>
 
 				{/* Main Content Grid */}
@@ -1030,6 +1027,7 @@ export default function DashboardPage() {
 																		weekday: "short",
 																		month: "short",
 																		day: "numeric",
+																		timeZone: tz,
 																	}
 																)}
 
@@ -1043,6 +1041,7 @@ export default function DashboardPage() {
 																	{
 																		hour: "numeric",
 																		minute: "2-digit",
+																		timeZone: tz,
 																	}
 																)}
 															</span>
@@ -1057,6 +1056,7 @@ export default function DashboardPage() {
 																		weekday: "long",
 																		month: "long",
 																		day: "numeric",
+																		timeZone: tz,
 																	}
 																)}
 
@@ -1070,6 +1070,7 @@ export default function DashboardPage() {
 																	{
 																		hour: "numeric",
 																		minute: "2-digit",
+																		timeZone: tz,
 																	}
 																)}
 															</span>

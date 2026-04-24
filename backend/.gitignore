@@ -44,3 +44,6 @@ out/
 
 # Testing server endpoints
 request.rest
+
+# Playwright MCP
+.playwright-mcp
