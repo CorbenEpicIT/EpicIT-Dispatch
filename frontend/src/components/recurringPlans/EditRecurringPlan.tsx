@@ -449,6 +449,7 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 				day_of_week: ["weekly", "biweekly"].includes(getValue("billingConfig").scheduleFrequency) && getValue("billingConfig").invoiceTrigger === "on_schedule" ? getValue("billingConfig").dayOfWeek : undefined,
 				generate_days_before: getValue("billingConfig").generateDaysBefore,
 				payment_terms_days: getValue("billingConfig").paymentTermsDays,
+				auto_send: false,
 				memo_template: getValue("billingConfig").memoTemplate || undefined,
 				auto_send: false,
 			} : undefined,

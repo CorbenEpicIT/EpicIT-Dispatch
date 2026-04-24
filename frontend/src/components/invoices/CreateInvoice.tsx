@@ -59,7 +59,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	const [clientId, setClientId] = useState(defaultClientId ?? "");
 	const [memo, setMemo] = useState("");
 	const [internalNotes, setInternalNotes] = useState("");
-	const [issueDate, setIssueDate] = useState<Date | null>(() => new Date());
 	const [paymentTermsDays, setPaymentTermsDays] = useState<string>("");
 	const [dueDate, setDueDate] = useState<Date | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
@@ -212,12 +211,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	useEffect(() => {
 		if (paymentTermsDays === "") return;
 		const days = parseInt(paymentTermsDays, 10);
-		if (!isNaN(days) && issueDate) {
-			const base = new Date(issueDate);
+		if (!isNaN(days)) {
+			const base = new Date();
 			base.setDate(base.getDate() + days);
 			setDueDate(base);
 		}
-	}, [paymentTermsDays, issueDate]);
+	}, [paymentTermsDays]);
 
 	// ── Reset ──────────────────────────────────────────────────────────────
 	const resetForm = useCallback(() => {
@@ -225,7 +224,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		setClientId(defaultClientId ?? "");
 		setMemo("");
 		setInternalNotes("");
-		setIssueDate(new Date());
 		setPaymentTermsDays("");
 		setDueDate(null);
 		setLinkedJobIds(new Set());
@@ -531,7 +529,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			client_id: clientId.trim(),
 			memo: memo.trim() || undefined,
 			internal_notes: internalNotes.trim() || undefined,
-			issue_date: issueDate ? issueDate.toISOString().split("T")[0] : undefined,
 			payment_terms_days: paymentTermsDays
 				? parseInt(paymentTermsDays, 10)
 				: undefined,
@@ -632,52 +629,24 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			case 1:
 				return (
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
-						{/* Client + Issue Date */}
-						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
-							<div className="min-w-0">
-								<label className={LABEL}>
-									Client *
-								</label>
-								<Dropdown
-									entries={
-										clientDropdownEntries
-									}
-									value={clientId}
-									onChange={(v) => {
-										setClientId(v);
-										setLinkedJobIds(
-											new Set()
-										);
-										setExpandedJobs(
-											new Set()
-										);
-										setVisitBillings(
-											new Map()
-										);
-										markDirty();
-									}}
-									placeholder="Select client"
-									disabled={
-										isLoading ||
-										!!defaultClientId
-									}
-								/>
-							</div>
-							<div className="min-w-0">
-								<label className={LABEL}>
-									Issue Date
-								</label>
-								<DatePicker
-									value={issueDate}
-									onChange={(d) => {
-										setIssueDate(d);
-										markDirty();
-									}}
-									disabled={isLoading}
-									align="right"
-									mode="create"
-								/>
-							</div>
+						{/* Client */}
+						<div className="min-w-0">
+							<label className={LABEL}>
+								Client *
+							</label>
+							<Dropdown
+								entries={clientDropdownEntries}
+								value={clientId}
+								onChange={(v) => {
+									setClientId(v);
+									setLinkedJobIds(new Set());
+									setExpandedJobs(new Set());
+									setVisitBillings(new Map());
+									markDirty();
+								}}
+								placeholder="Select client"
+								disabled={isLoading || !!defaultClientId}
+							/>
 						</div>
 
 						{/* Memo */}
@@ -1229,13 +1198,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			}
 
 			case 3: {
-				const issueDateLabel = issueDate
-					? issueDate.toLocaleDateString("en-US", {
-							month: "short",
-							day: "numeric",
-							year: "numeric",
-						})
-					: "Today";
 				const dueDateLabel = dueDate
 					? dueDate.toLocaleDateString("en-US", {
 							month: "short",
@@ -1269,14 +1231,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 									</span>
 								</div>
 							)}
-							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
-									Issue Date
-								</span>
-								<span className="text-white">
-									{issueDateLabel}
-								</span>
-							</div>
 							{paymentTermsDays && (
 								<div className="flex justify-between items-center">
 									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
@@ -1372,7 +1326,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		clientId,
 		memo,
 		internalNotes,
-		issueDate,
 		paymentTermsDays,
 		dueDate,
 		linkedJobIds,

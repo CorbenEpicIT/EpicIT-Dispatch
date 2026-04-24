@@ -109,3 +109,41 @@ DROP TYPE "invoice_schedule_frequency";
 
 -- DropEnum
 DROP TYPE "invoice_status";
+
+-- CreateEnum (new invoice schema)
+CREATE TYPE "invoice_status" AS ENUM ('Draft', 'Sent', 'Viewed', 'PartiallyPaid', 'Paid', 'Disputed', 'Void');
+
+CREATE TYPE "invoice_schedule_frequency" AS ENUM ('weekly', 'biweekly', 'monthly', 'quarterly', 'on_visit_completion');
+
+CREATE TYPE "invoice_schedule_billing_basis" AS ENUM ('fixed_amount', 'visit_actuals', 'plan_line_items', 'invoice');
+
+-- CreateTable (invoice_schedule with all final columns — migration 3 is a no-op)
+CREATE TABLE "invoice_schedule" (
+    "id" TEXT NOT NULL,
+    "recurring_plan_id" TEXT NOT NULL,
+    "frequency" "invoice_schedule_frequency" NOT NULL,
+    "billing_basis" "invoice_schedule_billing_basis" NOT NULL,
+    "fixed_amount" DECIMAL(10,2),
+    "day_of_month" INTEGER,
+    "day_of_week" "weekday",
+    "generate_days_before" INTEGER NOT NULL DEFAULT 0,
+    "payment_terms_days" INTEGER,
+    "auto_send" BOOLEAN NOT NULL DEFAULT false,
+    "memo_template" TEXT,
+    "next_invoice_at" TIMESTAMP(3),
+    "last_invoiced_at" TIMESTAMP(3),
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "invoice_schedule_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "invoice_schedule_recurring_plan_id_key" ON "invoice_schedule"("recurring_plan_id");
+CREATE INDEX "invoice_schedule_recurring_plan_id_idx" ON "invoice_schedule"("recurring_plan_id");
+CREATE INDEX "invoice_schedule_is_active_idx" ON "invoice_schedule"("is_active");
+CREATE INDEX "invoice_schedule_is_active_next_invoice_at_idx" ON "invoice_schedule"("is_active", "next_invoice_at");
+
+-- AddForeignKey
+ALTER TABLE "invoice_schedule" ADD CONSTRAINT "invoice_schedule_recurring_plan_id_fkey" FOREIGN KEY ("recurring_plan_id") REFERENCES "recurring_plan"("id") ON DELETE CASCADE ON UPDATE CASCADE;
