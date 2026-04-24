@@ -13,6 +13,7 @@ interface User{
 }
 
 interface AuthResponse {
+    pendingToken: string;
     token: string,
     expiresIn: number,
     refreshToken?: string,   // for refresh token rotation
@@ -36,11 +37,35 @@ export const loginCall = async (input: User): Promise<AuthResponse> => {
     const data = response.data.data!;
     
     // Store the token and set it as default header for all future requests
-    localStorage.setItem("accessToken", data.token);
-    api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+    localStorage.setItem("accessToken", data.pendingToken);
+    api.defaults.headers.common["Authorization"] = `Bearer ${data.pendingToken}`;
     console.log(localStorage.getItem("accessToken"));
     console.log("api headers", api.defaults.headers.common["Authorization"]);
     
     console.log("response.data.data:", response.data.data);
     return response.data.data!;
 };
+
+export const verifyOTPCall = async (otp: string): Promise<AuthResponse> => {
+    const response = await api.post<ApiResponse<AuthResponse>>('/otp-verify', { otp });
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "OTP verification failed");
+    }
+    console.log("OTP verification response:", response.data);
+    localStorage.setItem("accessToken", response.data.data!.token);
+    api.defaults.headers.common["Authorization"] = `Bearer ${response.data.data!.token}`;
+    console.log("OTP verification successful, access token stored.");
+    return response.data.data!;
+}
+
+export const logoutCall = async (): Promise<AuthResponse> => {
+    const response = await api.post<ApiResponse<AuthResponse>>('/logout');
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "Logout Failed");
+    }
+    localStorage.removeItem("accessToken");
+    delete api.defaults.headers.common.Authorization;
+    return response.data.data!;
+}

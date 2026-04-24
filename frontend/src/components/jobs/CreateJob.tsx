@@ -14,6 +14,7 @@ import {
 } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import { useAllJobsQuery } from "../../hooks/useJobs";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import {
 	useDraftsByTypeQuery,
 	useCreateDraftMutation,
@@ -82,6 +83,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 	const { data: clients } = useAllClientsQuery();
 	const { data: allJobs = [] } = useAllJobsQuery();
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
 	const { data: drafts = [] } = useDraftsByTypeQuery("job");
 	const createDraftMutation = useCreateDraftMutation();
 	const updateDraftMutation = useUpdateDraftMutation();
@@ -722,6 +724,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							dirtyFields={dirtyLineItemFields}
 							onUndo={undoLineItemField}
 							onClear={clearLineItemField}
+							inventoryItems={inventoryItems}
 						/>
 					</div>
 				);
@@ -800,6 +803,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
+		inventoryItems,
 	]);
 
 	return (

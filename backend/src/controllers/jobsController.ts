@@ -10,6 +10,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -76,6 +77,9 @@ export const getAllJobs = async () => {
 							tech: true,
 						},
 					},
+					line_items: {
+						orderBy: { sort_order: "asc" },
+					},
 				},
 			},
 			recurring_plan: {
@@ -88,9 +92,9 @@ export const getAllJobs = async () => {
 					occurrences: {
 						where: {
 							occurrence_start_at: {
-								gte: new Date(), // Only future occurrences
+								gte: new Date(),
 							},
-							status: "planned", // Only planned ones
+							status: "planned",
 						},
 						orderBy: { occurrence_start_at: "asc" },
 					},
@@ -124,7 +128,6 @@ export const getJobById = async (id: string) => {
 									name: true,
 									email: true,
 									phone: true,
-									title: true,
 								},
 							},
 						},
@@ -381,7 +384,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 					description: item.description || null,
 					quantity: item.quantity,
 					unit_price: item.unit_price,
-					total: item.total,
+					total: item.total ?? item.quantity * item.unit_price,
 					source: "manual" as const,
 					item_type: item.item_type || null,
 				}));
@@ -497,7 +500,6 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 											name: true,
 											email: true,
 											phone: true,
-											title: true,
 										},
 									},
 								},
@@ -581,7 +583,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert job error:", e);
+		log.error({ err: e }, "Insert job error");
 		return { err: "Internal server error" };
 	}
 };
@@ -734,7 +736,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 										description: item.description || null,
 										quantity: item.quantity,
 										unit_price: item.unit_price,
-										total: item.total,
+										total: item.total ?? item.quantity * item.unit_price,
 										item_type: item.item_type || null,
 									},
 								});
@@ -766,7 +768,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 								description: item.description || null,
 								quantity: item.quantity,
 								unit_price: item.unit_price,
-								total: item.total,
+								total: item.total ?? item.quantity * item.unit_price,
 								source: "manual",
 								item_type: item.item_type || null,
 							},
@@ -896,7 +898,7 @@ export const updateJob = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Update job error:", e);
+		log.error({ err: e }, "Update job error");
 		return { err: "Internal server error" };
 	}
 };
@@ -939,7 +941,7 @@ export const deleteJob = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (e) {
-		console.error("Delete job error:", e);
+		log.error({ err: e }, "Delete job error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1032,7 +1034,7 @@ export const insertJobLineItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert job line item error:", e);
+		log.error({ err: e }, "Insert job line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1089,18 +1091,10 @@ export const updateJobLineItem = async (
 
 		const updated = await db.$transaction(async (tx) => {
 			// Recalculate total if quantity or unit_price changed
-			let total = parsed.total;
-			if (total === undefined) {
-				const newQuantity =
-					parsed.quantity !== undefined
-						? parsed.quantity
-						: Number(existing.quantity);
-				const newUnitPrice =
-					parsed.unit_price !== undefined
-						? parsed.unit_price
-						: Number(existing.unit_price);
-				total = newQuantity * newUnitPrice;
-			}
+			const total =
+				parsed.total ??
+				(parsed.quantity ?? Number(existing.quantity)) *
+					(parsed.unit_price ?? Number(existing.unit_price));
 
 			const item = await tx.job_line_item.update({
 				where: { id: itemId },
@@ -1155,7 +1149,7 @@ export const updateJobLineItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update job line item error:", e);
+		log.error({ err: e }, "Update job line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -1204,7 +1198,7 @@ export const deleteJobLineItem = async (
 
 		return { err: "", message: "Item deleted successfully" };
 	} catch (error) {
-		console.error("Delete job line item error:", error);
+		log.error({ err: error }, "Delete job line item error");
 		return { err: "Internal server error" };
 	}
 };

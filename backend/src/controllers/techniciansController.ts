@@ -5,6 +5,7 @@ import {
 	updateTechnicianSchema,
 } from "../lib/validate/technicians.js";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -123,7 +124,7 @@ export const insertTechnician = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error inserting technician:", e);
+		log.error({ err: e }, "Error inserting technician");
 		return { err: "Internal server error" };
 	}
 };
@@ -217,7 +218,7 @@ export const updateTechnician = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error updating technician:", e);
+		log.error({ err: e }, "Error updating technician");
 		return { err: "Internal server error" };
 	}
 };
@@ -255,7 +256,9 @@ export const updateTechnicianLocation = async (
 					? "dispatcher"
 					: "system",
 				actor_id: context?.techId || context?.dispatcherId,
-				changes: "coords",
+				changes: {
+					coords: { old: existing.coords ?? null, new: parsed.coords ?? null },
+				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
 			});
@@ -272,7 +275,7 @@ export const updateTechnicianLocation = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error updating technician:", e);
+		log.error({ err: e }, "Error updating technician");
 		return { err: "Internal server error" };
 	}
 };
@@ -332,7 +335,7 @@ export const deleteTechnician = async (id: string, context?: UserContext) => {
 
 		return { err: "", message: "Technician deleted successfully" };
 	} catch (error) {
-		console.error("Error deleting technician:", error);
+		log.error({ err: error }, "Error deleting technician");
 		return { err: "Internal server error" };
 	}
 };

@@ -33,6 +33,22 @@ const DynamicMap = ({ containerRef, staticMarkers = [] }: DynamicMapProps) => {
 		});
 	}, [containerRef]);
 
+	// Resize map once after the container stops changing
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
+		let timer: ReturnType<typeof setTimeout>;
+		const ro = new ResizeObserver(() => {
+			clearTimeout(timer);
+			timer = setTimeout(() => mapRef.current?.resize(), 250);
+		});
+		ro.observe(el);
+		return () => {
+			ro.disconnect();
+			clearTimeout(timer);
+		};
+	}, [containerRef]);
+
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map) return;

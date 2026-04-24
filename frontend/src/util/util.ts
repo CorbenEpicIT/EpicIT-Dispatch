@@ -93,3 +93,13 @@ export const getStatusBadgeClass = (status: StockStatus): string => {
 			return 'bg-zinc-800 text-zinc-400 border border-zinc-700';
 	}
 };
+
+// Admin is basically dispatcher with extra permissions
+// also works if need to add other roles like super admin or a lower dispatcher role in the future
+export function isDispatcherRole(role: string): boolean {
+  return role === 'DISPATCHER' || role === 'ADMIN';
+}
+
+export function isAdmin(role: string): boolean {
+  return role === 'ADMIN';
+}

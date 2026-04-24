@@ -6,6 +6,7 @@ import {
 } from "../lib/validate/quotes.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -168,7 +169,7 @@ export const insertQuoteNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error inserting quote note:", e);
+		log.error({ err: e }, "Error inserting quote note");
 		return { err: "Internal server error" };
 	}
 };
@@ -281,7 +282,7 @@ export const updateQuoteNote = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Error updating quote note:", e);
+		log.error({ err: e }, "Error updating quote note");
 		return { err: "Internal server error" };
 	}
 };
@@ -330,7 +331,7 @@ export const deleteQuoteNote = async (
 
 		return { err: "", message: "Note deleted successfully" };
 	} catch (error) {
-		console.error("Error deleting quote note:", error);
+		log.error({ err: error }, "Error deleting quote note");
 		return { err: "Internal server error" };
 	}
 };

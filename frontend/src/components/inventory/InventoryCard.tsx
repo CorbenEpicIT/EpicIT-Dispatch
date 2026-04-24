@@ -1,22 +1,24 @@
 import { Settings } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
 import { calculateStockStatus, getStatusLabel, getStatusBadgeClass } from "../../util/util";
+import ImageCarousel from "./ImageCarousel";
 
 interface InventoryCardProps {
 	item: InventoryItem;
 	onEditThreshold?: () => void;
+	onClick?: () => void;
 }
 
-export default function InventoryCard({ item, onEditThreshold }: InventoryCardProps) {
+export default function InventoryCard({ item, onEditThreshold, onClick }: InventoryCardProps) {
 	const stockStatus = item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 	const hasThreshold = item.low_stock_threshold !== null;
 
 	return (
-		<div className="p-5 w-70 bg-zinc-900 rounded-xl shadow-md border border-[#3a3a3f] relative">
-			<img
-				src={"./"}
-				className="h-30 w-full border border-[#3a3a3f] mb-2 rounded-md"
-			/>
+		<div
+			className="p-5 w-70 bg-zinc-900 rounded-xl shadow-md border border-[#3a3a3f] relative cursor-pointer hover:border-zinc-600 transition-colors"
+			onClick={onClick}
+		>
+			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
 			<h1 className="font-bold text-lg">{item.name}</h1>
 			<p className="line-clamp-2 text-zinc-300">{item.description}</p>
 			<hr className="my-2 text-zinc-600"></hr>
@@ -30,7 +32,7 @@ export default function InventoryCard({ item, onEditThreshold }: InventoryCardPr
 					<h2 className="font-semibold">Quantity</h2>
 					<h3 className="text-zinc-300">{item.quantity}</h3>
 				</div>
-				</div>
+			</div>
 			{/* Stock Status and Settings */}
 			<div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between">
 				<div className="flex items-center gap-2">
@@ -53,7 +55,10 @@ export default function InventoryCard({ item, onEditThreshold }: InventoryCardPr
 				{/* Settings Button */}
 				{onEditThreshold && (
 					<button
-						onClick={onEditThreshold}
+						onClick={(e) => {
+							e.stopPropagation();
+							onEditThreshold();
+						}}
 						className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-md transition-colors"
 						title="Edit threshold"
 					>

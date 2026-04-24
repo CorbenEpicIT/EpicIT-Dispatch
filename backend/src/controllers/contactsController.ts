@@ -8,6 +8,7 @@ import {
 } from "../lib/validate/contacts.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
 
 export interface UserContext {
 	techId?: string;
@@ -105,10 +106,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 					name: parsed.name,
 					email: parsed.email || null,
 					phone: parsed.phone || null,
-					company: parsed.company || null,
-					title: parsed.title || null,
 					type: parsed.type || null,
-					misc_info: parsed.misc_info || null,
 					is_active: true,
 				},
 			});
@@ -183,7 +181,7 @@ export const insertContact = async (data: unknown, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert contact error:", e);
+		log.error({ err: e }, "Insert contact error");
 		return { err: "Internal server error" };
 	}
 };
@@ -238,10 +236,7 @@ export const updateContact = async (
 			"name",
 			"email",
 			"phone",
-			"company",
-			"title",
 			"type",
-			"misc_info",
 			"is_active",
 		] as const);
 
@@ -252,14 +247,7 @@ export const updateContact = async (
 					...(parsed.name !== undefined && { name: parsed.name }),
 					...(parsed.email !== undefined && { email: parsed.email }),
 					...(parsed.phone !== undefined && { phone: parsed.phone }),
-					...(parsed.company !== undefined && {
-						company: parsed.company,
-					}),
-					...(parsed.title !== undefined && { title: parsed.title }),
 					...(parsed.type !== undefined && { type: parsed.type }),
-					...(parsed.misc_info !== undefined && {
-						misc_info: parsed.misc_info,
-					}),
 					...(parsed.is_active !== undefined && {
 						is_active: parsed.is_active,
 					}),
@@ -360,7 +348,7 @@ export const deleteContact = async (
 
 		return { err: "", message: "Contact deleted successfully" };
 	} catch (error) {
-		console.error("Delete contact error:", error);
+		log.error({ err: error }, "Delete contact error");
 		return { err: "Internal server error" };
 	}
 };
@@ -453,7 +441,7 @@ export const linkContactToClient = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Link contact error:", e);
+		log.error({ err: e }, "Link contact error");
 		return { err: "Internal server error" };
 	}
 };
@@ -629,9 +617,7 @@ export const searchContacts = async (
 				name: true,
 				email: true,
 				phone: true,
-				company: true,
-				title: true,
-			},
+				},
 			take: 10, // Limit results
 			orderBy: {
 				name: "asc",
@@ -640,7 +626,7 @@ export const searchContacts = async (
 
 		return { err: "", items: contacts };
 	} catch (error) {
-		console.error("Search contacts error:", error);
+		log.error({ err: error }, "Search contacts error");
 		return { err: "Internal server error", items: [] };
 	}
 };

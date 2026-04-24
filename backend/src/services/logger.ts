@@ -14,7 +14,7 @@ interface LogActivityParams {
 	actor_type: string; // "technician", "dispatcher", "system"
 	actor_id?: string | null; // UUID (null for system events)
 
-	changes?: any; // For audit trail: { field: { old, new } }
+	changes?: ChangeSet; // For audit trail: { field: { old, new } }
 	reason?: string;
 	ip_address?: string;
 	user_agent?: string;
@@ -60,7 +60,11 @@ export const logActivity = async (params: LogActivityParams) => {
 				actor_type: params.actor_type,
 				actor_id: params.actor_id || null,
 				actor_name: actorName,
-				changes: params.changes || null,
+				// ChangeSet uses `unknown` internally which TypeScript cannot prove satisfies
+			// Prisma's recursive InputJsonValue. The values are always JSON-serializable
+			// at runtime. This is the correct pattern for crossing an ORM type boundary.
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			changes: params.changes as unknown as any,
 				timestamp: new Date(),
 				ip_address: params.ip_address || null,
 				user_agent: params.user_agent || null,
@@ -68,7 +72,8 @@ export const logActivity = async (params: LogActivityParams) => {
 			},
 		});
 	} catch (error) {
-		console.error("Failed to create activity log:", error);
+		// Use stderr directly to avoid a circular dependency with appLogger
+		process.stderr.write(JSON.stringify({ level: "error", msg: "Failed to create activity log", err: String(error) }) + "\n");
 	}
 };
 
@@ -267,12 +272,12 @@ export const getActivitySummary = async (startDate: Date, endDate: Date) => {
 // BuildChanges
 // ============================================================================
 
-export type ChangeSet = Record<string, { old: any; new: any }>;
+export type ChangeSet = Record<string, { old: unknown; new: unknown }>;
 
 //handles number/decimal mismatches, date objects, nested objects/arrays
-export const buildChanges = <T extends Record<string, any>>(
+export const buildChanges = <T extends object>(
 	oldRecord: T,
-	newData: Record<string, any>,
+	newData: Partial<Record<string, unknown>>,
 	fields: readonly (keyof T)[]
 ): ChangeSet => {
 	const changes: ChangeSet = {};

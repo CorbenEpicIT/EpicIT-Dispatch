@@ -99,6 +99,71 @@ export const InvoiceTimingLabels: Record<InvoiceTiming, string> = {
 	manual: "Manual",
 };
 
+// ============================================================================
+// INVOICE SCHEDULE
+// ============================================================================
+
+export const InvoiceScheduleFrequencyValues = [
+	"on_visit_completion",
+	"weekly",
+	"biweekly",
+	"monthly",
+	"quarterly",
+] as const;
+export type InvoiceScheduleFrequency = (typeof InvoiceScheduleFrequencyValues)[number];
+
+export const InvoiceScheduleFrequencyLabels: Record<InvoiceScheduleFrequency, string> = {
+	on_visit_completion: "On Visit Completion",
+	weekly: "Weekly",
+	biweekly: "Biweekly",
+	monthly: "Monthly",
+	quarterly: "Quarterly",
+};
+
+export const InvoiceScheduleBillingBasisValues = [
+	"visit_actuals",
+	"plan_line_items",
+	"fixed_amount",
+] as const;
+export type InvoiceScheduleBillingBasis = (typeof InvoiceScheduleBillingBasisValues)[number];
+
+export const InvoiceScheduleBillingBasisLabels: Record<InvoiceScheduleBillingBasis, string> = {
+	visit_actuals: "Per Visit (line items)",
+	plan_line_items: "Plan Line Items",
+	fixed_amount: "Fixed Amount",
+};
+
+export interface InvoiceSchedule {
+	id: string;
+	recurring_plan_id: string;
+	billing_basis: InvoiceScheduleBillingBasis;
+	fixed_amount?: number | null;
+	frequency: InvoiceScheduleFrequency;
+	day_of_month?: number | null;
+	day_of_week?: Weekday | null;
+	generate_days_before: number;
+	payment_terms_days?: number | null;
+	auto_send: boolean;
+	memo_template?: string | null;
+	next_invoice_at?: Date | string | null;
+	last_invoiced_at?: Date | string | null;
+	is_active: boolean;
+	created_at: Date | string;
+	updated_at: Date | string;
+}
+
+export interface InvoiceScheduleInput {
+	billing_basis: InvoiceScheduleBillingBasis;
+	fixed_amount?: number | null;
+	frequency: InvoiceScheduleFrequency;
+	day_of_month?: number | null;
+	day_of_week?: Weekday | null;
+	generate_days_before?: number;
+	payment_terms_days?: number;
+	auto_send?: boolean;
+	memo_template?: string | null;
+}
+
 export const OccurrenceStatusValues = [
 	"planned",
 	"generated",
@@ -228,6 +293,7 @@ export interface RecurringPlan {
 	line_items?: RecurringPlanLineItem[];
 	occurrences?: RecurringOccurrence[];
 	notes?: RecurringPlanNote[];
+	invoice_schedule?: InvoiceSchedule | null;
 }
 
 // ============================================================================
@@ -332,6 +398,18 @@ export const CreateRecurringPlanSchema = z
 				})
 			)
 			.optional(),
+
+		invoice_schedule: z.object({
+			billing_basis: z.enum(InvoiceScheduleBillingBasisValues),
+			fixed_amount: z.number().min(0).optional().nullable(),
+			frequency: z.enum(InvoiceScheduleFrequencyValues),
+			day_of_month: z.number().int().min(1).max(31).optional().nullable(),
+			day_of_week: z.enum(WeekdayValues).optional().nullable(),
+			generate_days_before: z.number().int().min(0).optional().default(0),
+			payment_terms_days: z.number().int().min(0).optional().default(30),
+			auto_send: z.boolean().optional().default(false),
+			memo_template: z.string().optional().nullable(),
+		}).optional(),
 	})
 	.refine(
 		(data) => {
@@ -513,6 +591,18 @@ export const UpdateRecurringPlanSchema = z
 				})
 			)
 			.optional(),
+
+		invoice_schedule: z.object({
+			billing_basis: z.enum(InvoiceScheduleBillingBasisValues),
+			fixed_amount: z.number().min(0).optional().nullable(),
+			frequency: z.enum(InvoiceScheduleFrequencyValues),
+			day_of_month: z.number().int().min(1).max(31).optional().nullable(),
+			day_of_week: z.enum(WeekdayValues).optional().nullable(),
+			generate_days_before: z.number().int().min(0).optional().default(0),
+			payment_terms_days: z.number().int().min(0).optional().default(30),
+			auto_send: z.boolean().optional().default(false),
+			memo_template: z.string().optional().nullable(),
+		}).optional(),
 	})
 	.refine(
 		(data) => {

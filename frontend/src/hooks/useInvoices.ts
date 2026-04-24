@@ -44,6 +44,22 @@ export const useInvoicesByClientIdQuery = (clientId: string): UseQueryResult<Inv
 	});
 };
 
+export const useInvoicesByJobIdQuery = (jobId: string): UseQueryResult<Invoice[], Error> => {
+	return useQuery({
+		queryKey: ["jobs", jobId, "invoices"],
+		queryFn: () => invoiceApi.getInvoicesByJobId(jobId),
+		enabled: !!jobId,
+	});
+};
+
+export const useInvoicesByVisitIdQuery = (jobId: string, visitId: string): UseQueryResult<Invoice[], Error> => {
+	return useQuery({
+		queryKey: ["jobs", jobId, "visits", visitId, "invoices"],
+		queryFn: () => invoiceApi.getInvoicesByVisitId(jobId, visitId),
+		enabled: !!jobId && !!visitId,
+	});
+};
+
 // ============================================================================
 // INVOICE MUTATIONS
 // ============================================================================
@@ -58,6 +74,7 @@ export const useCreateInvoiceMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: invoiceApi.createInvoice,
 		onSuccess: async (newInvoice) => {
+			// Invalidate list views so the new invoice appears
 			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", newInvoice.client_id, "invoices"],
@@ -72,7 +89,9 @@ export const useCreateInvoiceMutation = (): UseMutationResult<
 				});
 			}
 
+			// Prime the detail cache so navigating to the invoice is instant
 			queryClient.setQueryData(["invoices", newInvoice.id], newInvoice);
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -87,18 +106,32 @@ export const useUpdateInvoiceMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ id, updates }) => invoiceApi.updateInvoice(id, updates),
 		onSuccess: async (updatedInvoice, variables) => {
-			queryClient.setQueryData(["invoices", variables.id], updatedInvoice);
-
-			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+			// The backend recomputes subtotal / tax_amount / discount_amount / total
+			// / balance_due on every update (line items, status, financials).
+			// Invalidate — don't setQueryData — so the UI always reflects the
+			// server-authoritative recalculated values with no race window.
 			await queryClient.invalidateQueries({
 				queryKey: ["invoices", variables.id],
 			});
+			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", updatedInvoice.client_id, "invoices"],
 			});
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", updatedInvoice.client_id],
 			});
+
+			// If the invoice is linked to a recurring plan, the plan summary
+			// may show derived financials that need to refresh.
+			if (updatedInvoice.recurring_plan_id) {
+				await queryClient.invalidateQueries({
+					queryKey: [
+						"recurringPlans",
+						updatedInvoice.recurring_plan_id,
+					],
+				});
+			}
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -113,6 +146,10 @@ export const useDeleteInvoiceMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ id }) => invoiceApi.deleteInvoice(id),
 		onSuccess: async (_, variables) => {
+			// Remove the detail entry first so any in-flight navigations get a
+			// clean miss rather than serving a deleted invoice briefly
+			queryClient.removeQueries({ queryKey: ["invoices", variables.id] });
+
 			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", variables.clientId, "invoices"],
@@ -120,8 +157,6 @@ export const useDeleteInvoiceMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({
 				queryKey: ["clients", variables.clientId],
 			});
-
-			queryClient.removeQueries({ queryKey: ["invoices", variables.id] });
 		},
 	});
 };
@@ -155,15 +190,16 @@ export const useCreateInvoicePaymentMutation = (): UseMutationResult<
 		mutationFn: ({ invoiceId, data }) =>
 			invoiceApi.createInvoicePayment(invoiceId, data),
 		onSuccess: async (_, variables) => {
-			// Payment creation triggers backend recalc of amount_paid / balance_due / status
-			// Invalidate the full invoice so the cached totals stay accurate
+			// Payment creation triggers backend recalc of amount_paid / balance_due
+			// / status on the parent invoice. Invalidate the full invoice so the
+			// InvoiceDetailPage re-fetches with updated totals and status badge.
 			await queryClient.invalidateQueries({
 				queryKey: ["invoices", variables.invoiceId],
 			});
-			await queryClient.invalidateQueries({
-				queryKey: ["invoices", variables.invoiceId, "payments"],
-			});
+			// Invalidate the list so payment progress / status is current in
+			// the invoices table view as well.
 			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});
 };
@@ -179,12 +215,9 @@ export const useDeleteInvoicePaymentMutation = (): UseMutationResult<
 		mutationFn: ({ invoiceId, paymentId }) =>
 			invoiceApi.deleteInvoicePayment(invoiceId, paymentId),
 		onSuccess: async (_, variables) => {
-			// Same as create — backend resyncs totals, so invalidate full invoice
+			// Same as create — backend resyncs amount_paid / balance_due / status.
 			await queryClient.invalidateQueries({
 				queryKey: ["invoices", variables.invoiceId],
-			});
-			await queryClient.invalidateQueries({
-				queryKey: ["invoices", variables.invoiceId, "payments"],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
 		},
@@ -217,6 +250,8 @@ export const useCreateInvoiceNoteMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ invoiceId, data }) => invoiceApi.createInvoiceNote(invoiceId, data),
 		onSuccess: async (_, variables) => {
+			// Notes are embedded in the invoice object — invalidate both the
+			// standalone notes cache and the parent invoice detail.
 			await queryClient.invalidateQueries({
 				queryKey: ["invoices", variables.invoiceId, "notes"],
 			});

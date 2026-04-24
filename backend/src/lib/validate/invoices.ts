@@ -6,6 +6,7 @@ import z from "zod";
 
 const invoiceStatusEnum = z.enum([
 	"Draft",
+	"Issued",
 	"Sent",
 	"Viewed",
 	"PartiallyPaid",
@@ -151,30 +152,7 @@ export const updateInvoiceSchema = z
 			)
 			.optional(),
 	})
-	.transform((data) => ({
-		...data,
-		due_date: data.due_date !== undefined ? data.due_date : undefined,
-		payment_terms_days:
-			data.payment_terms_days !== undefined
-				? data.payment_terms_days
-				: undefined,
-		sent_at: data.sent_at !== undefined ? data.sent_at : undefined,
-		viewed_at: data.viewed_at !== undefined ? data.viewed_at : undefined,
-		discount_type:
-			data.discount_type !== undefined ? data.discount_type : undefined,
-		discount_value:
-			data.discount_value !== undefined ? data.discount_value : undefined,
-		discount_amount:
-			data.discount_amount !== undefined
-				? data.discount_amount
-				: undefined,
-		memo: data.memo !== undefined ? data.memo : undefined,
-		internal_notes:
-			data.internal_notes !== undefined ? data.internal_notes : undefined,
-		void_reason:
-			data.void_reason !== undefined ? data.void_reason : undefined,
-		line_items: data.line_items ?? undefined,
-	}));
+	;
 
 // ============================================================================
 // PAYMENT
@@ -205,15 +183,9 @@ export const createInvoiceNoteSchema = z.object({
 	content: z.string().min(1, "Content is required"),
 });
 
-export const updateInvoiceNoteSchema = z
-	.object({
-		content: z.string().min(1, "Content is required").optional(),
-	})
-	.transform((data) => {
-		const result: Record<string, any> = {};
-		if (data.content !== undefined) result.content = data.content;
-		return result;
-	});
+export const updateInvoiceNoteSchema = z.object({
+	content: z.string().min(1, "Content is required").optional(),
+});
 
 // ============================================================================
 // TYPES

@@ -9,6 +9,8 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { log } from "../services/appLogger.js";
+import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 
 export interface UserContext {
 	techId?: string;
@@ -92,7 +94,6 @@ export const getQuoteById = async (quoteId: string) => {
 									name: true,
 									email: true,
 									phone: true,
-									title: true,
 								},
 							},
 						},
@@ -357,7 +358,7 @@ export const insertQuote = async (req: Request, context?: UserContext) => {
 		if (e instanceof Error) {
 			return { err: e.message };
 		}
-		console.error("Insert quote error:", e);
+		log.error({ err: e }, "Insert quote error");
 		return { err: "Internal server error" };
 	}
 };
@@ -454,7 +455,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 						);
 
 						if (existingItem) {
-							const itemChanges: any = {};
+							const itemChanges: Record<string, { old: unknown; new: unknown }> = {};
 
 							if (item.name !== existingItem.name) {
 								itemChanges.name = {
@@ -573,7 +574,14 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 				}
 			}
 
+			// Enforce valid status transitions
+			if (parsed.status && parsed.status !== existing.status) {
+				assertValidQuoteTransition(existing.status, parsed.status);
+			}
+
 			// Track status changes for auto-timestamps
+			const isFirstIssued =
+				parsed.status === "Issued" && existing.status !== "Issued";
 			const isFirstSent =
 				parsed.status === "Sent" && existing.status !== "Sent";
 			const isFirstViewed =
@@ -635,6 +643,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 						rejection_reason: parsed.rejection_reason,
 					}),
 					// Auto-timestamps
+					...(isFirstIssued && { issued_at: new Date() }),
 					...(isFirstSent && { sent_at: new Date() }),
 					...(isFirstViewed && { viewed_at: new Date() }),
 					...(isFirstApproved && { approved_at: new Date() }),
@@ -675,7 +684,7 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 							? "dispatcher"
 							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
-					changes,
+					changes: { ...changes, _quote_number: { old: null, new: existing.quote_number } },
 					ip_address: context?.ipAddress,
 					user_agent: context?.userAgent,
 				});
@@ -693,7 +702,10 @@ export const updateQuote = async (req: Request, context?: UserContext) => {
 					.join(", ")}`,
 			};
 		}
-		console.error("Update quote error:", e);
+		if (e instanceof InvalidTransitionError) {
+			return { err: e.message };
+		}
+		log.error({ err: e }, "Update quote error");
 		return { err: "Internal server error" };
 	}
 };
@@ -752,7 +764,7 @@ export const deleteQuote = async (id: string, context?: UserContext) => {
 
 		return { err: "", item: { id } };
 	} catch (error) {
-		console.error("Delete quote error:", error);
+		log.error({ err: error }, "Delete quote error");
 		return { err: "Internal server error" };
 	}
 };
@@ -845,7 +857,7 @@ export const insertQuoteItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Insert quote line item error:", e);
+		log.error({ err: e }, "Insert quote line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -945,7 +957,7 @@ export const updateQuoteItem = async (
 					.join(", ")}`,
 			};
 		}
-		console.error("Update quote line item error:", e);
+		log.error({ err: e }, "Update quote line item error");
 		return { err: "Internal server error" };
 	}
 };
@@ -994,7 +1006,7 @@ export const deleteQuoteItem = async (
 
 		return { err: "", message: "Item deleted successfully" };
 	} catch (error) {
-		console.error("Delete quote line item error:", error);
+		log.error({ err: error }, "Delete quote line item error");
 		return { err: "Internal server error" };
 	}
 };

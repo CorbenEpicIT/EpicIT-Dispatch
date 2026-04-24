@@ -2,26 +2,24 @@
 
 ## To run:
 
-### Frontend (/frontend)
+1. Fill out .env file from example in both frontend and backend (can copy)
+2. ``docker compose up`` from project root
 
-1. Fill out .env file from example (can copy)
-2. `npm i`
-3. `npm run dev`
+```
+localhost:5173 --- Frontend
+localhost:3000 --- Backend
+localhost:3001 --- Grafana Telemetry
+   - Grafana login is admin/admin
+```
 
-### Database (local)
+## Testing
 
-1. Make sure postgres is set up and running on your computer
-2. Fill out the .env file for the backend (everything can be copied except for the connection string)
-   `for example, my connection string is "postgresql://postgres:postgres@localhost:5432/hvac"`
-
-### Backend (/backend)
-
-1. `npm i`
-2. `npm run build`
-3. `npx prisma migrate dev`
-4. `npm run start`
-
-### Frontend Testing (/frontend)
+### Frontend
 
 1. Run Frontend & Backend
 2. `npm run test:e2e:ui` or `npm run test:e2e`
+
+### Backend
+
+1. Run Backend
+2. `npm run test`

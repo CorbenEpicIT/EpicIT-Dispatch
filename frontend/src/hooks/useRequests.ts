@@ -74,6 +74,7 @@ export const useCreateRequestMutation = (): UseMutationResult<
 			queryClient.invalidateQueries({ queryKey: ["clients"] });
 
 			queryClient.setQueryData(["requests", newRequest.id], newRequest);
+			queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 		onError: (error) => {
 			console.error("Failed to create request:", error);
