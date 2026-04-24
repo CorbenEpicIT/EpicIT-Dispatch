@@ -168,12 +168,14 @@ const errorHandler = (
 	next: NextFunction,
 ) => {
 	if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-		return res.status(400).json(
-			createErrorResponse(
-				ErrorCodes.VALIDATION_ERROR,
-				`File too large. Maximum allowed size is ${MAX_UPLOAD_MB}MB.`,
-			),
-		);
+		return res
+			.status(400)
+			.json(
+				createErrorResponse(
+					ErrorCodes.VALIDATION_ERROR,
+					`File too large. Maximum allowed size is ${MAX_UPLOAD_MB}MB.`,
+				),
+			);
 	}
 
 	log.error(
@@ -3267,7 +3269,10 @@ app.post("/inventory", async (req, res, next) => {
 				);
 		}
 
-		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		const item = {
+			...result.item!,
+			image_urls: await signImageUrls(result.item!.image_urls),
+		};
 		res.status(201).json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
@@ -3292,7 +3297,10 @@ app.patch("/inventory/:id", async (req, res, next) => {
 				);
 		}
 
-		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		const item = {
+			...result.item!,
+			image_urls: await signImageUrls(result.item!.image_urls),
+		};
 		res.json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
@@ -3341,7 +3349,10 @@ app.patch("/inventory/:id/stock", async (req, res, next) => {
 				);
 		}
 
-		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		const item = {
+			...result.item!,
+			image_urls: await signImageUrls(result.item!.image_urls),
+		};
 		res.json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
@@ -3360,7 +3371,7 @@ const inventoryUpload = multer({
 				new Error("Only JPEG, PNG, and WebP images are allowed"),
 				{ statusCode: 400 },
 			);
-			cb(err, false);
+			cb(null, false);
 		}
 	},
 });
@@ -3412,7 +3423,10 @@ app.patch("/inventory/:id/threshold", async (req, res, next) => {
 				);
 		}
 
-		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		const item = {
+			...result.item!,
+			image_urls: await signImageUrls(result.item!.image_urls),
+		};
 		res.json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
