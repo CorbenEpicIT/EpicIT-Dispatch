@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createRequestSchema,
 	updateRequestSchema,
@@ -10,16 +9,11 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-export const getAllRequests = async () => {
-	return await db.request.findMany({
+export const getAllRequests = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request.findMany({
 		include: {
 			client: {
 				select: {
@@ -48,8 +42,9 @@ export const getAllRequests = async () => {
 	});
 };
 
-export const getRequestById = async (requestId: string) => {
-	return await db.request.findUnique({
+export const getRequestById = async (requestId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request.findFirst({
 		where: { id: requestId },
 		include: {
 			client: {
@@ -119,8 +114,9 @@ export const getRequestById = async (requestId: string) => {
 	});
 };
 
-export const getRequestsByClientId = async (clientId: string) => {
-	return await db.request.findMany({
+export const getRequestsByClientId = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request.findMany({
 		where: { client_id: clientId },
 		include: {
 			client: true,
@@ -145,12 +141,13 @@ export const getRequestsByClientId = async (clientId: string) => {
 	});
 };
 
-export const insertRequest = async (req: Request, context?: UserContext) => {
+export const insertRequest = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createRequestSchema.parse(req.body);
+		const sdb = getScopedDb(organizationId);
 
-		const created = await db.$transaction(async (tx) => {
-			const client = await tx.client.findUnique({
+		const created = await sdb.$transaction(async (tx) => {
+			const client = await sdb.client.findFirst({
 				where: { id: parsed.client_id },
 			});
 
@@ -159,6 +156,7 @@ export const insertRequest = async (req: Request, context?: UserContext) => {
 			}
 
 			const requestData: Prisma.requestCreateInput = {
+				organization: { connect: { id: organizationId } },
 				client: { connect: { id: parsed.client_id } },
 				title: parsed.title,
 				description: parsed.description,
@@ -194,6 +192,7 @@ export const insertRequest = async (req: Request, context?: UserContext) => {
 				action: "created",
 				entity_type: "request",
 				entity_id: request.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -237,12 +236,13 @@ export const insertRequest = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const updateRequest = async (req: Request, context?: UserContext) => {
+export const updateRequest = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const requestId = req.params.id as string;
 		const parsed = updateRequestSchema.parse(req.body);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.request.findUnique({
+		const existing = await sdb.request.findFirst({
 			where: { id: requestId },
 			include: { jobs: true },
 		});
@@ -271,7 +271,7 @@ export const updateRequest = async (req: Request, context?: UserContext) => {
 			"coords",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const request = await tx.request.update({
 				where: { id: requestId },
 				data: {
@@ -323,6 +323,7 @@ export const updateRequest = async (req: Request, context?: UserContext) => {
 					action: "updated",
 					entity_type: "request",
 					entity_id: requestId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -352,9 +353,10 @@ export const updateRequest = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const deleteRequest = async (id: string, context?: UserContext) => {
+export const deleteRequest = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const existing = await db.request.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.request.findFirst({
 			where: { id },
 			include: {
 				quotes: true,
@@ -380,12 +382,13 @@ export const deleteRequest = async (id: string, context?: UserContext) => {
 			};
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "request.deleted",
 				action: "deleted",
 				entity_type: "request",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -420,8 +423,9 @@ export const deleteRequest = async (id: string, context?: UserContext) => {
 // REQUEST NOTES
 // ============================================================================
 
-export const getRequestNotes = async (requestId: string) => {
-	return await db.request_note.findMany({
+export const getRequestNotes = async (requestId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request_note.findMany({
 		where: { request_id: requestId },
 		include: {
 			creator_tech: {
@@ -441,8 +445,9 @@ export const getRequestNotes = async (requestId: string) => {
 	});
 };
 
-export const getRequestNoteById = async (requestId: string, noteId: string) => {
-	return await db.request_note.findFirst({
+export const getRequestNoteById = async (requestId: string, noteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.request_note.findFirst({
 		where: {
 			id: noteId,
 			request_id: requestId,
@@ -467,12 +472,14 @@ export const getRequestNoteById = async (requestId: string, noteId: string) => {
 export const insertRequestNote = async (
 	requestId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createRequestNoteSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const request = await db.request.findUnique({
+		const request = await sdb.request.findFirst({
 			where: { id: requestId },
 		});
 
@@ -480,7 +487,7 @@ export const insertRequestNote = async (
 			return { err: "Request not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const noteData: Prisma.request_noteCreateInput = {
 				request: { connect: { id: requestId } },
 				content: parsed.content,
@@ -511,6 +518,7 @@ export const insertRequestNote = async (
 				action: "created",
 				entity_type: "request_note",
 				entity_id: note.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -546,12 +554,14 @@ export const updateRequestNote = async (
 	requestId: string,
 	noteId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateRequestNoteSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.request_note.findFirst({
+		const existing = await sdb.request_note.findFirst({
 			where: {
 				id: noteId,
 				request_id: requestId,
@@ -564,7 +574,7 @@ export const updateRequestNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const updateData: Prisma.request_noteUpdateInput = {
 				updated_at: new Date(),
 			};
@@ -610,6 +620,7 @@ export const updateRequestNote = async (
 					action: "updated",
 					entity_type: "request_note",
 					entity_id: noteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -642,10 +653,12 @@ export const updateRequestNote = async (
 export const deleteRequestNote = async (
 	requestId: string,
 	noteId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.request_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.request_note.findFirst({
 			where: {
 				id: noteId,
 				request_id: requestId,
@@ -656,12 +669,13 @@ export const deleteRequestNote = async (
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "request_note.deleted",
 				action: "deleted",
 				entity_type: "request_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

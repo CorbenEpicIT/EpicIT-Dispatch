@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createQuoteNoteSchema,
 	updateQuoteNoteSchema,
@@ -7,86 +6,31 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
-
-export const getQuoteNotes = async (quoteId: string) => {
-	return await db.quote_note.findMany({
+export const getQuoteNotes = async (quoteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote_note.findMany({
 		where: { quote_id: quoteId },
 		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
+			creator_tech: { select: { id: true, name: true, email: true } },
+			creator_dispatcher: { select: { id: true, name: true, email: true } },
+			last_editor_tech: { select: { id: true, name: true, email: true } },
+			last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 		},
 		orderBy: { created_at: "desc" },
 	});
 };
 
-export const getNoteById = async (quoteId: string, noteId: string) => {
-	return await db.quote_note.findFirst({
-		where: {
-			id: noteId,
-			quote_id: quoteId,
-		},
+export const getNoteById = async (quoteId: string, noteId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.quote_note.findFirst({
+		where: { id: noteId, quote_id: quoteId },
 		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
+			creator_tech: { select: { id: true, name: true, email: true } },
+			creator_dispatcher: { select: { id: true, name: true, email: true } },
+			last_editor_tech: { select: { id: true, name: true, email: true } },
+			last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 		},
 	});
 };
@@ -94,17 +38,19 @@ export const getNoteById = async (quoteId: string, noteId: string) => {
 export const insertQuoteNote = async (
 	quoteId: string,
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = createQuoteNoteSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const quote = await db.quote.findUnique({ where: { id: quoteId } });
+		const quote = await sdb.quote.findFirst({ where: { id: quoteId } });
 		if (!quote) {
 			return { err: "Quote not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const noteData: Prisma.quote_noteCreateInput = {
 				quote: { connect: { id: quoteId } },
 				content: parsed.content,
@@ -112,29 +58,15 @@ export const insertQuoteNote = async (
 					creator_tech: { connect: { id: context.techId } },
 				}),
 				...(context?.dispatcherId && {
-					creator_dispatcher: {
-						connect: { id: context.dispatcherId },
-					},
+					creator_dispatcher: { connect: { id: context.dispatcherId } },
 				}),
 			};
 
 			const note = await tx.quote_note.create({
 				data: noteData,
 				include: {
-					creator_tech: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					creator_dispatcher: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
+					creator_tech: { select: { id: true, name: true, email: true } },
+					creator_dispatcher: { select: { id: true, name: true, email: true } },
 				},
 			});
 
@@ -143,6 +75,7 @@ export const insertQuoteNote = async (
 				action: "created",
 				entity_type: "quote_note",
 				entity_id: note.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -164,9 +97,7 @@ export const insertQuoteNote = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error inserting quote note");
@@ -178,16 +109,15 @@ export const updateQuoteNote = async (
 	quoteId: string,
 	noteId: string,
 	data: unknown,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateQuoteNoteSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.quote_note.findFirst({
-			where: {
-				id: noteId,
-				quote_id: quoteId,
-			},
+		const existing = await sdb.quote_note.findFirst({
+			where: { id: noteId, quote_id: quoteId },
 		});
 
 		if (!existing) {
@@ -196,7 +126,7 @@ export const updateQuoteNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const updateData: Prisma.quote_noteUpdateInput = {
 				updated_at: new Date(),
 			};
@@ -206,14 +136,10 @@ export const updateQuoteNote = async (
 			}
 
 			if (context?.techId) {
-				updateData.last_editor_tech = {
-					connect: { id: context.techId },
-				};
+				updateData.last_editor_tech = { connect: { id: context.techId } };
 				updateData.last_editor_dispatcher = { disconnect: true };
 			} else if (context?.dispatcherId) {
-				updateData.last_editor_dispatcher = {
-					connect: { id: context.dispatcherId },
-				};
+				updateData.last_editor_dispatcher = { connect: { id: context.dispatcherId } };
 				updateData.last_editor_tech = { disconnect: true };
 			}
 
@@ -221,34 +147,10 @@ export const updateQuoteNote = async (
 				where: { id: noteId },
 				data: updateData,
 				include: {
-					creator_tech: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					creator_dispatcher: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					last_editor_tech: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					last_editor_dispatcher: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
+					creator_tech: { select: { id: true, name: true, email: true } },
+					creator_dispatcher: { select: { id: true, name: true, email: true } },
+					last_editor_tech: { select: { id: true, name: true, email: true } },
+					last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 				},
 			});
 
@@ -258,6 +160,7 @@ export const updateQuoteNote = async (
 					action: "updated",
 					entity_type: "quote_note",
 					entity_id: noteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -277,9 +180,7 @@ export const updateQuoteNote = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Error updating quote note");
@@ -290,26 +191,26 @@ export const updateQuoteNote = async (
 export const deleteQuoteNote = async (
 	quoteId: string,
 	noteId: string,
-	context?: UserContext
+	organizationId: string,
+	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.quote_note.findFirst({
-			where: {
-				id: noteId,
-				quote_id: quoteId,
-			},
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.quote_note.findFirst({
+			where: { id: noteId, quote_id: quoteId },
 		});
 
 		if (!existing) {
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "quote_note.deleted",
 				action: "deleted",
 				entity_type: "quote_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -324,9 +225,7 @@ export const deleteQuoteNote = async (
 				user_agent: context?.userAgent,
 			});
 
-			await tx.quote_note.delete({
-				where: { id: noteId },
-			});
+			await tx.quote_note.delete({ where: { id: noteId } });
 		});
 
 		return { err: "", message: "Note deleted successfully" };

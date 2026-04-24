@@ -11,6 +11,8 @@ interface LogActivityParams {
 	entity_type: string; // "client_note", "job", "request", "quote"
 	entity_id: string; // UUID of the entity
 
+	organization_id?: string | null;
+
 	actor_type: string; // "technician", "dispatcher", "system"
 	actor_id?: string | null; // UUID (null for system events)
 
@@ -57,6 +59,7 @@ export const logActivity = async (params: LogActivityParams) => {
 				action: params.action,
 				entity_type: params.entity_type,
 				entity_id: params.entity_id,
+				organization_id: params.organization_id || null,
 				actor_type: params.actor_type,
 				actor_id: params.actor_id || null,
 				actor_name: actorName,

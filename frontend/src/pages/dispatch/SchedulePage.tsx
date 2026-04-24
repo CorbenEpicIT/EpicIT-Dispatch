@@ -1,26 +1,17 @@
-import SmartCalendar from "../../components/ui/SmartCalendar";
+import ScheduleBoard from "../../components/ui/schedule/ScheduleBoard";
 import { useAllJobsQuery } from "../../hooks/useJobs";
+import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
 
 export default function SchedulePage() {
-	const { data: jobs = [], error } = useAllJobsQuery();
+	const { data: jobs = [], error: jobsError } = useAllJobsQuery();
+	const { data: technicians = [], error: techsError } = useAllTechniciansQuery();
 
 	return (
-		<div className="h-full p-6 bg-zinc-950 text-white">
-			<div className="rounded-lg bg-zinc-900 border border-zinc-800 shadow-md p-4">
-				{error && (
-					<p className="text-red-400 mb-2">Failed to load events.</p>
-				)}
-
-				<SmartCalendar
-					jobs={jobs}
-					view="month"
-					toolbar={{
-						left: "title",
-						center: "",
-						right: "today prev,next",
-					}}
-				/>
-			</div>
+		<div className="h-full overflow-hidden -m-4 md:-m-6">
+			{(jobsError || techsError) && (
+				<p className="text-red-400 px-6 py-2 text-sm">Failed to load schedule data.</p>
+			)}
+			<ScheduleBoard jobs={jobs} technicians={technicians} />
 		</div>
 	);
 }

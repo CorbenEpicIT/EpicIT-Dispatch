@@ -7,12 +7,15 @@ import z from "zod";
 export interface Dispatcher {
   id: string;
   organization_id: string | null;
+  role: string;
   name: string;
   email: string;
   phone: string | null;
   title: string;
   description: string;
   last_login: string; 
+  email_verified_at: Date | null;
+  email_verification_token: string | null;
 }
 
 export interface CreateDispatcherInput {
@@ -23,6 +26,7 @@ export interface CreateDispatcherInput {
   password: string;
   title: string;
   description: string;
+  role?: string;
 }
  
 export interface UpdateDispatcherInput {
@@ -32,6 +36,7 @@ export interface UpdateDispatcherInput {
   phone?: string | null;
   title?: string;
   description?: string;
+  role?: string;
 }
  
 export interface ChangeDispatcherPasswordInput {

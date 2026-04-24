@@ -11,7 +11,10 @@ if (!BASE_URL) {
 export const api = axios.create({
 	baseURL: BASE_URL,
 });
-const token = localStorage.getItem("accessToken");
-if (token) {
-	api.defaults.headers.common.Authorization = `Bearer ${token}`;
-}
+api.interceptors.request.use((config) => {
+	const token = localStorage.getItem("accessToken");
+	if (token) {
+		config.headers.Authorization = `Bearer ${token}`;
+	}
+	return config;
+});

@@ -54,10 +54,17 @@ export const updateTechnician = async (id: string, data: UpdateTechnicianInput):
 
 export const deleteTechnician = async (id: string): Promise<{ message: string; id: string }> => {
 	const response = await api.delete<ApiResponse<{ message: string; id: string }>>(`/technicians/${id}`);
-	
+
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || 'Failed to delete technician');
 	}
-	
+
 	return response.data.data || { message: 'Technician deleted successfully', id };
+};
+
+export const setTechnicianCurrentVehicle = async (technicianId: string, vehicleId: string | null): Promise<void> => {
+	const response = await api.put<ApiResponse<unknown>>(`/technicians/${technicianId}/vehicle`, { vehicle_id: vehicleId });
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || 'Failed to set vehicle');
+	}
 };

@@ -1,5 +1,5 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
+import { getScopedDb } from "../lib/context.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import {
 	createDraftSchema,
@@ -13,12 +13,18 @@ import { log } from "../services/appLogger.js";
 //Returns the list view — id, label, form_type, entity_context_id, timestamps.
 export const getAllDrafts = async (req: Request) => {
 	try {
+		const organizationId = req.user?.organization_id;
+		if (!organizationId) {
+			return { err: "Organization not found" };
+		}
+
 		const query = listDraftsQuerySchema.parse({
 			form_type: req.query["form_type"],
 			entity_context_id: req.query["entity_context_id"],
 		});
 
-		const drafts = await db.form_draft.findMany({
+		const sdb = getScopedDb(organizationId);
+		const drafts = await sdb.form_draft.findMany({
 			where: {
 				...(query.form_type && { form_type: query.form_type }),
 				...(query.entity_context_id && {
@@ -63,9 +69,10 @@ export const getAllDrafts = async (req: Request) => {
 	}
 };
 
-export const getDraftById = async (id: string) => {
+export const getDraftById = async (id: string, organizationId: string) => {
 	try {
-		const draft = await db.form_draft.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const draft = await sdb.form_draft.findFirst({
 			where: { id },
 		});
 
@@ -82,12 +89,18 @@ export const getDraftById = async (id: string) => {
 
 export const insertDraft = async (req: Request) => {
 	try {
+		const organizationId = req.user?.organization_id;
+		if (!organizationId) {
+			return { err: "Organization not found" };
+		}
+
 		const parsed = createDraftSchema.parse(req.body);
 
 		const label = deriveDraftLabel(parsed.form_type, parsed.payload);
-
-		const draft = await db.form_draft.create({
+		const sdb = getScopedDb(organizationId);
+		const draft = await sdb.form_draft.create({
 			data: {
+				organization_id: organizationId,
 				form_type: parsed.form_type,
 				label,
 				payload: parsed.payload as Prisma.InputJsonValue,
@@ -109,7 +122,13 @@ export const insertDraft = async (req: Request) => {
 
 export const updateDraft = async (id: string, req: Request) => {
 	try {
-		const existing = await db.form_draft.findUnique({
+		const organizationId = req.user?.organization_id;
+		if (!organizationId) {
+			return { err: "Organization not found" };
+		}
+
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.form_draft.findFirst({
 			where: { id },
 			select: { id: true, form_type: true },
 		});
@@ -121,7 +140,7 @@ export const updateDraft = async (id: string, req: Request) => {
 		const parsed = updateDraftSchema.parse(req.body);
 		const label = deriveDraftLabel(existing.form_type, parsed.payload);
 
-		const updated = await db.form_draft.update({
+		const updated = await sdb.form_draft.update({
 			where: { id },
 			data: {
 				payload: parsed.payload as Prisma.InputJsonValue,
@@ -141,18 +160,18 @@ export const updateDraft = async (id: string, req: Request) => {
 	}
 };
 
-export const deleteDraft = async (id: string) => {
+export const deleteDraft = async (id: string, organizationId: string) => {
 	try {
-		const existing = await db.form_draft.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.form_draft.findFirst({
 			where: { id },
-			select: { id: true },
 		});
 
 		if (!existing) {
 			return { err: "Draft not found" };
 		}
 
-		await db.form_draft.delete({ where: { id } });
+		await sdb.form_draft.delete({ where: { id } });
 
 		return { err: "", item: { id } };
 	} catch (e) {

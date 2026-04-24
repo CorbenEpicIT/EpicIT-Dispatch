@@ -1,6 +1,7 @@
 // @ts-nocheck - Invoice models not yet in schema (halfbaked feature)
 import { ZodError } from "zod";
 import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createInvoiceSchema,
 	updateInvoiceSchema,
@@ -13,13 +14,6 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidInvoiceTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
-
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
 
 // ============================================================================
 // HELPERS
@@ -49,8 +43,9 @@ async function generateInvoiceNumber(
  * organization.tax_rate → org rate
  * fallback             → 0
  */
-async function resolveTaxRate(clientId: string): Promise<number> {
-	const client = await db.client.findUnique({
+async function resolveTaxRate(clientId: string, organizationId: string): Promise<number> {
+	const sdb = getScopedDb(organizationId);
+	const client = await sdb.client.findFirst({
 		where: { id: clientId },
 		select: {
 			is_tax_exempt: true,
@@ -74,7 +69,7 @@ async function syncInvoicePaymentTotals(
 	tx: Prisma.TransactionClient,
 ): Promise<void> {
 	const [invoice, payments] = await Promise.all([
-		tx.invoice.findUnique({
+		tx.invoice.findFirst({
 			where: { id: invoiceId },
 			select: { total: true, status: true },
 		}),
@@ -281,62 +276,68 @@ const invoiceInclude = {
 // INVOICE CRUD
 // ============================================================================
 
-export const getAllInvoices = async () => {
-	return await db.invoice.findMany({
+export const getAllInvoices = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice.findMany({
 		include: invoiceInclude,
 		orderBy: { created_at: "desc" },
 	});
 };
 
-export const getInvoiceById = async (id: string) => {
-	return await db.invoice.findUnique({
+export const getInvoiceById = async (id: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice.findFirst({
 		where: { id },
 		include: invoiceInclude,
 	});
 };
 
-export const getInvoicesByClientId = async (clientId: string) => {
-	return await db.invoice.findMany({
+export const getInvoicesByClientId = async (clientId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice.findMany({
 		where: { client_id: clientId },
 		include: invoiceInclude,
 		orderBy: { created_at: "desc" },
 	});
 };
 
-export const getInvoicesByJobId = async (jobId: string) => {
-	return await db.invoice.findMany({
+export const getInvoicesByJobId = async (jobId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice.findMany({
 		where: { jobs: { some: { job_id: jobId } } },
 		include: invoiceInclude,
 		orderBy: { created_at: "desc" },
 	});
 };
 
-export const getInvoicesByVisitId = async (visitId: string) => {
-	return await db.invoice.findMany({
+export const getInvoicesByVisitId = async (visitId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice.findMany({
 		where: { visits: { some: { visit_id: visitId } } },
 		include: invoiceInclude,
 		orderBy: { created_at: "desc" },
 	});
 };
 
-export const insertInvoice = async (req: Request, context?: UserContext) => {
+export const insertInvoice = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createInvoiceSchema.parse(req.body);
 
-		let created: Awaited<ReturnType<typeof db.invoice.findUnique>> | undefined;
+		let created: Awaited<ReturnType<typeof db.invoice.findFirst>> | undefined;
 
 		for (let attempt = 0; attempt < 5; attempt++) {
 			try {
-				created = await db.$transaction(async (tx) => {
+				const sdb = getScopedDb(organizationId);
+				created = await sdb.$transaction(async (tx) => {
 					// Validate client exists
-					const client = await tx.client.findUnique({
+					const client = await tx.client.findFirst({
 						where: { id: parsed.client_id },
 					});
 					if (!client) throw new Error("Client not found");
 
 					// Validate recurring plan if provided
 					if (parsed.recurring_plan_id) {
-						const plan = await tx.recurring_plan.findUnique({
+						const plan = await tx.recurring_plan.findFirst({
 							where: { id: parsed.recurring_plan_id },
 						});
 						if (!plan) throw new Error("Recurring plan not found");
@@ -411,6 +412,7 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 
 					const invoice = await tx.invoice.create({
 						data: {
+							organization_id: organizationId,
 							invoice_number: invoiceNumber,
 							client_id: parsed.client_id,
 							recurring_plan_id: parsed.recurring_plan_id ?? null,
@@ -505,7 +507,7 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 						data: { last_activity: new Date() },
 					});
 
-					return tx.invoice.findUnique({
+					return tx.invoice.findFirst({
 						where: { id: invoice.id },
 						include: invoiceInclude,
 					});
@@ -518,6 +520,7 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 						action: "created",
 						entity_type: "invoice",
 						entity_id: created.id,
+						organization_id: organizationId,
 						actor_type: context?.dispatcherId
 							? "dispatcher"
 							: context?.techId
@@ -567,12 +570,13 @@ export const insertInvoice = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const updateInvoice = async (req: Request, context?: UserContext) => {
+export const updateInvoice = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const id = req.params.id as string;
 		const parsed = updateInvoiceSchema.parse(req.body);
 
-		const existing = await db.invoice.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.invoice.findFirst({
 			where: { id },
 			include: { line_items: true },
 		});
@@ -619,7 +623,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 			"void_reason",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			// ── Line item replacement ──────────────────────────────────────
 			if (parsed.line_items !== undefined) {
 				const incoming = parsed.line_items;
@@ -758,6 +762,7 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 				action: "updated",
 				entity_type: "invoice",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.dispatcherId
 					? "dispatcher"
 					: context?.techId
@@ -782,9 +787,10 @@ export const updateInvoice = async (req: Request, context?: UserContext) => {
 	}
 };
 
-export const deleteInvoice = async (id: string, context?: UserContext) => {
+export const deleteInvoice = async (id: string, organizationId: string, context?: UserContext) => {
 	try {
-		const existing = await db.invoice.findUnique({ where: { id } });
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.invoice.findFirst({ where: { id } });
 		if (!existing) return { err: "Invoice not found" };
 
 		if (existing.status !== "Draft") {
@@ -793,13 +799,14 @@ export const deleteInvoice = async (id: string, context?: UserContext) => {
 			};
 		}
 
-		await db.invoice.delete({ where: { id } });
+		await sdb.invoice.delete({ where: { id } });
 
 		await logActivity({
 			event_type: "invoice.deleted",
 			action: "deleted",
 			entity_type: "invoice",
 			entity_id: id,
+			organization_id: organizationId,
 			actor_type: context?.dispatcherId
 				? "dispatcher"
 				: context?.techId
@@ -826,8 +833,9 @@ export const deleteInvoice = async (id: string, context?: UserContext) => {
 // PAYMENTS
 // ============================================================================
 
-export const getInvoicePayments = async (invoiceId: string) => {
-	return await db.invoice_payment.findMany({
+export const getInvoicePayments = async (invoiceId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice_payment.findMany({
 		where: { invoice_id: invoiceId },
 		orderBy: { paid_at: "asc" },
 		include: {
@@ -840,12 +848,14 @@ export const getInvoicePayments = async (invoiceId: string) => {
 export const insertInvoicePayment = async (
 	invoiceId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createInvoicePaymentSchema.parse(data);
 
-		const invoice = await db.invoice.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const invoice = await sdb.invoice.findFirst({
 			where: { id: invoiceId },
 		});
 		if (!invoice) return { err: "Invoice not found" };
@@ -854,7 +864,7 @@ export const insertInvoicePayment = async (
 			return { err: "Cannot record payment on a void invoice" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const payment = await tx.invoice_payment.create({
 				data: {
 					invoice_id: invoiceId,
@@ -877,6 +887,7 @@ export const insertInvoicePayment = async (
 			action: "created",
 			entity_type: "invoice_payment",
 			entity_id: created.id,
+			organization_id: organizationId,
 			actor_type: context?.dispatcherId
 				? "dispatcher"
 				: context?.techId
@@ -908,22 +919,24 @@ export const insertInvoicePayment = async (
 export const deleteInvoicePayment = async (
 	invoiceId: string,
 	paymentId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.invoice_payment.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.invoice_payment.findFirst({
 			where: { id: paymentId, invoice_id: invoiceId },
 		});
 		if (!existing) return { err: "Payment not found" };
 
-		const invoice = await db.invoice.findUnique({
+		const invoice = await sdb.invoice.findFirst({
 			where: { id: invoiceId },
 		});
 		if (invoice?.status === "Void") {
 			return { err: "Cannot modify payments on a void invoice" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.invoice_payment.delete({ where: { id: paymentId } });
 			await syncInvoicePaymentTotals(invoiceId, tx);
 		});
@@ -933,6 +946,7 @@ export const deleteInvoicePayment = async (
 			action: "deleted",
 			entity_type: "invoice_payment",
 			entity_id: paymentId,
+			organization_id: organizationId,
 			actor_type: context?.dispatcherId
 				? "dispatcher"
 				: context?.techId
@@ -958,8 +972,9 @@ export const deleteInvoicePayment = async (
 // NOTES
 // ============================================================================
 
-export const getInvoiceNotes = async (invoiceId: string) => {
-	return await db.invoice_note.findMany({
+export const getInvoiceNotes = async (invoiceId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.invoice_note.findMany({
 		where: { invoice_id: invoiceId },
 		orderBy: { created_at: "desc" },
 		include: {
@@ -978,18 +993,21 @@ export const getInvoiceNotes = async (invoiceId: string) => {
 export const insertInvoiceNote = async (
 	invoiceId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = createInvoiceNoteSchema.parse(data);
 
-		const invoice = await db.invoice.findUnique({
+		const sdb = getScopedDb(organizationId);
+		const invoice = await sdb.invoice.findFirst({
 			where: { id: invoiceId },
 		});
 		if (!invoice) return { err: "Invoice not found" };
 
-		const created = await db.invoice_note.create({
+		const created = await sdb.invoice_note.create({
 			data: {
+				organization_id: organizationId,
 				invoice_id: invoiceId,
 				content: parsed.content,
 				creator_tech_id: context?.techId ?? null,
@@ -1012,6 +1030,7 @@ export const insertInvoiceNote = async (
 			action: "created",
 			entity_type: "invoice_note",
 			entity_id: created.id,
+			organization_id: organizationId,
 			actor_type: context?.dispatcherId
 				? "dispatcher"
 				: context?.techId
@@ -1042,17 +1061,19 @@ export const updateInvoiceNote = async (
 	invoiceId: string,
 	noteId: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateInvoiceNoteSchema.parse(data);
 
-		const existing = await db.invoice_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.invoice_note.findFirst({
 			where: { id: noteId, invoice_id: invoiceId },
 		});
 		if (!existing) return { err: "Note not found" };
 
-		const updated = await db.invoice_note.update({
+		const updated = await sdb.invoice_note.update({
 			where: { id: noteId },
 			data: {
 				...(parsed.content !== undefined && {
@@ -1083,6 +1104,7 @@ export const updateInvoiceNote = async (
 				action: "updated",
 				entity_type: "invoice_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.dispatcherId
 					? "dispatcher"
 					: context?.techId
@@ -1112,21 +1134,24 @@ export const updateInvoiceNote = async (
 export const deleteInvoiceNote = async (
 	invoiceId: string,
 	noteId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const existing = await db.invoice_note.findFirst({
+		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.invoice_note.findFirst({
 			where: { id: noteId, invoice_id: invoiceId },
 		});
 		if (!existing) return { err: "Note not found" };
 
-		await db.invoice_note.delete({ where: { id: noteId } });
+		await sdb.invoice_note.delete({ where: { id: noteId } });
 
 		await logActivity({
 			event_type: "invoice_note.deleted",
 			action: "deleted",
 			entity_type: "invoice_note",
 			entity_id: noteId,
+			organization_id: organizationId,
 			actor_type: context?.dispatcherId
 				? "dispatcher"
 				: context?.techId

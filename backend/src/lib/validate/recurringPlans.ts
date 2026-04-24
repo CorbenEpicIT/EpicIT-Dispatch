@@ -67,7 +67,7 @@ export const createRecurringPlanSchema = z
 
 		starts_at: z.string().datetime("Invalid start date"),
 		ends_at: z.string().datetime("Invalid end date").optional().nullable(),
-		timezone: z.string().optional().default("America/Chicago"),
+		timezone: z.string().optional().default("UTC"),
 		generation_window_days: z
 			.number()
 			.int()
@@ -558,6 +558,13 @@ export const skipOccurrenceSchema = z.object({
 export const rescheduleOccurrenceSchema = z.object({
 	new_start_at: z.string().datetime("Invalid start date"),
 	new_end_at: z.string().datetime("Invalid end date").optional(),
+	scope: z.enum(["this", "future"]).optional(),
+	arrival_constraint:   z.enum(ArrivalConstraintValues).optional(),
+	finish_constraint:    z.enum(FinishConstraintValues).optional(),
+	arrival_time:         z.string().nullable().optional(),
+	arrival_window_start: z.string().nullable().optional(),
+	arrival_window_end:   z.string().nullable().optional(),
+	finish_time:          z.string().nullable().optional(),
 });
 
 export const bulkSkipOccurrencesSchema = z.object({

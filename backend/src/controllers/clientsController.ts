@@ -1,18 +1,11 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
+import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createClientSchema,
 	updateClientSchema,
 } from "../lib/validate/clients.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
-
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
 
 const buildClientInclude = () => ({
 	jobs: {
@@ -85,27 +78,34 @@ const buildClientInclude = () => ({
 // CLIENT CRUD
 // ============================================================================
 
-export const getAllClients = async () => {
-	return await db.client.findMany({
+export const getAllClients = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.client.findMany({
 		include: buildClientInclude(),
 		orderBy: { last_activity: "desc" },
 	});
 };
 
-export const getClientById = async (id: string) => {
-	return await db.client.findFirst({
-		where: { id: id },
+export const getClientById = async (id: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.client.findFirst({
+		where: { id },
 		include: buildClientInclude(),
 	});
 };
 
-export const insertClient = async (data: unknown, context?: UserContext) => {
+export const insertClient = async (
+	data: unknown,
+	organizationId: string,
+	context?: UserContext,
+) => {
 	try {
 		const parsed = createClientSchema.parse(data);
-
-		const created = await db.$transaction(async (tx) => {
+		const sdb = getScopedDb(organizationId);
+		const created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.create({
 				data: {
+					organization_id: organizationId,
 					name: parsed.name,
 					address: parsed.address,
 					coords: parsed.coords,
@@ -119,6 +119,7 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 				action: "created",
 				entity_type: "client",
 				entity_id: client.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -134,7 +135,7 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 				user_agent: context?.userAgent,
 			});
 
-			return tx.client.findUnique({
+			return tx.client.findFirst({
 				where: { id: client.id },
 				include: buildClientInclude(),
 			});
@@ -157,12 +158,14 @@ export const insertClient = async (data: unknown, context?: UserContext) => {
 export const updateClient = async (
 	id: string,
 	data: unknown,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const parsed = updateClientSchema.parse(data);
+		const sdb = getScopedDb(organizationId);
 
-		const existing = await db.client.findUnique({ where: { id } });
+		const existing = await sdb.client.findFirst({ where: { id } });
 		if (!existing) {
 			return { err: "Client not found" };
 		}
@@ -174,7 +177,7 @@ export const updateClient = async (
 			"is_active",
 		] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.update({
 				where: { id },
 				data: {
@@ -198,6 +201,7 @@ export const updateClient = async (
 					action: "updated",
 					entity_type: "client",
 					entity_id: id,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -210,7 +214,7 @@ export const updateClient = async (
 				});
 			}
 
-			return tx.client.findUnique({
+			return tx.client.findFirst({
 				where: { id: client.id },
 				include: buildClientInclude(),
 			});
@@ -229,9 +233,15 @@ export const updateClient = async (
 	}
 };
 
-export const deleteClient = async (id: string, context?: UserContext) => {
+export const deleteClient = async (
+	id: string,
+	organizationId: string,
+	context?: UserContext,
+) => {
 	try {
-		const existing = await db.client.findUnique({
+		const sdb = getScopedDb(organizationId);
+
+		const existing = await sdb.client.findFirst({
 			where: { id },
 			include: {
 				jobs: { select: { id: true } },
@@ -260,7 +270,7 @@ export const deleteClient = async (id: string, context?: UserContext) => {
 			return { err: "Cannot delete client with existing quotes" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.client.delete({ where: { id } });
 
 			await logActivity({
@@ -268,6 +278,7 @@ export const deleteClient = async (id: string, context?: UserContext) => {
 				action: "deleted",
 				entity_type: "client",
 				entity_id: id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId

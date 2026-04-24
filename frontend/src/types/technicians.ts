@@ -1,6 +1,7 @@
 import z from "zod";
 import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint } from "./jobs";
 import type { Priority } from "./common";
+import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
 import type { JobVisit } from "./jobs";
 
@@ -53,8 +54,8 @@ export interface VisitTechnician {
 
 		arrival_constraint: ArrivalConstraint;
 		finish_constraint: FinishConstraint;
-		scheduled_start_at: Date;
-		scheduled_end_at: Date;
+		scheduled_start_at: Date | string;
+		scheduled_end_at: Date | string;
 		arrival_time?: string | null;
 		arrival_window_start?: string | null;
 		arrival_window_end?: string | null;
@@ -70,13 +71,9 @@ export interface VisitTechnician {
 			status: JobStatus;
 			address: string;
 			priority: Priority;
-			created_at: Date;
+			created_at: Date | string;
 			client_id: string;
-			client: {
-				id: string;
-				name: string;
-				address: string;
-			};
+			client: ClientWithPrimaryContact;
 		};
 	};
 }
@@ -98,6 +95,8 @@ export interface Technician {
 	status: TechnicianStatus;
 	hire_date: Date;
 	last_login: Date;
+	current_vehicle_id: string | null;
+	current_vehicle?: { id: string; name: string; type: string; license_plate: string | null; color: string | null; notes: string | null } | null;
 	visit_techs?: VisitTechnician[];
 	logs?: unknown[];
 	created_client_notes?: unknown[];

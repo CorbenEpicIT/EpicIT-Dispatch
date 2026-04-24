@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { db } from "../db.js";
 import {
 	createRecurringPlanNoteSchema,
 	updateRecurringPlanNoteSchema,
@@ -7,34 +6,21 @@ import {
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
-
-export interface UserContext {
-	techId?: string;
-	dispatcherId?: string;
-	ipAddress?: string;
-	userAgent?: string;
-}
+import { getScopedDb, type UserContext } from "../lib/context.js";
 
 // ============================================================================
 // RECURRING PLAN NOTES CRUD
 // ============================================================================
 
-export const getRecurringPlanNotes = async (planId: string) => {
-	return await db.recurring_plan_note.findMany({
+export const getRecurringPlanNotes = async (planId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	return await sdb.recurring_plan_note.findMany({
 		where: { recurring_plan_id: planId },
 		include: {
-			creator_tech: {
-				select: { id: true, name: true, email: true },
-			},
-			creator_dispatcher: {
-				select: { id: true, name: true, email: true },
-			},
-			last_editor_tech: {
-				select: { id: true, name: true, email: true },
-			},
-			last_editor_dispatcher: {
-				select: { id: true, name: true, email: true },
-			},
+			creator_tech: { select: { id: true, name: true, email: true } },
+			creator_dispatcher: { select: { id: true, name: true, email: true } },
+			last_editor_tech: { select: { id: true, name: true, email: true } },
+			last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 		},
 		orderBy: { created_at: "desc" },
 	});
@@ -43,50 +29,39 @@ export const getRecurringPlanNotes = async (planId: string) => {
 export const getRecurringPlanNoteById = async (
 	planId: string,
 	noteId: string,
+	organizationId: string,
 ) => {
-	return await db.recurring_plan_note.findFirst({
-		where: {
-			id: noteId,
-			recurring_plan_id: planId,
-		},
+	const sdb = getScopedDb(organizationId);
+	return await sdb.recurring_plan_note.findFirst({
+		where: { id: noteId, recurring_plan_id: planId },
 		include: {
-			creator_tech: {
-				select: { id: true, name: true, email: true },
-			},
-			creator_dispatcher: {
-				select: { id: true, name: true, email: true },
-			},
-			last_editor_tech: {
-				select: { id: true, name: true, email: true },
-			},
-			last_editor_dispatcher: {
-				select: { id: true, name: true, email: true },
-			},
+			creator_tech: { select: { id: true, name: true, email: true } },
+			creator_dispatcher: { select: { id: true, name: true, email: true } },
+			last_editor_tech: { select: { id: true, name: true, email: true } },
+			last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 		},
 	});
 };
 
 export const insertRecurringPlanNote = async (
 	req: Request,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const planId = req.params.jobId as string;
 		const parsed = createRecurringPlanNoteSchema.parse(req.body);
+		const sdb = getScopedDb(organizationId);
 
-		const plan = await db.recurring_plan.findFirst({
-			where: {
-				job_container: {
-					id: planId,
-				},
-			},
+		const plan = await sdb.recurring_plan.findFirst({
+			where: { job_container: { id: planId } },
 		});
 
 		if (!plan) {
 			return { err: "Recurring plan not found" };
 		}
 
-		const created = await db.$transaction(async (tx) => {
+		const created = await sdb.$transaction(async (tx) => {
 			const note = await tx.recurring_plan_note.create({
 				data: {
 					recurring_plan_id: plan.id,
@@ -96,12 +71,8 @@ export const insertRecurringPlanNote = async (
 					creator_dispatcher_id: context?.dispatcherId || null,
 				},
 				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
+					creator_tech: { select: { id: true, name: true, email: true } },
+					creator_dispatcher: { select: { id: true, name: true, email: true } },
 				},
 			});
 
@@ -110,6 +81,7 @@ export const insertRecurringPlanNote = async (
 				action: "created",
 				entity_type: "recurring_plan_note",
 				entity_id: note.id,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -131,9 +103,7 @@ export const insertRecurringPlanNote = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		if (e instanceof Error) {
@@ -146,30 +116,25 @@ export const insertRecurringPlanNote = async (
 
 export const updateRecurringPlanNote = async (
 	req: Request,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
 		const jobId = req.params.jobId as string;
 		const noteId = req.params.noteId as string;
 		const parsed = updateRecurringPlanNoteSchema.parse(req.body);
+		const sdb = getScopedDb(organizationId);
 
-		const plan = await db.recurring_plan.findFirst({
-			where: {
-				job_container: {
-					id: jobId,
-				},
-			},
+		const plan = await sdb.recurring_plan.findFirst({
+			where: { job_container: { id: jobId } },
 		});
 
 		if (!plan) {
 			return { err: "Recurring plan not found" };
 		}
 
-		const existing = await db.recurring_plan_note.findFirst({
-			where: {
-				id: noteId,
-				recurring_plan_id: plan.id,
-			},
+		const existing = await sdb.recurring_plan_note.findFirst({
+			where: { id: noteId, recurring_plan_id: plan.id },
 		});
 
 		if (!existing) {
@@ -178,29 +143,19 @@ export const updateRecurringPlanNote = async (
 
 		const changes = buildChanges(existing, parsed, ["content"] as const);
 
-		const updated = await db.$transaction(async (tx) => {
+		const updated = await sdb.$transaction(async (tx) => {
 			const note = await tx.recurring_plan_note.update({
 				where: { id: noteId },
 				data: {
-					...(parsed.content !== undefined && {
-						content: parsed.content,
-					}),
+					...(parsed.content !== undefined && { content: parsed.content }),
 					last_editor_tech_id: context?.techId || null,
 					last_editor_dispatcher_id: context?.dispatcherId || null,
 				},
 				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
+					creator_tech: { select: { id: true, name: true, email: true } },
+					creator_dispatcher: { select: { id: true, name: true, email: true } },
+					last_editor_tech: { select: { id: true, name: true, email: true } },
+					last_editor_dispatcher: { select: { id: true, name: true, email: true } },
 				},
 			});
 
@@ -210,6 +165,7 @@ export const updateRecurringPlanNote = async (
 					action: "updated",
 					entity_type: "recurring_plan_note",
 					entity_id: noteId,
+					organization_id: organizationId,
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
@@ -229,9 +185,7 @@ export const updateRecurringPlanNote = async (
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
+				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
 		log.error({ err: e }, "Update recurring plan note error");
@@ -242,38 +196,35 @@ export const updateRecurringPlanNote = async (
 export const deleteRecurringPlanNote = async (
 	jobId: string,
 	noteId: string,
+	organizationId: string,
 	context?: UserContext,
 ) => {
 	try {
-		const plan = await db.recurring_plan.findFirst({
-			where: {
-				job_container: {
-					id: jobId,
-				},
-			},
+		const sdb = getScopedDb(organizationId);
+
+		const plan = await sdb.recurring_plan.findFirst({
+			where: { job_container: { id: jobId } },
 		});
 
 		if (!plan) {
 			return { err: "Recurring plan not found" };
 		}
 
-		const existing = await db.recurring_plan_note.findFirst({
-			where: {
-				id: noteId,
-				recurring_plan_id: plan.id,
-			},
+		const existing = await sdb.recurring_plan_note.findFirst({
+			where: { id: noteId, recurring_plan_id: plan.id },
 		});
 
 		if (!existing) {
 			return { err: "Note not found" };
 		}
 
-		await db.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await logActivity({
 				event_type: "recurring_plan_note.deleted",
 				action: "deleted",
 				entity_type: "recurring_plan_note",
 				entity_id: noteId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -288,9 +239,7 @@ export const deleteRecurringPlanNote = async (
 				user_agent: context?.userAgent,
 			});
 
-			await tx.recurring_plan_note.delete({
-				where: { id: noteId },
-			});
+			await tx.recurring_plan_note.delete({ where: { id: noteId } });
 		});
 
 		return { err: "", message: "Note deleted successfully" };

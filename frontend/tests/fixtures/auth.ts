@@ -6,7 +6,7 @@ export async function loginAsDispatcher(page: Page, name: string = "Test Dispatc
 	await expect(page.locator('button[type="submit"]')).toBeVisible();
 
 	await page.fill('input[placeholder="Name"]', name);
-	await page.selectOption("select", "dispatch");
+	await page.selectOption("select", "dispatcher");
 
 	await page.click('button[type="submit"]');
 	await page.waitForURL("/dispatch", { timeout: 15000 });

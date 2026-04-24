@@ -6,11 +6,34 @@ import { InvoicePdfTemplate } from "./invoicePdfTemplate.js";
 import { getQuoteById } from "../../controllers/quotesController.js";
 import { getInvoiceById } from "../../controllers/invoicesController.js";
 import { db } from "../../db.js";
+import { getBuffer } from "../../services/wasabiService.js";
 
 type DocElement = ReactElement<DocumentProps, string | JSXElementConstructor<unknown>>;
 
-export async function generateQuotePdf(quoteId: string): Promise<Buffer> {
-	const quote = await getQuoteById(quoteId);
+const fallbackOrg = { name: "—", logo_url: null, phone: null, address: null, email: null, website: null };
+
+async function fetchOrg(organizationId: string | null | undefined) {
+	if (!organizationId) return fallbackOrg;
+	const org = await db.organization.findUnique({
+		where: { id: organizationId },
+		select: { name: true, logo_url: true, phone: true, address: true, email: true, website: true },
+	});
+	if (!org) return fallbackOrg;
+
+	let logo_url: string | null = null;
+	if (org.logo_url) {
+		try {
+			const { buffer, contentType } = await getBuffer(org.logo_url);
+			logo_url = `data:${contentType};base64,${buffer.toString("base64")}`;
+		} catch {
+			logo_url = null;
+		}
+	}
+	return { ...org, logo_url };
+}
+
+export async function generateQuotePdf(quoteId: string, organizationId: string): Promise<Buffer> {
+	const quote = await getQuoteById(quoteId, organizationId);
 	if (!quote) throw Object.assign(new Error("Quote not found"), { status: 404 });
 
 	// Auto-promote Draft → Issued on first PDF generation (document is now finalized)
@@ -23,15 +46,17 @@ export async function generateQuotePdf(quoteId: string): Promise<Buffer> {
 		effectiveStatus = "Issued";
 	}
 
+	const org = await fetchOrg(quote.organization_id);
+
 	const element = React.createElement(
 		QuotePdfTemplate,
-		{ quote: { ...quote, status: effectiveStatus } },
+		{ quote: { ...quote, status: effectiveStatus }, org },
 	) as unknown as DocElement;
 	return renderToBuffer(element) as Promise<Buffer>;
 }
 
-export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
-	const invoice = await getInvoiceById(invoiceId);
+export async function generateInvoicePdf(invoiceId: string, organizationId: string): Promise<Buffer> {
+	const invoice = await getInvoiceById(invoiceId, organizationId);
 	if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
 
 	// Auto-promote Draft → Issued on first PDF generation (document is now finalized)
@@ -44,9 +69,11 @@ export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
 		effectiveStatus = "Issued";
 	}
 
+	const org = await fetchOrg(invoice.organization_id);
+
 	const element = React.createElement(
 		InvoicePdfTemplate,
-		{ invoice: { ...invoice, status: effectiveStatus } },
+		{ invoice: { ...invoice, status: effectiveStatus }, org },
 	) as unknown as DocElement;
 	return renderToBuffer(element) as Promise<Buffer>;
 }

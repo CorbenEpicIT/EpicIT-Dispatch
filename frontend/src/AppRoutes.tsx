@@ -4,6 +4,9 @@ import TechnicianLayout from "./layouts/TechnicianLayout";
 import TechnicianDashboardPage from "./pages/technician/TechnicianDashboardPage";
 import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
 import TechnicianVisitDetailPage from "./pages/technician/TechnicianVisitDetailPage";
+import TechnicianNotificationsPage from "./pages/technician/TechnicianNotificationsPage";
+import TechnicianVehiclePage from "./pages/technician/TechnicianVehiclePage";
+import TechnicianMapPage from "./pages/technician/TechnicianMapPage";
 import DashboardPage from "./pages/dispatch/DashboardPage";
 import JobsPage from "./pages/dispatch/JobsPage";
 import JobDetailPage from "./pages/dispatch/JobDetailPage";
@@ -27,6 +30,9 @@ import FullMapPage from "./pages/dispatch/FullMapPage";
 import InvoicesPage from "./pages/dispatch/InvoicesPage";
 import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
 import AdminPage from "./pages/dispatch/AdminPage";
+import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import RegisterPage from "./pages/RegisterPage";
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./auth/authStore";
@@ -41,7 +47,9 @@ export default function AppRoutes() {
 	return (
 		<Routes>
 			<Route path="/login" element={<LoginPage />} />
-
+			<Route path="/register" element={<RegisterPage />} />
+			<Route path="/verify-email" element={<VerifyEmailPage />} />
+			<Route path="/reset-password" element={<ResetPasswordPage />} />
 			<Route
 				path="/dispatch/*"
 				element={
@@ -110,6 +118,9 @@ export default function AppRoutes() {
 				<Route index element={<TechnicianDashboardPage />} />
 				<Route path="visits" element={<TechnicianVisitsPage />} />
 				<Route path="visits/:visitId" element={<TechnicianVisitDetailPage />} />
+				<Route path="notifications" element={<TechnicianNotificationsPage />} />
+				<Route path="vehicle" element={<TechnicianVehiclePage />} />
+				<Route path="map" element={<TechnicianMapPage />} />
 			</Route>
 
 			<Route path="*" element={<Navigate to="/login" replace />} />
