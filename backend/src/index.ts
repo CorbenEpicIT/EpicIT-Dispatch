@@ -155,6 +155,8 @@ export interface UserContext {
 	userAgent?: string;
 }
 
+const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
+
 // ============================================
 // MIDDLEWARE
 // ============================================
@@ -165,6 +167,15 @@ const errorHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
+	if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+		return res.status(400).json(
+			createErrorResponse(
+				ErrorCodes.VALIDATION_ERROR,
+				`File too large. Maximum allowed size is ${MAX_UPLOAD_MB}MB.`,
+			),
+		);
+	}
+
 	log.error(
 		{ err, method: req.method, path: req.path },
 		"Unhandled request error",
@@ -3339,13 +3350,17 @@ app.patch("/inventory/:id/stock", async (req, res, next) => {
 
 const inventoryUpload = multer({
 	storage: multer.memoryStorage(),
-	limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+	limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 },
 	fileFilter: (_req, file, cb) => {
 		const allowed = ["image/jpeg", "image/png", "image/webp"];
 		if (allowed.includes(file.mimetype)) {
 			cb(null, true);
 		} else {
-			cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
+			const err = Object.assign(
+				new Error("Only JPEG, PNG, and WebP images are allowed"),
+				{ statusCode: 400 },
+			);
+			cb(err, false);
 		}
 	},
 });
