@@ -187,20 +187,6 @@ const requestLogger = (req: Request, res: Response, next: NextFunction) => {
 	next();
 };
 
-const metricsMiddleware = (req: Request, res: Response, next: NextFunction) => {
-	const end = httpRequestDuration.startTimer();
-	res.on("finish", () => {
-		const labels = {
-			method: req.method,
-			route: req.route?.path ?? req.path,
-			status_code: String(res.statusCode),
-		};
-		end(labels);
-		httpRequestsTotal.inc(labels);
-	});
-	next();
-};
-
 const notFoundHandler = (req: Request, res: Response) => {
 	res.status(404).json(
 		createErrorResponse(
@@ -301,7 +287,7 @@ app.get("/metrics", async (_req, res) => {
 	res.end(await metricsRegister.metrics());
 });
 app.use(requestLogger);
-app.use(metricsMiddleware);
+app.use(httpMetricsMiddleware);
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
 if (!frontend) {
