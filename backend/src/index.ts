@@ -114,7 +114,7 @@ import {
 	adjustInventoryStock,
 } from "./controllers/inventoryController.js";
 import multer from "multer";
-import { uploadFile } from "./services/wasabiService.js";
+import { uploadFile, signImageUrls } from "./services/wasabiService.js";
 import {
 	getOverviewMetrics,
 	getRevenueYTD,
@@ -3228,7 +3228,13 @@ app.get("/inventory", async (req, res, next) => {
 			low_stock === "true"
 				? await getLowStockInventory()
 				: await getAllInventory(sort as string | undefined);
-		res.json(createSuccessResponse(items, { count: items.length }));
+		const signed = await Promise.all(
+			items.map(async (item) => ({
+				...item,
+				image_urls: await signImageUrls(item.image_urls),
+			})),
+		);
+		res.json(createSuccessResponse(signed, { count: signed.length }));
 	} catch (err) {
 		next(err);
 	}
@@ -3250,7 +3256,8 @@ app.post("/inventory", async (req, res, next) => {
 				);
 		}
 
-		res.status(201).json(createSuccessResponse(result.item));
+		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		res.status(201).json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
 	}
@@ -3274,7 +3281,8 @@ app.patch("/inventory/:id", async (req, res, next) => {
 				);
 		}
 
-		res.json(createSuccessResponse(result.item));
+		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		res.json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
 	}
@@ -3322,7 +3330,8 @@ app.patch("/inventory/:id/stock", async (req, res, next) => {
 				);
 		}
 
-		res.json(createSuccessResponse(result.item));
+		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		res.json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
 	}
@@ -3357,11 +3366,12 @@ app.post(
 					);
 			}
 
-			const url = await uploadFile(
+			const rawUrl = await uploadFile(
 				req.file.buffer,
 				req.file.mimetype,
 				req.file.originalname,
 			);
+			const [url] = await signImageUrls([rawUrl]);
 			res.json(createSuccessResponse({ url }));
 		} catch (err) {
 			next(err);
@@ -3387,7 +3397,8 @@ app.patch("/inventory/:id/threshold", async (req, res, next) => {
 				);
 		}
 
-		res.json(createSuccessResponse(result.item));
+		const item = { ...result.item!, image_urls: await signImageUrls(result.item!.image_urls) };
+		res.json(createSuccessResponse(item));
 	} catch (err) {
 		next(err);
 	}

@@ -5,8 +5,12 @@ services:
     command: >
       sh -c "npm install &&
              npx prisma generate &&
-             npx prisma migrate reset --force &&
-             npx tsx prisma/seed.ts &&
+             if [ \"$$NODE_ENV\" = 'development' ]; then
+               npx prisma migrate reset --force &&
+               npx tsx prisma/seed.ts;
+             else
+               npx prisma migrate deploy;
+             fi &&
              npm run build &&
              npm run start"
     ports:
