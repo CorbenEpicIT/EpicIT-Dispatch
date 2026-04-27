@@ -4,6 +4,7 @@ import {
 	Plus,
 	Package,
 	Wrench,
+	Pencil,
 	ChevronDown,
 	ChevronUp,
 	AlertTriangle,
@@ -16,7 +17,125 @@ import { useAuthStore } from "../../auth/authStore";
 import type { VehicleStockItem } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 
-type Mode = "stock" | "free";
+type Mode = "edit" | "stock" | "free";
+
+// ── Edit Parts Tab ─────────────────────────────────────────────────────────────
+
+function EditPartsTab({
+	lineItems,
+	onUpdateQty,
+	isPending,
+	highlightedPartId,
+}: {
+	lineItems: VisitLineItem[];
+	onUpdateQty: (item: VisitLineItem, newQty: number) => Promise<void>;
+	isPending: boolean;
+	highlightedPartId: string | null;
+}) {
+	const [pendingDeleteIdx, setPendingDeleteIdx] = useState<number | null>(null);
+	const pendingDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (pendingDeleteTimer.current) clearTimeout(pendingDeleteTimer.current);
+		};
+	}, []);
+
+	const handleDeleteClick = (item: VisitLineItem, idx: number) => {
+		if (pendingDeleteIdx === idx) {
+			if (pendingDeleteTimer.current) clearTimeout(pendingDeleteTimer.current);
+			setPendingDeleteIdx(null);
+			onUpdateQty(item, 0);
+		} else {
+			if (pendingDeleteTimer.current) clearTimeout(pendingDeleteTimer.current);
+			setPendingDeleteIdx(idx);
+			pendingDeleteTimer.current = setTimeout(() => setPendingDeleteIdx(null), 3000);
+		}
+	};
+
+	if (lineItems.length === 0) {
+		return (
+			<div className="px-4 py-5 text-center">
+				<p className="text-sm text-zinc-600">No parts added yet</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="divide-y divide-zinc-800/60">
+			{lineItems.map((item, idx) => {
+				const qty = Number(item.quantity);
+				const unitPrice = Number(item.unit_price);
+				const rowTotal = qty * unitPrice;
+				const isOne = qty === 1;
+				const isHighlighted = item.id != null && item.id === highlightedPartId;
+				const isArmed = isOne && pendingDeleteIdx === idx;
+
+				return (
+					<div
+						key={item.id ?? idx}
+						className={`flex items-center justify-between px-4 py-2.5 gap-3 transition-colors ${
+							isHighlighted ? "ring-1 ring-blue-500/40 bg-blue-600/[.06]" : ""
+						}`}
+					>
+						<div className="flex-1 min-w-0">
+							<p className="text-sm text-white line-clamp-2">{item.name}</p>
+							{item.description && (
+								<p className="text-xs text-zinc-600 truncate">
+									{item.description}
+								</p>
+							)}
+						</div>
+						<div className="shrink-0 flex flex-col items-end gap-0.5">
+							<div className="flex items-center gap-1.5">
+								<button
+									onClick={() =>
+										isOne
+											? handleDeleteClick(item, idx)
+											: onUpdateQty(item, qty - 1)
+									}
+									disabled={isPending}
+									className={`flex items-center justify-center w-5 h-5 rounded text-xs font-bold border transition-colors disabled:opacity-40 ${
+										isArmed
+											? "border-red-500 bg-red-500/30 text-red-300"
+											: isOne
+												? "border-red-500/30 bg-red-500/8 text-red-400 hover:bg-red-500/15"
+												: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+									}`}
+									aria-label={isOne ? "Remove part" : "Decrease quantity"}
+								>
+									{isOne ? "✕" : "−"}
+								</button>
+								<span className="text-sm font-semibold text-white tabular-nums min-w-[18px] text-center">
+									{qty}
+								</span>
+								<button
+									onClick={() => {
+										setPendingDeleteIdx(null);
+										if (pendingDeleteTimer.current)
+											clearTimeout(pendingDeleteTimer.current);
+										onUpdateQty(item, qty + 1);
+									}}
+									disabled={isPending}
+									className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors disabled:opacity-40"
+									aria-label="Increase quantity"
+								>
+									＋
+								</button>
+								<span className="text-sm text-white tabular-nums">
+									× ${unitPrice.toFixed(2)}
+								</span>
+							</div>
+							<span className="text-xs text-zinc-500 tabular-nums">
+								${rowTotal.toFixed(2)}
+							</span>
+						</div>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
 
 // ── Stock Mode ────────────────────────────────────────────────────────────────
 
@@ -28,7 +147,7 @@ function StockPartPicker({
 	lineItems,
 	search,
 	onSearchChange,
-	onUpdateQty,
+	onSwitchToEdit,
 	onClose,
 }: {
 	stockItems: VehicleStockItem[];
@@ -38,21 +157,13 @@ function StockPartPicker({
 	lineItems: VisitLineItem[];
 	search: string;
 	onSearchChange: (q: string) => void;
-	onUpdateQty: (item: VisitLineItem, newQty: number) => Promise<void>;
+	onSwitchToEdit: (partId: string) => void;
 	onClose: () => void;
 }) {
 	const addParts = useAddPartsUsedMutation();
 	const [selected, setSelected] = useState<VehicleStockItem | null>(null);
 	const [qty, setQty] = useState("1");
 	const [err, setErr] = useState<string | null>(null);
-	const [editingLineItem, setEditingLineItem] = useState<VisitLineItem | null>(null);
-
-	useEffect(() => {
-		if (editingLineItem) {
-			setQty(String(editingLineItem.quantity));
-			setErr(null);
-		}
-	}, [editingLineItem]);
 
 	const filtered = useMemo(() => {
 		const q = search.toLowerCase();
@@ -67,8 +178,7 @@ function StockPartPicker({
 	const isAlreadyAdded = (stockItem: VehicleStockItem): VisitLineItem | undefined =>
 		lineItems.find(
 			(li) =>
-				li.name.toLowerCase() ===
-				stockItem.inventory_item.name.toLowerCase()
+				li.name.toLowerCase() === stockItem.inventory_item.name.toLowerCase()
 		);
 
 	const handleConfirm = async () => {
@@ -94,61 +204,6 @@ function StockPartPicker({
 		});
 		onClose();
 	};
-
-	if (editingLineItem) {
-		return (
-			<div className="p-4">
-				<p className="text-sm font-semibold text-white mb-1">
-					{editingLineItem.name}
-				</p>
-				<p className="text-xs text-zinc-500 mb-4">
-					Currently: {Number(editingLineItem.quantity)} · Set to 0 to
-					remove
-				</p>
-				<label className="text-xs text-zinc-400 mb-1 block">
-					New Quantity
-				</label>
-				<input
-					type="number"
-					min="0"
-					value={qty}
-					onChange={(e) => setQty(e.target.value)}
-					autoFocus
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 mb-3 tabular-nums"
-				/>
-				{err && <p className="text-xs text-red-400 mb-2">{err}</p>}
-				<div className="flex gap-2">
-					<button
-						onClick={() => setEditingLineItem(null)}
-						className="flex-1 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
-					>
-						Back
-					</button>
-					<button
-						onClick={async () => {
-							const parsedQty = Number(qty);
-							if (parsedQty < 0) {
-								setErr(
-									"Quantity cannot be negative."
-								);
-								return;
-							}
-							setErr(null);
-							await onUpdateQty(
-								editingLineItem,
-								parsedQty
-							);
-							setEditingLineItem(null);
-							if (parsedQty === 0) onClose();
-						}}
-						className="flex-1 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium"
-					>
-						Update
-					</button>
-				</div>
-			</div>
-		);
-	}
 
 	if (selected) {
 		return (
@@ -208,103 +263,68 @@ function StockPartPicker({
 					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
 				/>
 			</div>
-			{search.length > 0 && (
-				<>
-					<div className="divide-y divide-zinc-800/40">
-						{filtered.length === 0 && (
-							<p className="px-4 py-4 text-center text-sm text-zinc-600">
-								No matching parts
-							</p>
-						)}
-						{filtered.map((item) => (
-							<div
-								key={item.id}
-								className="flex items-center justify-between px-4 py-2.5 hover:bg-zinc-800/40 transition-colors"
-							>
-								<div className="min-w-0 flex-1">
-									<p className="text-sm text-white">
-										{
-											item
-												.inventory_item
-												.name
-										}
-									</p>
-									<p className="text-[10px] text-zinc-500 mt-0.5">
-										{item.inventory_item
-											.category
-											? `${item.inventory_item.category} · `
-											: ""}
-										<span
-											className={
-												Number(
-													item.qty_on_hand
-												) <=
-												Number(
-													item.qty_min
-												)
-													? "text-amber-400"
-													: ""
-											}
-										>
-											{Number(
-												item.qty_on_hand
-											)}{" "}
-											on hand
-											{Number(
-												item.qty_on_hand
-											) <=
-												Number(
-													item.qty_min
-												) && (
-												<AlertTriangle
-													size={
-														10
-													}
-													className="inline text-amber-400 ml-0.5"
-													aria-hidden="true"
-												/>
-											)}
-										</span>
-									</p>
-								</div>
-								{(() => {
-									const existing =
-										isAlreadyAdded(
-											item
-										);
-									return existing ? (
-										<button
-											onClick={() =>
-												setEditingLineItem(
-													existing
-												)
-											}
-											className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-emerald-900/30 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
-										>
-											✓ Added
-										</button>
-									) : (
-										<button
-											onClick={() =>
-												setSelected(
-													item
-												)
-											}
-											className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-blue-900/50 text-blue-300 hover:bg-blue-800/60 hover:text-blue-200 transition-colors border border-blue-700/30"
-										>
-											+ Add
-										</button>
-									);
-								})()}
-							</div>
-						))}
-					</div>
-					<p className="px-4 py-2 text-[10px] text-zinc-600 italic border-t border-zinc-800/60 text-center">
-						Parts list hidden while searching — clear search to
-						view
+			<div className="divide-y divide-zinc-800/40 overflow-y-auto max-h-56 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-zinc-900 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+				{filtered.length === 0 && (
+					<p className="px-4 py-4 text-center text-sm text-zinc-600">
+						No matching parts
 					</p>
-				</>
-			)}
+				)}
+				{filtered.map((item) => (
+					<div
+						key={item.id}
+						className="flex items-center justify-between px-4 py-2.5 hover:bg-zinc-800/40 transition-colors"
+					>
+						<div className="min-w-0 flex-1">
+							<p className="text-sm text-white">
+								{item.inventory_item.name}
+							</p>
+							<p className="text-[10px] text-zinc-500 mt-0.5">
+								{item.inventory_item.category
+									? `${item.inventory_item.category} · `
+									: ""}
+								<span
+									className={
+										Number(item.qty_on_hand) <=
+										Number(item.qty_min)
+											? "text-amber-400"
+											: ""
+									}
+								>
+									{Number(item.qty_on_hand)} on hand
+									{Number(item.qty_on_hand) <=
+										Number(item.qty_min) && (
+										<AlertTriangle
+											size={10}
+											className="inline text-amber-400 ml-0.5"
+											aria-hidden="true"
+										/>
+									)}
+								</span>
+							</p>
+						</div>
+						{(() => {
+							const existing = isAlreadyAdded(item);
+							return existing ? (
+								<button
+									onClick={() =>
+										onSwitchToEdit(existing.id ?? "")
+									}
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-emerald-900/30 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
+								>
+									✓ Added
+								</button>
+							) : (
+								<button
+									onClick={() => setSelected(item)}
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-blue-900/50 text-blue-300 hover:bg-blue-800/60 hover:text-blue-200 transition-colors border border-blue-700/30"
+								>
+									+ Add
+								</button>
+							);
+						})()}
+					</div>
+				))}
+			</div>
 		</div>
 	);
 }
@@ -351,8 +371,7 @@ function FreeEntryForm({
 						unit_price: Number(li.unit_price),
 						total: parseFloat(
 							(
-								Number(li.quantity) *
-								Number(li.unit_price)
+								Number(li.quantity) * Number(li.unit_price)
 							).toFixed(2)
 						),
 						item_type: li.item_type ?? null,
@@ -389,9 +408,7 @@ function FreeEntryForm({
 			</div>
 			<div className="flex gap-2">
 				<div className="flex-1">
-					<label className="text-xs text-zinc-400 mb-1 block">
-						Qty
-					</label>
+					<label className="text-xs text-zinc-400 mb-1 block">Qty</label>
 					<input
 						type="number"
 						min="1"
@@ -456,12 +473,7 @@ export default function PartsUsedSection({
 									...li,
 									quantity: newQty,
 									total: parseFloat(
-										(
-											newQty *
-											Number(
-												li.unit_price
-											)
-										).toFixed(2)
+										(newQty * Number(li.unit_price)).toFixed(2)
 									),
 								}
 							: li
@@ -476,9 +488,7 @@ export default function PartsUsedSection({
 					quantity: Number(li.quantity),
 					unit_price: Number(li.unit_price),
 					total: parseFloat(
-						(
-							Number(li.quantity) * Number(li.unit_price)
-						).toFixed(2)
+						(Number(li.quantity) * Number(li.unit_price)).toFixed(2)
 					),
 					item_type: li.item_type ?? null,
 					source: li.source,
@@ -489,8 +499,9 @@ export default function PartsUsedSection({
 
 	const [expanded, setExpanded] = useState(true);
 	const [adding, setAdding] = useState(false);
-	const [mode, setMode] = useState<Mode>("stock");
+	const [mode, setMode] = useState<Mode>("edit");
 	const [stockSearch, setStockSearch] = useState("");
+	const [highlightedPartId, setHighlightedPartId] = useState<string | null>(null);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -509,6 +520,17 @@ export default function PartsUsedSection({
 		return () => document.removeEventListener("mousedown", handler);
 	}, [adding]);
 
+	useEffect(() => {
+		if (!highlightedPartId) return;
+		const timer = setTimeout(() => setHighlightedPartId(null), 1500);
+		return () => clearTimeout(timer);
+	}, [highlightedPartId]);
+
+	const handleSwitchToEdit = (partId: string) => {
+		setMode("edit");
+		if (partId) setHighlightedPartId(partId);
+	};
+
 	const hasStock = stockItems.length > 0;
 
 	return (
@@ -524,6 +546,7 @@ export default function PartsUsedSection({
 				className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-b border-zinc-800"
 			>
 				<span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide">
+					{adding && <span className="text-blue-400">Editing </span>}
 					Parts Used
 					{lineItems.length > 0 && (
 						<span className="ml-2 text-zinc-500 font-normal normal-case tracking-normal">
@@ -556,19 +579,22 @@ export default function PartsUsedSection({
 						</div>
 					) : (
 						<div className="border-b border-zinc-800">
-							{/* Edit zone header */}
-							<div className="flex items-center px-4 py-2 bg-blue-600/[.09] border-b border-blue-600/[.18]">
-								<span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
-									Editing Parts
-								</span>
-							</div>
-							{/* Mode toggle */}
+							{/* Mode toggle — three tabs */}
 							<div className="flex px-4 pt-3 gap-2 mb-0">
 								<button
-									onClick={() =>
-										setMode("stock")
-									}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+									onClick={() => setMode("edit")}
+									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+										mode === "edit"
+											? "bg-zinc-700 text-white"
+											: "text-zinc-500 hover:text-zinc-300"
+									}`}
+								>
+									<Pencil size={12} />
+									Edit Parts
+								</button>
+								<button
+									onClick={() => setMode("stock")}
+									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "stock"
 											? "bg-zinc-700 text-white"
 											: "text-zinc-500 hover:text-zinc-300"
@@ -582,7 +608,7 @@ export default function PartsUsedSection({
 										setMode("free");
 										setStockSearch("");
 									}}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "free"
 											? "bg-zinc-700 text-white"
 											: "text-zinc-500 hover:text-zinc-300"
@@ -593,9 +619,16 @@ export default function PartsUsedSection({
 								</button>
 							</div>
 
-							{mode === "stock" &&
-							hasStock &&
-							user?.userId ? (
+							{mode === "edit" ? (
+								<div className="pt-3">
+									<EditPartsTab
+										lineItems={lineItems}
+										onUpdateQty={handleQtyChange}
+										isPending={updateVisit.isPending}
+										highlightedPartId={highlightedPartId}
+									/>
+								</div>
+							) : mode === "stock" && hasStock && user?.userId ? (
 								<StockPartPicker
 									stockItems={stockItems}
 									visitId={visitId}
@@ -603,12 +636,8 @@ export default function PartsUsedSection({
 									technicianId={user.userId}
 									lineItems={lineItems}
 									search={stockSearch}
-									onSearchChange={
-										setStockSearch
-									}
-									onUpdateQty={
-										handleQtyChange
-									}
+									onSearchChange={setStockSearch}
+									onSwitchToEdit={handleSwitchToEdit}
 									onClose={() => {
 										setAdding(false);
 										setStockSearch("");
@@ -617,18 +646,12 @@ export default function PartsUsedSection({
 							) : mode === "stock" && !hasStock ? (
 								<div className="px-4 py-4">
 									<p className="text-sm text-zinc-500">
-										No vehicle stock
-										available.{" "}
+										No vehicle stock available.{" "}
 										<button
-											onClick={() =>
-												setMode(
-													"free"
-												)
-											}
+											onClick={() => setMode("free")}
 											className="text-blue-400 hover:underline"
 										>
-											Use free
-											entry
+											Use free entry
 										</button>
 									</p>
 								</div>
@@ -642,6 +665,7 @@ export default function PartsUsedSection({
 									}}
 								/>
 							)}
+
 							{/* Done strip — persistent close, always visible */}
 							<div className="px-4 py-2.5 bg-zinc-900 border-t border-zinc-800">
 								<button
@@ -657,12 +681,8 @@ export default function PartsUsedSection({
 						</div>
 					)}
 
-					{/* Parts list — hidden while searching vehicle stock */}
-					{!(
-						mode === "stock" &&
-						adding &&
-						stockSearch.length > 0
-					) && (
+					{/* Parts list — read-only, shown only when not editing */}
+					{!adding && (
 						<>
 							{lineItems.length === 0 ? (
 								<p className="px-4 py-5 text-center text-sm text-zinc-600">
@@ -670,178 +690,53 @@ export default function PartsUsedSection({
 								</p>
 							) : (
 								<div className="divide-y divide-zinc-800/60">
-									{lineItems.map(
-										(item, idx) => {
-											const qty =
-												Number(
-													item.quantity
-												);
-											const unitPrice =
-												Number(
-													item.unit_price
-												);
-											const rowTotal =
-												qty *
-												unitPrice;
-											const isOne =
-												qty ===
-												1;
+									{lineItems.map((item, idx) => {
+										const qty = Number(item.quantity);
+										const unitPrice = Number(item.unit_price);
+										const rowTotal = qty * unitPrice;
 
-											return adding ? (
-												/* Edit mode — ± controls */
-												<div
-													key={
-														item.id ??
-														idx
-													}
-													className="flex items-center justify-between px-4 py-2.5 gap-3"
-												>
-													{/* Name + description — no unit price subtitle */}
-													<div className="flex-1 min-w-0">
-														<p className="text-sm text-white line-clamp-2">
-															{
-																item.name
-															}
+										return (
+											<div
+												key={item.id ?? idx}
+												className="flex items-center justify-between px-4 py-2.5"
+											>
+												<div className="flex-1 min-w-0">
+													<p className="text-sm text-white line-clamp-2">
+														{item.name}
+													</p>
+													{item.description && (
+														<p className="text-xs text-zinc-600 truncate">
+															{item.description}
 														</p>
-														{item.description && (
-															<p className="text-xs text-zinc-600 truncate">
-																{
-																	item.description
-																}
-															</p>
-														)}
-													</div>
-
-													{/* Stepper + qty×ea / total */}
-													<div className="shrink-0 flex flex-col items-end gap-0.5">
-														<div className="flex items-center gap-1.5">
-															<button
-																onClick={() =>
-																	handleQtyChange(
-																		item,
-																		isOne
-																			? 0
-																			: qty -
-																					1
-																	)
-																}
-																disabled={
-																	updateVisit.isPending
-																}
-																className={`flex items-center justify-center w-5 h-5 rounded text-xs font-bold border transition-colors disabled:opacity-40 ${
-																	isOne
-																		? "border-red-500/30 bg-red-500/8 text-red-400 hover:bg-red-500/15"
-																		: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-																}`}
-																aria-label={
-																	isOne
-																		? "Remove part"
-																		: "Decrease quantity"
-																}
-															>
-																{isOne
-																	? "✕"
-																	: "−"}
-															</button>
-															<span className="text-sm font-semibold text-white tabular-nums min-w-[18px] text-center">
-																{
-																	qty
-																}
-															</span>
-															<button
-																onClick={() =>
-																	handleQtyChange(
-																		item,
-																		qty +
-																			1
-																	)
-																}
-																disabled={
-																	updateVisit.isPending
-																}
-																className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors disabled:opacity-40"
-																aria-label="Increase quantity"
-															>
-																＋
-															</button>
-															<span className="text-sm text-white tabular-nums">
-																×
-																$
-																{unitPrice.toFixed(
-																	2
-																)}
-															</span>
-														</div>
-														<span className="text-xs text-zinc-500 tabular-nums">
-															$
-															{rowTotal.toFixed(
-																2
-															)}
-														</span>
-													</div>
+													)}
 												</div>
-											) : (
-												/* Read-only mode — original display */
-												<div
-													key={
-														item.id ??
-														idx
-													}
-													className="flex items-center justify-between px-4 py-2.5"
-												>
-													<div className="flex-1 min-w-0">
-														<p className="text-sm text-white line-clamp-2">
-															{
-																item.name
-															}
-														</p>
-														{item.description && (
-															<p className="text-xs text-zinc-600 truncate">
-																{
-																	item.description
-																}
-															</p>
-														)}
-													</div>
-													<div className="text-right shrink-0 ml-4">
-														<p className="text-sm text-white tabular-nums">
-															{
-																qty
-															}{" "}
-															×
-															$
-															{unitPrice.toFixed(
-																2
-															)}
-														</p>
-														<p className="text-xs text-zinc-500 tabular-nums">
-															$
-															{rowTotal.toFixed(
-																2
-															)}
-														</p>
-													</div>
+												<div className="text-right shrink-0 ml-4">
+													<p className="text-sm text-white tabular-nums">
+														{qty} × ${unitPrice.toFixed(2)}
+													</p>
+													<p className="text-xs text-zinc-500 tabular-nums">
+														${rowTotal.toFixed(2)}
+													</p>
 												</div>
-											);
-										}
-									)}
+											</div>
+										);
+									})}
 								</div>
 							)}
 						</>
 					)}
 
-					{/* Running total — hidden while searching vehicle stock */}
-					{!(mode === "stock" && adding && stockSearch.length > 0) &&
-						lineItems.length > 0 && (
-							<div className="flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-t border-zinc-800">
-								<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
-									Running Total
-								</span>
-								<span className="text-base font-bold text-white tabular-nums">
-									${total.toFixed(2)}
-								</span>
-							</div>
-						)}
+					{/* Running total — shown only when not editing */}
+					{!adding && lineItems.length > 0 && (
+						<div className="flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-t border-zinc-800">
+							<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+								Running Total
+							</span>
+							<span className="text-base font-bold text-white tabular-nums">
+								${total.toFixed(2)}
+							</span>
+						</div>
+					)}
 				</div>
 			)}
 		</div>
