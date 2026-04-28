@@ -8,10 +8,11 @@ import { getScopedDb, UserContext } from "../lib/context.js";
 const createVehicleSchema = z.object({
 	name:          z.string().min(1).max(100),
 	type:          z.string().min(1).max(50),
-	license_plate: z.string().max(20).nullable().optional(),
+	license_plate: z.string().min(1).max(50),
 	year:          z.number().int().min(1900).max(2100).nullable().optional(),
 	make:          z.string().max(50).nullable().optional(),
 	model:         z.string().max(50).nullable().optional(),
+	color:         z.string().max(50).nullable().optional(),
 	status:        z.enum(["active", "inactive"]).default("active"),
 	notes:         z.string().max(1000).nullable().optional(),
 });
