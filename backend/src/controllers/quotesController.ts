@@ -586,6 +586,8 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 			// Track status changes for auto-timestamps
 			const isFirstIssued =
 				parsed.status === "Issued" && existing.status !== "Issued";
+			const isDraftDirectSend =
+				parsed.status === "Sent" && existing.status === "Draft";
 			const isFirstSent =
 				parsed.status === "Sent" && existing.status !== "Sent";
 			const isFirstViewed =
@@ -647,7 +649,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 						rejection_reason: parsed.rejection_reason,
 					}),
 					// Auto-timestamps
-					...(isFirstIssued && { issued_at: new Date() }),
+					...((isFirstIssued || isDraftDirectSend) && { issued_at: new Date() }),
 					...(isFirstSent && { sent_at: new Date() }),
 					...(isFirstViewed && { viewed_at: new Date() }),
 					...(isFirstApproved && { approved_at: new Date() }),
