@@ -7,6 +7,14 @@
       "type": "datasource",
       "pluginId": "prometheus",
       "pluginName": "Prometheus"
+    },
+    {
+      "name": "DS_LOKI",
+      "label": "Loki",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "loki",
+      "pluginName": "Loki"
     }
   ],
   "__requires": [
@@ -39,6 +47,24 @@
       "id": "piechart",
       "name": "Pie chart",
       "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "logs",
+      "name": "Logs",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "loki",
+      "name": "Loki",
+      "version": "1.0.0"
     }
   ],
   "annotations": {
@@ -382,6 +408,172 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Errors",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Errors by Endpoint (4xx + 5xx, time range)",
+      "description": "Top error-producing endpoints in the selected time range. Counts 4xx + 5xx responses grouped by method, route, and status code.",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "showHeader": true,
+        "footer": { "show": false, "reducer": ["sum"], "fields": "" },
+        "sortBy": [{ "displayName": "Count", "desc": true }]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": true
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Count" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "yellow", "value": 5 },
+                    { "color": "red", "value": 25 }
+                  ]
+                }
+              },
+              { "id": "unit", "value": "short" },
+              { "id": "decimals", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "status_code" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "range", "options": { "from": 400, "to": 499, "result": { "color": "orange", "index": 0 } } },
+                  { "type": "range", "options": { "from": 500, "to": 599, "result": { "color": "red", "index": 1 } } }
+                ]
+              },
+              { "id": "custom.displayMode", "value": "color-text" }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "topk(50, sum by (method, route, status_code) (increase(hvac_http_requests_total{status_code=~\"[45]..\"}[$__range])))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+            "indexByName": {
+              "method": 0,
+              "route": 1,
+              "status_code": 2,
+              "Value": 3
+            },
+            "renameByName": { "Value": "Count" }
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Errors over Time (by status code)",
+      "description": "Rate of 4xx and 5xx responses, broken out by status code.",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "last"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "reqps",
+          "decimals": 3
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "^4" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": "^5" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (status_code) (rate(hvac_http_requests_total{status_code=~\"[45]..\"}[5m]))",
+          "legendFormat": "{{status_code}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "logs",
+      "title": "Recent Error Logs (backend)",
+      "description": "Structured pino logs at level=error or fatal from the backend container. Use the `search` variable above to grep across messages and error payloads.",
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "expr": "{container=\"backend\"} | json | level =~ \"error|fatal\" |~ \"(?i)$search\"",
+          "refId": "A",
+          "queryType": "range",
+          "maxLines": 1000
+        }
+      ]
     }
   ],
   "refresh": "30s",
@@ -393,7 +585,7 @@
         "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Prometheus",
         "multi": false,
         "name": "DS_PROMETHEUS",
         "options": [],
@@ -401,6 +593,30 @@
         "refresh": 1,
         "regex": "",
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Loki",
+        "multi": false,
+        "name": "DS_LOKI",
+        "options": [],
+        "query": "loki",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": false, "text": "", "value": "" },
+        "hide": 0,
+        "label": "Search errors",
+        "name": "search",
+        "options": [{ "selected": true, "text": "", "value": "" }],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox",
+        "description": "Optional case-insensitive regex applied to error log lines (matches across msg, err, stack, etc.). Leave blank to show all errors."
       }
     ]
   },
@@ -409,5 +625,5 @@
   "timezone": "browser",
   "title": "EpicIT Dispatch — HTTP API",
   "uid": "epicit-http-api-v1",
-  "version": 1
+  "version": 2
 }

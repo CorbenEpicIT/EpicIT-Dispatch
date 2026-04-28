@@ -2,14 +2,14 @@ import { ZodError } from "zod";
 import { db } from "../db.js";
 import bcrypt from "bcrypt";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
-import { 
-	generateAccessToken, 
-	gererateRefreshToken, 
+import {
+	generateAccessToken,
+	gererateRefreshToken,
 	verifyToken,
 	verifyRefreshToken,
 	generateOTPToken,
 } from "../services/jwtService.js";
-import { createOTP } from "../services/otpServce.js";
+import { createOTP, OTP_DISABLED } from "../services/otpServce.js";
 import { Response } from "express";
 import {
 	sendEmail,
@@ -18,7 +18,7 @@ import {
 } from "../services/emailService.js";
 import crypto from "crypto";
 import { UserContext } from "../lib/context.js";
-
+import { log } from "../services/appLogger.js";
 
 interface AuthResponse {
 	token: string;
@@ -35,10 +35,10 @@ interface AuthResponse {
 // get organization by parsing email if needed
 // might change later
 export const login = async (
-	res: Response, 
-	email: string, 
-	password: string, 
-	role: string
+	res: Response,
+	email: string,
+	password: string,
+	role: string,
 ) => {
 	try {
 		// just for testing
@@ -58,11 +58,14 @@ export const login = async (
 
 			const pendingToken = generateOTPToken(user, role);
 			if (!pendingToken) {
-				return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
+				return createErrorResponse(
+					ErrorCodes.SERVER_ERROR,
+					"Error generating OTP token",
+				);
 			}
 
 			return { data: { pendingToken } };
-			
+
 			//return issueAuthTokens(res, user.id, role);
 		}
 		// user already has pending token and otp
@@ -77,7 +80,7 @@ export const login = async (
 				"Invalid credentials",
 			);
 		}
-		
+
 		// ask if last login updates automatically or if I have to add that here
 		const user =
 			role === "technician"
@@ -113,27 +116,40 @@ export const login = async (
 			return await issueAuthTokens(res, user.id, effectiveRole);
 		}
 
+		// OTP disabled: bypass the verification step and issue tokens directly.
+		if (OTP_DISABLED) {
+			log.info({ userId: user.id, role: effectiveRole }, "[OTP DISABLED] Bypassing OTP step on login");
+			return await issueAuthTokens(res, user.id, effectiveRole);
+		}
+
 		const otp = await createOTP(user.id, effectiveRole);
 
 		const pendingToken = generateOTPToken(user, role);
 		if (!pendingToken) {
-			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error generating OTP token");
+			return createErrorResponse(
+				ErrorCodes.SERVER_ERROR,
+				"Error generating OTP token",
+			);
 		}
 
 		const sent = await sendOTPEmail(user.email, otp);
 		if (!sent.success) {
-			return createErrorResponse(ErrorCodes.SERVER_ERROR, "Error sending OTP email");
+			return createErrorResponse(
+				ErrorCodes.SERVER_ERROR,
+				"Error sending OTP email",
+			);
 		}
 		return { data: { pendingToken } };
 	} catch (e) {
 		if (e instanceof ZodError) {
+			log.error({ err: e }, "Login failed");
 			return {
 				error: `Validation failed: ${e.issues
 					.map((err) => err.message)
 					.join(", ")}`,
 			};
 		}
-		
+
 		return createErrorResponse(
 			ErrorCodes.SERVER_ERROR,
 			"Internal server error",
@@ -141,7 +157,11 @@ export const login = async (
 	}
 };
 
-export const issueAuthTokens = async (res: Response, userId: string, role: string) => {
+export const issueAuthTokens = async (
+	res: Response,
+	userId: string,
+	role: string,
+) => {
 	try {
 		// get user by id
 		const user =
@@ -171,19 +191,33 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 			if (role === "technician") {
 				await db.technician.update({
 					where: { id: userId },
-					data: { password_reset_token: resetToken, password_reset_token_expires_at: expiresAt, last_login: now },
+					data: {
+						password_reset_token: resetToken,
+						password_reset_token_expires_at: expiresAt,
+						last_login: now,
+					},
 				});
 			} else {
 				await db.dispatcher.update({
 					where: { id: userId },
-					data: { password_reset_token: resetToken, password_reset_token_expires_at: expiresAt, last_login: now },
+					data: {
+						password_reset_token: resetToken,
+						password_reset_token_expires_at: expiresAt,
+						last_login: now,
+					},
 				});
 			}
 		} else {
 			if (role === "technician") {
-				await db.technician.update({ where: { id: userId }, data: { last_login: now } });
+				await db.technician.update({
+					where: { id: userId },
+					data: { last_login: now },
+				});
 			} else {
-				await db.dispatcher.update({ where: { id: userId }, data: { last_login: now } });
+				await db.dispatcher.update({
+					where: { id: userId },
+					data: { last_login: now },
+				});
 			}
 		}
 
@@ -217,7 +251,7 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 			resetToken,
 		};
 		return { data: AuthResponse };
-	}catch (e) {
+	} catch (e) {
 		if (e instanceof ZodError) {
 			return createErrorResponse(
 				ErrorCodes.VALIDATION_ERROR,
@@ -225,7 +259,7 @@ export const issueAuthTokens = async (res: Response, userId: string, role: strin
 			);
 		}
 	}
-}
+};
 
 // invalidate session token and clear cookies
 // access token is cleared on front end
@@ -253,7 +287,6 @@ export const logout = async (res: Response, userData: any, token: string) => {
 // just here if needed
 export const checkRole = async (userData: UserContext) => {
 	try {
-
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
@@ -275,13 +308,14 @@ export const checkToken = (token: string) => {
 
 export const checkRefreshToken = (token: string) => {
 	return verifyRefreshToken(token);
-}
+};
 
 export const requestPasswordReset = async (email: string, role: string) => {
 	try {
-		const user = role === "technician"
-			? await db.technician.findUnique({ where: { email } })
-			: await db.dispatcher.findUnique({ where: { email } });
+		const user =
+			role === "technician"
+				? await db.technician.findUnique({ where: { email } })
+				: await db.dispatcher.findUnique({ where: { email } });
 
 		if (!user) {
 			// for security, don't reveal if email exists or not
@@ -316,7 +350,7 @@ export const requestPasswordReset = async (email: string, role: string) => {
 			return { err: "Error sending password reset email" };
 		}
 		return { err: "" };
-	}catch (e) {
+	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -328,14 +362,26 @@ export const requestPasswordReset = async (email: string, role: string) => {
 	}
 };
 
-export const resetPassword = async (token: string, newPassword: string, role: string) => {
+export const resetPassword = async (
+	token: string,
+	newPassword: string,
+	role: string,
+) => {
 	try {
 		const isDispatcher = role !== "technician";
 		const user = isDispatcher
-			? await db.dispatcher.findFirst({ where: { password_reset_token: token } })
-			: await db.technician.findFirst({ where: { password_reset_token: token } });
+			? await db.dispatcher.findFirst({
+					where: { password_reset_token: token },
+				})
+			: await db.technician.findFirst({
+					where: { password_reset_token: token },
+				});
 
-		if (!user || !user.password_reset_token_expires_at || user.password_reset_token_expires_at < new Date()) {
+		if (
+			!user ||
+			!user.password_reset_token_expires_at ||
+			user.password_reset_token_expires_at < new Date()
+		) {
 			return { err: "Invalid or expired token" };
 		}
 
@@ -350,7 +396,7 @@ export const resetPassword = async (token: string, newPassword: string, role: st
 						password_reset_token_expires_at: null,
 					},
 				});
-			}else{
+			} else {
 				await tx.technician.update({
 					where: { password_reset_token: token },
 					data: {
@@ -362,7 +408,7 @@ export const resetPassword = async (token: string, newPassword: string, role: st
 			}
 		});
 		return { err: "" };
-	}catch (e) {
+	} catch (e) {
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
