@@ -32,6 +32,12 @@ export const getAllJobVisits = async (organization_id: string, filters?: { clien
 			line_items: {
 				orderBy: { sort_order: "asc" },
 			},
+			time_entries: {
+				orderBy: { clocked_in_at: "asc" },
+				include: {
+					tech: { select: { id: true, name: true } },
+				},
+			},
 			notes: true,
 		},
 		orderBy: { scheduled_start_at: filters?.sort ?? "asc" },

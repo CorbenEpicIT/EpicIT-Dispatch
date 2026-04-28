@@ -416,6 +416,7 @@ export const useClockInMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ visitId, techId }) => jobApi.clockInVisit(visitId, techId),
 		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 			await queryClient.invalidateQueries({ queryKey: ["technicians", variables.techId, "visits"] });
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits", variables.visitId] });
 		},
@@ -431,6 +432,7 @@ export const useClockOutMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ visitId, techId }) => jobApi.clockOutVisit(visitId, techId),
 		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 			await queryClient.invalidateQueries({ queryKey: ["technicians", variables.techId, "visits"] });
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits", variables.visitId] });
 		},
