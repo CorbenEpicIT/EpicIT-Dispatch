@@ -8,13 +8,8 @@ export default function LoginPage() {
 	const { login } = useAuthStore();
 	const [role, setRole] = useState<"dispatcher" | "technician">("dispatcher");
 
-	const DEV_CREDENTIALS = {
-		dispatcher: { name: "admin@epichvac.com", password: "password123" },
-		technician: { name: "john.smith@epichvac.com", password: "password123" },
-	};
-
-	const [name, setName] = useState(DEV_CREDENTIALS.dispatcher.name);
-	const [password, setPassword] = useState(DEV_CREDENTIALS.dispatcher.password);
+	const [name, setName] = useState("");
+	const [password, setPassword] = useState("");
 	const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 	const [otpSent, setOtpSent] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
@@ -187,12 +182,7 @@ export default function LoginPage() {
 				/>
 				<select
 					value={role}
-					onChange={(e) => {
-						const newRole = e.target.value as "dispatcher" | "technician";
-						setRole(newRole);
-						setName(DEV_CREDENTIALS[newRole].name);
-						setPassword(DEV_CREDENTIALS[newRole].password);
-					}}
+					onChange={(e) => setRole(e.target.value as "dispatcher" | "technician")}
 					className="w-full border rounded px-3 py-2"
 				>
 					<option value="dispatcher">Dispatch/Admin</option>

@@ -7,20 +7,31 @@ import { generateQuotePdf, generateInvoicePdf } from "../lib/pdf/pdfService.js";
 import { getQuoteById } from "../controllers/quotesController.js";
 import { getInvoiceById } from "../controllers/invoicesController.js";
 
+// ============================================================================
+// EMAIL TEMPORARILY DISABLED — pending Postmark sender approval.
+// All exported send functions short-circuit below and log a notice instead of
+// hitting Postmark. To re-enable, flip EMAIL_DISABLED to false (and ensure
+// POSTMARK_API_KEY / POSTMARK_FROM_EMAIL are set).
+// ============================================================================
+const EMAIL_DISABLED = true;
 
-const POSTMARK_FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL;
-if (!POSTMARK_FROM_EMAIL) throw new Error("POSTMARK_FROM_EMAIL is not set");
+const POSTMARK_FROM_EMAIL = (process.env.POSTMARK_FROM_EMAIL ?? "") as string;
+if (!EMAIL_DISABLED && !POSTMARK_FROM_EMAIL) throw new Error("POSTMARK_FROM_EMAIL is not set");
 
-const POSTMARK_API_KEY = process.env.POSTMARK_API_KEY;
-if (!POSTMARK_API_KEY) throw new Error("POSTMARK_API_KEY is not set");
+const POSTMARK_API_KEY = (process.env.POSTMARK_API_KEY ?? "") as string;
+if (!EMAIL_DISABLED && !POSTMARK_API_KEY) throw new Error("POSTMARK_API_KEY is not set");
 
-const client = new postmark.ServerClient(POSTMARK_API_KEY);
+const client = POSTMARK_API_KEY ? new postmark.ServerClient(POSTMARK_API_KEY) : null as unknown as postmark.ServerClient;
 
 export const sendEmail = async (
 	to: string,
 	templateAlias: string,
 	templateModel: Record<string, unknown>,
 ) => {
+	if (EMAIL_DISABLED) {
+		log.info({ to, templateAlias }, "[EMAIL DISABLED] Skipping templated email — pending Postmark approval");
+		return;
+	}
 	try {
 		await client.sendEmailWithTemplate({
 			From: POSTMARK_FROM_EMAIL,
@@ -71,6 +82,10 @@ const generateOTPEmail = (otp: string): string => `
   </html>
 `;
 export const sendOTPEmail = async (to: string, otp: string) => {
+	if (EMAIL_DISABLED) {
+		log.info({ to, otp }, "[EMAIL DISABLED] Skipping OTP email — pending Postmark approval. Use 000000 to verify.");
+		return createSuccessResponse(null);
+	}
 	if (process.env.NODE_ENV !== "production") {
 		log.info({ to, otp }, "[DEV] Skipping OTP email — use 000000 to verify");
 		return createSuccessResponse(null);
@@ -219,6 +234,10 @@ export const sendQuoteEmail = async (
 	recipientEmail: string,
 	organizationId: string,
 ): Promise<void> => {
+	if (EMAIL_DISABLED) {
+		log.info({ quoteId, recipientEmail }, "[EMAIL DISABLED] Skipping quote email — pending Postmark approval");
+		return;
+	}
 	const [quote, pdfBuffer] = await Promise.all([
 		getQuoteById(quoteId, organizationId),
 		generateQuotePdf(quoteId, organizationId),
@@ -267,6 +286,10 @@ export const sendInvoiceEmail = async (
 	recipientEmail: string,
 	organizationId: string,
 ): Promise<void> => {
+	if (EMAIL_DISABLED) {
+		log.info({ invoiceId, recipientEmail }, "[EMAIL DISABLED] Skipping invoice email — pending Postmark approval");
+		return;
+	}
 	const [invoice, pdfBuffer] = await Promise.all([
 		getInvoiceById(invoiceId, organizationId),
 		generateInvoicePdf(invoiceId, organizationId),
@@ -318,6 +341,14 @@ export const sendEmailVerificationEmail = async (
 	token: string,
 	tempPassword?: string,
 ) => {
+	if (EMAIL_DISABLED) {
+		const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+		log.info(
+			{ to, verificationLink, tempPassword },
+			"[EMAIL DISABLED] Skipping verification email — pending Postmark approval. Use the logged link to verify.",
+		);
+		return;
+	}
 	try {
 		const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
 		const tempPasswordSection = tempPassword ? `
@@ -371,10 +402,18 @@ export const sendEmailVerificationEmail = async (
 };
 
 export const sendPasswordResetEmail = async (
-	to: string, 
+	to: string,
 	token: string,
 	role: string
 ) => {
+	if (EMAIL_DISABLED) {
+		const passwordResetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&role=${role}`;
+		log.info(
+			{ to, passwordResetLink },
+			"[EMAIL DISABLED] Skipping password reset email — pending Postmark approval. Use the logged link to reset.",
+		);
+		return createSuccessResponse(null);
+	}
 	try {
 		const passwordResetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&role=${role}`;
 		const htmlContent = `
