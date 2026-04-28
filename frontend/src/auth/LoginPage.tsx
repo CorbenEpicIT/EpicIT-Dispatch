@@ -22,15 +22,22 @@ export default function LoginPage() {
 		try {
 			setIsLoading(true);
 			const result = await loginCall({ email: name, password: password, role: role });
-			// First login: OTP skipped, redirect straight to password reset
-			if (result.forcePasswordReset && result.resetToken && result.token) {
+			// If the backend returned a full access token (first login OR OTP
+			// disabled), skip the OTP step and route based on the payload.
+			if (result.token) {
 				const parts = result.token.split(".");
 				if (parts.length === 3) {
 					const payload = JSON.parse(atob(parts[1]));
 					const orgTimezone = payload.organization_timezone ?? "America/Chicago";
-					login(role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+					login(payload.role ?? role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+					if (result.forcePasswordReset && result.resetToken) {
+						navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
+					} else if ((payload.role ?? role) === "technician") {
+						navigate("/technician");
+					} else {
+						navigate("/dispatch");
+					}
 				}
-				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
 				return;
 			}
 			setOtpSent(true);

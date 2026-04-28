@@ -9,7 +9,7 @@ import {
 	verifyRefreshToken,
 	generateOTPToken,
 } from "../services/jwtService.js";
-import { createOTP } from "../services/otpServce.js";
+import { createOTP, OTP_DISABLED } from "../services/otpServce.js";
 import { Response } from "express";
 import {
 	sendEmail,
@@ -113,6 +113,12 @@ export const login = async (
 
 		// First login: skip OTP and go straight to forced password reset
 		if (!user.last_login) {
+			return await issueAuthTokens(res, user.id, effectiveRole);
+		}
+
+		// OTP disabled: bypass the verification step and issue tokens directly.
+		if (OTP_DISABLED) {
+			log.info({ userId: user.id, role: effectiveRole }, "[OTP DISABLED] Bypassing OTP step on login");
 			return await issueAuthTokens(res, user.id, effectiveRole);
 		}
 

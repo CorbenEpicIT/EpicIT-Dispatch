@@ -1,11 +1,24 @@
 import { db } from "../db.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 import { verifyOTPToken } from "./jwtService.js";
+import { log } from "./appLogger.js";
+
+// ============================================================================
+// OTP TEMPORARILY DISABLED — needed for test runs while email delivery is
+// disabled. createOTP / verifyOTP short-circuit below and the login flow in
+// authenticationController bypasses the OTP step entirely. To re-enable, flip
+// OTP_DISABLED to false.
+// ============================================================================
+export const OTP_DISABLED = true;
 
 export const createOTP = async (userid: string, role: string) => {
+	if (OTP_DISABLED) {
+		log.info({ userid, role }, "[OTP DISABLED] Skipping OTP creation");
+		return "000000";
+	}
 	const otp = Math.floor(100000 + Math.random() * 900000).toString();
 	// store otp in db with expiration time when db is set up
-	await db.otp_verification.deleteMany({ where: { userId: userid } }); 
+	await db.otp_verification.deleteMany({ where: { userId: userid } });
 	await db.otp_verification.create({
 		data: {
 			userId: userid,
@@ -28,6 +41,11 @@ export const verifyOTP = async (
 	const payload = verifyOTPToken(pendingToken!);
 	if (payload.stage !== 'pending_otp') {
 		return createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Invalid session");
+	}
+
+	if (OTP_DISABLED) {
+		log.info({ userId: payload.userId, role: payload.role }, "[OTP DISABLED] Auto-accepting OTP");
+		return { data: { userId: payload.userId, role: payload.role } };
 	}
 
     
