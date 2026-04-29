@@ -10,6 +10,10 @@ export default function RegisterPage() {
 	const [errorMessage, setErrorMessage] = useState("");
 
 	const [orgName, setOrgName] = useState("");
+	const [orgPhone, setOrgPhone] = useState("");
+	const [orgAddress, setOrgAddress] = useState("");
+	const [orgWebsite, setOrgWebsite] = useState("");
+	const [orgTimezone, setOrgTimezone] = useState("America/Chicago");
 	const [adminName, setAdminName] = useState("");
 	const [adminEmail, setAdminEmail] = useState("");
 	const [adminPhone, setAdminPhone] = useState("");
@@ -35,11 +39,15 @@ export default function RegisterPage() {
 		setStatus("loading");
 		try {
 			await registerOrganization({
-				org_name: orgName.trim(),
-				admin_name: adminName.trim(),
-				admin_email: adminEmail.trim(),
+				org_name:     orgName.trim(),
+				admin_name:   adminName.trim(),
+				admin_email:  adminEmail.trim(),
 				admin_password: password,
-				admin_phone: adminPhone.trim() || undefined,
+				admin_phone:  adminPhone.trim() || undefined,
+				org_phone:    orgPhone.trim() || undefined,
+				org_address:  orgAddress.trim() || undefined,
+				org_website:  orgWebsite.trim() || undefined,
+				org_timezone: orgTimezone || undefined,
 			});
 			setStatus("success");
 		} catch (e: any) {
@@ -84,6 +92,28 @@ export default function RegisterPage() {
 
 						<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-2">Organization</p>
 						{field("Organization Name", "text", orgName, setOrgName, "e.g. Acme HVAC")}
+						{field("Organization Phone", "tel", orgPhone, setOrgPhone, "+1 (555) 000-0000", false)}
+						{field("Address", "text", orgAddress, setOrgAddress, "123 Main St, Chicago, IL", false)}
+						{field("Website", "url", orgWebsite, setOrgWebsite, "https://example.com", false)}
+						<div>
+							<label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">
+								Timezone<span className="ml-1 text-gray-400 normal-case">(optional)</span>
+							</label>
+							<select
+								value={orgTimezone}
+								onChange={(e) => setOrgTimezone(e.target.value)}
+								className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+							>
+								<option value="America/New_York">Eastern (ET)</option>
+								<option value="America/Chicago">Central (CT)</option>
+								<option value="America/Denver">Mountain (MT)</option>
+								<option value="America/Los_Angeles">Pacific (PT)</option>
+								<option value="America/Anchorage">Alaska (AKT)</option>
+								<option value="Pacific/Honolulu">Hawaii (HT)</option>
+								<option value="America/Phoenix">Arizona (no DST)</option>
+								<option value="America/Puerto_Rico">Puerto Rico (AST)</option>
+							</select>
+						</div>
 
 						<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-2">Admin Account</p>
 						{field("Your Name", "text", adminName, setAdminName, "Full name")}

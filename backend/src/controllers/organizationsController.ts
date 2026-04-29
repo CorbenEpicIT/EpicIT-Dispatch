@@ -23,9 +23,13 @@ export const registerOrganization = async (data: unknown) => {
 		const result = await db.$transaction(async (tx) => {
 			const org = await tx.organization.create({
 				data: {
-					name: parsed.org_name,
-					email: parsed.admin_email,
-					phone: parsed.admin_phone ?? null,
+					name:     parsed.org_name,
+					email:    parsed.admin_email,
+					phone:    parsed.org_phone ?? parsed.admin_phone ?? null,
+					address:  parsed.org_address ?? null,
+					website:  parsed.org_website || null,
+					timezone: parsed.org_timezone ?? "America/Chicago",
+					tax_rate: parsed.org_tax_rate ?? 0,
 				},
 			});
 

@@ -6,6 +6,8 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import bcrypt from "bcrypt";
+import { randomBytes } from "crypto";
 
 export const getAllTechnicians = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -59,11 +61,18 @@ export const insertTechnician = async (
 			return { err: "Email already exists" };
 		}
 
+		const passwordProvided = parsed.password? true : false;
+		const tempPassword = parsed.password ?? randomBytes(8).toString("hex") + "A1!";
+		const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
 		const created = await sdb.$transaction(async (tx) => {
+			const { password: _pw, ...parsedWithoutPassword } = parsed;
 			const technician = await tx.technician.create({
 				data: {
-					...parsed,
+					...parsedWithoutPassword,
 					organization_id: organizationId,
+					password: hashedPassword,
+					...(passwordProvided && { last_login: new Date() }),
 				},
 				include: {
 					visit_techs: {
