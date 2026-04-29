@@ -48,6 +48,10 @@ async function call<T>(
 
 	let resp = await send();
 	if (resp.status === 401) {
+		console.warn(
+			`[backendApi] ${method.toUpperCase()} ${path} got 401 — body:`,
+			JSON.stringify(resp.data),
+		);
 		adminAuth.invalidate();
 		const newToken = await adminAuth.getToken();
 		headers.Authorization = `Bearer ${newToken}`;
@@ -56,8 +60,11 @@ async function call<T>(
 
 	const env = resp.data;
 	if (!env || !env.success) {
+		const code = env?.error?.code;
 		const msg = env?.error?.message ?? `HTTP ${resp.status}`;
-		throw new Error(`${method.toUpperCase()} ${path} failed: ${msg}`);
+		throw new Error(
+			`${method.toUpperCase()} ${path} failed: HTTP ${resp.status}${code ? ` ${code}` : ""} — ${msg}`,
+		);
 	}
 	return env.data as T;
 }
