@@ -21,8 +21,25 @@ export const useAuthStore = create<AuthState>()(
 			user: null,
 			login: (role, name, userId, orgId, orgTimezone) =>
 				set({ user: { role, name, userId, orgId, orgTimezone } }),
-			logout: () => set({ user: null }),
+			logout: () => {
+				localStorage.removeItem("accessToken");
+				set({ user: null });
+			},
 		}),
 		{ name: "auth-storage" }
 	)
 );
+
+export function isTokenExpired(): boolean {
+	const token = localStorage.getItem("accessToken");
+	if (!token) return true;
+	try {
+		const parts = token.split(".");
+		if (parts.length !== 3) return true;
+		const payload = JSON.parse(atob(parts[1]));
+		if (typeof payload.exp !== "number") return true;
+		return payload.exp * 1000 <= Date.now();
+	} catch {
+		return true;
+	}
+}
