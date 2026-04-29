@@ -11,6 +11,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { db } from "../db.js";
 
 async function generateQuoteNumber(organizationId: string): Promise<string> {
 	const sdb = getScopedDb(organizationId);
@@ -173,7 +174,10 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 		const parsed = createQuoteSchema.parse(req.body);
 		const sdb = getScopedDb(organizationId);
 
-		const created = await sdb.$transaction(async (tx) => {
+		let created: Awaited<ReturnType<typeof db.quote.findFirst>> | undefined;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			try {
+				created = await sdb.$transaction(async (tx) => {
 			const client = await sdb.client.findFirst({
 				where: { id: parsed.client_id },
 			});
@@ -344,7 +348,20 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 					line_items: true,
 				},
 			});
-		});
+				});
+				break;
+			} catch (e) {
+				if (
+					attempt < 4 &&
+					e instanceof Prisma.PrismaClientKnownRequestError &&
+					e.code === "P2002" &&
+					(e.meta?.target as string[] | undefined)?.includes("quote_number")
+				) {
+					continue;
+				}
+				throw e;
+			}
+		}
 
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
