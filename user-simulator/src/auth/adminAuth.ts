@@ -7,15 +7,26 @@ let cached: Cached | null = null;
 let inflight: Promise<string> | null = null;
 
 async function login(): Promise<string> {
-	const loginResp = await http.post(`${config.backendUrl}/login`, {
-		email: config.adminEmail,
-		password: config.adminPassword,
-		role: config.adminRole,
-	});
+	const loginResp = await http.post(
+		`${config.backendUrl}/login`,
+		{
+			email: config.adminEmail,
+			password: config.adminPassword,
+			role: config.adminRole,
+		},
+		{ validateStatus: () => true },
+	);
 	const loginData = loginResp.data;
-	if (!loginData?.success) {
-		const msg = loginData?.error?.message ?? "Login failed";
-		throw new Error(`adminAuth: ${msg}`);
+	if (loginResp.status >= 400 || !loginData?.success) {
+		const code = loginData?.error?.code;
+		const msg = loginData?.error?.message ?? `HTTP ${loginResp.status}`;
+		console.error(
+			`[adminAuth] /login failed (status=${loginResp.status}, email=${config.adminEmail}, role=${config.adminRole}, passwordSet=${config.adminPassword ? "yes" : "no"}):`,
+			JSON.stringify(loginData),
+		);
+		throw new Error(
+			`adminAuth login: HTTP ${loginResp.status}${code ? ` ${code}` : ""} — ${msg}`,
+		);
 	}
 
 	let token: string | undefined = loginData.data?.token;
@@ -29,12 +40,22 @@ async function login(): Promise<string> {
 		const otpResp = await http.post(
 			`${config.backendUrl}/otp-verify`,
 			{ otp: config.adminOtp },
-			{ headers: { Authorization: `Bearer ${pendingToken}` } },
+			{
+				headers: { Authorization: `Bearer ${pendingToken}` },
+				validateStatus: () => true,
+			},
 		);
 		const otpData = otpResp.data;
-		if (!otpData?.success || !otpData?.data?.token) {
-			const msg = otpData?.error?.message ?? "OTP verify failed";
-			throw new Error(`adminAuth: ${msg}`);
+		if (otpResp.status >= 400 || !otpData?.success || !otpData?.data?.token) {
+			const code = otpData?.error?.code;
+			const msg = otpData?.error?.message ?? `HTTP ${otpResp.status}`;
+			console.error(
+				`[adminAuth] /otp-verify failed (status=${otpResp.status}):`,
+				JSON.stringify(otpData),
+			);
+			throw new Error(
+				`adminAuth otp-verify: HTTP ${otpResp.status}${code ? ` ${code}` : ""} — ${msg}`,
+			);
 		}
 		token = otpData.data.token;
 		expiresInSec = Number(otpData.data.expiresIn ?? 3600);
