@@ -495,7 +495,7 @@ model job {
   id          String   @id @unique @default(uuid())
   organization_id String?
   organization    organization? @relation(fields: [organization_id], references: [id])
-  job_number  String   @unique
+  job_number  String
   name        String
   description String   @db.Text
   priority    priority @default(Medium)
@@ -548,6 +548,7 @@ model job {
   @@index([updated_at])
 
   @@index([client_id, status])
+  @@unique([organization_id, job_number])
 }
 
 model job_line_item {

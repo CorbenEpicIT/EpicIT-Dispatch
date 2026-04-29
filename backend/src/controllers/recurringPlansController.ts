@@ -30,6 +30,7 @@ import {
 	type ScheduleFrequency,
 } from "../lib/invoiceSchedule.js";
 import { log } from "../services/appLogger.js";
+import { generateJobNumber } from "../db.js";
 
 // ─── Timezone-safe date helpers ───────────────────────────────────────────────
 // All occurrence generation works with "YYYY-MM-DD" calendar-date strings in the
@@ -107,30 +108,6 @@ export interface UserContext {
 type RecurringRuleWithWeekdays = Prisma.recurring_ruleGetPayload<{
 	include: { by_weekday: true };
 }>;
-
-async function generateJobNumber(organizationId: string): Promise<string> {
-	const sdb = getScopedDb(organizationId);
-	const lastJob = await sdb.job.findFirst({
-		where: {
-			job_number: {
-				startsWith: "J-",
-			},
-		},
-		orderBy: {
-			job_number: "desc",
-		},
-	});
-
-	let nextNumber = 1;
-	if (lastJob) {
-		const match = lastJob.job_number.match(/J-(\d+)/);
-		if (match) {
-			nextNumber = parseInt(match[1]) + 1;
-		}
-	}
-
-	return `J-${nextNumber.toString().padStart(4, "0")}`;
-}
 
 // ============================================================================
 // OCCURRENCE GENERATION LOGIC
@@ -467,7 +444,7 @@ export const insertRecurringPlan = async (
 				throw new Error("Client not found");
 			}
 
-			const jobNumber = await generateJobNumber(organizationId);
+			const jobNumber = await generateJobNumber(tx, organizationId);
 
 			// Create job container first (without recurring_plan_id)
 			const job = await tx.job.create({

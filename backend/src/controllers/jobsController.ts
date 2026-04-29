@@ -8,33 +8,9 @@ import {
 } from "../lib/validate/jobs.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
-import { Prisma } from "../../generated/prisma/client.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
 import { log } from "../services/appLogger.js";
-
-async function generateJobNumber(organizationId: string): Promise<string> {
-	const sdb = getScopedDb(organizationId);
-	const lastJob = await sdb.job.findFirst({
-		where: {
-			job_number: {
-				startsWith: "J-",
-			},
-		},
-		orderBy: {
-			job_number: "desc",
-		},
-	});
-
-	let nextNumber = 1;
-	if (lastJob) {
-		const match = lastJob.job_number.match(/J-(\d+)/);
-		if (match) {
-			nextNumber = parseInt(match[1]) + 1;
-		}
-	}
-
-	return `J-${nextNumber.toString().padStart(4, "0")}`;
-}
+import { generateJobNumber } from "../db.js";
 
 // ============================================================================
 // JOB CRUD
@@ -403,7 +379,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 				throw new Error("Job description is required");
 			}
 
-			const jobNumber = await generateJobNumber(organizationId);
+			const jobNumber = await generateJobNumber(tx, organizationId);
 
 			const job = await tx.job.create({
 				data: {
