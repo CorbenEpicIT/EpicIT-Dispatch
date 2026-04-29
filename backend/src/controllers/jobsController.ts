@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { db } from "../db.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import {
 	createJobSchema,
 	updateJobSchema,
