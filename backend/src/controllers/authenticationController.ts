@@ -241,7 +241,7 @@ export const issueAuthTokens = async (
 
 		let AuthResponse = {
 			token: accessToken,
-			expiresIn: 3600,
+			expiresIn: 86400,
 			user: {
 				uid: user.id,
 				email: user.email,

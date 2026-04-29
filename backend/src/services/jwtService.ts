@@ -42,7 +42,7 @@ export const generateAccessToken = (user: User, role: string, orgTimezone?: stri
                 organization_timezone: orgTimezone ?? null,
             },
             JWT_SECRET,
-            {expiresIn : '15m'}  // token expires in an hour may change in future
+            {expiresIn : '24h'}
         );
 }
 
@@ -166,7 +166,7 @@ export const refreshAccessToken = async (refreshToken: string) => {
                         organization_timezone: orgTimezone,
                     },
                     JWT_SECRET,
-                    {expiresIn : '15m'}
+                    {expiresIn : '24h'}
                 );
 
         return jwtResult;  
