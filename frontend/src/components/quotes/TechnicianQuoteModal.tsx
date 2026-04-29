@@ -1,4 +1,4 @@
-import { X, MapPin, Calendar, AlertCircle } from "lucide-react";
+﻿import { X, MapPin, Calendar, AlertCircle } from "lucide-react";
 import { useQuoteByIdQuery } from "../../hooks/useQuotes";
 import { QuoteStatusColors } from "../../types/quotes";
 import { formatDateTime } from "../../util/util";
@@ -16,15 +16,15 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm"
 			onClick={onClose}
 		>
 			<div
-				className="relative w-full max-w-2xl max-h-[90svh] flex flex-col bg-zinc-900 border border-zinc-700/80 rounded-b-xl sm:rounded-xl shadow-2xl"
+				className="relative w-full max-w-2xl max-h-[90svh] flex flex-col bg-zinc-900 border border-zinc-700/80 rounded-xl overflow-hidden shadow-2xl"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<div className="shrink-0 flex items-start justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm rounded-t-xl">
+				<div className="shrink-0 flex items-start justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm">
 					<div className="min-w-0 flex-1">
 						{isLoading || !quote ? (
 							<div className="h-6 w-48 bg-zinc-700 rounded animate-pulse" />
@@ -95,17 +95,17 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 									<div className="overflow-x-auto">
 										<table className="w-full min-w-[360px] text-sm table-fixed">
 											<colgroup>
-												<col style={{ width: "46%" }} />
-												<col style={{ width: "11%" }} />
+												<col style={{ width: "43%" }} />
+												<col style={{ width: "12%" }} />
 												<col style={{ width: "22%" }} />
-												<col style={{ width: "21%" }} />
+												<col style={{ width: "24%" }} />
 											</colgroup>
 											<thead>
 												<tr className="bg-zinc-800/80 text-zinc-400 text-xs">
 													<th className="text-left px-3 py-2 font-medium">Item</th>
 													<th className="text-right px-3 py-2 font-medium">Qty</th>
 													<th className="text-right px-3 py-2 font-medium">Price</th>
-													<th className="text-right px-3 py-2 font-medium">Total</th>
+													<th className="text-right pl-3 pr-4 py-2 font-medium">Total</th>
 												</tr>
 											</thead>
 											<tbody className="divide-y divide-zinc-700/50">
@@ -119,7 +119,7 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 														</td>
 														<td className="px-3 py-2.5 text-right text-zinc-300 tabular-nums">{item.quantity}</td>
 														<td className="px-3 py-2.5 text-right text-zinc-300 tabular-nums">${fmt(item.unit_price)}</td>
-														<td className="px-3 py-2.5 text-right font-medium tabular-nums">${fmt(item.total)}</td>
+														<td className="pl-3 pr-4 py-2.5 text-right font-medium tabular-nums">${fmt(item.total)}</td>
 													</tr>
 												))}
 											</tbody>

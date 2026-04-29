@@ -156,7 +156,8 @@ export default function RegisterPage() {
 							</svg>
 						</div>
 						<h2 className="text-xl font-semibold text-gray-800">Account Created!</h2>
-						<p className="text-gray-500 mt-2 text-sm">Check your email to verify your account, then sign in.</p>
+						{/* Email functionality is temporarily disabled pending Postmark approval. */}
+						<p className="text-gray-500 mt-2 text-sm">Email verification is temporarily disabled while we await sender approval. You can sign in directly.</p>
 						<button
 							onClick={() => navigate("/login")}
 							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"

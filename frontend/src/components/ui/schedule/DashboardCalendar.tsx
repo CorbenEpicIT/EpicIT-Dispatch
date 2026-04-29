@@ -281,15 +281,15 @@ export default function DashboardCalendar({
 						oldDateStr={nd}
 						newDateStr={nd}
 						anchorRect={pendingClickReschedule.anchorRect}
-						onReschedule={async (newStartAt, newEndAt, scope) => {
-							try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input: { new_start_at: newStartAt, new_end_at: newEndAt, scope } }); } catch {}
+						onReschedule={async (input) => {
+							try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input }); } catch {}
 							setPendingClickReschedule(null);
 						}}
-						onGenerate={async (newStartAt, newEndAt) => {
+						onGenerate={async (input) => {
 							setGeneratingVisitId(occ.id);
 							setPendingClickReschedule(null);
 							try {
-								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input: { new_start_at: newStartAt, new_end_at: newEndAt } });
+								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
 								await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
 							} catch {}
 							setGeneratingVisitId(null);

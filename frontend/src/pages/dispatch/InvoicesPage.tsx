@@ -108,7 +108,7 @@ export default function InvoicesPage() {
 					_rawDueDate: inv.due_date ? new Date(inv.due_date) : null,
 					_isOverdue: overdue,
 					_clientId: inv.client_id,
-					_issueDate: new Date(inv.issue_date),
+					_issueDate: inv.issue_date ? new Date(inv.issue_date) : null,
 				};
 			}) ?? [];
 
@@ -137,7 +137,7 @@ export default function InvoicesPage() {
 					return a._rawDueDate.getTime() - b._rawDueDate.getTime();
 				if (a._rawDueDate) return -1;
 				if (b._rawDueDate) return 1;
-				return b._issueDate.getTime() - a._issueDate.getTime();
+				return (b._issueDate?.getTime() ?? 0) - (a._issueDate?.getTime() ?? 0);
 			})
 			.map(
 				({

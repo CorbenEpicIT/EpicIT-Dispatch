@@ -70,6 +70,7 @@ export interface VisitTechnician {
 			description: string;
 			status: JobStatus;
 			address: string;
+			coords: Coordinates;
 			priority: Priority;
 			created_at: Date | string;
 			client_id: string;

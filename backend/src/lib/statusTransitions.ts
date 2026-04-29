@@ -8,7 +8,7 @@
  */
 
 const QUOTE_TRANSITIONS: Record<string, readonly string[]> = {
-	Draft:     ["Issued", "Cancelled"],
+	Draft:     ["Issued", "Sent", "Cancelled"],
 	Issued:    ["Sent", "Approved", "Rejected", "Revised", "Expired", "Cancelled"],
 	Sent:      ["Viewed", "Expired", "Cancelled"],
 	Viewed:    ["Approved", "Rejected", "Expired", "Cancelled"],

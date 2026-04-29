@@ -7,7 +7,7 @@ interface OccurrenceClickPopupProps {
 	/** Caller controls position (position, top, left/right, width, zIndex, etc.) */
 	style: React.CSSProperties;
 	/** Optional — if provided the popup forwards the ref to its root element */
-	popupRef?: React.RefObject<HTMLDivElement>;
+	popupRef?: React.RefObject<HTMLDivElement | null>;
 	isGenerating?: boolean;
 	onClose: () => void;
 	onViewPlan: () => void;
@@ -27,7 +27,7 @@ export default function OccurrenceClickPopup({
 	onRescheduleClick,
 }: OccurrenceClickPopupProps) {
 	const innerRef = useRef<HTMLDivElement>(null);
-	const ref = (popupRef ?? innerRef) as React.RefObject<HTMLDivElement>;
+	const ref = (popupRef ?? innerRef) as React.RefObject<HTMLDivElement | null>;
 
 	const startLabel = new Date(occurrence.occurrence_start_at).toLocaleTimeString([], {
 		hour: "numeric",

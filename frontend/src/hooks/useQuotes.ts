@@ -176,10 +176,21 @@ export const useSendQuoteMutation = () => {
 		mutationFn: ({ id, recipientEmail }: { id: string; recipientEmail: string }) =>
 			sendQuote(id, recipientEmail),
 		onSuccess: (updatedQuote) => {
-			queryClient.invalidateQueries({
-				queryKey: ["quotes", updatedQuote.id],
-			});
+			queryClient.setQueryData(["quotes", updatedQuote.id], updatedQuote);
 			queryClient.invalidateQueries({ queryKey: ["quotes"] });
+
+			if (updatedQuote.client_id) {
+				queryClient.invalidateQueries({
+					queryKey: ["clients", updatedQuote.client_id, "quotes"],
+				});
+			}
+
+			if (updatedQuote.request_id) {
+				queryClient.invalidateQueries({
+					queryKey: ["requests", updatedQuote.request_id, "quotes"],
+				});
+			}
+
 			queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
 		},
 	});

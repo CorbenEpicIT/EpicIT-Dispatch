@@ -441,7 +441,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		restoreOriginWeek();
 	}
 
-	async function handleOccurrenceSave(newStartAt: string, newEndAt: string | undefined, scope: "this" | "future") {
+	async function handleOccurrenceSave(input: RescheduleOccurrenceInput & { scope: "this" | "future" }) {
 		if (!pendingOccurrenceDrop) return;
 		dragOriginWeekRef.current = null;
 		hasPendingPopupRef.current = false;
@@ -450,7 +450,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 			await rescheduleOccurrence({
 				occurrenceId: occurrence.id,
 				jobId: occurrence.job_obj.id,
-				input: { new_start_at: newStartAt, new_end_at: newEndAt, scope },
+				input,
 			});
 		} catch {
 			// reverts via query invalidation
@@ -463,7 +463,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		restoreOriginWeek();
 	}
 
-	async function handleOccurrenceGenerate(newStartAt: string, newEndAt: string | undefined) {
+	async function handleOccurrenceGenerate(input: Omit<RescheduleOccurrenceInput, "scope">) {
 		if (!pendingOccurrenceDrop) return;
 		dragOriginWeekRef.current = null;
 		hasPendingPopupRef.current = false;
@@ -474,7 +474,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 			await rescheduleOccurrence({
 				occurrenceId: occurrence.id,
 				jobId: occurrence.job_obj.id,
-				input: { new_start_at: newStartAt, new_end_at: newEndAt },
+				input,
 			});
 			await generateVisitFromOccurrence({ occurrenceId: occurrence.id, jobId: occurrence.job_obj.id });
 		} catch {
@@ -909,15 +909,15 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					oldDateStr={nd}
 					newDateStr={nd}
 					anchorRect={pendingClickReschedule.anchorRect}
-					onReschedule={async (newStartAt, newEndAt, scope) => {
-						try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input: { new_start_at: newStartAt, new_end_at: newEndAt, scope } }); } catch {}
+					onReschedule={async (input) => {
+						try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input }); } catch {}
 						setPendingClickReschedule(null);
 					}}
-					onGenerate={async (newStartAt, newEndAt) => {
+					onGenerate={async (input) => {
 						setGeneratingVisitId(occ.id);
 						setPendingClickReschedule(null);
 						try {
-							await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input: { new_start_at: newStartAt, new_end_at: newEndAt } });
+							await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
 							await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
 						} catch {}
 						setGeneratingVisitId(null);

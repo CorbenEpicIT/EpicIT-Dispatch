@@ -13,6 +13,10 @@ import type {
 	UpdateInventoryItemInput,
 } from "../../types/inventory";
 
+const MAX_FILE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_MB) || 15;
+const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 type Step = 1 | 2 | 3;
 
 interface CreateInventoryItemProps {
@@ -51,6 +55,7 @@ export default function CreateInventoryItem({
 	const [alertEmail, setAlertEmail] = useState("");
 	const [imageUrls, setImageUrls] = useState<string[]>([]);
 	const [isUploading, setIsUploading] = useState(false);
+	const [uploadErrors, setUploadErrors] = useState<{ name: string; reason: string }[]>([]);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	const [isLoading, setIsLoading] = useState(false);
@@ -107,6 +112,7 @@ export default function CreateInventoryItem({
 		setAlertEmailsEnabled(false);
 		setAlertEmail("");
 		setImageUrls([]);
+		setUploadErrors([]);
 		setIsLoading(false);
 	}, [resetWizard]);
 
@@ -149,12 +155,26 @@ export default function CreateInventoryItem({
 
 	const handleUploadImages = useCallback(
 		async (files: FileList | File[]) => {
+			const errors: { name: string; reason: string }[] = [];
+			const valid: File[] = [];
+
+			for (const file of Array.from(files)) {
+				if (!ALLOWED_MIME_TYPES.has(file.type)) {
+					errors.push({ name: file.name, reason: "unsupported format — JPEG, PNG, or WebP only" });
+				} else if (file.size > MAX_FILE_BYTES) {
+					errors.push({ name: file.name, reason: `exceeds the ${MAX_FILE_MB}MB size limit` });
+				} else {
+					valid.push(file);
+				}
+			}
+
+			setUploadErrors(errors);
+
+			if (!valid.length) return;
+
 			setIsUploading(true);
 			try {
-				const uploads = Array.from(files).map((file) =>
-					uploadMutation.mutateAsync(file)
-				);
-				const urls = await Promise.all(uploads);
+				const urls = await Promise.all(valid.map((file) => uploadMutation.mutateAsync(file)));
 				setImageUrls((prev) => [...prev, ...urls]);
 			} catch (e) {
 				console.error("Image upload failed:", e);
@@ -523,8 +543,7 @@ export default function CreateInventoryItem({
 										: "Drop images here or click to browse"}
 								</p>
 								<p className="text-xs text-zinc-500 mt-1">
-									JPEG, PNG, WebP — max 5MB
-									each
+									JPEG, PNG, WebP — max {MAX_FILE_MB}MB each
 								</p>
 								<input
 									ref={fileInputRef}
@@ -549,6 +568,23 @@ export default function CreateInventoryItem({
 									}}
 								/>
 							</div>
+
+							{uploadErrors.length > 0 && (
+								<div className="mt-2 p-3 bg-red-950/50 border border-red-700/60 rounded-lg">
+									<p className="text-xs font-semibold text-red-400 mb-1.5 uppercase tracking-wide">
+										{uploadErrors.length} file{uploadErrors.length > 1 ? "s" : ""} rejected
+									</p>
+									<ul className="space-y-1">
+										{uploadErrors.map((err, i) => (
+											<li key={i} className="text-xs text-red-300">
+												<span className="font-medium">{err.name}</span>
+												{" — "}
+												{err.reason}
+											</li>
+										))}
+									</ul>
+								</div>
+							)}
 						</div>
 
 						{/* Image Preview Grid */}
@@ -691,6 +727,7 @@ export default function CreateInventoryItem({
 		alertEmailsEnabled,
 		alertEmail,
 		imageUrls,
+		uploadErrors,
 		isLoading,
 		isUploading,
 		handleDrop,

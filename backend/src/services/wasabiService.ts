@@ -4,6 +4,7 @@ import {
 	DeleteObjectCommand,
 	GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "crypto";
 
 const WASABI_ACCESS = process.env.WASABI_ACCESS;
@@ -48,7 +49,6 @@ export const uploadFile = async (
 			Key: key,
 			Body: file,
 			ContentType: contentType,
-			ACL: "public-read",
 		}),
 	);
 
@@ -82,8 +82,26 @@ export const getBuffer = async (
 	return fetchBuffer(extractKey(url));
 };
 
+function keyFromUrl(url: string): string {
+	const base = url.split("?")[0];
+	return base.split(`${WASABI_BUCKET}/`).pop() ?? base;
+}
+
+export const signImageUrls = async (urls: string[]): Promise<string[]> => {
+	if (!urls.length) return [];
+	return Promise.all(
+		urls.map((url) =>
+			getSignedUrl(
+				getClient(),
+				new GetObjectCommand({ Bucket: WASABI_BUCKET!, Key: keyFromUrl(url) }),
+				{ expiresIn: 3600 },
+			),
+		),
+	);
+};
+
 export const deleteFile = async (url: string): Promise<void> => {
-	const key = extractKey(url);
+	const key = keyFromUrl(url);
 	if (!key) return;
 
 	await getClient().send(

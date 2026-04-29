@@ -11,7 +11,7 @@ interface VisitClickPopupProps {
 	technicians: Technician[];
 	techColorMap: Map<string, string>;
 	/** Optional — if provided the popup forwards the ref to its root element */
-	popupRef?: React.RefObject<HTMLDivElement>;
+	popupRef?: React.RefObject<HTMLDivElement | null>;
 	onClose: () => void;
 	onViewVisit: () => void;
 	onViewJob: () => void;
@@ -31,7 +31,7 @@ export default function VisitClickPopup({
 	onRescheduleClick,
 }: VisitClickPopupProps) {
 	const innerRef = useRef<HTMLDivElement>(null);
-	const ref = (popupRef ?? innerRef) as React.RefObject<HTMLDivElement>;
+	const ref = (popupRef ?? innerRef) as React.RefObject<HTMLDivElement | null>;
 
 	const timeStart = visitStartLabel(visit);
 	const timeLabel =

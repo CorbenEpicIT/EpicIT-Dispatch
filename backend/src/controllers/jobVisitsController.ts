@@ -32,6 +32,12 @@ export const getAllJobVisits = async (organization_id: string, filters?: { clien
 			line_items: {
 				orderBy: { sort_order: "asc" },
 			},
+			time_entries: {
+				orderBy: { clocked_in_at: "asc" },
+				include: {
+					tech: { select: { id: true, name: true } },
+				},
+			},
 			notes: true,
 		},
 		orderBy: { scheduled_start_at: filters?.sort ?? "asc" },
@@ -376,7 +382,9 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 					...(parsed.actual_end_at !== undefined && {
 						actual_end_at: parsed.actual_end_at,
 					}),
-					...(parsed.status !== undefined && { status: parsed.status }),
+					...(parsed.status !== undefined && {
+						status: parsed.status,
+					}),
 				},
 				include: {
 					job: true,
