@@ -4,6 +4,7 @@
 */
 
 import axios from "axios";
+import { useAuthStore } from "../auth/authStore";
 const BASE_URL: string = import.meta.env.VITE_BACKEND_URL;
 if (!BASE_URL) {
 	console.warn("Failed to load backend url environment variable!");
@@ -18,3 +19,19 @@ api.interceptors.request.use((config) => {
 	}
 	return config;
 });
+api.interceptors.response.use(
+	(response) => response,
+	(error) => {
+		if (error?.response?.status === 401) {
+			const { user, logout } = useAuthStore.getState();
+			if (user) {
+				logout();
+				delete api.defaults.headers.common.Authorization;
+				if (window.location.pathname !== "/login") {
+					window.location.href = "/login";
+				}
+			}
+		}
+		return Promise.reject(error);
+	}
+);
