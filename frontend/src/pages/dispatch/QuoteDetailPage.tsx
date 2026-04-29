@@ -14,7 +14,7 @@ import {
 	Download,
 	Loader2,
 } from "lucide-react";
-import { useQuoteByIdQuery, useUpdateQuoteMutation, useDeleteQuoteMutation } from "../../hooks/useQuotes";
+import { useQuoteByIdQuery, useUpdateQuoteMutation, useDeleteQuoteMutation, useSendQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import { QuoteStatusColors } from "../../types/quotes";
 import type { QuoteStatus } from "../../types/quotes";
@@ -25,7 +25,7 @@ import ConvertToJob from "../../components/quotes/ConvertToJob";
 import NoteManager from "../../components/quotes/QuoteNoteManager";
 import { useState, useRef, useEffect } from "react";
 import { formatCurrency } from "../../util/util";
-import { downloadQuotePdf, sendQuote } from "../../api/quotes";
+import { downloadQuotePdf } from "../../api/quotes";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
 
 export default function QuoteDetailPage() {
@@ -33,6 +33,7 @@ export default function QuoteDetailPage() {
 	const navigate = useNavigate();
 	const { data: quote, isLoading } = useQuoteByIdQuery(quoteId!);
 	const { mutateAsync: updateQuote } = useUpdateQuoteMutation();
+	const { mutateAsync: sendQuote } = useSendQuoteMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
 	const deleteQuote = useDeleteQuoteMutation();
 
@@ -85,7 +86,7 @@ export default function QuoteDetailPage() {
 	};
 
 	const handleSendConfirm = async (email: string) => {
-		await sendQuote(quote.id, email);
+		await sendQuote({ id: quote.id, recipientEmail: email });
 	};
 	const handleMarkAsIssued = async () => {
 		setShowActionsMenu(false);

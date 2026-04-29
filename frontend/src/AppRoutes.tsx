@@ -19,7 +19,6 @@ import TechniciansPage from "./pages/dispatch/TechniciansPage";
 import TechnicianDetailsPage from "./pages/dispatch/TechnicianDetailPage";
 import MapPage from "./pages/dispatch/MapPage";
 import ReportingPage from "./pages/dispatch/ReportingPage";
-import SettingsPage from "./pages/dispatch/SettingsPage";
 import QuotesPage from "./pages/dispatch/QuotesPage";
 import QuoteDetailPage from "./pages/dispatch/QuoteDetailPage";
 import AssignTechnicianPage from "./pages/dispatch/AssignTechnicianPage";
@@ -30,6 +29,7 @@ import FullMapPage from "./pages/dispatch/FullMapPage";
 import InvoicesPage from "./pages/dispatch/InvoicesPage";
 import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
 import AdminPage from "./pages/dispatch/AdminPage";
+import VehiclesPage from "./pages/dispatch/VehiclesPage";
 import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -84,8 +84,7 @@ export default function AppRoutes() {
 				/>
 				<Route path="map" element={<MapPage />} />
 				<Route path="reporting" element={<ReportingPage />} />
-				<Route path="settings" element={<SettingsPage />} />
-				<Route path="inventory" element={<InventoryPage />} />
+<Route path="inventory" element={<InventoryPage />} />
 				<Route path="quotes" element={<QuotesPage />} />
 				<Route path="quotes/:quoteId" element={<QuoteDetailPage />} />
 				<Route path="requests" element={<RequestsPage />} />
@@ -96,6 +95,7 @@ export default function AppRoutes() {
 				<Route path="invoices" element={<InvoicesPage />} />
 				<Route path="invoices/:invoiceId" element={<InvoiceDetailPage />} />
 				<Route path="admin" element={<AdminPage />} />
+				<Route path="vehicles" element={<VehiclesPage />} />
 			</Route>
 
 			<Route

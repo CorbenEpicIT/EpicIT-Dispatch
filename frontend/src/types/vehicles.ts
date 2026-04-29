@@ -1,4 +1,17 @@
+import { z } from "zod";
 import type { InventoryItem } from "./inventory";
+
+export const CreateVehicleSchema = z.object({
+	name: z.string().min(1, "Name is required"),
+	type: z.string().min(1, "Type is required"),
+	license_plate: z.string().min(1, "License Plate / ID is required").max(50, "Max 50 characters"),
+	year: z.number().int().min(1900).max(2100).nullable().optional(),
+	make: z.string().max(50).nullable().optional(),
+	model: z.string().max(50).nullable().optional(),
+	color: z.string().max(50).nullable().optional(),
+	status: z.enum(["active", "inactive"]).optional(),
+	notes: z.string().max(1000).nullable().optional(),
+});
 
 export interface Vehicle {
 	id: string;
@@ -42,12 +55,12 @@ export interface VehicleStockUsage {
 export interface CreateVehicleInput {
 	name: string;
 	type: string;
-	license_plate?: string | null;
+	license_plate: string;
 	year?: number | null;
 	make?: string | null;
 	model?: string | null;
-	status?: "active" | "inactive";
 	color?: string | null;
+	status?: "active" | "inactive";
 	notes?: string | null;
 }
 

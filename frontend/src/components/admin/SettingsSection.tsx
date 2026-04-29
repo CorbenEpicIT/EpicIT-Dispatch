@@ -10,8 +10,9 @@ import type { OrgSettingsUpdate } from "../../api/org";
 import AddressForm from "../../components/ui/AddressForm";
 import type { GeocodeResult } from "../../types/location";
 
-export default function SettingsPage() {
+export default function SettingsSection() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [uploadError, setUploadError] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [logoImgError, setLogoImgError] = useState(false);
@@ -74,6 +75,12 @@ export default function SettingsPage() {
 		setForm((prev) => ({ ...prev, address: result.address, coords: result.coords }));
 	};
 
+	useEffect(() => {
+		return () => {
+			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+		};
+	}, []);
+
 	const handleAddressClear = () => {
 		setForm((prev) => ({ ...prev, address: "", coords: null }));
 	};
@@ -99,7 +106,8 @@ export default function SettingsPage() {
 				website: form.website || null,
 			});
 			setSaveSuccess(true);
-			setTimeout(() => setSaveSuccess(false), 3000);
+			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+			saveTimerRef.current = setTimeout(() => setSaveSuccess(false), 3000);
 		} catch {
 			setSaveError("Failed to save changes. Please try again.");
 		}
@@ -109,13 +117,13 @@ export default function SettingsPage() {
 		"w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
 
 	return (
-		<div className="min-h-screen bg-zinc-950 px-6 py-8">
+		<div>
 			<div className="max-w-2xl">
 				{/* Page header */}
 				<div className="mb-8">
-					<h1 className="text-xl font-semibold text-zinc-100">
+					<h2 className="text-xl font-semibold text-zinc-100">
 						Settings
-					</h1>
+					</h2>
 				</div>
 
 				{/* Combined Organization card */}
@@ -245,7 +253,7 @@ export default function SettingsPage() {
 							{/* Organization Name */}
 							<div className="sm:col-span-2">
 								<label
-									htmlFor="name"
+									htmlFor="settings-name"
 									className="mb-1 block text-xs font-medium text-zinc-400"
 								>
 									Organization Name
@@ -254,7 +262,7 @@ export default function SettingsPage() {
 									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
 								) : (
 									<input
-										id="name"
+										id="settings-name"
 										type="text"
 										value={
 											form.name ??
@@ -297,7 +305,7 @@ export default function SettingsPage() {
 							{/* Phone */}
 							<div>
 								<label
-									htmlFor="phone"
+									htmlFor="settings-phone"
 									className="mb-1 block text-xs font-medium text-zinc-400"
 								>
 									Phone
@@ -306,7 +314,7 @@ export default function SettingsPage() {
 									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
 								) : (
 									<input
-										id="phone"
+										id="settings-phone"
 										type="text"
 										value={
 											form.phone ??
@@ -334,7 +342,7 @@ export default function SettingsPage() {
 							{/* Email */}
 							<div>
 								<label
-									htmlFor="email"
+									htmlFor="settings-email"
 									className="mb-1 block text-xs font-medium text-zinc-400"
 								>
 									Email
@@ -343,7 +351,7 @@ export default function SettingsPage() {
 									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
 								) : (
 									<input
-										id="email"
+										id="settings-email"
 										type="text"
 										value={
 											form.email ??
@@ -399,7 +407,7 @@ export default function SettingsPage() {
 							{/* Website */}
 							<div>
 								<label
-									htmlFor="website"
+									htmlFor="settings-website"
 									className="mb-1 block text-xs font-medium text-zinc-400"
 								>
 									Website
@@ -408,7 +416,7 @@ export default function SettingsPage() {
 									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
 								) : (
 									<input
-										id="website"
+										id="settings-website"
 										type="text"
 										value={
 											form.website ??

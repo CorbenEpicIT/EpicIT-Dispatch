@@ -16,10 +16,10 @@ import {
 	Briefcase,
 	ReceiptText,
 	ShieldUser,
+	Truck,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
-import { isAdmin } from "../util/util";
 
 export default function DispatchLayout() {
 	const { logout } = useAuthStore();
@@ -114,6 +114,12 @@ export default function DispatchLayout() {
 					/>
 					<SideNavItem
 						expanded={expanded}
+						to="/dispatch/vehicles"
+						icon={<Truck size={ICON_SIZE} />}
+						label="Vehicles"
+					/>
+					<SideNavItem
+						expanded={expanded}
 						to="/dispatch/technicians"
 						icon={<Wrench size={ICON_SIZE} />}
 						label="Technicians"
@@ -136,19 +142,18 @@ export default function DispatchLayout() {
 						icon={<ChartColumnDecreasing size={ICON_SIZE} />}
 						label="Reporting"
 					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/settings"
-						icon={<Settings size={ICON_SIZE} />}
-						label="Settings"
-					/>
-					{/* Admin page only visible to dispatch role */
+					{
+						/* Admin page only visible to dispatch role */
 						user?.role === "admin" && (
 							<SideNavItem
-								to="/dispatch/admin"
-								icon={<ShieldUser size={ICON_SIZE} />}
-								label="Admin"
 								expanded={expanded}
+								to="/dispatch/admin"
+								icon={
+									<ShieldUser
+										size={ICON_SIZE}
+									/>
+								}
+								label="Admin"
 							/>
 						)
 					}
