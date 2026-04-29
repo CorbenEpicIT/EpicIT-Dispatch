@@ -13,29 +13,36 @@ async function login(): Promise<string> {
 		role: config.adminRole,
 	});
 	const loginData = loginResp.data;
-	if (!loginData?.success || !loginData?.data?.pendingToken) {
+	if (!loginData?.success) {
 		const msg = loginData?.error?.message ?? "Login failed";
 		throw new Error(`adminAuth: ${msg}`);
 	}
-	const pendingToken: string = loginData.data.pendingToken;
 
-	const otpResp = await http.post(
-		`${config.backendUrl}/otp-verify`,
-		{ otp: config.adminOtp },
-		{ headers: { Authorization: `Bearer ${pendingToken}` } },
-	);
-	const otpData = otpResp.data;
-	if (!otpData?.success || !otpData?.data?.token) {
-		const msg = otpData?.error?.message ?? "OTP verify failed";
-		throw new Error(`adminAuth: ${msg}`);
+	let token: string | undefined = loginData.data?.token;
+	let expiresInSec = Number(loginData.data?.expiresIn ?? 3600);
+
+	if (!token) {
+		const pendingToken: string | undefined = loginData.data?.pendingToken;
+		if (!pendingToken) {
+			throw new Error("adminAuth: login response missing token and pendingToken");
+		}
+		const otpResp = await http.post(
+			`${config.backendUrl}/otp-verify`,
+			{ otp: config.adminOtp },
+			{ headers: { Authorization: `Bearer ${pendingToken}` } },
+		);
+		const otpData = otpResp.data;
+		if (!otpData?.success || !otpData?.data?.token) {
+			const msg = otpData?.error?.message ?? "OTP verify failed";
+			throw new Error(`adminAuth: ${msg}`);
+		}
+		token = otpData.data.token;
+		expiresInSec = Number(otpData.data.expiresIn ?? 3600);
 	}
 
-	const token: string = otpData.data.token;
-	const expiresInSec: number = Number(otpData.data.expiresIn ?? 3600);
 	const expiresAt = Date.now() + Math.max(expiresInSec - 60, 30) * 1000;
-
-	cached = { token, expiresAt };
-	return token;
+	cached = { token: token!, expiresAt };
+	return token!;
 }
 
 export async function getToken(): Promise<string> {
