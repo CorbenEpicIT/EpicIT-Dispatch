@@ -26,6 +26,8 @@ const CreateDispatcher = ({
     const [description, setDescription] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<ZodError | null>(null);
+    const [password, setPassword] = useState("");
+    const [choosePassword, setChoosePassword] = useState(false);
 
     const resetForm = useCallback(() => {
         setName("");
@@ -34,6 +36,8 @@ const CreateDispatcher = ({
         setTitle("");
         setDescription("");
         setErrors(null);
+        setPassword("");
+        setChoosePassword(false);
     }, []);
 
     useEffect(() => {
@@ -50,7 +54,7 @@ const CreateDispatcher = ({
             name: name.trim(),
             email: email.trim(),
             phone: phone.trim(),
-            password: "Password",
+            password: choosePassword ? password.trim() : undefined,
             title: title.trim(),
             description: description.trim(),
         };
@@ -90,8 +94,8 @@ const CreateDispatcher = ({
     };
 
     const isFormValid = useMemo(
-        () => !!(name.trim() && email.trim() && phone.trim() && title.trim()),
-        [name, email, phone, title]
+        () => !!(name.trim() && email.trim() && phone.trim() && title.trim() && (!choosePassword || password.trim())),
+        [name, email, phone, title, choosePassword, password]
     );
 
     const formContent = useMemo(
@@ -164,10 +168,36 @@ const CreateDispatcher = ({
                         disabled={isLoading}
                     />
                 </div>
-
+                {/* Password */}
+                <div className="min-w-0 flex items-center space-x-2">
+                    <div className="min-w-0">
+                        <label className={LABEL}>Choose Password</label>
+                        <input
+                            type="checkbox"
+                            checked={choosePassword}
+                            onChange={(e) => setChoosePassword(e.target.checked)}
+                            className="form-checkbox h-[28px] w-4 text-blue-500 focus:ring-blue-500 border-zinc-700 bg-zinc-900"
+                            disabled={isLoading}
+                        />
+                    </div>
+                    {choosePassword && (
+                        <div className="min-w-0">
+                            <label className={LABEL}>Password *</label>
+                            <input
+                                type="password"
+                                placeholder="Enter password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className={INPUT}
+                                disabled={isLoading}
+                            />
+                            <ErrorDisplay path="password" />
+                        </div>
+                    )}
+                </div>
             </div>
         ),
-        [name, email, phone, title, description, isLoading, errors]
+        [name, email, phone, title, description, isLoading, errors, choosePassword, password]
     );
 
     return (

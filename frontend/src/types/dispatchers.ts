@@ -23,7 +23,7 @@ export interface CreateDispatcherInput {
   name: string;
   email: string;
   phone?: string;
-  password: string;
+  password?: string;
   title: string;
   description: string;
   role?: string;
@@ -54,7 +54,7 @@ export const CreateDispatcherSchema = z.object({
 	name: z.string().min(1, "Dispatcher name is required"),
 	email: z.string().email("Invalid email address"),
 	phone: z.string().min(1, "Phone number is required").optional(),
-	password: z.string().min(8, "Password must be at least 8 characters"),
+	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
 });

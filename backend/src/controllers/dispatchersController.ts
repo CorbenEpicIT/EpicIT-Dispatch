@@ -37,6 +37,7 @@ export const insertDispatcher = async (
 ) => {
     try {
         const parsed = createDispatcherSchema.parse(data);
+        const passwordProvided = parsed.password ? true : false;
         const sdb = getScopedDb(organizationId);
         const existing = await sdb.dispatcher.findFirst({
             where: { email: parsed.email },
@@ -45,20 +46,23 @@ export const insertDispatcher = async (
         if (existing) {
             return { err: "Email already exists" };
         }
-
-        const tempPassword = randomBytes(8).toString("hex") + "A1!";
+        // if no password provided, generate a random one and email it to them
+        const tempPassword = passwordProvided ? parsed.password! : randomBytes(8).toString("hex") + "A1!";
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
         const created = await sdb.$transaction(async (tx) => {
+            const { password: _pw, ...parsedWithoutPassword } = parsed;
             const dispatcher = await tx.dispatcher.create({
                 data: {
-                    ...parsed,
+                    ...parsedWithoutPassword,
                     organization_id: organizationId,
                     password: hashedPassword,
                     email_verification_token: randomUUID(),
+                    // if password provided dispatcher doesn't need to reset password on first login
+                    ...(passwordProvided && { last_login: new Date() }),
                 },
                 include: {
-                    // not sure what needs to be included yet
+                    // not sure if anything needs to be included 
                 },
             });
 
@@ -84,7 +88,11 @@ export const insertDispatcher = async (
                 user_agent: context?.userAgent,
             });
 
-            sendEmailVerificationEmail(dispatcher.email, dispatcher.email_verification_token!, tempPassword);
+            sendEmailVerificationEmail(
+                dispatcher.email, 
+                dispatcher.email_verification_token!, 
+                passwordProvided ? undefined : tempPassword
+            );
 
             return dispatcher;
         });

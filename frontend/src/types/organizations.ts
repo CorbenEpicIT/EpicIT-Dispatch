@@ -16,6 +16,11 @@ export interface RegisterOrganizationInput {
     admin_email: string;
     admin_password: string;
     admin_phone?: string;
+    org_phone?: string;
+    org_address?: string;
+    org_website?: string;
+    org_timezone?: string;
+    org_tax_rate?: number;
 }
 
 export interface RegisterOrganizationResponse {
