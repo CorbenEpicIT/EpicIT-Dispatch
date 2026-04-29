@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { db } from "../db.js";
 import {
 	createJobSchema,
 	updateJobSchema,
@@ -238,7 +239,10 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 		const parsed = createJobSchema.parse(req.body);
 		const organizationId = req.user!.organization_id as string;
 		const sdb = getScopedDb(organizationId);
-		const created = await sdb.$transaction(async (tx) => {
+		let created: Awaited<ReturnType<typeof db.job.findFirst>> | undefined;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			try {
+				created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.findUnique({
 				where: { id: parsed.client_id },
 			});
@@ -570,8 +574,21 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 						orderBy: { created_at: "desc" },
 					},
 				},
-			});
-		});
+				});
+				});
+				break;
+			} catch (e) {
+				if (
+					attempt < 4 &&
+					e instanceof Prisma.PrismaClientKnownRequestError &&
+					e.code === "P2002" &&
+					(e.meta?.target as string[] | undefined)?.includes("job_number")
+				) {
+					continue;
+				}
+				throw e;
+			}
+		}
 
 		return { err: "", item: created ?? undefined };
 	} catch (e) {

@@ -21,9 +21,13 @@ import { assertValidInvoiceTransition, InvalidTransitionError } from "../lib/sta
 
 async function generateInvoiceNumber(
 	tx: Prisma.TransactionClient,
+	organizationId: string,
 ): Promise<string> {
 	const last = await tx.invoice.findFirst({
-		where: { invoice_number: { startsWith: "INV-" } },
+		where: {
+			organization_id: organizationId,
+			invoice_number: { startsWith: "INV-" },
+		},
 		orderBy: { created_at: "desc" },
 	});
 
@@ -398,7 +402,7 @@ export const insertInvoice = async (req: Request, organizationId: string, contex
 							? parsed.tax_rate
 							: await resolveTaxRate(parsed.client_id);
 
-					const invoiceNumber = await generateInvoiceNumber(tx);
+					const invoiceNumber = await generateInvoiceNumber(tx, organizationId);
 
 					// Calculate due_date from payment_terms_days if due_date not provided
 					let dueDate = parsed.due_date;
