@@ -14,12 +14,29 @@ import {
     adjustInventoryStock,
     updateInventoryThreshold,
 } from '../controllers/inventoryController.js';
-import { uploadFile } from "../services/wasabiService.js";
+import { uploadFile, signImageUrl, signImageUrls, toRawUrl } from "../services/wasabiService.js";
 import { imageUpload } from "../lib/upload.js";
 
 
 
 const router = Router();
+
+type WithImageUrls<T> = T & { image_urls: string[] };
+
+async function signItem<T extends { image_urls: string[] }>(item: T): Promise<WithImageUrls<T>> {
+    return {
+        ...item,
+        image_urls: await signImageUrls(item.image_urls),
+    };
+}
+
+function normalizeImageUrls(body: unknown): void {
+    if (!body || typeof body !== "object") return;
+    const b = body as { image_urls?: unknown };
+    if (Array.isArray(b.image_urls)) {
+        b.image_urls = b.image_urls.map((u) => (typeof u === "string" ? toRawUrl(u) : u));
+    }
+}
 
 router.get("/", async (req, res, next) => {
     try {
@@ -29,7 +46,8 @@ router.get("/", async (req, res, next) => {
             low_stock === "true"
                 ? await getLowStockInventory(orgId)
                 : await getAllInventory(orgId, sort as string | undefined);
-        res.json(createSuccessResponse(items, { count: items.length }));
+        const signed = await Promise.all(items.map(signItem));
+        res.json(createSuccessResponse(signed, { count: signed.length }));
     } catch (err) {
         next(err);
     }
@@ -37,6 +55,7 @@ router.get("/", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
     try {
+        normalizeImageUrls(req.body);
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await createInventoryItem(req.body, orgId, context);
@@ -52,7 +71,7 @@ router.post("/", async (req, res, next) => {
                 );
         }
 
-        res.status(201).json(createSuccessResponse(result.item));
+        res.status(201).json(createSuccessResponse(await signItem(result.item!)));
     } catch (err) {
         next(err);
     }
@@ -60,6 +79,7 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
     try {
+        normalizeImageUrls(req.body);
         const { id } = req.params;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
@@ -77,7 +97,7 @@ router.patch("/:id", async (req, res, next) => {
                 );
         }
 
-        res.json(createSuccessResponse(result.item));
+        res.json(createSuccessResponse(await signItem(result.item!)));
     } catch (err) {
         next(err);
     }
@@ -127,7 +147,7 @@ router.patch("/:id/stock", async (req, res, next) => {
                 );
         }
 
-        res.json(createSuccessResponse(result.item));
+        res.json(createSuccessResponse(await signItem(result.item!)));
     } catch (err) {
         next(err);
     }
@@ -150,12 +170,13 @@ router.post(
                     );
             }
 
-            const url = await uploadFile(
+            const rawUrl = await uploadFile(
                 req.file.buffer,
                 req.file.mimetype,
                 req.file.originalname,
             );
-            res.json(createSuccessResponse({ url }));
+            const signedUrl = await signImageUrl(rawUrl);
+            res.json(createSuccessResponse({ url: signedUrl, raw_url: rawUrl }));
         } catch (err) {
             next(err);
         }
@@ -183,7 +204,7 @@ router.patch("/:id/threshold", async (req, res, next) => {
                 );
         }
 
-        res.json(createSuccessResponse(result.item));
+        res.json(createSuccessResponse(await signItem(result.item!)));
     } catch (err) {
         next(err);
     }

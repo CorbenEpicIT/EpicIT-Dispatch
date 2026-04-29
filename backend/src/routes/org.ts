@@ -5,16 +5,30 @@ import {
     createSuccessResponse,
     createErrorResponse,
 } from "../types/responses.js";
-import { getUserContext } from '../lib/context.js';
-// This file does not use the getScopedDb 
+// This file does not use the getScopedDb
 // but uses where { organization_id: orgId } on thin ice here
 import { db } from '../db.js';
-import { uploadFile, deleteFile } from "../services/wasabiService.js";
+import { uploadFile, deleteFile, signImageUrl } from "../services/wasabiService.js";
 import { z } from 'zod';
 import { Prisma } from "../../generated/prisma/client.js";
 
 const router = Router();
 
+const orgSelect = {
+    id: true,
+    name: true,
+    logo_url: true,
+    phone: true,
+    address: true,
+    coords: true,
+    email: true,
+    website: true,
+    tax_rate: true,
+} as const;
+
+async function withSignedLogo<T extends { logo_url: string | null }>(org: T): Promise<T> {
+    return { ...org, logo_url: await signImageUrl(org.logo_url) };
+}
 
 
 router.get("/", async (req, res, next) => {
@@ -23,10 +37,10 @@ router.get("/", async (req, res, next) => {
         if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
         const org = await db.organization.findUnique({
             where: { id: orgId },
-            select: { id: true, name: true, logo_url: true, phone: true, address: true, coords: true, email: true, website: true, tax_rate: true },
+            select: orgSelect,
         });
         if (!org) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
-        res.json(createSuccessResponse(org));
+        res.json(createSuccessResponse(await withSignedLogo(org)));
     } catch (err) {
         next(err);
     }
@@ -54,9 +68,9 @@ router.patch("/", async (req, res, next) => {
                 ...rest,
                 ...(coords !== undefined ? { coords: coords ?? Prisma.JsonNull } : {}),
             },
-            select: { id: true, name: true, logo_url: true, phone: true, address: true, coords: true, email: true, website: true, tax_rate: true },
+            select: orgSelect,
         });
-        res.json(createSuccessResponse(org));
+        res.json(createSuccessResponse(await withSignedLogo(org)));
     } catch (err) {
         next(err);
     }
@@ -73,9 +87,10 @@ router.post(
             const orgId = req.user!.organization_id;
             if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
 
-            const url = await uploadFile(req.file.buffer, req.file.mimetype, req.file.originalname, "org");
-            await db.organization.update({ where: { id: orgId }, data: { logo_url: url } });
-            res.json(createSuccessResponse({ url }));
+            const rawUrl = await uploadFile(req.file.buffer, req.file.mimetype, req.file.originalname, "org");
+            await db.organization.update({ where: { id: orgId }, data: { logo_url: rawUrl } });
+            const signedUrl = await signImageUrl(rawUrl);
+            res.json(createSuccessResponse({ url: signedUrl }));
         } catch (err) {
             next(err);
         }
