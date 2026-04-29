@@ -391,7 +391,7 @@ model quote {
   id           String   @id @default(uuid())
   organization_id String?
   organization    organization? @relation(fields: [organization_id], references: [id])
-  quote_number String   @unique
+  quote_number String
   client_id    String
   client       client   @relation(fields: [client_id], references: [id])
   request_id   String?
@@ -447,6 +447,7 @@ model quote {
   @@index([created_at])
   @@index([client_id, is_active])
   @@index([request_id, is_active])
+  @@unique([organization_id, quote_number])
 }
 
 model quote_line_item {
@@ -1216,7 +1217,7 @@ model invoice {
   id                       String         @id @default(uuid())
   organization_id          String?
   organization             organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  invoice_number           String         @unique
+  invoice_number           String
   client_id                String
   client                   client         @relation(fields: [client_id], references: [id], onDelete: Restrict)
   status                   invoice_status @default(Draft)
@@ -1261,6 +1262,7 @@ model invoice {
   @@index([due_date])
   @@index([recurring_plan_id])
   @@index([client_id, status])
+  @@unique([organization_id, invoice_number])
 }
 
 model invoice_line_item {
