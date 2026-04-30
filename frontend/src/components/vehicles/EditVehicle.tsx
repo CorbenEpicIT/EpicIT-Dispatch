@@ -73,57 +73,108 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 			<div className="space-y-3 min-w-0">
 				<div>
 					<label className={LABEL}>Name *</label>
-					<input type="text" value={name} onChange={(e) => setName(e.target.value)}
-						className={INPUT} disabled={isLoading} />
+					<input
+						type="text"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						className={INPUT}
+						disabled={isLoading}
+					/>
 				</div>
 
 				<div className="grid grid-cols-2 gap-2">
 					<div>
 						<label className={LABEL}>Type *</label>
-						<input type="text" value={type} onChange={(e) => setType(e.target.value)}
-							className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							value={type}
+							onChange={(e) => setType(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
-						<label className={LABEL}>License Plate / ID *</label>
-						<input type="text" value={licensePlate} onChange={(e) => setLicensePlate(e.target.value)}
-							className={INPUT} disabled={isLoading} />
+						<label className={LABEL}>
+							License Plate / ID *
+						</label>
+						<input
+							type="text"
+							value={licensePlate}
+							onChange={(e) =>
+								setLicensePlate(e.target.value)
+							}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 				</div>
 
 				<div className={DIVIDER_LABEL}>
 					<div className="flex-1 h-px bg-zinc-800" />
-					<span className="text-[10px] text-zinc-600 uppercase tracking-widest">Vehicle details (optional)</span>
+					<span className="text-[10px] text-zinc-500 uppercase tracking-widest">
+						Vehicle details (optional)
+					</span>
 					<div className="flex-1 h-px bg-zinc-800" />
 				</div>
 
 				<div className="grid grid-cols-3 gap-2">
 					<div>
 						<label className={LABEL}>Year</label>
-						<input type="number" value={year} onChange={(e) => setYear(e.target.value)}
-							className={INPUT} disabled={isLoading} />
+						<input
+							type="number"
+							value={year}
+							onChange={(e) => setYear(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
 						<label className={LABEL}>Make</label>
-						<input type="text" value={make} onChange={(e) => setMake(e.target.value)}
-							className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							value={make}
+							onChange={(e) => setMake(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
 						<label className={LABEL}>Model</label>
-						<input type="text" value={model} onChange={(e) => setModel(e.target.value)}
-							className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							value={model}
+							onChange={(e) => setModel(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 				</div>
 
 				<div className="grid grid-cols-2 gap-2">
 					<div>
 						<label className={LABEL}>Color</label>
-						<input type="text" value={color} onChange={(e) => setColor(e.target.value)}
-							className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							value={color}
+							onChange={(e) => setColor(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
 						<label className={LABEL}>Status</label>
-						<select value={status} onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
-							className={INPUT} disabled={isLoading}>
+						<select
+							value={status}
+							onChange={(e) =>
+								setStatus(
+									e.target.value as
+										| "active"
+										| "inactive"
+								)
+							}
+							className={INPUT}
+							disabled={isLoading}
+						>
 							<option value="active">Active</option>
 							<option value="inactive">Inactive</option>
 						</select>
@@ -132,8 +183,12 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 
 				<div>
 					<label className={LABEL}>Notes</label>
-					<textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isLoading}
-						className="border border-zinc-700 px-2.5 py-1.5 w-full h-16 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0" />
+					<textarea
+						value={notes}
+						onChange={(e) => setNotes(e.target.value)}
+						disabled={isLoading}
+						className="border border-zinc-700 px-2.5 py-1.5 w-full h-16 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+					/>
 				</div>
 			</div>
 		),
