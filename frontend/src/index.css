@@ -42,3 +42,28 @@ input[type="number"] {
 	scrollbar-width: thin;
 	scrollbar-color: #3f3f46 transparent;
 }
+
+/* Inventory card highlight animation */
+@keyframes card-highlight {
+	0%   { box-shadow: 0 0 0 2px rgb(59 130 246 / 0.8); }
+	60%  { box-shadow: 0 0 0 3px rgb(59 130 246 / 0.3); }
+	100% { box-shadow: 0 0 0 0px rgb(59 130 246 / 0); }
+}
+.animate-card-highlight {
+	animation: card-highlight 2.5s ease-out forwards;
+}
+
+/* Inventory low-stock panel scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+	width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+	background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+	background: rgb(63 63 70);
+	border-radius: 2px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+	background: rgb(82 82 91);
+}
