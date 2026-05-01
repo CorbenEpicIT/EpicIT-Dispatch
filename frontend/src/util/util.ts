@@ -64,16 +64,17 @@ export const formatTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	});
 };
 
+/* ── Inventory Status ────────────────────────────────────────── */
+
 export const calculateStockStatus = (
 	quantity: number,
 	threshold: number | null
 ): StockStatus => {
 	if(threshold === null) return null;
 	if(quantity === 0) return 'out_of_stock';
-	if(quantity < threshold) return 'low';
+	if(quantity <= threshold) return 'low';
 	return 'sufficient';
 };
-
 
 export const getStatusLabel = (status: StockStatus): string => {
 	switch (status) {
@@ -100,6 +101,25 @@ export const getStatusBadgeClass = (status: StockStatus): string => {
 			return 'bg-zinc-800 text-zinc-400 border border-zinc-700';
 	}
 };
+
+export const getStockStatusTextColor = (status: StockStatus): string => {
+	switch (status) {
+		case 'out_of_stock': return 'text-red-400';
+		case 'low':          return 'text-yellow-400';
+		default:             return 'text-zinc-100';
+	}
+};
+
+export const getStockStatusDotColor = (status: StockStatus): string => {
+	switch (status) {
+		case 'out_of_stock': return 'bg-red-400';
+		case 'low':          return 'bg-yellow-400';
+		case 'sufficient':   return 'bg-green-400';
+		default:             return 'bg-zinc-500';
+	}
+};
+
+/* ────────────────────────────────────────────────────────────── */
 
 // Admin is basically dispatcher with extra permissions
 // also works if need to add other roles like super admin or a lower dispatcher role in the future
