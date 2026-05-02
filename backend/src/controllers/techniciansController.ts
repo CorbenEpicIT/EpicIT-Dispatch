@@ -8,6 +8,7 @@ import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
+import { sendEmailVerificationEmail } from "../services/emailService.js";
 
 export const getAllTechnicians = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -86,6 +87,13 @@ export const insertTechnician = async (
 					},
 				},
 			});
+
+			// Don't worry about this right now since main doesn't have working emails
+			/*sendEmailVerificationEmail(
+				technician.email, 
+				technician.email_verification_token!, 
+				passwordProvided ? undefined : tempPassword
+			);*/
 
 			await logActivity({
 				event_type: "technician.created",

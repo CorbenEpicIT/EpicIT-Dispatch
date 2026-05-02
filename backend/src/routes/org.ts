@@ -7,7 +7,7 @@ import {
 } from "../types/responses.js";
 import { getUserContext } from '../lib/context.js';
 // This file does not use the getScopedDb 
-// but uses where { organization_id: orgId } on thin ice here
+// but uses 'where { organization_id: orgId }' on thin ice here
 import { db } from '../db.js';
 import { uploadFile, deleteFile } from "../services/wasabiService.js";
 import { z } from 'zod';

@@ -42,6 +42,20 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 	const { user } = useAuthStore();
 	return user ? children : <Navigate to="/login" replace />;
 }
+// stops technicians from accessing dispatch routes 
+function RequireDispatcher({ children }: { children: JSX.Element }) {
+	const { user } = useAuthStore();
+	if (!user) return <Navigate to="/login" replace />;
+	if (user.role === "technician") return <Navigate to="/technician" replace />;
+	return children;
+}
+// stops dispatch users from accessing admin page
+function RequireAdmin({ children }: { children: JSX.Element }) {
+	const { user } = useAuthStore();
+	if (!user) return <Navigate to="/login" replace />;
+	if (user.role !== "admin") return <Navigate to="/dispatch" replace />;
+	return children;
+}
 
 export default function AppRoutes() {
 	return (
@@ -53,9 +67,9 @@ export default function AppRoutes() {
 			<Route
 				path="/dispatch/*"
 				element={
-					<RequireAuth>
+					<RequireDispatcher>
 						<DispatchLayout />
-					</RequireAuth>
+					</RequireDispatcher>
 				}
 			>
 				<Route index element={<DashboardPage />} />
@@ -84,7 +98,7 @@ export default function AppRoutes() {
 				/>
 				<Route path="map" element={<MapPage />} />
 				<Route path="reporting" element={<ReportingPage />} />
-<Route path="inventory" element={<InventoryPage />} />
+				<Route path="inventory" element={<InventoryPage />} />
 				<Route path="quotes" element={<QuotesPage />} />
 				<Route path="quotes/:quoteId" element={<QuoteDetailPage />} />
 				<Route path="requests" element={<RequestsPage />} />
@@ -94,7 +108,7 @@ export default function AppRoutes() {
 				/>
 				<Route path="invoices" element={<InvoicesPage />} />
 				<Route path="invoices/:invoiceId" element={<InvoiceDetailPage />} />
-				<Route path="admin" element={<AdminPage />} />
+				<Route path="admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
 				<Route path="vehicles" element={<VehiclesPage />} />
 			</Route>
 
