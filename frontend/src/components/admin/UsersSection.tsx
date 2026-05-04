@@ -1,11 +1,11 @@
 import { useState, useEffect, Fragment } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Search, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAllTechniciansQuery, useCreateTechnicianMutation } from "../../hooks/useTechnicians";
 import CreateTechnician from "../../components/technicians/CreateTechnician";
 import EditTechnician from "../../components/technicians/EditTechnician";
 import EditDispatcher from "../../components/dispatchers/EditDispatcher";
-import type { Technician } from "../../types/technicians"
+import type { Technician } from "../../types/technicians";
 import type { Dispatcher } from "../../types/dispatchers";
 import TechnicianCard from "../../components/technicians/TechnicianCard";
 import LoadSvg from "../../assets/icons/loading.svg?react";
@@ -14,7 +14,10 @@ import ErrSvg from "../../assets/icons/error.svg?react";
 import { useAllDispatchersQuery, useCreateDispatcherMutation } from "../../hooks/useDispatchers";
 import { DispatcherCard } from "../../components/dispatchers/DispatcherCard";
 import CreateDispatcher from "../../components/dispatchers/CreateDispatcher";
-import { LayoutGrid, LayoutList } from "lucide-react";
+import SearchBar from "../../components/ui/SearchBar";
+import ViewToggle from "../../components/ui/ViewToggle";
+import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import PageHeader from "../../components/ui/PageHeader";
 
 
 type viewMode = "list" | "card";
@@ -26,13 +29,11 @@ export default function UsersSection() {
 		data: technicians,
 		isLoading: isTechniciansLoading,
 		error: techniciansFetchError,
-		refetch: refetchTechnicians,
 	} = useAllTechniciansQuery();
 	const {
 		data: dispatchers,
 		isLoading: isDispatchersLoading,
 		error: dispatchersFetchError,
-		refetch: refetchDispatchers,
 	} = useAllDispatchersQuery();
 	const fetchError = techniciansFetchError || dispatchersFetchError;
 	const isFetchLoading = isTechniciansLoading || isDispatchersLoading;
@@ -54,10 +55,6 @@ export default function UsersSection() {
 	const queryParams = new URLSearchParams(location.search);
 	const searchFilter = queryParams.get('search');
 	const statusFilter = queryParams.get('status');
-
-	useEffect(() => {
-		setSearchInput(searchFilter || "");
-	}, [searchFilter]);
 
 	useEffect(() => {
 		setCurrentPage(1);
@@ -118,17 +115,6 @@ export default function UsersSection() {
 	const totalPages = perPage === 0 ? 1 : Math.ceil(displayUsers.length / perPage);
 	const pagedUsers = perPage === 0 ? displayUsers : displayUsers.slice((currentPage - 1) * perPage, currentPage * perPage);
 
-	const handleSearchSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-		const newParams = new URLSearchParams(location.search);
-		if (searchInput.trim()) {
-			newParams.set('search', searchInput.trim());
-		} else {
-			newParams.delete('search');
-		}
-		navigate(`/dispatch/admin?${newParams.toString()}`);
-	};
-
 	const removeFilter = (filterType: 'search' | 'status') => {
 		const newParams = new URLSearchParams(location.search);
 		newParams.delete(filterType);
@@ -140,58 +126,43 @@ export default function UsersSection() {
 
 	const clearAllFilters = () => {
 		setSearchInput("");
-		navigate('/dispatch/admin');
+		setShowTechnicians(true);
+		setShowDispatchers(true);
+		const next = new URLSearchParams(location.search);
+		next.delete("search");
+		navigate(`/dispatch/admin${next.toString() ? `?${next.toString()}` : ""}`);
 	};
-
-	const hasFilters = searchFilter || statusFilter;
 
     return (
         <div className="text-white">
-			{/* Row 1: Title + Action Buttons */}
-			<div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-				<h2 className="text-2xl font-semibold">Administration</h2>
-				<div className="flex flex-wrap items-center gap-2">
-					<button
-						className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => setIsTechModalOpen(true)}
-					>
-						<Plus size={15} />
-						New Technician
-					</button>
-					<button
-						className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => setIsDispatcherModalOpen(true)}
-					>
-						<Plus size={15} />
-						New Dispatcher
-					</button>
-					<button
-						className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => { refetchTechnicians(); refetchDispatchers(); }}
-					>
-						Refresh
-					</button>
-				</div>
-			</div>
+			<PageHeader title="Administration">
+				<button
+					className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					onClick={() => setIsTechModalOpen(true)}
+				>
+					<Plus size={15} />
+					New Technician
+				</button>
+				<button
+					className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					onClick={() => setIsDispatcherModalOpen(true)}
+				>
+					<Plus size={15} />
+					New Dispatcher
+				</button>
+			</PageHeader>
 
-			{/* Row 2: Search + Filters */}
+			{/* Controls row */}
 			<div className="flex flex-wrap items-center gap-2 mb-4">
-				{/* Search */}
-				<form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-[180px]">
-					<Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-					<input
-						type="text"
-						placeholder="Search..."
-						value={searchInput}
-						onChange={(e) => setSearchInput(e.target.value)}
-						className="w-full pl-9 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-					/>
-				</form>
+				<SearchBar
+					paramKey="search"
+					placeholder="Search users..."
+					onValueChange={setSearchInput}
+					className="flex-1 min-w-[200px]"
+				/>
 
-				{/* Divider */}
 				<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
 
-				{/* Show toggles */}
 				<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
 					<button
 						onClick={() => setShowTechnicians(!showTechnicians)}
@@ -211,85 +182,20 @@ export default function UsersSection() {
 					</button>
 				</div>
 
-				{/* View mode toggle */}
-				<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
-					<button
-						onClick={() => setViewMode("card")}
-						title="Card View"
-						className={`p-1.5 rounded cursor-pointer transition-colors ${
-							viewMode === "card" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-						}`}
-					>
-						<LayoutGrid size={15} />
-					</button>
-					<button
-						onClick={() => setViewMode("list")}
-						title="List View"
-						className={`p-1.5 rounded cursor-pointer transition-colors ${
-							viewMode === "list" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-						}`}
-					>
-						<LayoutList size={15} />
-					</button>
-				</div>
+				<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+
+				<ViewToggle value={viewMode} onChange={setViewMode} />
 			</div>
 
-			{/*Filter Bar with Chips*/}
-			{hasFilters && (
-				<div className="mb-2 p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 flex-wrap">
-							<span className="text-sm text-zinc-400">Active filters:</span>
-
-							{/* Search Filter Chip */}
-							{searchFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-md">
-									<span className="text-sm text-purple-300">
-										Search: <span className="font-medium text-white">"{searchFilter}"</span>
-									</span>
-									<button
-										onClick={() => removeFilter('search')}
-										className="text-purple-300 hover:text-white transition-colors"
-										aria-label="Remove search filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Status Filter Chip */}
-							{statusFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-green-600/20 border border-green-500/30 rounded-md">
-									<span className="text-sm text-green-300">
-										Status: <span className="font-medium text-white capitalize">{statusFilter}</span>
-									</span>
-									<button
-										onClick={() => removeFilter('status')}
-										className="text-green-300 hover:text-white transition-colors"
-										aria-label="Remove status filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Results Count */}
-							<span className="text-sm text-zinc-500">
-								• {filteredTechnicians?.length || 0} {filteredTechnicians?.length === 1 ? 'result' : 'results'}
-							</span>
-						</div>
-
-						{/* Clear All Button */}
-						<button
-							onClick={clearAllFilters}
-							className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700/50 rounded-md transition-colors"
-						>
-							Clear All
-							<X size={14} />
-						</button>
-					</div>
-				</div>
-			)}
+			<FilterChips
+				filters={[
+					searchFilter
+						? { label: `Search: "${searchFilter}"`, color: "purple" as const, onRemove: () => removeFilter("search") }
+						: null,
+				]}
+				resultCount={displayUsers.length}
+				onClearAll={clearAllFilters}
+			/>
 
 			{/* Loading State */}
 			{isFetchLoading && (

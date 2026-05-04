@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
-import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 type UrlParamProps = {
 	placeholder: string;
@@ -26,16 +26,18 @@ export default function SearchBar(props: SearchBarProps) {
 }
 
 function UrlParamSearchBar({ placeholder, paramKey, onValueChange, className }: UrlParamProps) {
-	const navigate = useNavigate();
-	const location = useLocation();
-	const [searchParams] = useSearchParams();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const committed = searchParams.get(paramKey) ?? "";
 	const [value, setValue] = useState(committed);
+	const onValueChangeRef = useRef(onValueChange);
+
+	useEffect(() => {
+		onValueChangeRef.current = onValueChange;
+	});
 
 	useEffect(() => {
 		setValue(committed);
-		onValueChange?.(committed);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		onValueChangeRef.current?.(committed);
 	}, [committed]);
 
 	const handleChange = (v: string) => {
@@ -45,27 +47,27 @@ function UrlParamSearchBar({ placeholder, paramKey, onValueChange, className }: 
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
-		const newParams = new URLSearchParams(location.search);
+		const next = new URLSearchParams(searchParams);
 		if (value.trim()) {
-			newParams.set(paramKey, value.trim());
+			next.set(paramKey, value.trim());
 		} else {
-			newParams.delete(paramKey);
+			next.delete(paramKey);
 		}
-		navigate(`${location.pathname}?${newParams.toString()}`);
+		setSearchParams(next);
 	};
 
 	return (
-		<form onSubmit={handleSubmit} className={`relative w-full ${className ?? ""}`}>
+		<form onSubmit={handleSubmit} className={`relative ${className ?? "w-full"}`}>
 			<Search
-				size={18}
-				className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+				size={16}
+				className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
 			/>
 			<input
 				type="text"
 				placeholder={placeholder}
 				value={value}
 				onChange={(e) => handleChange(e.target.value)}
-				className="w-full pl-11 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				className="w-full pl-9 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 			/>
 		</form>
 	);
@@ -76,14 +78,14 @@ function ControlledSearchBar({ placeholder, value, onChange, className }: Contro
 		<div className={`relative ${className ?? "w-full"}`}>
 			<Search
 				size={16}
-				className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+				className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
 			/>
 			<input
 				type="text"
 				placeholder={placeholder}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
-				className="w-full pl-9 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				className="w-full pl-9 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 			/>
 		</div>
 	);

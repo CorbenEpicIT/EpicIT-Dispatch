@@ -1,12 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Search, Plus, Share, X } from "lucide-react";
+import { Plus, MoreVertical, Upload, Download } from "lucide-react";
 import { useAllClientsQuery, useCreateClientMutation } from "../../hooks/useClients";
 import CreateClient from "../../components/clients/CreateClient";
 import ClientCard from "../../components/clients/ClientCard";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
+import SearchBar from "../../components/ui/SearchBar";
+import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import ViewToggle from "../../components/ui/ViewToggle";
+import PageControls from "../../components/ui/PageControls";
+import StatusFilter from "../../components/ui/StatusFilter";
+import PageHeader from "../../components/ui/PageHeader";
 
 export default function ClientsPage() {
 	const navigate = useNavigate();
@@ -18,16 +24,26 @@ export default function ClientsPage() {
 	} = useAllClientsQuery();
 	const { mutateAsync: createClient } = useCreateClientMutation();
 	const [searchInput, setSearchInput] = useState("");
+	const [viewMode, setViewMode] = useState<"card" | "list">("card");
 	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [showActionsMenu, setShowActionsMenu] = useState(false);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const handleOutsideClick = (e: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				setShowActionsMenu(false);
+			}
+		};
+		if (showActionsMenu) {
+			document.addEventListener("mousedown", handleOutsideClick);
+			return () => document.removeEventListener("mousedown", handleOutsideClick);
+		}
+	}, [showActionsMenu]);
 
 	const queryParams = new URLSearchParams(location.search);
 	const searchFilter = queryParams.get("search");
 	const statusFilter = queryParams.get("status");
-
-	// Sync search input with URL on mount and when URL changes
-	useEffect(() => {
-		setSearchInput(searchFilter || "");
-	}, [searchFilter]);
 
 	// Use searchInput for instant preview, searchFilter for committed filter
 	const activeSearch = searchInput || searchFilter;
@@ -57,28 +73,10 @@ export default function ClientsPage() {
 			return a.is_active ? -1 : 1;
 		});
 
-	const handleSearchSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-
+	const removeFilter = () => {
 		const newParams = new URLSearchParams(location.search);
-
-		if (searchInput.trim()) {
-			newParams.set("search", searchInput.trim());
-		} else {
-			newParams.delete("search");
-		}
-
-		navigate(`/dispatch/clients?${newParams.toString()}`);
-	};
-
-	const removeFilter = (filterType: "search" | "status") => {
-		const newParams = new URLSearchParams(location.search);
-		newParams.delete(filterType);
-
-		if (filterType === "search") {
-			setSearchInput("");
-		}
-
+		newParams.delete("search");
+		setSearchInput("");
 		navigate(
 			`/dispatch/clients${newParams.toString() ? `?${newParams.toString()}` : ""}`
 		);
@@ -86,134 +84,102 @@ export default function ClientsPage() {
 
 	const clearAllFilters = () => {
 		setSearchInput("");
-		navigate("/dispatch/clients");
+		const next = new URLSearchParams(location.search);
+		next.delete("search");
+		navigate(`/dispatch/clients${next.toString() ? `?${next.toString()}` : ""}`);
 	};
-
-	const hasFilters = searchFilter || statusFilter;
 
 	return (
 		<div className="text-white">
-			<div className="flex flex-wrap items-center justify-between gap-4 mb-2">
-				<h2 className="text-2xl font-semibold">Clients</h2>
-
-				<div className="flex gap-2 text-nowrap">
-					<form
-						onSubmit={handleSearchSubmit}
-						className="relative w-full min-w-[250px]"
-					>
-						<Search
-							size={18}
-							className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-						/>
-						<input
-							type="text"
-							placeholder="Search clients..."
-							value={searchInput}
-							onChange={(e) =>
-								setSearchInput(e.target.value)
-							}
-							className="w-full pl-11 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm 
-							text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 
-							focus:ring-blue-500"
-						/>
-					</form>
-
+			<PageHeader title="Clients">
+				<button
+					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					onClick={() => setIsModalOpen(true)}
+				>
+					<Plus size={16} className="text-white" />
+					New Client
+				</button>
+				<div className="relative" ref={menuRef}>
 					<button
-						className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => setIsModalOpen(true)}
+						onClick={() => setShowActionsMenu(!showActionsMenu)}
+						aria-label="More actions"
+						aria-expanded={showActionsMenu}
+						aria-haspopup="menu"
+						className="flex items-center justify-center p-2.5 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
 					>
-						<Plus size={16} className="text-white" />
-						New Client
+						<MoreVertical size={20} className="text-white" />
 					</button>
-
-					<button className="flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors">
-						<Share size={16} className="text-white" />
-						Export
-					</button>
+					{showActionsMenu && (
+						<div className="absolute right-0 mt-2 w-56 bg-zinc-950 border border-zinc-600 rounded-lg shadow-2xl shadow-black/50 z-50">
+							<div className="py-1">
+								<div className="px-4 py-2 text-xs text-zinc-500 italic border-b border-zinc-800 mb-1">
+									Options yet to be
+									implemented
+								</div>
+								<button
+									onClick={() =>
+										setShowActionsMenu(
+											false
+										)
+									}
+									className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800/70 transition-colors flex items-center gap-2"
+								>
+									<Upload size={16} />
+									Import Clients
+								</button>
+								<button
+									onClick={() =>
+										setShowActionsMenu(
+											false
+										)
+									}
+									className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800/70 transition-colors flex items-center gap-2"
+								>
+									<Download size={16} />
+									Export Clients
+								</button>
+							</div>
+						</div>
+					)}
 				</div>
-			</div>
+			</PageHeader>
+
+			<PageControls
+				className="mb-4"
+				left={
+					<SearchBar
+						paramKey="search"
+						placeholder="Search clients..."
+						onValueChange={setSearchInput}
+					/>
+				}
+				middle={
+					<StatusFilter
+						paramKey="status"
+						placeholder="Status"
+						options={[
+							{ value: "active", label: "Active" },
+							{ value: "inactive", label: "Inactive" },
+						]}
+					/>
+				}
+				right={<ViewToggle value={viewMode} onChange={setViewMode} />}
+			/>
 
 			{/* Single Filter Bar with Chips */}
-			{hasFilters && (
-				<div className="mb-2 p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 flex-wrap">
-							<span className="text-sm text-zinc-400">
-								Active filters:
-							</span>
-
-							{/* Search Filter Chip */}
-							{searchFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-md">
-									<span className="text-sm text-purple-300">
-										Search:{" "}
-										<span className="font-medium text-white">
-											"
-											{
-												searchFilter
-											}
-											"
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"search"
-											)
-										}
-										className="text-purple-300 hover:text-white transition-colors"
-										aria-label="Remove search filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Status Filter Chip */}
-							{statusFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-green-600/20 border border-green-500/30 rounded-md">
-									<span className="text-sm text-green-300">
-										Status:{" "}
-										<span className="font-medium text-white capitalize">
-											{
-												statusFilter
-											}
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"status"
-											)
-										}
-										className="text-green-300 hover:text-white transition-colors"
-										aria-label="Remove status filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Results Count */}
-							<span className="text-sm text-zinc-500">
-								• {filteredClients?.length || 0}{" "}
-								{filteredClients?.length === 1
-									? "result"
-									: "results"}
-							</span>
-						</div>
-
-						{/* Clear All Button */}
-						<button
-							onClick={clearAllFilters}
-							className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700/50 rounded-md transition-colors"
-						>
-							Clear All
-							<X size={14} />
-						</button>
-					</div>
-				</div>
-			)}
+			<FilterChips
+				filters={[
+					searchFilter
+						? {
+								label: `Search: "${searchFilter}"`,
+								color: "purple" as const,
+								onRemove: removeFilter,
+							}
+						: null,
+				]}
+				resultCount={filteredClients?.length ?? 0}
+				onClearAll={clearAllFilters}
+			/>
 
 			{/* Loading State */}
 			{isFetchLoading && (
@@ -258,16 +224,23 @@ export default function ClientsPage() {
 				!fetchError &&
 				filteredClients &&
 				filteredClients.length > 0 && (
-					<div className="flex flex-wrap gap-4">
+					<div
+						className={
+							viewMode === "card"
+								? "flex flex-wrap gap-4"
+								: "flex flex-col gap-2"
+						}
+					>
 						{filteredClients.map((client) => (
 							<ClientCard
 								key={client.id}
 								client={client}
-								onClick={() => {
+								viewMode={viewMode}
+								onClick={() =>
 									navigate(
 										`/dispatch/clients/${client.id}`
-									);
-								}}
+									)
+								}
 							/>
 						))}
 					</div>

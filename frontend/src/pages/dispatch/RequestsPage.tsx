@@ -3,11 +3,21 @@ import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRe
 import { useClientByIdQuery } from "../../hooks/useClients";
 import { RequestStatusValues, RequestStatusLabels, type Request } from "../../types/requests";
 import { PriorityLabels } from "../../types/common";
-import { useState, useMemo, useEffect } from "react";
-import { Search, Plus, MoreVertical, X } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import CreateRequest from "../../components/requests/CreateRequest";
 import { formatDate } from "../../util/util";
+import SearchBar from "../../components/ui/SearchBar";
+import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import PageControls from "../../components/ui/PageControls";
+import StatusFilter from "../../components/ui/StatusFilter";
+import PageHeader from "../../components/ui/PageHeader";
+
+const requestStatusOptions = RequestStatusValues.map((s) => ({
+	value: s,
+	label: RequestStatusLabels[s as keyof typeof RequestStatusLabels] ?? s,
+}));
 
 export default function RequestsPage() {
 	const navigate = useNavigate();
@@ -27,10 +37,6 @@ export default function RequestsPage() {
 	const searchFilter = queryParams.get("search");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
-
-	useEffect(() => {
-		setSearchInput(searchFilter || "");
-	}, [searchFilter]);
 
 	const display = useMemo(() => {
 		if (!requests) return [];
@@ -83,8 +89,8 @@ export default function RequestsPage() {
 			.sort((a, b) => {
 				// First sort by status
 				const statusDiff =
-					RequestStatusValues.indexOf(a._rawStatus as any) -
-					RequestStatusValues.indexOf(b._rawStatus as any);
+					RequestStatusValues.indexOf(a._rawStatus as (typeof RequestStatusValues)[number]) -
+					RequestStatusValues.indexOf(b._rawStatus as (typeof RequestStatusValues)[number]);
 				if (statusDiff !== 0) return statusDiff;
 
 				// Then by priority
@@ -100,24 +106,10 @@ export default function RequestsPage() {
 					priorityOrder.indexOf(b._rawPriority)
 				);
 			})
-			.map(({ _rawStatus, _rawPriority, ...rest }) => rest);
+			.map((r) => ({ id: r.id, client: r.client, title: r.title, property: r.property, priority: r.priority, created: r.created, status: r.status }));
 	}, [requests, searchInput, searchFilter, clientFilter, statusFilter]);
 
-	const handleSearchSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-
-		const newParams = new URLSearchParams(location.search);
-
-		if (searchInput.trim()) {
-			newParams.set("search", searchInput.trim());
-		} else {
-			newParams.delete("search");
-		}
-
-		navigate(`/dispatch/requests?${newParams.toString()}`);
-	};
-
-	const removeFilter = (filterType: "client" | "status" | "search") => {
+	const removeFilter = (filterType: "client" | "search") => {
 		const newParams = new URLSearchParams(location.search);
 		newParams.delete(filterType);
 
@@ -132,159 +124,49 @@ export default function RequestsPage() {
 
 	const clearAllFilters = () => {
 		setSearchInput("");
-		navigate("/dispatch/requests");
+		const next = new URLSearchParams(location.search);
+		next.delete("search");
+		next.delete("client");
+		navigate(`/dispatch/requests${next.toString() ? `?${next.toString()}` : ""}`);
 	};
-
-	const hasFilters = clientFilter || statusFilter || searchFilter;
 
 	return (
 		<div className="text-white">
-			<div className="flex flex-wrap items-center justify-between gap-4 mb-2">
-				<h2 className="text-2xl font-semibold">Requests</h2>
+			<PageHeader title="Requests">
+				<button
+					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					onClick={() => setIsModalOpen(true)}
+				>
+					<Plus size={16} className="text-white" />
+					New Request
+				</button>
+			</PageHeader>
 
-				<div className="flex gap-2 text-nowrap">
-					<form
-						onSubmit={handleSearchSubmit}
-						className="relative w-full"
-					>
-						<Search
-							size={18}
-							className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-						/>
-						<input
-							type="text"
-							placeholder="Search requests..."
-							value={searchInput}
-							onChange={(e) =>
-								setSearchInput(e.target.value)
-							}
-							className="w-full pl-11 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm 
-							text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 
-							focus:ring-blue-500"
-						/>
-					</form>
+			<PageControls
+				className="mb-3"
+				left={
+					<SearchBar
+						paramKey="search"
+						placeholder="Search requests..."
+						onValueChange={setSearchInput}
+					/>
+				}
+				middle={<StatusFilter paramKey="status" placeholder="Status" options={requestStatusOptions} />}
+				right={null}
+			/>
 
-					<button
-						className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-						onClick={() => setIsModalOpen(true)}
-					>
-						<Plus size={16} className="text-white" />
-						New Request
-					</button>
-
-					<button className="flex items-center justify-center p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600">
-						<MoreVertical size={20} className="text-white" />
-					</button>
-				</div>
-			</div>
-
-			{/* Single Filter Bar with Multiple Filters */}
-			{hasFilters && (
-				<div className="mb-2 p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 flex-wrap">
-							<span className="text-sm text-zinc-400">
-								Active filters:
-							</span>
-
-							{/* Client Filter Chip */}
-							{clientFilter && filterClient && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 border border-blue-500/30 rounded-md">
-									<span className="text-sm text-blue-300">
-										Client:{" "}
-										<span className="font-medium text-white">
-											{
-												filterClient.name
-											}
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"client"
-											)
-										}
-										className="text-blue-300 hover:text-white transition-colors"
-										aria-label="Remove client filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Status Filter Chip */}
-							{statusFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-green-600/20 border border-green-500/30 rounded-md">
-									<span className="text-sm text-green-300">
-										Status:{" "}
-										<span className="font-medium text-white">
-											{RequestStatusLabels[
-												statusFilter as keyof typeof RequestStatusLabels
-											] ||
-												statusFilter}
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"status"
-											)
-										}
-										className="text-green-300 hover:text-white transition-colors"
-										aria-label="Remove status filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Search Filter Chip */}
-							{searchFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-md">
-									<span className="text-sm text-purple-300">
-										Search:{" "}
-										<span className="font-medium text-white">
-											"
-											{
-												searchFilter
-											}
-											"
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"search"
-											)
-										}
-										className="text-purple-300 hover:text-white transition-colors"
-										aria-label="Remove search filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Results Count */}
-							<span className="text-sm text-zinc-500">
-								• {display.length}{" "}
-								{display.length === 1
-									? "result"
-									: "results"}
-							</span>
-						</div>
-
-						{/* Clear All Button */}
-						<button
-							onClick={clearAllFilters}
-							className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700/50 rounded-md transition-colors"
-						>
-							Clear All
-							<X size={14} />
-						</button>
-					</div>
-				</div>
-			)}
+			<FilterChips
+				filters={[
+					clientFilter && filterClient
+						? { label: `Client: ${filterClient.name}`, color: "blue" as const, onRemove: () => removeFilter("client") }
+						: null,
+					searchFilter
+						? { label: `Search: "${searchFilter}"`, color: "purple" as const, onRemove: () => removeFilter("search") }
+						: null,
+				]}
+				resultCount={display.length}
+				onClearAll={clearAllFilters}
+			/>
 
 			<div className="shadow-sm border border-zinc-800 p-3 bg-zinc-900 rounded-lg overflow-hidden text-left">
 				<AdaptableTable
