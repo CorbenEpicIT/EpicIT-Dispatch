@@ -1,17 +1,22 @@
 import AdaptableTable from "../../components/AdaptableTable";
 import { useAllInvoicesQuery } from "../../hooks/useInvoices";
 import { useClientByIdQuery } from "../../hooks/useClients";
-import {
-	InvoiceStatusValues,
-	InvoiceStatusColors,
-	type InvoiceStatus,
-	isOverdue,
-} from "../../types/invoices";
+import { InvoiceStatusValues, type InvoiceStatus, isOverdue } from "../../types/invoices";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Search, Plus, MoreVertical, X, FileText, Download, Filter } from "lucide-react";
+import { Plus, MoreVertical, FileText, Upload } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { addSpacesToCamelCase, formatDate, formatCurrency } from "../../util/util";
 import CreateInvoice from "../../components/invoices/CreateInvoice";
+import SearchBar from "../../components/ui/SearchBar";
+import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import PageControls from "../../components/ui/PageControls";
+import StatusFilter from "../../components/ui/StatusFilter";
+import PageHeader from "../../components/ui/PageHeader";
+
+const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
+	value: s,
+	label: addSpacesToCamelCase(s),
+}));
 
 export default function InvoicesPage() {
 	const navigate = useNavigate();
@@ -25,8 +30,8 @@ export default function InvoicesPage() {
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
-	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
+	const statusParam = queryParams.get("status");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter ?? "");
 
@@ -49,21 +54,6 @@ export default function InvoicesPage() {
 			return () => document.removeEventListener("mousedown", handleOutsideClick);
 		}
 	}, [showActionsMenu]);
-
-	useEffect(() => {
-		setSearchInput(searchFilter || "");
-	}, [searchFilter]);
-
-	const statusCounts = useMemo(() => {
-		if (!invoices) return {} as Record<string, number>;
-		return invoices.reduce(
-			(acc, inv) => {
-				acc[inv.status] = (acc[inv.status] || 0) + 1;
-				return acc;
-			},
-			{} as Record<string, number>
-		);
-	}, [invoices]);
 
 	const overdueCount = useMemo(() => {
 		if (!invoices) return 0;
@@ -108,12 +98,14 @@ export default function InvoicesPage() {
 					_rawDueDate: inv.due_date ? new Date(inv.due_date) : null,
 					_isOverdue: overdue,
 					_clientId: inv.client_id,
-					_issueDate: inv.issue_date ? new Date(inv.issue_date) : null,
+					_issueDate: inv.issue_date
+						? new Date(inv.issue_date)
+						: null,
 				};
 			}) ?? [];
 
 		if (clientFilter) data = data.filter((item) => item._clientId === clientFilter);
-		if (statusFilter) data = data.filter((item) => item._rawStatus === statusFilter);
+		if (statusParam) data = data.filter((item) => item._rawStatus === statusParam);
 		if (activeSearch) {
 			const q = activeSearch.toLowerCase();
 			data = data.filter(
@@ -125,46 +117,48 @@ export default function InvoicesPage() {
 			);
 		}
 
-		return data
-			.sort((a, b) => {
-				if (a._isOverdue && !b._isOverdue) return -1;
-				if (!a._isOverdue && b._isOverdue) return 1;
-				const statusDiff =
-					InvoiceStatusValues.indexOf(a._rawStatus as InvoiceStatus) -
-					InvoiceStatusValues.indexOf(b._rawStatus as InvoiceStatus);
-				if (statusDiff !== 0) return statusDiff;
-				if (a._rawDueDate && b._rawDueDate)
-					return a._rawDueDate.getTime() - b._rawDueDate.getTime();
-				if (a._rawDueDate) return -1;
-				if (b._rawDueDate) return 1;
-				return (b._issueDate?.getTime() ?? 0) - (a._issueDate?.getTime() ?? 0);
-			})
-			.map(
-				({
-					_rawStatus,
-					_rawTotal,
-					_rawBalance,
-					_rawDueDate,
-					_isOverdue,
-					_clientId,
-					_issueDate,
-					...rest
-				}) => rest
-			);
-	}, [invoices, searchInput, searchFilter, clientFilter, statusFilter]);
+		return (
+			data
+				.sort((a, b) => {
+					if (a._isOverdue && !b._isOverdue) return -1;
+					if (!a._isOverdue && b._isOverdue) return 1;
+					const statusDiff =
+						InvoiceStatusValues.indexOf(
+							a._rawStatus as InvoiceStatus
+						) -
+						InvoiceStatusValues.indexOf(
+							b._rawStatus as InvoiceStatus
+						);
+					if (statusDiff !== 0) return statusDiff;
+					if (a._rawDueDate && b._rawDueDate)
+						return (
+							a._rawDueDate.getTime() -
+							b._rawDueDate.getTime()
+						);
+					if (a._rawDueDate) return -1;
+					if (b._rawDueDate) return 1;
+					return (
+						(b._issueDate?.getTime() ?? 0) -
+						(a._issueDate?.getTime() ?? 0)
+					);
+				})
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
+				.map(
+					({
+						_rawStatus,
+						_rawTotal,
+						_rawBalance,
+						_rawDueDate,
+						_isOverdue,
+						_clientId,
+						_issueDate,
+						...rest
+					}) => rest
+				)
+		);
+	}, [invoices, searchInput, searchFilter, clientFilter, statusParam]);
 
-	const handleSearchSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-		const newParams = new URLSearchParams(location.search);
-		if (searchInput.trim()) {
-			newParams.set("search", searchInput.trim());
-		} else {
-			newParams.delete("search");
-		}
-		navigate(`/dispatch/invoices?${newParams.toString()}`);
-	};
-
-	const removeFilter = (filterType: "client" | "status" | "search") => {
+	const removeFilter = (filterType: "client" | "search") => {
 		const newParams = new URLSearchParams(location.search);
 		newParams.delete(filterType);
 		if (filterType === "search") setSearchInput("");
@@ -173,22 +167,13 @@ export default function InvoicesPage() {
 		);
 	};
 
-	const setStatusFilter = (status: string) => {
-		const newParams = new URLSearchParams(location.search);
-		if (newParams.get("status") === status) {
-			newParams.delete("status");
-		} else {
-			newParams.set("status", status);
-		}
-		navigate(`/dispatch/invoices?${newParams.toString()}`);
-	};
-
 	const clearAllFilters = () => {
 		setSearchInput("");
-		navigate("/dispatch/invoices");
+		const next = new URLSearchParams(location.search);
+		next.delete("search");
+		next.delete("client");
+		navigate(`/dispatch/invoices${next.toString() ? `?${next.toString()}` : ""}`);
 	};
-
-	const hasFilters = clientFilter || statusFilter || searchFilter;
 
 	const totals = useMemo(() => {
 		if (!invoices) return { outstanding: 0, overdue: 0, paid: 0 };
@@ -205,6 +190,8 @@ export default function InvoicesPage() {
 		);
 	}, [invoices]);
 
+	const hasActiveFilters = clientFilter || searchFilter || statusParam;
+
 	return (
 		<div className="text-white">
 			{/* Create Invoice Modal */}
@@ -213,84 +200,47 @@ export default function InvoicesPage() {
 				setIsModalOpen={setIsCreateModalOpen}
 			/>
 
-			{/* Header */}
-			<div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-				<h2 className="text-2xl font-semibold">Invoices</h2>
-
-				<div className="flex gap-2 text-nowrap">
-					<form
-						onSubmit={handleSearchSubmit}
-						className="relative w-full"
-					>
-						<Search
-							size={18}
-							className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-						/>
-						<input
-							type="text"
-							placeholder="Search invoices..."
-							value={searchInput}
-							onChange={(e) =>
-								setSearchInput(e.target.value)
-							}
-							className="w-full pl-11 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-						/>
-					</form>
-
+			<PageHeader title="Invoices">
+				<button
+					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					onClick={() => setIsCreateModalOpen(true)}
+				>
+					<Plus size={16} />
+					New Invoice
+				</button>
+				<div className="relative" ref={menuRef}>
 					<button
-						className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-						onClick={() => setIsCreateModalOpen(true)}
+						onClick={() => setShowActionsMenu(!showActionsMenu)}
+						aria-label="More actions"
+						aria-expanded={showActionsMenu}
+						aria-haspopup="menu"
+						className="flex items-center justify-center p-2.5 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
 					>
-						<Plus size={16} />
-						New Invoice
+						<MoreVertical size={20} className="text-white" />
 					</button>
-
-					<div className="relative" ref={menuRef}>
-						<button
-							onClick={() =>
-								setShowActionsMenu(!showActionsMenu)
-							}
-							className="flex items-center justify-center p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
-						>
-							<MoreVertical
-								size={20}
-								className="text-white"
-							/>
-						</button>
-
-						{showActionsMenu && (
-							<div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
-								<div className="py-1">
-									<button
-										onClick={() =>
-											setShowActionsMenu(
-												false
-											)
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										<Download
-											size={16}
-										/>
-										Export Invoices
-									</button>
-									<div className="border-t border-zinc-800 my-1" />
-									<button
-										onClick={() =>
-											setShowActionsMenu(
-												false
-											)
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										⚙ Settings
-									</button>
+					{showActionsMenu && (
+						<div className="absolute right-0 mt-2 w-56 bg-zinc-950 border border-zinc-600 rounded-lg shadow-2xl shadow-black/50 z-50">
+							<div className="py-1">
+								<div className="px-4 py-2 text-xs text-zinc-500 italic border-b border-zinc-800 mb-1">
+									Options yet to be
+									implemented
 								</div>
+								<button
+									onClick={() =>
+										setShowActionsMenu(
+											false
+										)
+									}
+									className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800/70 transition-colors flex items-center gap-2"
+								>
+									<Upload size={16} />
+									Import Invoices
+								</button>
 							</div>
-						)}
-					</div>
+						</div>
+					)}
 				</div>
-			</div>
+			</PageHeader>
 
 			{/* Summary Cards */}
 			<div className="grid grid-cols-3 gap-3 mb-4">
@@ -337,139 +287,48 @@ export default function InvoicesPage() {
 				</div>
 			</div>
 
-			{/* Status Filter Pills */}
-			<div className="flex gap-2 flex-wrap mb-3">
-				{InvoiceStatusValues.filter((s) => statusCounts[s]).map(
-					(status) => {
-						const isActive = statusFilter === status;
-						const colorClass = InvoiceStatusColors[status];
-						return (
-							<button
-								key={status}
-								onClick={() =>
-									setStatusFilter(status)
-								}
-								className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-									isActive
-										? colorClass
-										: "bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-500"
-								}`}
-							>
-								<Filter size={10} />
-								{addSpacesToCamelCase(status)}
-								<span
-									className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${
-										isActive
-											? "bg-white/20"
-											: "bg-zinc-700"
-									}`}
-								>
-									{statusCounts[status]}
-								</span>
-							</button>
-						);
-					}
-				)}
-			</div>
+				<PageControls
+				className="mb-3"
+				left={
+					<SearchBar
+						paramKey="search"
+						placeholder="Search invoices..."
+						onValueChange={setSearchInput}
+					/>
+				}
+				middle={
+					<StatusFilter
+						paramKey="status"
+						placeholder="Status"
+						options={invoiceStatusOptions}
+					/>
+				}
+				right={null}
+			/>
 
 			{/* Filter Bar */}
-			{hasFilters && (
-				<div className="mb-3 p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 flex-wrap">
-							<span className="text-sm text-zinc-400">
-								Active filters:
-							</span>
-
-							{clientFilter && filterClient && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 border border-blue-500/30 rounded-md">
-									<span className="text-sm text-blue-300">
-										Client:{" "}
-										<span className="font-medium text-white">
-											{
-												filterClient.name
-											}
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"client"
-											)
-										}
-										className="text-blue-300 hover:text-white transition-colors"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{statusFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-orange-600/20 border border-orange-500/30 rounded-md">
-									<span className="text-sm text-orange-300">
-										Status:{" "}
-										<span className="font-medium text-white">
-											{addSpacesToCamelCase(
-												statusFilter
-											)}
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"status"
-											)
-										}
-										className="text-orange-300 hover:text-white transition-colors"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{searchFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-md">
-									<span className="text-sm text-purple-300">
-										Search:{" "}
-										<span className="font-medium text-white">
-											"
-											{
-												searchFilter
-											}
-											"
-										</span>
-									</span>
-									<button
-										onClick={() =>
-											removeFilter(
-												"search"
-											)
-										}
-										className="text-purple-300 hover:text-white transition-colors"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							<span className="text-sm text-zinc-500">
-								• {display.length}{" "}
-								{display.length === 1
-									? "result"
-									: "results"}
-							</span>
-						</div>
-
-						<button
-							onClick={clearAllFilters}
-							className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700/50 rounded-md transition-colors"
-						>
-							Clear All
-							<X size={14} />
-						</button>
-					</div>
-				</div>
-			)}
+			<FilterChips
+				filters={[
+					clientFilter && filterClient
+						? {
+								label: `Client: ${filterClient.name}`,
+								color: "blue" as const,
+								onRemove: () =>
+									removeFilter("client"),
+							}
+						: null,
+					searchFilter
+						? {
+								label: `Search: "${searchFilter}"`,
+								color: "purple" as const,
+								onRemove: () =>
+									removeFilter("search"),
+							}
+						: null,
+				]}
+				resultCount={display.length}
+				onClearAll={clearAllFilters}
+			/>
 
 			{/* Table */}
 			<div className="shadow-sm border border-zinc-800 p-3 bg-zinc-900 rounded-lg overflow-hidden text-left">
@@ -483,11 +342,11 @@ export default function InvoicesPage() {
 							No invoices found
 						</h3>
 						<p className="text-zinc-500 text-sm mb-4">
-							{hasFilters
+							{hasActiveFilters
 								? "Try adjusting your filters"
 								: "Create your first invoice to get started"}
 						</p>
-						{!hasFilters && (
+						{!hasActiveFilters && (
 							<button
 								onClick={() =>
 									setIsCreateModalOpen(true)

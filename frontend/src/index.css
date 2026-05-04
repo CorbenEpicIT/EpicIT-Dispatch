@@ -45,11 +45,13 @@ input[type="number"] {
 
 /* Inventory card highlight animation */
 @keyframes card-highlight {
-	0%   { box-shadow: 0 0 0 2px rgb(59 130 246 / 0.8); }
-	60%  { box-shadow: 0 0 0 3px rgb(59 130 246 / 0.3); }
-	100% { box-shadow: 0 0 0 0px rgb(59 130 246 / 0); }
+	0%   { outline-color: rgb(59 130 246 / 0.8); }
+	60%  { outline-color: rgb(59 130 246 / 0.3); }
+	100% { outline-color: rgb(59 130 246 / 0); }
 }
 .animate-card-highlight {
+	outline: 2px solid transparent;
+	outline-offset: -2px;
 	animation: card-highlight 2.5s ease-out forwards;
 }
 

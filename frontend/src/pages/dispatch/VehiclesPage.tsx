@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Search, Plus, LayoutGrid, LayoutList } from "lucide-react";
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { useVehiclesQuery, useCreateVehicleMutation } from "../../hooks/useVehicles";
 import VehicleCard from "../../components/vehicles/VehicleCard";
 import CreateVehicle from "../../components/vehicles/CreateVehicle";
@@ -8,30 +9,34 @@ import type { Vehicle } from "../../types/vehicles";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
-
-type StatusFilter = "all" | "active" | "inactive";
-type ViewMode = "card" | "list";
+import SearchBar from "../../components/ui/SearchBar";
+import ViewToggle from "../../components/ui/ViewToggle";
+import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import PageControls from "../../components/ui/PageControls";
+import StatusFilter from "../../components/ui/StatusFilter";
+import PageHeader from "../../components/ui/PageHeader";
 
 export default function VehiclesPage() {
+	const navigate = useNavigate();
+	const location = useLocation();
 	const [searchInput, setSearchInput] = useState("");
-	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-	const [viewMode, setViewMode] = useState<ViewMode>("card");
+	const [viewMode, setViewMode] = useState<"card" | "list">("card");
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
-	const { data: vehicles, isLoading, error, refetch } = useVehiclesQuery(
-		statusFilter === "all" ? undefined : statusFilter
-	);
+	const queryParams = new URLSearchParams(location.search);
+	const statusParam = queryParams.get("status") as "active" | "inactive" | null;
+	const searchFilter = queryParams.get("search");
+
+	const { data: vehicles, isLoading, error } = useVehiclesQuery(statusParam ?? undefined);
 	const { mutateAsync: createVehicle } = useCreateVehicleMutation();
 
-	useEffect(() => {
-		setSearchInput("");
-	}, [statusFilter]);
+	const activeSearch = searchInput || searchFilter;
 
 	const filteredVehicles = vehicles?.filter((v) => {
-		if (!searchInput.trim()) return true;
-		const q = searchInput.toLowerCase();
+		if (!activeSearch?.trim()) return true;
+		const q = activeSearch.toLowerCase();
 		return (
 			v.name.toLowerCase().includes(q) ||
 			v.type.toLowerCase().includes(q) ||
@@ -41,78 +46,61 @@ export default function VehiclesPage() {
 
 	return (
 		<div className="text-white">
-			{/* Row 1: Title + actions */}
-			<div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-				<h2 className="text-2xl font-semibold">Vehicles</h2>
-				<div className="flex flex-wrap items-center gap-2">
-					<button
-						onClick={() => setIsCreateModalOpen(true)}
-						className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-					>
-						<Plus size={15} />
-						New Vehicle
-					</button>
-					<button
-						onClick={() => refetch()}
-						className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-					>
-						Refresh
-					</button>
-				</div>
-			</div>
+			<PageHeader title="Vehicles">
+				<button
+					onClick={() => setIsCreateModalOpen(true)}
+					className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+				>
+					<Plus size={15} />
+					New Vehicle
+				</button>
+			</PageHeader>
 
-			{/* Row 2: Search + filters */}
-			<div className="flex flex-wrap items-center gap-2 mb-4">
-				<div className="relative flex-1 min-w-[180px]">
-					<Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-					<input
-						type="text"
+			<PageControls
+				className="mb-4"
+				left={
+					<SearchBar
+						paramKey="search"
 						placeholder="Search by name, type, or plate…"
-						value={searchInput}
-						onChange={(e) => setSearchInput(e.target.value)}
-						className="w-full pl-9 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+						onValueChange={setSearchInput}
 					/>
-				</div>
+				}
+				middle={
+					<StatusFilter
+						paramKey="status"
+						placeholder="Status"
+						options={[
+							{ value: "active", label: "Active" },
+							{ value: "inactive", label: "Inactive" },
+						]}
+					/>
+				}
+				right={<ViewToggle value={viewMode} onChange={setViewMode} />}
+			/>
 
-				<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
-
-				{/* Status filter */}
-				<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
-					{(["all", "active", "inactive"] as StatusFilter[]).map((s) => (
-						<button
-							key={s}
-							onClick={() => setStatusFilter(s)}
-							className={`px-3 py-1 text-xs rounded font-medium cursor-pointer transition-colors capitalize ${
-								statusFilter === s ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-							}`}
-						>
-							{s}
-						</button>
-					))}
-				</div>
-
-				{/* View mode toggle */}
-				<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
-					<button
-						onClick={() => setViewMode("card")}
-						title="Card View"
-						className={`p-1.5 rounded cursor-pointer transition-colors ${
-							viewMode === "card" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-						}`}
-					>
-						<LayoutGrid size={15} />
-					</button>
-					<button
-						onClick={() => setViewMode("list")}
-						title="List View"
-						className={`p-1.5 rounded cursor-pointer transition-colors ${
-							viewMode === "list" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-						}`}
-					>
-						<LayoutList size={15} />
-					</button>
-				</div>
-			</div>
+			<FilterChips
+				filters={[
+					searchFilter
+						? {
+							label: `Search: "${searchFilter}"`,
+							color: "purple" as const,
+							onRemove: () => {
+								setSearchInput("");
+								const next = new URLSearchParams(location.search);
+								next.delete("search");
+								navigate(`/dispatch/vehicles${next.toString() ? `?${next.toString()}` : ""}`);
+							},
+						  }
+						: null,
+				]}
+				resultCount={filteredVehicles?.length ?? 0}
+				onClearAll={() => {
+					setSearchInput("");
+					const next = new URLSearchParams(location.search);
+					next.delete("search");
+					navigate(`/dispatch/vehicles${next.toString() ? `?${next.toString()}` : ""}`);
+				}}
+			/>
 
 			{/* Loading */}
 			{isLoading && (
@@ -136,9 +124,9 @@ export default function VehiclesPage() {
 				<div className="w-full h-[400px] flex flex-col justify-center items-center">
 					<BoxSvg className="w-15 h-15 mb-1" />
 					<h1 className="text-center text-xl mt-1">
-						{searchInput ? "No vehicles found." : "No vehicles yet."}
+						{activeSearch ? "No vehicles found." : "No vehicles yet."}
 					</h1>
-					{searchInput && (
+					{activeSearch && (
 						<p className="text-center text-zinc-500 mt-2">Try adjusting your search terms.</p>
 					)}
 				</div>
