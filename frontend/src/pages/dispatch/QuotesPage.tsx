@@ -12,6 +12,8 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
+import DateRangeFilter from "../../components/ui/DateRangeFilter";
+import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import PageHeader from "../../components/ui/PageHeader";
 
 const quoteStatusOptions = QuoteStatusValues.map((s) => ({
@@ -32,11 +34,20 @@ export default function QuotesPage() {
 	const requestFilter = queryParams.get("request");
 	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
+	const dateParamKey = queryParams.get("date");
+	const dateParamFrom = queryParams.get("dateFrom");
+	const dateParamTo = queryParams.get("dateTo");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
 	const { data: filterRequest } = useRequestByIdQuery(requestFilter);
 
 	const display = useMemo(() => {
+		const _dp = new URLSearchParams();
+		if (dateParamKey) _dp.set("date", dateParamKey);
+		if (dateParamFrom) _dp.set("dateFrom", dateParamFrom);
+		if (dateParamTo) _dp.set("dateTo", dateParamTo);
+		const dateRange = parseDateRangeFromParams(_dp, "date");
+
 		if (!quotes) return [];
 
 		const activeSearch = searchInput || searchFilter;
@@ -76,6 +87,12 @@ export default function QuotesPage() {
 			});
 		}
 
+		if (dateRange.option !== "all") {
+			filtered = filtered.filter((q) =>
+				matchesDateRange(q.created_at ? new Date(q.created_at) : null, dateRange)
+			);
+		}
+
 		return filtered
 			.slice()
 			.sort((a, b) => {
@@ -95,7 +112,7 @@ export default function QuotesPage() {
 				status: QuoteStatusLabels[q.status] || q.status,
 				total: formatCurrency(Number(q.total)),
 			}));
-	}, [quotes, searchInput, searchFilter, clientFilter, requestFilter, statusFilter]);
+	}, [quotes, searchInput, searchFilter, clientFilter, requestFilter, statusFilter, dateParamKey, dateParamFrom, dateParamTo]);
 
 	const removeFilter = (filterType: "client" | "request" | "search") => {
 		const newParams = new URLSearchParams(location.search);
@@ -112,6 +129,9 @@ export default function QuotesPage() {
 		next.delete("search");
 		next.delete("client");
 		next.delete("request");
+		next.delete("date");
+		next.delete("dateFrom");
+		next.delete("dateTo");
 		navigate(`/dispatch/quotes${next.toString() ? `?${next.toString()}` : ""}`);
 	};
 
@@ -136,7 +156,12 @@ export default function QuotesPage() {
 						onValueChange={setSearchInput}
 					/>
 				}
-				middle={<StatusFilter paramKey="status" placeholder="Status" options={quoteStatusOptions} />}
+				middle={
+					<div className="flex items-center gap-2">
+						<StatusFilter paramKey="status" placeholder="Status" options={quoteStatusOptions} />
+						<DateRangeFilter paramKey="date" />
+					</div>
+				}
 				right={null}
 			/>
 
