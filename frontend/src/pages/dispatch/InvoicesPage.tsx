@@ -11,6 +11,8 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
+import DateRangeFilter from "../../components/ui/DateRangeFilter";
+import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import PageHeader from "../../components/ui/PageHeader";
 
 const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
@@ -32,6 +34,9 @@ export default function InvoicesPage() {
 	const clientFilter = queryParams.get("client");
 	const searchFilter = queryParams.get("search");
 	const statusParam = queryParams.get("status");
+	const dateParamKey = queryParams.get("date");
+	const dateParamFrom = queryParams.get("dateFrom");
+	const dateParamTo = queryParams.get("dateTo");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter ?? "");
 
@@ -61,6 +66,12 @@ export default function InvoicesPage() {
 	}, [invoices]);
 
 	const display = useMemo(() => {
+		const _dp = new URLSearchParams();
+		if (dateParamKey) _dp.set("date", dateParamKey);
+		if (dateParamFrom) _dp.set("dateFrom", dateParamFrom);
+		if (dateParamTo) _dp.set("dateTo", dateParamTo);
+		const dateRange = parseDateRangeFromParams(_dp, "date");
+
 		const activeSearch = searchInput || searchFilter;
 
 		let data =
@@ -106,6 +117,8 @@ export default function InvoicesPage() {
 
 		if (clientFilter) data = data.filter((item) => item._clientId === clientFilter);
 		if (statusParam) data = data.filter((item) => item._rawStatus === statusParam);
+		if (dateRange.option !== "all")
+			data = data.filter((item) => matchesDateRange(item._issueDate, dateRange));
 		if (activeSearch) {
 			const q = activeSearch.toLowerCase();
 			data = data.filter(
@@ -156,7 +169,7 @@ export default function InvoicesPage() {
 					}) => rest
 				)
 		);
-	}, [invoices, searchInput, searchFilter, clientFilter, statusParam]);
+	}, [invoices, searchInput, searchFilter, clientFilter, statusParam, dateParamKey, dateParamFrom, dateParamTo]);
 
 	const removeFilter = (filterType: "client" | "search") => {
 		const newParams = new URLSearchParams(location.search);
@@ -172,6 +185,9 @@ export default function InvoicesPage() {
 		const next = new URLSearchParams(location.search);
 		next.delete("search");
 		next.delete("client");
+		next.delete("date");
+		next.delete("dateFrom");
+		next.delete("dateTo");
 		navigate(`/dispatch/invoices${next.toString() ? `?${next.toString()}` : ""}`);
 	};
 
@@ -190,7 +206,7 @@ export default function InvoicesPage() {
 		);
 	}, [invoices]);
 
-	const hasActiveFilters = clientFilter || searchFilter || statusParam;
+	const hasActiveFilters = clientFilter || searchFilter || statusParam || (dateParamKey && dateParamKey !== "all");
 
 	return (
 		<div className="text-white">
@@ -297,11 +313,14 @@ export default function InvoicesPage() {
 					/>
 				}
 				middle={
-					<StatusFilter
-						paramKey="status"
-						placeholder="Status"
-						options={invoiceStatusOptions}
-					/>
+					<div className="flex items-center gap-2">
+						<StatusFilter
+							paramKey="status"
+							placeholder="Status"
+							options={invoiceStatusOptions}
+						/>
+						<DateRangeFilter paramKey="date" />
+					</div>
 				}
 				right={null}
 			/>

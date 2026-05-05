@@ -12,6 +12,8 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
+import DateRangeFilter from "../../components/ui/DateRangeFilter";
+import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import PageHeader from "../../components/ui/PageHeader";
 
 const requestStatusOptions = RequestStatusValues.map((s) => ({
@@ -35,10 +37,19 @@ export default function RequestsPage() {
 	const clientFilter = queryParams.get("client");
 	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
+	const dateParamKey = queryParams.get("date");
+	const dateParamFrom = queryParams.get("dateFrom");
+	const dateParamTo = queryParams.get("dateTo");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
 
 	const display = useMemo(() => {
+		const _dp = new URLSearchParams();
+		if (dateParamKey) _dp.set("date", dateParamKey);
+		if (dateParamFrom) _dp.set("dateFrom", dateParamFrom);
+		if (dateParamTo) _dp.set("dateTo", dateParamTo);
+		const dateRange = parseDateRangeFromParams(_dp, "date");
+
 		if (!requests) return [];
 
 		const activeSearch = searchInput || searchFilter;
@@ -70,6 +81,12 @@ export default function RequestsPage() {
 					priority.includes(searchLower)
 				);
 			});
+		}
+
+		if (dateRange.option !== "all") {
+			filtered = filtered.filter((r) =>
+				matchesDateRange(r.created_at ? new Date(r.created_at) : null, dateRange)
+			);
 		}
 
 		return filtered
@@ -107,7 +124,7 @@ export default function RequestsPage() {
 				);
 			})
 			.map((r) => ({ id: r.id, client: r.client, title: r.title, property: r.property, priority: r.priority, created: r.created, status: r.status }));
-	}, [requests, searchInput, searchFilter, clientFilter, statusFilter]);
+	}, [requests, searchInput, searchFilter, clientFilter, statusFilter, dateParamKey, dateParamFrom, dateParamTo]);
 
 	const removeFilter = (filterType: "client" | "search") => {
 		const newParams = new URLSearchParams(location.search);
@@ -127,6 +144,9 @@ export default function RequestsPage() {
 		const next = new URLSearchParams(location.search);
 		next.delete("search");
 		next.delete("client");
+		next.delete("date");
+		next.delete("dateFrom");
+		next.delete("dateTo");
 		navigate(`/dispatch/requests${next.toString() ? `?${next.toString()}` : ""}`);
 	};
 
@@ -151,7 +171,12 @@ export default function RequestsPage() {
 						onValueChange={setSearchInput}
 					/>
 				}
-				middle={<StatusFilter paramKey="status" placeholder="Status" options={requestStatusOptions} />}
+				middle={
+					<div className="flex items-center gap-2">
+						<StatusFilter paramKey="status" placeholder="Status" options={requestStatusOptions} />
+						<DateRangeFilter paramKey="date" />
+					</div>
+				}
 				right={null}
 			/>
 

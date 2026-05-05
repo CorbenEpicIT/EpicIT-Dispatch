@@ -14,6 +14,8 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
+import DateRangeFilter from "../../components/ui/DateRangeFilter";
+import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import ContextToggle, { type JobsView } from "../../components/ui/ContextToggle";
 import PageHeader from "../../components/ui/PageHeader";
 
@@ -49,6 +51,9 @@ export default function JobsPage() {
 	const statusFilter = queryParams.get("status");
 	const searchFilter = queryParams.get("search");
 	const viewParam = queryParams.get("view") as JobsView | null;
+	const dateParamKey = queryParams.get("date");
+	const dateParamFrom = queryParams.get("dateFrom");
+	const dateParamTo = queryParams.get("dateTo");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
 
@@ -74,6 +79,12 @@ export default function JobsPage() {
 	}, [viewParam]);
 
 	const display = useMemo(() => {
+		const _dp = new URLSearchParams();
+		if (dateParamKey) _dp.set("date", dateParamKey);
+		if (dateParamFrom) _dp.set("dateFrom", dateParamFrom);
+		if (dateParamTo) _dp.set("dateTo", dateParamTo);
+		const dateRange = parseDateRangeFromParams(_dp, "date");
+
 		const activeSearch = searchInput || searchFilter;
 
 		if (viewMode === "templates") {
@@ -165,6 +176,12 @@ export default function JobsPage() {
 						status.includes(searchLower)
 					);
 				});
+			}
+
+			if (dateRange.option !== "all") {
+				templatesData = templatesData.filter((item) =>
+					matchesDateRange(item._scheduleDate, dateRange)
+				);
 			}
 
 			return templatesData
@@ -310,6 +327,12 @@ export default function JobsPage() {
 				});
 			}
 
+			if (dateRange.option !== "all") {
+				jobsData = jobsData.filter((item) =>
+					matchesDateRange(item._scheduleDate, dateRange)
+				);
+			}
+
 			return jobsData
 				.sort((a, b) => {
 					// Sort by status
@@ -349,7 +372,7 @@ export default function JobsPage() {
 					})
 				);
 		}
-	}, [jobs, recurringPlans, searchInput, searchFilter, clientFilter, statusFilter, viewMode]);
+	}, [jobs, recurringPlans, searchInput, searchFilter, clientFilter, statusFilter, viewMode, dateParamKey, dateParamFrom, dateParamTo]);
 
 	const handleViewModeChange = (mode: JobsView) => {
 		setViewMode(mode);
@@ -360,6 +383,9 @@ export default function JobsPage() {
 			newParams.delete("view");
 		}
 		newParams.delete("status");
+		newParams.delete("date");
+		newParams.delete("dateFrom");
+		newParams.delete("dateTo");
 		navigate(`/dispatch/jobs?${newParams.toString()}`);
 	};
 
@@ -377,6 +403,9 @@ export default function JobsPage() {
 		const next = new URLSearchParams(location.search);
 		next.delete("search");
 		next.delete("client");
+		next.delete("date");
+		next.delete("dateFrom");
+		next.delete("dateTo");
 		navigate(`/dispatch/jobs${next.toString() ? `?${next.toString()}` : ""}`);
 	};
 
@@ -451,15 +480,18 @@ export default function JobsPage() {
 					</>
 				}
 				middle={
-					<StatusFilter
-						paramKey="status"
-						placeholder="Status"
-						options={
-							viewMode === "jobs"
-								? jobStatusOptions
-								: planStatusOptions
-						}
-					/>
+					<div className="flex items-center gap-2">
+						<StatusFilter
+							paramKey="status"
+							placeholder="Status"
+							options={
+								viewMode === "jobs"
+									? jobStatusOptions
+									: planStatusOptions
+							}
+						/>
+						<DateRangeFilter paramKey="date" />
+					</div>
 				}
 				right={null}
 			/>
