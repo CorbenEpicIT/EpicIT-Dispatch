@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ErrorCodes, createSuccessResponse, createErrorResponse } from "../types/responses.js";
+import { getUserContext } from "../lib/context.js";
 import {
 	listVehicles,
 	createVehicle,
@@ -26,8 +27,9 @@ router.get("/", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
 	try {
+		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
-		const result = await createVehicle(req.body, orgId);
+		const result = await createVehicle(req.body, orgId, context);
 		if (result.err) {
 			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 		}
@@ -40,8 +42,9 @@ router.post("/", async (req, res, next) => {
 router.put("/:id", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
-		const result = await updateVehicle(id, req.body, orgId);
+		const result = await updateVehicle(id, req.body, orgId, context);
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
 			return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
@@ -69,8 +72,9 @@ router.get("/:id/stock", async (req, res, next) => {
 router.post("/:id/stock", async (req, res, next) => {
 	try {
 		const { id } = req.params;
+		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
-		const result = await addVehicleStockItem(id, req.body, orgId);
+		const result = await addVehicleStockItem(id, req.body, orgId, context);
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
 			return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
@@ -84,8 +88,9 @@ router.post("/:id/stock", async (req, res, next) => {
 router.put("/:id/stock/:itemId", async (req, res, next) => {
 	try {
 		const { id, itemId } = req.params;
+		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
-		const result = await updateVehicleStockItem(id, itemId, req.body, orgId);
+		const result = await updateVehicleStockItem(id, itemId, req.body, orgId, context);
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
 			return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
@@ -99,8 +104,9 @@ router.put("/:id/stock/:itemId", async (req, res, next) => {
 router.delete("/:id/stock/:itemId", async (req, res, next) => {
 	try {
 		const { id, itemId } = req.params;
+		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
-		const result = await deleteVehicleStockItem(id, itemId, orgId);
+		const result = await deleteVehicleStockItem(id, itemId, orgId, context);
 		if (result.err) {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
 			return res.status(statusCode).json(createErrorResponse(ErrorCodes.DELETE_ERROR, result.err));

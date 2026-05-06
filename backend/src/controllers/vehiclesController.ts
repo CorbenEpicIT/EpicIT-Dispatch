@@ -1,7 +1,21 @@
 import { z, ZodError } from "zod";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
+import { logActivity, buildChanges } from "../services/logger.js";
 import { getScopedDb, UserContext } from "../lib/context.js";
+
+function getActorInfo(context?: UserContext) {
+	return {
+		actor_type: context?.techId
+			? "technician"
+			: context?.dispatcherId
+				? "dispatcher"
+				: "system",
+		actor_id: context?.techId || context?.dispatcherId,
+		ip_address: context?.ipAddress,
+		user_agent: context?.userAgent,
+	};
+}
 
 // ── Validation schemas ────────────────────────────────────────────────────────
 
@@ -74,7 +88,7 @@ export const getVehicleById = async (id: string, organizationId: string) => {
 	});
 };
 
-export const createVehicle = async (data: unknown, organizationId: string) => {
+export const createVehicle = async (data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createVehicleSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
@@ -82,6 +96,20 @@ export const createVehicle = async (data: unknown, organizationId: string) => {
 			data: {
 				...parsed,
 				organization_id: organizationId,
+			},
+		});
+		await logActivity({
+			event_type: "vehicle.created",
+			action: "created",
+			entity_type: "vehicle",
+			entity_id: vehicle.id,
+			organization_id: organizationId,
+			...getActorInfo(context),
+			changes: {
+				name:          { old: null, new: vehicle.name },
+				type:          { old: null, new: vehicle.type },
+				license_plate: { old: null, new: vehicle.license_plate },
+				status:        { old: null, new: vehicle.status },
 			},
 		});
 		return { err: "", item: vehicle };
@@ -92,13 +120,21 @@ export const createVehicle = async (data: unknown, organizationId: string) => {
 	}
 };
 
-export const updateVehicle = async (id: string, data: unknown, organizationId: string) => {
+export const updateVehicle = async (id: string, data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = updateVehicleSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
 		const vehicle = await sdb.vehicle.update({
 			where: { id },
 			data: parsed,
+		});
+		await logActivity({
+			event_type: "vehicle.updated",
+			action: "updated",
+			entity_type: "vehicle",
+			entity_id: vehicle.id,
+			organization_id: organizationId,
+			...getActorInfo(context),
 		});
 		return { err: "", item: vehicle };
 	} catch (e: unknown) {
@@ -127,7 +163,7 @@ export const listVehicleStock = async (vehicleId: string, organizationId: string
 	return { err: "", items };
 };
 
-export const addVehicleStockItem = async (vehicleId: string, data: unknown, organizationId: string) => {
+export const addVehicleStockItem = async (vehicleId: string, data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = addStockItemSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
@@ -152,6 +188,18 @@ export const addVehicleStockItem = async (vehicleId: string, data: unknown, orga
 			},
 			include: { inventory_item: true },
 		});
+		await logActivity({
+			event_type: "vehicle_stock.created",
+			action: "created",
+			entity_type: "vehicle_stock_item",
+			entity_id: item.id,
+			organization_id: organizationId,
+			...getActorInfo(context),
+			changes: {
+				qty_on_hand: { old: null, new: item.qty_on_hand },
+				qty_min:     { old: null, new: item.qty_min },
+			},
+		});
 		return { err: "", item };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
@@ -160,7 +208,7 @@ export const addVehicleStockItem = async (vehicleId: string, data: unknown, orga
 	}
 };
 
-export const updateVehicleStockItem = async (vehicleId: string, itemId: string, data: unknown, organizationId: string) => {
+export const updateVehicleStockItem = async (vehicleId: string, itemId: string, data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = updateStockItemSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
@@ -178,6 +226,18 @@ export const updateVehicleStockItem = async (vehicleId: string, itemId: string, 
 			},
 			include: { inventory_item: true },
 		});
+		const changes = buildChanges(existing, parsed as Record<string, unknown>, ["qty_on_hand", "qty_min"] as const);
+		if (Object.keys(changes).length > 0) {
+			await logActivity({
+				event_type: "vehicle_stock.updated",
+				action: "updated",
+				entity_type: "vehicle_stock_item",
+				entity_id: itemId,
+				organization_id: organizationId,
+				...getActorInfo(context),
+				changes,
+			});
+		}
 		return { err: "", item };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
@@ -186,8 +246,7 @@ export const updateVehicleStockItem = async (vehicleId: string, itemId: string, 
 	}
 };
 
-export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, organizationId: string) => {
-	
+export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, organizationId: string, context?: UserContext) => {
 	try {
 		const sdb = getScopedDb(organizationId);
 		const existing = await sdb.vehicle_stock_item.findFirst({
@@ -196,6 +255,14 @@ export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, 
 		if (!existing) return { err: "Stock item not found" };
 
 		await sdb.vehicle_stock_item.delete({ where: { id: itemId } });
+		await logActivity({
+			event_type: "vehicle_stock.deleted",
+			action: "deleted",
+			entity_type: "vehicle_stock_item",
+			entity_id: itemId,
+			organization_id: organizationId,
+			...getActorInfo(context),
+		});
 		return { err: "" };
 	} catch (e: unknown) {
 		log.error({ err: e }, "Failed to delete vehicle stock item");
@@ -222,6 +289,19 @@ export const createRestockRequest = async (vehicleId: string, itemId: string, te
 				status:         "pending",
 			},
 		});
+		await logActivity({
+			event_type: "vehicle_restock.created",
+			action: "created",
+			entity_type: "vehicle_restock_request",
+			entity_id: request.id,
+			organization_id: organizationId,
+			actor_type: "technician",
+			actor_id: technicianId,
+			changes: {
+				qty_requested: { old: null, new: request.qty_requested },
+				status:        { old: null, new: request.status },
+			},
+		});
 		return { err: "", item: request };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
@@ -233,7 +313,6 @@ export const createRestockRequest = async (vehicleId: string, itemId: string, te
 // ── Technician vehicle assignment ─────────────────────────────────────────────
 
 export const setTechnicianVehicle = async (technicianId: string, vehicleId: string | null, organizationId: string) => {
-	
 	try {
 		const sdb = getScopedDb(organizationId);
 		if (vehicleId !== null) {
@@ -245,6 +324,16 @@ export const setTechnicianVehicle = async (technicianId: string, vehicleId: stri
 			where: { id: technicianId },
 			data: { current_vehicle_id: vehicleId },
 			select: { id: true, name: true, current_vehicle_id: true, current_vehicle: true },
+		});
+		await logActivity({
+			event_type: "technician.vehicle_assigned",
+			action: "updated",
+			entity_type: "technician",
+			entity_id: technicianId,
+			organization_id: organizationId,
+			actor_type: "system",
+			actor_id: null,
+			changes: { current_vehicle_id: { old: null, new: vehicleId } },
 		});
 		return { err: "", item: technician };
 	} catch (e: unknown) {
@@ -314,6 +403,16 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 			return { lineItem, usage };
 		});
 
+		await logActivity({
+			event_type: "vehicle_stock.parts_used",
+			action: "updated",
+			entity_type: "vehicle_stock_item",
+			entity_id: parsed.stock_item_id,
+			organization_id: organizationId,
+			actor_type: "technician",
+			actor_id: parsed.technician_id,
+			changes: { qty_used: { old: null, new: parsed.qty_used } },
+		});
 		return { err: "", item: result };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };

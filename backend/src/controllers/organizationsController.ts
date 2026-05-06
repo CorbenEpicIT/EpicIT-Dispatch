@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 import { log } from "../services/appLogger.js";
+import { logActivity } from "../services/logger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { registerOrganizationSchema } from "../lib/validate/organizations.js";
 import { db } from '../db.js';
@@ -52,6 +53,15 @@ export const registerOrganization = async (data: unknown) => {
 		});
 
 		sendEmailVerificationEmail(result.admin.email, verificationToken);
+
+		await logActivity({
+			event_type: "organization.created",
+			action: "created",
+			entity_type: "organization",
+			entity_id: result.org.id,
+			organization_id: result.org.id,
+			actor_type: "system",
+		});
 
 		const { org, admin } = result;
 		const { password: _pw, email_verification_token: _token, ...safeAdmin } = admin;
