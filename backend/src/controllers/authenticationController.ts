@@ -19,6 +19,7 @@ import {
 import crypto from "crypto";
 import { UserContext } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
+import { logActivity } from "../services/logger.js";
 
 interface AuthResponse {
 	token: string;
@@ -239,6 +240,16 @@ export const issueAuthTokens = async (
 			maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 		});
 
+		await logActivity({
+			event_type: forcePasswordReset ? "auth.first_login" : "auth.login",
+			action: "updated",
+			entity_type: "user",
+			entity_id: userId,
+			organization_id: user.organization_id ?? null,
+			actor_type: role,
+			actor_id: userId,
+			...(forcePasswordReset && { changes: { password_reset: { old: "temporary", new: "user_set" } } }),
+		});
 		let AuthResponse = {
 			token: accessToken,
 			expiresIn: 3600,
@@ -268,6 +279,7 @@ export const logout = async (res: Response, userData: any, token: string) => {
 		await db.jwt_refresh_token.deleteMany({ where: { token: token } });
 		res.clearCookie("refreshToken");
 	} catch (e) {
+		log.error({ err: e }, "Logout error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -349,8 +361,18 @@ export const requestPasswordReset = async (email: string, role: string) => {
 		if (!sent.success) {
 			return { err: "Error sending password reset email" };
 		}
+		await logActivity({
+			event_type: "auth.password_reset_requested",
+			action: "updated",
+			entity_type: "user",
+			entity_id: user.id,
+			organization_id: user.organization_id ?? null,
+			actor_type: role,
+			actor_id: user.id,
+		});
 		return { err: "" };
 	} catch (e) {
+		log.error({ err: e }, "Password reset request error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -407,8 +429,19 @@ export const resetPassword = async (
 				});
 			}
 		});
+		await logActivity({
+			event_type: "auth.password_reset",
+			action: "updated",
+			entity_type: "user",
+			entity_id: user.id,
+			organization_id: user.organization_id ?? null,
+			actor_type: role,
+			actor_id: user.id,
+			changes: { password: { old: "[hashed]", new: "[hashed]" } },
+		});
 		return { err: "" };
 	} catch (e) {
+		log.error({ err: e }, "Password reset error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
