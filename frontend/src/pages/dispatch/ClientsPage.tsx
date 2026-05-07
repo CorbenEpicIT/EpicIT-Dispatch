@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, MoreVertical, Upload, Download } from "lucide-react";
 import { useAllClientsQuery, useCreateClientMutation } from "../../hooks/useClients";
 import CreateClient from "../../components/clients/CreateClient";
@@ -8,7 +8,8 @@ import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
 import SearchBar from "../../components/ui/SearchBar";
-import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import FilterChips from "../../components/ui/FilterChips";
+import { useMultiSearch } from "../../hooks/useMultiSearch";
 import ViewToggle from "../../components/ui/ViewToggle";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
@@ -16,7 +17,7 @@ import PageHeader from "../../components/ui/PageHeader";
 
 export default function ClientsPage() {
 	const navigate = useNavigate();
-	const location = useLocation();
+	const [pageSearchParams] = useSearchParams();
 	const {
 		data: clients,
 		isLoading: isFetchLoading,
@@ -24,6 +25,7 @@ export default function ClientsPage() {
 	} = useAllClientsQuery();
 	const { mutateAsync: createClient } = useCreateClientMutation();
 	const [searchInput, setSearchInput] = useState("");
+	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
 	const [viewMode, setViewMode] = useState<"card" | "list">("card");
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
@@ -41,53 +43,30 @@ export default function ClientsPage() {
 		}
 	}, [showActionsMenu]);
 
-	const queryParams = new URLSearchParams(location.search);
-	const searchFilter = queryParams.get("search");
-	const statusFilter = queryParams.get("status");
+	const statusFilter = pageSearchParams.get("status");
 
-	// Use searchInput for instant preview, searchFilter for committed filter
-	const activeSearch = searchInput || searchFilter;
+	const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
 
 	const filteredClients = clients
 		?.filter((c) => {
-			if (activeSearch) {
-				const searchLower = activeSearch.toLowerCase();
-				const matchesSearch =
-					c.name.toLowerCase().includes(searchLower) ||
-					c.address?.toLowerCase().includes(searchLower);
-				if (!matchesSearch) return false;
+			if (activeTerms.length > 0) {
+				const matches = activeTerms.every((t) => {
+					const lower = t.toLowerCase();
+					return (
+						c.name.toLowerCase().includes(lower) ||
+						(c.address?.toLowerCase().includes(lower) ?? false)
+					);
+				});
+				if (!matches) return false;
 			}
-
-			if (statusFilter === "active") {
-				return c.is_active === true;
-			}
-			if (statusFilter === "inactive") {
-				return c.is_active === false;
-			}
-
+			if (statusFilter === "active") return c.is_active === true;
+			if (statusFilter === "inactive") return c.is_active === false;
 			return true;
 		})
 		.sort((a, b) => {
-			// Sort active clients first
 			if (a.is_active === b.is_active) return 0;
 			return a.is_active ? -1 : 1;
 		});
-
-	const removeFilter = () => {
-		const newParams = new URLSearchParams(location.search);
-		newParams.delete("search");
-		setSearchInput("");
-		navigate(
-			`/dispatch/clients${newParams.toString() ? `?${newParams.toString()}` : ""}`
-		);
-	};
-
-	const clearAllFilters = () => {
-		setSearchInput("");
-		const next = new URLSearchParams(location.search);
-		next.delete("search");
-		navigate(`/dispatch/clients${next.toString() ? `?${next.toString()}` : ""}`);
-	};
 
 	return (
 		<div className="text-white">
@@ -151,6 +130,7 @@ export default function ClientsPage() {
 						paramKey="search"
 						placeholder="Search clients..."
 						onValueChange={setSearchInput}
+						onSubmit={addTerm}
 					/>
 				}
 				middle={
@@ -168,17 +148,14 @@ export default function ClientsPage() {
 
 			{/* Single Filter Bar with Chips */}
 			<FilterChips
-				filters={[
-					searchFilter
-						? {
-								label: `Search: "${searchFilter}"`,
-								color: "purple" as const,
-								onRemove: removeFilter,
-							}
-						: null,
-				]}
+				filters={terms.map((term) => ({
+					label: `Search: "${term}"`,
+					color: "purple" as const,
+					onRemove: () => removeTerm(term),
+					highlighted: duplicateTerm === term,
+				}))}
 				resultCount={filteredClients?.length ?? 0}
-				onClearAll={clearAllFilters}
+				onClearAll={() => { clearAll(); setSearchInput(""); }}
 			/>
 
 			{/* Loading State */}
@@ -207,11 +184,11 @@ export default function ClientsPage() {
 				<div className="w-full h-[400px] flex flex-col justify-center items-center">
 					<BoxSvg className="w-15 h-15 mb-1" />
 					<h1 className="text-center text-xl mt-1">
-						{activeSearch
+						{activeTerms.length > 0
 							? "No clients found."
 							: "No clients yet."}
 					</h1>
-					{activeSearch && (
+					{activeTerms.length > 0 && (
 						<p className="text-center text-zinc-500 mt-2">
 							Try adjusting your search terms
 						</p>

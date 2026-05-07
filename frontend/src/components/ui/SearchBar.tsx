@@ -6,6 +6,7 @@ type UrlParamProps = {
 	placeholder: string;
 	paramKey: string;
 	onValueChange?: (v: string) => void;
+	onSubmit?: (v: string) => boolean;
 	className?: string;
 };
 
@@ -25,7 +26,7 @@ export default function SearchBar(props: SearchBarProps) {
 	return <ControlledSearchBar {...props} />;
 }
 
-function UrlParamSearchBar({ placeholder, paramKey, onValueChange, className }: UrlParamProps) {
+function UrlParamSearchBar({ placeholder, paramKey, onValueChange, onSubmit, className }: UrlParamProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const committed = searchParams.get(paramKey) ?? "";
 	const [value, setValue] = useState(committed);
@@ -36,9 +37,10 @@ function UrlParamSearchBar({ placeholder, paramKey, onValueChange, className }: 
 	});
 
 	useEffect(() => {
+		if (onSubmit) return;
 		setValue(committed);
 		onValueChangeRef.current?.(committed);
-	}, [committed]);
+	}, [committed, onSubmit]);
 
 	const handleChange = (v: string) => {
 		setValue(v);
@@ -47,12 +49,14 @@ function UrlParamSearchBar({ placeholder, paramKey, onValueChange, className }: 
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
-		const next = new URLSearchParams(searchParams);
-		if (value.trim()) {
-			next.set(paramKey, value.trim());
-		} else {
-			next.delete(paramKey);
+		if (!value.trim()) return;
+		if (onSubmit) {
+			const accepted = onSubmit(value.trim());
+			if (accepted) setValue("");
+			return;
 		}
+		const next = new URLSearchParams(searchParams);
+		next.set(paramKey, value.trim());
 		setSearchParams(next);
 	};
 
