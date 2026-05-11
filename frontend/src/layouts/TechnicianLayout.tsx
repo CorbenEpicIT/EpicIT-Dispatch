@@ -1,9 +1,10 @@
 import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
-import { useRef, useEffect } from "react";
-import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map } from "lucide-react";
+import { useRef, useEffect, useState, useCallback } from "react";
+import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X } from "lucide-react";
 import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
+import type { TechnicianNotification } from "../types/notifications";
 
 export default function TechnicianLayout() {
 	const { user, logout } = useAuthStore();
@@ -11,8 +12,21 @@ export default function TechnicianLayout() {
 	const location = useLocation();
 	const navigationCount = useRef(0);
 
+	const [notifBanner, setNotifBanner] = useState<TechnicianNotification | null>(null);
+	const notifBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const handleNewNotification = useCallback((notif: TechnicianNotification) => {
+		setNotifBanner(notif);
+		if (notifBannerTimerRef.current) clearTimeout(notifBannerTimerRef.current);
+		notifBannerTimerRef.current = setTimeout(() => setNotifBanner(null), 5000);
+	}, []);
+
+	useEffect(() => {
+		return () => { if (notifBannerTimerRef.current) clearTimeout(notifBannerTimerRef.current); };
+	}, []);
+
 	const { data: techProfile } = useTechnicianByIdQuery(user?.userId ?? null);
-	const { data: notifications = [] } = useNotificationsQuery(user?.userId ?? null);
+	const { data: notifications = [] } = useNotificationsQuery(user?.userId ?? null, false, handleNewNotification);
 	const unreadCount = notifications.filter((n) => !n.read_at).length;
 	const noVehicle = techProfile && !techProfile.current_vehicle_id;
 
@@ -29,7 +43,16 @@ export default function TechnicianLayout() {
 		navigate("/technician");
 	};
 
+	const [confirmingLogout, setConfirmingLogout] = useState(false);
+	const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 	const handleLogout = () => {
+		if (!confirmingLogout) {
+			setConfirmingLogout(true);
+			logoutTimerRef.current = setTimeout(() => setConfirmingLogout(false), 3000);
+			return;
+		}
+		if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
 		logout();
 		navigate("/login");
 	};
@@ -97,13 +120,37 @@ export default function TechnicianLayout() {
 						)}
 						<button
 							onClick={handleLogout}
-							className="text-sm bg-red-500 px-3 py-1.5 rounded hover:bg-red-600"
+							onMouseLeave={() => { if (confirmingLogout) { if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current); setConfirmingLogout(false); } }}
+							className={`text-sm px-3 py-1.5 rounded transition-colors ${confirmingLogout ? "bg-red-600 text-white motion-safe:animate-pulse" : "bg-red-500 hover:bg-red-600 text-white"}`}
 						>
-							Logout
+							{confirmingLogout ? "Confirm Logout" : "Logout"}
 						</button>
 					</div>
 				</header>
 
+				{notifBanner && (
+					<div className="flex items-start gap-2.5 pl-3 pr-4 py-2.5 bg-zinc-900 border-b border-zinc-800">
+						<div className="w-0.5 self-stretch bg-blue-500 rounded-full shrink-0" />
+						<button
+							className="flex-1 min-w-0 text-left py-0.5"
+							onClick={() => {
+								if (notifBanner.action_url) navigate(notifBanner.action_url);
+								setNotifBanner(null);
+							}}
+						>
+							<p className="text-[13px] font-semibold text-white leading-snug truncate">{notifBanner.title}</p>
+							{notifBanner.body && (
+								<p className="text-xs text-zinc-400 leading-snug mt-0.5 line-clamp-2">{notifBanner.body}</p>
+							)}
+						</button>
+						<button
+							onClick={() => setNotifBanner(null)}
+							className="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors mt-0.5"
+						>
+							<X size={14} />
+						</button>
+					</div>
+				)}
 				<main className="flex-1 overflow-y-auto bg-zinc-950">
 					<div className="p-4 pb-20 md:px-6 md:pt-6 min-h-full">
 						<Outlet />

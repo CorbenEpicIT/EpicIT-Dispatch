@@ -1,5 +1,5 @@
 import { useAllJobVisitsQuery, useAcceptJobVisitMutation } from "../../hooks/useJobs";
-import { VisitStatusValues, type VisitStatus } from "../../types/jobs";
+import type { VisitStatus } from "../../types/jobs";
 import { useAuthStore } from "../../auth/authStore";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Search, MapPin, Calendar, Clock, Navigation, ChevronRight } from "lucide-react";
@@ -14,6 +14,17 @@ type SlaStatus = "overdue" | "soon" | null;
 const COMING_SOON_MINUTES = 90;
 const PROXIMITY_MILES = 3;
 const ACTIVE_STATUSES: VisitStatus[] = ["Driving", "OnSite", "InProgress", "Paused"];
+
+const STATUS_PRIORITY: Record<VisitStatus, number> = {
+	InProgress: 0,
+	OnSite:     1,
+	Driving:    2,
+	Paused:     3,
+	Delayed:    4,
+	Scheduled:  5,
+	Completed:  6,
+	Cancelled:  7,
+};
 
 /** Haversine distance in miles between two lat/lon points. */
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -242,6 +253,10 @@ export default function TechnicianVisitsPage() {
 							)
 						: null;
 
+				const isClockedIn = v.time_entries?.some(
+					(e) => e.tech_id === user?.userId && e.clocked_out_at === null
+				) ?? false;
+
 				return {
 					id: v.id,
 					visitName: v.name || "Unnamed Visit",
@@ -255,13 +270,16 @@ export default function TechnicianVisitsPage() {
 						v.status as VisitStatus
 					),
 					distanceMiles,
+					_isClockedIn: isClockedIn,
 					_scheduleDate: new Date(v.scheduled_start_at),
 				};
 			})
 			.sort((a, b) => {
+				// Clocked-in visit always first
+				const clockedDiff = (b._isClockedIn ? 1 : 0) - (a._isClockedIn ? 1 : 0);
+				if (clockedDiff !== 0) return clockedDiff;
 				const statusDiff =
-					VisitStatusValues.indexOf(b.rawStatus) -
-					VisitStatusValues.indexOf(a.rawStatus);
+					STATUS_PRIORITY[a.rawStatus] - STATUS_PRIORITY[b.rawStatus];
 				if (statusDiff !== 0) return statusDiff;
 				if (
 					sortMode === "distance" &&
@@ -270,9 +288,11 @@ export default function TechnicianVisitsPage() {
 				) {
 					return a.distanceMiles - b.distanceMiles;
 				}
-				return a._scheduleDate.getTime() - b._scheduleDate.getTime();
+				// Past tab: most recent first; all others: soonest first
+				const timeDiff = a._scheduleDate.getTime() - b._scheduleDate.getTime();
+				return tab === "past" ? -timeDiff : timeDiff;
 			})
-			.map(({ _scheduleDate, ...rest }) => rest);
+			.map(({ _scheduleDate, _isClockedIn, ...rest }) => rest);
 	}, [visits, tab, searchInput, user?.userId, sortMode, userPosition, tz]);
 
 	const cardData = tab === "past" && !showAllPast ? display.slice(0, 5) : display;

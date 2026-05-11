@@ -68,3 +68,35 @@ export const setTechnicianCurrentVehicle = async (technicianId: string, vehicleI
 		throw new Error(response.data.error?.message || 'Failed to set vehicle');
 	}
 };
+
+export const goAvailable = async (technicianId: string): Promise<Technician> => {
+	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/available`);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || 'Failed to go available');
+	}
+	return response.data.data!;
+};
+
+export const goOffline = async (technicianId: string): Promise<Technician> => {
+	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/offline`);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || 'Failed to go offline');
+	}
+	return response.data.data!;
+};
+
+export const goOnBreak = async (technicianId: string, reason: string): Promise<Technician> => {
+	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/break`, { reason });
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || 'Failed to start break');
+	}
+	return response.data.data!;
+};
+
+export const markDone = async (technicianId: string): Promise<Technician> => {
+	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/done`);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || 'Failed to mark done');
+	}
+	return response.data.data!;
+};

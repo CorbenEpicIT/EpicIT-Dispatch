@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import type { tech_visit_status, technician_status, pause_reason_type } from "../../generated/prisma/client.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobVisitSchema,
@@ -9,6 +10,82 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
 import { createNotification } from "./notificationsController.js";
+import { getSocket } from "../services/socketService.js";
+
+const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
+function toPauseReason(v: string | undefined): pause_reason_type | undefined {
+	if (!v || !VALID_PAUSE_REASONS.has(v)) return undefined;
+	return v as pause_reason_type;
+}
+
+export const buildVisitStatusPayload = (
+	visit: {
+		id: string;
+		name: string | null;
+		scheduled_start_at: Date;
+		status: string;
+		job_id: string;
+		job: { id?: string; client: { name: string } };
+		visit_techs: Array<{ tech_id: string; tech: { name: string } }>;
+	},
+	previousStatus: string,
+	visitStatusChanged: boolean,
+	context?: UserContext,
+) => {
+	let actor: { type: "technician" | "dispatcher"; name: string | null; id: string } | null = null;
+	if (context?.techId) {
+		const techEntry = visit.visit_techs.find((vt) => vt.tech_id === context.techId);
+		actor = { type: "technician", name: techEntry?.tech.name ?? null, id: context.techId };
+	} else if (context?.dispatcherId) {
+		actor = { type: "dispatcher", name: null, id: context.dispatcherId };
+	}
+	return {
+		visitStatusChanged,
+		visitStatus: visit.status,
+		previousVisitStatus: previousStatus,
+		actor,
+		visit: {
+			id: visit.id,
+			name: visit.name,
+			scheduledAt: visit.scheduled_start_at.toISOString(),
+			job: { id: visit.job_id, client: { name: visit.job.client.name } },
+		},
+		changedAt: new Date().toISOString(),
+	};
+};
+
+export const buildSecondaryEventPayload = (
+	visit: {
+		id: string;
+		name: string | null;
+		scheduled_start_at: Date;
+		status: string;
+		job_id: string;
+		job: { id?: string; client: { name: string } };
+		visit_techs: Array<{ tech_id: string; tech: { name: string } }>;
+	},
+	techAction: string,
+	context?: UserContext,
+) => {
+	let actor: { type: "technician" | "dispatcher"; name: string | null; id: string } | null = null;
+	if (context?.techId) {
+		const techEntry = visit.visit_techs.find((vt) => vt.tech_id === context.techId);
+		actor = { type: "technician", name: techEntry?.tech.name ?? null, id: context.techId };
+	}
+	return {
+		visitStatusChanged: false,
+		visitStatus: techAction,
+		previousVisitStatus: visit.status,
+		actor,
+		visit: {
+			id: visit.id,
+			name: visit.name,
+			scheduledAt: visit.scheduled_start_at.toISOString(),
+			job: { id: visit.job_id, client: { name: visit.job.client.name } },
+		},
+		changedAt: new Date().toISOString(),
+	};
+};
 
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
@@ -52,7 +129,25 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 		include: {
 			job: {
 				include: {
-					client: true,
+					client: {
+						include: {
+							contacts: {
+								where: { is_primary: true },
+								include: {
+									contact: {
+										select: {
+											id: true,
+											name: true,
+											email: true,
+											phone: true,
+											type: true,
+										},
+									},
+								},
+								take: 1,
+							},
+						},
+					},
 					quote: true,
 				},
 			},
@@ -815,10 +910,12 @@ export const LIFECYCLE_TRANSITIONS = {
 	pause: { from: ["InProgress"], to: "Paused" as const },
 	resume: { from: ["Paused"], to: "InProgress" as const },
 	complete: { from: ["InProgress", "Paused", "OnSite"], to: "Completed" as const },
+	delay: { from: ["Scheduled", "Driving", "OnSite"], to: "Delayed" as const },
 };
 
 const LIFECYCLE_ORDER: Record<string, number> = {
 	Scheduled: 0,
+	Delayed: 0,
 	Driving: 1,
 	OnSite: 2,
 	InProgress: 3,
@@ -833,6 +930,7 @@ export const applyVisitTransition = async (
 	action: LifecycleAction,
 	organizationId: string,
 	context?: UserContext,
+	pauseReason?: string,
 ) => {
 	try {
 		const { from, to } = LIFECYCLE_TRANSITIONS[action];
@@ -844,6 +942,11 @@ export const applyVisitTransition = async (
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
+		// Guard: delay is dispatcher-only
+		if (action === "delay" && context?.techId) {
+			return { err: "Only dispatchers can mark a visit as Delayed." };
+		}
+
 		// Guard: drive and arrive require the technician to not be clocked in
 		if ((action === "drive" || action === "arrive") && context?.techId) {
 			const openEntry = await sdb.visit_tech_time_entry.findFirst({
@@ -854,10 +957,46 @@ export const applyVisitTransition = async (
 			}
 		}
 
-		if (!from.includes(existingVisit.status)) {
+		if (!(from as string[]).includes(existingVisit.status)) {
 			const currentOrder = LIFECYCLE_ORDER[existingVisit.status] ?? -1;
 			const targetOrder = LIFECYCLE_ORDER[to] ?? -1;
 			if (targetOrder >= 0 && currentOrder >= targetOrder) {
+				// Secondary transition: drive or arrive for a tech whose visit is already past that state
+				if ((action === "drive" || action === "arrive") && context?.techId) {
+					const techVisitStatus: tech_visit_status = action === "drive" ? "EnRoute" : "OnSite";
+					const techGlobalStatus: technician_status = action === "drive" ? "EnRoute" : "OnSite";
+					const assignment = await sdb.job_visit_technician.findUnique({
+						where: { visit_id_tech_id: { visit_id: id, tech_id: context.techId } },
+					});
+					if (assignment && (assignment.tech_status === "Assigned" || (action === "arrive" && assignment.tech_status === "EnRoute"))) {
+						const currentVisit = await sdb.job_visit.findFirst({
+							where: { id },
+							include: {
+								job: { include: { client: true, quote: true } },
+								visit_techs: { include: { tech: true } },
+								line_items: { orderBy: { sort_order: "asc" } },
+								notes: true,
+							},
+						});
+						if (currentVisit) {
+							await sdb.$transaction([
+								sdb.job_visit_technician.update({
+									where: { visit_id_tech_id: { visit_id: id, tech_id: context.techId } },
+									data: { tech_status: techVisitStatus },
+								}),
+								sdb.technician.update({
+									where: { id: context.techId },
+									data: { status: techGlobalStatus },
+								}),
+							]);
+							getSocket().emit(
+								"job_visit:status_changed",
+								buildSecondaryEventPayload(currentVisit, techVisitStatus, context),
+							);
+						}
+						return { err: "", item: currentVisit ?? undefined };
+					}
+				}
 				const currentVisit = await sdb.job_visit.findUnique({
 					where: { id },
 					include: {
@@ -982,7 +1121,12 @@ export const applyVisitTransition = async (
 
 					await tx.visit_tech_time_entry.update({
 						where: { id: entry.id },
-						data: { clocked_out_at: closeTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
+						data: {
+							clocked_out_at: closeTime,
+							hours_worked: hoursWorked,
+							line_item_id: lineItem.id,
+							...(action === "pause" ? { pause_reason: toPauseReason(pauseReason) } : {}),
+						},
 					});
 				}
 
@@ -999,6 +1143,104 @@ export const applyVisitTransition = async (
 							total: parseFloat((newSubtotal + newTaxAmount).toFixed(2)),
 						},
 					});
+				}
+			}
+
+			// ── Tech status updates ───────────────────────────────────────────
+			const TECH_VISIT_STATUS_MAP: Partial<Record<LifecycleAction, tech_visit_status>> = {
+				drive: "EnRoute",
+				arrive: "OnSite",
+				complete: "Done",
+			};
+			const TECH_GLOBAL_STATUS_MAP: Partial<Record<LifecycleAction, technician_status>> = {
+				drive: "EnRoute",
+				arrive: "OnSite",
+				start: "Working",
+				resume: "Working",
+				pause: "Paused",
+				complete: "WrappingUp",
+			};
+			const newTechVisitStatus = TECH_VISIT_STATUS_MAP[action];
+			const newTechGlobalStatus = TECH_GLOBAL_STATUS_MAP[action];
+
+			if (action === "complete") {
+				// Only techs who actually participated (not no-shows sitting at Assigned)
+				const activeTechs = await tx.job_visit_technician.findMany({
+					where: { visit_id: id, tech_status: { not: "Assigned" } },
+				});
+				// Fetch current global status for each tech so we can handle Break correctly
+				const techStatuses = await tx.technician.findMany({
+					where: { id: { in: activeTechs.map((vt) => vt.tech_id) } },
+					select: { id: true, status: true },
+				});
+				const techStatusMap = new Map(techStatuses.map((t) => [t.id, t.status]));
+				// Techs NOT on break get WrappingUp; techs on break get their pre_break_status updated
+				const wrappingUpTechIds: string[] = [];
+				for (const vt of activeTechs) {
+					await tx.job_visit_technician.update({
+						where: { visit_id_tech_id: { visit_id: id, tech_id: vt.tech_id } },
+						data: { tech_status: newTechVisitStatus! },
+					});
+					if (techStatusMap.get(vt.tech_id) === "Break") {
+						// Tech is on break — update their pre_break_status so returning from
+						// break will restore WrappingUp (not the stale OnSite/Working value)
+						await tx.technician_shift_break.updateMany({
+							where: { tech_id: vt.tech_id, ended_at: null },
+							data: { pre_break_status: "WrappingUp" },
+						});
+					} else {
+						await tx.technician.update({
+							where: { id: vt.tech_id },
+							data: { status: newTechGlobalStatus! },
+						});
+						wrappingUpTechIds.push(vt.tech_id);
+					}
+				}
+				// Arm per-tech WrappingUp timers after transaction commits (only for non-break techs)
+				if (wrappingUpTechIds.length > 0) {
+					const org = await tx.organization.findUnique({
+						where: { id: organizationId },
+						select: { wrapping_up_minutes: true },
+					});
+					const wrappingMinutes = org?.wrapping_up_minutes ?? 15;
+					const now = new Date();
+					// Import lazily to avoid circular dependency at module load time
+					import("../services/wrappingUpTimer.js").then(({ scheduleWrappingUpClear }) => {
+						for (const techId of wrappingUpTechIds) {
+							scheduleWrappingUpClear(techId, organizationId, now, wrappingMinutes);
+						}
+					}).catch(() => {});
+				}
+			} else if (action === "pause") {
+				// Only update global tech status to Paused — tech_visit_status stays OnSite
+				const activeTechs = await tx.job_visit_technician.findMany({
+					where: { visit_id: id, tech_status: { notIn: ["Done", "Assigned"] } },
+				});
+				for (const vt of activeTechs) {
+					await tx.technician.update({
+						where: { id: vt.tech_id },
+						data: { status: newTechGlobalStatus! },
+					});
+				}
+			} else if (context?.techId && (newTechVisitStatus || newTechGlobalStatus)) {
+				// Only the calling tech
+				if (newTechVisitStatus) {
+					await tx.job_visit_technician.update({
+						where: { visit_id_tech_id: { visit_id: id, tech_id: context.techId } },
+						data: { tech_status: newTechVisitStatus },
+					});
+				}
+				if (newTechGlobalStatus) {
+					await tx.technician.update({
+						where: { id: context.techId },
+						data: { status: newTechGlobalStatus },
+					});
+				}
+				// Cancel any pending WrappingUp timer when tech transitions to an active state
+				if (["drive", "arrive", "start", "resume"].includes(action)) {
+					import("../services/wrappingUpTimer.js").then(({ cancelWrappingUpTimer }) => {
+						cancelWrappingUpTimer(context.techId!);
+					}).catch(() => {});
 				}
 			}
 
@@ -1033,6 +1275,13 @@ export const applyVisitTransition = async (
 				},
 			});
 		});
+
+		if (updated) {
+			getSocket().emit(
+				"job_visit:status_changed",
+				buildVisitStatusPayload(updated, existingVisit.status, true, context),
+			);
+		}
 
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {
@@ -1075,6 +1324,107 @@ export const cancelJobVisit = async (
 			}
 			if (newJobStatus !== existingVisit.job.status) {
 				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
+			}
+
+			// ── Step 1: Close open time entries ──────────────────────────────────
+			const openEntries = await tx.visit_tech_time_entry.findMany({
+				where: { visit_id: id, clocked_out_at: null },
+				include: { tech: { select: { name: true, hourly_rate: true } } },
+			});
+
+			const cancelTime = new Date();
+
+			for (const entry of openEntries) {
+				const elapsedMs = cancelTime.getTime() - entry.clocked_in_at.getTime();
+				const hoursWorked = parseFloat((elapsedMs / (1000 * 60 * 60)).toFixed(4));
+				const hourlyRate = Number(entry.tech.hourly_rate);
+				const laborTotal = parseFloat((hoursWorked * hourlyRate).toFixed(2));
+
+				const lineItem = await tx.job_visit_line_item.create({
+					data: {
+						visit_id: id,
+						name: `Labor – ${entry.tech.name}`,
+						description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr`,
+						quantity: hoursWorked,
+						unit_price: hourlyRate,
+						total: laborTotal,
+						source: "field_addition",
+						item_type: "labor",
+						sort_order: 0,
+					},
+				});
+
+				await tx.visit_tech_time_entry.update({
+					where: { id: entry.id },
+					data: {
+						clocked_out_at: cancelTime,
+						hours_worked: hoursWorked,
+						line_item_id: lineItem.id,
+					},
+				});
+			}
+
+			if (openEntries.length > 0) {
+				const allItems = await tx.job_visit_line_item.findMany({ where: { visit_id: id } });
+				const newSubtotal = allItems.reduce((s, li) => s + Number(li.total), 0);
+				const taxRate = Number(existingVisit.tax_rate ?? 0);
+				const newTaxAmount = parseFloat((newSubtotal * taxRate).toFixed(2));
+				await tx.job_visit.update({
+					where: { id },
+					data: {
+						subtotal: newSubtotal,
+						tax_amount: newTaxAmount,
+						total: parseFloat((newSubtotal + newTaxAmount).toFixed(2)),
+					},
+				});
+			}
+
+			// ── Step 2: Reset tech_status for non-Done techs ─────────────────────
+			// Snapshot the active set BEFORE the reset so Step 3 can use it.
+			// "Active" means the tech had progressed past Assigned (EnRoute, OnSite,
+			// Working, etc.) — no-shows sitting at Assigned don't need global updates.
+			const activeTechRows = await tx.job_visit_technician.findMany({
+				where: {
+					visit_id: id,
+					tech_status: { notIn: ["Assigned", "Done"] },
+				},
+				select: { tech_id: true },
+			});
+
+			await tx.job_visit_technician.updateMany({
+				where: { visit_id: id, tech_status: { not: "Done" } },
+				data: { tech_status: "Assigned" },
+			});
+
+			// ── Step 3: Update global technician.status for actively-working techs ─
+			// Union: techs who were actively progressed on this visit (captured above)
+			// plus any who had an open time entry (definitely Working).
+			const openEntryTechIds = openEntries.map((e) => e.tech_id);
+			const activeTechIds = [
+				...new Set([
+					...activeTechRows.map((r) => r.tech_id),
+					...openEntryTechIds,
+				]),
+			];
+
+			for (const techId of activeTechIds) {
+				const openShift = await tx.technician_shift.findFirst({
+					where: { tech_id: techId, ended_at: null },
+				});
+				const onBreak = await tx.technician.findUnique({
+					where: { id: techId },
+					select: { status: true },
+				});
+
+				// If the tech is currently on Break, leave their global status alone —
+				// the break will restore their status when they return.
+				if (onBreak?.status === "Break") continue;
+
+				const newGlobalStatus: technician_status = openShift ? "Available" : "Offline";
+				await tx.technician.update({
+					where: { id: techId },
+					data: { status: newGlobalStatus },
+				});
 			}
 
 			await logActivity({

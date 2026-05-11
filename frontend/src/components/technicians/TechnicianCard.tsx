@@ -1,6 +1,7 @@
 import { Phone, Mail, Briefcase, Clock, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Technician } from "../../types/technicians";
+import { TechnicianStatusColors, TechnicianStatusDotColors, TechnicianStatusLabels } from "../../types/technicians";
 import { useRef, useState, useEffect } from "react";
 
 interface TechnicianCardProps {
@@ -14,20 +15,6 @@ function capitalizeWords(str: string) {
   return str
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function getStatusColor(status: string) {
-  switch (status) {
-    case "Available":
-      return "bg-green-500/10 text-green-400 border-green-500/20";
-    case "Busy":
-      return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-    case "Break":
-      return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-    case "Offline":
-    default:
-      return "bg-red-500/10 text-red-400 border-red-500/20";
-  }
 }
 
 function formatLastLogin(raw: unknown) {
@@ -69,7 +56,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
 
   const displayName = capitalizeWords(technician.name);
   const lastLoginText = formatLastLogin(technician.last_login);
-  const statusColorClass = getStatusColor(technician.status);
+  const statusColorClass = TechnicianStatusColors[technician.status];
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -90,9 +77,9 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
 
   if (viewMode === "list") {
       return (
-          <div 
-              onClick={onClick} 
-              className="w-full bg-zinc-900 rounded-lg border border-[#3a3a3f] shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
+          <div
+              onClick={onClick}
+              className="w-full bg-zinc-900 rounded-lg border border-zinc-700 shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
           >
               {/* Avatar */}
               <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
@@ -105,9 +92,9 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
               </div>
 
               {/* Status */}
-              <div className="w-24 flex-shrink-0 flex items-center">
+              <div className="min-w-[7rem] flex-shrink-0 flex items-center">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
-                      {technician.status}
+                      {TechnicianStatusLabels[technician.status]}
                   </span>
               </div>
 
@@ -183,7 +170,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
   return (
     <div
       className="
-        bg-zinc-900 border border-[#3a3a3f] rounded-lg p-5
+        bg-zinc-900 border border-zinc-700 rounded-lg p-5
         hover:border-zinc-500 hover:shadow-lg transition-all
         w-full max-w-[360px] flex flex-col gap-4
       "
@@ -194,9 +181,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
             {technician.name.charAt(0).toUpperCase()}
           </div>
           
-          {technician.status === "Available" && (
-            <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-zinc-900 rounded-full" />
-          )}
+            <div className={`absolute bottom-0 right-0 w-4 h-4 border-2 border-zinc-900 rounded-full ${TechnicianStatusDotColors[technician.status]}`} />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -206,7 +191,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
           <span
             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}
           >
-            {technician.status}
+            {TechnicianStatusLabels[technician.status]}
           </span>
         </div>
       </div>

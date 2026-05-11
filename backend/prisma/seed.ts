@@ -115,7 +115,7 @@ async function main() {
 				title: "HVAC Technician",
 				description:
 					"5 years experience. Residential and light commercial.",
-				status: "Busy",
+				status: "Working",
 				hire_date: new Date("2020-07-01"),
 				coords: { lat: 43.8129, lng: -91.2559 },
 				hourly_rate: 75.00,

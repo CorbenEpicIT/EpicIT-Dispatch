@@ -84,17 +84,17 @@ export const VisitStatusLabels: Record<VisitStatus, string> = {
 };
 
 export const VisitStatusColors: Record<VisitStatus, string> = {
-	Scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Driving: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-	OnSite: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-	InProgress: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Paused: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Delayed: "bg-red-500/20 text-red-400 border-red-500/30",
-	Completed: "bg-green-500/20 text-green-400 border-green-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Scheduled:  "bg-zinc-700/40 text-zinc-400 border-zinc-600/40",
+	Driving:    "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+	OnSite:     "bg-purple-500/20 text-purple-400 border-purple-500/30",
+	InProgress: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+	Paused:     "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+	Delayed:    "bg-orange-500/20 text-orange-400 border-orange-500/30",
+	Completed:  "bg-green-500/20 text-green-400 border-green-500/30",
+	Cancelled:  "bg-zinc-700/40 text-zinc-500 border-zinc-600/40",
 };
 
-export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete";
+export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete" | "delay";
 
 export interface LifecycleTransition {
 	action: LifecycleAction;
@@ -129,6 +129,7 @@ export type { ArrivalConstraint, FinishConstraint };
 export interface JobVisitTechnician {
 	visit_id: string;
 	tech_id: string;
+	tech_status: string;
 	tech: {
 		id: string;
 		name: string;
@@ -148,6 +149,7 @@ export interface VisitTechTimeEntry {
 	clocked_out_at: Date | string | null;
 	hours_worked: number | null;
 	line_item_id: string | null;
+	pause_reason: string | null;
 	created_at: Date | string;
 }
 

@@ -111,3 +111,47 @@ export const useSetTechnicianVehicleMutation = () => {
 		},
 	});
 };
+
+export const useGoAvailableMutation = (): UseMutationResult<Technician, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (techId: string) => technicianApi.goAvailable(techId),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+export const useGoOfflineMutation = (): UseMutationResult<Technician, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (techId: string) => technicianApi.goOffline(techId),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+export const useGoOnBreakMutation = (): UseMutationResult<Technician, Error, { techId: string; reason: string }> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ techId, reason }) => technicianApi.goOnBreak(techId, reason),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+export const useMarkDoneMutation = (): UseMutationResult<Technician, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (techId: string) => technicianApi.markDone(techId),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};

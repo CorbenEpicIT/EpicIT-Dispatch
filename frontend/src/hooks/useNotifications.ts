@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { io } from "socket.io-client";
 import type { TechnicianNotification } from "../types/notifications";
@@ -9,11 +9,14 @@ const SOCKET_URL = import.meta.env.VITE_BACKEND_URL as string;
 export const useNotificationsQuery = (
 	technicianId: string | null | undefined,
 	unreadOnly = false,
+	onNew?: (notif: TechnicianNotification) => void,
 ): UseQueryResult<TechnicianNotification[], Error> => {
 	const queryClient = useQueryClient();
 	const queryKey = ["notifications", technicianId, { unreadOnly }];
+	const onNewRef = useRef(onNew);
+	useEffect(() => { onNewRef.current = onNew; }, [onNew]);
 
-	// Real-time: prepend incoming notifications to the cache
+	// Single socket handles both notifications and visit status syncs for all tech pages.
 	useEffect(() => {
 		if (!technicianId) return;
 
@@ -24,10 +27,17 @@ export const useNotificationsQuery = (
 
 		socket.on("notification:new", (notif: TechnicianNotification) => {
 			queryClient.setQueryData<TechnicianNotification[]>(queryKey, (prev = []) => [notif, ...prev]);
+			onNewRef.current?.(notif);
+		});
+
+		socket.on("job_visit:status_changed", () => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
 		});
 
 		return () => {
 			socket.off("notification:new");
+			socket.off("job_visit:status_changed");
 			socket.disconnect();
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps

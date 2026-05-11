@@ -93,8 +93,33 @@ enum priority {
 enum technician_status {
   Offline
   Available
-  Busy
   Break
+  EnRoute
+  OnSite
+  Working
+  Paused
+  WrappingUp
+}
+
+enum tech_visit_status {
+  Assigned
+  EnRoute
+  OnSite
+  Done
+}
+
+enum pause_reason_type {
+  AwaitingMaterials
+  EquipmentIssue
+  Break
+  Other
+}
+
+enum tech_break_reason {
+  Lunch
+  Rest
+  EquipmentIssue
+  Other
 }
 
 enum recurring_plan_status {
@@ -193,7 +218,8 @@ model organization {
   coords    Json?
   email     String?
   website   String?
-  tax_rate  Decimal @default(0) @db.Decimal(5, 4)
+  tax_rate            Decimal @default(0) @db.Decimal(5, 4)
+  wrapping_up_minutes Int     @default(15)
 
   logo_key String?
   
@@ -650,10 +676,11 @@ model job_visit_line_item {
 }
 
 model job_visit_technician {
-  visit_id String
-  tech_id  String
-  visit    job_visit  @relation(fields: [visit_id], references: [id], onDelete: Cascade)
-  tech     technician @relation(fields: [tech_id], references: [id])
+  visit_id    String
+  tech_id     String
+  tech_status tech_visit_status @default(Assigned)
+  visit       job_visit  @relation(fields: [visit_id], references: [id], onDelete: Cascade)
+  tech        technician @relation(fields: [tech_id], references: [id])
 
   @@id([visit_id, tech_id])
   @@index([tech_id])
@@ -671,7 +698,8 @@ model visit_tech_time_entry {
 
   clocked_in_at  DateTime
   clocked_out_at DateTime?
-  hours_worked   Decimal?  @db.Decimal(8, 4)
+  hours_worked   Decimal?          @db.Decimal(8, 4)
+  pause_reason   pause_reason_type?
 
   line_item_id   String?   @unique
   line_item      job_visit_line_item? @relation(fields: [line_item_id], references: [id])
@@ -1103,10 +1131,13 @@ model technician {
   created_invoice_notes        invoice_note[]    @relation("InvoiceNoteCreator")
   last_edited_invoice_notes    invoice_note[]    @relation("InvoiceNoteEditor")
 
+  shifts       technician_shift[]
+  shift_breaks technician_shift_break[]
+
   @@index([email])
   @@index([status])
   @@index([organization_id])
-} 
+}
 
 model dispatcher {
   id          String   @id @unique @default(uuid())
@@ -1148,6 +1179,43 @@ model dispatcher {
 
   @@index([email])
   @@index([organization_id])
+}
+
+// ============================================================================
+// SHIFT TRACKING
+// ============================================================================
+
+model technician_shift {
+  id            String     @id @default(uuid())
+  tech_id       String
+  tech          technician @relation(fields: [tech_id], references: [id])
+  org_id        String
+  started_at    DateTime
+  ended_at      DateTime?
+  gross_hours   Decimal?   @db.Decimal(8, 4)
+  break_hours   Decimal?   @db.Decimal(8, 4)
+  payable_hours Decimal?   @db.Decimal(8, 4)
+  breaks        technician_shift_break[]
+
+  @@index([tech_id])
+  @@index([org_id])
+}
+
+model technician_shift_break {
+  id               String            @id @default(uuid())
+  shift_id         String
+  shift            technician_shift  @relation(fields: [shift_id], references: [id])
+  tech_id          String
+  tech             technician        @relation(fields: [tech_id], references: [id])
+  reason           tech_break_reason
+  is_paid          Boolean
+  pre_break_status String
+  started_at       DateTime
+  ended_at         DateTime?
+  duration_hrs     Decimal?          @db.Decimal(8, 4)
+
+  @@index([shift_id])
+  @@index([tech_id])
 }
 
 // ============================================================================

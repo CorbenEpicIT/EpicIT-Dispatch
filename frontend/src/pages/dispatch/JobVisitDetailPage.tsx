@@ -21,6 +21,7 @@ import {
 	useResumeJobVisitMutation,
 	useCompleteJobVisitMutation,
 	useCancelJobVisitMutation,
+	useDelayJobVisitMutation,
 	useJobByIdQuery,
 } from "../../hooks/useJobs";
 import { useInvoicesByVisitIdQuery } from "../../hooks/useInvoices";
@@ -51,6 +52,7 @@ export default function JobVisitDetailPage() {
 	const resumeVisitMutation = useResumeJobVisitMutation();
 	const completeVisitMutation = useCompleteJobVisitMutation();
 	const cancelVisitMutation = useCancelJobVisitMutation();
+	const delayVisitMutation = useDelayJobVisitMutation();
 
 	const isLoading = visitLoading || jobLoading;
 
@@ -136,6 +138,17 @@ export default function JobVisitDetailPage() {
 				setIsOptionsMenuOpen(false);
 			} catch (error) {
 				console.error("Failed to cancel visit:", error);
+			}
+		}
+	};
+
+	const handleDelayVisit = async () => {
+		if (window.confirm("Mark this visit as Delayed? The technician will remain in their current state until the visit is resumed.")) {
+			try {
+				await delayVisitMutation.mutateAsync(visitId!);
+				setIsOptionsMenuOpen(false);
+			} catch (error) {
+				console.error("Failed to delay visit:", error);
 			}
 		}
 	};
@@ -366,12 +379,23 @@ export default function JobVisitDetailPage() {
 										</button>
 									)}
 
-									{(visit.status ===
-										"Scheduled" ||
-										visit.status ===
-											"InProgress" ||
-										visit.status ===
-											"Paused") && (
+									{(visit.status === "Scheduled" ||
+										visit.status === "Driving" ||
+										visit.status === "OnSite") && (
+										<button
+											onClick={handleDelayVisit}
+											disabled={delayVisitMutation.isPending}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50 text-amber-400"
+										>
+											<Clock size={16} />
+											Mark Delayed
+										</button>
+									)}
+
+									{(visit.status === "Scheduled" ||
+										visit.status === "InProgress" ||
+										visit.status === "Paused" ||
+										visit.status === "Delayed") && (
 										<>
 											<div className="border-t border-zinc-800 my-1" />
 											<button

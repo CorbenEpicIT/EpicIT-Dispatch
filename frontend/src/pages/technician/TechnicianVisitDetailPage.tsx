@@ -1,9 +1,5 @@
 import { useParams } from "react-router-dom";
 import {
-	Clock,
-	Play,
-	Pause,
-	CheckCircle2,
 	Users,
 	Car,
 	MapPin,
@@ -13,18 +9,17 @@ import {
 	Mail,
 	ChevronRight,
 	AlertTriangle,
-	Info,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useJobVisitByIdQuery } from "../../hooks/useJobs";
-import { useTechVisitActions } from "../../hooks/useTechVisitActions";
 import Card from "../../components/ui/Card";
+import VisitActionButtons from "../../components/technicianComponents/VisitActionButtons";
 import TechnicianQuoteModal from "../../components/quotes/TechnicianQuoteModal";
 import WorkPerformedSection from "../../components/technicianComponents/WorkPerformedSection";
 import PartsUsedSection from "../../components/technicianComponents/PartsUsedSection";
 import CustomerHistorySection from "../../components/technicianComponents/CustomerHistorySection";
 import InvoicePreview from "../../components/technicianComponents/InvoicePreview";
-import { VisitStatusColors, type VisitStatus } from "../../types/jobs";
+import { VisitStatusColors, VisitStatusLabels, type VisitStatus } from "../../types/jobs";
 import { QuoteStatusColors } from "../../types/quotes";
 import { formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
@@ -374,6 +369,50 @@ function ArrivalBanner({
 	);
 }
 
+// ── Delayed Banner ────────────────────────────────────────────────────────────
+
+function DelayedBanner({ scheduledStart, tz }: { scheduledStart: Date | string; tz: string }) {
+	const overdueMs = Math.max(0, Date.now() - new Date(scheduledStart).getTime());
+	const overdueMin = Math.floor(overdueMs / 60_000);
+	const overdueLabel =
+		overdueMin >= 60
+			? `${Math.floor(overdueMin / 60)}h ${overdueMin % 60}m past scheduled start`
+			: overdueMin > 0
+				? `${overdueMin}m past scheduled start`
+				: null;
+
+	return (
+		<div className="rounded-xl border border-orange-500/25 bg-orange-500/5 p-4 space-y-1.5">
+			<div className="flex items-center gap-2">
+				<AlertTriangle size={15} className="text-orange-400 shrink-0" />
+				<span className="text-sm font-semibold text-orange-300">Visit Delayed</span>
+			</div>
+			<p className="text-xs text-zinc-400">
+				Scheduled: {formatDateTime(scheduledStart, tz)}
+			</p>
+			{overdueLabel && (
+				<p className="text-xs text-orange-400/80">{overdueLabel}</p>
+			)}
+		</div>
+	);
+}
+
+// ── Paused Banner ─────────────────────────────────────────────────────────────
+
+function PausedBanner() {
+	return (
+		<div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-yellow-500/8 border border-yellow-500/20">
+			<span className="h-2 w-2 rounded-full bg-yellow-400 flex-shrink-0" />
+			<span className="text-xs text-yellow-400 font-medium uppercase tracking-wide flex-1">
+				Visit Paused
+			</span>
+			<span className="text-xs text-zinc-500">
+				Clock in to resume
+			</span>
+		</div>
+	);
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function TechnicianVisitDetailPage() {
@@ -381,7 +420,6 @@ export default function TechnicianVisitDetailPage() {
 	const { user } = useAuthStore();
 	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 	const { data: visit, isLoading } = useJobVisitByIdQuery(visitId!);
-	const actions = useTechVisitActions(visit, user?.userId ?? "");
 	const [showQuoteModal, setShowQuoteModal] = useState(false);
 
 	if (isLoading) {
@@ -418,9 +456,43 @@ export default function TechnicianVisitDetailPage() {
 	const renderContent = () => {
 		switch (status) {
 			case "Scheduled":
+				return (
+					<>
+						<JobContextSection
+							visit={visit}
+							tz={tz}
+							defaultOpen
+							onViewQuote={() => setShowQuoteModal(true)}
+						/>
+						{lineItems.length > 0 && (
+							<InvoicePreview
+								lineItems={lineItems}
+								subtotal={subtotal}
+								taxRate={taxRate}
+								taxAmount={taxAmount}
+								total={total}
+							/>
+						)}
+						{clientId && (
+							<CustomerHistorySection
+								clientId={clientId}
+								currentVisitId={visitId!}
+							/>
+						)}
+						<WorkPerformedSection
+							jobId={visit.job_id}
+							visitId={visitId!}
+						/>
+					</>
+				);
+
 			case "Delayed":
 				return (
 					<>
+						<DelayedBanner
+							scheduledStart={visit.scheduled_start_at}
+							tz={tz}
+						/>
 						<JobContextSection
 							visit={visit}
 							tz={tz}
@@ -526,6 +598,7 @@ export default function TechnicianVisitDetailPage() {
 			case "Paused":
 				return (
 					<>
+						<PausedBanner />
 						<WorkPerformedSection
 							jobId={visit.job_id}
 							visitId={visitId!}
@@ -593,297 +666,6 @@ export default function TechnicianVisitDetailPage() {
 		}
 	};
 
-	// ── Sticky footer CTA ─────────────────────────────────────────────────────
-
-	const renderFooterCTA = () => {
-		const btnBase =
-			"flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 transition-all duration-150 active:scale-[0.98]";
-		const btnCompact =
-			"flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 transition-all duration-150 active:scale-[0.98]";
-
-		const { uiState, confirmingAction, isLoading, isClockedIn, openEntries } = actions;
-
-		// ── Overlays ──────────────────────────────────────────────────────────────
-
-		if (uiState === "pause-warning") {
-			const otherNames = openEntries
-				.filter((e) => e.tech_id !== user?.userId)
-				.map((e) => e.tech.name)
-				.join(", ");
-			return (
-				<div className="flex-1 space-y-2">
-					<div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-						<AlertTriangle
-							size={14}
-							className="text-amber-400 shrink-0 mt-0.5"
-						/>
-						<p className="text-xs text-amber-300">
-							Pausing will clock out {otherNames}. Their
-							time will be recorded.
-						</p>
-					</div>
-					<div className="flex gap-2">
-						<button
-							onClick={actions.dismiss}
-							className={`${btnBase} bg-zinc-800 text-zinc-400 hover:bg-zinc-700`}
-						>
-							Cancel
-						</button>
-						<button
-							onClick={actions.handleConfirmPause}
-							disabled={isLoading}
-							className={`${btnBase} bg-amber-700 hover:bg-amber-600 text-white`}
-						>
-							{isLoading ? "Pausing…" : "Pause Anyway"}
-						</button>
-					</div>
-				</div>
-			);
-		}
-
-		if (uiState === "force-complete") {
-			const otherNames = openEntries.map((e) => e.tech.name).join(", ");
-			return (
-				<div className="flex-1 space-y-2">
-					<div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-						<AlertTriangle
-							size={14}
-							className="text-amber-400 shrink-0 mt-0.5"
-						/>
-						<p className="text-xs text-amber-300">
-							{otherNames} still clocked in. Completing
-							will clock them out automatically.
-						</p>
-					</div>
-					<div className="flex gap-2">
-						<button
-							onClick={actions.dismiss}
-							className={`${btnBase} bg-zinc-800 text-zinc-400 hover:bg-zinc-700`}
-						>
-							Cancel
-						</button>
-						<button
-							onClick={actions.handleConfirmComplete}
-							disabled={isLoading}
-							className={`${btnBase} bg-amber-700 hover:bg-amber-600 text-white`}
-						>
-							{isLoading
-								? "Completing…"
-								: "Force Complete"}
-						</button>
-					</div>
-				</div>
-			);
-		}
-
-		if (uiState === "prompt-complete") {
-			return (
-				<div className="flex-1 space-y-2">
-					<p className="text-xs text-zinc-400 text-center">
-						Complete this visit?
-					</p>
-					<div className="flex gap-2">
-						<button
-							onClick={actions.handleDeclineComplete}
-							className={`${btnBase} bg-zinc-800 text-zinc-400 hover:bg-zinc-700`}
-						>
-							Not Yet
-						</button>
-						<button
-							onClick={actions.handleConfirmComplete}
-							disabled={isLoading}
-							className={`${btnBase} bg-emerald-700 hover:bg-emerald-600 text-emerald-100`}
-						>
-							{isLoading ? "Completing…" : "Complete ✓"}
-						</button>
-					</div>
-				</div>
-			);
-		}
-
-		if (uiState === "paused-info") {
-			return (
-				<div className="flex-1 space-y-2">
-					<div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700">
-						<Info
-							size={14}
-							className="text-zinc-400 shrink-0 mt-0.5"
-						/>
-						<p className="text-xs text-zinc-400">
-							Visit is now paused — no active technicians
-							on site.
-						</p>
-					</div>
-					<button
-						onClick={actions.dismiss}
-						className={`${btnBase} bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300`}
-					>
-						Dismiss
-					</button>
-				</div>
-			);
-		}
-
-		// ── Normal button matrix ──────────────────────────────────────────────────
-
-		switch (status) {
-			case "Scheduled":
-			case "Delayed":
-				return (
-					<button
-						onClick={actions.handleDrive}
-						disabled={isLoading}
-						className={`${btnBase} ${
-							confirmingAction === "drive"
-								? "bg-cyan-400 text-black animate-pulse"
-								: "bg-cyan-700 hover:bg-cyan-600 text-white"
-						}`}
-					>
-						<Car size={16} />
-						{confirmingAction === "drive"
-							? "Confirm Driving"
-							: "I'm Driving"}
-					</button>
-				);
-
-			case "Driving":
-				return (
-					<button
-						onClick={actions.handleArrive}
-						disabled={isLoading}
-						className={`${btnBase} ${
-							confirmingAction === "arrive"
-								? "bg-purple-400 text-black animate-pulse"
-								: "bg-purple-700 hover:bg-purple-600 text-white"
-						}`}
-					>
-						<MapPin size={16} />
-						{confirmingAction === "arrive"
-							? "Confirm Arrived"
-							: "I've Arrived"}
-					</button>
-				);
-
-			case "OnSite":
-				return (
-					<button
-						onClick={actions.handleClockIn}
-						disabled={isLoading}
-						className={`${btnBase} bg-blue-600 hover:bg-blue-500 text-white`}
-					>
-						<Clock size={16} />
-						{isLoading ? "Clocking In…" : "Clock In & Begin"}
-					</button>
-				);
-
-			case "InProgress": {
-				return (
-					<div className="flex flex-col gap-2 flex-1">
-						<div className="flex gap-2">
-							{isClockedIn ? (
-								<button
-									onClick={
-										actions.handleClockOut
-									}
-									disabled={isLoading}
-									className={`${btnCompact} bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300`}
-								>
-									<Clock size={15} />
-									{isLoading
-										? "Clocking Out…"
-										: "Clock Out"}
-								</button>
-							) : (
-								<button
-									onClick={
-										actions.handleClockIn
-									}
-									disabled={isLoading}
-									className={`${btnCompact} bg-blue-600 hover:bg-blue-500 text-white`}
-								>
-									<Clock size={15} />
-									{isLoading
-										? "Clocking In…"
-										: "Clock In"}
-								</button>
-							)}
-						</div>
-						{isClockedIn && (
-							<div className="flex gap-2">
-								<button
-									onClick={
-										actions.handlePause
-									}
-									disabled={isLoading}
-									className={`${btnBase} bg-amber-700 hover:bg-amber-600 text-white`}
-								>
-									<Pause size={16} />
-									Pause Visit
-								</button>
-								<button
-									onClick={
-										actions.handleComplete
-									}
-									disabled={isLoading}
-									className={`${btnBase} ${
-										confirmingAction ===
-										"complete"
-											? "bg-emerald-400 text-black animate-pulse"
-											: "bg-emerald-700 hover:bg-emerald-600 text-white"
-									}`}
-								>
-									<CheckCircle2 size={16} />
-									{confirmingAction ===
-									"complete"
-										? "Confirm Complete"
-										: "Complete Visit"}
-								</button>
-							</div>
-						)}
-						{!isClockedIn && (
-							<div className="flex gap-2">
-								<button
-									onClick={
-										actions.handleComplete
-									}
-									disabled={isLoading}
-									className={`${btnBase} ${
-										confirmingAction ===
-										"complete"
-											? "bg-emerald-400 text-black animate-pulse"
-											: "bg-emerald-700 hover:bg-emerald-600 text-white"
-									}`}
-								>
-									<CheckCircle2 size={16} />
-									{confirmingAction ===
-									"complete"
-										? "Confirm Complete"
-										: "Complete Visit"}
-								</button>
-							</div>
-						)}
-					</div>
-				);
-			}
-
-			case "Paused":
-				return (
-					<button
-						onClick={actions.handleClockIn}
-						disabled={isLoading}
-						className={`${btnBase} bg-blue-600 hover:bg-blue-500 text-white`}
-					>
-						<Play size={16} />
-						{isLoading ? "Resuming…" : "Clock In & Resume"}
-					</button>
-				);
-
-			default:
-				return null;
-		}
-	};
-
-	const footerCTA = renderFooterCTA();
 	const dispatchPhone = (user as any)?.dispatchPhone as string | undefined;
 
 	return (
@@ -897,7 +679,7 @@ export default function TechnicianVisitDetailPage() {
 							"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
 						}`}
 					>
-						{status}
+						{VisitStatusLabels[status] ?? status}
 					</span>
 					{visit.name ?? "Visit"}
 				</h1>
@@ -920,10 +702,16 @@ export default function TechnicianVisitDetailPage() {
 			)}
 
 {/* Sticky footer CTA */}
-			{footerCTA && (
+			{status !== "Completed" && status !== "Cancelled" && (
 				<div className="fixed bottom-16 left-0 right-0 z-40 px-4 pb-3 bg-gradient-to-t from-zinc-950 via-zinc-950/95 to-transparent pt-6">
 					<div className="max-w-lg mx-auto flex gap-2">
-						{footerCTA}
+						<div className="flex-1">
+							<VisitActionButtons
+								visit={visit}
+								techId={user?.userId ?? ""}
+								variant="detail"
+							/>
+						</div>
 						{dispatchPhone && (
 							<a
 								href={`tel:${dispatchPhone}`}
@@ -934,11 +722,6 @@ export default function TechnicianVisitDetailPage() {
 							</a>
 						)}
 					</div>
-					{actions.clockError && (
-						<p className="max-w-lg mx-auto text-xs text-red-400 text-center mt-1.5">
-							{actions.clockError}
-						</p>
-					)}
 				</div>
 			)}
 		</div>

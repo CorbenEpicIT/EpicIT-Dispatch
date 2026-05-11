@@ -4,7 +4,12 @@ import {
     getTechnicianById,
     insertTechnician,
     updateTechnician,
-    deleteTechnician
+    deleteTechnician,
+    checkAndClearWrappingUp,
+    startShift,
+    goOffline,
+    goOnBreak,
+    returnFromBreak,
 } from "../controllers/techniciansController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
 import {
@@ -87,6 +92,13 @@ router.post("/:id/ping", async (req, res, next) => {
         const { id } = req.params;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
+
+        // Lazy WrappingUp auto-transition: clear to Available if timer has passed
+        const cleared = await checkAndClearWrappingUp(id, orgId);
+        if (cleared) {
+            getSocket().emit("technician-update", cleared);
+        }
+
         const result = await updateTechnician(id, req.body, orgId, context);
 
         if (result.err) {
@@ -222,6 +234,92 @@ router.put("/:id/vehicle", async (req, res, next) => {
 			const statusCode = result.err.includes("not found") ? 404 : 400;
 			return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Shift start (Offline → Available) or return from break
+router.post("/:id/available", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const orgId = req.user!.organization_id as string;
+		const tech = await getTechnicianById(id, orgId);
+		if (!tech) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Technician not found"));
+		}
+
+		let result;
+		if (tech.status === "Offline") {
+			result = await startShift(id, orgId);
+		} else if (tech.status === "Break") {
+			result = await returnFromBreak(id, orgId);
+		} else {
+			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "Technician is not Offline or on Break"));
+		}
+
+		if (result.err) {
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		getSocket().emit("technician-update", result.item);
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Shift end → Offline
+router.post("/:id/offline", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const orgId = req.user!.organization_id as string;
+		const result = await goOffline(id, orgId);
+		if (result.err) {
+			const status = result.err.includes("clocked into") ? 409 : 400;
+			return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		getSocket().emit("technician-update", result.item);
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Take a break
+router.post("/:id/break", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const orgId = req.user!.organization_id as string;
+		const { reason } = req.body as { reason?: string };
+		if (!reason) {
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "reason is required"));
+		}
+		const result = await goOnBreak(id, orgId, reason);
+		if (result.err) {
+			const status = result.err.includes("clocked into") ? 409 : 400;
+			return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		getSocket().emit("technician-update", result.item);
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Tech explicitly clears WrappingUp → Available
+router.post("/:id/done", async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const orgId = req.user!.organization_id as string;
+		import("../services/wrappingUpTimer.js").then(({ cancelWrappingUpTimer }) => {
+			cancelWrappingUpTimer(id);
+		}).catch(() => {});
+		const result = await updateTechnician(id, { status: "Available" }, orgId, getUserContext(req));
+		if (result.err) {
+			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		getSocket().emit("technician-update", result.item);
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);

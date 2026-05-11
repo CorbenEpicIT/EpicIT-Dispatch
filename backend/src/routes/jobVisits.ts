@@ -235,14 +235,14 @@ router.post("/:id/clock-in", async (req, res, next) => {
 
 router.post("/:id/clock-out", async (req, res, next) => {
     try {
-        const { tech_id } = req.body as { tech_id?: string };
+        const { tech_id, pause_reason } = req.body as { tech_id?: string; pause_reason?: string };
         if (!tech_id) {
             return res.status(400).json(
                 createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
             );
         }
         const orgId = req.user!.organization_id as string;
-        const result = await clockOutVisit(req.params.id, tech_id, orgId, getUserContext(req));
+        const result = await clockOutVisit(req.params.id, tech_id, orgId, getUserContext(req), pause_reason);
         if (result.err) {
             return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -320,6 +320,19 @@ router.post("/:id/cancel", async (req, res, next) => {
     }
 });
 
+router.post("/:id/delay", async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const result = await applyVisitTransition(req.params.id, "delay", orgId, getUserContext(req));
+        if (result.err) {
+            return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+        res.json(createSuccessResponse(result.item));
+    } catch (err) {
+        next(err);
+    }
+});
+
 router.delete("/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -368,7 +381,7 @@ const LIFECYCLE_ACTIONS = Object.keys(LIFECYCLE_TRANSITIONS) as (keyof typeof LI
 router.post("/:id/transition", async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { action } = req.body;
+        const { action, pause_reason } = req.body;
         if (!action || !LIFECYCLE_ACTIONS.includes(action)) {
             return res
                 .status(400)
@@ -376,7 +389,7 @@ router.post("/:id/transition", async (req, res, next) => {
         }
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await applyVisitTransition(id, action, orgId, context);
+        const result = await applyVisitTransition(id, action, orgId, context, pause_reason);
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }

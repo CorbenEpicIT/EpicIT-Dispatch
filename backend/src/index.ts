@@ -9,6 +9,7 @@ import {
 } from "./types/responses.js";
 import * as notificationsController from "./controllers/notificationsController.js";
 import { startVisitReminderInterval } from "./services/notifications.js";
+import { rearmWrappingUpTimers } from "./services/wrappingUpTimer.js";
 import {
 	getAllRequests,
 	getRequestById,
@@ -318,6 +319,7 @@ initSocket(io);
 // Inject io into notifications so createNotification can emit in real-time
 notificationsController.setSocketIo(io);
 startVisitReminderInterval();
+rearmWrappingUpTimers().catch((e) => log.error(e, "Failed to rearm WrappingUp timers"));
 
 // Each technician joins their personal room on connect
 io.on("connection", (socket) => {

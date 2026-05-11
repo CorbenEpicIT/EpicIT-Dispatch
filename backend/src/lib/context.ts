@@ -11,13 +11,18 @@ export interface UserContext {
 
 
 export const getUserContext = (req: Request): UserContext => {
-	const userId = req.headers["x-user-id"] as string;
-	const userType = req.headers["x-user-type"] as "tech" | "dispatcher";
+	const headerUserId = req.headers["x-user-id"] as string | undefined;
+	const headerUserType = req.headers["x-user-type"] as "tech" | "dispatcher" | undefined;
 	const userAgent = req.headers["user-agent"] || undefined;
 
+	// Fall back to JWT payload when explicit headers are absent (standard frontend requests)
+	const userId = headerUserId ?? req.user?.uid;
+	const isTech = headerUserType === "tech" || (!headerUserType && req.user?.role === "technician");
+	const isDispatcher = headerUserType === "dispatcher" || (!headerUserType && (req.user?.role === "dispatcher" || req.user?.role === "admin"));
+
 	return {
-		techId: userType === "tech" ? userId : undefined,
-		dispatcherId: userType === "dispatcher" ? userId : undefined,
+		techId: isTech ? userId : undefined,
+		dispatcherId: isDispatcher ? userId : undefined,
 		ipAddress: undefined,
 		userAgent,
 	};

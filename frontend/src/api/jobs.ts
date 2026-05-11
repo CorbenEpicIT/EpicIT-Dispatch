@@ -186,8 +186,11 @@ export const deleteJobVisit = async (id: string): Promise<{ message: string }> =
 // JOB VISIT LIFECYCLE API
 // ============================================
 
-export const transitionJobVisit = async (visitId: string, action: import("../types/jobs").LifecycleAction): Promise<JobVisit> => {
-	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/transition`, { action });
+export const transitionJobVisit = async (visitId: string, action: import("../types/jobs").LifecycleAction, pauseReason?: string): Promise<JobVisit> => {
+	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/transition`, {
+		action,
+		...(pauseReason ? { pause_reason: pauseReason } : {}),
+	});
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to update visit");
@@ -203,6 +206,16 @@ export const cancelJobVisit = async (visitId: string, cancellationReason: string
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to cancel visit");
+	}
+
+	return response.data.data!;
+};
+
+export const delayJobVisit = async (visitId: string): Promise<JobVisit> => {
+	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/delay`);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to delay visit");
 	}
 
 	return response.data.data!;
@@ -230,10 +243,10 @@ export const clockInVisit = async (visitId: string, techId: string): Promise<Clo
 	}
 };
 
-export const clockOutVisit = async (visitId: string, techId: string): Promise<ClockOutResult> => {
+export const clockOutVisit = async (visitId: string, techId: string, pauseReason?: string): Promise<ClockOutResult> => {
 	const response = await api.post<ApiResponse<ClockOutResult>>(
 		`/job-visits/${visitId}/clock-out`,
-		{ tech_id: techId },
+		{ tech_id: techId, ...(pauseReason ? { pause_reason: pauseReason } : {}) },
 	);
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to clock out");

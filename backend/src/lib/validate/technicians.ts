@@ -1,6 +1,6 @@
 import z from "zod";
 
-const technicianStatusEnum = z.enum(["Offline", "Available", "Busy", "Break"]);
+const technicianStatusEnum = z.enum(["Offline", "Available", "Break", "EnRoute", "OnSite", "Working", "Paused", "WrappingUp"]);
 
 export const createTechnicianSchema = z.object({
 	name: z.string().min(1, "Technician name is required"),

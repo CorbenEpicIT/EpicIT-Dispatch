@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, Camera, ChevronRight, MapPin, CalendarDays } from "lucide-react";
 import VisitActionButtons from "./VisitActionButtons";
@@ -34,7 +35,7 @@ const GREY_INACTIVE = {
 } as const; // zinc-700 / zinc-600 / zinc-500
 
 const VISIT_CARD_COLORS: Record<
-	"clockedIn" | "active" | "completed" | "cancelled" | "overdue" | "soon" | "scheduled",
+	"clockedIn" | "active" | "completed" | "cancelled" | "overdue" | "soon" | "scheduled" | "delayed" | "paused",
 	Pick<CardStyle, "gradientColor" | "dotColor" | "textColor">
 > = {
 	clockedIn:  { gradientColor: "#22c55e", dotColor: "#22c55e", textColor: "#4ade80" },  // green-500 / green-400
@@ -44,9 +45,16 @@ const VISIT_CARD_COLORS: Record<
 	overdue:    { gradientColor: "#ef4444", dotColor: "#ef4444", textColor: "#f87171" },  // red-500 / red-400
 	soon:       { gradientColor: "#f59e0b", dotColor: "#f59e0b", textColor: "#fbbf24" },  // amber-500 / amber-400
 	scheduled:  GREY_INACTIVE,
+	delayed:    { gradientColor: "#f97316", dotColor: "#f97316", textColor: "#fb923c" },  // orange-500 / orange-400
+	paused:     { gradientColor: "#eab308", dotColor: "#eab308", textColor: "#facc15" },  // yellow-500 / yellow-400
 };
 
 function getCardStyle(visit: JobVisit, isClockedIn: boolean): CardStyle {
+	if (visit.status === "Delayed")
+		return { ...VISIT_CARD_COLORS.delayed, label: "Delayed", animated: false };
+	if (visit.status === "Paused")
+		return { ...VISIT_CARD_COLORS.paused, label: "Paused", animated: false };
+
 	const isActive = ACTIVE_STATUSES.has(visit.status);
 
 	if (isActive && isClockedIn)
@@ -85,6 +93,7 @@ export default function TechVisitCard({
 	onAddNotePhoto,
 }: TechVisitCardProps) {
 	const navigate = useNavigate();
+	const [isOverlay, setIsOverlay] = useState(false);
 
 	const myOpenEntry = visit.time_entries?.find(
 		(e) => e.tech_id === techId && e.clocked_out_at === null,
@@ -196,43 +205,48 @@ export default function TechVisitCard({
 							View Details <ChevronRight size={13} />
 						</button>
 					) : (
-						<div className="flex gap-2 items-stretch">
-							<div className="flex-[3] min-w-0">
+						<div className={`transition-all duration-200 ${isOverlay ? "" : "flex gap-2 items-stretch"}`}>
+							<div className={isOverlay ? "" : "flex-[3] min-w-0"}>
 								<VisitActionButtons
 									visit={visit}
 									techId={techId}
 									variant="card"
+									onOverlayChange={setIsOverlay}
 								/>
 							</div>
-							<div className="w-px bg-zinc-700/60 self-stretch mx-0.5" />
-							<button
-								onClick={() =>
-									navigate(`/technician/visits/${visit.id}`)
-								}
-								className="flex-[1] flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[48px]"
-								aria-label="View visit details"
-							>
-								{visit.status === "InProgress" ? (
-									<>
-										<span className="flex flex-col items-center leading-tight">
-											<span className="text-[13px] font-semibold">Visit</span>
-											<span className="text-[13px] font-semibold">Details</span>
-										</span>
-										<ChevronRight size={14} />
-									</>
-								) : (
-									<>
-										<span className="text-[11px] font-semibold">View</span>
-										<ChevronRight size={13} />
-									</>
-								)}
-							</button>
+							{!isOverlay && (
+								<>
+									<div className="w-px bg-zinc-700/60 self-stretch mx-0.5" />
+									<button
+										onClick={() =>
+											navigate(`/technician/visits/${visit.id}`)
+										}
+										className="flex-[1] flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[48px]"
+										aria-label="View visit details"
+									>
+										{visit.status === "InProgress" ? (
+											<>
+												<span className="flex flex-col items-center leading-tight">
+													<span className="text-[13px] font-semibold">Visit</span>
+													<span className="text-[13px] font-semibold">Details</span>
+												</span>
+												<ChevronRight size={14} />
+											</>
+										) : (
+											<>
+												<span className="text-[11px] font-semibold">View</span>
+												<ChevronRight size={13} />
+											</>
+										)}
+									</button>
+								</>
+							)}
 						</div>
 					)}
 				</div>
 
-				{/* Note / Photo quick action — dashboard only, when clocked in */}
-				{showNotePhoto && (
+				{/* Note / Photo quick action — dashboard only, when clocked in and no overlay active */}
+				{showNotePhoto && !isOverlay && (
 					<div className="mt-2">
 						<button
 							onClick={onAddNotePhoto}

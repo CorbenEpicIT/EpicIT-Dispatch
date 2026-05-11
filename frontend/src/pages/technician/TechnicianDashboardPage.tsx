@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Phone, X } from "lucide-react";
+import { AlertTriangle, Phone, X, Coffee, LogOut, LogIn } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
 import { useJobVisitsByTechIdQuery, useCreateJobNoteMutation } from "../../hooks/useJobs";
-import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
+import { useTechnicianByIdQuery, useGoAvailableMutation, useGoOfflineMutation, useGoOnBreakMutation, useMarkDoneMutation } from "../../hooks/useTechnicians";
 import TechVisitCard from "../../components/technicianComponents/TechVisitCard";
 import AddNotePhotoModal from "../../components/technicianComponents/AddNotePhotoModal";
 import type { NotePhoto } from "../../components/technicianComponents/AddNotePhotoModal";
@@ -12,7 +12,7 @@ import { formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const ACTIVE_STATUSES: VisitStatus[] = ["Driving", "OnSite", "InProgress", "Paused"];
+const ACTIVE_STATUSES: VisitStatus[] = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"];
 const UP_NEXT_MINUTES = 30;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -36,10 +36,16 @@ function isSameDay(a: Date, b: Date, tz: string): boolean {
 	);
 }
 
+const BREAK_REASONS = [
+	{ value: "Lunch", label: "Lunch Break" },
+	{ value: "Rest", label: "Rest Break" },
+	{ value: "EquipmentIssue", label: "Equipment Issue" },
+	{ value: "Other", label: "Other" },
+];
+
 export default function TechnicianDashboardPage() {
 	const { user } = useAuthStore();
 	const navigate = useNavigate();
-
 	const {
 		data: visits = [],
 		isLoading,
@@ -47,10 +53,23 @@ export default function TechnicianDashboardPage() {
 	} = useJobVisitsByTechIdQuery(user?.userId ?? "");
 	const { data: techProfile } = useTechnicianByIdQuery(user?.userId ?? null);
 	const insertNoteMutation = useCreateJobNoteMutation();
+	const goAvailableMutation = useGoAvailableMutation();
+	const goOfflineMutation = useGoOfflineMutation();
+	const goOnBreakMutation = useGoOnBreakMutation();
+	const markDoneMutation = useMarkDoneMutation();
 
 	const [vehicleBannerDismissed, setVehicleBannerDismissed] = useState(false);
+
 	const [showNotePhotoModal, setShowNotePhotoModal] = useState(false);
 	const [notePhotoTargetVisitId, setNotePhotoTargetVisitId] = useState<string | null>(null);
+	const [showBreakPicker, setShowBreakPicker] = useState(false);
+	const [breakError, setBreakError] = useState<string | null>(null);
+	const [confirmingEndShift, setConfirmingEndShift] = useState(false);
+	const endShiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => { if (endShiftTimerRef.current) clearTimeout(endShiftTimerRef.current); };
+	}, []);
 
 	// ── date bucketing ──────────────────────────────────────────────────────
 
@@ -95,17 +114,23 @@ export default function TechnicianDashboardPage() {
 		overdueVisits,
 		upNextVisits,
 		upcomingVisits,
-		nextTodayVisit,
-		nextFutureVisit,
 		nextDayVisits,
+		primaryHeroVisit,
 	} = useMemo(() => {
 		const now = Date.now();
 		const upNextThresholdMs = UP_NEXT_MINUTES * 60_000;
 
-		const actives = todayVisits.filter((v) => ACTIVE_STATUSES.includes(v.status));
-		const scheduled = todayVisits.filter(
-			(v) => v.status === "Scheduled" || v.status === "Delayed"
-		);
+		const userId = user?.userId;
+		// Filter from ALL visits (not just today's) — a visit started on a previous
+		// day that's still InProgress would otherwise fall into a dead zone.
+		const actives = visits
+			.filter((v) => ACTIVE_STATUSES.includes(v.status))
+			.sort((a, b) => {
+				const aIn = a.time_entries?.some((e) => e.tech_id === userId && e.clocked_out_at === null) ? 0 : 1;
+				const bIn = b.time_entries?.some((e) => e.tech_id === userId && e.clocked_out_at === null) ? 0 : 1;
+				return aIn - bIn;
+			});
+		const scheduled = todayVisits.filter((v) => v.status === "Scheduled");
 		const overdue = scheduled.filter(
 			(v) => new Date(v.scheduled_start_at).getTime() < now
 		);
@@ -118,11 +143,10 @@ export default function TechnicianDashboardPage() {
 		);
 
 		const nextToday =
-			scheduled.sort(
-				(a, b) =>
-					new Date(a.scheduled_start_at).getTime() -
-					new Date(b.scheduled_start_at).getTime()
-			)[0] ?? null;
+			scheduled
+				.filter((v) => new Date(v.scheduled_start_at).getTime() >= now)
+				.sort((a, b) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime())[0]
+			?? null;
 
 		const nextFuture = futureVisits[0] ?? null;
 		const nextDayDate = nextFuture ? new Date(nextFuture.scheduled_start_at) : null;
@@ -132,6 +156,8 @@ export default function TechnicianDashboardPage() {
 				)
 			: [];
 
+		const primaryHero = overdue[0] ?? nextToday ?? nextFuture ?? null;
+
 		return {
 			activeVisits: actives,
 			overdueVisits: overdue,
@@ -140,8 +166,9 @@ export default function TechnicianDashboardPage() {
 			nextTodayVisit: nextToday,
 			nextFutureVisit: nextFuture,
 			nextDayVisits: nextDay,
+			primaryHeroVisit: primaryHero,
 		};
-	}, [todayVisits, futureVisits, tz]);
+	}, [visits, todayVisits, futureVisits, tz, user?.userId]);
 
 	const doneCount = todayVisits.filter(
 		(v) => v.status === "Completed" || v.status === "Cancelled"
@@ -169,15 +196,30 @@ export default function TechnicianDashboardPage() {
 	};
 
 	const noVehicle = techProfile && !techProfile.current_vehicle_id;
+	const isClockedInAnywhere = useMemo(
+		() => visits.some((v) => v.time_entries?.some((e) => !e.clocked_out_at)),
+		[visits],
+	);
+
+	const handleStartBreak = async (reason: string) => {
+		if (!user?.userId) return;
+		setBreakError(null);
+		try {
+			await goOnBreakMutation.mutateAsync({ techId: user.userId, reason });
+			setShowBreakPicker(false);
+		} catch (err) {
+			setBreakError(err instanceof Error ? err.message : "Failed to start break — try again.");
+		}
+	};
 
 	// ── hero type ───────────────────────────────────────────────────────────
 
-	type HeroType = "next-today" | "next-future" | "empty";
-	const heroType: HeroType = nextTodayVisit
-		? "next-today"
-		: nextFutureVisit
-			? "next-future"
-			: "empty";
+	type HeroType = "wrapping-up" | "primary" | "empty";
+
+	const heroType: HeroType =
+		techProfile?.status === "WrappingUp" ? "wrapping-up"
+		: primaryHeroVisit                   ? "primary"
+		: "empty";
 
 	// ── loading / error ─────────────────────────────────────────────────────
 
@@ -210,6 +252,29 @@ export default function TechnicianDashboardPage() {
 	}
 
 	// ── render ───────────────────────────────────────────────────────────────
+
+	// Offline → Start Shift gate
+	if (techProfile?.status === "Offline") {
+		return (
+			<div className="px-4 sm:px-6 pt-5 max-w-lg w-full flex flex-col items-center justify-center min-h-[60vh] gap-6">
+				<div className="text-center">
+					<h1 className="text-2xl font-bold text-white mb-1">
+						Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"},{" "}
+						{techProfile.name.split(" ")[0]}
+					</h1>
+					<p className="text-sm text-zinc-500">Ready to start your shift?</p>
+				</div>
+				<button
+					onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
+					disabled={goAvailableMutation.isPending}
+					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base transition-colors disabled:opacity-50"
+				>
+					<LogIn size={18} />
+					{goAvailableMutation.isPending ? "Starting…" : "Start Shift"}
+				</button>
+			</div>
+		);
+	}
 
 	return (
 		<div className="px-4 sm:px-6 pt-5 pb-10 max-w-lg w-full lg:max-w-4xl lg:px-8">
@@ -261,7 +326,7 @@ export default function TechnicianDashboardPage() {
 			</div>
 
 			{/* Quick actions row */}
-			<div className="mb-5">
+			<div className="mb-5 flex flex-col gap-2">
 				<a
 					href="tel:"
 					className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors w-full"
@@ -269,59 +334,122 @@ export default function TechnicianDashboardPage() {
 					<Phone size={15} />
 					Call Dispatch
 				</a>
+				{/* Break + End Shift row */}
+				<div className="flex gap-2">
+					{techProfile?.status === "Break" ? (
+						<button
+							onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
+							disabled={goAvailableMutation.isPending}
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-green-700 hover:bg-green-600 text-sm text-white font-medium transition-colors disabled:opacity-50"
+						>
+							<Coffee size={15} />
+							{goAvailableMutation.isPending ? "Returning…" : "End Break"}
+						</button>
+					) : !isClockedInAnywhere && (
+						<button
+							onClick={() => setShowBreakPicker(true)}
+							disabled={goOnBreakMutation.isPending}
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
+						>
+							<Coffee size={15} />
+							Take Break
+						</button>
+					)}
+					{!isClockedInAnywhere && techProfile?.status !== "Break" && (
+						<button
+							onClick={() => {
+								if (!user?.userId) return;
+								if (!confirmingEndShift) {
+									setConfirmingEndShift(true);
+									if (endShiftTimerRef.current) clearTimeout(endShiftTimerRef.current);
+									endShiftTimerRef.current = setTimeout(() => setConfirmingEndShift(false), 4000);
+									return;
+								}
+								if (endShiftTimerRef.current) clearTimeout(endShiftTimerRef.current);
+								setConfirmingEndShift(false);
+								goOfflineMutation.mutate(user.userId);
+							}}
+							disabled={goOfflineMutation.isPending}
+							className={`flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+								confirmingEndShift
+									? "bg-red-900/40 border border-red-500/50 text-red-300 motion-safe:animate-pulse"
+									: "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+							}`}
+						>
+							<LogOut size={15} />
+							{goOfflineMutation.isPending ? "Ending…" : confirmingEndShift ? "Confirm End Shift" : "End Shift"}
+						</button>
+					)}
+				</div>
 			</div>
+
+			{/* Break reason picker modal */}
+			{showBreakPicker && (
+				<div
+					className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
+					onClick={() => { setShowBreakPicker(false); setBreakError(null); }}
+				>
+					<div
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="break-picker-title"
+						className="w-full max-w-sm mx-4 mb-20 sm:mb-0 bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-3 max-h-[90dvh] overflow-y-auto"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<p id="break-picker-title" className="text-sm font-semibold text-white text-center">Why are you taking a break?</p>
+						{breakError && (
+							<p role="alert" className="text-xs text-red-400 text-center px-2">{breakError}</p>
+						)}
+						{BREAK_REASONS.map((r) => (
+							<button
+								key={r.value}
+								onClick={() => handleStartBreak(r.value)}
+								disabled={goOnBreakMutation.isPending}
+								className="w-full min-h-[44px] py-3 rounded-xl text-sm font-medium bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 transition-colors disabled:opacity-40"
+							>
+								{r.label}
+							</button>
+						))}
+						<button
+							onClick={() => { setShowBreakPicker(false); setBreakError(null); }}
+							className="w-full min-h-[44px] py-3 rounded-xl text-sm font-medium bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			)}
 
 			{/* ── Responsive grid: hero left, schedule right on lg+ ── */}
 			<div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-start">
 				{/* ── Hero section: all active visits ──────────────────────────────── */}
 				<div className="mb-6 space-y-3 lg:mb-0">
-					{activeVisits.length === 0 &&
-						(heroType === "empty" ? (
-							<div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center">
-								<p className="text-sm text-zinc-600">
-									No visits scheduled. Check
-									with dispatch.
-								</p>
-							</div>
-						) : heroType === "next-today" && nextTodayVisit ? (
-							<NextUpCard
-								visit={nextTodayVisit}
-								dayLabel="Today"
-								dayLabelClass="text-blue-400"
-								timeClass="text-blue-400"
-								tz={tz}
-								onNavigate={() =>
-									navigate(
-										`/technician/visits/${nextTodayVisit.id}`
-									)
-								}
-							/>
-						) : nextFutureVisit ? (
-							<NextUpCard
-								visit={nextFutureVisit}
-								dayLabel={new Date(
-									nextFutureVisit.scheduled_start_at
-								)
-									.toLocaleDateString(
-										"en-US",
-										{
-											weekday: "short",
-											month: "short",
-											day: "numeric",
-											timeZone: tz,
-										}
-									)
-									.toUpperCase()}
-								dayLabelClass="text-violet-400"
-								timeClass="text-violet-400"
-								tz={tz}
-								onNavigate={() =>
-									navigate(
-										`/technician/visits/${nextFutureVisit.id}`
-									)
-								}
-							/>
-						) : null)}
+					{activeVisits.length === 0 && (
+						<>
+							{heroType === "wrapping-up" && (
+								<WrappingUpCard
+									onAvailable={() =>
+										user?.userId && markDoneMutation.mutateAsync(user.userId)
+									}
+									isLoading={markDoneMutation.isPending}
+								/>
+							)}
+							{primaryHeroVisit ? (
+								<TechVisitCard
+									visit={primaryHeroVisit}
+									techId={user?.userId ?? ""}
+									tz={tz}
+									showDateTime={true}
+								/>
+							) : heroType !== "wrapping-up" && (
+								<div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center">
+									<p className="text-sm text-zinc-600">
+										No visits scheduled. Check with dispatch.
+									</p>
+								</div>
+							)}
+						</>
+					)}
 
 					{activeVisits.map((visit) => (
 						<TechVisitCard
@@ -608,60 +736,37 @@ export default function TechnicianDashboardPage() {
 
 // ─── sub-components ───────────────────────────────────────────────────────────
 
-interface NextUpCardProps {
-	visit: JobVisit;
-	dayLabel: string;
-	dayLabelClass: string;
-	timeClass: string;
-	tz: string;
-	onNavigate: () => void;
-}
-
-function NextUpCard({
-	visit,
-	dayLabel,
-	dayLabelClass,
-	timeClass,
-	tz,
-	onNavigate,
-}: NextUpCardProps) {
+function WrappingUpCard({ onAvailable, isLoading }: { onAvailable: () => void; isLoading: boolean }) {
 	return (
 		<div
-			onClick={onNavigate}
-			className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-4 cursor-pointer hover:border-zinc-700 active:scale-[0.99] transition-all duration-150"
+			style={{
+				padding: "1px 1px 1px 3px",
+				background: "linear-gradient(to right, #2dd4bf 0%, #3f3f46 45%, #3f3f46 100%)",
+				borderRadius: "12px",
+			}}
 		>
-			<div className="flex items-center gap-1 mb-2">
-				<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-zinc-500">
-					Next Up ·&nbsp;
-				</span>
-				<span
-					className={`text-[10px] font-bold tracking-[0.1em] uppercase ${dayLabelClass}`}
-				>
-					{dayLabel}
-				</span>
-			</div>
-			<p className="text-[15px] font-bold text-white leading-snug mb-0.5">
-				{visit.name ?? "Visit"}
-			</p>
-			{visit.job?.client?.name && (
-				<p className="text-xs text-zinc-500 mb-0.5">
-					{visit.job.client.name}
+			<div className="rounded-[11px] bg-zinc-900 px-4 py-4 space-y-3">
+				<div className="flex items-center gap-2">
+					<div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+					<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-teal-400">
+						Wrapping Up
+					</span>
+				</div>
+				<p className="text-sm text-zinc-400">
+					Job complete. Mark yourself available when you're ready.
 				</p>
-			)}
-			{visit.job?.address && (
-				<p className="text-xs text-zinc-400 mb-3">📍 {visit.job.address}</p>
-			)}
-			<div className="flex items-end justify-between">
-				<p
-					className={`text-2xl font-bold tabular-nums tracking-tight ${timeClass}`}
+				<button
+					onClick={onAvailable}
+					disabled={isLoading}
+					className="w-full py-2.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-300 text-sm font-medium hover:bg-teal-500/20 transition-colors disabled:opacity-40"
 				>
-					{formatTime(visit.scheduled_start_at, tz)}
-				</p>
-				<span className="text-zinc-700 text-sm mb-0.5">›</span>
+					I'm Available
+				</button>
 			</div>
 		</div>
 	);
 }
+
 
 interface ScheduleRowProps {
 	visit: JobVisit;

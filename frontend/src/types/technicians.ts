@@ -9,21 +9,42 @@ import type { JobVisit } from "./jobs";
 // STATUS
 // ============================================================================
 
-export const TechnicianStatusValues = ["Offline", "Available", "Busy", "Break"] as const;
+export const TechnicianStatusValues = [
+	"Available", "Working", "OnSite", "EnRoute", "Paused", "WrappingUp", "Break", "Offline",
+] as const;
 export type TechnicianStatus = (typeof TechnicianStatusValues)[number];
 
+export const TechnicianStatusLabels: Record<TechnicianStatus, string> = {
+	Available:  "Available",
+	Working:    "Working",
+	EnRoute:    "En Route",
+	OnSite:     "On Site",
+	Paused:     "Paused",
+	WrappingUp: "Wrapping Up",
+	Break:      "Break",
+	Offline:    "Offline",
+};
+
 export const TechnicianStatusColors: Record<TechnicianStatus, string> = {
-	Available: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-	Busy: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-	Break: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-	Offline: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+	Available:  "bg-green-500/10 text-green-400 border-green-500/20",
+	Working:    "bg-purple-500/10 text-purple-400 border-purple-500/20",
+	EnRoute:    "bg-sky-500/10 text-sky-400 border-sky-500/20",
+	OnSite:     "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+	Paused:     "bg-orange-500/10 text-orange-400 border-orange-500/20",
+	WrappingUp: "bg-teal-400/10 text-teal-300 border-teal-400/20",
+	Break:      "bg-amber-400/10 text-amber-300 border-amber-400/20",
+	Offline:    "bg-zinc-600/10 text-zinc-400 border-zinc-600/20",
 };
 
 export const TechnicianStatusDotColors: Record<TechnicianStatus, string> = {
-	Available: "bg-emerald-500",
-	Busy: "bg-amber-500",
-	Break: "bg-blue-500",
-	Offline: "bg-zinc-500",
+	Available:  "bg-green-500",
+	Working:    "bg-purple-500",
+	EnRoute:    "bg-sky-500",
+	OnSite:     "bg-yellow-500",
+	Paused:     "bg-orange-500",
+	WrappingUp: "bg-teal-400",
+	Break:      "bg-amber-400",
+	Offline:    "bg-zinc-500",
 };
 
 // ============================================================================
