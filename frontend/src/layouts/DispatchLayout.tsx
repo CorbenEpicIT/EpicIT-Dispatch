@@ -78,6 +78,12 @@ export default function DispatchLayout() {
 					/>
 					<SideNavItem
 						expanded={expanded}
+						to="/dispatch/schedule"
+						icon={<Calendar size={ICON_SIZE} />}
+						label="Schedule"
+					/>
+					<SideNavItem
+						expanded={expanded}
 						to="/dispatch/requests"
 						icon={<Phone size={ICON_SIZE} />}
 						label="Requests"
@@ -96,10 +102,11 @@ export default function DispatchLayout() {
 					/>
 					<SideNavItem
 						expanded={expanded}
-						to="/dispatch/schedule"
-						icon={<Calendar size={ICON_SIZE} />}
-						label="Schedule"
+						to="/dispatch/invoices"
+						icon={<ReceiptText size={ICON_SIZE} />}
+						label="Invoices"
 					/>
+
 					<SideNavItem
 						expanded={expanded}
 						to="/dispatch/clients"
@@ -130,12 +137,7 @@ export default function DispatchLayout() {
 						icon={<Map size={ICON_SIZE} />}
 						label="Map"
 					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/invoices"
-						icon={<ReceiptText size={ICON_SIZE} />}
-						label="Invoices"
-					/>
+
 					<SideNavItem
 						expanded={expanded}
 						to="/dispatch/reporting"
