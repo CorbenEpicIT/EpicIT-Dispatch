@@ -1,4 +1,22 @@
 import { db } from "../db.js";
+import { getSocket } from "./socketService.js";
+
+const FEED_EVENTS = new Set([
+	"job.created",
+	"job_visit.created",
+	"job_visit.updated",
+	"job_visit.technicians_assigned",
+	"request.created",
+	"request.updated",
+	"quote.created",
+	"quote.updated",
+	"invoice.created",
+	"invoice.updated",
+	"invoice_payment.created",
+	"recurring_plan.created",
+	"recurring_occurrence.generated",
+	"technician.updated",
+]);
 
 // ============================================================================
 // UNIFIED ACTIVITY LOGGING
@@ -53,7 +71,7 @@ export const logActivity = async (params: LogActivityParams) => {
 			}
 		}
 
-		await db.log.create({
+		const created = await db.log.create({
 			data: {
 				event_type: params.event_type,
 				action: params.action,
@@ -74,6 +92,14 @@ export const logActivity = async (params: LogActivityParams) => {
 				reason: params.reason || null,
 			},
 		});
+
+		if (FEED_EVENTS.has(params.event_type) && created.organization_id) {
+			try {
+				getSocket().to(`org:${created.organization_id}`).emit("activity-event", created);
+			} catch {
+				// socket not yet initialized — skip emission
+			}
+		}
 	} catch (error) {
 		// Use stderr directly to avoid a circular dependency with appLogger
 		process.stderr.write(JSON.stringify({ level: "error", msg: "Failed to create activity log", err: String(error) }) + "\n");

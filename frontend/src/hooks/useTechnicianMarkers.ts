@@ -1,10 +1,7 @@
 import { useState, useEffect } from "react";
-import { io, Socket } from "socket.io-client";
 import { useAllTechniciansQuery } from "../hooks/useTechnicians";
 import type { Technician } from "../types/technicians";
-
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL;
-if (!SOCKET_URL) console.error("Failed to load socket URL!");
+import { socket } from "../lib/socket";
 
 export function useLiveTechnicians() {
 	const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -15,9 +12,7 @@ export function useLiveTechnicians() {
 	}, [initialData]);
 
 	useEffect(() => {
-		const socket: Socket = io(SOCKET_URL, { transports: ["websocket"] });
-
-		socket.on("technician-update", (updatedTech: Technician) => {
+		const handleUpdate = (updatedTech: Technician) => {
 			setTechnicians((prev) => {
 				const exists = prev.some((t) => t.id === updatedTech.id);
 				if (exists) {
@@ -27,11 +22,12 @@ export function useLiveTechnicians() {
 				}
 				return [...prev, updatedTech];
 			});
-		});
+		};
+
+		socket.on("technician-update", handleUpdate);
 
 		return () => {
-			socket.off("technician-update");
-			socket.disconnect();
+			socket.off("technician-update", handleUpdate);
 		};
 	}, []);
 

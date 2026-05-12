@@ -321,10 +321,12 @@ notificationsController.setSocketIo(io);
 startVisitReminderInterval();
 rearmWrappingUpTimers().catch((e) => log.error(e, "Failed to rearm WrappingUp timers"));
 
-// Each technician joins their personal room on connect
+// Each technician joins their personal room; all clients join their org room
 io.on("connection", (socket) => {
 	const techId = socket.handshake.query["techId"] as string | undefined;
+	const orgId = socket.handshake.query["orgId"] as string | undefined;
 	if (techId) socket.join(`tech:${techId}`);
+	if (orgId) socket.join(`org:${orgId}`);
 });
 
 let port: string | undefined = process.env["SERVER_PORT"];
@@ -551,15 +553,20 @@ app.use("/vehicles", verifyToken, vehiclesRouter);
 // ACTIVITY FEED
 // ============================================================
 
+
 app.get("/logs/recent", async (req, res, next) => {
 	try {
 		const limit = Math.min(Number(req.query.limit) || 25, 50);
+		const cursor = req.query.cursor as string | undefined;
+		const orgId = req.user!.organization_id as string;
+		const sdb = getScopedDb(orgId);
 		const FEED_EVENTS = [
 			"job.created",
 			"job_visit.created",
 			"job_visit.updated",
 			"job_visit.technicians_assigned",
 			"request.created",
+			"request.updated",
 			"quote.created",
 			"quote.updated",
 			"invoice.created",
@@ -567,15 +574,18 @@ app.get("/logs/recent", async (req, res, next) => {
 			"invoice_payment.created",
 			"recurring_plan.created",
 			"recurring_occurrence.generated",
+			"technician.updated",
 		];
-		const orgId = req.user!.organization_id as string;
-		const sdb = getScopedDb(orgId);
 		const logs = await sdb.log.findMany({
-			where: { event_type: { in: FEED_EVENTS } },
+			where: {
+				event_type: { in: FEED_EVENTS },
+				...(cursor ? { timestamp: { lt: new Date(cursor) } } : {}),
+			},
 			orderBy: { timestamp: "desc" },
 			take: limit,
 		});
-		res.json(createSuccessResponse(logs, { count: logs.length }));
+		const hasMore = logs.length === limit;
+		res.json(createSuccessResponse(logs, { count: logs.length, hasMore }));
 	} catch (err) {
 		next(err);
 	}

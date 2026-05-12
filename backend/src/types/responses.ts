@@ -16,6 +16,7 @@ export interface ErrorDetails {
 export interface ResponseMeta {
 	timestamp?: string;
 	count?: number;
+	hasMore?: boolean;
 }
 
 export interface ControllerResult<T = any> {
