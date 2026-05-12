@@ -74,7 +74,9 @@ CREATE TABLE "technician_shift_break" (
         ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE INDEX "technician_shift_tech_id_idx"       ON "technician_shift"("tech_id");
-CREATE INDEX "technician_shift_org_id_idx"         ON "technician_shift"("org_id");
-CREATE INDEX "technician_shift_break_shift_id_idx" ON "technician_shift_break"("shift_id");
-CREATE INDEX "technician_shift_break_tech_id_idx"  ON "technician_shift_break"("tech_id");
+CREATE INDEX "technician_shift_tech_id_idx"              ON "technician_shift"("tech_id");
+CREATE INDEX "technician_shift_org_id_idx"               ON "technician_shift"("org_id");
+CREATE INDEX "technician_shift_tech_id_ended_at_idx"     ON "technician_shift"("tech_id", "ended_at");
+CREATE INDEX "technician_shift_break_shift_id_idx"       ON "technician_shift_break"("shift_id");
+CREATE INDEX "technician_shift_break_tech_id_idx"        ON "technician_shift_break"("tech_id");
+CREATE INDEX "technician_shift_break_tech_id_ended_at_idx" ON "technician_shift_break"("tech_id", "ended_at");

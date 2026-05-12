@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import type { tech_visit_status, technician_status, pause_reason_type } from "../../generated/prisma/client.js";
+import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobVisitSchema,
@@ -17,6 +18,41 @@ function toPauseReason(v: string | undefined): pause_reason_type | undefined {
 	if (!v || !VALID_PAUSE_REASONS.has(v)) return undefined;
 	return v as pause_reason_type;
 }
+
+export const buildSecondaryEventPayload = (
+	visit: {
+		id: string;
+		name: string | null;
+		scheduled_start_at: Date;
+		status: string;
+		job_id: string;
+		job: { id?: string; client: { name: string } };
+		visit_techs: Array<{ tech_id: string; tech: { name: string } }>;
+	},
+	techAction: string,
+	context?: UserContext,
+) => {
+	let actor: { type: "technician" | "dispatcher"; name: string | null; id: string } | null = null;
+	if (context?.techId) {
+		const techEntry = visit.visit_techs.find((vt) => vt.tech_id === context.techId);
+		actor = { type: "technician", name: techEntry?.tech.name ?? null, id: context.techId };
+	}
+	return {
+		visitStatusChanged: false,
+		visitStatus: techAction,
+		previousVisitStatus: visit.status,
+		actor,
+		visit: {
+			id: visit.id,
+			name: visit.name,
+			scheduledAt: visit.scheduled_start_at.toISOString(),
+			job: { id: visit.job_id, client: { name: visit.job.client.name } },
+		},
+		changedAt: new Date().toISOString(),
+	};
+};
+
+const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
 export const buildVisitStatusPayload = (
 	visit: {
@@ -53,41 +89,6 @@ export const buildVisitStatusPayload = (
 		changedAt: new Date().toISOString(),
 	};
 };
-
-export const buildSecondaryEventPayload = (
-	visit: {
-		id: string;
-		name: string | null;
-		scheduled_start_at: Date;
-		status: string;
-		job_id: string;
-		job: { id?: string; client: { name: string } };
-		visit_techs: Array<{ tech_id: string; tech: { name: string } }>;
-	},
-	techAction: string,
-	context?: UserContext,
-) => {
-	let actor: { type: "technician" | "dispatcher"; name: string | null; id: string } | null = null;
-	if (context?.techId) {
-		const techEntry = visit.visit_techs.find((vt) => vt.tech_id === context.techId);
-		actor = { type: "technician", name: techEntry?.tech.name ?? null, id: context.techId };
-	}
-	return {
-		visitStatusChanged: false,
-		visitStatus: techAction,
-		previousVisitStatus: visit.status,
-		actor,
-		visit: {
-			id: visit.id,
-			name: visit.name,
-			scheduledAt: visit.scheduled_start_at.toISOString(),
-			job: { id: visit.job_id, client: { name: visit.job.client.name } },
-		},
-		changedAt: new Date().toISOString(),
-	};
-};
-
-const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
 export const getAllJobVisits = async (organization_id: string, filters?: { clientId?: string; limit?: number; sort?: "asc" | "desc" }) => {
 	const sdb = getScopedDb(organization_id);
@@ -693,6 +694,17 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			}
 		}
 
+		if (
+			updated &&
+			parsed.status !== undefined &&
+			existingVisit.status !== updated.status
+		) {
+			const io = getSocket();
+			io.emit(
+				"job_visit:status_changed",
+				buildVisitStatusPayload(updated as any, existingVisit.status, true, context),
+			);
+		}
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -1006,6 +1018,13 @@ export const applyVisitTransition = async (
 						notes: true,
 					},
 				});
+				if (action === "drive" && existingVisit.status === "Driving" && currentVisit) {
+					const io = getSocket();
+					io.emit(
+						"job_visit:status_changed",
+						buildVisitStatusPayload(currentVisit as any, existingVisit.status, false, context),
+					);
+				}
 				return { err: "", item: currentVisit ?? undefined };
 			}
 			return {
@@ -1023,7 +1042,7 @@ export const applyVisitTransition = async (
 			if (!existingVisit.actual_start_at) timestampData.actual_start_at = now;
 		}
 
-		const updated = await sdb.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
 				data: {
@@ -1265,15 +1284,16 @@ export const applyVisitTransition = async (
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findFirst({
-				where: { id },
-				include: {
-					job: { include: { client: true, quote: true } },
-					visit_techs: { include: { tech: true } },
-					line_items: { orderBy: { sort_order: "asc" } },
-					notes: true,
-				},
-			});
+		});
+
+		const updated = await sdb.job_visit.findFirst({
+			where: { id },
+			include: {
+				job: { include: { client: true, quote: true } },
+				visit_techs: { include: { tech: true } },
+				line_items: { orderBy: { sort_order: "asc" } },
+				notes: true,
+			},
 		});
 
 		if (updated) {
@@ -1282,7 +1302,6 @@ export const applyVisitTransition = async (
 				buildVisitStatusPayload(updated, existingVisit.status, true, context),
 			);
 		}
-
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {
 		log.error({ err: e }, `Failed to apply visit transition: ${action}`);
@@ -1307,7 +1326,7 @@ export const cancelJobVisit = async (
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
-		const updated = await sdb.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
 				data: { status: "Cancelled", cancellation_reason: cancellationReason },
@@ -1445,15 +1464,16 @@ export const cancelJobVisit = async (
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findFirst({
-				where: { id },
-				include: {
-					job: { include: { client: true, quote: true } },
-					visit_techs: { include: { tech: true } },
-					line_items: { orderBy: { sort_order: "asc" } },
-					notes: true,
-				},
-			});
+		});
+
+		const updated = await sdb.job_visit.findFirst({
+			where: { id },
+			include: {
+				job: { include: { client: true, quote: true } },
+				visit_techs: { include: { tech: true } },
+				line_items: { orderBy: { sort_order: "asc" } },
+				notes: true,
+			},
 		});
 
 		// Notify assigned technicians of cancellation
@@ -1471,6 +1491,13 @@ export const cancelJobVisit = async (
 			}
 		}
 
+		if (updated) {
+			const io = getSocket();
+			io.emit(
+				"job_visit:status_changed",
+				buildVisitStatusPayload(updated as any, existingVisit.status, true, context),
+			);
+		}
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {
 		log.error({ err: e }, "Failed to cancel job visit");
@@ -1545,4 +1572,52 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 		log.error({ err: e }, "Failed to delete job visit");
 		return { err: "Failed to delete job visit" };
 	}
+};
+
+export const getRecentStatusEvents = async (organizationId: string) => {
+	const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+	const logs = await db.log.findMany({
+		where: {
+			event_type: "job_visit.updated",
+			organization_id: organizationId,
+			timestamp: { gte: cutoff },
+		},
+		orderBy: { timestamp: "desc" },
+		take: 30,
+	});
+
+	if (logs.length === 0) return [];
+
+	const visitIds = [...new Set(logs.map((l) => l.entity_id))];
+	const visits = await db.job_visit.findMany({
+		where: { id: { in: visitIds } },
+		include: { job: { include: { client: { select: { name: true } } } } },
+	});
+	const visitMap = new Map(visits.map((v) => [v.id, v]));
+
+	return logs
+		.map((entry) => {
+			const changes = entry.changes as Record<string, { old: string; new: string }>;
+			const visit = visitMap.get(entry.entity_id);
+			if (!visit || !changes.status) return null;
+			return {
+				visitStatusChanged: true,
+				visitStatus: changes.status.new,
+				previousVisitStatus: changes.status.old,
+				actor:
+					entry.actor_id && entry.actor_type !== "system"
+						? { type: entry.actor_type as "technician" | "dispatcher", name: entry.actor_name, id: entry.actor_id }
+						: null,
+				changedAt: entry.timestamp.toISOString(),
+				visit: {
+					id: visit.id,
+					name: visit.name,
+					scheduledAt: visit.scheduled_start_at.toISOString(),
+					job: { id: visit.job_id, client: { name: visit.job.client.name } },
+				},
+			};
+		})
+		.filter((e) => e !== null)
+		.slice(0, 9);
 };

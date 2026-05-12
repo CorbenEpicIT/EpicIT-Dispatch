@@ -1,5 +1,5 @@
 import z from "zod";
-import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint } from "./jobs";
+import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint, VisitStatusEvent } from "./jobs";
 import type { Priority } from "./common";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
@@ -203,3 +203,26 @@ export const UpdateTechnicianSchema = z
 			data.last_login !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
+
+// ============================================================================
+// LIVE FEED EVENT TYPES
+// ============================================================================
+
+export type TechStatusChangeType =
+	| "shift_start"
+	| "shift_end"
+	| "break_start"
+	| "break_end"
+	| "wrapping_up_cleared";
+
+export interface TechStatusEvent {
+	kind: "tech";
+	techId: string;
+	techName: string;
+	newStatus: TechnicianStatus;
+	changeType: TechStatusChangeType;
+	changedAt: string;
+}
+
+export type VisitFeedEvent = VisitStatusEvent & { kind: "visit" };
+export type FeedEvent = VisitFeedEvent | TechStatusEvent;

@@ -97,6 +97,13 @@ router.post("/:id/ping", async (req, res, next) => {
         const cleared = await checkAndClearWrappingUp(id, orgId);
         if (cleared) {
             getSocket().emit("technician-update", cleared);
+            getSocket().emit("technician:status_changed", {
+                techId: cleared.id,
+                techName: cleared.name,
+                newStatus: "Available",
+                changeType: "wrapping_up_cleared",
+                changedAt: new Date().toISOString(),
+            });
         }
 
         const result = await updateTechnician(id, req.body, orgId, context);
@@ -251,10 +258,13 @@ router.post("/:id/available", async (req, res, next) => {
 		}
 
 		let result;
+		let changeType: "shift_start" | "break_end";
 		if (tech.status === "Offline") {
 			result = await startShift(id, orgId);
+			changeType = "shift_start";
 		} else if (tech.status === "Break") {
 			result = await returnFromBreak(id, orgId);
+			changeType = "break_end";
 		} else {
 			return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "Technician is not Offline or on Break"));
 		}
@@ -263,6 +273,13 @@ router.post("/:id/available", async (req, res, next) => {
 			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 		}
 		getSocket().emit("technician-update", result.item);
+		getSocket().emit("technician:status_changed", {
+			techId: result.item!.id,
+			techName: result.item!.name,
+			newStatus: result.item!.status,
+			changeType,
+			changedAt: new Date().toISOString(),
+		});
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);
@@ -280,6 +297,13 @@ router.post("/:id/offline", async (req, res, next) => {
 			return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 		}
 		getSocket().emit("technician-update", result.item);
+		getSocket().emit("technician:status_changed", {
+			techId: result.item!.id,
+			techName: result.item!.name,
+			newStatus: "Offline",
+			changeType: "shift_end",
+			changedAt: new Date().toISOString(),
+		});
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);
@@ -301,11 +325,19 @@ router.post("/:id/break", async (req, res, next) => {
 			return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 		}
 		getSocket().emit("technician-update", result.item);
+		getSocket().emit("technician:status_changed", {
+			techId: result.item!.id,
+			techName: result.item!.name,
+			newStatus: "Break",
+			changeType: "break_start",
+			changedAt: new Date().toISOString(),
+		});
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);
 	}
 });
+
 
 // Tech explicitly clears WrappingUp → Available
 router.post("/:id/done", async (req, res, next) => {
@@ -320,6 +352,13 @@ router.post("/:id/done", async (req, res, next) => {
 			return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 		}
 		getSocket().emit("technician-update", result.item);
+		getSocket().emit("technician:status_changed", {
+			techId: result.item!.id,
+			techName: result.item!.name,
+			newStatus: "Available",
+			changeType: "wrapping_up_cleared",
+			changedAt: new Date().toISOString(),
+		});
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);

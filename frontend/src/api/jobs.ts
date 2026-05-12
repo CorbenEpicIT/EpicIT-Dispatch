@@ -13,6 +13,7 @@ import type {
 	UpdateJobVisitInput,
 	ClockInResult,
 	ClockOutResult,
+	VisitStatusEvent,
 } from "../types/jobs";
 
 
@@ -317,4 +318,9 @@ export const uploadNotePhoto = async (file: File): Promise<string> => {
 		throw new Error(response.data.error?.message || "Upload failed");
 	}
 	return response.data.data!.url;
+};
+
+export const fetchRecentStatusEvents = async (): Promise<VisitStatusEvent[]> => {
+	const response = await api.get<ApiResponse<VisitStatusEvent[]>>("/job-visits/recent-status-events");
+	return response.data.data ?? [];
 };

@@ -55,7 +55,11 @@ input[type="number"] {
 	animation: card-highlight 2.5s ease-out forwards;
 }
 
-/* Inventory low-stock panel scrollbar */
+/* Reusable thin scrollbar — zinc theme, cross-browser */
+.scrollbar-thin {
+	scrollbar-width: thin;
+	scrollbar-color: #3f3f46 transparent;
+}
 .scrollbar-thin::-webkit-scrollbar {
 	width: 4px;
 }
@@ -63,9 +67,9 @@ input[type="number"] {
 	background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-	background: rgb(63 63 70);
+	background: #3f3f46;
 	border-radius: 2px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-	background: rgb(82 82 91);
+	background: #52525b;
 }

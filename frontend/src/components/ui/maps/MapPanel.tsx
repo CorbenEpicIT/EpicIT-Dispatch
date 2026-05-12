@@ -1,9 +1,13 @@
-import { useMemo, useState } from "react";
-import { ChevronDown, Users, Wrench, Route, Clock } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Activity, ArrowUpRight, Briefcase, ChevronDown, Clock, Layers, Route, User, Users, Wrench } from "lucide-react";
 import type { Technician } from "../../../types/technicians";
 import { TechnicianStatusDotColors } from "../../../types/technicians";
 import type { TechRouteData } from "../../../types/location";
 import type { Client } from "../../../types/clients";
+import { useLiveVisitUpdates } from "../../../hooks/useLiveVisitUpdates";
+import type { FeedEvent } from "../../../types/technicians";
+import { getEventText, getStatusColor, timeAgo } from "./visitFeedUtils";
 
 export interface MapFilters {
 	showClients: boolean;
@@ -58,192 +62,314 @@ export default function MapPanel({
 }: MapPanelProps) {
 	const sortedClients = useMemo(
 		() => [...allClients].sort((a, b) => a.name.localeCompare(b.name)),
-		[allClients],
+		[allClients]
 	);
 	const sortedTechs = useMemo(
 		() => [...allTechnicians].sort((a, b) => a.name.localeCompare(b.name)),
-		[allTechnicians],
+		[allTechnicians]
 	);
 	const sortedRoutes = useMemo(
 		() => [...drivingRoutes].sort((a, b) => a.techName.localeCompare(b.techName)),
-		[drivingRoutes],
+		[drivingRoutes]
 	);
+
+	const { events, unreadCount, clearUnread } = useLiveVisitUpdates();
+	const [liveOpen, setLiveOpen] = useState(false);
+
+	useEffect(() => {
+		if (!liveOpen || unreadCount === 0) return;
+		const id = setTimeout(clearUnread, 5000);
+		return () => clearTimeout(id);
+	}, [liveOpen, unreadCount, clearUnread]);
 
 	return (
 		<div className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl w-full h-full overflow-hidden">
-			<div className="px-4 py-3 border-b border-zinc-800">
-				<h3 className="font-semibold text-white text-sm">Map Controls</h3>
-				<p className="text-xs text-zinc-500 mt-0.5">
-					Toggle resources to reduce clutter
-				</p>
-			</div>
+			<div className="flex flex-col flex-1 min-h-0">
+				{/* Map Controls — scrolls internally if sections are expanded */}
+				<div className="flex flex-col shrink-0 max-h-[55%]">
+					<div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800 bg-zinc-900 shrink-0">
+						<Layers
+							size={12}
+							className="text-zinc-300 shrink-0"
+						/>
+						<span className="text-[10px] font-bold text-zinc-100 uppercase tracking-widest">
+							Map Controls
+						</span>
+					</div>
+				<div className="overflow-y-auto min-h-0 scrollbar-thin">
 
-			<div className="flex-1 overflow-y-auto">
-				<Section
-					icon={<Users size={14} />}
-					title="Clients"
-					count={sortedClients.length}
-					master={filters.showClients}
-					onMaster={(v) => onChange({ ...filters, showClients: v })}
-					defaultOpen={false}
-				>
-					{sortedClients.length === 0 ? (
-						<EmptyHint>No clients.</EmptyHint>
-					) : (
-						sortedClients.map((c) => {
-							const validCoords = hasValidCoords(c.coords);
-							const hidden = filters.hiddenClientIds.has(c.id);
-							return (
-								<ItemToggle
-									key={c.id}
-									checked={!hidden}
-									disabled={!validCoords || !filters.showClients}
-									onChange={() =>
-										onChange({
-											...filters,
-											hiddenClientIds: toggleInSet(
-												filters.hiddenClientIds,
-												c.id,
-											),
-										})
-									}
-									label={c.name}
-									sublabel={validCoords ? undefined : "no location"}
-									dot={
-										<span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-									}
-								/>
-							);
-						})
-					)}
-				</Section>
+					<Section
+						icon={<Users size={14} />}
+						title="Clients"
+						count={sortedClients.length}
+						master={filters.showClients}
+						onMaster={(v) =>
+							onChange({ ...filters, showClients: v })
+						}
+						defaultOpen={false}
+					>
+						{sortedClients.length === 0 ? (
+							<EmptyHint>No clients.</EmptyHint>
+						) : (
+							sortedClients.map((c) => {
+								const validCoords = hasValidCoords(
+									c.coords
+								);
+								const hidden =
+									filters.hiddenClientIds.has(
+										c.id
+									);
+								return (
+									<ItemToggle
+										key={c.id}
+										checked={!hidden}
+										disabled={
+											!validCoords ||
+											!filters.showClients
+										}
+										onChange={() =>
+											onChange({
+												...filters,
+												hiddenClientIds:
+													toggleInSet(
+														filters.hiddenClientIds,
+														c.id
+													),
+											})
+										}
+										label={c.name}
+										sublabel={
+											validCoords
+												? undefined
+												: "no location"
+										}
+										dot={
+											<span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+										}
+									/>
+								);
+							})
+						)}
+					</Section>
 
-				<Section
-					icon={<Route size={14} />}
-					title="Routes"
-					count={sortedRoutes.length}
-					master={filters.showRoutes}
-					onMaster={(v) => onChange({ ...filters, showRoutes: v })}
-					defaultOpen={true}
-				>
-					{sortedRoutes.length === 0 ? (
-						<EmptyHint>No technicians currently driving.</EmptyHint>
-					) : (
-						sortedRoutes.map((route) => {
-							const hidden = filters.hiddenRouteIds.has(route.techId);
-							return (
-								<ItemToggle
-									key={route.techId}
-									checked={!hidden}
-									disabled={!filters.showRoutes}
-									onChange={() =>
-										onChange({
-											...filters,
-											hiddenRouteIds: toggleInSet(
-												filters.hiddenRouteIds,
-												route.techId,
-											),
-										})
-									}
-									label={route.techName}
-									sublabel={`→ ${route.destinationLabel}`}
-									dot={
-										<span
-											className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-950"
-											style={{ backgroundColor: route.color }}
+					<Section
+						icon={<Route size={14} />}
+						title="Routes"
+						count={sortedRoutes.length}
+						master={filters.showRoutes}
+						onMaster={(v) =>
+							onChange({ ...filters, showRoutes: v })
+						}
+						defaultOpen={true}
+					>
+						{sortedRoutes.length === 0 ? (
+							<EmptyHint>
+								No technicians currently driving.
+							</EmptyHint>
+						) : (
+							sortedRoutes.map((route) => {
+								const hidden =
+									filters.hiddenRouteIds.has(
+										route.techId
+									);
+								return (
+									<ItemToggle
+										key={route.techId}
+										checked={!hidden}
+										disabled={
+											!filters.showRoutes
+										}
+										onChange={() =>
+											onChange({
+												...filters,
+												hiddenRouteIds:
+													toggleInSet(
+														filters.hiddenRouteIds,
+														route.techId
+													),
+											})
+										}
+										label={
+											route.techName
+										}
+										sublabel={`→ ${route.destinationLabel}`}
+										dot={
+											<span
+												className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-950"
+												style={{
+													backgroundColor:
+														route.color,
+												}}
+											/>
+										}
+									/>
+								);
+							})
+						)}
+					</Section>
+
+					<Section
+						icon={<Clock size={14} />}
+						title="ETA Labels"
+						count={sortedRoutes.length}
+						master={filters.showETAs}
+						onMaster={(v) =>
+							onChange({ ...filters, showETAs: v })
+						}
+						defaultOpen={false}
+					>
+						{sortedRoutes.length === 0 ? (
+							<EmptyHint>No active ETAs.</EmptyHint>
+						) : (
+							sortedRoutes.map((route) => {
+								const hidden =
+									filters.hiddenETAIds.has(
+										route.techId
+									);
+								return (
+									<ItemToggle
+										key={route.techId}
+										checked={!hidden}
+										disabled={
+											!filters.showETAs
+										}
+										onChange={() =>
+											onChange({
+												...filters,
+												hiddenETAIds:
+													toggleInSet(
+														filters.hiddenETAIds,
+														route.techId
+													),
+											})
+										}
+										label={
+											route.techName
+										}
+										sublabel={formatEta(
+											route.etaSeconds
+										)}
+										dot={
+											<span
+												className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-950"
+												style={{
+													backgroundColor:
+														route.color,
+												}}
+											/>
+										}
+									/>
+								);
+							})
+						)}
+					</Section>
+
+					<Section
+						icon={<Wrench size={14} />}
+						title="Technicians"
+						count={sortedTechs.length}
+						master={filters.showTechs}
+						onMaster={(v) =>
+							onChange({ ...filters, showTechs: v })
+						}
+						defaultOpen={true}
+					>
+						{sortedTechs.length === 0 ? (
+							<EmptyHint>No technicians.</EmptyHint>
+						) : (
+							sortedTechs.map((tech) => {
+								const validCoords = hasValidCoords(
+									tech.coords
+								);
+								const hidden =
+									filters.hiddenTechIds.has(
+										tech.id
+									);
+								return (
+									<ItemToggle
+										key={tech.id}
+										checked={!hidden}
+										disabled={
+											!validCoords ||
+											!filters.showTechs
+										}
+										onChange={() =>
+											onChange({
+												...filters,
+												hiddenTechIds:
+													toggleInSet(
+														filters.hiddenTechIds,
+														tech.id
+													),
+											})
+										}
+										label={tech.name}
+										sublabel={
+											validCoords
+												? tech.status
+												: "no location"
+										}
+										dot={
+											<span
+												className={`w-2 h-2 rounded-full flex-shrink-0 ${TechnicianStatusDotColors[tech.status]}`}
+											/>
+										}
+									/>
+								);
+							})
+						)}
+					</Section>
+				</div>
+				</div>
+
+				{/* Live Updates — fills remaining panel space */}
+				<div className="flex flex-col flex-1 min-h-0 border-t border-zinc-800">
+					<button
+						onClick={() => {
+							const opening = !liveOpen;
+							setLiveOpen(opening);
+							if (opening) clearUnread();
+						}}
+						className="relative flex w-full items-center gap-2 px-3 py-2.5 bg-zinc-800/40 border-b border-zinc-800 hover:bg-zinc-800/60 transition-colors shrink-0"
+					>
+						<Activity
+							size={12}
+							className={`shrink-0 transition-colors ${unreadCount > 0 || liveOpen ? "text-blue-400" : "text-zinc-400"}`}
+						/>
+						<span className="text-[10px] font-bold text-zinc-100 uppercase tracking-widest flex-1 text-left">
+							Live Updates
+						</span>
+						{unreadCount > 0 && (
+							<span className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white font-bold rounded-full text-[10px] leading-none">
+								{unreadCount > 9 ? "9+" : unreadCount}
+							</span>
+						)}
+						<ChevronDown
+							size={12}
+							className={`text-zinc-100 transition-transform duration-150 shrink-0 ${liveOpen ? "" : "-rotate-90"}`}
+						/>
+					</button>
+					{liveOpen && (
+						<div className="flex-1 overflow-y-auto min-h-0 px-1 pb-2 scrollbar-thin">
+							{events.length === 0 ? (
+								<p className="text-xs text-zinc-600 italic px-2 py-1.5">
+									No recent activity.
+								</p>
+							) : (
+								<ul>
+									{events.map((event, i) => (
+										<VisitFeedItem
+											key={`${event.changedAt}-${i}`}
+											event={
+												event
+											}
 										/>
-									}
-								/>
-							);
-						})
+									))}
+								</ul>
+							)}
+						</div>
 					)}
-				</Section>
-
-				<Section
-					icon={<Clock size={14} />}
-					title="ETA Labels"
-					count={sortedRoutes.length}
-					master={filters.showETAs}
-					onMaster={(v) => onChange({ ...filters, showETAs: v })}
-					defaultOpen={false}
-				>
-					{sortedRoutes.length === 0 ? (
-						<EmptyHint>No active ETAs.</EmptyHint>
-					) : (
-						sortedRoutes.map((route) => {
-							const hidden = filters.hiddenETAIds.has(route.techId);
-							return (
-								<ItemToggle
-									key={route.techId}
-									checked={!hidden}
-									disabled={!filters.showETAs}
-									onChange={() =>
-										onChange({
-											...filters,
-											hiddenETAIds: toggleInSet(
-												filters.hiddenETAIds,
-												route.techId,
-											),
-										})
-									}
-									label={route.techName}
-									sublabel={formatEta(route.etaSeconds)}
-									dot={
-										<span
-											className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-950"
-											style={{ backgroundColor: route.color }}
-										/>
-									}
-								/>
-							);
-						})
-					)}
-				</Section>
-
-				<Section
-					icon={<Wrench size={14} />}
-					title="Technicians"
-					count={sortedTechs.length}
-					master={filters.showTechs}
-					onMaster={(v) => onChange({ ...filters, showTechs: v })}
-					defaultOpen={true}
-				>
-					{sortedTechs.length === 0 ? (
-						<EmptyHint>No technicians.</EmptyHint>
-					) : (
-						sortedTechs.map((tech) => {
-							const validCoords = hasValidCoords(tech.coords);
-							const hidden = filters.hiddenTechIds.has(tech.id);
-							return (
-								<ItemToggle
-									key={tech.id}
-									checked={!hidden}
-									disabled={!validCoords || !filters.showTechs}
-									onChange={() =>
-										onChange({
-											...filters,
-											hiddenTechIds: toggleInSet(
-												filters.hiddenTechIds,
-												tech.id,
-											),
-										})
-									}
-									label={tech.name}
-									sublabel={
-										validCoords
-											? tech.status
-											: "no location"
-									}
-									dot={
-										<span
-											className={`w-2 h-2 rounded-full flex-shrink-0 ${TechnicianStatusDotColors[tech.status]}`}
-										/>
-									}
-								/>
-							);
-						})
-					)}
-				</Section>
+				</div>
 			</div>
 		</div>
 	);
@@ -322,7 +448,9 @@ function ItemToggle({ checked, disabled, onChange, label, sublabel, dot }: ItemT
 				<div className="min-w-0 flex-1">
 					<p className="text-xs text-zinc-200 truncate">{label}</p>
 					{sublabel && (
-						<p className="text-[10px] text-zinc-500 truncate">{sublabel}</p>
+						<p className="text-[10px] text-zinc-500 truncate">
+							{sublabel}
+						</p>
 					)}
 				</div>
 				<input
@@ -339,4 +467,69 @@ function ItemToggle({ checked, disabled, onChange, label, sublabel, dot }: ItemT
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
 	return <li className="text-xs text-zinc-600 italic px-2 py-1.5">{children}</li>;
+}
+
+function VisitFeedItem({ event }: { event: FeedEvent }) {
+	const navigate = useNavigate();
+	const color = getStatusColor(event);
+	const { primary, sub } = getEventText(event);
+	const time = timeAgo(event.changedAt);
+	const navUrl =
+		event.kind === "visit"
+			? `/dispatch/jobs/${event.visit.job.id}/visits/${event.visit.id}`
+			: `/dispatch/technicians/${event.techId}`;
+	const NavIcon = event.kind === "visit" ? Briefcase : User;
+
+	const isPrimary = event.kind === "tech" || event.visitStatusChanged;
+
+	const navButton = (
+		<button
+			onClick={(e) => {
+				e.stopPropagation();
+				navigate(navUrl);
+			}}
+			className="shrink-0 flex items-center gap-0.5 px-1.5 py-1 text-zinc-400 bg-zinc-800/60 border border-zinc-700/60 hover:text-blue-400 hover:bg-zinc-800 hover:border-zinc-600 rounded transition-colors"
+			title={event.kind === "visit" ? "View visit" : "View technician"}
+		>
+			<NavIcon size={10} />
+			<ArrowUpRight size={9} />
+		</button>
+	);
+
+	if (isPrimary) {
+		return (
+			<li
+				className="my-0.5 rounded-r bg-zinc-900/60"
+				style={{ borderLeft: `2px solid ${color}` }}
+			>
+				<div className="flex items-center">
+					<div className="flex-1 py-1.5 pl-2.5 pr-1 min-w-0">
+						<p className="text-[10px] font-semibold text-zinc-200 leading-snug">
+							{primary}
+						</p>
+						<p className="text-[9px] text-zinc-500 mt-0.5">
+							{sub ? `${sub} · ${time}` : time}
+						</p>
+					</div>
+					{navButton}
+				</div>
+			</li>
+		);
+	}
+
+	return (
+		<li className="py-1 px-2 flex items-center gap-1.5">
+			<span
+				className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+				style={{ backgroundColor: color }}
+			/>
+			<div className="min-w-0 flex-1">
+				<p className="text-[10px] text-zinc-400 leading-snug truncate">
+					{primary}
+				</p>
+				<p className="text-[9px] text-zinc-600 mt-0.5">{time}</p>
+			</div>
+			{navButton}
+		</li>
+	);
 }

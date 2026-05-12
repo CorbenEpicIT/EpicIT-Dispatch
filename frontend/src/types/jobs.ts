@@ -796,3 +796,28 @@ export const UpdateJobNoteSchema = z.object({
 	content: z.string().min(1, "Note content is required"),
 	visit_id: z.string().uuid().optional().nullable(),
 });
+
+// ============================================================================
+// SOCKET EVENT TYPES
+// ============================================================================
+
+export interface VisitStatusEvent {
+	visitStatusChanged: boolean;
+	visitStatus: VisitStatus;
+	previousVisitStatus: VisitStatus;
+	actor: {
+		type: "technician" | "dispatcher";
+		name: string | null;
+		id: string;
+	} | null;
+	visit: {
+		id: string;
+		name?: string | null;
+		scheduledAt: string;
+		job: {
+			id: string;
+			client: { name: string };
+		};
+	};
+	changedAt: string;
+}

@@ -23,11 +23,11 @@ export default function MapPage() {
 	if (isLoading) return <p>Loading map data...</p>;
 
 	return (
-		<div className="flex flex-col lg:flex-row gap-4 h-fit">
-			<div className="flex-1 min-w-0">
+		<div className="flex flex-col lg:flex-row gap-4 lg:h-[840px]">
+			<div className="flex-1 min-w-0 lg:h-full">
 				<Card
 					title="Map View"
-					className="h-fit"
+					className="h-full"
 					headerAction={
 						<button
 							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
@@ -61,7 +61,7 @@ export default function MapPage() {
 				</Card>
 			</div>
 
-			<div className="lg:w-80 lg:flex-shrink-0 lg:h-[784px]">
+			<div className="lg:w-80 lg:flex-shrink-0 lg:h-full">
 				<MapPanel
 					allClients={allClients}
 					allTechnicians={allTechnicians}

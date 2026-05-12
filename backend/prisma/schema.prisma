@@ -1199,6 +1199,7 @@ model technician_shift {
 
   @@index([tech_id])
   @@index([org_id])
+  @@index([tech_id, ended_at])
 }
 
 model technician_shift_break {
@@ -1216,6 +1217,7 @@ model technician_shift_break {
 
   @@index([shift_id])
   @@index([tech_id])
+  @@index([tech_id, ended_at])
 }
 
 // ============================================================================

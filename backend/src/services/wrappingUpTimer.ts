@@ -34,6 +34,13 @@ async function clearWrappingUpNow(techId: string, orgId: string) {
 		const updated = await checkAndClearWrappingUp(techId, orgId);
 		if (updated) {
 			getSocket().emit("technician-update", updated);
+			getSocket().emit("technician:status_changed", {
+				techId: updated.id,
+				techName: updated.name,
+				newStatus: "Available",
+				changeType: "wrapping_up_cleared",
+				changedAt: new Date().toISOString(),
+			});
 		}
 	} catch (e) {
 		log.error({ err: e }, `wrappingUpTimer: clearWrappingUpNow failed for tech ${techId}`);

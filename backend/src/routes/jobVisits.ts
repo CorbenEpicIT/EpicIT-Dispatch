@@ -17,6 +17,7 @@ import {
     deleteJobVisit,
     applyVisitTransition,
     LIFECYCLE_TRANSITIONS,
+    getRecentStatusEvents,
 } from '../controllers/jobVisitsController.js';
 import { clockInVisit, clockOutVisit } from "../controllers/visitTimeEntriesController.js";
 import { addPartsUsed } from "../controllers/vehiclesController.js";
@@ -29,6 +30,16 @@ router.get("/", async (req, res, next) => {
         const orgId = req.user!.organization_id as string;
         const visits = await getAllJobVisits(orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/recent-status-events", async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const events = await getRecentStatusEvents(orgId);
+        res.json(createSuccessResponse(events));
     } catch (err) {
         next(err);
     }
