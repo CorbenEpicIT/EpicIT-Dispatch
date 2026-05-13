@@ -13,9 +13,12 @@ import {
     deleteInventoryItem,
     adjustInventoryStock,
     updateInventoryThreshold,
+    importInventoryFromFile,
+    exportLowStockToXlsx,
+    getInventoryImportTemplate,
 } from '../controllers/inventoryController.js';
 import { uploadFile, signImageUrl, signImageUrls, toRawUrl } from "../services/wasabiService.js";
-import { imageUpload } from "../lib/upload.js";
+import { imageUpload, spreadsheetUpload } from "../lib/upload.js";
 
 
 
@@ -182,6 +185,64 @@ router.post(
         }
     },
 );
+
+// ── Bulk import ───────────────────────────────────────────────────────────────
+
+router.post(
+    "/import",
+    spreadsheetUpload.single("file"),
+    async (req, res, next) => {
+        try {
+            if (!req.file) {
+                return res
+                    .status(400)
+                    .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No file provided"));
+            }
+            const context = getUserContext(req);
+            const orgId = req.user!.organization_id as string;
+            const result = await importInventoryFromFile(req.file.buffer, orgId, context);
+            res.json(createSuccessResponse(result));
+        } catch (err) {
+            next(err);
+        }
+    },
+);
+
+// ── Low-stock export ──────────────────────────────────────────────────────────
+
+router.get("/export/low-stock", async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const buffer = await exportLowStockToXlsx(orgId);
+        res.setHeader("Content-Disposition", 'attachment; filename="low-stock-report.xlsx"');
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        res.send(buffer);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ── Import template ───────────────────────────────────────────────────────────
+
+router.get("/template", async (_req, res, next) => {
+    try {
+        const buffer = getInventoryImportTemplate();
+        res.setHeader(
+            "Content-Disposition",
+            'attachment; filename="inventory-import-template.xlsx"',
+        );
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        res.send(buffer);
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ── Inventory threshold ───────────────────────────────────────────────────────
 

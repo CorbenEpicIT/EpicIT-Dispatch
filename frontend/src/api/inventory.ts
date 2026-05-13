@@ -108,3 +108,42 @@ export const updateItemThreshold = async (
 
 	return response.data.data!;
 };
+
+export interface ImportResult {
+	imported: number;
+	skipped: { row: number; reason: string }[];
+}
+
+export const importInventory = async (file: File): Promise<ImportResult> => {
+	const formData = new FormData();
+	formData.append("file", file);
+	const response = await api.post<ApiResponse<ImportResult>>("/inventory/import", formData, {
+		headers: { "Content-Type": "multipart/form-data" },
+	});
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to import inventory");
+	}
+	return response.data.data!;
+};
+
+const triggerDownload = (blob: Blob, filename: string) => {
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = filename;
+	a.click();
+	URL.revokeObjectURL(url);
+};
+
+export const downloadInventoryTemplate = async (): Promise<void> => {
+	const response = await api.get("/inventory/template", { responseType: "blob" });
+	triggerDownload(response.data as Blob, "inventory-import-template.xlsx");
+};
+
+export const exportLowStockInventory = async (): Promise<void> => {
+	const response = await api.get("/inventory/export/low-stock", { responseType: "blob" });
+	const dateStr = new Date()
+		.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+		.replace(",", "");
+	triggerDownload(response.data as Blob, `low-stock-report ${dateStr}.xlsx`);
+};

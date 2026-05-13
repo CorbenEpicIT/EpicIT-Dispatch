@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, ArrowUpDown, Trash2 } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Trash2, FileSpreadsheet } from "lucide-react";
 import InventoryCard from "../../components/inventory/InventoryCard";
 import LowStockList from "../../components/inventory/LowStockList";
 import EditInventory from "../../components/inventory/EditInventory";
 import CreateInventoryItem from "../../components/inventory/CreateInventoryItem";
+import InventoryImportExport from "../../components/inventory/InventoryImportExport";
 import {
 	useAllInventoryQuery,
 	useDeleteInventoryItemMutation,
@@ -25,6 +26,7 @@ export default function InventoryPage() {
 	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 	const [thresholdItem, setThresholdItem] = useState<InventoryItem | null>(null);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
+	const [isImportExportOpen, setIsImportExportOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
 	const {
@@ -114,6 +116,15 @@ export default function InventoryPage() {
 							</select>
 						</div>
 
+						{/* Import / Export */}
+						<button
+							onClick={() => setIsImportExportOpen(true)}
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm font-medium text-zinc-300 transition-colors"
+						>
+							<FileSpreadsheet size={14} />
+							Import / Export
+						</button>
+
 						{/* New Item */}
 						<button
 							onClick={() => setIsCreateOpen(true)}
@@ -168,6 +179,12 @@ export default function InventoryPage() {
 					item={thresholdItem}
 				/>
 			)}
+
+			{/* Import / Export Modal */}
+			<InventoryImportExport
+				isOpen={isImportExportOpen}
+				onClose={() => setIsImportExportOpen(false)}
+			/>
 
 			{/* Create/Edit Modal */}
 			<CreateInventoryItem

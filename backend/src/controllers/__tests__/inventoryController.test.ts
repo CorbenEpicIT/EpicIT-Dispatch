@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
 	getAllInventory,
@@ -8,19 +9,27 @@ import {
 	adjustInventoryStock,
 	deductInventoryForVisit,
 	updateInventoryThreshold,
+	importInventoryFromFile,
+	exportLowStockToXlsx,
+	getInventoryImportTemplate,
 } from "../inventoryController.js";
 import { db } from "../../db.js";
 import { sendEmail } from "../../services/emailService.js";
 
-vi.mock("../../db.js", () => ({
-	db: {
+vi.mock("../../db.js", () => {
+	const $extends = vi.fn();
+	const mockDb = {
 		inventory_item: {
 			findMany: vi.fn(),
+			findFirst: vi.fn(),
 			findUnique: vi.fn(),
 		},
 		$transaction: vi.fn(),
-	},
-}));
+		$extends,
+	};
+	$extends.mockReturnValue(mockDb);
+	return { db: mockDb };
+});
 
 vi.mock("../../services/logger.js", () => ({
 	logActivity: vi.fn().mockResolvedValue(undefined),
@@ -135,7 +144,7 @@ describe("inventoryController", () => {
 			[undefined, { name: "asc" }],
 		] as const)('applies "%s" sort correctly', async (sort, expectedOrderBy) => {
 			mockDb.inventory_item.findMany.mockResolvedValue([]);
-			await getAllInventory(sort);
+			await getAllInventory("org-1", sort);
 			expect(mockDb.inventory_item.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ orderBy: expectedOrderBy }),
 			);
@@ -206,13 +215,13 @@ describe("inventoryController", () => {
 	// ---------------------------------------------------------------------------
 	describe("updateInventoryItem", () => {
 		it("returns error when item not found", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(null);
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
 			const result = await updateInventoryItem("missing", { name: "New" });
 			expect(result.err).toBe("Inventory item not found");
 		});
 
 		it("updates item and returns it with stock_status", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem());
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
 			const tx = setupTransaction();
 			tx.inventory_item.update.mockResolvedValue(makeItem({ name: "Updated" }));
 
@@ -223,7 +232,7 @@ describe("inventoryController", () => {
 		});
 
 		it("returns validation error for negative quantity", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem());
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
 			const result = await updateInventoryItem("item-1", { quantity: -5 });
 			expect(result.err).toMatch(/Validation failed/);
 		});
@@ -234,12 +243,12 @@ describe("inventoryController", () => {
 	// ---------------------------------------------------------------------------
 	describe("deleteInventoryItem", () => {
 		it("returns error when item not found", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(null);
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
 			expect((await deleteInventoryItem("missing")).err).toBe("Inventory item not found");
 		});
 
 		it("soft-deletes by setting is_active to false", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem());
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
 			const tx = setupTransaction();
 			tx.inventory_item.update.mockResolvedValue(makeItem({ is_active: false }));
 
@@ -260,14 +269,14 @@ describe("inventoryController", () => {
 		});
 
 		it("returns error when item not found", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(null);
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
 			expect((await adjustInventoryStock("missing", { delta: 5 })).err).toBe(
 				"Inventory item not found",
 			);
 		});
 
 		it("prevents stock going below zero", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 3 }));
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ quantity: 3 }));
 			expect((await adjustInventoryStock("item-1", { delta: -5 })).err).toBe(
 				"Stock cannot go below zero",
 			);
@@ -277,7 +286,7 @@ describe("inventoryController", () => {
 			["increase", 10, 5, 15],
 			["decrease", 10, -3, 7],
 		])("correctly applies %s delta", async (_, initial, delta, expected) => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: initial }));
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ quantity: initial }));
 			const tx = setupTransaction();
 			tx.inventory_item.update.mockResolvedValue(makeItem({ quantity: expected }));
 
@@ -288,7 +297,7 @@ describe("inventoryController", () => {
 
 		it("triggers low stock alert when quantity first crosses below threshold", async () => {
 			// quantity goes from 6 → 4, crossing threshold of 5
-			mockDb.inventory_item.findUnique.mockResolvedValue(
+			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ quantity: 6, low_stock_threshold: 5 }),
 			);
 			const tx = setupTransaction();
@@ -312,7 +321,7 @@ describe("inventoryController", () => {
 
 		it("does not re-trigger alert when quantity was already below threshold", async () => {
 			// existing quantity (3) already below threshold (5)
-			mockDb.inventory_item.findUnique.mockResolvedValue(
+			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ quantity: 3, low_stock_threshold: 5 }),
 			);
 			const tx = setupTransaction();
@@ -474,14 +483,14 @@ describe("inventoryController", () => {
 	// ---------------------------------------------------------------------------
 	describe("updateInventoryThreshold", () => {
 		it("returns error when item not found", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(null);
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
 			expect((await updateInventoryThreshold("missing", { low_stock_threshold: 10 })).err).toBe(
 				"Inventory item not found",
 			);
 		});
 
 		it("updates threshold and returns item with stock_status", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem());
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
 			const tx = setupTransaction();
 			tx.inventory_item.update.mockResolvedValue(makeItem({ low_stock_threshold: 10 }));
 
@@ -497,13 +506,267 @@ describe("inventoryController", () => {
 		});
 
 		it("accepts null to clear the threshold", async () => {
-			mockDb.inventory_item.findUnique.mockResolvedValue(makeItem({ low_stock_threshold: 5 }));
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ low_stock_threshold: 5 }));
 			const tx = setupTransaction();
 			tx.inventory_item.update.mockResolvedValue(makeItem({ low_stock_threshold: null }));
 
 			const result = await updateInventoryThreshold("item-1", { low_stock_threshold: null });
 			expect(result.err).toBe("");
 			expect(result.item?.low_stock_threshold).toBeNull();
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// importInventoryFromFile
+	// ---------------------------------------------------------------------------
+	describe("importInventoryFromFile", () => {
+		function makeXlsxBuffer(rows: Record<string, unknown>[]) {
+			const ws = XLSX.utils.json_to_sheet(rows);
+			const wb = XLSX.utils.book_new();
+			XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+			return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+		}
+
+		function makeCsvBuffer(rows: Record<string, unknown>[]) {
+			const ws = XLSX.utils.json_to_sheet(rows);
+			const wb = XLSX.utils.book_new();
+			XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+			return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "csv" }));
+		}
+
+		it("imports valid rows and returns the imported count", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ name: "Widget", location: "Shelf A" }));
+
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(result.skipped).toHaveLength(0);
+		});
+
+		it("skips rows missing name and reports the reason", async () => {
+			const buf = makeXlsxBuffer([{ location: "Shelf A" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(0);
+			expect(result.skipped[0]).toMatchObject({ row: 2, reason: expect.stringContaining("name") });
+		});
+
+		it("skips rows missing location and reports the reason", async () => {
+			const buf = makeXlsxBuffer([{ name: "Widget" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(0);
+			expect(result.skipped[0]).toMatchObject({ row: 2, reason: expect.stringContaining("location") });
+		});
+
+		it("accepts name* and location* column headers from the downloaded template", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ name: "Filter", location: "Warehouse" }));
+
+			const buf = makeXlsxBuffer([{ "name*": "Filter", "location*": "Warehouse" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+		});
+
+		it("passes numeric fields through to createInventoryItem correctly", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{
+				name: "Filter", location: "Warehouse A",
+				quantity: 50, unit_price: 12.99, cost: 8.0, low_stock_threshold: 10,
+			}]);
+			await importInventoryFromFile(buf, "org-1");
+
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					data: expect.objectContaining({
+						quantity: 50, unit_price: 12.99, cost: 8.0, low_stock_threshold: 10,
+					}),
+				}),
+			);
+		});
+
+		it("assigns correct row numbers to skipped rows in a mixed sheet", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([
+				{ name: "Valid A", location: "Shelf A" },
+				{ location: "Shelf B" },               // missing name → row 3
+				{ name: "Valid B", location: "Shelf C" },
+			]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(2);
+			expect(result.skipped).toHaveLength(1);
+			expect(result.skipped[0].row).toBe(3);
+		});
+
+		it("includes createInventoryItem validation errors in skipped rows", async () => {
+			// quantity: -5 passes our pre-check but fails Zod validation
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A", quantity: -5 }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(0);
+			expect(result.skipped[0].reason).toMatch(/Validation failed/);
+		});
+
+		it("parses CSV buffers in addition to xlsx", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ name: "CSV Item", location: "Rack 1" }));
+
+			const buf = makeCsvBuffer([{ name: "CSV Item", location: "Rack 1" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+		});
+
+		it("returns zero imports and no skipped rows for an empty sheet", async () => {
+			const buf = makeXlsxBuffer([]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(0);
+			expect(result.skipped).toHaveLength(0);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// exportLowStockToXlsx
+	// ---------------------------------------------------------------------------
+	describe("exportLowStockToXlsx", () => {
+		function parseXlsx(buf: Buffer) {
+			const wb = XLSX.read(buf, { type: "buffer" });
+			const ws = wb.Sheets[wb.SheetNames[0]];
+			return {
+				sheetName: wb.SheetNames[0],
+				rows: XLSX.utils.sheet_to_json<Record<string, unknown>>(ws),
+				headers: (XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 })[0] ?? []) as string[],
+			};
+		}
+
+		it("returns a Buffer", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([]);
+			expect(Buffer.isBuffer(await exportLowStockToXlsx("org-1"))).toBe(true);
+		});
+
+		it("names the sheet 'Low Stock Report'", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([]);
+			const { sheetName } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(sheetName).toBe("Low Stock Report");
+		});
+
+		it("includes Name, Unit Price, Cost, and Stock Status columns", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([
+				makeItem({ quantity: 2, low_stock_threshold: 5 }),
+			]);
+			const { headers } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(headers).toContain("Name");
+			expect(headers).toContain("Unit Price");
+			expect(headers).toContain("Cost");
+			expect(headers).toContain("Stock Status");
+		});
+
+		it("serializes unit_price as a number (Decimal fix)", async () => {
+			// Mimics Prisma Decimal: not null, but not a plain number primitive
+			const decimalLike = { valueOf: () => 12.99, toString: () => "12.99" };
+			mockDb.inventory_item.findMany.mockResolvedValue([
+				makeItem({ quantity: 2, low_stock_threshold: 5, unit_price: decimalLike }),
+			]);
+
+			const { rows } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(typeof rows[0]["Unit Price"]).toBe("number");
+			expect(rows[0]["Unit Price"]).toBe(12.99);
+		});
+
+		it("serializes cost as a number (Decimal fix)", async () => {
+			const decimalLike = { valueOf: () => 4.5, toString: () => "4.5" };
+			mockDb.inventory_item.findMany.mockResolvedValue([
+				makeItem({ quantity: 2, low_stock_threshold: 5, cost: decimalLike }),
+			]);
+
+			const { rows } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(typeof rows[0]["Cost"]).toBe("number");
+			expect(rows[0]["Cost"]).toBe(4.5);
+		});
+
+		it("uses empty string for null unit_price and cost", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([
+				makeItem({ quantity: 2, low_stock_threshold: 5, unit_price: null, cost: null }),
+			]);
+
+			const { rows } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(rows[0]["Unit Price"]).toBe("");
+			expect(rows[0]["Cost"]).toBe("");
+		});
+
+		it("labels out-of-stock items as 'Out of Stock'", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([
+				makeItem({ quantity: 0, low_stock_threshold: 5 }),
+			]);
+			const { rows } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(rows[0]["Stock Status"]).toBe("Out of Stock");
+		});
+
+		it("labels low-stock items as 'Low'", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([
+				makeItem({ quantity: 2, low_stock_threshold: 5 }),
+			]);
+			const { rows } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(rows[0]["Stock Status"]).toBe("Low");
+		});
+
+		it("returns an empty sheet body when no items are low-stock", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([]);
+			const { rows } = parseXlsx(await exportLowStockToXlsx("org-1"));
+			expect(rows).toHaveLength(0);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getInventoryImportTemplate
+	// ---------------------------------------------------------------------------
+	describe("getInventoryImportTemplate", () => {
+		function parseTemplate() {
+			const buf = getInventoryImportTemplate();
+			const wb = XLSX.read(buf, { type: "buffer" });
+			const ws = wb.Sheets[wb.SheetNames[0]];
+			const allRows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][];
+			return { sheetName: wb.SheetNames[0], headers: allRows[0] as string[], allRows };
+		}
+
+		it("returns a Buffer", () => {
+			expect(Buffer.isBuffer(getInventoryImportTemplate())).toBe(true);
+		});
+
+		it("names the sheet 'Inventory Import Template'", () => {
+			expect(parseTemplate().sheetName).toBe("Inventory Import Template");
+		});
+
+		it("includes name* and location* as required-field headers", () => {
+			const { headers } = parseTemplate();
+			expect(headers).toContain("name*");
+			expect(headers).toContain("location*");
+		});
+
+		it("includes all expected column headers", () => {
+			const { headers } = parseTemplate();
+			for (const col of ["name*", "sku", "description", "location*", "quantity", "unit_price", "cost", "low_stock_threshold", "alert_email"]) {
+				expect(headers).toContain(col);
+			}
+		});
+
+		it("has exactly two rows: header and one example row", () => {
+			expect(parseTemplate().allRows).toHaveLength(2);
+		});
+
+		it("example row is non-empty", () => {
+			const { allRows } = parseTemplate();
+			const exampleRow = allRows[1] as unknown[];
+			expect(exampleRow.some((cell) => String(cell).trim() !== "")).toBe(true);
 		});
 	});
 });

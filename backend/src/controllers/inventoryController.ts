@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import type { PrismaClient } from "../../generated/prisma/client.js";
@@ -444,4 +445,105 @@ export const updateInventoryThreshold = async (
 		}
 		return { err: "Internal server error" };
 	}
+};
+
+// ── Bulk import ───────────────────────────────────────────────────────────────
+
+export const importInventoryFromFile = async (
+	buffer: Buffer,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ imported: number; skipped: { row: number; reason: string }[] }> => {
+	const workbook = XLSX.read(buffer, { type: "buffer" });
+	const sheet = workbook.Sheets[workbook.SheetNames[0]];
+	const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+	const skipped: { row: number; reason: string }[] = [];
+	let imported = 0;
+
+	const str = (v: unknown) => String(v ?? "").trim();
+	const toNum = (v: unknown) => { const n = parseFloat(str(v)); return isNaN(n) ? undefined : n; };
+	const toInt = (v: unknown) => { const n = parseInt(str(v), 10); return isNaN(n) ? undefined : n; };
+
+	for (let i = 0; i < rows.length; i++) {
+		const row = rows[i];
+		const rowNum = i + 2;
+
+		const name = str(row["name"] ?? row["name*"]);
+		const location = str(row["location"] ?? row["location*"]);
+
+		if (!name) { skipped.push({ row: rowNum, reason: "Missing required field: name" }); continue; }
+		if (!location) { skipped.push({ row: rowNum, reason: "Missing required field: location" }); continue; }
+
+		const data = {
+			name,
+			location,
+			description: str(row["description"]) || "",
+			sku: str(row["sku"]) || null,
+			quantity: toInt(row["quantity"]) ?? 0,
+			unit_price: toNum(row["unit_price"]) ?? null,
+			cost: toNum(row["cost"]) ?? null,
+			low_stock_threshold: toInt(row["low_stock_threshold"]) ?? null,
+			alert_email: str(row["alert_email"]) || null,
+			alert_emails_enabled: false,
+			image_urls: [],
+		};
+
+		const result = await createInventoryItem(data, orgId, context);
+		if (result.err) {
+			skipped.push({ row: rowNum, reason: result.err });
+		} else {
+			imported++;
+		}
+	}
+
+	return { imported, skipped };
+};
+
+// ── Low-stock export ──────────────────────────────────────────────────────────
+
+export const exportLowStockToXlsx = async (orgId: string): Promise<Buffer> => {
+	const items = await getLowStockInventory(orgId);
+
+	const statusLabel = (s: string | null) =>
+		s === "out_of_stock" ? "Out of Stock" : s === "low" ? "Low" : "";
+
+	const rows = items.map((item) => ({
+		Name: item.name,
+		SKU: item.sku ?? "",
+		Location: item.location,
+		Quantity: item.quantity,
+		Unit: (item as Record<string, unknown>)["unit"] ?? "each",
+		"Low Stock Threshold": item.low_stock_threshold ?? "",
+		"Stock Status": statusLabel(item.stock_status),
+		"Unit Price": item.unit_price != null ? Number(item.unit_price) : "",
+		Cost: item.cost != null ? Number(item.cost) : "",
+	}));
+
+	const ws = XLSX.utils.json_to_sheet(rows);
+	ws["!cols"] = [22, 14, 20, 10, 8, 18, 14, 12, 12].map((wch) => ({ wch }));
+	const wb = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(wb, ws, "Low Stock Report");
+
+	return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+};
+
+// ── Import template ───────────────────────────────────────────────────────────
+
+export const getInventoryImportTemplate = (): Buffer => {
+	const headers = [
+		"name*", "sku", "description", "location*",
+		"quantity", "unit_price", "cost", "low_stock_threshold", "alert_email",
+	];
+	const example = [
+		"HVAC Filter 20x20", "FLT-2020", "Standard 20x20 air filter", "Warehouse A",
+		"50", "12.99", "8.00", "10", "alerts@company.com",
+	];
+
+	const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+	ws["!cols"] = [20, 12, 28, 16, 10, 12, 10, 18, 26].map((wch) => ({ wch }));
+	const wb = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(wb, ws, "Inventory Import Template");
+
+	return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 };

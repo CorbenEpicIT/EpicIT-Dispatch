@@ -8,14 +8,16 @@ import { db } from "../../db.js";
 import { deductInventoryForVisit } from "../inventoryController.js";
 import type { Request } from "express";
 
-vi.mock("../../db.js", () => ({
-	db: {
-		job_visit: {
-			findUnique: vi.fn(),
-		},
+vi.mock("../../db.js", () => {
+	const $extends = vi.fn();
+	const mockDb = {
+		job_visit: { findFirst: vi.fn(), findUnique: vi.fn() },
 		$transaction: vi.fn(),
-	},
-}));
+		$extends,
+	};
+	$extends.mockReturnValue(mockDb);
+	return { db: mockDb };
+});
 
 vi.mock("../../services/logger.js", () => ({
 	logActivity: vi.fn().mockResolvedValue(undefined),
@@ -99,7 +101,7 @@ describe("updateJobVisit — inventory deduction", () => {
 	// ---------------------------------------------------------------------------
 	describe("visit_completion mode", () => {
 		it("deducts inventory immediately when a visit is marked Completed", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Scheduled", "InProgress", "visit_completion") as any,
 			);
@@ -112,7 +114,7 @@ describe("updateJobVisit — inventory deduction", () => {
 		});
 
 		it("does not deduct if the visit was already Completed before this update", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Completed", "InProgress", "visit_completion") as any,
 			);
@@ -124,7 +126,7 @@ describe("updateJobVisit — inventory deduction", () => {
 		});
 
 		it("does not deduct when status changes to something other than Completed", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Scheduled", "Scheduled", "visit_completion") as any,
 			);
@@ -141,7 +143,7 @@ describe("updateJobVisit — inventory deduction", () => {
 	// ---------------------------------------------------------------------------
 	describe("job_completion mode", () => {
 		it("deducts inventory for every visit when the last visit completes the job", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Scheduled", "InProgress", "job_completion") as any,
 			);
@@ -160,7 +162,7 @@ describe("updateJobVisit — inventory deduction", () => {
 		});
 
 		it("does not deduct when some visits are still incomplete", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Scheduled", "Scheduled", "job_completion") as any,
 			);
@@ -176,7 +178,7 @@ describe("updateJobVisit — inventory deduction", () => {
 		});
 
 		it("does not deduct again if the job was already Completed before this update", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Scheduled", "Completed", "job_completion") as any,
 			);
@@ -191,7 +193,7 @@ describe("updateJobVisit — inventory deduction", () => {
 		});
 
 		it("does not deduct inventory via visit_completion path when mode is job_completion", async () => {
-			mockDb.job_visit.findUnique.mockResolvedValue(
+			mockDb.job_visit.findFirst.mockResolvedValue(
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				makeExistingVisit("Scheduled", "InProgress", "job_completion") as any,
 			);
