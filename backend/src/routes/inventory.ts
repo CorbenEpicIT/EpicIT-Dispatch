@@ -17,6 +17,13 @@ import {
     exportLowStockToXlsx,
     getInventoryImportTemplate,
 } from '../controllers/inventoryController.js';
+import {
+    getOrgTags,
+    createTag,
+    updateTag,
+    deleteTag,
+    setItemTags,
+} from '../controllers/inventoryTagController.js';
 import { uploadFile, signImageUrl, signImageUrls, toRawUrl } from "../services/wasabiService.js";
 import { imageUpload, spreadsheetUpload } from "../lib/upload.js";
 
@@ -266,6 +273,87 @@ router.patch("/:id/threshold", async (req, res, next) => {
         }
 
         res.json(createSuccessResponse(await signItem(result.item!)));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ── Item tags ─────────────────────────────────────────────────────────────────
+
+router.put("/:id/tags", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const context = getUserContext(req);
+        const orgId = req.user!.organization_id as string;
+        const result = await setItemTags(id, req.body, orgId, context);
+
+        if (result.err) {
+            const statusCode = result.err.includes("not found") ? 404 : 400;
+            return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+
+        res.json(createSuccessResponse(result.item));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ── Org tags CRUD ─────────────────────────────────────────────────────────────
+
+router.get("/tags", async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const tags = await getOrgTags(orgId);
+        res.json(createSuccessResponse(tags));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post("/tags", async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const result = await createTag(req.body, orgId);
+
+        if (result.err) {
+            return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+
+        res.status(201).json(createSuccessResponse(result.tag));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.patch("/tags/:tagId", async (req, res, next) => {
+    try {
+        const { tagId } = req.params;
+        const orgId = req.user!.organization_id as string;
+        const result = await updateTag(tagId, req.body, orgId);
+
+        if (result.err) {
+            const statusCode = result.err.includes("not found") ? 404 : 400;
+            return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+
+        res.json(createSuccessResponse(result.tag));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.delete("/tags/:tagId", async (req, res, next) => {
+    try {
+        const { tagId } = req.params;
+        const orgId = req.user!.organization_id as string;
+        const result = await deleteTag(tagId, orgId);
+
+        if (result.err) {
+            const statusCode = result.err.includes("not found") ? 404 : 400;
+            return res.status(statusCode).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+
+        res.json(createSuccessResponse({ message: "Tag deleted" }));
     } catch (err) {
         next(err);
     }

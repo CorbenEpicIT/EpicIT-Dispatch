@@ -81,9 +81,8 @@ export const getAllInventory = async (organizationId: string, sort?: string) => 
 		where: { is_active: true },
 		orderBy,
 		include: {
-			_count: {
-				select: { visit_line_items: true },
-			},
+			_count: { select: { visit_line_items: true } },
+			tags: { orderBy: { label: "asc" } },
 		},
 	});
 
@@ -129,6 +128,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 					alert_emails_enabled: parsed.alert_emails_enabled,
 					alert_email: parsed.alert_email ?? null,
 				},
+				include: { tags: true },
 			});
 
 			await logActivity({
@@ -196,6 +196,7 @@ export const updateInventoryItem = async (
 			const item = await tx.inventory_item.update({
 				where: { id: itemId },
 				data: parsed,
+				include: { tags: true },
 			});
 
 			if (Object.keys(changes).length > 0) {
@@ -465,6 +466,28 @@ export const importInventoryFromFile = async (
 	const toNum = (v: unknown) => { const n = parseFloat(str(v)); return isNaN(n) ? undefined : n; };
 	const toInt = (v: unknown) => { const n = parseInt(str(v), 10); return isNaN(n) ? undefined : n; };
 
+	const sdb = getScopedDb(orgId);
+
+	const resolveTagIds = async (rawTags: string): Promise<string[]> => {
+		const labels = rawTags.split(",").map((s) => s.trim()).filter(Boolean);
+		if (labels.length === 0) return [];
+		const ids: string[] = [];
+		for (const label of labels) {
+			const existing = await sdb.inventory_tag.findFirst({
+				where: { organization_id: orgId, label: { equals: label, mode: "insensitive" } },
+			});
+			if (existing) {
+				ids.push(existing.id);
+			} else {
+				const created = await sdb.inventory_tag.create({
+					data: { organization_id: orgId, label },
+				});
+				ids.push(created.id);
+			}
+		}
+		return ids;
+	};
+
 	for (let i = 0; i < rows.length; i++) {
 		const row = rows[i];
 		const rowNum = i + 2;
@@ -493,6 +516,16 @@ export const importInventoryFromFile = async (
 		if (result.err) {
 			skipped.push({ row: rowNum, reason: result.err });
 		} else {
+			const rawTags = str(row["tags"]);
+			if (rawTags) {
+				const tagIds = await resolveTagIds(rawTags);
+				if (tagIds.length > 0) {
+					await sdb.inventory_item.update({
+						where: { id: result.item!.id },
+						data: { tags: { set: tagIds.map((id) => ({ id })) } },
+					});
+				}
+			}
 			imported++;
 		}
 	}
@@ -533,15 +566,15 @@ export const exportLowStockToXlsx = async (orgId: string): Promise<Buffer> => {
 export const getInventoryImportTemplate = (): Buffer => {
 	const headers = [
 		"name*", "sku", "description", "location*",
-		"quantity", "unit_price", "cost", "low_stock_threshold", "alert_email",
+		"quantity", "unit_price", "cost", "low_stock_threshold", "alert_email", "tags",
 	];
 	const example = [
 		"HVAC Filter 20x20", "FLT-2020", "Standard 20x20 air filter", "Warehouse A",
-		"50", "12.99", "8.00", "10", "alerts@company.com",
+		"50", "12.99", "8.00", "10", "alerts@company.com", "filters, warehouse",
 	];
 
 	const ws = XLSX.utils.aoa_to_sheet([headers, example]);
-	ws["!cols"] = [20, 12, 28, 16, 10, 12, 10, 18, 26].map((wch) => ({ wch }));
+	ws["!cols"] = [20, 12, 28, 16, 10, 12, 10, 18, 26, 22].map((wch) => ({ wch }));
 	const wb = XLSX.utils.book_new();
 	XLSX.utils.book_append_sheet(wb, ws, "Inventory Import Template");
 

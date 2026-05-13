@@ -6,6 +6,8 @@ import {
 	useCreateInventoryItemMutation,
 	useUpdateInventoryItemMutation,
 	useUploadInventoryImageMutation,
+	useInventoryTagsQuery,
+	useSetItemTagsMutation,
 } from "../../hooks/useInventory";
 import type {
 	InventoryItem,
@@ -54,6 +56,7 @@ export default function CreateInventoryItem({
 	const [alertEmailsEnabled, setAlertEmailsEnabled] = useState(false);
 	const [alertEmail, setAlertEmail] = useState("");
 	const [imageUrls, setImageUrls] = useState<string[]>([]);
+	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 	const [isUploading, setIsUploading] = useState(false);
 	const [uploadErrors, setUploadErrors] = useState<{ name: string; reason: string }[]>([]);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +66,8 @@ export default function CreateInventoryItem({
 	const createMutation = useCreateInventoryItemMutation();
 	const updateMutation = useUpdateInventoryItemMutation();
 	const uploadMutation = useUploadInventoryImageMutation();
+	const setTagsMutation = useSetItemTagsMutation();
+	const { data: allTags = [] } = useInventoryTagsQuery();
 
 	const {
 		currentStep,
@@ -95,6 +100,7 @@ export default function CreateInventoryItem({
 			setAlertEmailsEnabled(existingItem.alert_emails_enabled);
 			setAlertEmail(existingItem.alert_email || "");
 			setImageUrls(existingItem.image_urls ?? []);
+			setSelectedTagIds(existingItem.tags?.map((t) => t.id) ?? []);
 		}
 	}, [isOpen, existingItem]);
 
@@ -112,6 +118,7 @@ export default function CreateInventoryItem({
 		setAlertEmailsEnabled(false);
 		setAlertEmail("");
 		setImageUrls([]);
+		setSelectedTagIds([]);
 		setUploadErrors([]);
 		setIsLoading(false);
 	}, [resetWizard]);
@@ -223,6 +230,7 @@ export default function CreateInventoryItem({
 						: null,
 				};
 				await updateMutation.mutateAsync({ itemId: existingItem.id, data });
+				await setTagsMutation.mutateAsync({ itemId: existingItem.id, tagIds: selectedTagIds });
 			} else {
 				const data: CreateInventoryItemInput = {
 					name: name.trim(),
@@ -241,7 +249,10 @@ export default function CreateInventoryItem({
 						? alertEmail.trim() || null
 						: null,
 				};
-				await createMutation.mutateAsync(data);
+				const created = await createMutation.mutateAsync(data);
+				if (selectedTagIds.length > 0) {
+					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
+				}
 			}
 			onClose();
 		} catch (e) {
@@ -320,6 +331,42 @@ export default function CreateInventoryItem({
 								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
+						</div>
+
+						<div className="min-w-0">
+							<label className={LABEL}>Tags</label>
+							{allTags.length === 0 ? (
+								<p className="text-xs text-zinc-500 mt-0.5">
+									No tags yet — create some from the inventory page.
+								</p>
+							) : (
+								<div className="flex flex-wrap gap-1.5 mt-0.5">
+									{allTags.map((tag) => {
+										const selected = selectedTagIds.includes(tag.id);
+										return (
+											<button
+												key={tag.id}
+												type="button"
+												onClick={() =>
+													setSelectedTagIds(
+														selected
+															? selectedTagIds.filter((id) => id !== tag.id)
+															: [...selectedTagIds, tag.id]
+													)
+												}
+												disabled={isLoading}
+												className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border transition-colors ${
+													selected
+														? "bg-blue-600/20 border-blue-500 text-blue-300"
+														: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+												}`}
+											>
+												{tag.label}
+											</button>
+										);
+									})}
+								</div>
+							)}
 						</div>
 					</div>
 				);
@@ -727,6 +774,8 @@ export default function CreateInventoryItem({
 		alertEmailsEnabled,
 		alertEmail,
 		imageUrls,
+		selectedTagIds,
+		allTags,
 		uploadErrors,
 		isLoading,
 		isUploading,

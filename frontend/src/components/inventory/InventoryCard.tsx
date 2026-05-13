@@ -20,6 +20,18 @@ export default function InventoryCard({ item, onEditThreshold, onClick }: Invent
 		>
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
 			<h1 className="font-bold text-lg">{item.name}</h1>
+			{item.tags && item.tags.length > 0 && (
+				<div className="flex flex-wrap gap-1 mt-1 max-h-[44px] overflow-hidden">
+					{item.tags.map((tag) => (
+						<span
+							key={tag.id}
+							className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700"
+						>
+							{tag.label}
+						</span>
+					))}
+				</div>
+			)}
 			<hr className="my-2 text-zinc-600"></hr>
 			<div className="grid grid-cols-2 gap-x-4 gap-y-3">
 				<div>

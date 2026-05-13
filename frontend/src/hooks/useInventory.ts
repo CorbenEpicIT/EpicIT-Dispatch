@@ -8,6 +8,7 @@ import {
 
 import type {
 	InventoryItem,
+	InventoryTag,
 	InventorySortOption,
 	CreateInventoryItemInput,
 	UpdateInventoryItemInput,
@@ -128,5 +129,65 @@ export const useUploadInventoryImageMutation = (): UseMutationResult<
 > => {
 	return useMutation({
 		mutationFn: (file: File) => inventoryApi.uploadInventoryImage(file),
+	});
+};
+
+// ============================================================================
+// TAG QUERIES + MUTATIONS
+// ============================================================================
+
+export const useInventoryTagsQuery = (): UseQueryResult<InventoryTag[], Error> => {
+	return useQuery({
+		queryKey: ["inventoryTags"],
+		queryFn: () => inventoryApi.getInventoryTags(),
+	});
+};
+
+export const useCreateInventoryTagMutation = (): UseMutationResult<InventoryTag, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (label: string) => inventoryApi.createInventoryTag(label),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["inventoryTags"] });
+		},
+	});
+};
+
+export const useUpdateInventoryTagMutation = (): UseMutationResult<
+	InventoryTag,
+	Error,
+	{ tagId: string; label: string }
+> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ tagId, label }) => inventoryApi.updateInventoryTag(tagId, label),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["inventoryTags"] });
+		},
+	});
+};
+
+export const useDeleteInventoryTagMutation = (): UseMutationResult<void, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (tagId: string) => inventoryApi.deleteInventoryTag(tagId),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["inventoryTags"] });
+			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+		},
+	});
+};
+
+export const useSetItemTagsMutation = (): UseMutationResult<
+	InventoryItem,
+	Error,
+	{ itemId: string; tagIds: string[] }
+> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ itemId, tagIds }) => inventoryApi.setItemTags(itemId, tagIds),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+		},
 	});
 };

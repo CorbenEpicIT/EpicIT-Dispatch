@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type MockInstance } from "vitest";
 import { importInventory, downloadInventoryTemplate, exportLowStockInventory } from "../inventory";
 import { api } from "../axiosClient";
 
@@ -11,7 +11,7 @@ vi.mock("../axiosClient", () => ({
 	},
 }));
 
-const mockApi = vi.mocked(api);
+const mockApi = api as unknown as Record<"post" | "get" | "patch" | "delete", MockInstance>;
 
 // Capture the real createElement before spying so the mock can call it without recursing
 const originalCreateElement = document.createElement.bind(document);

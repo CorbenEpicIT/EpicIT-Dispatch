@@ -202,6 +202,7 @@ model organization {
   technicians           technician[]
   dispatchers           dispatcher[]
   inventory_items       inventory_item[]
+  inventory_tags        inventory_tag[]
   vehicles              vehicle[]
   logs                  log[]
 
@@ -953,11 +954,27 @@ model inventory_item {
 
   visit_line_items job_visit_line_item[]
   vehicle_stocks   vehicle_stock_item[]
+  tags             inventory_tag[]
 
   @@index([sku])
   @@index([is_active])
   @@index([organization_id])
   @@index([created_at])
+}
+
+model inventory_tag {
+  id              String   @id @default(uuid())
+  organization_id String
+  label           String
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  organization organization  @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  items        inventory_item[]
+
+  @@unique([organization_id, label])
+  @@index([organization_id])
 }
 
 

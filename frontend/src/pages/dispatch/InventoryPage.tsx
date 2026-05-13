@@ -1,13 +1,16 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, ArrowUpDown, Trash2, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Trash2, FileSpreadsheet, Settings2 } from "lucide-react";
 import InventoryCard from "../../components/inventory/InventoryCard";
 import LowStockList from "../../components/inventory/LowStockList";
 import EditInventory from "../../components/inventory/EditInventory";
 import CreateInventoryItem from "../../components/inventory/CreateInventoryItem";
 import InventoryImportExport from "../../components/inventory/InventoryImportExport";
+import TagPicker from "../../components/inventory/TagPicker";
+import TagManagerModal from "../../components/inventory/TagManagerModal";
 import {
 	useAllInventoryQuery,
 	useDeleteInventoryItemMutation,
+	useInventoryTagsQuery,
 } from "../../hooks/useInventory";
 import type { InventoryItem, InventorySortOption } from "../../types/inventory";
 import LoadSvg from "../../assets/icons/loading.svg?react";
@@ -23,10 +26,12 @@ const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 export default function InventoryPage() {
 	const [sort, setSort] = useState<InventorySortOption>("name");
 	const [search, setSearch] = useState("");
+	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 	const [thresholdItem, setThresholdItem] = useState<InventoryItem | null>(null);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+	const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
 	const {
@@ -35,18 +40,31 @@ export default function InventoryPage() {
 		error,
 	} = useAllInventoryQuery(sort);
 
+	const { data: allTags = [] } = useInventoryTagsQuery();
+
 	const deleteMutation = useDeleteInventoryItemMutation();
 
 	const filteredItems = useMemo(() => {
-		if (!search.trim()) return inventoryItems;
-		const q = search.toLowerCase();
-		return inventoryItems.filter(
-			(item) =>
-				item.name.toLowerCase().includes(q) ||
-				(item.sku && item.sku.toLowerCase().includes(q)) ||
-				item.location.toLowerCase().includes(q),
-		);
-	}, [inventoryItems, search]);
+		let items = inventoryItems;
+
+		if (search.trim()) {
+			const q = search.toLowerCase();
+			items = items.filter(
+				(item) =>
+					item.name.toLowerCase().includes(q) ||
+					(item.sku && item.sku.toLowerCase().includes(q)) ||
+					item.location.toLowerCase().includes(q),
+			);
+		}
+
+		if (selectedTagIds.length > 0) {
+			items = items.filter((item) =>
+				item.tags?.some((t) => selectedTagIds.includes(t.id)),
+			);
+		}
+
+		return items;
+	}, [inventoryItems, search, selectedTagIds]);
 
 	const handleDelete = async (id: string) => {
 		try {
@@ -96,6 +114,22 @@ export default function InventoryPage() {
 								className="pl-8 pr-3 h-8 rounded-md bg-zinc-900 border border-zinc-700 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none w-48"
 							/>
 						</div>
+
+						{/* Tag filter */}
+						<TagPicker
+							tags={allTags}
+							selectedIds={selectedTagIds}
+							onChange={setSelectedTagIds}
+						/>
+
+						{/* Manage tags */}
+						<button
+							onClick={() => setIsTagManagerOpen(true)}
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm font-medium text-zinc-300 transition-colors"
+							title="Manage tags"
+						>
+							<Settings2 size={14} />
+						</button>
 
 						{/* Sort */}
 						<div className="relative">
@@ -160,8 +194,8 @@ export default function InventoryPage() {
 
 					{filteredItems.length === 0 && (
 						<div className="w-full py-12 text-center text-zinc-500">
-							{search
-								? "No items match your search"
+							{search || selectedTagIds.length > 0
+								? "No items match your filters"
 								: "No inventory items yet. Click \"New Item\" to add one."}
 						</div>
 					)}
@@ -184,6 +218,12 @@ export default function InventoryPage() {
 			<InventoryImportExport
 				isOpen={isImportExportOpen}
 				onClose={() => setIsImportExportOpen(false)}
+			/>
+
+			{/* Tag Manager */}
+			<TagManagerModal
+				isOpen={isTagManagerOpen}
+				onClose={() => setIsTagManagerOpen(false)}
 			/>
 
 			{/* Create/Edit Modal */}
