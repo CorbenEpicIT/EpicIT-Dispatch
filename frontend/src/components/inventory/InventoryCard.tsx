@@ -20,18 +20,44 @@ export default function InventoryCard({ item, onEditThreshold, onClick }: Invent
 		>
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
 			<h1 className="font-bold text-lg">{item.name}</h1>
-			<p className="line-clamp-2 text-zinc-300">{item.description}</p>
 			<hr className="my-2 text-zinc-600"></hr>
-			<div className="flex">
+			<div className="grid grid-cols-2 gap-x-4 gap-y-3">
 				<div>
-					<h2 className="font-semibold">Location</h2>
-					<h3 className="text-zinc-300">{item.location}</h3>
+					<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Location</h2>
+					<p className="text-zinc-300 text-sm mt-0.5">{item.location ?? "—"}</p>
 				</div>
-				<div className="flex-1 mx-3"></div>
 				<div>
-					<h2 className="font-semibold">Quantity</h2>
-					<h3 className="text-zinc-300">{item.quantity}</h3>
+					<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">SKU</h2>
+					<p className="text-zinc-300 text-sm mt-0.5">{item.sku ?? "—"}</p>
 				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Unit Price</h2>
+					<p className="text-zinc-300 text-sm mt-0.5">
+						{item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : "—"}
+					</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Cost</h2>
+					<p className="text-zinc-300 text-sm mt-0.5">
+						{item.cost != null ? `$${Number(item.cost).toFixed(2)}` : "—"}
+					</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Quantity</h2>
+					<p className="text-zinc-300 text-sm mt-0.5">{item.quantity}</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Last Updated</h2>
+					<p className="text-zinc-300 text-sm mt-0.5">
+						{new Date(item.updated_at).toLocaleDateString()}
+					</p>
+				</div>
+				{item.description && (
+					<div className="col-span-2">
+						<h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Description</h2>
+						<p className="text-zinc-300 text-sm mt-0.5 line-clamp-3">{item.description}</p>
+					</div>
+				)}
 			</div>
 			{/* Stock Status and Settings */}
 			<div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between">
