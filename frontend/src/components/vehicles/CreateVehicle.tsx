@@ -14,7 +14,11 @@ const INPUT =
 const LABEL = "block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider";
 const DIVIDER_LABEL = "flex items-center gap-2 my-1";
 
-export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehicle }: CreateVehicleProps) {
+export default function CreateVehicle({
+	isModalOpen,
+	setIsModalOpen,
+	createVehicle,
+}: CreateVehicleProps) {
 	const [name, setName] = useState("");
 	const [type, setType] = useState("");
 	const [licensePlate, setLicensePlate] = useState("");
@@ -28,13 +32,23 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 	const [errors, setErrors] = useState<ZodError | null>(null);
 
 	const resetForm = useCallback(() => {
-		setName(""); setType(""); setLicensePlate(""); setYear("");
-		setMake(""); setModel(""); setColor(""); setStatus("active");
-		setNotes(""); setErrors(null);
+		setName("");
+		setType("");
+		setLicensePlate("");
+		setYear("");
+		setMake("");
+		setModel("");
+		setColor("");
+		setStatus("active");
+		setNotes("");
+		setErrors(null);
 	}, []);
 
 	useEffect(() => {
-		if (!isModalOpen) { resetForm(); setIsLoading(false); }
+		if (!isModalOpen) {
+			resetForm();
+			setIsLoading(false);
+		}
 	}, [isModalOpen, resetForm]);
 
 	const ErrorDisplay = ({ path }: { path: string }) => {
@@ -44,7 +58,9 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((e, i) => (
-					<p key={i} className="text-red-300 text-xs leading-tight">{e.message}</p>
+					<p key={i} className="text-red-300 text-xs leading-tight">
+						{e.message}
+					</p>
 				))}
 			</div>
 		);
@@ -64,7 +80,10 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 			notes: notes.trim() || null,
 		};
 		const result = CreateVehicleSchema.safeParse(input);
-		if (!result.success) { setErrors(result.error); return; }
+		if (!result.success) {
+			setErrors(result.error);
+			return;
+		}
 		setErrors(null);
 		setIsLoading(true);
 		try {
@@ -89,8 +108,14 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 				{/* Name */}
 				<div>
 					<label className={LABEL}>Name *</label>
-					<input type="text" placeholder="e.g. Unit 4 — Service Van" value={name}
-						onChange={(e) => setName(e.target.value)} className={INPUT} disabled={isLoading} />
+					<input
+						type="text"
+						placeholder="e.g. Unit 4 — Service Van"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						className={INPUT}
+						disabled={isLoading}
+					/>
 					<ErrorDisplay path="name" />
 				</div>
 
@@ -98,14 +123,30 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 				<div className="grid grid-cols-2 gap-2">
 					<div>
 						<label className={LABEL}>Type *</label>
-						<input type="text" placeholder="Van, Truck, Sedan…" value={type}
-							onChange={(e) => setType(e.target.value)} className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							placeholder="Van, Truck, Sedan…"
+							value={type}
+							onChange={(e) => setType(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 						<ErrorDisplay path="type" />
 					</div>
 					<div>
-						<label className={LABEL}>License Plate / ID *</label>
-						<input type="text" placeholder="e.g. ABC-1234 · UNIT-7" value={licensePlate}
-							onChange={(e) => setLicensePlate(e.target.value)} className={INPUT} disabled={isLoading} />
+						<label className={LABEL}>
+							License Plate / ID *
+						</label>
+						<input
+							type="text"
+							placeholder="e.g. ABC-1234 · UNIT-7"
+							value={licensePlate}
+							onChange={(e) =>
+								setLicensePlate(e.target.value)
+							}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 						<ErrorDisplay path="license_plate" />
 					</div>
 				</div>
@@ -113,7 +154,9 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 				{/* Optional divider */}
 				<div className={DIVIDER_LABEL}>
 					<div className="flex-1 h-px bg-zinc-800" />
-					<span className="text-[10px] text-zinc-600 uppercase tracking-widest">Vehicle details (optional)</span>
+					<span className="text-[10px] text-zinc-500 uppercase tracking-widest">
+						Vehicle details (optional)
+					</span>
 					<div className="flex-1 h-px bg-zinc-800" />
 				</div>
 
@@ -121,18 +164,36 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 				<div className="grid grid-cols-3 gap-2">
 					<div>
 						<label className={LABEL}>Year</label>
-						<input type="number" placeholder="2021" value={year}
-							onChange={(e) => setYear(e.target.value)} className={INPUT} disabled={isLoading} />
+						<input
+							type="number"
+							placeholder="2021"
+							value={year}
+							onChange={(e) => setYear(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
 						<label className={LABEL}>Make</label>
-						<input type="text" placeholder="Ford" value={make}
-							onChange={(e) => setMake(e.target.value)} className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							placeholder="Ford"
+							value={make}
+							onChange={(e) => setMake(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
 						<label className={LABEL}>Model</label>
-						<input type="text" placeholder="Transit" value={model}
-							onChange={(e) => setModel(e.target.value)} className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							placeholder="Transit"
+							value={model}
+							onChange={(e) => setModel(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 				</div>
 
@@ -140,13 +201,29 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 				<div className="grid grid-cols-2 gap-2">
 					<div>
 						<label className={LABEL}>Color</label>
-						<input type="text" placeholder="Pearl White" value={color}
-							onChange={(e) => setColor(e.target.value)} className={INPUT} disabled={isLoading} />
+						<input
+							type="text"
+							placeholder="Pearl White"
+							value={color}
+							onChange={(e) => setColor(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
 					</div>
 					<div>
 						<label className={LABEL}>Status</label>
-						<select value={status} onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
-							className={INPUT} disabled={isLoading}>
+						<select
+							value={status}
+							onChange={(e) =>
+								setStatus(
+									e.target.value as
+										| "active"
+										| "inactive"
+								)
+							}
+							className={INPUT}
+							disabled={isLoading}
+						>
 							<option value="active">Active</option>
 							<option value="inactive">Inactive</option>
 						</select>
@@ -156,13 +233,29 @@ export default function CreateVehicle({ isModalOpen, setIsModalOpen, createVehic
 				{/* Notes */}
 				<div>
 					<label className={LABEL}>Notes</label>
-					<textarea placeholder="Optional internal notes…" value={notes}
-						onChange={(e) => setNotes(e.target.value)} disabled={isLoading}
-						className="border border-zinc-700 px-2.5 py-1.5 w-full h-16 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0" />
+					<textarea
+						placeholder="Optional internal notes…"
+						value={notes}
+						onChange={(e) => setNotes(e.target.value)}
+						disabled={isLoading}
+						className="border border-zinc-700 px-2.5 py-1.5 w-full h-16 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+					/>
 				</div>
 			</div>
 		),
-		[name, type, licensePlate, year, make, model, color, status, notes, isLoading, errors]
+		[
+			name,
+			type,
+			licensePlate,
+			year,
+			make,
+			model,
+			color,
+			status,
+			notes,
+			isLoading,
+			errors,
+		]
 	);
 
 	return (
