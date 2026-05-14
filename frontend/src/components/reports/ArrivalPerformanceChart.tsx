@@ -8,9 +8,9 @@ interface ArrivalPerformanceChartProps {
 }
 
 const COLORS = {
-	Early: "#22c55e",
-	"On-Time": "#3b82f6",
-	Late: "#ef4444",
+	Early: "var(--color-success)",
+	"On-Time": "var(--color-chart-primary)",
+	Late: "var(--color-error)",
 } as const;
 
 type SliceName = keyof typeof COLORS;
@@ -24,7 +24,7 @@ interface Slice {
 
 function buildSlices(data: ArrivalPerformanceResponse): Slice[] {
 	if (data.total === 0) {
-		return [{ name: "No Data", value: 1, pct: 0, color: "#27272a" }];
+		return [{ name: "No Data", value: 1, pct: 0, color: "var(--color-chart-fallback)" }];
 	}
 
 	const pct = (n: number) =>

@@ -14,9 +14,9 @@ interface RevenueLevelConfig {
 }
 
 const REVENUE_LEVELS: RevenueLevelConfig[] = [
-	{ key: "new", label: "New", color: "#10b981", dotClass: "bg-emerald-500", days: "< 7 days" },
-	{ key: "warning", label: "Aging", color: "#f59e0b", dotClass: "bg-amber-500", days: "7–30 days" },
-	{ key: "critical", label: "Critical", color: " #ef4444", dotClass: "bg-red-500", days: "> 30 days" },
+	{ key: "new", label: "New", color: "var(--color-success)", dotClass: "bg-emerald-500", days: "< 7 days" },
+	{ key: "warning", label: "Aging", color: "var(--color-warning)", dotClass: "bg-amber-500", days: "7–30 days" },
+	{ key: "critical", label: "Critical", color: "var(--color-error)", dotClass: "bg-red-500", days: "> 30 days" },
 ];
 
 export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {

@@ -8,14 +8,14 @@ interface RevenueByJobTypeChartProps {
 	total: number;
 }
 
-const BG_COLOR = "#121212";
+const BG_COLOR = "var(--color-chart-hole-bg)";
 
 const TYPE_COLORS: Record<string, string> = {
-	"One-Time": "#3b82f6",
-	Recurring: "#10b981",
+	"One-Time": "var(--color-chart-primary)",
+	Recurring: "var(--color-chart-success)",
 };
 
-const FALLBACK_COLOR = "#3f3f46";
+const FALLBACK_COLOR = "var(--color-chart-fallback)";
 
 function CustomTooltip({
 	active,

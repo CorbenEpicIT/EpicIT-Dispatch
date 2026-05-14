@@ -26,9 +26,9 @@ interface BucketConfig {
 }
 
 const BUCKETS: BucketConfig[] = [
-	{ key: "draft", label: "Draft", color: "#3b82f6" },
-	{ key: "sent", label: "Sent", color: "#10b981" },
-	{ key: "viewed", label: "Viewed", color: "#06b6d4" },
+	{ key: "draft", label: "Draft", color: "var(--color-chart-primary)" },
+	{ key: "sent", label: "Sent", color: "var(--color-chart-success)" },
+	{ key: "viewed", label: "Viewed", color: "var(--color-chart-info)" },
 ];
 
 function formatYAxisCurrency(value: number): string {
@@ -108,13 +108,13 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 						dataKey="status"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fill: "#a1a1aa", fontSize: 12 }}
+						tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
 					/>
 					<YAxis
 						yAxisId="left"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fill: "#a1a1aa", fontSize: 11 }}
+						tick={{ fill: "var(--color-chart-axis)", fontSize: 11 }}
 						tickFormatter={formatYAxisCurrency}
 						tickCount={5}
 						domain={[0, (dataMax: number) => Math.round(dataMax * 1.2)]}
@@ -123,7 +123,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 							value: "Total Value ($)",
 							angle: -90,
 							position: "insideLeft",
-							fill: "#a1a1aa",
+							fill: "var(--color-chart-axis)",
 							fontSize: 10,
 							dy: 40,
 						}}
@@ -145,7 +145,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 						<LabelList
 							dataKey="value"
 							position="top"
-							fill="#FFFFFF"
+							fill="var(--color-text-primary)"
 							fontSize={11}
 							fontWeight={600}
 							formatter={(val: unknown) => "$" + Number(val as number).toLocaleString()}
