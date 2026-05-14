@@ -9,6 +9,9 @@ import type {
 	InvoiceNote,
 	CreateInvoiceNoteInput,
 	UpdateInvoiceNoteInput,
+	OverlapWarning,
+	GenerateInvoiceInput,
+	GenerateInvoiceResponse,
 } from "../types/invoices";
 
 // ============================================================================
@@ -200,4 +203,34 @@ export const deleteInvoiceNote = async (
 	}
 
 	return response.data.data || { message: "Note deleted successfully" };
+};
+
+// ============================================================================
+// PIPELINE API
+// ============================================================================
+
+export const overlapCheck = async (
+	visitIds: string[],
+): Promise<{ warnings: OverlapWarning[] }> => {
+	const response = await api.post<ApiResponse<{ warnings: OverlapWarning[] }>>(
+		"/invoices/overlap-check",
+		{ visit_ids: visitIds },
+	);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Overlap check failed");
+	}
+	return response.data.data!;
+};
+
+export const generateInvoice = async (
+	input: GenerateInvoiceInput,
+): Promise<GenerateInvoiceResponse> => {
+	const response = await api.post<ApiResponse<GenerateInvoiceResponse>>(
+		"/invoices/generate",
+		input,
+	);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to generate invoice");
+	}
+	return response.data.data!;
 };

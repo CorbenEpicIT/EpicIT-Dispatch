@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { Prisma } from "../../generated/prisma/client.js";
 import type { tech_visit_status, technician_status, pause_reason_type } from "../../generated/prisma/client.js";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
@@ -12,6 +13,8 @@ import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
 import { createNotification } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
+import { buildRecurringPlanInvoicePayload } from "../services/invoiceGenerator.js";
+import { createInvoiceRecord } from "../services/invoiceService.js";
 
 const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
 function toPauseReason(v: string | undefined): pause_reason_type | undefined {
@@ -167,6 +170,19 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 				},
 			},
 			notes: true,
+			invoice_visits: {
+				select: {
+					billed_amount: true,
+					invoice: {
+						select: {
+							id: true,
+							invoice_number: true,
+							status: true,
+							issue_date: true,
+						},
+					},
+				},
+			},
 		},
 	});
 };
@@ -185,6 +201,15 @@ export const getJobVisitsByJobId = async (jobId: string, organization_id: string
 				orderBy: { sort_order: "asc" },
 			},
 			notes: true,
+			_count: {
+				select: {
+					invoice_visits: {
+						where: {
+							invoice: { status: { notIn: ["Draft", "Void"] } },
+						},
+					},
+				},
+			},
 		},
 		orderBy: {
 			scheduled_start_at: "asc",
@@ -631,6 +656,79 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				},
 			});
 		});
+
+		// ── on_visit_completion: auto-invoice (post-commit, non-blocking) ──
+		if (
+			parsed.status === "Completed" &&
+			existingVisit.status !== "Completed" &&
+			existingVisit.job.recurring_plan_id
+		) {
+			const planId = existingVisit.job.recurring_plan_id;
+			const schedule = await sdb.invoice_schedule.findFirst({
+				where: { recurring_plan_id: planId },
+			});
+			if (schedule?.frequency === "on_visit_completion" && schedule.is_active) {
+				buildRecurringPlanInvoicePayload(planId, sdb, { last_invoiced_at: schedule.last_invoiced_at })
+					.then(async ({ payload, warnings }) => {
+						if (warnings.length > 0) {
+							payload.internal_notes = `[Auto on completion] Overlap:\n${warnings
+								.map(
+									(w) =>
+										`Visit ${new Date(w.scheduled_start_at).toLocaleDateString()} already billed on: ${w.existing_invoices.map((i) => i.invoice_number).join(", ")}`,
+								)
+								.join("\n")}`;
+						}
+						const created = await sdb.$transaction(async (innerTx) => {
+							const inv = await createInvoiceRecord(
+								payload,
+								organizationId,
+								null,
+								innerTx as unknown as Prisma.TransactionClient,
+							);
+							const casResult = await (innerTx as unknown as Prisma.TransactionClient).invoice_schedule.updateMany({
+								where: { id: schedule.id, last_invoiced_at: schedule.last_invoiced_at },
+								data: { last_invoiced_at: new Date() },
+							});
+							if (casResult.count === 0) {
+								throw new Error(`on_visit_completion: schedule ${schedule.id} already updated by concurrent completion`);
+							}
+							return inv;
+						});
+						await logActivity({
+							event_type: "invoice.created",
+							action: "created",
+							entity_type: "invoice",
+							entity_id: created.id,
+							organization_id: organizationId,
+							actor_type: "system",
+							actor_id: null,
+							changes: {
+								invoice_number: { old: null, new: created.invoice_number },
+								client_id: { old: null, new: created.client_id },
+								total: { old: null, new: created.total },
+								status: { old: null, new: created.status },
+								recurring_plan_id: { old: null, new: created.recurring_plan_id ?? null },
+							},
+						});
+					})
+					.catch(async (err) => {
+						log.error({ err, plan_id: planId }, "on_visit_completion invoice creation failed");
+						await logActivity({
+							event_type: "invoice.auto_creation_failed",
+							action: "failed",
+							entity_type: "job_visit",
+							entity_id: existingVisit.id,
+							organization_id: organizationId,
+							actor_type: "system",
+							actor_id: null,
+							changes: {
+								error: { old: null, new: String(err) },
+								recurring_plan_id: { old: null, new: planId },
+							},
+						});
+					});
+			}
+		}
 
 		// ── "This & all future" — shift future visits by the same delta ─────
 		if (parsed.reschedule_scope === "future" && existingVisit.job.recurring_plan_id) {

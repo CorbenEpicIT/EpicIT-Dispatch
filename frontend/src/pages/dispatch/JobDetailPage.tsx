@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Edit2,
 	Calendar,
@@ -30,6 +30,7 @@ import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJob from "../../components/jobs/EditJob";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
+import CreateInvoice from "../../components/invoices/CreateInvoice";
 import {
 	JobStatusColors,
 	VisitStatusColors,
@@ -51,6 +52,7 @@ export default function JobDetailPage() {
 	const { data: linkedInvoices = [] } = useInvoicesByJobIdQuery(jobId!);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isCreateVisitModalOpen, setIsCreateVisitModalOpen] = useState(false);
+	const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
 	const { mutateAsync: createJobVisitMutation } = useCreateJobVisitMutation();
 
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
@@ -58,6 +60,18 @@ export default function JobDetailPage() {
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
 	const deleteJobMutation = useDeleteJobMutation();
+
+	// Derive per-visit billed totals from job invoices for the 3-state billing badge.
+	const visitBilledMap = useMemo(() => {
+		const record: Record<string, number> = {};
+		for (const inv of linkedInvoices) {
+			if (inv.status === "Void" || inv.status === "Draft") continue;
+			for (const iv of inv.visits ?? []) {
+				record[iv.visit.id] = (record[iv.visit.id] ?? 0) + Number(iv.billed_amount ?? 0);
+			}
+		}
+		return record;
+	}, [linkedInvoices]);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -864,11 +878,20 @@ export default function JobDetailPage() {
 			<Card
 				title="Linked Invoices"
 				headerAction={
-					linkedInvoices.length > 0 ? (
-						<span className="text-sm text-zinc-400">
-							{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
-						</span>
-					) : undefined
+					<div className="flex items-center gap-3">
+						{linkedInvoices.length > 0 && (
+							<span className="text-sm text-zinc-400">
+								{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
+							</span>
+						)}
+						<button
+							onClick={() => setIsCreateInvoiceOpen(true)}
+							className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+						>
+							<Plus size={14} />
+							Create Invoice
+						</button>
+					</div>
 				}
 			>
 				{linkedInvoices.length === 0 ? (
@@ -989,6 +1012,22 @@ export default function JobDetailPage() {
 												visit.status
 											}
 										</div>
+										{(() => {
+											const count = visit._count?.invoice_visits ?? 0;
+											if (count === 0) return null;
+											const billed = visitBilledMap[visit.id] ?? 0;
+											const visitTotal = Number((visit as any).total ?? 0);
+											const isPartial = visitTotal > 0 && billed < visitTotal;
+											return (
+												<span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
+													isPartial
+														? "border-amber-800/50 bg-amber-900/50 text-amber-400"
+														: "border-green-800/50 bg-green-900/50 text-green-400"
+												}`}>
+													{isPartial ? "Partial" : "Billed"}
+												</span>
+											);
+										})()}
 										<span className="text-zinc-500 text-sm">
 											•
 										</span>
@@ -1368,6 +1407,13 @@ export default function JobDetailPage() {
 				setIsModalOpen={setIsCreateVisitModalOpen}
 				jobId={jobId!}
 				createVisit={createJobVisitMutation}
+			/>
+
+			<CreateInvoice
+				isModalOpen={isCreateInvoiceOpen}
+				setIsModalOpen={setIsCreateInvoiceOpen}
+				initialJobId={jobId}
+				defaultClientId={job?.client_id}
 			/>
 		</div>
 	);

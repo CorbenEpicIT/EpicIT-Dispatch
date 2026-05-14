@@ -910,14 +910,26 @@ export const updateRecurringPlan = async (
 						data: { is_active: false },
 					});
 				} else {
+					// Preserve next_invoice_at when frequency/day anchor unchanged so
+					// editing memo, auto_send, etc. doesn't silently reset the billing date.
+					const existingSchedule = sched.frequency !== "on_visit_completion"
+						? await tx.invoice_schedule.findFirst({ where: { recurring_plan_id: existing.id } })
+						: null;
+					const anchorChanged = !existingSchedule ||
+						existingSchedule.frequency !== sched.frequency ||
+						existingSchedule.day_of_month !== (sched.day_of_month ?? null) ||
+						existingSchedule.day_of_week !== (sched.day_of_week ?? null) ||
+						existingSchedule.generate_days_before !== (sched.generate_days_before ?? 0);
 					const nextInvoiceAt =
 						sched.frequency !== "on_visit_completion"
-							? calculateNextInvoiceAt(
-									sched.frequency as ScheduleFrequency,
-									sched.day_of_month ?? null,
-									sched.day_of_week ?? null,
-									sched.generate_days_before ?? 0,
-								)
+							? anchorChanged
+								? calculateNextInvoiceAt(
+										sched.frequency as ScheduleFrequency,
+										sched.day_of_month ?? null,
+										sched.day_of_week ?? null,
+										sched.generate_days_before ?? 0,
+									)
+								: existingSchedule!.next_invoice_at
 							: null;
 					await tx.invoice_schedule.upsert({
 						where: { recurring_plan_id: existing.id },
@@ -1187,14 +1199,25 @@ export const upsertInvoiceSchedule = async (
 
 		if (!plan) return { err: "Recurring plan not found" };
 
+		// Preserve next_invoice_at when frequency/day anchor unchanged
+		const existingSchedule = parsed.frequency !== "on_visit_completion"
+			? await sdb.invoice_schedule.findFirst({ where: { recurring_plan_id: plan.id } })
+			: null;
+		const anchorChanged = !existingSchedule ||
+			existingSchedule.frequency !== parsed.frequency ||
+			existingSchedule.day_of_month !== (parsed.day_of_month ?? null) ||
+			existingSchedule.day_of_week !== (parsed.day_of_week ?? null) ||
+			existingSchedule.generate_days_before !== (parsed.generate_days_before ?? 0);
 		const nextInvoiceAt =
 			parsed.frequency !== "on_visit_completion"
-				? calculateNextInvoiceAt(
-						parsed.frequency as ScheduleFrequency,
-						parsed.day_of_month ?? null,
-						parsed.day_of_week ?? null,
-						parsed.generate_days_before ?? 0,
-					)
+				? anchorChanged
+					? calculateNextInvoiceAt(
+							parsed.frequency as ScheduleFrequency,
+							parsed.day_of_month ?? null,
+							parsed.day_of_week ?? null,
+							parsed.generate_days_before ?? 0,
+						)
+					: existingSchedule!.next_invoice_at
 				: null;
 
 		const schedule = await sdb.invoice_schedule.upsert({

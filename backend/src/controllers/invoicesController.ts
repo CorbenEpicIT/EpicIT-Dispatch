@@ -1,4 +1,3 @@
-// @ts-nocheck - Invoice models not yet in schema (halfbaked feature)
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
@@ -14,267 +13,14 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidInvoiceTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
-
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-async function generateInvoiceNumber(
-	tx: Prisma.TransactionClient,
-	organizationId: string,
-): Promise<string> {
-	const last = await tx.invoice.findFirst({
-		where: {
-			organization_id: organizationId,
-			invoice_number: { startsWith: "INV-" },
-		},
-		orderBy: { created_at: "desc" },
-	});
-
-	let next = 1;
-	if (last) {
-		const match = last.invoice_number.match(/INV-(\d+)/);
-		if (match) next = parseInt(match[1]) + 1;
-	}
-
-	return `INV-${next.toString().padStart(4, "0")}`;
-}
-
-/**
- * Resolve tax rate for a new invoice using the cascade:
- * client.is_tax_exempt → 0
- * client.tax_rate      → client rate
- * organization.tax_rate → org rate
- * fallback             → 0
- */
-async function resolveTaxRate(clientId: string, organizationId: string): Promise<number> {
-	const sdb = getScopedDb(organizationId);
-	const client = await sdb.client.findFirst({
-		where: { id: clientId },
-		select: {
-			is_tax_exempt: true,
-			tax_rate: true,
-			organization: { select: { tax_rate: true } },
-		},
-	});
-
-	if (!client) return 0;
-	if (client.is_tax_exempt) return 0;
-	if (client.tax_rate !== null && client.tax_rate !== undefined)
-		return Number(client.tax_rate);
-	if (client.organization?.tax_rate !== undefined)
-		return Number(client.organization.tax_rate);
-	return 0;
-}
-
-/** Recalculate amount_paid, balance_due, and status after any payment change. */
-async function syncInvoicePaymentTotals(
-	invoiceId: string,
-	tx: Prisma.TransactionClient,
-): Promise<void> {
-	const [invoice, payments] = await Promise.all([
-		tx.invoice.findFirst({
-			where: { id: invoiceId },
-			select: { total: true, status: true },
-		}),
-		tx.invoice_payment.findMany({
-			where: { invoice_id: invoiceId },
-			select: { amount: true },
-		}),
-	]);
-
-	if (!invoice) return;
-
-	const total = Number(invoice.total);
-	const amountPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-	const balanceDue = Math.max(0, total - amountPaid);
-
-	// Only auto-transition to PartiallyPaid or Paid.
-	// Disputed and Void are set manually and must not be overwritten here.
-	// Draft/Issued/Sent/Viewed are preserved when payments are removed.
-	let status = invoice.status;
-	if (status !== "Disputed" && status !== "Void") {
-		if (amountPaid <= 0) {
-			// Only revert auto-set payment statuses; leave other lifecycle states alone.
-			if (status === "PartiallyPaid" || status === "Paid") {
-				status = "Sent";
-			}
-		} else if (amountPaid >= total) {
-			status = "Paid";
-		} else {
-			status = "PartiallyPaid";
-		}
-	}
-
-	await tx.invoice.update({
-		where: { id: invoiceId },
-		data: {
-			amount_paid: amountPaid,
-			balance_due: balanceDue,
-			status,
-			...(status === "Paid" ? { paid_at: new Date() } : {}),
-		},
-	});
-}
-
-/**
- * Recompute billed_amount for every invoice_job and invoice_visit row
- * linked to this invoice by summing the line items attributed to each
- * via source_job_id / source_visit_id.
- *
- * Called after any line item replacement so the Linked Jobs & Visits
- * display always reflects current line item values.
- */
-async function syncBilledAmounts(
-	invoiceId: string,
-	tx: Prisma.TransactionClient,
-): Promise<void> {
-	// Fetch all current line items for this invoice
-	const lineItems = await tx.invoice_line_item.findMany({
-		where: { invoice_id: invoiceId },
-		select: {
-			total: true,
-			source_job_id: true,
-			source_visit_id: true,
-		},
-	});
-
-	// ── Visit billed amounts ──────────────────────────────────────────────
-	// Sum line items where source_visit_id matches the linked visit.
-	const linkedVisits = await tx.invoice_visit.findMany({
-		where: { invoice_id: invoiceId },
-		select: { visit_id: true },
-	});
-
-	for (const { visit_id } of linkedVisits) {
-		const billedAmount = lineItems
-			.filter((li) => li.source_visit_id === visit_id)
-			.reduce((sum, li) => sum + Number(li.total), 0);
-
-		await tx.invoice_visit.update({
-			where: {
-				invoice_id_visit_id: {
-					invoice_id: invoiceId,
-					visit_id,
-				},
-			},
-			data: { billed_amount: billedAmount },
-		});
-	}
-
-	// ── Job billed amounts ────────────────────────────────────────────────
-	// Sum line items attributed to the job directly (source_job_id matches,
-	// source_visit_id is null — visit-attributed items are counted on the visit,
-	// not the job level).
-	const linkedJobs = await tx.invoice_job.findMany({
-		where: { invoice_id: invoiceId },
-		select: { job_id: true },
-	});
-
-	for (const { job_id } of linkedJobs) {
-		const billedAmount = lineItems
-			.filter(
-				(li) =>
-					li.source_job_id === job_id && li.source_visit_id === null,
-			)
-			.reduce((sum, li) => sum + Number(li.total), 0);
-
-		await tx.invoice_job.update({
-			where: {
-				invoice_id_job_id: {
-					invoice_id: invoiceId,
-					job_id,
-				},
-			},
-			data: { billed_amount: billedAmount },
-		});
-	}
-}
-
-// ============================================================================
-// SHARED INCLUDE — used by all reads for consistent shape
-// ============================================================================
-
-const invoiceInclude = {
-	client: {
-		select: {
-			id: true,
-			name: true,
-			address: true,
-			is_active: true,
-			contacts: {
-				where: { is_primary: true },
-				include: {
-					contact: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-							phone: true,
-						},
-					},
-				},
-				take: 1,
-			},
-		},
-	},
-	created_by_dispatcher: {
-		select: { id: true, name: true, email: true },
-	},
-	line_items: { orderBy: { sort_order: "asc" as const } },
-	jobs: {
-		include: {
-			job: {
-				select: {
-					id: true,
-					job_number: true,
-					name: true,
-					status: true,
-				},
-			},
-		},
-	},
-	visits: {
-		include: {
-			visit: {
-				select: {
-					id: true,
-					scheduled_start_at: true,
-					scheduled_end_at: true,
-					status: true,
-					job: { select: { id: true, job_number: true, name: true } },
-				},
-			},
-		},
-	},
-	payments: {
-		orderBy: { paid_at: "asc" as const },
-		include: {
-			recorded_by_dispatcher: {
-				select: { id: true, name: true },
-			},
-			recorded_by_tech: {
-				select: { id: true, name: true },
-			},
-		},
-	},
-	notes: {
-		orderBy: { created_at: "desc" as const },
-		include: {
-			creator_tech: { select: { id: true, name: true, email: true } },
-			creator_dispatcher: {
-				select: { id: true, name: true, email: true },
-			},
-			last_editor_tech: { select: { id: true, name: true, email: true } },
-			last_editor_dispatcher: {
-				select: { id: true, name: true, email: true },
-			},
-		},
-	},
-	recurring_plan: {
-		select: { id: true, name: true, status: true },
-	},
-} satisfies Prisma.invoiceInclude;
+import { ErrorCodes, createSuccessResponse, createErrorResponse } from "../types/responses.js";
+import {
+	type CreateInvoicePayload,
+	createInvoiceRecord,
+	syncBilledAmounts,
+	syncInvoicePaymentTotals,
+	invoiceInclude,
+} from "../services/invoiceService.js";
 
 // ============================================================================
 // INVOICE CRUD
@@ -331,191 +77,11 @@ export const insertInvoice = async (req: Request, organizationId: string, contex
 
 		for (let attempt = 0; attempt < 5; attempt++) {
 			try {
-				const sdb = getScopedDb(organizationId);
-				created = await sdb.$transaction(async (tx) => {
-					// Validate client exists
-					const client = await tx.client.findFirst({
-						where: { id: parsed.client_id },
-					});
-					if (!client) throw new Error("Client not found");
-
-					// Validate recurring plan if provided
-					if (parsed.recurring_plan_id) {
-						const plan = await tx.recurring_plan.findFirst({
-							where: { id: parsed.recurring_plan_id },
-						});
-						if (!plan) throw new Error("Recurring plan not found");
-					}
-
-					// Validate all linked jobs belong to this client
-					const allJobIds = [
-						...(parsed.job_ids ?? []),
-						...(parsed.job_billings?.map((jb) => jb.job_id) ?? []),
-					];
-					const uniqueJobIds = [...new Set(allJobIds)];
-
-					if (uniqueJobIds.length > 0) {
-						const jobs = await tx.job.findMany({
-							where: { id: { in: uniqueJobIds } },
-							select: { id: true, client_id: true },
-						});
-						if (jobs.length !== uniqueJobIds.length) {
-							throw new Error("One or more jobs not found");
-						}
-						const wrongClient = jobs.find(
-							(j) => j.client_id !== parsed.client_id,
-						);
-						if (wrongClient) {
-							throw new Error(
-								"All linked jobs must belong to the same client",
-							);
-						}
-					}
-
-					// Validate all linked visits
-					const allVisitIds =
-						parsed.visit_billings?.map((vb) => vb.visit_id) ?? [];
-					if (allVisitIds.length > 0) {
-						const visits = await tx.job_visit.findMany({
-							where: { id: { in: allVisitIds } },
-							select: {
-								id: true,
-								job: { select: { client_id: true } },
-							},
-						});
-						if (visits.length !== allVisitIds.length) {
-							throw new Error("One or more visits not found");
-						}
-						const wrongVisitClient = visits.find(
-							(v) => v.job.client_id !== parsed.client_id,
-						);
-						if (wrongVisitClient) {
-							throw new Error(
-								"All linked visits must belong to the same client",
-							);
-						}
-					}
-
-					// Resolve tax rate via cascade if not explicitly provided
-					const taxRate =
-						parsed.tax_rate !== undefined
-							? parsed.tax_rate
-							: await resolveTaxRate(parsed.client_id);
-
-					const invoiceNumber = await generateInvoiceNumber(tx, organizationId);
-
-					// Calculate due_date from payment_terms_days if due_date not provided
-					let dueDate = parsed.due_date;
-					if (!dueDate && parsed.payment_terms_days) {
-						const base = parsed.issue_date ?? new Date();
-						dueDate = new Date(base);
-						dueDate.setDate(
-							dueDate.getDate() + parsed.payment_terms_days,
-						);
-					}
-
-					const invoice = await tx.invoice.create({
-						data: {
-							organization_id: organizationId,
-							invoice_number: invoiceNumber,
-							client_id: parsed.client_id,
-							recurring_plan_id: parsed.recurring_plan_id ?? null,
-							status: "Draft",
-							...(parsed.issue_date !== undefined && { issue_date: parsed.issue_date }),
-							due_date: dueDate ?? null,
-							payment_terms_days:
-								parsed.payment_terms_days ?? null,
-							subtotal: parsed.subtotal ?? 0,
-							tax_rate: taxRate,
-							tax_amount: parsed.tax_amount ?? 0,
-							discount_type: parsed.discount_type ?? null,
-							discount_value: parsed.discount_value ?? null,
-							discount_amount: parsed.discount_amount ?? null,
-							total: parsed.total ?? 0,
-							amount_paid: 0,
-							balance_due: parsed.total ?? 0,
-							memo: parsed.memo ?? null,
-							internal_notes: parsed.internal_notes ?? null,
-							created_by_dispatcher_id:
-								context?.dispatcherId ?? null,
-						},
-					});
-
-					// Create line items
-					if (parsed.line_items && parsed.line_items.length > 0) {
-						await tx.invoice_line_item.createMany({
-							data: parsed.line_items.map((item, idx) => ({
-								invoice_id: invoice.id,
-								name: item.name,
-								description: item.description ?? null,
-								quantity: item.quantity,
-								unit_price: item.unit_price,
-								total:
-									item.total !== undefined
-										? item.total
-										: item.quantity * item.unit_price,
-								item_type: item.item_type ?? null,
-								sort_order: item.sort_order ?? idx,
-								source_job_id: item.source_job_id ?? null,
-								source_visit_id: item.source_visit_id ?? null,
-							})),
-						});
-					}
-
-					// Link jobs (traceability-only — no billed_amount)
-					if (parsed.job_ids && parsed.job_ids.length > 0) {
-						const billedJobIds = new Set(
-							parsed.job_billings?.map((jb) => jb.job_id) ?? [],
-						);
-						const tracingOnlyJobIds = parsed.job_ids.filter(
-							(id) => !billedJobIds.has(id),
-						);
-						if (tracingOnlyJobIds.length > 0) {
-							await tx.invoice_job.createMany({
-								data: tracingOnlyJobIds.map((job_id) => ({
-									invoice_id: invoice.id,
-									job_id,
-									billed_amount: null,
-								})),
-							});
-						}
-					}
-
-					// Link jobs with explicit billed_amount
-					if (parsed.job_billings && parsed.job_billings.length > 0) {
-						await tx.invoice_job.createMany({
-							data: parsed.job_billings.map((jb) => ({
-								invoice_id: invoice.id,
-								job_id: jb.job_id,
-								billed_amount: jb.billed_amount,
-							})),
-						});
-					}
-
-					// Link visits with explicit billed_amount
-					if (
-						parsed.visit_billings &&
-						parsed.visit_billings.length > 0
-					) {
-						await tx.invoice_visit.createMany({
-							data: parsed.visit_billings.map((vb) => ({
-								invoice_id: invoice.id,
-								visit_id: vb.visit_id,
-								billed_amount: vb.billed_amount,
-							})),
-						});
-					}
-
-					await tx.client.update({
-						where: { id: parsed.client_id },
-						data: { last_activity: new Date() },
-					});
-
-					return tx.invoice.findFirst({
-						where: { id: invoice.id },
-						include: invoiceInclude,
-					});
-				});
+				created = await createInvoiceRecord(
+					parsed,
+					organizationId,
+					context?.dispatcherId,
+				);
 
 				// Transaction committed — log outside so it is never rolled back
 				if (created) {
@@ -688,7 +254,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 
 				// Recompute billed_amount for all linked jobs and visits
 				// from the now-current line items' source attribution.
-				await syncBilledAmounts(id, tx);
+				await syncBilledAmounts(id, tx as unknown as Prisma.TransactionClient);
 			}
 
 			const invoice = await tx.invoice.update({
@@ -881,7 +447,7 @@ export const insertInvoicePayment = async (
 				},
 			});
 
-			await syncInvoicePaymentTotals(invoiceId, tx);
+			await syncInvoicePaymentTotals(invoiceId, tx as unknown as Prisma.TransactionClient);
 
 			return payment;
 		});
@@ -942,7 +508,7 @@ export const deleteInvoicePayment = async (
 
 		await sdb.$transaction(async (tx) => {
 			await tx.invoice_payment.delete({ where: { id: paymentId } });
-			await syncInvoicePaymentTotals(invoiceId, tx);
+			await syncInvoicePaymentTotals(invoiceId, tx as unknown as Prisma.TransactionClient);
 		});
 
 		await logActivity({

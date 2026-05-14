@@ -50,14 +50,10 @@ export default function DashboardPage() {
 	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
 
 	const technicianStats = useMemo(() => {
-		const online = allTechnicians.filter(
-			(t) => t.status === "Available" || t.status === "Busy"
-		);
 		return {
 			total: allTechnicians.length,
-			online: online.length,
+			online: allTechnicians.filter((t) => t.status === "Available").length,
 			available: allTechnicians.filter((t) => t.status === "Available").length,
-			busy: allTechnicians.filter((t) => t.status === "Busy").length,
 			onBreak: allTechnicians.filter((t) => t.status === "Break").length,
 			offline: allTechnicians.filter((t) => t.status === "Offline").length,
 		};

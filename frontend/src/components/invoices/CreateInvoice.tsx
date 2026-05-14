@@ -3,7 +3,10 @@ import { type CreateInvoiceInput, type CreateInvoiceLineItemInput } from "../../
 import { type LineItemType, type BaseLineItem } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import { useAllJobsQuery } from "../../hooks/useJobs";
-import { useCreateInvoiceMutation, useInvoicesByClientIdQuery } from "../../hooks/useInvoices";
+import { useCreateInvoiceMutation, useInvoicesByClientIdQuery, useOverlapCheckMutation } from "../../hooks/useInvoices";
+import { useJobVisitsByJobIdQuery } from "../../hooks/useJobs";
+import { getJobVisitById } from "../../api/jobs";
+import type { OverlapWarning } from "../../types/invoices";
 import Dropdown from "../ui/Dropdown";
 import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
@@ -20,6 +23,8 @@ interface CreateInvoiceProps {
 	isModalOpen: boolean;
 	setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 	defaultClientId?: string;
+	initialVisitIds?: string[];
+	initialJobId?: string;
 }
 
 const STEPS = [
@@ -54,7 +59,7 @@ interface VisitBillingInfo {
 	invoiceNumbers: string[];
 }
 
-const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateInvoiceProps) => {
+const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVisitIds, initialJobId }: CreateInvoiceProps) => {
 	// ── Core form state ───────────────────────────────────────────────────
 	const [clientId, setClientId] = useState(defaultClientId ?? "");
 	const [memo, setMemo] = useState("");
@@ -66,6 +71,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	// Tracks whether a source picker or other inner input was recently focused,
 	// so the next row click doesn't accidentally toggle selection.
 	const billingInputFocusedRef = useRef(false);
+	// Synchronous in-flight guard for handleImportFromVisits — prevents double-import
+	// on rapid double-click before React re-renders the disabled button state.
+	const importingFromVisitsRef = useRef(false);
 
 	// ── Job / visit picker state ──────────────────────────────────────────
 	const [linkedJobIds, setLinkedJobIds] = useState<Set<string>>(new Set());
@@ -73,11 +81,21 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	const [visitBillings, setVisitBillings] = useState<Map<string, number>>(new Map());
 	const [importedSources, setImportedSources] = useState<Set<string>>(new Set());
 
+	// ── Overlap / import state ────────────────────────────────────────────
+	const [overlapWarnings, setOverlapWarnings] = useState<OverlapWarning[]>([]);
+	const [showOverlapModal, setShowOverlapModal] = useState(false);
+	const [emptyVisitWarnings, setEmptyVisitWarnings] = useState<string[]>([]);
+	const [importingLineItems, setImportingLineItems] = useState(false);
+	const [isCheckingOverlap, setIsCheckingOverlap] = useState(false);
+	const [submitError, setSubmitError] = useState<string | null>(null);
+
 	// ── Queries ───────────────────────────────────────────────────────────
 	const { data: clients } = useAllClientsQuery();
 	const { data: allJobs = [] } = useAllJobsQuery();
 	const { data: clientInvoices = [] } = useInvoicesByClientIdQuery(clientId);
+	const { data: initialJobVisits = [] } = useJobVisitsByJobIdQuery(initialJobId ?? "");
 	const { mutateAsync: insertInvoice } = useCreateInvoiceMutation();
+	const { mutateAsync: checkOverlap } = useOverlapCheckMutation();
 
 	// ── Hooks ─────────────────────────────────────────────────────────────
 	const {
@@ -233,6 +251,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		resetLineItems();
 		resetFinancials();
 		setIsDirty(false);
+		setSubmitError(null);
 	}, [resetWizard, resetLineItems, resetFinancials, defaultClientId]);
 
 	useEffect(() => {
@@ -241,6 +260,36 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			setIsLoading(false);
 		}
 	}, [isModalOpen, resetForm]);
+
+	// ── Pre-select visits from context entry points ───────────────────────
+	useEffect(() => {
+		if (!isModalOpen) return;
+		if (initialVisitIds && initialVisitIds.length > 0) {
+			// Pre-select specific visits with actual totals when available
+			const billings = new Map(
+				initialVisitIds.map((id) => {
+					const matched = initialJobVisits.find((v) => v.id === id);
+					return [id, matched ? Number((matched as any).total ?? 0) : 0];
+				}),
+			);
+			setVisitBillings(billings);
+			// Link and expand the parent job so the pre-selected visit is visible in the picker
+			if (initialJobId) {
+				setLinkedJobIds(new Set([initialJobId]));
+				setExpandedJobs(new Set([initialJobId]));
+			}
+		} else if (initialJobId && initialJobVisits.length > 0) {
+			const completedVisits = initialJobVisits.filter((v) => v.status === "Completed");
+			if (completedVisits.length > 0) {
+				setLinkedJobIds(new Set([initialJobId]));
+				setExpandedJobs(new Set([initialJobId]));
+				setVisitBillings(
+					new Map(completedVisits.map((v) => [v.id, Number((v as any).total ?? 0)])),
+				);
+			}
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isModalOpen, initialJobId, initialJobVisits.length]);
 
 	// ── Job picker handlers ───────────────────────────────────────────────
 	const toggleJobExpanded = useCallback((jobId: string) => {
@@ -413,7 +462,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			const hasType = (item.item_type?.trim?.() ?? "") !== "";
 			return hasText || hasNumbers || hasType;
 		});
-		if (meaningful.length === 0) return true;
+		if (meaningful.length === 0) return false;
 		return meaningful.every(
 			(item) =>
 				item.name.trim() &&
@@ -433,6 +482,26 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 	const canGoNext = validateStep(currentStep);
 
+	// ── Step 1→2 transition: run overlap check ────────────────────────────
+	const handleNext = useCallback(async () => {
+		if (currentStep === 1 && visitBillings.size > 0) {
+			setIsCheckingOverlap(true);
+			try {
+				const { warnings } = await checkOverlap([...visitBillings.keys()]);
+				if (warnings.length > 0) {
+					setOverlapWarnings(warnings);
+					setShowOverlapModal(true);
+					return;
+				}
+			} catch {
+				// Non-blocking — proceed even if overlap check fails
+			} finally {
+				setIsCheckingOverlap(false);
+			}
+		}
+		goNext();
+	}, [currentStep, visitBillings, checkOverlap, goNext]);
+
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
 			if (targetStep === currentStep) return true;
@@ -443,6 +512,55 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		},
 		[currentStep, visitedSteps, validateStep]
 	);
+
+	// ── Import from selected visits ──────────────────────────────────────
+	const handleImportFromVisits = useCallback(async () => {
+		// Ref guard: prevents double-import on rapid double-click before React
+		// re-renders the disabled button (state update is async, ref is synchronous)
+		if (importingFromVisitsRef.current || visitBillings.size === 0) return;
+		// Skip visits already imported to prevent duplicate line items on repeated clicks
+		const visitIds = [...visitBillings.keys()].filter((id) => !importedSources.has(id));
+		if (visitIds.length === 0) return;
+		importingFromVisitsRef.current = true;
+		setImportingLineItems(true);
+		setEmptyVisitWarnings([]);
+		try {
+			const fetchedVisits = await Promise.all(visitIds.map((id) => getJobVisitById(id)));
+			const empty: string[] = [];
+			const seeds: Parameters<typeof seedLineItems>[0] = [];
+			for (const visit of fetchedVisits) {
+				if (!visit.line_items || visit.line_items.length === 0) {
+					const dateLabel = new Date(visit.scheduled_start_at).toLocaleDateString("en-US", {
+						month: "short",
+						day: "numeric",
+					});
+					empty.push(`${dateLabel} (#${visit.id.slice(0, 6)})`);
+					continue;
+				}
+				for (const li of visit.line_items) {
+					seeds.push({
+						name: li.name,
+						description: li.description ?? "",
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						item_type: li.item_type as any,
+						source_visit_id: visit.id,
+						source_job_id: (visit as any).job?.id ?? null,
+					});
+				}
+			}
+			setEmptyVisitWarnings(empty);
+			if (seeds.length > 0) {
+				seedLineItems(seeds);
+				markDirty();
+			}
+			// Mark all fetched visits as imported (including empty ones)
+			setImportedSources((prev) => new Set([...prev, ...visitIds]));
+		} finally {
+			importingFromVisitsRef.current = false;
+			setImportingLineItems(false);
+		}
+	}, [visitBillings, importedSources, seedLineItems, markDirty]);
 
 	// ── Dirty wrappers ────────────────────────────────────────────────────
 	const dirtyAddLineItem = useCallback(() => {
@@ -550,12 +668,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		};
 
 		setIsLoading(true);
+		setSubmitError(null);
 		try {
 			await insertInvoice(newInvoice);
 			setIsModalOpen(false);
 			resetForm();
 		} catch (error) {
-			console.error("Failed to create invoice:", error);
+			setSubmitError(error instanceof Error ? error.message : "Failed to create invoice. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -1165,6 +1284,25 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 				return (
 					<div className="min-w-0 flex flex-col -mt-3 sm:-mt-4">
+						{visitBillings.size > 0 && (
+							<div className="mb-3 flex items-center gap-2 px-4 pt-3 sm:px-6">
+								<button
+									type="button"
+									onClick={handleImportFromVisits}
+									disabled={importingLineItems}
+									className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+								>
+									{importingLineItems ? "Importing…" : "Import from selected visits"}
+								</button>
+							</div>
+						)}
+						{emptyVisitWarnings.length > 0 && (
+							<div className="mb-2 mx-4 sm:mx-6 rounded border border-yellow-700/50 bg-yellow-950/40 px-3 py-2 text-sm text-yellow-300">
+								{emptyVisitWarnings.length === 1
+									? `Visit on ${emptyVisitWarnings[0]} has no line items — add manually or deselect it.`
+									: `${emptyVisitWarnings.length} visits have no line items (${emptyVisitWarnings.join(", ")}) — add manually or deselect them.`}
+							</div>
+						)}
 						<LineItemsSection
 							lineItems={activeLineItems}
 							isLoading={isLoading}
@@ -1208,6 +1346,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
+						{submitError && (
+							<div className="rounded border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+								{submitError}
+							</div>
+						)}
 						<div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 text-sm space-y-1.5">
 							<div className="flex justify-between items-center">
 								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
@@ -1362,9 +1505,59 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		defaultClientId,
 		importSources,
 		handleImportLineItems,
+		submitError,
 	]);
 
 	return (
+		<>
+		{showOverlapModal && (
+			<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+				<div className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-xl">
+					<h3 className="mb-1 text-base font-semibold text-white">Visits Already Billed</h3>
+					<p className="mb-4 text-sm text-zinc-400">
+						These visits are on active invoices. You can still proceed — this may be intentional
+						(partial billing, corrections).
+					</p>
+					<ul className="mb-5 space-y-2">
+						{overlapWarnings.map((w) => (
+							<li key={w.visit_id} className="rounded border border-zinc-700 bg-zinc-800 p-3 text-sm">
+								<span className="font-medium text-zinc-200">
+									{new Date(w.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+								</span>
+								<ul className="mt-1 space-y-0.5 text-zinc-400">
+									{w.existing_invoices.map((inv) => (
+										<li key={inv.invoice_id}>
+											{inv.invoice_number} —{" "}
+											<span className="text-zinc-300">{inv.status}</span>
+											{inv.billed_amount != null && (
+												<span className="ml-1 text-zinc-400">(${inv.billed_amount.toFixed(2)} billed)</span>
+											)}
+										</li>
+									))}
+								</ul>
+							</li>
+						))}
+					</ul>
+					<div className="flex justify-end gap-3">
+						<button
+							onClick={() => setShowOverlapModal(false)}
+							className="rounded px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+						>
+							Go Back
+						</button>
+						<button
+							onClick={() => {
+								setShowOverlapModal(false);
+								goNext();
+							}}
+							className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+						>
+							Continue Anyway
+						</button>
+					</div>
+				</div>
+			</div>
+		)}
 		<FormWizardContainer<Step>
 			title="Create Invoice"
 			steps={STEPS}
@@ -1375,10 +1568,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			onClose={() => setIsModalOpen(false)}
 			canGoToStep={canGoToStep}
 			onStepClick={goToStep}
-			onNext={goNext}
+			onNext={handleNext}
 			onBack={goBack}
 			onSubmit={invokeCreate}
-			canGoNext={canGoNext}
+			canGoNext={canGoNext && !isCheckingOverlap}
 			submitLabel="Create Invoice"
 			isSourceSearchOpen={false}
 			sourceMode="existing"
@@ -1393,6 +1586,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		>
 			{stepContent}
 		</FormWizardContainer>
+		</>
 	);
 };
 

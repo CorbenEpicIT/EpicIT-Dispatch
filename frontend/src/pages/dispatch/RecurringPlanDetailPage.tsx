@@ -34,6 +34,7 @@ import {
 	useGenerateOccurrencesMutation,
 	useGenerateVisitFromOccurrenceMutation,
 } from "../../hooks/useRecurringPlans";
+import { useGenerateInvoiceMutation } from "../../hooks/useInvoices";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import RecurringPlanNoteManager from "../../components/recurringPlans/RecurringPlanNoteManager";
@@ -102,6 +103,7 @@ export default function RecurringPlanDetailPage() {
 	const completeMutation = useCompleteRecurringPlanMutation();
 	const generateMutation = useGenerateOccurrencesMutation();
 	const generateVisitMutation = useGenerateVisitFromOccurrenceMutation();
+	const generateInvoiceMutation = useGenerateInvoiceMutation();
 
 	useEffect(() => {
 		const handleOutsideClick = (event: MouseEvent) => {
@@ -273,6 +275,20 @@ export default function RecurringPlanDetailPage() {
 			setShowActionsMenu(false);
 		} catch (error) {
 			console.error("Failed to generate occurrences:", error);
+		}
+	};
+
+	const handleGenerateInvoice = async () => {
+		if (!recurringPlanId) return;
+		try {
+			const result = await generateInvoiceMutation.mutateAsync({
+				source: "recurring_plan",
+				plan_id: recurringPlanId,
+			});
+			setShowActionsMenu(false);
+			navigate(`/dispatch/invoices/${result.invoice.id}`);
+		} catch (error) {
+			console.error("Failed to generate invoice:", error);
 		}
 	};
 
@@ -683,6 +699,20 @@ export default function RecurringPlanDetailPage() {
 												/>
 												Pause
 												Plan
+											</button>
+										</>
+									)}
+
+									{plan.invoice_schedule?.is_active && (
+										<>
+											<div className="border-t border-zinc-800 my-1" />
+											<button
+												onClick={handleGenerateInvoice}
+												disabled={generateInvoiceMutation.isPending}
+												className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+											>
+												<ReceiptText size={16} />
+												{generateInvoiceMutation.isPending ? "Generating…" : "Generate Invoice"}
 											</button>
 										</>
 									)}

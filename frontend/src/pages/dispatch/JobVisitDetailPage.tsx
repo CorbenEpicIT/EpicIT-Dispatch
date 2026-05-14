@@ -12,6 +12,7 @@ import {
 	Receipt,
 	Calendar,
 	ExternalLink,
+	Plus,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -30,6 +31,7 @@ import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
+import CreateInvoice from "../../components/invoices/CreateInvoice";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
 import { formatCurrency, formatDate, formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
@@ -43,6 +45,7 @@ export default function JobVisitDetailPage() {
 	const { data: job, isLoading: jobLoading } = useJobByIdQuery(jobId!);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+	const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
 	const { data: linkedInvoices = [] } = useInvoicesByVisitIdQuery(jobId!, visitId!);
@@ -741,13 +744,51 @@ export default function JobVisitDetailPage() {
 				<Card
 					title="Linked Invoices" className="h-full"
 				headerAction={
-					linkedInvoices.length > 0 ? (
-						<span className="text-sm text-zinc-400">
-							{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
-						</span>
-					) : undefined
+					<button
+						onClick={() => setIsCreateInvoiceOpen(true)}
+						className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+					>
+						<Plus size={12} />
+						Create Invoice
+					</button>
 				}
 			>
+				{(() => {
+					const committedRefs = visit.invoice_visits?.filter(
+						(iv) => !["Draft", "Void"].includes(iv.invoice.status)
+					) ?? [];
+					const totalCommitted = committedRefs.reduce(
+						(sum, iv) => sum + (iv.billed_amount ?? 0),
+						0
+					);
+					const visitTotal = visit.line_items?.reduce(
+						(sum, item) => sum + Number(item.total ?? 0),
+						0
+					) ?? 0;
+					const billingStatus =
+						committedRefs.length === 0
+							? "unbilled"
+							: visitTotal > 0 && totalCommitted >= visitTotal
+							? "fully-billed"
+							: "partially-billed";
+
+					return committedRefs.length > 0 ? (
+						<div className="mb-3 flex items-center gap-2 text-xs">
+							<span
+								className={`inline-flex items-center px-2 py-0.5 rounded font-medium border ${
+									billingStatus === "fully-billed"
+										? "bg-green-500/15 text-green-400 border-green-500/30"
+										: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
+								}`}
+							>
+								{billingStatus === "fully-billed" ? "Fully Billed" : "Partially Billed"}
+							</span>
+							<span className="text-zinc-400">
+								{formatCurrency(totalCommitted)} committed on {committedRefs.length} invoice{committedRefs.length !== 1 ? "s" : ""}
+							</span>
+						</div>
+					) : null;
+				})()}
 				{linkedInvoices.length === 0 ? (
 					<div className="flex items-center gap-2 text-zinc-500 text-sm py-1">
 						<Receipt size={14} className="flex-shrink-0" />
@@ -882,6 +923,14 @@ export default function JobVisitDetailPage() {
 					jobId={jobId!}
 				/>
 			)}
+
+			<CreateInvoice
+				isModalOpen={isCreateInvoiceOpen}
+				setIsModalOpen={setIsCreateInvoiceOpen}
+				initialVisitIds={visitId ? [visitId] : []}
+				initialJobId={jobId}
+				defaultClientId={job?.client_id}
+			/>
 		</div>
 	);
 }

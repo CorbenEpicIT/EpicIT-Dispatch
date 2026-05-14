@@ -312,3 +312,41 @@ export function getPaymentProgress(invoice: Pick<Invoice, "total" | "amount_paid
 	if (total <= 0) return 0;
 	return Math.min(1, invoice.amount_paid / total);
 }
+
+// ============================================================================
+// PIPELINE TYPES
+// ============================================================================
+
+export interface OverlapWarning {
+	visit_id: string;
+	scheduled_start_at: string;
+	existing_invoices: Array<{
+		invoice_id: string;
+		invoice_number: string;
+		status: string;
+		billed_amount: number | null;
+	}>;
+}
+
+export interface BillingRef {
+	billed_amount: number | null;
+	invoice: {
+		id: string;
+		invoice_number: string;
+		status: InvoiceStatus;
+		issue_date: string | null;
+	};
+}
+
+export interface GenerateInvoiceInput {
+	source: "recurring_plan";
+	plan_id: string;
+	memo?: string;
+	payment_terms_days?: number;
+}
+
+export interface GenerateInvoiceResponse {
+	invoice: Invoice;
+	warnings: OverlapWarning[];
+	note?: string;
+}

@@ -1,5 +1,6 @@
 import z from "zod";
 import type { ClientSummary, ClientWithPrimaryContact } from "./clients";
+import type { BillingRef } from "./invoices";
 import type { Coordinates } from "./location";
 import type {
 	Priority,
@@ -361,6 +362,10 @@ export interface JobVisit extends PricingBreakdown {
 	notes?: JobNote[];
 	line_items?: VisitLineItem[];
 	time_entries?: VisitTechTimeEntry[];
+	invoice_visits?: BillingRef[];
+	_count?: {
+		invoice_visits: number;
+	};
 }
 
 export interface CreateJobVisitInput {

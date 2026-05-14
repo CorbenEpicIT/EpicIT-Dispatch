@@ -665,13 +665,9 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 													</span>
 													<span
 														className={`text-xs px-2 py-0.5 rounded ${
-															tech.status ===
-															"Available"
+															tech.status === "Available"
 																? "bg-green-500/20 text-green-400"
-																: tech.status ===
-																	  "Busy"
-																	? "bg-red-500/20 text-red-400"
-																	: "bg-zinc-500/20 text-zinc-400"
+																: "bg-zinc-500/20 text-zinc-400"
 														}`}
 													>
 														{

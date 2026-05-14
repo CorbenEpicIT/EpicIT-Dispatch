@@ -198,3 +198,22 @@ export type CreateInvoicePaymentInput = z.infer<
 >;
 export type CreateInvoiceNoteInput = z.infer<typeof createInvoiceNoteSchema>;
 export type UpdateInvoiceNoteInput = z.infer<typeof updateInvoiceNoteSchema>;
+
+// ============================================================================
+// OVERLAP CHECK
+// ============================================================================
+
+export const overlapCheckSchema = z.object({
+	visit_ids: z.array(z.string().uuid()).min(1),
+});
+
+// ============================================================================
+// GENERATE INVOICE (recurring plan)
+// ============================================================================
+
+export const generateInvoiceSchema = z.object({
+	source: z.literal("recurring_plan"),
+	plan_id: z.string().uuid(),
+	memo: z.string().optional(),
+	payment_terms_days: z.number().int().min(0).optional(),
+});
