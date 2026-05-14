@@ -223,7 +223,7 @@ const StepWizard = <T extends number>({
 								disabled={isLoading}
 								className={`
 									flex items-center gap-2 px-5 py-2 rounded-md font-bold transition-colors
-									${isLoading ? "bg-confirm text-white cursor-wait" : "bg-confirm hover:bg-confirm text-white"}
+									${isLoading ? "bg-confirm text-white cursor-wait" : "bg-confirm hover:bg-confirm-hover text-white"}
 								`}
 							>
 								{isLoading ? (
