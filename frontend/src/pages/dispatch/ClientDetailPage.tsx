@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+﻿import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
 	Edit,
@@ -139,7 +139,7 @@ export default function ClientDetailsPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
-				<div className="text-zinc-400">Loading...</div>
+				<div className="text-text-tertiary">Loading...</div>
 			</div>
 		);
 	}
@@ -149,7 +149,7 @@ export default function ClientDetailsPage() {
 			<div className="w-full px-4 sm:px-6 lg:px-8 py-6">
 				<button
 					onClick={() => navigate("/dispatch/clients")}
-					className="text-zinc-400 hover:text-white mb-4 transition-colors"
+					className="text-text-tertiary hover:text-white mb-4 transition-colors"
 				>
 					← Back to Clients
 				</button>
@@ -161,60 +161,60 @@ export default function ClientDetailsPage() {
 	const getStatusColor = (item: WorkflowItem) => {
 		if (item.type === "invoice") {
 			return InvoiceStatusColors[item.status as InvoiceStatus]
-				?? "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+				?? "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
 		}
 		const colors: Record<string, string> = {
-			New: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-			Reviewing: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-			Quoted: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-			Draft: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-			Sent: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-			Viewed: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-			Approved: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-			Rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+			New: "bg-primary/20 text-primary-text border-primary/30",
+			Reviewing: "bg-reviewing/20 text-reviewing-text border-reviewing/30",
+			Quoted: "bg-warning/20 text-warning-text border-warning/30",
+			Draft: "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+			Sent: "bg-primary/20 text-primary-text border-primary/30",
+			Viewed: "bg-reviewing/20 text-reviewing-text border-reviewing/30",
+			Approved: "bg-emerald-500/20 text-success-text border-emerald-500/30",
+			Rejected: "bg-error/20 text-error-text border-error/30",
 			Unscheduled: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-			Scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-			InProgress: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-			Completed: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-			Cancelled: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-			ConvertedToJob: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-			Active: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-			Paused: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+			Scheduled: "bg-primary/20 text-primary-text border-primary/30",
+			InProgress: "bg-warning/20 text-warning-text border-warning/30",
+			Completed: "bg-emerald-500/20 text-success-text border-emerald-500/30",
+			Cancelled: "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+			ConvertedToJob: "bg-emerald-500/20 text-success-text border-emerald-500/30",
+			Active: "bg-emerald-500/20 text-success-text border-emerald-500/30",
+			Paused: "bg-warning/20 text-warning-text border-warning/30",
 		};
-		return colors[item.status] || "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+		return colors[item.status] || "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
 	};
 
 	const getTypeIcon = (type: string) => {
 		const iconClass = "flex-shrink-0";
 		switch (type) {
 			case "request":
-				return <Phone size={16} className={`${iconClass} text-blue-400`} />;
+				return <Phone size={16} className={`${iconClass} text-primary-text`} />;
 			case "quote":
 				return (
 					<FileText
 						size={16}
-						className={`${iconClass} text-amber-400`}
+						className={`${iconClass} text-warning-text`}
 					/>
 				);
 			case "job":
 				return (
 					<Briefcase
 						size={16}
-						className={`${iconClass} text-emerald-400`}
+						className={`${iconClass} text-success-text`}
 					/>
 				);
 			case "plan":
 				return (
 					<Repeat
 						size={16}
-						className={`${iconClass} text-purple-400`}
+						className={`${iconClass} text-reviewing-text`}
 					/>
 				);
 			case "invoice":
 				return (
 					<ReceiptText
 						size={16}
-						className={iconClass + " text-green-400"}
+						className={iconClass + " text-success-text"}
 					/>
 				);
 			default:
@@ -234,40 +234,40 @@ export default function ClientDetailsPage() {
 			label: "Requests",
 			count: workflowData.requests.length,
 			icon: Phone,
-			color: "text-blue-400",
-			inactiveColor: "text-blue-400/40",
+			color: "text-primary-text",
+			inactiveColor: "text-primary-text/40",
 		},
 		{
 			id: "quotes" as MainTab,
 			label: "Quotes",
 			count: workflowData.quotes.length,
 			icon: FileText,
-			color: "text-amber-400",
-			inactiveColor: "text-amber-400/40",
+			color: "text-warning-text",
+			inactiveColor: "text-warning-text/40",
 		},
 		{
 			id: "jobs" as MainTab,
 			label: "Jobs",
 			count: workflowData.jobs.length,
 			icon: Briefcase,
-			color: "text-emerald-400",
-			inactiveColor: "text-emerald-400/40",
+			color: "text-success-text",
+			inactiveColor: "text-success-text/40",
 		},
 		{
 			id: "plans" as MainTab,
 			label: "Plans",
 			count: workflowData.plans.length,
 			icon: Repeat,
-			color: "text-purple-400",
-			inactiveColor: "text-purple-400/40",
+			color: "text-reviewing-text",
+			inactiveColor: "text-reviewing-text/40",
 		},
 		{
 			id: "invoices" as MainTab,
 			label: "Invoices",
 			count: workflowData.invoices.length,
 			icon: ReceiptText,
-			color: "text-green-400",
-			inactiveColor: "text-green-400/40",
+			color: "text-success-text",
+			inactiveColor: "text-success-text/40",
 		},
 	];
 
@@ -294,19 +294,19 @@ export default function ClientDetailsPage() {
 		<button
 			key={`${item.type}-${item.id}`}
 			onClick={() => handleItemClick(item)}
-			className="w-full grid grid-cols-[40px_1fr] sm:grid-cols-[40px_1fr_100px_90px] gap-3 px-3 sm:px-4 py-3 text-left transition-colors hover:bg-zinc-800/50 group"
+			className="w-full grid grid-cols-[40px_1fr] sm:grid-cols-[40px_1fr_100px_90px] gap-3 px-3 sm:px-4 py-3 text-left transition-colors hover:bg-surface/50 group"
 		>
 			<div className="flex items-center justify-center">
 				{getTypeIcon(item.type)}
 			</div>
 			<div className="min-w-0">
 				<div className="flex items-center gap-2 mb-1">
-					<span className="text-sm font-medium text-white group-hover:text-blue-400 transition-colors truncate">
+					<span className="text-sm font-medium text-white group-hover:text-primary-text transition-colors truncate">
 						{item.number ? `${item.number} - ` : ""}
 						{item.title}
 					</span>
 				</div>
-				<div className="flex items-start gap-1 text-xs text-zinc-500">
+				<div className="flex items-start gap-1 text-xs text-text-muted">
 					<MapPin size={11} className="mt-0.5 flex-shrink-0" />
 					<span className="line-clamp-2">{item.address}</span>
 				</div>
@@ -317,14 +317,14 @@ export default function ClientDetailsPage() {
 						{item.statusLabel ?? item.status}
 					</span>
 					{item.total !== undefined && item.total !== null && (
-						<span className="text-xs text-emerald-400 font-medium">
+						<span className="text-xs text-success-text font-medium">
 							{formatCurrency(Number(item.total))}
 						</span>
 					)}
 				</div>
 			</div>
 			<div className="hidden sm:flex flex-col justify-center text-xs min-w-0">
-				<div className="flex items-center gap-1 text-zinc-400">
+				<div className="flex items-center gap-1 text-text-tertiary">
 					<Calendar size={11} />
 					<span className="truncate">
 						{(item.type === "plan" || item.type === "invoice") && item.starts_at
@@ -333,7 +333,7 @@ export default function ClientDetailsPage() {
 					</span>
 				</div>
 				{item.total !== undefined && item.total !== null && (
-					<div className="flex items-center gap-1 text-emerald-400 font-medium mt-1">
+					<div className="flex items-center gap-1 text-success-text font-medium mt-1">
 						<span className="truncate">
 							{formatCurrency(Number(item.total))}
 						</span>
@@ -364,15 +364,15 @@ export default function ClientDetailsPage() {
 				/>
 				{activeTab === "active" ? (
 					<>
-						<p className="text-sm text-zinc-500 mb-1">
+						<p className="text-sm text-text-muted mb-1">
 							All caught up!
 						</p>
-						<p className="text-xs text-zinc-600">
+						<p className="text-xs text-text-faint">
 							No active items for this client
 						</p>
 					</>
 				) : (
-					<p className="text-sm text-zinc-500">
+					<p className="text-sm text-text-muted">
 						No{" "}
 						{activeTab === "plans"
 							? "recurring plans"
@@ -385,7 +385,7 @@ export default function ClientDetailsPage() {
 	};
 
 	return (
-		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
+		<div className="min-h-0 bg-canvas text-text-primary w-full">
 			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
 				{/* Header */}
 				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
@@ -399,14 +399,14 @@ export default function ClientDetailsPage() {
 						<span
 							className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
 								client.is_active
-									? "bg-green-500/20 text-green-400 border-green-500/30"
-									: "bg-red-500/20 text-red-400 border-red-500/30"
+									? "bg-success/20 text-success-text border-success/30"
+									: "bg-error/20 text-error-text border-error/30"
 							}`}
 						>
 							{client.is_active ? "Active" : "Inactive"}
 						</span>
 						<button
-							className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap"
+							className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap"
 							onClick={() => setIsEditModalOpen(true)}
 						>
 							<Edit size={12} />
@@ -422,9 +422,9 @@ export default function ClientDetailsPage() {
 					{/* LEFT COLUMN (Workflow + Notes)	*/}
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0 order-3 xl:order-1">
 						{/* Workflow Section */}
-						<div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col">
+						<div className="bg-base border border-border-subtle rounded-lg overflow-hidden flex flex-col">
 							{/* Tab Bar */}
-							<div className="flex items-stretch border-b border-zinc-700 overflow-x-auto scrollbar-hide">
+							<div className="flex items-stretch border-b border-border overflow-x-auto scrollbar-hide">
 								{tabs.map((tab) => {
 									const Icon = tab.icon;
 									const isActive =
@@ -441,8 +441,8 @@ export default function ClientDetailsPage() {
 											}
 											className={`flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 border-b-2 transition-all whitespace-nowrap ${
 												isActive
-													? "border-blue-500 bg-zinc-800/30 text-white"
-													: "border-transparent hover:bg-zinc-800/20 text-zinc-500 hover:text-zinc-300"
+													? "border-primary bg-surface/30 text-white"
+													: "border-transparent hover:bg-surface/20 text-text-muted hover:text-text-secondary"
 											}`}
 										>
 											<Icon
@@ -463,8 +463,8 @@ export default function ClientDetailsPage() {
 											<span
 												className={`text-xs font-bold ${
 													isActive
-														? "text-blue-400"
-														: "text-zinc-600"
+														? "text-primary-text"
+														: "text-text-faint"
 												}`}
 											>
 												{
@@ -477,7 +477,7 @@ export default function ClientDetailsPage() {
 							</div>
 
 							{/* Table Header */}
-							<div className="hidden sm:grid grid-cols-[40px_1fr_100px_90px] gap-3 px-4 py-2 bg-zinc-900/50 border-b border-zinc-700 text-[10px] uppercase font-semibold text-zinc-500 tracking-wide">
+							<div className="hidden sm:grid grid-cols-[40px_1fr_100px_90px] gap-3 px-4 py-2 bg-base/50 border-b border-border text-[10px] uppercase font-semibold text-text-muted tracking-wide">
 								<div aria-hidden="true"></div>
 								<div>Details</div>
 								<div>Date/Amount</div>
@@ -490,7 +490,7 @@ export default function ClientDetailsPage() {
 							{isActiveTab ? (
 								<div className="overflow-y-auto scrollbar-on-hover max-h-[min(480px,60vh)]">
 									{displayData.length > 0 ? (
-										<div className="divide-y divide-zinc-800/50">
+										<div className="divide-y divide-border-subtle/50">
 											{displayData.map(
 												renderWorkflowItem
 											)}
@@ -500,7 +500,7 @@ export default function ClientDetailsPage() {
 									)}
 								</div>
 							) : (
-								<div className="divide-y divide-zinc-800/50">
+								<div className="divide-y divide-border-subtle/50">
 									{displayData.length > 0
 										? displayData.map(
 												renderWorkflowItem
@@ -511,12 +511,12 @@ export default function ClientDetailsPage() {
 
 							{/* View All Button */}
 							{!isActiveTab && hasMoreItems && (
-								<div className="border-t border-zinc-700 p-3 bg-zinc-900/50">
+								<div className="border-t border-border p-3 bg-base/50">
 									<button
 										onClick={
 											handleViewAll
 										}
-										className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors text-sm font-medium"
+										className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-surface hover:bg-surface-raised text-text-secondary hover:text-white transition-colors text-sm font-medium"
 									>
 										<span>
 											View all{" "}
@@ -549,7 +549,7 @@ export default function ClientDetailsPage() {
 						<Card title="Client Information" className="!p-4">
 							<div className="space-y-3">
 								<div>
-									<div className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wide mb-1">
+									<div className="text-[10px] uppercase font-semibold text-text-muted tracking-wide mb-1">
 										Address
 									</div>
 									<div className="text-sm text-white break-words">
@@ -558,7 +558,7 @@ export default function ClientDetailsPage() {
 								</div>
 								<div className="grid grid-cols-2 gap-3 sm:gap-4">
 									<div>
-										<div className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wide mb-1">
+										<div className="text-[10px] uppercase font-semibold text-text-muted tracking-wide mb-1">
 											Created
 										</div>
 										<div className="text-sm text-white">
@@ -568,7 +568,7 @@ export default function ClientDetailsPage() {
 										</div>
 									</div>
 									<div>
-										<div className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wide mb-1">
+										<div className="text-[10px] uppercase font-semibold text-text-muted tracking-wide mb-1">
 											Last
 											Activity
 										</div>

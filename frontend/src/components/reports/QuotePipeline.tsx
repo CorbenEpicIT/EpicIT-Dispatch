@@ -1,4 +1,4 @@
-import {
+﻿import {
 	ComposedChart,
 	Bar,
 	XAxis,
@@ -52,15 +52,15 @@ function CustomTooltip({
 	const countEntry = payload.find((p) => p.dataKey === "count");
 
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/80 backdrop-blur-md shadow-lg">
-			<p className="text-xs text-zinc-400 mb-1">{label}</p>
+		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
+			<p className="text-xs text-text-tertiary mb-1">{label}</p>
 			{valueEntry && (
 				<p className="text-sm font-semibold text-white">
 					{formatCurrency(valueEntry.value)}
 				</p>
 			)}
 			{countEntry && (
-				<p className="text-xs text-zinc-400">
+				<p className="text-xs text-text-tertiary">
 					{countEntry.value} {countEntry.value === 1 ? "quote" : "quotes"}
 				</p>
 			)}
@@ -86,7 +86,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 			className="h-full"
 			title="Open Quote Pipeline"
 			headerAction={
-				<span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-1 rounded-full">
+				<span className="text-xs font-medium text-text-tertiary bg-surface px-2 py-1 rounded-full">
 					{quoteCount} {quoteCount === 1 ? "Quote" : "Quotes"}
 				</span>
 			}

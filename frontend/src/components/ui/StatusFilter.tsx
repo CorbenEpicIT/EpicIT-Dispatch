@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
@@ -96,8 +96,8 @@ function DropdownFilter({
 				aria-haspopup="listbox"
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive && !hideAll
-						? "bg-blue-950 border-blue-500 text-blue-300"
-						: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white"
+						? "bg-blue-950 border-primary text-primary-text"
+						: "bg-surface border-border text-text-tertiary hover:text-white"
 				}`}
 			>
 				<span>
@@ -123,7 +123,7 @@ function DropdownFilter({
 				<div
 					role="listbox"
 					aria-label={placeholder}
-					className="absolute left-0 mt-1.5 min-w-44 bg-zinc-950 border border-zinc-600 rounded-lg shadow-2xl shadow-black/50 z-50 overflow-hidden"
+					className="absolute left-0 mt-1.5 min-w-44 bg-canvas border border-border-strong rounded-lg shadow-2xl shadow-black/50 z-50 overflow-hidden"
 				>
 					<div className="py-1 px-1">
 						{!hideAll && (
@@ -134,14 +134,14 @@ function DropdownFilter({
 									onClick={() => handleSelect(null)}
 									className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 										!isActive
-											? "bg-blue-950/60 text-blue-300"
-											: "text-zinc-300 hover:bg-zinc-800/70"
+											? "bg-blue-950/60 text-primary-text"
+											: "text-text-secondary hover:bg-surface/70"
 									}`}
 								>
 									<span>{allLabel}</span>
 									{!isActive && <Check size={14} />}
 								</button>
-								<div className="border-t border-zinc-700 my-1 -mx-1" />
+								<div className="border-t border-border my-1 -mx-1" />
 							</>
 						)}
 						{options.map((option) => (
@@ -152,8 +152,8 @@ function DropdownFilter({
 								onClick={() => handleSelect(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 									value === option.value
-										? "bg-blue-950/60 text-blue-300"
-										: "text-zinc-300 hover:bg-zinc-800/70"
+										? "bg-blue-950/60 text-primary-text"
+										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
 								<span>{option.label}</span>

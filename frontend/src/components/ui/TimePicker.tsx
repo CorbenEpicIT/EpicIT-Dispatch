@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+﻿import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
 
@@ -379,10 +379,10 @@ export default function TimePicker({
 				small ? "px-0.5 text-[10px]" : "px-1 text-sm"
 			} ${
 				focusedSection === sec
-					? "bg-blue-600 text-white"
+					? "bg-primary-hover text-white"
 					: isIncomplete && (label === "--" || label.includes("_"))
-						? "text-zinc-500"
-						: "text-zinc-200"
+						? "text-text-muted"
+						: "text-text-primary"
 			}`}
 		>
 			{label}
@@ -401,7 +401,7 @@ export default function TimePicker({
 							width: "152px",
 							zIndex: 9999,
 						}}
-						className="bg-zinc-900 border border-zinc-700 rounded shadow-xl p-1.5"
+						className="bg-base border border-border rounded shadow-xl p-1.5"
 					>
 						<div className="flex gap-1">
 							{/* Hours */}
@@ -432,8 +432,8 @@ export default function TimePicker({
 											}
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												active
-													? "bg-blue-600 text-white"
-													: "text-zinc-200 hover:bg-zinc-800"
+													? "bg-primary-hover text-white"
+													: "text-text-primary hover:bg-surface"
 											}`}
 										>
 											{h
@@ -474,8 +474,8 @@ export default function TimePicker({
 											}
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												active
-													? "bg-blue-600 text-white"
-													: "text-zinc-200 hover:bg-zinc-800"
+													? "bg-primary-hover text-white"
+													: "text-text-primary hover:bg-surface"
 											}`}
 										>
 											{m
@@ -509,8 +509,8 @@ export default function TimePicker({
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												period ===
 												p
-													? "bg-blue-600 text-white"
-													: "text-zinc-200 hover:bg-zinc-800"
+													? "bg-primary-hover text-white"
+													: "text-text-primary hover:bg-surface"
 											}`}
 										>
 											{p}
@@ -530,8 +530,8 @@ export default function TimePicker({
 				<div
 					ref={anchorRef}
 					style={{
-						background: "#27272a",
-						border: `1px solid ${focusedSection ? "#3b82f6" : "#3f3f46"}`,
+						background: "var(--color-surface)",
+						border: `1px solid ${focusedSection ? "var(--color-primary)" : "var(--color-border)"}`,
 						borderRadius: 4,
 						display: "flex",
 						alignItems: "center",
@@ -548,15 +548,15 @@ export default function TimePicker({
 						if (!focusedSection)
 							(
 								e.currentTarget as HTMLElement
-							).style.borderColor = "#52525b";
+							).style.borderColor = "var(--color-border-strong)";
 					}}
 					onMouseLeave={(e) => {
 						if (!focusedSection)
 							(
 								e.currentTarget as HTMLElement
 							).style.borderColor = open
-								? "#52525b"
-								: "#3f3f46";
+								? "var(--color-border-strong)"
+								: "var(--color-border)";
 					}}
 				>
 					<div
@@ -569,7 +569,7 @@ export default function TimePicker({
 						{seg(hour, "hour", true)}
 						<span
 							style={{
-								color: "#52525b",
+								color: "var(--color-text-faint)",
 								fontSize: 10,
 								userSelect: "none",
 								lineHeight: 1,
@@ -584,7 +584,7 @@ export default function TimePicker({
 					<Clock
 						size={10}
 						style={{
-							color: "#c9c9c9",
+							color: "var(--color-text-secondary)",
 							flexShrink: 0,
 							marginLeft: 4,
 						}}
@@ -593,23 +593,23 @@ export default function TimePicker({
 			) : (
 				<div
 					ref={anchorRef}
-					className="border border-zinc-700 bg-zinc-900 rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-zinc-600 focus-within:border-blue-500 transition-colors cursor-default"
+					className="border border-border bg-base rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-border-strong focus-within:border-primary transition-colors cursor-default"
 					tabIndex={0}
 				>
 					<Clock
 						size={14}
-						className="text-zinc-400 flex-shrink-0 cursor-pointer hover:text-zinc-200 transition-colors"
+						className="text-text-tertiary flex-shrink-0 cursor-pointer hover:text-text-primary transition-colors"
 						onClick={() =>
 							open ? setOpen(false) : openPopup()
 						}
 					/>
 					<div className="flex items-center gap-0.5">
 						{seg(hour, "hour")}
-						<span className="text-zinc-400 text-sm select-none">
+						<span className="text-text-tertiary text-sm select-none">
 							:
 						</span>
 						{seg(minute, "minute")}
-						<span className="text-zinc-400 text-sm select-none mx-0.5">
+						<span className="text-text-tertiary text-sm select-none mx-0.5">
 							{" "}
 						</span>
 						{seg(period, "period")}

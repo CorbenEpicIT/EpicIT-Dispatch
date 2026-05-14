@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+﻿import { useRef, useState, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
 import { PriorityValues } from "../../types/common";
 import { type CreateJobInput } from "../../types/jobs";
@@ -130,7 +130,7 @@ export default function ConvertToJob({
 	const content = (
 		<div className="flex flex-col min-h-0 flex-1">
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-zinc-800 flex-shrink-0">
+			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-border-subtle flex-shrink-0">
 				<h2 className="text-lg lg:text-xl font-bold text-white">
 					Convert to Job
 				</h2>
@@ -140,20 +140,20 @@ export default function ConvertToJob({
 			<div className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 lg:py-5 space-y-3 lg:space-y-4">
 				{/* Job Name */}
 				<div>
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Job Name *
 					</label>
 					<input
 						type="text"
 						placeholder="Job Name"
-						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors"
 						disabled={isLoading}
 						ref={nameRef}
 						defaultValue={request.title}
 						onChange={() => setNameError(null)}
 					/>
 					{nameError && (
-						<p className="text-red-400 text-xs mt-0.5">
+						<p className="text-error-text text-xs mt-0.5">
 							{nameError}
 						</p>
 					)}
@@ -161,12 +161,12 @@ export default function ConvertToJob({
 
 				{/* Description */}
 				<div>
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Description
 					</label>
 					<textarea
 						placeholder="Job Description"
-						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors"
 						disabled={isLoading}
 						ref={descRef}
 						defaultValue={request.description}
@@ -175,7 +175,7 @@ export default function ConvertToJob({
 
 				{/* Address */}
 				<div className="relative" style={{ zIndex: 50 }}>
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Job Address *
 					</label>
 					<AddressForm
@@ -187,7 +187,7 @@ export default function ConvertToJob({
 						handleClear={handleClearAddress}
 					/>
 					{addressError && (
-						<p className="text-red-400 text-xs mt-0.5">
+						<p className="text-error-text text-xs mt-0.5">
 							{addressError}
 						</p>
 					)}
@@ -195,7 +195,7 @@ export default function ConvertToJob({
 
 				{/* Priority */}
 				<div>
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Priority
 					</label>
 					<Dropdown
@@ -215,18 +215,18 @@ export default function ConvertToJob({
 			</div>
 
 			{/* Footer */}
-			<div className="flex items-center justify-end gap-2 px-4 lg:px-6 py-3 lg:py-4 border-t border-zinc-800 flex-shrink-0">
+			<div className="flex items-center justify-end gap-2 px-4 lg:px-6 py-3 lg:py-4 border-t border-border-subtle flex-shrink-0">
 				<button
 					onClick={() => setIsModalOpen(false)}
 					disabled={isLoading}
-					className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md border border-zinc-700 transition-colors disabled:opacity-50"
+					className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-white hover:bg-surface rounded-md border border-border transition-colors disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					onClick={invokeConvert}
 					disabled={isLoading}
-					className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+					className="px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{isLoading ? "Creating..." : "Create Job"}
 				</button>

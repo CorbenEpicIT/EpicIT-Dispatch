@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { type CreateInvoiceInput, type CreateInvoiceLineItemInput } from "../../types/invoices";
 import { type LineItemType, type BaseLineItem } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
@@ -45,8 +45,8 @@ const PAYMENT_TERM_OPTIONS = [
 ];
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 // ── Billing history derived types ─────────────────────────────────────────
 interface JobBillingInfo {
@@ -713,16 +713,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	const getVisitStatusClass = (status: string) => {
 		switch (status) {
 			case "Completed":
-				return "bg-green-500/10 text-green-400";
+				return "bg-success/10 text-success-text";
 			case "InProgress":
 			case "Driving":
 			case "OnSite":
-				return "bg-blue-500/10 text-blue-400";
+				return "bg-primary/10 text-primary-text";
 			case "Paused":
 			case "Delayed":
-				return "bg-amber-500/10 text-amber-400";
+				return "bg-warning/10 text-warning-text";
 			default:
-				return "bg-zinc-700 text-zinc-400";
+				return "bg-surface-raised text-text-tertiary";
 		}
 	};
 
@@ -810,7 +810,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Due Date{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(auto or override)
 									</span>
 								</label>
@@ -833,7 +833,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 						<div className="min-w-0">
 							<label className={LABEL}>
 								Internal Notes{" "}
-								<span className="text-zinc-500 normal-case font-normal">
+								<span className="text-text-muted normal-case font-normal">
 									(not shown to client)
 								</span>
 							</label>
@@ -846,7 +846,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									);
 									markDirty();
 								}}
-								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 						</div>
@@ -856,7 +856,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Link Jobs &amp; Visits{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(optional)
 									</span>
 								</label>
@@ -904,8 +904,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 												<div
 													className={`flex items-center gap-0 rounded-md border transition-colors ${
 														isJobLinked
-															? "border-blue-500 bg-blue-500/10"
-															: "border-zinc-700 bg-zinc-900 hover:border-zinc-600"
+															? "border-primary bg-primary/10"
+															: "border-border bg-base hover:border-border-strong"
 													}`}
 												>
 													{/* Checkbox area */}
@@ -924,11 +924,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 														<div
 															className={`w-3.5 h-3.5 rounded border flex-shrink-0 self-center flex items-center justify-center transition-colors ${
 																isJobLinked
-																	? "border-blue-500 bg-blue-500"
+																	? "border-primary bg-primary"
 																	: linkedVisitCount >
 																		  0
 																		? "border-blue-400 bg-transparent"
-																		: "border-zinc-600 bg-transparent"
+																		: "border-border-strong bg-transparent"
 															}`}
 														>
 															{isJobLinked && (
@@ -959,8 +959,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 															}
 															className={
 																hasAnyLink
-																	? "text-blue-400 flex-shrink-0 self-center"
-																	: "text-zinc-500 flex-shrink-0 self-center"
+																	? "text-primary-text flex-shrink-0 self-center"
+																	: "text-text-muted flex-shrink-0 self-center"
 															}
 														/>
 														<div className="flex-1 min-w-0">
@@ -974,7 +974,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 																}
 															</span>
 															{jobHistory && (
-																<div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-400/90">
+																<div className="flex items-center gap-1 mt-0.5 text-[10px] text-warning-text/90">
 																	<AlertTriangle
 																		size={
 																			9
@@ -999,11 +999,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 															className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 self-center ${
 																job.status ===
 																"Completed"
-																	? "bg-green-500/10 text-green-400"
+																	? "bg-success/10 text-success-text"
 																	: job.status ===
 																		  "InProgress"
-																		? "bg-blue-500/10 text-blue-400"
-																		: "bg-zinc-700 text-zinc-400"
+																		? "bg-primary/10 text-primary-text"
+																		: "bg-surface-raised text-text-tertiary"
 															}`}
 														>
 															{
@@ -1016,7 +1016,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 													{!isExpanded &&
 														linkedVisitCount >
 															0 && (
-															<span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-blue-500/20 text-blue-400 border border-blue-500/30 self-center mr-1">
+															<span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-primary/20 text-primary-text border border-primary/30 self-center mr-1">
 																{
 																	linkedVisitCount
 																}{" "}
@@ -1045,9 +1045,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 															className={`px-3 py-2 transition-colors flex-shrink-0 border-l-2 ${
 																hasAnyLink
 																	? isExpanded
-																		? "border-blue-500 text-blue-400 hover:text-white bg-blue-500/5"
-																		: "border-blue-500/50 text-blue-400 hover:text-white"
-																	: "border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-400"
+																		? "border-primary text-primary-text hover:text-white bg-primary/5"
+																		: "border-primary/50 text-primary-text hover:text-white"
+																	: "border-border-strong text-text-tertiary hover:text-white hover:border-zinc-400"
 															}`}
 															title={
 																isExpanded
@@ -1077,7 +1077,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 													<div className="ml-4 mt-1 space-y-1">
 														{visits.length ===
 														0 ? (
-															<p className="text-xs text-zinc-500 px-3 py-2">
+															<p className="text-xs text-text-muted px-3 py-2">
 																No
 																visits
 															</p>
@@ -1118,16 +1118,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 																				}
 																				className={`w-full flex items-center gap-2 px-3 py-1.5 rounded border transition-colors text-sm text-left ${
 																					isVisitSelected
-																						? "border-blue-500/50 bg-blue-500/5"
-																						: "border-zinc-700/50 bg-zinc-800/50 hover:border-zinc-600"
+																						? "border-primary/50 bg-primary/5"
+																						: "border-border/50 bg-surface/50 hover:border-border-strong"
 																				}`}
 																			>
 																				{/* Checkbox */}
 																				<div
 																					className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
 																						isVisitSelected
-																							? "border-blue-500 bg-blue-500"
-																							: "border-zinc-600 bg-transparent"
+																							? "border-primary bg-primary"
+																							: "border-border-strong bg-transparent"
 																					}`}
 																				>
 																					{isVisitSelected && (
@@ -1154,13 +1154,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 																				 * billing: flex-1 min-w-0 truncate — fills available space, truncates when tight
 																				 * status:  flex-shrink-0 — always visible, pinned right
 																				 */}
-																				<span className="flex-shrink-0 text-sm text-zinc-300">
+																				<span className="flex-shrink-0 text-sm text-text-secondary">
 																					{formatVisitDate(
 																						visit.scheduled_start_at
 																					)}
 																				</span>
 																				{visitHistory && (
-																					<span className="flex-1 min-w-0 truncate text-[10px] text-amber-400/90">
+																					<span className="flex-1 min-w-0 truncate text-[10px] text-warning-text/90">
 																						Previously
 																						billed{" "}
 																						{formatCurrency(
@@ -1198,7 +1198,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 								{/* Summary line */}
 								{(linkedJobIds.size > 0 ||
 									visitBillings.size > 0) && (
-									<div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
+									<div className="mt-2 flex items-center gap-3 text-xs text-text-muted">
 										{linkedJobIds.size >
 											0 && (
 											<span>
@@ -1290,7 +1290,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									type="button"
 									onClick={handleImportFromVisits}
 									disabled={importingLineItems}
-									className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+									className="flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-raised disabled:opacity-50"
 								>
 									{importingLineItems ? "Importing…" : "Import from selected visits"}
 								</button>
@@ -1347,13 +1347,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						{submitError && (
-							<div className="rounded border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+							<div className="rounded border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-error-text">
 								{submitError}
 							</div>
 						)}
-						<div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 text-sm space-y-1.5">
+						<div className="p-3 bg-surface/50 rounded-lg border border-border/50 text-sm space-y-1.5">
 							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Client
 								</span>
 								<span className="text-white font-medium">
@@ -1366,7 +1366,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							</div>
 							{memo && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Memo
 									</span>
 									<span className="text-white truncate max-w-[60%] text-right">
@@ -1376,7 +1376,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							)}
 							{paymentTermsDays && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Payment Terms
 									</span>
 									<span className="text-white">
@@ -1389,7 +1389,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							)}
 							{dueDateLabel && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Due Date
 									</span>
 									<span className="text-white">
@@ -1399,10 +1399,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							)}
 							{linkedJobIds.size > 0 && (
 								<div className="flex justify-between items-start">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Linked Jobs
 									</span>
-									<span className="text-blue-400 text-right">
+									<span className="text-primary-text text-right">
 										{linkedJobIds.size}{" "}
 										job
 										{linkedJobIds.size !==
@@ -1414,10 +1414,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							)}
 							{visitBillings.size > 0 && (
 								<div className="flex justify-between items-start">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Linked Visits
 									</span>
-									<span className="text-blue-400 text-right">
+									<span className="text-primary-text text-right">
 										{visitBillings.size}{" "}
 										visit
 										{visitBillings.size !==
@@ -1512,25 +1512,25 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		<>
 		{showOverlapModal && (
 			<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
-				<div className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-xl">
+				<div className="w-full max-w-lg rounded-lg border border-border bg-base p-6 shadow-xl">
 					<h3 className="mb-1 text-base font-semibold text-white">Visits Already Billed</h3>
-					<p className="mb-4 text-sm text-zinc-400">
+					<p className="mb-4 text-sm text-text-tertiary">
 						These visits are on active invoices. You can still proceed — this may be intentional
 						(partial billing, corrections).
 					</p>
 					<ul className="mb-5 space-y-2">
 						{overlapWarnings.map((w) => (
-							<li key={w.visit_id} className="rounded border border-zinc-700 bg-zinc-800 p-3 text-sm">
-								<span className="font-medium text-zinc-200">
+							<li key={w.visit_id} className="rounded border border-border bg-surface p-3 text-sm">
+								<span className="font-medium text-text-primary">
 									{new Date(w.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
 								</span>
-								<ul className="mt-1 space-y-0.5 text-zinc-400">
+								<ul className="mt-1 space-y-0.5 text-text-tertiary">
 									{w.existing_invoices.map((inv) => (
 										<li key={inv.invoice_id}>
 											{inv.invoice_number} —{" "}
-											<span className="text-zinc-300">{inv.status}</span>
+											<span className="text-text-secondary">{inv.status}</span>
 											{inv.billed_amount != null && (
-												<span className="ml-1 text-zinc-400">(${inv.billed_amount.toFixed(2)} billed)</span>
+												<span className="ml-1 text-text-tertiary">(${inv.billed_amount.toFixed(2)} billed)</span>
 											)}
 										</li>
 									))}
@@ -1541,7 +1541,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 					<div className="flex justify-end gap-3">
 						<button
 							onClick={() => setShowOverlapModal(false)}
-							className="rounded px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+							className="rounded px-4 py-2 text-sm text-text-secondary hover:bg-surface"
 						>
 							Go Back
 						</button>
@@ -1550,7 +1550,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 								setShowOverlapModal(false);
 								goNext();
 							}}
-							className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+							className="rounded bg-primary-hover px-4 py-2 text-sm font-medium text-white hover:bg-primary"
 						>
 							Continue Anyway
 						</button>

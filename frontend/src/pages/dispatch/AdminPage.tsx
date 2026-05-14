@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import UsersSection from "../../components/admin/UsersSection";
 import SettingsSection from "../../components/admin/SettingsSection";
 
@@ -25,15 +25,15 @@ export default function AdminPage() {
 	return (
 		<div className="text-white">
 			{/* Tab bar */}
-			<div className="flex items-center gap-0 border-b border-zinc-800 mb-5">
+			<div className="flex items-center gap-0 border-b border-border-subtle mb-5">
 				{TABS.map((tab) => (
 					<button
 						key={tab.id}
 						onClick={() => handleTabChange(tab.id)}
 						className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer ${
 							activeTab === tab.id
-								? "border-blue-500 text-white"
-								: "border-transparent text-zinc-400 hover:text-zinc-200"
+								? "border-primary text-white"
+								: "border-transparent text-text-tertiary hover:text-text-primary"
 						}`}
 					>
 						{tab.label}

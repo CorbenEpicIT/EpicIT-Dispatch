@@ -1,4 +1,4 @@
-import { useAllJobVisitsQuery, useAcceptJobVisitMutation } from "../../hooks/useJobs";
+﻿import { useAllJobVisitsQuery, useAcceptJobVisitMutation } from "../../hooks/useJobs";
 import type { VisitStatus } from "../../types/jobs";
 import { useAuthStore } from "../../auth/authStore";
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -53,14 +53,14 @@ function SlaBadge({ status }: { status: SlaStatus }) {
 	if (!status) return null;
 	if (status === "overdue") {
 		return (
-			<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+			<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-error-text border border-error/20">
 				<Clock size={10} />
 				OVERDUE
 			</span>
 		);
 	}
 	return (
-		<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
+		<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-warning-text border border-warning/20">
 			<Clock size={10} />
 			SOON
 		</span>
@@ -350,7 +350,7 @@ export default function TechnicianVisitsPage() {
 						placeholder="Search visits..."
 						value={searchInput}
 						onChange={(e) => setSearchInput(e.target.value)}
-						className="w-full pl-11 pr-3 py-2.5 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+						className="w-full pl-11 pr-3 py-2.5 rounded-md bg-surface border border-border text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
 					/>
 				</form>
 			</div>
@@ -359,7 +359,7 @@ export default function TechnicianVisitsPage() {
 			<div className="mb-3 w-full">
 				<div
 					ref={trackRef}
-					className="relative bg-zinc-800 rounded-xl p-1 flex w-full touch-none select-none"
+					className="relative bg-surface rounded-xl p-1 flex w-full touch-none select-none"
 					onMouseDown={(e) => {
 						onDragStart(e.clientX);
 						const onMove = (ev: MouseEvent) => onDragMove(ev.clientX);
@@ -381,7 +381,7 @@ export default function TechnicianVisitsPage() {
 					{/* Sliding pill */}
 					<div
 						ref={pillRef}
-						className="absolute top-1 bottom-1 left-1 rounded-lg bg-blue-600 shadow-sm pointer-events-none"
+						className="absolute top-1 bottom-1 left-1 rounded-lg bg-primary-hover shadow-sm pointer-events-none"
 						style={{ width: "calc(33.333% - 2.67px)" }}
 					/>
 					{/* Mine */}
@@ -389,7 +389,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { setTab("mine"); setPillSnap(0); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "mine" ? "text-white font-semibold" : "text-zinc-400"
+							tab === "mine" ? "text-white font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Mine
@@ -399,7 +399,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { setTab("available"); setPillSnap(1); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "available" ? "text-white font-semibold" : "text-zinc-400"
+							tab === "available" ? "text-white font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Available
@@ -409,7 +409,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { handlePastTab(); setPillSnap(2); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "past" ? "text-white font-semibold" : "text-zinc-400"
+							tab === "past" ? "text-white font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Past
@@ -420,16 +420,16 @@ export default function TechnicianVisitsPage() {
 			{/* Sort toggle — show on "mine" when geo is supported */}
 			{tab === "mine" && geoSupported && (
 				<div className="flex items-center gap-2 mb-3">
-					<span className="text-[11px] text-zinc-500 uppercase tracking-wide font-medium">
+					<span className="text-[11px] text-text-muted uppercase tracking-wide font-medium">
 						Sort:
 					</span>
-					<div className="flex rounded-lg overflow-hidden border border-zinc-700">
+					<div className="flex rounded-lg overflow-hidden border border-border">
 						<button
 							onClick={() => setSortMode("time")}
 							className={`px-3 py-1.5 text-xs font-medium transition-colors ${
 								sortMode === "time"
-									? "bg-zinc-700 text-white"
-									: "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+									? "bg-surface-raised text-white"
+									: "bg-surface text-text-tertiary hover:bg-surface-raised"
 							}`}
 						>
 							By Time
@@ -438,8 +438,8 @@ export default function TechnicianVisitsPage() {
 							onClick={() => setSortMode("distance")}
 							className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors ${
 								sortMode === "distance"
-									? "bg-zinc-700 text-white"
-									: "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+									? "bg-surface-raised text-white"
+									: "bg-surface text-text-tertiary hover:bg-surface-raised"
 							}`}
 						>
 							<Navigation size={11} />
@@ -451,7 +451,7 @@ export default function TechnicianVisitsPage() {
 
 			{/* Proximity awareness banner */}
 			{tab === "mine" && nearbyCount > 0 && (
-				<div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20 text-emerald-400">
+				<div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20 text-success-text">
 					<Navigation size={13} className="shrink-0" />
 					<span className="text-xs font-medium">
 						{nearbyCount} visit{nearbyCount > 1 ? "s" : ""}{" "}
@@ -461,24 +461,24 @@ export default function TechnicianVisitsPage() {
 			)}
 
 			{acceptError && (
-				<div className="mb-3 px-4 py-3 bg-red-900/40 border border-red-500/40 rounded-lg text-red-300 text-sm">
+				<div className="mb-3 px-4 py-3 bg-red-900/40 border border-red-500/40 rounded-lg text-error-text text-sm">
 					{acceptError}
 				</div>
 			)}
 
 			{/* Card list */}
 			{isLoading && (
-				<p className="text-zinc-400 text-sm text-center py-8">
+				<p className="text-text-tertiary text-sm text-center py-8">
 					Loading visits...
 				</p>
 			)}
 			{error && (
-				<p className="text-red-400 text-sm text-center py-8">
+				<p className="text-error-text text-sm text-center py-8">
 					Failed to load visits.
 				</p>
 			)}
 			{!isLoading && !error && cardData.length === 0 && (
-				<p className="text-zinc-500 text-sm text-center py-8">
+				<p className="text-text-muted text-sm text-center py-8">
 					No visits found.
 				</p>
 			)}
@@ -490,13 +490,13 @@ export default function TechnicianVisitsPage() {
 						return (
 							<div
 								key={row.id}
-								className={`bg-zinc-900 border rounded-xl p-4 shadow-sm ${
+								className={`bg-base border rounded-xl p-4 shadow-sm ${
 									row.slaStatus === "overdue"
-										? "border-red-500/30"
+										? "border-error/30"
 										: row.slaStatus ===
 											  "soon"
-											? "border-amber-500/30"
-											: "border-zinc-700"
+											? "border-warning/30"
+											: "border-border"
 								}`}
 							>
 								<div className="mb-0.5 overflow-hidden">
@@ -513,14 +513,14 @@ export default function TechnicianVisitsPage() {
 										{row.visitName}
 									</h3>
 								</div>
-								<p className="text-sm text-zinc-400 mb-3">
+								<p className="text-sm text-text-tertiary mb-3">
 									{row.client}
 								</p>
 								<div className="space-y-1.5 mb-4">
-									<div className="flex items-start gap-2 text-sm text-zinc-300">
+									<div className="flex items-start gap-2 text-sm text-text-secondary">
 										<MapPin
 											size={15}
-											className="text-zinc-500 mt-0.5 shrink-0"
+											className="text-text-muted mt-0.5 shrink-0"
 										/>
 										<span className="flex-1">
 											{
@@ -529,7 +529,7 @@ export default function TechnicianVisitsPage() {
 										</span>
 										{row.distanceMiles !==
 											null && (
-											<span className="text-xs text-zinc-500 shrink-0 tabular-nums">
+											<span className="text-xs text-text-muted shrink-0 tabular-nums">
 												{row.distanceMiles <
 												0.1
 													? "< 0.1 mi"
@@ -537,10 +537,10 @@ export default function TechnicianVisitsPage() {
 											</span>
 										)}
 									</div>
-									<div className="flex items-center gap-2 text-sm text-zinc-300">
+									<div className="flex items-center gap-2 text-sm text-text-secondary">
 										<Calendar
 											size={15}
-											className="text-zinc-500 shrink-0"
+											className="text-text-muted shrink-0"
 										/>
 										<span>
 											{
@@ -568,8 +568,8 @@ export default function TechnicianVisitsPage() {
 										className={`flex-[3] py-3 min-h-[44px] rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 ${
 											acceptConfirm ===
 											row.id
-												? "bg-green-500 text-white animate-pulse"
-												: "bg-green-600 hover:bg-green-700 text-white"
+												? "bg-confirm-hover text-white animate-pulse"
+												: "bg-confirm hover:bg-confirm text-white"
 										}`}
 									>
 										{acceptMutation.isPending
@@ -585,7 +585,7 @@ export default function TechnicianVisitsPage() {
 												`/technician/visits/${row.id}`
 											)
 										}
-										className="flex-[1] flex flex-col items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[52px]"
+										className="flex-[1] flex flex-col items-center justify-center gap-1 rounded-lg border border-border bg-surface/50 text-text-tertiary hover:bg-surface hover:text-text-primary hover:border-border-strong transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[52px]"
 										aria-label="View visit details"
 									>
 										<ChevronRight
@@ -623,7 +623,7 @@ export default function TechnicianVisitsPage() {
 			{tab === "past" && display.length > 5 && (
 				<button
 					onClick={() => setShowAllPast((prev) => !prev)}
-					className="mt-3 w-full py-3 min-h-[44px] text-sm text-blue-400 hover:text-blue-300 transition-colors"
+					className="mt-3 w-full py-3 min-h-[44px] text-sm text-primary-text hover:text-primary-text transition-colors"
 				>
 					{showAllPast
 						? "Show less"

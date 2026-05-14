@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+﻿import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import MonthMiniCard from "./MonthMiniCard";
 import ReschedulePopup from "./ReschedulePopup";
@@ -523,7 +523,7 @@ export default function MonthGrid({
 				visitStartLabel(v) + (openEnded ? "" : `–${visitEndLabel(v)}`);
 			const techs = (v.visit_techs ?? []).map((vt) => ({
 				id: vt.tech_id,
-				color: techColorMap.get(vt.tech_id) ?? "#6b7280",
+				color: techColorMap.get(vt.tech_id) ?? "var(--color-tech-unassigned)",
 			}));
 			return (
 				<MonthMiniCard
@@ -578,7 +578,7 @@ export default function MonthGrid({
 	const dayNumStyle = (isToday: boolean): React.CSSProperties => ({
 		fontSize: 11,
 		fontWeight: isToday ? 700 : 400,
-		color: isToday ? "#3b82f6" : "#71717a",
+		color: isToday ? "var(--color-primary)" : "var(--color-text-muted)",
 		width: 20,
 		height: 20,
 		display: "flex",
@@ -591,7 +591,7 @@ export default function MonthGrid({
 	const otherMonthDayNumStyle: React.CSSProperties = {
 		fontSize: 11,
 		fontWeight: 400,
-		color: "#3f3f46",
+		color: "var(--color-border)",
 		width: 20,
 		height: 20,
 		display: "flex",
@@ -608,7 +608,7 @@ export default function MonthGrid({
 				style={{
 					display: "grid",
 					gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-					borderBottom: "1px solid #27272a",
+					borderBottom: "1px solid var(--color-border-subtle)",
 					flexShrink: 0,
 				}}
 			>
@@ -620,10 +620,10 @@ export default function MonthGrid({
 							padding: "6px 0",
 							fontSize: 11,
 							fontWeight: 600,
-							color: "#71717a",
+							color: "var(--color-text-muted)",
 							textTransform: "uppercase",
 							letterSpacing: "0.05em",
-							borderRight: i < 6 ? "1px solid #27272a" : "none",
+							borderRight: i < 6 ? "1px solid var(--color-border-subtle)" : "none",
 						}}
 					>
 						{wd}
@@ -673,8 +673,8 @@ export default function MonthGrid({
 						<div
 							key={dateStr}
 							style={{
-								borderRight: di < 6 ? "1px solid #27272a" : "none",
-								borderBottom: "1px solid #27272a",
+								borderRight: di < 6 ? "1px solid var(--color-border-subtle)" : "none",
+								borderBottom: "1px solid var(--color-border-subtle)",
 								padding: 4,
 								boxSizing: "border-box",
 								position: "relative",
@@ -712,7 +712,7 @@ export default function MonthGrid({
 									style={{
 										marginTop: 2,
 										fontSize: 9,
-										color: "#71717a",
+										color: "var(--color-text-muted)",
 										background: "none",
 										border: "none",
 										cursor: "pointer",
@@ -740,8 +740,8 @@ export default function MonthGrid({
 											: { top: 0 }),
 										height: Math.round(cellHeight * 2),
 										zIndex: 200,
-										backgroundColor: "#1a1a1e",
-										border: "1px solid #3f3f46",
+										backgroundColor: "var(--color-canvas)",
+										border: "1px solid var(--color-border)",
 										borderRadius: 6,
 										padding: 4,
 										boxShadow: "0 8px 24px rgba(0,0,0,0.65)",
@@ -784,7 +784,7 @@ export default function MonthGrid({
 					{monthScrollZone === "left" && monthScrollProgress > 0 && (
 						<div style={{ position: "absolute", top: 0, bottom: 0,
 							left: `calc(${monthScrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
+							background: "var(--color-primary)", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
 					)}
 					{monthScrollZone === "left" && (
 						<div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 1, background: "rgba(59,130,246,0.55)" }} />
@@ -808,7 +808,7 @@ export default function MonthGrid({
 					{monthScrollZone === "right" && monthScrollProgress > 0 && (
 						<div style={{ position: "absolute", top: 0, bottom: 0,
 							right: `calc(${monthScrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
+							background: "var(--color-primary)", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
 					)}
 					{monthScrollZone === "right" && (
 						<div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 1, background: "rgba(59,130,246,0.55)" }} />

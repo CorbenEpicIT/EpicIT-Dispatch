@@ -1,4 +1,4 @@
-import { Phone, Mail, Briefcase, Clock, MoreHorizontal } from "lucide-react";
+﻿import { Phone, Mail, Briefcase, Clock, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Technician } from "../../types/technicians";
 import { TechnicianStatusColors, TechnicianStatusDotColors, TechnicianStatusLabels } from "../../types/technicians";
@@ -79,7 +79,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
       return (
           <div
               onClick={onClick}
-              className="w-full bg-zinc-900 rounded-lg border border-zinc-700 shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
+              className="w-full bg-base rounded-lg border border-border shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
           >
               {/* Avatar */}
               <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
@@ -99,19 +99,19 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
               </div>
 
               {/* Email */}
-              <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 text-sm text-zinc-300">
-                  <Mail size={16} className="text-zinc-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 text-sm text-text-secondary">
+                  <Mail size={16} className="text-text-tertiary flex-shrink-0" />
                   <span className="truncate">{technician.email}</span>
               </div>
 
               {/* Title */}
-              <div className="flex-1 min-w-0 hidden md:flex items-center gap-2 text-sm text-zinc-300">
-                  <Briefcase size={16} className="text-zinc-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0 hidden md:flex items-center gap-2 text-sm text-text-secondary">
+                  <Briefcase size={16} className="text-text-tertiary flex-shrink-0" />
                   <span className="truncate">{technician.title}</span>
               </div>
 
               {/* Last Login */}
-              <div className="flex-1 min-w-0 hidden lg:flex items-center gap-2 text-sm text-zinc-300">
+              <div className="flex-1 min-w-0 hidden lg:flex items-center gap-2 text-sm text-text-secondary">
                   <Clock size={13} className="opacity-70 flex-shrink-0" />
                   <span className="truncate">Last login: {lastLoginText}</span>
               </div>
@@ -123,21 +123,21 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
                           e.stopPropagation();
                           setDropdownOpen((prev) => !prev);
                       }}
-                      className="flex items-center gap-2 p-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
+                      className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
                   >
                       <MoreHorizontal size={18} />
                       <span className="text-sm font-medium">Options</span>
                   </button>
 
                   {dropdownOpen && (
-                      <div className="absolute right-0 mt-1 w-44 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg z-50 overflow-hidden">
+                      <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
                           <button
                               onClick={(e) => {
                                   e.stopPropagation();
                                   setDropdownOpen(false);
                                   onClick?.();
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
                           >
                               View Details
                           </button>
@@ -146,7 +146,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
                                   e.stopPropagation();
                                   setDropdownOpen(false);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
                           >
                               Reset Password
                           </button>
@@ -156,7 +156,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
                                   setDropdownOpen(false);
                                   onEdit?.(technician);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
                           >
                               Update User
                           </button>
@@ -170,8 +170,8 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
   return (
     <div
       className="
-        bg-zinc-900 border border-zinc-700 rounded-lg p-5
-        hover:border-zinc-500 hover:shadow-lg transition-all
+        bg-base border border-border rounded-lg p-5
+        hover:border-border-strong hover:shadow-lg transition-all
         w-full max-w-[360px] flex flex-col gap-4
       "
     >
@@ -197,22 +197,22 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
       </div>
 
       <div className="space-y-2.5">
-        <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Phone size={16} className="text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <Phone size={16} className="text-text-tertiary flex-shrink-0" />
           <span className="truncate">{technician.phone}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Mail size={16} className="text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <Mail size={16} className="text-text-tertiary flex-shrink-0" />
           <span className="truncate">{technician.email}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Briefcase size={16} className="text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <Briefcase size={16} className="text-text-tertiary flex-shrink-0" />
           <span className="truncate">{technician.title}</span>
         </div>
         
-        <div className="flex items-start gap-2 text-sm text-zinc-400 min-h-[1.2rem]">
+        <div className="flex items-start gap-2 text-sm text-text-tertiary min-h-[1.2rem]">
           <div className="w-4 flex-shrink-0" /> 
           <p className="line-clamp-2 text-xs leading-relaxed">
             {technician.description}
@@ -220,7 +220,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-zinc-400 pt-2 border-t border-zinc-800 mt-auto">
+      <div className="flex items-center gap-2 text-xs text-text-tertiary pt-2 border-t border-border-subtle mt-auto">
         <Clock size={13} className="opacity-70" />
         <span>Last login: {lastLoginText}</span>
       </div>
@@ -231,13 +231,13 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
             e.stopPropagation();
             onClick?.();
           }}
-          className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium rounded-md transition-colors"
+          className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-white text-sm font-medium rounded-md transition-colors"
         >
           View Details
         </button>
         <button
           onClick={handleAssignClick}
-          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+          className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
         >
           Assign Visits
         </button>
@@ -248,19 +248,19 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
               e.stopPropagation();
               setDropdownOpen((prev) => !prev);
             }}
-            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
+            className="px-3 py-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
           >
             <MoreHorizontal size={18} />
           </button>
 
           {dropdownOpen && (
-            <div className="absolute right-0 bottom-full mb-1 w-44 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg z-50 overflow-hidden">
+            <div className="absolute right-0 bottom-full mb-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setDropdownOpen(false);
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
+                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
               >
                 Reset Password
               </button>
@@ -270,7 +270,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
                   setDropdownOpen(false);
                   onEdit?.(technician);
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
+                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
               >
                 Update User
               </button>

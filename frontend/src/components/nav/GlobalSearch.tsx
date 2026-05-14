@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+﻿import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Search,
@@ -55,13 +55,13 @@ const ENTITY_ICONS: Record<EntityType, React.ReactNode> = {
 };
 
 const ENTITY_BADGE_COLORS: Record<EntityType, string> = {
-	Client: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-	Request: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
-	Quote: "bg-purple-500/10 text-purple-400 border-purple-500/30",
-	Job: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-	Visit: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+	Client: "bg-primary/10 text-primary-text border-primary/30",
+	Request: "bg-yellow-500/10 text-warning-text border-yellow-500/30",
+	Quote: "bg-purple-500/10 text-reviewing-text border-reviewing/30",
+	Job: "bg-emerald-500/10 text-success-text border-emerald-500/30",
+	Visit: "bg-cyan-500/10 text-info-text border-cyan-500/30",
 	"Recurring Plan": "bg-orange-500/10 text-orange-400 border-orange-500/30",
-	Technician: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
+	Technician: "bg-zinc-500/10 text-text-tertiary border-border-strong/30",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -281,7 +281,7 @@ export default function GlobalSearch() {
 			{/* Input */}
 			<Search
 				size={16}
-				className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
+				className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none"
 			/>
 			<input
 				ref={inputRef}
@@ -290,22 +290,22 @@ export default function GlobalSearch() {
 				onChange={handleInputChange}
 				onFocus={handleFocus}
 				placeholder="Search..."
-				className="w-full pl-9 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary"
 			/>
 			{isLoading && query.trim().length >= 2 && (
 				<Loader2
 					size={14}
-					className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 animate-spin"
+					className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary animate-spin"
 				/>
 			)}
 
 			{/* Dropdown */}
 			{showDropdown && (
-				<div className="absolute top-full mt-1 left-0 w-full bg-zinc-900 border border-zinc-700 rounded-md shadow-xl z-50 flex flex-col overflow-hidden">
+				<div className="absolute top-full mt-1 left-0 w-full bg-base border border-border rounded-md shadow-xl z-50 flex flex-col overflow-hidden">
 					{/* Results list */}
 					<div>
 						{results.length === 0 ? (
-							<div className="px-4 py-6 text-center text-zinc-500 text-sm">
+							<div className="px-4 py-6 text-center text-text-muted text-sm">
 								No results found
 							</div>
 						) : (
@@ -317,10 +317,10 @@ export default function GlobalSearch() {
 											result.route
 										)
 									}
-									className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800 w-full text-left transition-colors border-b border-zinc-800 last:border-b-0"
+									className="flex items-center gap-3 px-3 py-2 hover:bg-surface w-full text-left transition-colors border-b border-border-subtle last:border-b-0"
 								>
 									{/* Icon */}
-									<span className="text-zinc-400 flex-shrink-0">
+									<span className="text-text-tertiary flex-shrink-0">
 										{
 											ENTITY_ICONS[
 												result
@@ -331,13 +331,13 @@ export default function GlobalSearch() {
 
 									{/* Text */}
 									<span className="flex-1 min-w-0">
-										<span className="block text-sm font-medium text-zinc-100 truncate">
+										<span className="block text-sm font-medium text-text-primary truncate">
 											{
 												result.primary
 											}
 										</span>
 										{result.secondary && (
-											<span className="block text-xs text-zinc-400 truncate">
+											<span className="block text-xs text-text-tertiary truncate">
 												{
 													result.secondary
 												}
@@ -357,7 +357,7 @@ export default function GlobalSearch() {
 					</div>
 
 					{/* Footer */}
-					<div className="flex items-center justify-between px-3 py-2 border-t border-zinc-700 bg-zinc-900 text-xs text-zinc-400 flex-shrink-0">
+					<div className="flex items-center justify-between px-3 py-2 border-t border-border bg-base text-xs text-text-tertiary flex-shrink-0">
 						<span>
 							{results.length >= MAX_RESULTS
 								? `${MAX_RESULTS}+ results`
@@ -374,7 +374,7 @@ export default function GlobalSearch() {
 									)
 								}
 								disabled={page === 0}
-								className="p-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+								className="p-0.5 rounded hover:bg-surface-raised disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 							>
 								<ChevronLeft size={14} />
 							</button>
@@ -389,7 +389,7 @@ export default function GlobalSearch() {
 									)
 								}
 								disabled={page >= totalPages - 1}
-								className="p-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+								className="p-0.5 rounded hover:bg-surface-raised disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 							>
 								<ChevronRight size={14} />
 							</button>

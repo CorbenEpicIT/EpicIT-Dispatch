@@ -1,4 +1,4 @@
-import { Geocoder } from "@mapbox/search-js-react";
+﻿import { Geocoder } from "@mapbox/search-js-react";
 import type { GeocodeResult } from "../../types/location";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
@@ -271,7 +271,7 @@ const AddressForm = ({
 					type="button"
 					title="Undo changes"
 					onClick={onEditUndo}
-					className="absolute right-2 top-1/2 -translate-y-1/2 z-10 text-zinc-400 hover:text-white transition-colors"
+					className="absolute right-2 top-1/2 -translate-y-1/2 z-10 text-text-tertiary hover:text-white transition-colors"
 				>
 					<RotateCcw size={16} />
 				</button>

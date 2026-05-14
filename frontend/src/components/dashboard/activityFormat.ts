@@ -1,4 +1,4 @@
-import {
+﻿import {
 	Briefcase,
 	Calendar,
 	CheckCircle2,
@@ -57,8 +57,8 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: jobName ? `${base} — ${jobName}` : base,
 				subtitle: clientName && jobNum ? `${clientName} · ${jobNum}` : clientName ?? null,
 				icon: Briefcase,
-				color: "text-amber-400",
-				bg: "bg-amber-500/10",
+				color: "text-warning-text",
+				bg: "bg-warning/10",
 			};
 		}
 		case "job_visit.created": {
@@ -73,8 +73,8 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: `${namePart} scheduled${jobPart}${datePart}`,
 				subtitle: clientName && jobNum ? `${clientName} · ${jobNum}` : clientName ?? null,
 				icon: Calendar,
-				color: "text-blue-400",
-				bg: "bg-blue-500/10",
+				color: "text-primary-text",
+				bg: "bg-primary/10",
 			};
 		}
 		case "job_visit.updated": {
@@ -89,21 +89,21 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 						message: `Visit${suffix} rescheduled to ${rescheduledDate}`,
 						subtitle,
 						icon: Calendar,
-						color: "text-blue-400",
-						bg: "bg-blue-500/10",
+						color: "text-primary-text",
+						bg: "bg-primary/10",
 					};
 				return null;
 			}
 			if (newStatus === "Completed")
-				return { message: `Visit${suffix} marked complete`, subtitle, icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" };
+				return { message: `Visit${suffix} marked complete`, subtitle, icon: CheckCircle2, color: "text-success-text", bg: "bg-emerald-500/10" };
 			if (newStatus === "InProgress")
-				return { message: `Visit${suffix} now in progress`, subtitle, icon: Activity, color: "text-amber-400", bg: "bg-amber-500/10" };
+				return { message: `Visit${suffix} now in progress`, subtitle, icon: Activity, color: "text-warning-text", bg: "bg-warning/10" };
 			if (newStatus === "OnSite")
-				return { message: `Technician on site${suffix}`, subtitle, icon: MapPin, color: "text-purple-400", bg: "bg-purple-500/10" };
+				return { message: `Technician on site${suffix}`, subtitle, icon: MapPin, color: "text-reviewing-text", bg: "bg-purple-500/10" };
 			if (newStatus === "Driving")
-				return { message: `Technician en route${suffix}`, subtitle, icon: MapPin, color: "text-cyan-400", bg: "bg-cyan-500/10" };
+				return { message: `Technician en route${suffix}`, subtitle, icon: MapPin, color: "text-info-text", bg: "bg-cyan-500/10" };
 			if (newStatus === "Cancelled")
-				return { message: `Visit${suffix} cancelled`, subtitle, icon: XCircle, color: "text-red-400", bg: "bg-red-500/10" };
+				return { message: `Visit${suffix} cancelled`, subtitle, icon: XCircle, color: "text-error-text", bg: "bg-error/10" };
 			return null;
 		}
 		case "job_visit.technicians_assigned": {
@@ -124,8 +124,8 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: label + " assigned to visit" + (jobNum ? ` on ${jobNum}` : ""),
 				subtitle: clientName && jobNum ? `${clientName} · ${jobNum}` : clientName ?? null,
 				icon: User,
-				color: "text-blue-400",
-				bg: "bg-blue-500/10",
+				color: "text-primary-text",
+				bg: "bg-primary/10",
 			};
 		}
 		case "request.created": {
@@ -149,7 +149,7 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 			if (newStatus === "Reviewing") return { message: "Request under review", subtitle, icon: Phone, color: "text-orange-400", bg: "bg-orange-500/10" };
 			if (newStatus === "Quoted") return { message: "Quote issued for request", subtitle, icon: Phone, color: "text-orange-400", bg: "bg-orange-500/10" };
 			if (newStatus === "ConvertedToJob") return { message: "Request converted to job", subtitle, icon: Phone, color: "text-orange-400", bg: "bg-orange-500/10" };
-			if (newStatus === "Cancelled") return { message: "Request cancelled", subtitle, icon: XCircle, color: "text-red-400", bg: "bg-red-500/10" };
+			if (newStatus === "Cancelled") return { message: "Request cancelled", subtitle, icon: XCircle, color: "text-error-text", bg: "bg-error/10" };
 			return null;
 		}
 		case "quote.created": {
@@ -164,8 +164,8 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: msg,
 				subtitle: clientName && qNum ? `${clientName} · ${qNum}` : clientName ?? null,
 				icon: FileText,
-				color: "text-blue-400",
-				bg: "bg-blue-500/10",
+				color: "text-primary-text",
+				bg: "bg-primary/10",
 			};
 		}
 		case "quote.updated": {
@@ -174,9 +174,9 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 			const clientName = changes?.client_name?.new as string | undefined;
 			const qSuffix = qNum ? ` ${qNum}` : "";
 			const subtitle = clientName && qNum ? `${clientName} · ${qNum}` : clientName ?? null;
-			if (newStatus === "Sent") return { message: `Quote${qSuffix} sent to client`, subtitle, icon: FileText, color: "text-blue-400", bg: "bg-blue-500/10" };
-			if (newStatus === "Approved") return { message: `Quote${qSuffix} approved`, subtitle, icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" };
-			if (newStatus === "Rejected") return { message: `Quote${qSuffix} rejected`, subtitle, icon: XCircle, color: "text-red-400", bg: "bg-red-500/10" };
+			if (newStatus === "Sent") return { message: `Quote${qSuffix} sent to client`, subtitle, icon: FileText, color: "text-primary-text", bg: "bg-primary/10" };
+			if (newStatus === "Approved") return { message: `Quote${qSuffix} approved`, subtitle, icon: CheckCircle2, color: "text-success-text", bg: "bg-emerald-500/10" };
+			if (newStatus === "Rejected") return { message: `Quote${qSuffix} rejected`, subtitle, icon: XCircle, color: "text-error-text", bg: "bg-error/10" };
 			return null;
 		}
 		case "invoice.created": {
@@ -188,8 +188,8 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: invTotal ? `${base} — ${invTotal}` : base,
 				subtitle: clientName && invNum ? `${clientName} · ${invNum}` : clientName ?? null,
 				icon: ReceiptText,
-				color: "text-green-400",
-				bg: "bg-green-500/10",
+				color: "text-success-text",
+				bg: "bg-success/10",
 			};
 		}
 		case "invoice.updated": {
@@ -198,9 +198,9 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 			const clientName = changes?.client_name?.new as string | undefined;
 			const invSuffix = invNum ? ` ${invNum}` : "";
 			const subtitle = clientName && invNum ? `${clientName} · ${invNum}` : clientName ?? null;
-			if (newStatus === "Sent") return { message: `Invoice${invSuffix} sent to client`, subtitle, icon: ReceiptText, color: "text-green-400", bg: "bg-green-500/10" };
-			if (newStatus === "Void") return { message: `Invoice${invSuffix} voided`, subtitle, icon: XCircle, color: "text-red-400", bg: "bg-red-500/10" };
-			if (newStatus === "Paid") return { message: `Invoice${invSuffix} fully paid`, subtitle, icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" };
+			if (newStatus === "Sent") return { message: `Invoice${invSuffix} sent to client`, subtitle, icon: ReceiptText, color: "text-success-text", bg: "bg-success/10" };
+			if (newStatus === "Void") return { message: `Invoice${invSuffix} voided`, subtitle, icon: XCircle, color: "text-error-text", bg: "bg-error/10" };
+			if (newStatus === "Paid") return { message: `Invoice${invSuffix} fully paid`, subtitle, icon: CheckCircle2, color: "text-success-text", bg: "bg-emerald-500/10" };
 			return null;
 		}
 		case "invoice_payment.created": {
@@ -215,7 +215,7 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: msg,
 				subtitle: clientName && invNum ? `${clientName} · ${invNum}` : clientName ?? null,
 				icon: CheckCircle2,
-				color: "text-emerald-400",
+				color: "text-success-text",
 				bg: "bg-emerald-500/10",
 			};
 		}
@@ -238,20 +238,20 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 				message: `Recurring plan created${entityName ? ` — ${entityName}` : ""}`,
 				subtitle: clientName ?? null,
 				icon: Repeat,
-				color: "text-blue-400",
-				bg: "bg-blue-500/10",
+				color: "text-primary-text",
+				bg: "bg-primary/10",
 			};
 		}
 		case "technician.updated": {
 			const name = changes?.name?.new as string | undefined;
 			const title = changes?.title?.new as string | undefined;
 			const techName = name ?? "Technician";
-			if (newStatus === "Available") return { message: `${techName} is now available`, subtitle: title ?? null, icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" };
-			if (newStatus === "Offline") return { message: `${techName} went offline`, subtitle: title ?? null, icon: User, color: "text-zinc-400", bg: "bg-zinc-500/10" };
-			if (newStatus === "Break") return { message: `${techName} on break`, subtitle: title ?? null, icon: User, color: "text-blue-400", bg: "bg-blue-500/10" };
-			if (newStatus === "EnRoute") return { message: `${techName} en route to job`, subtitle: title ?? null, icon: MapPin, color: "text-cyan-400", bg: "bg-cyan-500/10" };
-			if (newStatus === "OnSite") return { message: `${techName} arrived on site`, subtitle: title ?? null, icon: MapPin, color: "text-purple-400", bg: "bg-purple-500/10" };
-			if (newStatus === "Working") return { message: `${techName} started working`, subtitle: title ?? null, icon: Activity, color: "text-amber-400", bg: "bg-amber-500/10" };
+			if (newStatus === "Available") return { message: `${techName} is now available`, subtitle: title ?? null, icon: CheckCircle2, color: "text-success-text", bg: "bg-emerald-500/10" };
+			if (newStatus === "Offline") return { message: `${techName} went offline`, subtitle: title ?? null, icon: User, color: "text-text-tertiary", bg: "bg-zinc-500/10" };
+			if (newStatus === "Break") return { message: `${techName} on break`, subtitle: title ?? null, icon: User, color: "text-primary-text", bg: "bg-primary/10" };
+			if (newStatus === "EnRoute") return { message: `${techName} en route to job`, subtitle: title ?? null, icon: MapPin, color: "text-info-text", bg: "bg-cyan-500/10" };
+			if (newStatus === "OnSite") return { message: `${techName} arrived on site`, subtitle: title ?? null, icon: MapPin, color: "text-reviewing-text", bg: "bg-purple-500/10" };
+			if (newStatus === "Working") return { message: `${techName} started working`, subtitle: title ?? null, icon: Activity, color: "text-warning-text", bg: "bg-warning/10" };
 			return null;
 		}
 		default:

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+﻿import { useState, useMemo, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import MonthMiniCard from "./MonthMiniCard";
@@ -500,20 +500,20 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		<div style={{
 			display: "flex",
 			flexDirection: "column",
-			backgroundColor: "#18181b",
-			border: "1px solid #27272a",
+			backgroundColor: "var(--color-popup-bg)",
+			border: "1px solid var(--color-border-subtle)",
 			borderRadius: 8,
 			overflow: "hidden",
 			userSelect: "none",
 		}}>
 
 			{/* ── Toolbar ──────────────────────────────────────────────────────── */}
-			<div className="flex items-center gap-1.5 px-3 border-b border-zinc-800 shrink-0" style={{ height: 44 }}>
+			<div className="flex items-center gap-1.5 px-3 border-b border-border-subtle shrink-0" style={{ height: 44 }}>
 
 				{/* Today */}
 				<button
 					onClick={() => setWeekStart(getThisMonday())}
-					className="h-7 px-3 rounded text-[11px] font-medium border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors shrink-0"
+					className="h-7 px-3 rounded text-[11px] font-medium border border-border text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors shrink-0"
 				>
 					Today
 				</button>
@@ -522,31 +522,31 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 				<div className="flex items-center shrink-0">
 					<button
 						onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; })}
-						className="h-7 w-7 flex items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
 					>
 						<ChevronLeft size={14} />
 					</button>
-					<span className="text-[13px] font-semibold text-zinc-100 min-w-[176px] text-center tracking-tight">
+					<span className="text-[13px] font-semibold text-text-primary min-w-[176px] text-center tracking-tight">
 						{weekLabel}
 					</span>
 					<button
 						onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; })}
-						className="h-7 w-7 flex items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
 					>
 						<ChevronRight size={14} />
 					</button>
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				{/* Visits toggle */}
 				<button
 					onClick={() => setShowVisits((v) => !v)}
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showVisits
-							? "bg-blue-500/10 border-blue-500/25 text-blue-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							? "bg-primary/10 border-primary/25 text-primary-text"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					{showVisits ? <Eye size={12} /> : <EyeOff size={12} />}
@@ -559,7 +559,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showOccurrences
 							? "bg-violet-500/10 border-violet-500/25 text-violet-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					{showOccurrences ? <Eye size={12} /> : <EyeOff size={12} />}
@@ -567,7 +567,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 				</button>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				<TechFilter
 					technicians={technicians}
@@ -592,7 +592,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						<div
 							key={dateStr}
 							style={{
-								borderRight: i < 6 ? "1px solid #27272a" : "none",
+								borderRight: i < 6 ? "1px solid var(--color-border-subtle)" : "none",
 							}}
 						>
 							{/* Day header */}
@@ -601,18 +601,18 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 								alignItems: "center",
 								justifyContent: "space-between",
 								padding: "5px 7px 4px",
-								borderBottom: "1px solid #27272a",
-								backgroundColor: "#1c1c1f",
+								borderBottom: "1px solid var(--color-border-subtle)",
+								backgroundColor: "var(--color-canvas)",
 							}}>
-								<span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#a1a1aa" }}>
+								<span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)" }}>
 									{label}
 								</span>
 								<div style={{
 									width: 22, height: 22, borderRadius: "50%",
 									display: "flex", alignItems: "center", justifyContent: "center",
 									fontSize: 11, fontWeight: 600,
-									backgroundColor: isToday ? "#3b82f6" : "transparent",
-									color: isToday ? "#fff" : "#71717a",
+									backgroundColor: isToday ? "var(--color-primary)" : "transparent",
+									color: isToday ? "#fff" : "var(--color-text-muted)",
 								}}>
 									{dayNum}
 								</div>
@@ -650,7 +650,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 													const v = di.item;
 													const techs = (v.visit_techs ?? []).map((vt) => ({
 														id: vt.tech_id,
-														color: techColorMap.get(vt.tech_id) ?? "#6b7280",
+														color: techColorMap.get(vt.tech_id) ?? "var(--color-tech-unassigned)",
 													}));
 													return (
 														<MonthMiniCard
@@ -703,7 +703,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 													style={{
 														fontSize: 9,
 														fontWeight: 600,
-														color: "#60a5fa",
+														color: "var(--color-visit-driving-text)",
 														background: "none",
 														border: "none",
 														cursor: "pointer",
@@ -750,7 +750,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						<div style={{
 							position: "absolute", top: 0, bottom: 0,
 							left: `calc(${scrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6",
+							background: "var(--color-primary)",
 							boxShadow: "0 0 6px rgba(59,130,246,0.7)",
 						}} />
 					)}
@@ -794,7 +794,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						<div style={{
 							position: "absolute", top: 0, bottom: 0,
 							right: `calc(${scrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6",
+							background: "var(--color-primary)",
 							boxShadow: "0 0 6px rgba(59,130,246,0.7)",
 						}} />
 					)}

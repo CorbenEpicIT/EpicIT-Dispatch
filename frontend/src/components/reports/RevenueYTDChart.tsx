@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import {
 	AreaChart,
 	Area,
@@ -49,8 +49,8 @@ function CustomTooltip({
 	const hasActual = actual?.value != null;
 
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/80 backdrop-blur-md shadow-lg">
-			<p className="text-xs text-zinc-400 mb-1">{label}</p>
+		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
+			<p className="text-xs text-text-tertiary mb-1">{label}</p>
 			{hasActual && (
 				<p className="text-sm font-semibold text-white">
 					Actuals: {formatCurrency(actual.value!)}

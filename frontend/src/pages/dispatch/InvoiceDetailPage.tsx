@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+﻿import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
 	Edit2,
@@ -312,19 +312,19 @@ export default function InvoiceDetailPage() {
 								{invoice.invoice_number}
 							</h1>
 							{overdue && (
-								<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+								<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error-text border border-error/30">
 									<AlertTriangle size={11} />
 									Overdue
 								</span>
 							)}
 						</div>
 						{invoice.memo && (
-							<p className="text-zinc-300 text-sm break-words min-w-0 line-clamp-2" title={invoice.memo}>
+							<p className="text-text-secondary text-sm break-words min-w-0 line-clamp-2" title={invoice.memo}>
 								{invoice.memo}
 							</p>
 						)}
 					</div>
-					<p className="text-zinc-400 text-sm">
+					<p className="text-text-tertiary text-sm">
 						{invoice.status === "Draft"
 							? `Created ${formatDate(invoice.created_at)}`
 							: `Issued ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
@@ -345,7 +345,7 @@ export default function InvoiceDetailPage() {
 					{(invoice.status === "Draft" || invoice.status === "Issued") && (
 						<button
 							onClick={() => setIsSendModalOpen(true)}
-							className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+							className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
 						>
 							<Send size={14} />
 							Send
@@ -354,7 +354,7 @@ export default function InvoiceDetailPage() {
 					{payable && (
 						<button
 							onClick={openPaymentModal}
-							className="flex items-center gap-2 px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-md text-sm font-medium transition-colors"
+							className="flex items-center gap-2 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors"
 						>
 							<CreditCard size={14} />
 							Record Payment
@@ -367,13 +367,13 @@ export default function InvoiceDetailPage() {
 								setIsOptionsMenuOpen((v) => !v);
 								setDeleteConfirm(false);
 							}}
-							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+							className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 						>
 							<MoreVertical size={20} />
 						</button>
 
 						{isOptionsMenuOpen && (
-							<div className="absolute right-0 mt-2 w-60 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+							<div className="absolute right-0 mt-2 w-60 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
 									{editable && (
 										<button
@@ -385,7 +385,7 @@ export default function InvoiceDetailPage() {
 													false
 												);
 											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
 										>
 											<Edit2
 												size={
@@ -398,7 +398,7 @@ export default function InvoiceDetailPage() {
 									<button
 										onClick={handleDownloadPdf}
 										disabled={isPdfLoading}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										{isPdfLoading ? (
 											<Loader2 size={16} className="animate-spin" />
@@ -413,7 +413,7 @@ export default function InvoiceDetailPage() {
 												handleStatusTransition("Issued");
 												setIsOptionsMenuOpen(false);
 											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2"
+											className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-primary-text hover:text-primary-text transition-colors flex items-center gap-2"
 										>
 											<CheckCircle size={16} />
 											Mark as Issued
@@ -425,7 +425,7 @@ export default function InvoiceDetailPage() {
 												handleStatusTransition("Disputed");
 												setIsOptionsMenuOpen(false);
 											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-2"
+											className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-2"
 										>
 											<AlertTriangle size={16} />
 											Mark as Disputed
@@ -442,7 +442,7 @@ export default function InvoiceDetailPage() {
 													false
 												);
 											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
 										>
 											<CheckCircle
 												size={
@@ -458,7 +458,7 @@ export default function InvoiceDetailPage() {
 										invoice.status !==
 											"Paid" && (
 											<>
-												<div className="my-1 border-t border-zinc-800" />
+												<div className="my-1 border-t border-border-subtle" />
 												<button
 													onClick={() => {
 														handleVoid();
@@ -466,7 +466,7 @@ export default function InvoiceDetailPage() {
 															false
 														);
 													}}
-													className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 text-zinc-400 hover:text-zinc-300 transition-colors flex items-center gap-2"
+													className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-text-tertiary hover:text-text-secondary transition-colors flex items-center gap-2"
 												>
 													<XCircle
 														size={
@@ -480,7 +480,7 @@ export default function InvoiceDetailPage() {
 										)}
 									{deletable && (
 										<>
-											<div className="my-1 border-t border-zinc-800" />
+											<div className="my-1 border-t border-border-subtle" />
 											<button
 												onClick={
 													handleDelete
@@ -496,7 +496,7 @@ export default function InvoiceDetailPage() {
 												className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
 													deleteConfirm
 														? "bg-red-600 hover:bg-red-700 text-white"
-														: "text-red-400 hover:bg-zinc-800 hover:text-red-300"
+														: "text-error-text hover:bg-surface hover:text-error-text"
 												} disabled:opacity-50 disabled:cursor-not-allowed`}
 											>
 												<Trash2
@@ -521,9 +521,9 @@ export default function InvoiceDetailPage() {
 
 			{/* Payment Progress Bar */}
 			{(amountPaid > 0 || invoice.status === "PartiallyPaid") && (
-				<div className="p-4 bg-zinc-900 border border-zinc-800 rounded-lg">
+				<div className="p-4 bg-base border border-border-subtle rounded-lg">
 					<div className="flex items-center justify-between text-sm mb-2">
-						<span className="text-zinc-400">
+						<span className="text-text-tertiary">
 							Payment Progress
 						</span>
 						<span className="text-white font-medium tabular-nums">
@@ -531,7 +531,7 @@ export default function InvoiceDetailPage() {
 							{formatCurrency(total)}
 						</span>
 					</div>
-					<div className="w-full bg-zinc-800 rounded-full h-2">
+					<div className="w-full bg-surface rounded-full h-2">
 						<div
 							className="bg-green-500 h-2 rounded-full transition-all duration-500"
 							style={{
@@ -539,12 +539,12 @@ export default function InvoiceDetailPage() {
 							}}
 						/>
 					</div>
-					<div className="flex items-center justify-between text-xs mt-1.5 text-zinc-500">
+					<div className="flex items-center justify-between text-xs mt-1.5 text-text-muted">
 						<span>
 							{(paymentProgress * 100).toFixed(0)}% paid
 						</span>
 						{balanceDue > 0 && (
-							<span className="text-amber-400">
+							<span className="text-warning-text">
 								{formatCurrency(balanceDue)}{" "}
 								remaining
 							</span>
@@ -560,34 +560,34 @@ export default function InvoiceDetailPage() {
 						{/* Date/terms — inline flex wrap, each field sizes to content */}
 						<div className="flex flex-wrap gap-x-6 gap-y-3 mb-6">
 							<div className="min-w-0">
-								<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+								<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 									Created
 								</p>
 								<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
-									<Calendar size={13} className="text-zinc-500 flex-shrink-0" />
+									<Calendar size={13} className="text-text-muted flex-shrink-0" />
 									{formatDate(invoice.created_at)}
 								</p>
 							</div>
 							{invoice.status !== "Draft" && invoice.issue_date != null && (
 								<div className="min-w-0">
-									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Issue Date
 									</p>
 									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
-										<Calendar size={13} className="text-zinc-500 flex-shrink-0" />
+										<Calendar size={13} className="text-text-muted flex-shrink-0" />
 										{formatDate(invoice.issue_date)}
 									</p>
 								</div>
 							)}
 							{invoice.due_date != null && (
 								<div className="min-w-0">
-									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Due Date
 									</p>
 									<p
 										className={`text-sm flex items-center gap-1.5 whitespace-nowrap ${
 											overdue
-												? "text-red-400"
+												? "text-error-text"
 												: "text-white"
 										}`}
 									>
@@ -596,14 +596,14 @@ export default function InvoiceDetailPage() {
 											className={
 												overdue
 													? "text-red-500 flex-shrink-0"
-													: "text-zinc-500 flex-shrink-0"
+													: "text-text-muted flex-shrink-0"
 											}
 										/>
 										{formatDate(
 											invoice.due_date
 										)}
 										{overdue && (
-											<span className="text-red-400 font-medium ml-1">
+											<span className="text-error-text font-medium ml-1">
 												Overdue
 											</span>
 										)}
@@ -612,7 +612,7 @@ export default function InvoiceDetailPage() {
 							)}
 							{invoice.payment_terms_days != null && (
 								<div className="min-w-0">
-									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Payment Terms
 									</p>
 									<p className="text-white text-sm whitespace-nowrap">
@@ -625,13 +625,13 @@ export default function InvoiceDetailPage() {
 							)}
 							{invoice.sent_at != null && (
 								<div className="min-w-0">
-									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Sent
 									</p>
 									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
 										<Send
 											size={13}
-											className="text-zinc-500 flex-shrink-0"
+											className="text-text-muted flex-shrink-0"
 										/>
 										{formatDateTime(
 											invoice.sent_at
@@ -641,7 +641,7 @@ export default function InvoiceDetailPage() {
 							)}
 							{invoice.paid_at != null && (
 								<div className="min-w-0">
-									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Paid
 									</p>
 									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
@@ -657,10 +657,10 @@ export default function InvoiceDetailPage() {
 							)}
 							{invoice.void_reason != null && (
 								<div className="w-full">
-									<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-1">
+									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Void Reason
 									</p>
-									<p className="text-zinc-300 text-sm italic break-words">
+									<p className="text-text-secondary text-sm italic break-words">
 										{invoice.void_reason}
 									</p>
 								</div>
@@ -668,11 +668,11 @@ export default function InvoiceDetailPage() {
 						</div>
 
 						{invoice.internal_notes != null && (
-							<div className="pt-4 border-t border-zinc-800">
-								<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-2">
+							<div className="pt-4 border-t border-border-subtle">
+								<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-2">
 									Internal Notes
 								</p>
-								<p className="text-zinc-300 text-sm break-words whitespace-pre-wrap">
+								<p className="text-text-secondary text-sm break-words whitespace-pre-wrap">
 									{invoice.internal_notes}
 								</p>
 							</div>
@@ -685,16 +685,16 @@ export default function InvoiceDetailPage() {
 							<div className="text-center py-8">
 								<FileText
 									size={40}
-									className="mx-auto text-zinc-600 mb-3"
+									className="mx-auto text-text-faint mb-3"
 								/>
-								<p className="text-zinc-400 text-sm">
+								<p className="text-text-tertiary text-sm">
 									No line items
 								</p>
 							</div>
 						) : (
 							<div>
 								{/* Header row */}
-								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
+								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
 									<div className="col-span-5 min-w-0">Item / Description</div>
 									<div className="col-span-1 min-w-0 text-center">Type</div>
 									<div className="col-span-2 min-w-0 text-right">Qty</div>
@@ -728,7 +728,7 @@ export default function InvoiceDetailPage() {
 									return (
 										<div
 											key={item.id ?? index}
-											className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors items-start"
+											className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors items-start"
 										>
 											{/* Name + description + source — constrained to column */}
 											<div className="col-span-5 min-w-0 text-sm">
@@ -736,7 +736,7 @@ export default function InvoiceDetailPage() {
 													{item.name}
 												</p>
 												{item.description != null && item.description !== "" && (
-													<p className="text-zinc-400 text-xs mt-0.5 break-words">
+													<p className="text-text-tertiary text-xs mt-0.5 break-words">
 														{item.description}
 													</p>
 												)}
@@ -745,8 +745,8 @@ export default function InvoiceDetailPage() {
 														<span
 															className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border max-w-full truncate ${
 																isVisitSource
-																	? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-																	: "bg-zinc-700/60 text-zinc-400 border-zinc-600/50"
+																	? "bg-primary/10 text-primary-text border-primary/20"
+																	: "bg-surface-raised/60 text-text-tertiary border-border-strong/50"
 															}`}
 														>
 															{isVisitSource ? (
@@ -768,7 +768,7 @@ export default function InvoiceDetailPage() {
 											{/* Type badge */}
 											<div className="col-span-1 min-w-0 flex justify-center pt-0.5">
 												{item.item_type != null && (
-													<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
+													<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
 														{item.item_type}
 													</span>
 												)}
@@ -794,7 +794,7 @@ export default function InvoiceDetailPage() {
 									{invoice.subtotal !=
 										null && (
 										<div className="flex justify-between text-sm">
-											<span className="text-zinc-400">
+											<span className="text-text-tertiary">
 												Subtotal
 											</span>
 											<span className="text-white tabular-nums">
@@ -811,7 +811,7 @@ export default function InvoiceDetailPage() {
 											invoice.tax_rate
 										) > 0 && (
 											<div className="flex justify-between text-sm">
-												<span className="text-zinc-400">
+												<span className="text-text-tertiary">
 													Tax
 													(
 													{(
@@ -840,10 +840,10 @@ export default function InvoiceDetailPage() {
 											invoice.discount_amount
 										) > 0 && (
 											<div className="flex justify-between text-sm">
-												<span className="text-zinc-400">
+												<span className="text-text-tertiary">
 													Discount
 												</span>
-												<span className="text-green-400 tabular-nums">
+												<span className="text-success-text tabular-nums">
 													−{" "}
 													{formatCurrency(
 														Number(
@@ -853,7 +853,7 @@ export default function InvoiceDetailPage() {
 												</span>
 											</div>
 										)}
-									<div className="flex justify-between pt-2 border-t border-zinc-700">
+									<div className="flex justify-between pt-2 border-t border-border">
 										<span className="text-white font-semibold">
 											Total
 										</span>
@@ -866,18 +866,18 @@ export default function InvoiceDetailPage() {
 									{amountPaid > 0 && (
 										<>
 											<div className="flex justify-between text-sm">
-												<span className="text-zinc-400">
+												<span className="text-text-tertiary">
 													Amount
 													Paid
 												</span>
-												<span className="text-green-400 tabular-nums">
+												<span className="text-success-text tabular-nums">
 													−{" "}
 													{formatCurrency(
 														amountPaid
 													)}
 												</span>
 											</div>
-											<div className="flex justify-between pt-2 border-t border-zinc-700">
+											<div className="flex justify-between pt-2 border-t border-border">
 												<span className="text-white font-semibold">
 													Balance
 													Due
@@ -887,9 +887,9 @@ export default function InvoiceDetailPage() {
 														balanceDue >
 														0
 															? overdue
-																? "text-red-400"
-																: "text-amber-400"
-															: "text-green-400"
+																? "text-error-text"
+																: "text-warning-text"
+															: "text-success-text"
 													}`}
 												>
 													{formatCurrency(
@@ -918,7 +918,7 @@ export default function InvoiceDetailPage() {
 							payable ? (
 								<button
 									onClick={openPaymentModal}
-									className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-md text-xs font-medium transition-colors"
+									className="flex items-center gap-1.5 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-xs font-medium transition-colors"
 								>
 									<Plus size={13} />
 									Record
@@ -930,9 +930,9 @@ export default function InvoiceDetailPage() {
 							<div className="text-center py-6">
 								<DollarSign
 									size={32}
-									className="mx-auto text-zinc-600 mb-2"
+									className="mx-auto text-text-faint mb-2"
 								/>
-								<p className="text-zinc-500 text-sm">
+								<p className="text-text-muted text-sm">
 									No payments recorded
 								</p>
 							</div>
@@ -941,7 +941,7 @@ export default function InvoiceDetailPage() {
 								{payments.map((payment) => (
 									<div
 										key={payment.id}
-										className="flex items-start justify-between gap-3 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 group"
+										className="flex items-start justify-between gap-3 p-3 bg-surface/50 rounded-lg border border-border/50 group"
 									>
 										<div className="flex-1 min-w-0">
 											<div className="flex items-center gap-2">
@@ -954,7 +954,7 @@ export default function InvoiceDetailPage() {
 												</span>
 												{payment.method !=
 													null && (
-													<span className="text-xs px-1.5 py-0.5 bg-zinc-700 text-zinc-300 rounded border border-zinc-600">
+													<span className="text-xs px-1.5 py-0.5 bg-surface-raised text-text-secondary rounded border border-border-strong">
 														{PaymentMethodLabels[
 															payment
 																.method
@@ -963,7 +963,7 @@ export default function InvoiceDetailPage() {
 													</span>
 												)}
 											</div>
-											<p className="text-zinc-500 text-xs mt-0.5">
+											<p className="text-text-muted text-xs mt-0.5">
 												{formatDate(
 													payment.paid_at
 												)}
@@ -994,7 +994,7 @@ export default function InvoiceDetailPage() {
 												)}
 											</p>
 											{payment.note != null && payment.note !== "" && (
-												<p className="text-zinc-400 text-xs mt-1 italic break-words">
+												<p className="text-text-tertiary text-xs mt-1 italic break-words">
 													{payment.note}
 												</p>
 											)}
@@ -1005,7 +1005,7 @@ export default function InvoiceDetailPage() {
 													payment.id
 												)
 											}
-											className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition-all"
+											className="opacity-0 group-hover:opacity-100 p-1 text-text-muted hover:text-error-text transition-all"
 											title="Remove payment"
 										>
 											<Trash2
@@ -1028,20 +1028,20 @@ export default function InvoiceDetailPage() {
 									`/dispatch/recurring-plans/${invoice.recurring_plan!.id}`
 								)
 							}
-							className="w-full p-3 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700/60 hover:border-blue-500/40 transition-all text-left group flex items-center gap-2"
+							className="w-full p-3 bg-base hover:bg-surface rounded-lg border border-border/60 hover:border-primary/40 transition-all text-left group flex items-center gap-2"
 						>
 							<div className="flex-1 min-w-0">
-								<p className="text-zinc-500 text-[10px] uppercase tracking-wide font-semibold mb-1.5">
+								<p className="text-text-muted text-[10px] uppercase tracking-wide font-semibold mb-1.5">
 									Recurring Plan
 								</p>
 								<div className="flex items-center gap-2 min-w-0">
-									<Repeat size={13} className="text-blue-400 flex-shrink-0" />
-									<span className="text-white text-sm font-medium group-hover:text-blue-400 transition-colors truncate">
+									<Repeat size={13} className="text-primary-text flex-shrink-0" />
+									<span className="text-white text-sm font-medium group-hover:text-primary-text transition-colors truncate">
 										{invoice.recurring_plan.name}
 									</span>
 								</div>
 							</div>
-							<ChevronRight size={13} className="text-zinc-500 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+							<ChevronRight size={13} className="text-text-muted group-hover:text-primary-text transition-colors flex-shrink-0" />
 						</button>
 					)}
 				</div>
@@ -1064,14 +1064,14 @@ export default function InvoiceDetailPage() {
 												`/dispatch/jobs/${group.jobId}`
 											)
 										}
-										className="inline-flex items-center gap-2 px-3 py-2 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-500/50 hover:border-zinc-400 rounded-lg transition-all text-left group flex-shrink-0"
+										className="inline-flex items-center gap-2 px-3 py-2 bg-surface/60 hover:bg-surface border border-border-strong/50 hover:border-zinc-400 rounded-lg transition-all text-left group flex-shrink-0"
 									>
 										<Briefcase
 											size={13}
-											className="text-zinc-400 flex-shrink-0 group-hover:text-blue-400 transition-colors"
+											className="text-text-tertiary flex-shrink-0 group-hover:text-primary-text transition-colors"
 										/>
 										<div className="flex flex-col justify-center min-h-[38px]">
-											<p className="text-white text-sm font-medium group-hover:text-blue-400 transition-colors leading-tight whitespace-nowrap">
+											<p className="text-white text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
 												{
 													group.jobNumber
 												}{" "}
@@ -1081,21 +1081,21 @@ export default function InvoiceDetailPage() {
 												}
 											</p>
 											{group.billedAmount != null && group.billedAmount > 0 && (
-												<p className="text-zinc-500 text-xs leading-tight mt-0.5 whitespace-nowrap">
+												<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
 													Billed {formatCurrency(group.billedAmount)}
 												</p>
 											)}
 										</div>
 										<ChevronRight
 											size={13}
-											className="text-zinc-500 group-hover:text-blue-400 transition-colors flex-shrink-0"
+											className="text-text-muted group-hover:text-primary-text transition-colors flex-shrink-0"
 										/>
 									</button>
 								) : (
-									<span className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[54px] bg-zinc-800/30 border border-zinc-700/40 rounded-lg text-zinc-400 text-sm flex-shrink-0">
+									<span className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[54px] bg-surface/30 border border-border/40 rounded-lg text-text-tertiary text-sm flex-shrink-0">
 										<Briefcase
 											size={13}
-											className="text-zinc-600 flex-shrink-0"
+											className="text-text-faint flex-shrink-0"
 										/>
 										{group.jobNumber} ·{" "}
 										{group.jobName}
@@ -1111,7 +1111,7 @@ export default function InvoiceDetailPage() {
 												`/dispatch/jobs/${v.jobId}/visits/${v.visitId}`
 											)
 										}
-										className="inline-flex items-center gap-2 px-3 py-2 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/40 rounded-lg transition-all text-left group flex-shrink-0"
+										className="inline-flex items-center gap-2 px-3 py-2 bg-primary/5 hover:bg-primary/10 border border-primary/20 hover:border-primary/40 rounded-lg transition-all text-left group flex-shrink-0"
 									>
 										<svg
 											width="12"
@@ -1120,7 +1120,7 @@ export default function InvoiceDetailPage() {
 											fill="none"
 											stroke="currentColor"
 											strokeWidth="2"
-											className="text-blue-500/60 flex-shrink-0 group-hover:text-blue-400 transition-colors"
+											className="text-primary/60 flex-shrink-0 group-hover:text-primary-text transition-colors"
 										>
 											<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
 											<circle
@@ -1130,21 +1130,21 @@ export default function InvoiceDetailPage() {
 											/>
 										</svg>
 										<div className="flex flex-col justify-center min-h-[38px]">
-											<p className="text-white text-sm font-medium group-hover:text-blue-400 transition-colors leading-tight whitespace-nowrap">
+											<p className="text-white text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
 												Visit{" "}
 												{formatDate(
 													v.scheduledStartAt
 												)}
 											</p>
 											{v.billedAmount > 0 && (
-												<p className="text-zinc-500 text-xs leading-tight mt-0.5 whitespace-nowrap">
+												<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
 													Billed {formatCurrency(v.billedAmount)}
 												</p>
 											)}
 										</div>
 										<ChevronRight
 											size={13}
-											className="text-blue-500/40 group-hover:text-blue-400 transition-colors flex-shrink-0"
+											className="text-primary/40 group-hover:text-primary-text transition-colors flex-shrink-0"
 										/>
 									</button>
 								))}
@@ -1161,19 +1161,19 @@ export default function InvoiceDetailPage() {
 			{/* Record Payment Modal */}
 			{isPaymentModalOpen && (
 				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-					<div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
-						<div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+					<div className="bg-base border border-border-subtle rounded-xl w-full max-w-md shadow-2xl">
+						<div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
 							<div className="flex flex-col">
 								<h3 className="text-white font-semibold text-base">
 									Record Payment
 								</h3>
-								<span className="text-xs text-zinc-500 mt-0.5">
+								<span className="text-xs text-text-muted mt-0.5">
 									Balance due:{" "}
 									<span
 										className={`font-semibold ${
 											overdue
-												? "text-red-400"
-												: "text-amber-400"
+												? "text-error-text"
+												: "text-warning-text"
 										}`}
 									>
 										{formatCurrency(
@@ -1184,7 +1184,7 @@ export default function InvoiceDetailPage() {
 							</div>
 							<button
 								onClick={closePaymentModal}
-								className="text-zinc-500 hover:text-white transition-colors text-sm"
+								className="text-text-muted hover:text-white transition-colors text-sm"
 							>
 								✕
 							</button>
@@ -1193,9 +1193,9 @@ export default function InvoiceDetailPage() {
 						<div className="px-5 py-5 space-y-3">
 							<div>
 								<div className="flex items-center justify-between mb-1">
-									<label className="text-xs text-zinc-400">
+									<label className="text-xs text-text-tertiary">
 										Amount{" "}
-										<span className="text-red-400">
+										<span className="text-error-text">
 											*
 										</span>
 									</label>
@@ -1211,7 +1211,7 @@ export default function InvoiceDetailPage() {
 												})
 											)
 										}
-										className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+										className="text-xs text-primary-text hover:text-primary-text transition-colors"
 									>
 										Full
 									</button>
@@ -1239,12 +1239,12 @@ export default function InvoiceDetailPage() {
 											})
 										)
 									}
-									className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								/>
 							</div>
 
 							<div>
-								<label className="block text-xs text-zinc-400 mb-1">
+								<label className="block text-xs text-text-tertiary mb-1">
 									Payment Method
 								</label>
 								<select
@@ -1276,7 +1276,7 @@ export default function InvoiceDetailPage() {
 											})
 										);
 									}}
-									className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								>
 									<option value="">
 										— Select method —
@@ -1300,7 +1300,7 @@ export default function InvoiceDetailPage() {
 							</div>
 
 							<div>
-								<label className="block text-xs text-zinc-400 mb-1">
+								<label className="block text-xs text-text-tertiary mb-1">
 									Note
 								</label>
 								<input
@@ -1320,7 +1320,7 @@ export default function InvoiceDetailPage() {
 											})
 										)
 									}
-									className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								/>
 							</div>
 						</div>
@@ -1328,7 +1328,7 @@ export default function InvoiceDetailPage() {
 						<div className="flex gap-2 px-5 pb-5 pt-2">
 							<button
 								onClick={closePaymentModal}
-								className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md text-sm transition-colors"
+								className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised border border-border rounded-md text-sm transition-colors"
 							>
 								Cancel
 							</button>
@@ -1338,7 +1338,7 @@ export default function InvoiceDetailPage() {
 									!paymentForm.amount ||
 									isRecordingPayment
 								}
-								className="flex-1 px-4 py-2 bg-green-700 hover:bg-green-600 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								className="flex-1 px-4 py-2 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								{isRecordingPayment
 									? "Recording..."

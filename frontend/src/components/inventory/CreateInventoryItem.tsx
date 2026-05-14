@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Upload, X } from "lucide-react";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -32,8 +32,8 @@ const STEPS = [
 ];
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 export default function CreateInventoryItem({
 	isOpen,
@@ -317,7 +317,7 @@ export default function CreateInventoryItem({
 										e.target.value
 									)
 								}
-								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 						</div>
@@ -394,9 +394,9 @@ export default function CreateInventoryItem({
 							</div>
 						</div>
 
-						<div className="border border-zinc-700 rounded-lg p-3 space-y-3">
+						<div className="border border-border rounded-lg p-3 space-y-3">
 							<div className="flex items-center justify-between">
-								<label className="text-sm font-medium text-zinc-200">
+								<label className="text-sm font-medium text-text-primary">
 									Low Stock Alert
 								</label>
 								<button
@@ -408,8 +408,8 @@ export default function CreateInventoryItem({
 									}
 									className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
 										lowStockEnabled
-											? "bg-blue-600"
-											: "bg-zinc-700"
+											? "bg-primary-hover"
+											: "bg-surface-raised"
 									}`}
 								>
 									<span
@@ -450,7 +450,7 @@ export default function CreateInventoryItem({
 							{lowStockEnabled && (
 								<>
 									<div className="flex items-center justify-between">
-										<label className="text-sm font-medium text-zinc-200">
+										<label className="text-sm font-medium text-text-primary">
 											Email Alerts
 										</label>
 										<button
@@ -462,8 +462,8 @@ export default function CreateInventoryItem({
 											}
 											className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
 												alertEmailsEnabled
-													? "bg-blue-600"
-													: "bg-zinc-700"
+													? "bg-primary-hover"
+													: "bg-surface-raised"
 											}`}
 										>
 											<span
@@ -531,18 +531,18 @@ export default function CreateInventoryItem({
 								onClick={() =>
 									fileInputRef.current?.click()
 								}
-								className="border-2 border-dashed border-zinc-700 rounded-lg p-6 text-center cursor-pointer hover:border-zinc-500 transition-colors"
+								className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-border-strong transition-colors"
 							>
 								<Upload
 									size={24}
-									className="mx-auto mb-2 text-zinc-500"
+									className="mx-auto mb-2 text-text-muted"
 								/>
-								<p className="text-sm text-zinc-400">
+								<p className="text-sm text-text-tertiary">
 									{isUploading
 										? "Uploading..."
 										: "Drop images here or click to browse"}
 								</p>
-								<p className="text-xs text-zinc-500 mt-1">
+								<p className="text-xs text-text-muted mt-1">
 									JPEG, PNG, WebP — max {MAX_FILE_MB}MB each
 								</p>
 								<input
@@ -571,12 +571,12 @@ export default function CreateInventoryItem({
 
 							{uploadErrors.length > 0 && (
 								<div className="mt-2 p-3 bg-red-950/50 border border-red-700/60 rounded-lg">
-									<p className="text-xs font-semibold text-red-400 mb-1.5 uppercase tracking-wide">
+									<p className="text-xs font-semibold text-error-text mb-1.5 uppercase tracking-wide">
 										{uploadErrors.length} file{uploadErrors.length > 1 ? "s" : ""} rejected
 									</p>
 									<ul className="space-y-1">
 										{uploadErrors.map((err, i) => (
-											<li key={i} className="text-xs text-red-300">
+											<li key={i} className="text-xs text-error-text">
 												<span className="font-medium">{err.name}</span>
 												{" — "}
 												{err.reason}
@@ -598,7 +598,7 @@ export default function CreateInventoryItem({
 										<img
 											src={url}
 											alt={`Upload ${i + 1}`}
-											className="w-full h-24 object-cover rounded border border-zinc-700"
+											className="w-full h-24 object-cover rounded border border-border"
 										/>
 										<button
 											type="button"
@@ -621,33 +621,33 @@ export default function CreateInventoryItem({
 						)}
 
 						{/* Summary */}
-						<div className="border border-zinc-700 rounded-lg p-4 space-y-2">
+						<div className="border border-border rounded-lg p-4 space-y-2">
 							<h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-2">
 								Summary
 							</h3>
 							<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-								<span className="text-zinc-400">
+								<span className="text-text-tertiary">
 									Name
 								</span>
 								<span className="text-white">
 									{name || "—"}
 								</span>
 
-								<span className="text-zinc-400">
+								<span className="text-text-tertiary">
 									SKU
 								</span>
 								<span className="text-white">
 									{sku || "—"}
 								</span>
 
-								<span className="text-zinc-400">
+								<span className="text-text-tertiary">
 									Location
 								</span>
 								<span className="text-white">
 									{location || "—"}
 								</span>
 
-								<span className="text-zinc-400">
+								<span className="text-text-tertiary">
 									Quantity
 								</span>
 								<span className="text-white">
@@ -656,7 +656,7 @@ export default function CreateInventoryItem({
 
 								{unitPrice && (
 									<>
-										<span className="text-zinc-400">
+										<span className="text-text-tertiary">
 											Unit Price
 										</span>
 										<span className="text-white">
@@ -672,7 +672,7 @@ export default function CreateInventoryItem({
 
 								{cost && (
 									<>
-										<span className="text-zinc-400">
+										<span className="text-text-tertiary">
 											Cost
 										</span>
 										<span className="text-white">
@@ -688,7 +688,7 @@ export default function CreateInventoryItem({
 
 								{lowStockEnabled && (
 									<>
-										<span className="text-zinc-400">
+										<span className="text-text-tertiary">
 											Low Stock
 											Alert
 										</span>
@@ -699,7 +699,7 @@ export default function CreateInventoryItem({
 									</>
 								)}
 
-								<span className="text-zinc-400">
+								<span className="text-text-tertiary">
 									Images
 								</span>
 								<span className="text-white">

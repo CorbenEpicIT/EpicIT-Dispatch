@@ -1,4 +1,4 @@
-import z from "zod";
+﻿import z from "zod";
 import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint, VisitStatusEvent } from "./jobs";
 import type { Priority } from "./common";
 import type { ClientWithPrimaryContact } from "./clients";
@@ -26,14 +26,14 @@ export const TechnicianStatusLabels: Record<TechnicianStatus, string> = {
 };
 
 export const TechnicianStatusColors: Record<TechnicianStatus, string> = {
-	Available:  "bg-green-500/10 text-green-400 border-green-500/20",
-	Working:    "bg-purple-500/10 text-purple-400 border-purple-500/20",
+	Available:  "bg-success/10 text-success-text border-green-500/20",
+	Working:    "bg-purple-500/10 text-reviewing-text border-purple-500/20",
 	EnRoute:    "bg-sky-500/10 text-sky-400 border-sky-500/20",
-	OnSite:     "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+	OnSite:     "bg-yellow-500/10 text-warning-text border-yellow-500/20",
 	Paused:     "bg-orange-500/10 text-orange-400 border-orange-500/20",
 	WrappingUp: "bg-teal-400/10 text-teal-300 border-teal-400/20",
 	Break:      "bg-amber-400/10 text-amber-300 border-amber-400/20",
-	Offline:    "bg-zinc-600/10 text-zinc-400 border-zinc-600/20",
+	Offline:    "bg-zinc-600/10 text-text-tertiary border-border-strong/20",
 };
 
 export const TechnicianStatusDotColors: Record<TechnicianStatus, string> = {

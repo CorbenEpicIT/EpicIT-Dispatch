@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react";
+﻿import { RotateCcw } from "lucide-react";
 
 interface UndoButtonProps {
 	/** Whether to show the button (typically based on isDirty state) */
@@ -55,7 +55,7 @@ export const UndoButton = ({
 			disabled={disabled}
 			className={`
 				absolute ${position} top-1/2 -translate-y-1/2
-				text-zinc-400 hover:text-white 
+				text-text-tertiary hover:text-white 
 				transition-colors
 				disabled:opacity-50 disabled:cursor-not-allowed
 				z-10
@@ -93,7 +93,7 @@ export const UndoButtonTop = ({
 			disabled={disabled}
 			className={`
 				absolute ${position} top-2
-				text-zinc-400 hover:text-white 
+				text-text-tertiary hover:text-white 
 				transition-colors
 				disabled:opacity-50 disabled:cursor-not-allowed
 				z-10

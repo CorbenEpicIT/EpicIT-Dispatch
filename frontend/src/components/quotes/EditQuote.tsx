@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import {
 	UpdateQuoteSchema,
@@ -329,7 +329,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-xs leading-tight">
+					<p key={idx} className="text-error-text text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -344,7 +344,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					<div className="space-y-2 min-w-0">
 						{/* Title */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Title *
 							</label>
 							<div className="relative">
@@ -359,7 +359,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1 w-full rounded bg-zinc-900 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1 w-full rounded bg-base text-white text-sm focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -376,20 +376,20 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						{/* Client and Priority Row */}
 						<div className="grid grid-cols-2 gap-2 min-w-0">
 							<div className="min-w-0">
-								<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Client
 								</label>
-								<div className="border border-zinc-700 px-2.5 pt-1.5 pb-1 w-full rounded bg-zinc-800/50 text-zinc-400 text-sm">
+								<div className="border border-border px-2.5 pt-1.5 pb-1 w-full rounded bg-surface/50 text-text-tertiary text-sm">
 									{quote.client?.name ||
 										"Unknown Client"}
 								</div>
-								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+								<p className="text-[10px] text-text-muted mt-0.5 leading-tight">
 									Client cannot be changed
 								</p>
 							</div>
 
 							<div className="min-w-0">
-								<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Priority
 								</label>
 								<div className="relative">
@@ -435,7 +435,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 						{/* Description */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Description *
 							</label>
 							<div className="relative">
@@ -451,7 +451,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1 w-full h-14 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1 w-full h-14 rounded bg-base text-white text-sm resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -474,7 +474,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							className="relative min-w-0"
 							style={{ zIndex: 50 }}
 						>
-							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Address *
 							</label>
 							<div className="relative">
@@ -545,7 +545,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 						<div className="grid grid-cols-2 gap-2">
 							<div className="min-w-0">
-								<p className="mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<p className="mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Valid Until (Optional)
 								</p>
 								<DatePicker
@@ -565,7 +565,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							</div>
 
 							<div className="min-w-0">
-								<p className="mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<p className="mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Expires At (Optional)
 								</p>
 								<DatePicker

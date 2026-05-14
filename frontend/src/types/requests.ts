@@ -1,4 +1,4 @@
-import z from "zod";
+﻿import z from "zod";
 import type { Coordinates } from "./location";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Priority, BaseNote, QuoteReference, JobReference } from "./common";
@@ -31,12 +31,12 @@ export const RequestStatusLabels: Record<RequestStatus, string> = {
 };
 
 export const RequestStatusColors: Record<RequestStatus, string> = {
-	New: "bg-blue-600/20 text-blue-400 border-blue-700",
-	Reviewing: "bg-yellow-600/20 text-yellow-400 border-yellow-700",
-	Quoted: "bg-purple-600/20 text-purple-400 border-purple-700",
-	QuoteApproved: "bg-green-600/20 text-green-400 border-green-700",
-	QuoteRejected: "bg-red-600/20 text-red-400 border-red-700",
-	ConvertedToJob: "bg-emerald-600/20 text-emerald-400 border-emerald-700",
+	New: "bg-primary-hover/20 text-primary-text border-blue-700",
+	Reviewing: "bg-yellow-600/20 text-warning-text border-yellow-700",
+	Quoted: "bg-purple-600/20 text-reviewing-text border-purple-700",
+	QuoteApproved: "bg-green-600/20 text-success-text border-green-700",
+	QuoteRejected: "bg-red-600/20 text-error-text border-red-700",
+	ConvertedToJob: "bg-emerald-600/20 text-success-text border-emerald-700",
 	Cancelled: "bg-gray-600/20 text-gray-400 border-gray-700",
 };
 

@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { camelCaseToRegular, formatter } from "../util/util";
 import LoadSvg from "../assets/icons/loading.svg?react";
@@ -65,7 +65,7 @@ const AdaptableTable = ({
 		getCoreRowModel: getCoreRowModel(),
 	});
 
-	if (!borderColor) borderColor = " border-zinc-800 ";
+	if (!borderColor) borderColor = " border-border-subtle ";
 
 	if (errListener) {
 		return (
@@ -80,7 +80,7 @@ const AdaptableTable = ({
 					</h1>
 
 					{/* this should be taken out in prod, just for debug purposes */}
-					<h2 className="m-auto text-center text-zinc-500">
+					<h2 className="m-auto text-center text-text-muted">
 						{errListener.message}
 					</h2>
 				</div>
@@ -129,7 +129,7 @@ const AdaptableTable = ({
 											key={
 												header.id
 											}
-											className={`sticky top-0 border-b font-bold text-zinc-400 ${borderColor} ${PADDING}`}
+											className={`sticky top-0 border-b font-bold text-text-tertiary ${borderColor} ${PADDING}`}
 										>
 											{flexRender(
 												typeof header
@@ -159,7 +159,7 @@ const AdaptableTable = ({
 						{table.getRowModel().rows.map((row) => (
 							<tr
 								key={row.id}
-								className={`text-left ${borderColor} ${onRowClick ? 'cursor-pointer hover:bg-zinc-800 transition-colors' : ''}`}
+								className={`text-left ${borderColor} ${onRowClick ? 'cursor-pointer hover:bg-surface transition-colors' : ''}`}
 								onClick={() => onRowClick?.(row.original)}
 							>
 								{row
@@ -169,7 +169,7 @@ const AdaptableTable = ({
 											key={
 												cell.id
 											}
-											className={`border-t border-zinc-800 font-normal ${PADDING}`}
+											className={`border-t border-border-subtle font-normal ${PADDING}`}
 										>
 											{(() => {
 												// If this is the actions column, render the action cell

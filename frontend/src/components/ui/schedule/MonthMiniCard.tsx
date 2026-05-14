@@ -96,10 +96,10 @@ export default function MonthMiniCard({
 				opacity: isDragging ? 0.4 : isGhost ? 0.5 : 1,
 				userSelect: "none",
 				flexShrink: 0,
-				outline: isGhost ? "1px dashed #3b82f6" : "none",
+				outline: isGhost ? "1px dashed var(--color-primary)" : "none",
 				outlineOffset: isGhost ? "1px" : "0",
 				boxShadow: isGhost
-					? "inset 0 0 0 999px rgba(59,130,246,0.06)"
+					? "inset 0 0 0 999px var(--color-primary-bg-dim)"
 					: undefined,
 			}}
 		>

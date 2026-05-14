@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+﻿import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Clock,
@@ -131,7 +131,7 @@ export default function DashboardPage() {
 		const colors: Record<string, string> = {
 			Available: "bg-emerald-500",
 			Busy: "bg-amber-500",
-			Break: "bg-blue-500",
+			Break: "bg-primary",
 			Offline: "bg-zinc-500",
 		};
 		return colors[status] || "bg-zinc-500";
@@ -140,13 +140,13 @@ export default function DashboardPage() {
 	const getStatusBadgeClass = (status: string) => {
 		switch (status) {
 			case "Available":
-				return "bg-emerald-500/10 text-emerald-400";
+				return "bg-emerald-500/10 text-success-text";
 			case "Busy":
-				return "bg-amber-500/10 text-amber-400";
+				return "bg-warning/10 text-warning-text";
 			case "Break":
-				return "bg-blue-500/10 text-blue-400";
+				return "bg-primary/10 text-primary-text";
 			default:
-				return "bg-zinc-500/10 text-zinc-400";
+				return "bg-zinc-500/10 text-text-tertiary";
 		}
 	};
 
@@ -169,21 +169,21 @@ export default function DashboardPage() {
 				label: "New Requests",
 				count: pipelineCounts.newRequests,
 				icon: Phone,
-				bg: "bg-blue-500/10",
-				border: "border-blue-500/20",
-				hoverBorder: "group-hover:border-blue-500/40",
-				text: "text-blue-400",
-				progress: "bg-blue-500",
+				bg: "bg-primary/10",
+				border: "border-primary/20",
+				hoverBorder: "group-hover:border-primary/40",
+				text: "text-primary-text",
+				progress: "bg-primary",
 				path: "/dispatch/requests?status=New",
 			},
 			{
 				label: "Needs Quote",
 				count: pipelineCounts.reviewing,
 				icon: FileText,
-				bg: "bg-amber-500/10",
-				border: "border-amber-500/20",
+				bg: "bg-warning/10",
+				border: "border-warning/20",
 				hoverBorder: "group-hover:border-amber-500/40",
-				text: "text-amber-400",
+				text: "text-warning-text",
 				progress: "bg-amber-500",
 				path: "/dispatch/requests?status=Reviewing",
 			},
@@ -194,7 +194,7 @@ export default function DashboardPage() {
 				bg: "bg-purple-500/10",
 				border: "border-purple-500/20",
 				hoverBorder: "group-hover:border-purple-500/40",
-				text: "text-purple-400",
+				text: "text-reviewing-text",
 				progress: "bg-purple-500",
 				path: "/dispatch/quotes?status=Sent",
 			},
@@ -205,7 +205,7 @@ export default function DashboardPage() {
 				bg: "bg-emerald-500/10",
 				border: "border-emerald-500/20",
 				hoverBorder: "group-hover:border-emerald-500/40",
-				text: "text-emerald-400",
+				text: "text-success-text",
 				progress: "bg-emerald-500",
 				path: "/dispatch/quotes?status=Approved",
 			},
@@ -232,14 +232,14 @@ export default function DashboardPage() {
 
 
 	return (
-		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
+		<div className="min-h-0 bg-canvas text-text-primary w-full">
 			<div className="w-full px-3 sm:px-5 lg:px-6 ">
 				{/* Header */}
 				<div className="mb-5">
 					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
 						Dispatch Dashboard
 					</h1>
-					<p className="text-sm text-zinc-400 mt-1">
+					<p className="text-sm text-text-tertiary mt-1">
 						{new Date().toLocaleDateString("en-US", {
 							weekday: "long",
 							month: "long",
@@ -253,12 +253,12 @@ export default function DashboardPage() {
 				<Card className="mb-5 !p-0">
 					{jobsError ? (
 						<div className="flex items-center justify-center h-full">
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+							<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
 								<AlertCircle
 									size={16}
-									className="text-red-400"
+									className="text-error-text"
 								/>
-								<p className="text-sm text-red-400">
+								<p className="text-sm text-error-text">
 									Failed to load
 									calendar data
 								</p>
@@ -287,7 +287,7 @@ export default function DashboardPage() {
 												item.path
 											)
 										}
-										className="group flex items-center gap-2 p-2 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all active:scale-[0.98]"
+										className="group flex items-center gap-2 p-2 rounded-lg hover:bg-surface/50 cursor-pointer transition-all active:scale-[0.98]"
 									>
 										{/* Icon */}
 										<div
@@ -306,14 +306,14 @@ export default function DashboardPage() {
 										<div className="flex-1 min-w-0">
 											{/* Label row */}
 											<div className="flex items-start justify-between gap-2 mb-1">
-												<span className="text-sm font-medium text-zinc-200 leading-tight">
+												<span className="text-sm font-medium text-text-primary leading-tight">
 													{
 														item.label
 													}
 												</span>
 												{/* Count as badge */}
 												<span
-													className={`text-sm font-bold ${item.text} flex-shrink-0 bg-zinc-800/50 px-2 py-0.5 rounded-md`}
+													className={`text-sm font-bold ${item.text} flex-shrink-0 bg-surface/50 px-2 py-0.5 rounded-md`}
 												>
 													{
 														item.count
@@ -322,7 +322,7 @@ export default function DashboardPage() {
 											</div>
 
 											{/* Progress bar */}
-											<div className="w-full bg-zinc-800 rounded-full h-1.5">
+											<div className="w-full bg-surface rounded-full h-1.5">
 												<div
 													className={`${item.progress} h-1.5 rounded-full transition-all duration-300`}
 													style={{
@@ -335,7 +335,7 @@ export default function DashboardPage() {
 										{/* Chevron */}
 										<ChevronRight
 											size={16}
-											className="text-zinc-600 group-hover:text-zinc-400 flex-shrink-0 hidden sm:block -mr-1"
+											className="text-text-faint group-hover:text-text-tertiary flex-shrink-0 hidden sm:block -mr-1"
 										/>
 									</div>
 								))}
@@ -344,7 +344,7 @@ export default function DashboardPage() {
 
 						<Card title="Recurring Plans">
 							<div className="flex items-center justify-between mb-3">
-								<span className="text-sm text-zinc-400">
+								<span className="text-sm text-text-tertiary">
 									Active Plans
 								</span>
 								<span className="text-lg font-bold text-white">
@@ -358,10 +358,10 @@ export default function DashboardPage() {
 								</span>
 							</div>
 							<div className="flex items-center justify-between mb-3">
-								<span className="text-sm text-zinc-400">
+								<span className="text-sm text-text-tertiary">
 									Paused
 								</span>
-								<span className="text-sm font-bold text-zinc-300">
+								<span className="text-sm font-bold text-text-secondary">
 									{
 										recurringPlans.filter(
 											(p) =>
@@ -371,7 +371,7 @@ export default function DashboardPage() {
 									}
 								</span>
 							</div>
-							<div className="pt-3 border-t border-zinc-800">
+							<div className="pt-3 border-t border-border-subtle">
 								<button
 									onClick={() =>
 										navigate(
@@ -400,7 +400,7 @@ export default function DashboardPage() {
 							title="Technicians"
 							headerAction={
 								<div className="flex items-center gap-2 min-w-0">
-									<span className="text-xs text-zinc-500 whitespace-nowrap hidden xl:inline">
+									<span className="text-xs text-text-muted whitespace-nowrap hidden xl:inline">
 										{
 											technicianStats.online
 										}{" "}
@@ -417,7 +417,7 @@ export default function DashboardPage() {
 												"/dispatch/technicians"
 											)
 										}
-										className="text-xs font-medium text-zinc-400 hover:text-white px-2 py-1 rounded hover:bg-zinc-800 transition-colors flex-shrink-0"
+										className="text-xs font-medium text-text-tertiary hover:text-white px-2 py-1 rounded hover:bg-surface transition-colors flex-shrink-0"
 									>
 										View All
 									</button>
@@ -425,25 +425,25 @@ export default function DashboardPage() {
 							}
 						>
 							{techsError ? (
-								<div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+								<div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg">
 									<AlertCircle
 										size={14}
-										className="text-red-400"
+										className="text-error-text"
 									/>
-									<p className="text-xs text-red-400">
+									<p className="text-xs text-error-text">
 										Failed to load
 										technicians
 									</p>
 								</div>
 							) : activeTechnicians.length === 0 ? (
 								<div className="py-8 text-center">
-									<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
+									<div className="inline-flex items-center justify-center w-12 h-12 bg-surface rounded-full mb-3">
 										<Clock
 											size={20}
-											className="text-zinc-500"
+											className="text-text-muted"
 										/>
 									</div>
-									<p className="text-sm text-zinc-400">
+									<p className="text-sm text-text-tertiary">
 										No technicians
 										online
 									</p>
@@ -462,7 +462,7 @@ export default function DashboardPage() {
 														`/dispatch/technicians/${tech.id}`
 													)
 												}
-												className="group flex items-start gap-3 p-2.5 rounded-lg hover:bg-zinc-800/30 cursor-pointer transition-all"
+												className="group flex items-start gap-3 p-2.5 rounded-lg hover:bg-surface/30 cursor-pointer transition-all"
 											>
 												{/* Avatar */}
 												<div className="relative flex-shrink-0">
@@ -481,7 +481,7 @@ export default function DashboardPage() {
 												<div className="flex-1 min-w-0">
 													{/* Name + status badge */}
 													<div className="flex items-center justify-between mb-0.5 gap-2">
-														<h4 className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
+														<h4 className="text-sm font-medium text-white truncate group-hover:text-primary-text transition-colors">
 															{
 																tech.name
 															}
@@ -503,7 +503,7 @@ export default function DashboardPage() {
 													</div>
 
 													{/* Title */}
-													<p className="text-xs text-zinc-500 truncate mb-1.5">
+													<p className="text-xs text-text-muted truncate mb-1.5">
 														{
 															tech.title
 														}
@@ -516,14 +516,14 @@ export default function DashboardPage() {
 																size={
 																	12
 																}
-																className="text-amber-400 flex-shrink-0"
+																className="text-warning-text flex-shrink-0"
 															/>
-															<span className="text-amber-400 flex-shrink-0">
+															<span className="text-warning-text flex-shrink-0">
 																On
 																Job
 															</span>
 															<span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0" />
-															<span className="text-zinc-400 truncate">
+															<span className="text-text-tertiary truncate">
 																{tech
 																	.currentVisit
 																	.job
@@ -537,12 +537,12 @@ export default function DashboardPage() {
 																size={
 																	12
 																}
-																className="text-blue-400 flex-shrink-0"
+																className="text-primary-text flex-shrink-0"
 															/>
-															<span className="text-blue-400 flex-shrink-0">
+															<span className="text-primary-text flex-shrink-0">
 																Next:
 															</span>
-															<span className="text-zinc-400 truncate inline sm:hidden">
+															<span className="text-text-tertiary truncate inline sm:hidden">
 																{new Date(
 																	tech
 																		.nextVisit
@@ -571,7 +571,7 @@ export default function DashboardPage() {
 																	}
 																)}
 															</span>
-															<span className="text-zinc-400 truncate hidden sm:inline">
+															<span className="text-text-tertiary truncate hidden sm:inline">
 																{new Date(
 																	tech
 																		.nextVisit
@@ -602,7 +602,7 @@ export default function DashboardPage() {
 															</span>
 														</div>
 													) : (
-														<div className="flex items-center gap-1.5 text-xs text-emerald-400">
+														<div className="flex items-center gap-1.5 text-xs text-success-text">
 															<CheckCircle2
 																size={
 																	12
@@ -623,14 +623,14 @@ export default function DashboardPage() {
 							)}
 
 							{activeTechnicians.length > 8 && (
-								<div className="mt-4 pt-4 border-t border-zinc-800 text-center">
+								<div className="mt-4 pt-4 border-t border-border-subtle text-center">
 									<button
 										onClick={() =>
 											navigate(
 												"/dispatch/technicians"
 											)
 										}
-										className="text-xs text-zinc-400 hover:text-white font-medium"
+										className="text-xs text-text-tertiary hover:text-white font-medium"
 									>
 										+
 										{activeTechnicians.length -
@@ -647,7 +647,7 @@ export default function DashboardPage() {
 									{
 										label: "New Request",
 										icon: Phone,
-										color: "text-blue-400",
+										color: "text-primary-text",
 										action: () =>
 											setIsCreateRequestModalOpen(
 												true
@@ -656,7 +656,7 @@ export default function DashboardPage() {
 									{
 										label: "Create Quote",
 										icon: FileText,
-										color: "text-amber-400",
+										color: "text-warning-text",
 										action: () =>
 											setIsCreateQuoteModalOpen(
 												true
@@ -665,7 +665,7 @@ export default function DashboardPage() {
 									{
 										label: "Create Job",
 										icon: Briefcase,
-										color: "text-emerald-400",
+										color: "text-success-text",
 										action: () =>
 											setIsCreateJobModalOpen(
 												true
@@ -674,7 +674,7 @@ export default function DashboardPage() {
 									{
 										label: "Schedule",
 										icon: Calendar,
-										color: "text-purple-400",
+										color: "text-reviewing-text",
 										action: () =>
 											navigate(
 												"/dispatch/schedule"
@@ -686,13 +686,13 @@ export default function DashboardPage() {
 										onClick={
 											action.action
 										}
-										className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-left transition-colors group active:scale-[0.98]"
+										className="p-3 bg-surface hover:bg-surface-raised rounded-lg text-left transition-colors group active:scale-[0.98]"
 									>
 										<action.icon
 											size={16}
 											className={`${action.color} mb-2`}
 										/>
-										<div className="text-xs font-medium text-zinc-200 group-hover:text-white">
+										<div className="text-xs font-medium text-text-primary group-hover:text-white">
 											{
 												action.label
 											}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+﻿import { useState, useMemo, useEffect, useRef } from "react";
 import {
 	Search,
 	Plus,
@@ -56,13 +56,13 @@ function EditPartsTab({
 	if (lineItems.length === 0) {
 		return (
 			<div className="px-4 py-5 text-center">
-				<p className="text-sm text-zinc-600">No parts added yet</p>
+				<p className="text-sm text-text-faint">No parts added yet</p>
 			</div>
 		);
 	}
 
 	return (
-		<div className="divide-y divide-zinc-800/60">
+		<div className="divide-y divide-border-subtle/60">
 			{lineItems.map((item, idx) => {
 				const qty = Number(item.quantity);
 				const unitPrice = Number(item.unit_price);
@@ -75,13 +75,13 @@ function EditPartsTab({
 					<div
 						key={item.id ?? idx}
 						className={`flex items-center justify-between px-4 py-2.5 gap-3 transition-colors ${
-							isHighlighted ? "ring-1 ring-blue-500/40 bg-blue-600/[.06]" : ""
+							isHighlighted ? "ring-1 ring-primary/40 bg-primary-hover/[.06]" : ""
 						}`}
 					>
 						<div className="flex-1 min-w-0">
 							<p className="text-sm text-white line-clamp-2">{item.name}</p>
 							{item.description && (
-								<p className="text-xs text-zinc-600 truncate">
+								<p className="text-xs text-text-faint truncate">
 									{item.description}
 								</p>
 							)}
@@ -97,10 +97,10 @@ function EditPartsTab({
 									disabled={isPending}
 									className={`flex items-center justify-center w-5 h-5 rounded text-xs font-bold border transition-colors disabled:opacity-40 ${
 										isArmed
-											? "border-red-500 bg-red-500/30 text-red-300"
+											? "border-red-500 bg-red-500/30 text-error-text"
 											: isOne
-												? "border-red-500/30 bg-red-500/8 text-red-400 hover:bg-red-500/15"
-												: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+												? "border-error/30 bg-red-500/8 text-error-text hover:bg-red-500/15"
+												: "border-border bg-surface text-text-tertiary hover:bg-surface-raised"
 									}`}
 									aria-label={isOne ? "Remove part" : "Decrease quantity"}
 								>
@@ -117,7 +117,7 @@ function EditPartsTab({
 										onUpdateQty(item, qty + 1);
 									}}
 									disabled={isPending}
-									className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors disabled:opacity-40"
+									className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors disabled:opacity-40"
 									aria-label="Increase quantity"
 								>
 									＋
@@ -126,7 +126,7 @@ function EditPartsTab({
 									× ${unitPrice.toFixed(2)}
 								</span>
 							</div>
-							<span className="text-xs text-zinc-500 tabular-nums">
+							<span className="text-xs text-text-muted tabular-nums">
 								${rowTotal.toFixed(2)}
 							</span>
 						</div>
@@ -211,11 +211,11 @@ function StockPartPicker({
 				<p className="text-sm font-semibold text-white mb-1">
 					{selected.inventory_item.name}
 				</p>
-				<p className="text-xs text-zinc-500 mb-4">
+				<p className="text-xs text-text-muted mb-4">
 					On hand: {Number(selected.qty_on_hand)}{" "}
 					{selected.inventory_item.unit}
 				</p>
-				<label className="text-xs text-zinc-400 mb-1 block">
+				<label className="text-xs text-text-tertiary mb-1 block">
 					Quantity Used
 				</label>
 				<input
@@ -225,20 +225,20 @@ function StockPartPicker({
 					value={qty}
 					onChange={(e) => setQty(e.target.value)}
 					autoFocus
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 mb-3 tabular-nums"
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-border-strong mb-3 tabular-nums"
 				/>
-				{err && <p className="text-xs text-red-400 mb-2">{err}</p>}
+				{err && <p className="text-xs text-error-text mb-2">{err}</p>}
 				<div className="flex gap-2">
 					<button
 						onClick={() => setSelected(null)}
-						className="flex-1 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+						className="flex-1 py-2 text-sm rounded-lg border border-border text-text-tertiary hover:bg-surface"
 					>
 						Back
 					</button>
 					<button
 						onClick={handleConfirm}
 						disabled={addParts.isPending}
-						className="flex-1 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-40"
+						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium disabled:opacity-40"
 					>
 						{addParts.isPending ? "Adding…" : "Add Part"}
 					</button>
@@ -252,7 +252,7 @@ function StockPartPicker({
 			<div className="relative mb-3">
 				<Search
 					size={13}
-					className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600"
+					className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-faint"
 				/>
 				<input
 					type="text"
@@ -260,25 +260,25 @@ function StockPartPicker({
 					value={search}
 					onChange={(e) => onSearchChange(e.target.value)}
 					autoFocus
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong"
 				/>
 			</div>
-			<div className="divide-y divide-zinc-800/40 overflow-y-auto max-h-56">
+			<div className="divide-y divide-border-subtle/40 overflow-y-auto max-h-56">
 				{filtered.length === 0 && (
-					<p className="px-4 py-4 text-center text-sm text-zinc-600">
+					<p className="px-4 py-4 text-center text-sm text-text-faint">
 						No matching parts
 					</p>
 				)}
 				{filtered.map((item) => (
 					<div
 						key={item.id}
-						className="flex items-center justify-between px-4 py-2.5 hover:bg-zinc-800/40 transition-colors"
+						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface/40 transition-colors"
 					>
 						<div className="min-w-0 flex-1">
 							<p className="text-sm text-white">
 								{item.inventory_item.name}
 							</p>
-							<p className="text-[10px] text-zinc-500 mt-0.5">
+							<p className="text-[10px] text-text-muted mt-0.5">
 								{item.inventory_item.category
 									? `${item.inventory_item.category} · `
 									: ""}
@@ -286,7 +286,7 @@ function StockPartPicker({
 									className={
 										Number(item.qty_on_hand) <=
 										Number(item.qty_min)
-											? "text-amber-400"
+											? "text-warning-text"
 											: ""
 									}
 								>
@@ -295,7 +295,7 @@ function StockPartPicker({
 										Number(item.qty_min) && (
 										<AlertTriangle
 											size={10}
-											className="inline text-amber-400 ml-0.5"
+											className="inline text-warning-text ml-0.5"
 											aria-hidden="true"
 										/>
 									)}
@@ -309,14 +309,14 @@ function StockPartPicker({
 									onClick={() =>
 										onSwitchToEdit(existing.id ?? "")
 									}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-emerald-900/30 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-emerald-900/30 text-success-text border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
 								>
 									✓ Added
 								</button>
 							) : (
 								<button
 									onClick={() => setSelected(item)}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-blue-900/50 text-blue-300 hover:bg-blue-800/60 hover:text-blue-200 transition-colors border border-blue-700/30"
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-blue-900/50 text-primary-text hover:bg-blue-800/60 hover:text-blue-200 transition-colors border border-blue-700/30"
 								>
 									+ Add
 								</button>
@@ -394,7 +394,7 @@ function FreeEntryForm({
 	return (
 		<div className="p-4 space-y-3">
 			<div>
-				<label className="text-xs text-zinc-400 mb-1 block">
+				<label className="text-xs text-text-tertiary mb-1 block">
 					Part / Material Name
 				</label>
 				<input
@@ -403,22 +403,22 @@ function FreeEntryForm({
 					onChange={(e) => setName(e.target.value)}
 					autoFocus
 					placeholder="e.g. 1/2 inch copper fitting"
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong"
 				/>
 			</div>
 			<div className="flex gap-2">
 				<div className="flex-1">
-					<label className="text-xs text-zinc-400 mb-1 block">Qty</label>
+					<label className="text-xs text-text-tertiary mb-1 block">Qty</label>
 					<input
 						type="number"
 						min="1"
 						value={qty}
 						onChange={(e) => setQty(e.target.value)}
-						className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 tabular-nums"
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-border-strong tabular-nums"
 					/>
 				</div>
 				<div className="flex-1">
-					<label className="text-xs text-zinc-400 mb-1 block">
+					<label className="text-xs text-text-tertiary mb-1 block">
 						Unit Cost ($)
 					</label>
 					<input
@@ -428,16 +428,16 @@ function FreeEntryForm({
 						value={unitCost}
 						onChange={(e) => setUnitCost(e.target.value)}
 						placeholder="0.00"
-						className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 tabular-nums"
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong tabular-nums"
 					/>
 				</div>
 			</div>
-			{err && <p className="text-xs text-red-400">{err}</p>}
+			{err && <p className="text-xs text-error-text">{err}</p>}
 			<div className="pt-1">
 				<button
 					onClick={handleSubmit}
 					disabled={updateVisit.isPending}
-					className="w-full py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-40"
+					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium disabled:opacity-40"
 				>
 					{updateVisit.isPending ? "Adding…" : "Add Part"}
 				</button>
@@ -536,28 +536,28 @@ export default function PartsUsedSection({
 	return (
 		<div
 			ref={containerRef}
-			className="rounded-xl border border-zinc-800 overflow-hidden"
+			className="rounded-xl border border-border-subtle overflow-hidden"
 		>
 			{/* Header */}
 			<button
 				onClick={() => setExpanded((p) => !p)}
 				aria-expanded={expanded}
 				aria-controls="parts-used-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-b border-zinc-800"
+				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
 			>
-				<span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide">
-					{adding && <span className="text-blue-400">Editing </span>}
+				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+					{adding && <span className="text-primary-text">Editing </span>}
 					Parts Used
 					{lineItems.length > 0 && (
-						<span className="ml-2 text-zinc-500 font-normal normal-case tracking-normal">
+						<span className="ml-2 text-text-muted font-normal normal-case tracking-normal">
 							({lineItems.length})
 						</span>
 					)}
 				</span>
 				{expanded ? (
-					<ChevronUp size={14} className="text-zinc-500" />
+					<ChevronUp size={14} className="text-text-muted" />
 				) : (
-					<ChevronDown size={14} className="text-zinc-500" />
+					<ChevronDown size={14} className="text-text-muted" />
 				)}
 			</button>
 
@@ -565,28 +565,28 @@ export default function PartsUsedSection({
 				<div id="parts-used-panel">
 					{/* Add part trigger */}
 					{!adding ? (
-						<div className="px-4 py-3 border-b border-zinc-800">
+						<div className="px-4 py-3 border-b border-border-subtle">
 							<button
 								onClick={() => {
 									setAdding(true);
 									setStockSearch("");
 								}}
-								className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+								className="flex items-center gap-2 text-sm text-primary-text hover:text-primary-text transition-colors"
 							>
 								<Plus size={14} />
 								Add / Edit Parts
 							</button>
 						</div>
 					) : (
-						<div className="border-b border-zinc-800">
+						<div className="border-b border-border-subtle">
 							{/* Mode toggle — three tabs */}
 							<div className="flex px-4 pt-3 gap-2 mb-0">
 								<button
 									onClick={() => setMode("edit")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
-											? "bg-zinc-700 text-white"
-											: "text-zinc-500 hover:text-zinc-300"
+											? "bg-surface-raised text-white"
+											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
 									<Pencil size={12} />
@@ -596,8 +596,8 @@ export default function PartsUsedSection({
 									onClick={() => setMode("stock")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "stock"
-											? "bg-zinc-700 text-white"
-											: "text-zinc-500 hover:text-zinc-300"
+											? "bg-surface-raised text-white"
+											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
 									<Package size={12} />
@@ -610,8 +610,8 @@ export default function PartsUsedSection({
 									}}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "free"
-											? "bg-zinc-700 text-white"
-											: "text-zinc-500 hover:text-zinc-300"
+											? "bg-surface-raised text-white"
+											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
 									<Wrench size={12} />
@@ -645,11 +645,11 @@ export default function PartsUsedSection({
 								/>
 							) : mode === "stock" && !hasStock ? (
 								<div className="px-4 py-4">
-									<p className="text-sm text-zinc-500">
+									<p className="text-sm text-text-muted">
 										No vehicle stock available.{" "}
 										<button
 											onClick={() => setMode("free")}
-											className="text-blue-400 hover:underline"
+											className="text-primary-text hover:underline"
 										>
 											Use free entry
 										</button>
@@ -667,13 +667,13 @@ export default function PartsUsedSection({
 							)}
 
 							{/* Done strip — persistent close, always visible */}
-							<div className="px-4 py-2.5 bg-zinc-900 border-t border-zinc-800">
+							<div className="px-4 py-2.5 bg-base border-t border-border-subtle">
 								<button
 									onClick={() => {
 										setAdding(false);
 										setStockSearch("");
 									}}
-									className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors"
+									className="w-full py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-white text-sm font-bold transition-colors"
 								>
 									Done
 								</button>
@@ -685,11 +685,11 @@ export default function PartsUsedSection({
 					{!adding && (
 						<>
 							{lineItems.length === 0 ? (
-								<p className="px-4 py-5 text-center text-sm text-zinc-600">
+								<p className="px-4 py-5 text-center text-sm text-text-faint">
 									No parts added yet
 								</p>
 							) : (
-								<div className="divide-y divide-zinc-800/60">
+								<div className="divide-y divide-border-subtle/60">
 									{lineItems.map((item, idx) => {
 										const qty = Number(item.quantity);
 										const unitPrice = Number(item.unit_price);
@@ -705,7 +705,7 @@ export default function PartsUsedSection({
 														{item.name}
 													</p>
 													{item.description && (
-														<p className="text-xs text-zinc-600 truncate">
+														<p className="text-xs text-text-faint truncate">
 															{item.description}
 														</p>
 													)}
@@ -714,7 +714,7 @@ export default function PartsUsedSection({
 													<p className="text-sm text-white tabular-nums">
 														{qty} × ${unitPrice.toFixed(2)}
 													</p>
-													<p className="text-xs text-zinc-500 tabular-nums">
+													<p className="text-xs text-text-muted tabular-nums">
 														${rowTotal.toFixed(2)}
 													</p>
 												</div>
@@ -728,8 +728,8 @@ export default function PartsUsedSection({
 
 					{/* Running total — shown only when not editing */}
 					{!adding && lineItems.length > 0 && (
-						<div className="flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-t border-zinc-800">
-							<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+						<div className="flex items-center justify-between px-4 py-3 bg-base/60 border-t border-border-subtle">
+							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
 								Running Total
 							</span>
 							<span className="text-base font-bold text-white tabular-nums">

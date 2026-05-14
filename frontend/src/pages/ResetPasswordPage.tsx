@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { resetPasswordCall } from "../api/authenticate";
 
@@ -76,7 +76,7 @@ export default function ResetPasswordPage() {
                                 type="password"
                                 value={newPassword}
                                 onChange={(e) => { setNewPassword(e.target.value); setErrorMessage(""); }}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="Min. 8 characters"
                                 required
                             />
@@ -90,7 +90,7 @@ export default function ResetPasswordPage() {
                                 type="password"
                                 value={confirmPassword}
                                 onChange={(e) => { setConfirmPassword(e.target.value); setErrorMessage(""); }}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="Repeat new password"
                                 required
                             />
@@ -102,7 +102,7 @@ export default function ResetPasswordPage() {
 
                         <button
                             type="submit"
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+                            className="w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
                         >
                             Reset Password
                         </button>
@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
 
                 {status === "loading" && (
                     <>
-                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+                        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
                         <h2 className="text-xl font-semibold text-gray-800">Resetting password...</h2>
                         <p className="text-gray-500 mt-2 text-sm">Please wait a moment.</p>
                     </>
@@ -140,7 +140,7 @@ export default function ResetPasswordPage() {
                         <p className="text-gray-500 mt-2 text-sm">This link is invalid or has expired.</p>
                         <button
                             onClick={() => navigate("/login")}
-                            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+                            className="mt-6 w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
                         >
                             Back to Login
                         </button>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 
 interface ImageCarouselProps {
@@ -25,9 +25,9 @@ export default function ImageCarousel({
 	if (!images.length) {
 		return (
 			<div
-				className={`flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded-md ${height} ${className}`}
+				className={`flex items-center justify-center bg-surface border border-border rounded-md ${height} ${className}`}
 			>
-				<ImageOff size={compact ? 24 : 32} className="text-zinc-600" />
+				<ImageOff size={compact ? 24 : 32} className="text-text-faint" />
 			</div>
 		);
 	}
@@ -40,13 +40,13 @@ export default function ImageCarousel({
 		<div className={`relative group ${height} ${className}`}>
 			{/* Shimmer while image is fetching */}
 			{status === "loading" && (
-				<div className="absolute inset-0 animate-pulse bg-zinc-800 rounded-md border border-zinc-700" />
+				<div className="absolute inset-0 animate-pulse bg-surface rounded-md border border-border" />
 			)}
 
 			{/* Error fallback */}
 			{status === "error" && (
-				<div className="absolute inset-0 flex items-center justify-center bg-zinc-800 rounded-md border border-zinc-700">
-					<ImageOff size={compact ? 20 : 28} className="text-zinc-600" />
+				<div className="absolute inset-0 flex items-center justify-center bg-surface rounded-md border border-border">
+					<ImageOff size={compact ? 20 : 28} className="text-text-faint" />
 				</div>
 			)}
 
@@ -56,7 +56,7 @@ export default function ImageCarousel({
 				alt={`Image ${currentIndex + 1}`}
 				onLoad={() => setStatus("loaded")}
 				onError={() => setStatus("error")}
-				className={`absolute inset-0 w-full h-full object-cover border border-zinc-700 rounded-md transition-opacity duration-150 ${
+				className={`absolute inset-0 w-full h-full object-cover border border-border rounded-md transition-opacity duration-150 ${
 					status === "loaded" ? "opacity-100" : "opacity-0"
 				}`}
 			/>

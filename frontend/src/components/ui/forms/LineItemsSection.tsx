@@ -1,4 +1,4 @@
-import { Plus, Download } from "lucide-react";
+﻿import { Plus, Download } from "lucide-react";
 import LineItemCard, { type SourceJob } from "./LineItemCard";
 import type { BaseLineItem } from "../../../types/common";
 import type { InventoryItem } from "../../../types/inventory";
@@ -61,7 +61,7 @@ const LineItemsSection = ({
 			<div
 				className={
 					stickyHeader
-						? "sticky top-0 z-10 bg-zinc-900 -mx-4 sm:-mx-5 px-4 sm:px-5 pt-2"
+						? "sticky top-0 z-10 bg-base -mx-4 sm:-mx-5 px-4 sm:px-5 pt-2"
 						: undefined
 				}
 			>
@@ -76,14 +76,14 @@ const LineItemsSection = ({
 								type="button"
 								onClick={onImport}
 								disabled={isLoading}
-								className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 hover:border-zinc-500 rounded text-xs font-medium text-zinc-300 hover:text-white transition-colors flex-shrink-0"
+								className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-raised hover:bg-zinc-600 border border-border-strong hover:border-border-strong rounded text-xs font-medium text-text-secondary hover:text-white transition-colors flex-shrink-0"
 								title={importLabel}
 							>
 								<Download size={12} />
 								{importLabel ?? "Import line items"}
 							</button>
 						)}
-						<div className="text-xs lg:text-sm text-zinc-400 flex-shrink-0">
+						<div className="text-xs lg:text-sm text-text-tertiary flex-shrink-0">
 							Subtotal:{" "}
 							<span className="text-white font-semibold">
 								${subtotal.toFixed(2)}
@@ -91,7 +91,7 @@ const LineItemsSection = ({
 						</div>
 					</div>
 				</div>
-				{stickyHeader && <div className="border-b border-zinc-700 -mr-1.5 sm:-ml-1 sm:-mr-2.5" />}
+				{stickyHeader && <div className="border-b border-border -mr-1.5 sm:-ml-1 sm:-mr-2.5" />}
 			</div>
 
 			{/* Line item cards */}
@@ -121,7 +121,7 @@ const LineItemsSection = ({
 				type="button"
 				onClick={onAdd}
 				disabled={isLoading}
-				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded text-xs lg:text-sm font-medium transition-colors"
+				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 rounded text-xs lg:text-sm font-medium transition-colors"
 			>
 				<Plus size={14} />
 				Add Item

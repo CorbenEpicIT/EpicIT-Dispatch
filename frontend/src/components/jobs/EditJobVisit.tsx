@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
@@ -452,7 +452,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 					{fieldErrors.map((err, idx) => (
 						<p
 							key={idx}
-							className="text-red-300 text-xs leading-tight"
+							className="text-error-text text-xs leading-tight"
 						>
 							{err.message}
 						</p>
@@ -469,7 +469,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 				return (
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
 						<div className="min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Visit Name *
 							</label>
 							<div className="relative">
@@ -484,7 +484,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 										)
 									}
 									disabled={isLoading}
-									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 								/>
 								<UndoButton
 									show={isDirty("name")}
@@ -498,7 +498,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 						</div>
 
 						<div className="min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Description (Optional)
 							</label>
 							<div className="relative">
@@ -514,7 +514,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 										)
 									}
 									disabled={isLoading}
-									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 								/>
 								<UndoButtonTop
 									show={isDirty(
@@ -535,7 +535,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							className="relative min-w-0"
 							style={{ zIndex: 50 }}
 						>
-							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Visit Date *
 							</label>
 							<DatePicker
@@ -624,11 +624,11 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 			case 4:
 				return (
 					<div className="space-y-2 lg:space-y-3 min-w-0">
-						<div className="p-3 lg:p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+						<div className="p-3 lg:p-4 bg-surface rounded-lg border border-border">
 							<h3 className="text-base lg:text-lg font-semibold mb-3 lg:mb-4 text-white">
 								Assign Technicians
 							</h3>
-							<div className="border border-zinc-700 rounded-md p-3 max-h-56 overflow-y-auto bg-zinc-900">
+							<div className="border border-border rounded-md p-3 max-h-56 overflow-y-auto bg-base">
 								{technicians?.length ? (
 									<div className="space-y-1 lg:space-y-2">
 										{technicians.map(
@@ -637,7 +637,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 													key={
 														tech.id
 													}
-													className="flex items-center gap-2 cursor-pointer hover:bg-zinc-800 p-2 rounded transition-colors"
+													className="flex items-center gap-2 cursor-pointer hover:bg-surface p-2 rounded transition-colors"
 												>
 													<input
 														type="checkbox"
@@ -666,8 +666,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 													<span
 														className={`text-xs px-2 py-0.5 rounded ${
 															tech.status === "Available"
-																? "bg-green-500/20 text-green-400"
-																: "bg-zinc-500/20 text-zinc-400"
+																? "bg-success/20 text-success-text"
+																: "bg-zinc-500/20 text-text-tertiary"
 														}`}
 													>
 														{
@@ -679,14 +679,14 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 										)}
 									</div>
 								) : (
-									<p className="text-zinc-400 text-sm">
+									<p className="text-text-tertiary text-sm">
 										No technicians
 										available
 									</p>
 								)}
 							</div>
 							{selectedTechIds.length > 0 && (
-								<p className="text-xs lg:text-sm text-zinc-400 mt-2">
+								<p className="text-xs lg:text-sm text-text-tertiary mt-2">
 									{selectedTechIds.length}{" "}
 									technician
 									{selectedTechIds.length > 1

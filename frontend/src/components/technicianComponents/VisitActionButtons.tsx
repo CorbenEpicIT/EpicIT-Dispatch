@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
+﻿import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { Car, MapPin, Clock, Pause, CheckCircle2, Play, AlertTriangle, Info, UserCheck } from "lucide-react";
 import { useTechVisitActions } from "../../hooks/useTechVisitActions";
 import type { JobVisit } from "../../types/jobs";
@@ -79,8 +79,8 @@ export default function VisitActionButtons({
 		const isClockOut = pendingPauseAction === "clock-out";
 		return (
 			<div className="space-y-2">
-				<div className="flex items-center gap-2 px-1 pb-2 border-b border-zinc-800">
-					<Pause size={13} className="text-amber-400 shrink-0" />
+				<div className="flex items-center gap-2 px-1 pb-2 border-b border-border-subtle">
+					<Pause size={13} className="text-warning-text shrink-0" />
 					<p className="text-sm font-semibold text-white">
 						{isClockOut ? "Wrap up or pause?" : "Why are you pausing?"}
 					</p>
@@ -92,11 +92,11 @@ export default function VisitActionButtons({
 							autoFocus
 							onClick={handleConfirmComplete}
 							disabled={isLoading}
-							className={`w-full py-3 px-2.5 rounded-lg font-medium bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-400 text-center transition-colors disabled:opacity-40 leading-snug ${isCard ? "text-xs" : "text-sm"}`}
+							className={`w-full py-3 px-2.5 rounded-lg font-medium bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-success-text text-center transition-colors disabled:opacity-40 leading-snug ${isCard ? "text-xs" : "text-sm"}`}
 						>
 							{isLoading ? "Completing…" : "Complete Visit"}
 						</button>
-						<p className={`text-zinc-600 text-center ${isCard ? "text-[10px]" : "text-xs"}`}>
+						<p className={`text-text-faint text-center ${isCard ? "text-[10px]" : "text-xs"}`}>
 							or pause because:
 						</p>
 					</>
@@ -109,7 +109,7 @@ export default function VisitActionButtons({
 							autoFocus={!isClockOut && i === 0}
 							onClick={() => handleReasonSelected(r.value)}
 							disabled={isLoading}
-							className={`py-3 px-2.5 rounded-lg font-medium bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-center transition-colors disabled:opacity-40 leading-snug${
+							className={`py-3 px-2.5 rounded-lg font-medium bg-surface hover:bg-surface-raised border border-border text-text-primary text-center transition-colors disabled:opacity-40 leading-snug${
 								i === PAUSE_REASONS.length - 1 && PAUSE_REASONS.length % 2 !== 0
 									? " col-span-2"
 									: ""
@@ -121,7 +121,7 @@ export default function VisitActionButtons({
 				</div>
 				<button
 					onClick={dismiss}
-					className={`w-full py-3 rounded-lg font-medium bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors ${isCard ? "text-xs" : "text-sm"}`}
+					className={`w-full py-3 rounded-lg font-medium bg-surface border border-border text-text-tertiary hover:bg-surface-raised hover:text-text-primary transition-colors ${isCard ? "text-xs" : "text-sm"}`}
 				>
 					Cancel
 				</button>
@@ -132,20 +132,20 @@ export default function VisitActionButtons({
 	if (uiState === "departure-prompt") {
 		return (
 			<div className="space-y-2">
-				<p className="text-xs text-zinc-300 text-center font-medium">Still on site or heading out?</p>
+				<p className="text-xs text-text-secondary text-center font-medium">Still on site or heading out?</p>
 				<div className="flex gap-2">
 					<button
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
 					>
 						Staying On Site
 					</button>
 					<button
 						onClick={handleHeadingOut}
 						disabled={isLoading}
-						className={`${btn} bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-40`}
+						className={`${btn} bg-blue-700 hover:bg-primary-hover text-white disabled:opacity-40`}
 					>
 						{isLoading ? "Updating…" : "Heading Out"}
 					</button>
@@ -161,9 +161,9 @@ export default function VisitActionButtons({
 			.join(", ");
 		return (
 			<div className="space-y-2.5">
-				<div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-3.5 py-3 space-y-1">
+				<div className="rounded-lg bg-warning/10 border border-amber-500/25 px-3.5 py-3 space-y-1">
 					<div className="flex items-center gap-2">
-						<AlertTriangle size={13} className="text-amber-400 shrink-0" />
+						<AlertTriangle size={13} className="text-warning-text shrink-0" />
 						<p className="text-sm font-semibold text-amber-300">Other techs on site</p>
 					</div>
 					<p className="text-xs text-amber-200/70 leading-relaxed">
@@ -175,7 +175,7 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
 					>
 						Cancel
 					</button>
@@ -195,9 +195,9 @@ export default function VisitActionButtons({
 		const otherNames = openEntries.filter((e) => e.tech_id !== techId).map((e) => e.tech.name).join(", ");
 		return (
 			<div className="space-y-2.5">
-				<div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-3.5 py-3 space-y-1">
+				<div className="rounded-lg bg-warning/10 border border-amber-500/25 px-3.5 py-3 space-y-1">
 					<div className="flex items-center gap-2">
-						<AlertTriangle size={13} className="text-amber-400 shrink-0" />
+						<AlertTriangle size={13} className="text-warning-text shrink-0" />
 						<p className="text-sm font-semibold text-amber-300">Other techs on site</p>
 					</div>
 					<p className="text-xs text-amber-200/70 leading-relaxed">
@@ -209,7 +209,7 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
 					>
 						Cancel
 					</button>
@@ -228,13 +228,13 @@ export default function VisitActionButtons({
 	if (uiState === "prompt-complete") {
 		return (
 			<div className="space-y-2">
-				<p className="text-xs text-zinc-300 text-center font-medium">Complete this visit?</p>
+				<p className="text-xs text-text-secondary text-center font-medium">Complete this visit?</p>
 				<div className="flex gap-2">
 					<button
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={handleDeclineComplete}
-						className={`${btn} bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
 					>
 						Keep Paused
 					</button>
@@ -253,9 +253,9 @@ export default function VisitActionButtons({
 	if (uiState === "paused-info") {
 		return (
 			<div className="space-y-2">
-				<div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700">
-					<Info size={14} className="text-zinc-400 shrink-0 mt-0.5" />
-					<p className="text-xs text-zinc-400">
+				<div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-surface border border-border">
+					<Info size={14} className="text-text-tertiary shrink-0 mt-0.5" />
+					<p className="text-xs text-text-tertiary">
 						Visit is now paused — no active technicians on site.
 					</p>
 				</div>
@@ -264,7 +264,7 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-white`}
 					>
 						Dismiss
 					</button>
@@ -276,7 +276,7 @@ export default function VisitActionButtons({
 	if (uiState === "switch-confirm") {
 		return (
 			<div className="space-y-2">
-				<p className="text-xs text-zinc-300 text-center font-medium">
+				<p className="text-xs text-text-secondary text-center font-medium">
 					You're already heading to another visit. Switch destination?
 				</p>
 				<div className="flex gap-2">
@@ -284,14 +284,14 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleConfirmSwitch}
 						disabled={isLoading}
-						className={`${btn} bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-40`}
+						className={`${btn} bg-blue-700 hover:bg-primary-hover text-white disabled:opacity-40`}
 					>
 						{isLoading ? "Switching…" : "Switch"}
 					</button>
@@ -303,7 +303,7 @@ export default function VisitActionButtons({
 	// ── Button matrix — driven by myTechVisitStatus ─────────────────────────────
 
 	const tooltipEl = tooltip ? (
-		<div role="status" className="px-2.5 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-zinc-200 text-center">
+		<div role="status" className="px-2.5 py-1.5 rounded-md bg-surface border border-border text-xs text-text-primary text-center">
 			{tooltip}
 		</div>
 	) : null;
@@ -327,8 +327,8 @@ export default function VisitActionButtons({
 							driveDisabled
 								? "bg-blue-700 text-white opacity-50 cursor-not-allowed"
 								: confirmingAction === "drive"
-								? "bg-blue-600 text-white border border-blue-400 motion-safe:animate-pulse"
-								: "bg-blue-700 hover:bg-blue-600 text-white"
+								? "bg-primary-hover text-white border border-blue-400 motion-safe:animate-pulse"
+								: "bg-blue-700 hover:bg-primary-hover text-white"
 						}`}
 					>
 						<Car size={iconSize} />
@@ -336,7 +336,7 @@ export default function VisitActionButtons({
 					</button>
 				</div>
 				{clockError && (
-					<p role="alert" className="text-[11px] text-red-400 text-center">{clockError}</p>
+					<p role="alert" className="text-[11px] text-error-text text-center">{clockError}</p>
 				)}
 			</div>
 		);
@@ -361,8 +361,8 @@ export default function VisitActionButtons({
 							arriveDisabled
 								? "bg-blue-700 text-white opacity-50 cursor-not-allowed"
 								: confirmingAction === "arrive"
-								? "bg-blue-600 text-white border border-blue-400 motion-safe:animate-pulse"
-								: "bg-blue-700 hover:bg-blue-600 text-white"
+								? "bg-primary-hover text-white border border-blue-400 motion-safe:animate-pulse"
+								: "bg-blue-700 hover:bg-primary-hover text-white"
 						}`}
 					>
 						<MapPin size={iconSize} />
@@ -370,7 +370,7 @@ export default function VisitActionButtons({
 					</button>
 				</div>
 				{clockError && (
-					<p role="alert" className="text-[11px] text-red-400 text-center">{clockError}</p>
+					<p role="alert" className="text-[11px] text-error-text text-center">{clockError}</p>
 				)}
 			</div>
 		);
@@ -386,7 +386,7 @@ export default function VisitActionButtons({
 						<button
 							onClick={handlePause}
 							disabled={isLoading}
-							className={`${btn} bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300`}
+							className={`${btn} bg-surface hover:bg-surface-raised border border-border text-text-secondary`}
 						>
 							<Pause size={iconSize} />
 							{variant === "detail" ? "Pause Visit" : "Pause"}
@@ -408,14 +408,14 @@ export default function VisitActionButtons({
 						<button
 							onClick={handleClockOut}
 							disabled={isLoading}
-							className={`${btn} border border-zinc-700/60 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400`}
+							className={`${btn} border border-border/60 text-text-muted hover:bg-surface hover:text-text-tertiary`}
 						>
 							<Clock size={iconSize} />
 							{isLoading ? "Clocking Out…" : "Clock Out"}
 						</button>
 					</div>
 					{clockError && (
-						<p role="alert" className="text-[11px] text-red-400 text-center">{clockError}</p>
+						<p role="alert" className="text-[11px] text-error-text text-center">{clockError}</p>
 					)}
 				</div>
 			);
@@ -436,8 +436,8 @@ export default function VisitActionButtons({
 						disabled={isLoading && !clockInDisabled}
 						className={`${btn} ${
 							clockInDisabled
-								? "bg-blue-600 text-white opacity-50 cursor-not-allowed"
-								: "bg-blue-600 hover:bg-blue-500 text-white"
+								? "bg-primary-hover text-white opacity-50 cursor-not-allowed"
+								: "bg-primary-hover hover:bg-primary text-white"
 						}`}
 					>
 						<Play size={iconSize} />
@@ -445,7 +445,7 @@ export default function VisitActionButtons({
 					</button>
 				</div>
 				{clockError && (
-					<p role="alert" className="text-[11px] text-red-400 text-center">{clockError}</p>
+					<p role="alert" className="text-[11px] text-error-text text-center">{clockError}</p>
 				)}
 			</div>
 		);
@@ -459,7 +459,7 @@ export default function VisitActionButtons({
 					<button
 						onClick={handleAvailable}
 						disabled={isLoading}
-						className={`${btn} bg-green-700 hover:bg-green-600 text-white`}
+						className={`${btn} bg-confirm hover:bg-confirm-hover text-white`}
 					>
 						<UserCheck size={iconSize} />
 						{isLoading ? "Updating…" : "I'm Available"}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import { CreateVehicleSchema, type CreateVehicleInput } from "../../types/vehicles";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
@@ -10,8 +10,8 @@ interface CreateVehicleProps {
 }
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const DIVIDER_LABEL = "flex items-center gap-2 my-1";
 
 export default function CreateVehicle({
@@ -58,7 +58,7 @@ export default function CreateVehicle({
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((e, i) => (
-					<p key={i} className="text-red-300 text-xs leading-tight">
+					<p key={i} className="text-error-text text-xs leading-tight">
 						{e.message}
 					</p>
 				))}
@@ -153,11 +153,11 @@ export default function CreateVehicle({
 
 				{/* Optional divider */}
 				<div className={DIVIDER_LABEL}>
-					<div className="flex-1 h-px bg-zinc-800" />
-					<span className="text-[10px] text-zinc-500 uppercase tracking-widest">
+					<div className="flex-1 h-px bg-surface" />
+					<span className="text-[10px] text-text-muted uppercase tracking-widest">
 						Vehicle details (optional)
 					</span>
-					<div className="flex-1 h-px bg-zinc-800" />
+					<div className="flex-1 h-px bg-surface" />
 				</div>
 
 				{/* Year + Make + Model */}
@@ -238,7 +238,7 @@ export default function CreateVehicle({
 						value={notes}
 						onChange={(e) => setNotes(e.target.value)}
 						disabled={isLoading}
-						className="border border-zinc-700 px-2.5 py-1.5 w-full h-16 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+						className="border border-border px-2.5 py-1.5 w-full h-16 rounded bg-base text-white text-sm resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 					/>
 				</div>
 			</div>

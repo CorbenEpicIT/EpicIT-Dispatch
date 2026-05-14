@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { verifyEmail } from "../../api/email";
 
@@ -34,7 +34,7 @@ export default function VerifyEmail() {
 
                 {status === "loading" && (
                     <>
-                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+                        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
                         <h2 className="text-xl font-semibold text-gray-800">Verifying your email...</h2>
                         <p className="text-gray-500 mt-2 text-sm">Please wait a moment.</p>
                     </>
@@ -63,7 +63,7 @@ export default function VerifyEmail() {
                         <p className="text-gray-500 mt-2 text-sm">This link is invalid or has expired.</p>
                         <button
                             onClick={() => navigate("/login")}
-                            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+                            className="mt-6 w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
                         >
                             Back to Login
                         </button>

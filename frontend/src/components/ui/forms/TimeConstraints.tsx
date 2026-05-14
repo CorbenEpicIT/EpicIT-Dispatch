@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+﻿import { useEffect, useRef } from "react";
 import TimePicker from "../TimePicker";
 import { ArrivalConstraintValues, FinishConstraintValues } from "../../../types/recurringPlans";
 import type { ArrivalConstraint, FinishConstraint } from "../../../types/recurringPlans";
@@ -128,21 +128,21 @@ const TimeConstraints = ({
 	const showUndo = mode === "edit";
 
 	return (
-		<div className="p-2.5 lg:p-3 bg-zinc-800 rounded-lg border border-zinc-700">
+		<div className="p-2.5 lg:p-3 bg-surface rounded-lg border border-border">
 			<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-white uppercase tracking-wider">
 				Time Constraints
 			</h3>
 
 			{/* Arrival */}
 			<div>
-				<label className="text-xs font-medium text-zinc-400 uppercase tracking-wider block mb-1.5">
+				<label className="text-xs font-medium text-text-tertiary uppercase tracking-wider block mb-1.5">
 					Arrival
 				</label>
 
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 items-start">
 					{/* LEFT: constraint selector */}
 					<div className="space-y-1 min-w-0">
-						<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+						<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 							Constraint
 						</label>
 						<div className="relative min-w-0">
@@ -201,7 +201,7 @@ const TimeConstraints = ({
 					<div className="space-y-2 min-w-0">
 						{arrivalConstraint === "at" && (
 							<div className="space-y-1 min-w-0">
-								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+								<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 									Time
 								</label>
 								<div className="relative min-w-0">
@@ -232,7 +232,7 @@ const TimeConstraints = ({
 						{arrivalConstraint === "between" && (
 							<>
 								<div className="space-y-1 min-w-0">
-									<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+									<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 										Start Time
 									</label>
 									<div className="relative min-w-0">
@@ -261,7 +261,7 @@ const TimeConstraints = ({
 									</div>
 								</div>
 								<div className="space-y-1 min-w-0">
-									<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+									<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 										End Time
 									</label>
 									<div className="relative min-w-0">
@@ -294,7 +294,7 @@ const TimeConstraints = ({
 
 						{arrivalConstraint === "by" && (
 							<div className="space-y-1 min-w-0">
-								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+								<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 									Deadline
 								</label>
 								<div className="relative min-w-0">
@@ -326,10 +326,10 @@ const TimeConstraints = ({
 
 						{arrivalConstraint === "anytime" && (
 							<div className="space-y-1">
-								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+								<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 									&nbsp;
 								</label>
-								<p className="text-[10px] lg:text-xs text-zinc-400 leading-tight pt-1">
+								<p className="text-[10px] lg:text-xs text-text-tertiary leading-tight pt-1">
 									Arrival is flexible.
 									Defaults to 9:00 AM.
 								</p>
@@ -339,18 +339,18 @@ const TimeConstraints = ({
 				</div>
 			</div>
 
-			<div className="my-2 lg:my-3 border-t border-zinc-700" />
+			<div className="my-2 lg:my-3 border-t border-border" />
 
 			{/* Finish */}
 			<div>
-				<label className="text-xs font-medium text-zinc-400 uppercase tracking-wider block mb-1.5">
+				<label className="text-xs font-medium text-text-tertiary uppercase tracking-wider block mb-1.5">
 					Finish
 				</label>
 
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 items-start">
 					{/* LEFT */}
 					<div className="space-y-1 min-w-0">
-						<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+						<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 							Constraint
 						</label>
 						<div className="relative min-w-0">
@@ -407,7 +407,7 @@ const TimeConstraints = ({
 						{(finishConstraint === "at" ||
 							finishConstraint === "by") && (
 							<div className="space-y-1 min-w-0">
-								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+								<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 									{finishConstraint === "at"
 										? "Time"
 										: "Deadline"}
@@ -440,10 +440,10 @@ const TimeConstraints = ({
 
 						{finishConstraint === "when_done" && (
 							<div className="space-y-1">
-								<label className="text-[10px] text-zinc-400 block uppercase tracking-wider">
+								<label className="text-[10px] text-text-tertiary block uppercase tracking-wider">
 									&nbsp;
 								</label>
-								<p className="text-[10px] lg:text-xs text-zinc-400 leading-tight pt-1">
+								<p className="text-[10px] lg:text-xs text-text-tertiary leading-tight pt-1">
 									Default duration is 2 hours.
 								</p>
 							</div>

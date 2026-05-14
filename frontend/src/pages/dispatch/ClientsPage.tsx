@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, MoreVertical, Upload, Download } from "lucide-react";
 import { useAllClientsQuery, useCreateClientMutation } from "../../hooks/useClients";
@@ -72,7 +72,7 @@ export default function ClientsPage() {
 		<div className="text-white">
 			<PageHeader title="Clients">
 				<button
-					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
 					onClick={() => setIsModalOpen(true)}
 				>
 					<Plus size={16} className="text-white" />
@@ -84,14 +84,14 @@ export default function ClientsPage() {
 						aria-label="More actions"
 						aria-expanded={showActionsMenu}
 						aria-haspopup="menu"
-						className="flex items-center justify-center p-2.5 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+						className="flex items-center justify-center p-2.5 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 					>
 						<MoreVertical size={20} className="text-white" />
 					</button>
 					{showActionsMenu && (
-						<div className="absolute right-0 mt-2 w-56 bg-zinc-950 border border-zinc-600 rounded-lg shadow-2xl shadow-black/50 z-50">
+						<div className="absolute right-0 mt-2 w-56 bg-canvas border border-border-strong rounded-lg shadow-2xl shadow-black/50 z-50">
 							<div className="py-1">
-								<div className="px-4 py-2 text-xs text-zinc-500 italic border-b border-zinc-800 mb-1">
+								<div className="px-4 py-2 text-xs text-text-muted italic border-b border-border-subtle mb-1">
 									Options yet to be
 									implemented
 								</div>
@@ -101,7 +101,7 @@ export default function ClientsPage() {
 											false
 										)
 									}
-									className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800/70 transition-colors flex items-center gap-2"
+									className="w-full px-4 py-2 text-left text-sm hover:bg-surface/70 transition-colors flex items-center gap-2"
 								>
 									<Upload size={16} />
 									Import Clients
@@ -112,7 +112,7 @@ export default function ClientsPage() {
 											false
 										)
 									}
-									className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800/70 transition-colors flex items-center gap-2"
+									className="w-full px-4 py-2 text-left text-sm hover:bg-surface/70 transition-colors flex items-center gap-2"
 								>
 									<Download size={16} />
 									Export Clients
@@ -173,7 +173,7 @@ export default function ClientsPage() {
 					<h1 className="text-center text-xl mt-1">
 						An error has occurred.
 					</h1>
-					<h2 className="text-center text-zinc-500 mt-1">
+					<h2 className="text-center text-text-muted mt-1">
 						{fetchError.message}
 					</h2>
 				</div>
@@ -189,7 +189,7 @@ export default function ClientsPage() {
 							: "No clients yet."}
 					</h1>
 					{activeTerms.length > 0 && (
-						<p className="text-center text-zinc-500 mt-2">
+						<p className="text-center text-text-muted mt-2">
 							Try adjusting your search terms
 						</p>
 					)}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { Calendar, ChevronDown, Check, X } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { useSearchParams } from "react-router-dom";
@@ -182,7 +182,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 				aria-haspopup="listbox"
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive
-						? "bg-blue-950 border-blue-500 text-blue-300"
+						? "bg-blue-950 border-primary text-primary-text"
 						: "bg-surface border-border text-text-tertiary hover:text-white"
 				}`}
 			>
@@ -220,7 +220,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								onClick={() => handlePresetClick(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 									isOptionHighlighted(option.value)
-										? "bg-blue-950/60 text-blue-300"
+										? "bg-blue-950/60 text-primary-text"
 										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
@@ -278,7 +278,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								type="button"
 								onClick={handleApply}
 								disabled={!tempStart || !tempEnd}
-								className="w-full h-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors text-white cursor-pointer"
+								className="w-full h-8 bg-primary-hover hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors text-white cursor-pointer"
 							>
 								Apply
 							</button>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import mapboxgl from "mapbox-gl";
 import type { GeoJSONSource } from "mapbox-gl";
@@ -59,14 +59,14 @@ function WebGLErrorFallback({ afterContextLoss }: { afterContextLoss: boolean })
 
 	if (afterContextLoss) {
 		return (
-			<div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400 text-sm px-6 text-center">
-				<p className="text-zinc-200 font-medium text-base">Map unavailable</p>
+			<div className="flex flex-col items-center justify-center h-full gap-4 text-text-tertiary text-sm px-6 text-center">
+				<p className="text-text-primary font-medium text-base">Map unavailable</p>
 				<p className="max-w-sm">
 					After losing the GPU connection, {hint.name} has disabled WebGL for
 					this tab. A page refresh won&apos;t help — you need to fully restart
 					the browser.
 				</p>
-				<p className="text-zinc-500 text-xs">
+				<p className="text-text-muted text-xs">
 					This happens when another tab (e.g. a video) reclaims the GPU and the
 					browser can&apos;t recover.
 				</p>
@@ -75,23 +75,23 @@ function WebGLErrorFallback({ afterContextLoss }: { afterContextLoss: boolean })
 	}
 
 	return (
-		<div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400 text-sm px-6 text-center">
-			<p className="text-zinc-200 font-medium text-base">Map unavailable</p>
+		<div className="flex flex-col items-center justify-center h-full gap-4 text-text-tertiary text-sm px-6 text-center">
+			<p className="text-text-primary font-medium text-base">Map unavailable</p>
 			<p>WebGL failed to initialize in {hint.name}. Follow the steps below to fix it:</p>
-			<p className="text-zinc-300">{hint.steps}</p>
+			<p className="text-text-secondary">{hint.steps}</p>
 			{hint.url && (
-				<div className="flex items-center gap-2 bg-zinc-800 border border-zinc-600 rounded-md px-3 py-2 font-mono text-xs text-zinc-200">
+				<div className="flex items-center gap-2 bg-surface border border-border-strong rounded-md px-3 py-2 font-mono text-xs text-text-primary">
 					<span>{hint.url}</span>
 					<button
 						onClick={copyUrl}
-						className="ml-1 text-zinc-400 hover:text-zinc-100 transition-colors"
+						className="ml-1 text-text-tertiary hover:text-text-primary transition-colors"
 						title="Copy URL"
 					>
 						{copied ? <Check size={14} /> : <Copy size={14} />}
 					</button>
 				</div>
 			)}
-			<p className="text-zinc-500 text-xs">
+			<p className="text-text-muted text-xs">
 				Paste the URL above into your address bar to open the settings page.
 			</p>
 		</div>
@@ -477,16 +477,16 @@ const DynamicMap = ({
 		return createPortal(
 			<div
 				style={{ position: "absolute", inset: 0, zIndex: 1000 }}
-				className="flex flex-col items-center justify-center gap-3 bg-zinc-900/80 backdrop-blur-sm rounded-lg text-sm text-center px-6"
+				className="flex flex-col items-center justify-center gap-3 bg-base/80 backdrop-blur-sm rounded-lg text-sm text-center px-6"
 			>
-				<p className="text-zinc-200 font-medium">Map lost GPU connection</p>
-				<p className="text-zinc-400 text-xs max-w-xs">
+				<p className="text-text-primary font-medium">Map lost GPU connection</p>
+				<p className="text-text-tertiary text-xs max-w-xs">
 					The browser reclaimed the GPU context, likely due to another tab using
 					WebGL or hardware video. Click below to restore the map.
 				</p>
 				<button
 					onClick={() => setInitKey((k) => k + 1)}
-					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-white text-sm font-medium transition-colors"
+					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-white text-sm font-medium transition-colors"
 				>
 					<RefreshCw size={14} />
 					Reload Map

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Plus, Edit2, Trash2, X, Calendar } from "lucide-react";
 import Card from "../ui/Card";
 import type { JobNote, JobVisit } from "../../types/jobs";
@@ -130,7 +130,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 	if (isLoading) {
 		return (
 			<Card title="Notes" className="h-fit">
-				<div className="text-zinc-400 text-sm">Loading notes...</div>
+				<div className="text-text-tertiary text-sm">Loading notes...</div>
 			</Card>
 		);
 	}
@@ -141,7 +141,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 			headerAction={
 				<button
 					onClick={() => setIsAdding(true)}
-					className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
 				>
 					<Plus size={14} />
 					Add Note
@@ -153,7 +153,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 				{isAdding && !editingId && (
 					<div
 						ref={formRef}
-						className="p-4 bg-zinc-800 rounded-lg border border-zinc-700"
+						className="p-4 bg-surface rounded-lg border border-border"
 					>
 						<div className="flex justify-between items-center mb-4">
 							<h3 className="text-white font-semibold">
@@ -161,7 +161,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 							</h3>
 							<button
 								onClick={resetForm}
-								className="text-zinc-400 hover:text-white transition-colors"
+								className="text-text-tertiary hover:text-white transition-colors"
 							>
 								<X size={20} />
 							</button>
@@ -181,7 +181,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 								}
 								placeholder="Enter your note..."
 								rows={4}
-								className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full px-3 py-2 bg-base border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								required
 								autoFocus
 							/>
@@ -192,7 +192,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 									createNote.isPending ||
 									updateNote.isPending
 								}
-								className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
+								className="w-full px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
 							>
 								{createNote.isPending ||
 								updateNote.isPending
@@ -208,7 +208,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 					<div className="space-y-3">
 						{filteredNotes.map((note) => (
 							<div key={note.id}>
-								<div className="p-3 bg-zinc-800 rounded-lg border border-zinc-700 group hover:border-zinc-600 transition-colors">
+								<div className="p-3 bg-surface rounded-lg border border-border group hover:border-border-strong transition-colors">
 									<div className="flex justify-between items-start mb-2">
 										<div className="flex-1">
 											<p className="text-white text-sm mb-1 whitespace-pre-wrap">
@@ -219,7 +219,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 
 											{!visitId &&
 												note.visit_id && (
-													<div className="flex items-center gap-1.5 text-xs text-blue-400 mt-2">
+													<div className="flex items-center gap-1.5 text-xs text-primary-text mt-2">
 														<Calendar
 															size={
 																12
@@ -242,7 +242,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 														note
 													)
 												}
-												className="text-zinc-400 hover:text-blue-400 transition-colors"
+												className="text-text-tertiary hover:text-primary-text transition-colors"
 												aria-label="Edit note"
 											>
 												<Edit2
@@ -266,7 +266,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 													deleteConfirmId ===
 													note.id
 														? "text-red-500 hover:text-red-600"
-														: "text-zinc-400 hover:text-red-400"
+														: "text-text-tertiary hover:text-error-text"
 												}`}
 												title={
 													deleteConfirmId ===
@@ -291,7 +291,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 										</div>
 									</div>
 
-									<div className="flex items-center gap-2 text-xs text-zinc-500">
+									<div className="flex items-center gap-2 text-xs text-text-muted">
 										<span>
 											{formatDate(
 												note.created_at
@@ -346,7 +346,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 											ref={
 												formRef
 											}
-											className="p-4 bg-zinc-800 rounded-lg border border-zinc-700"
+											className="p-4 bg-surface rounded-lg border border-border"
 										>
 											<div className="flex justify-between items-center mb-4">
 												<h3 className="text-white font-semibold">
@@ -357,7 +357,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 													onClick={
 														resetForm
 													}
-													className="text-zinc-400 hover:text-white transition-colors"
+													className="text-text-tertiary hover:text-white transition-colors"
 												>
 													<X
 														size={
@@ -398,7 +398,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 													rows={
 														4
 													}
-													className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+													className="w-full px-3 py-2 bg-base border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 													required
 													autoFocus
 												/>
@@ -409,7 +409,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 														createNote.isPending ||
 														updateNote.isPending
 													}
-													className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
+													className="w-full px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
 												>
 													{createNote.isPending ||
 													updateNote.isPending
@@ -424,7 +424,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 						))}
 					</div>
 				) : (
-					<p className="text-zinc-400 text-sm text-center py-4">
+					<p className="text-text-tertiary text-sm text-center py-4">
 						{visitId
 							? "No notes for this visit yet"
 							: "No notes available"}

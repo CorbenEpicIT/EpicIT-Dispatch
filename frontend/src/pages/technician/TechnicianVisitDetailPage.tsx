@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+﻿import { useParams } from "react-router-dom";
 import {
 	Users,
 	Car,
@@ -52,7 +52,7 @@ function ElapsedTimer({ startAt }: { startAt: string }) {
 				<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
 				<span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
 			</span>
-			<span className="text-xs text-green-400 font-medium uppercase tracking-wide">
+			<span className="text-xs text-success-text font-medium uppercase tracking-wide">
 				In Progress
 			</span>
 			<span className="ml-auto text-sm font-bold tabular-nums text-green-300">
@@ -80,18 +80,18 @@ function JobContextSection({
 	const primaryContact = job?.client?.contacts?.find((cc) => cc.is_primary)?.contact ?? null;
 
 	return (
-		<div className="rounded-xl border border-zinc-800 overflow-hidden">
+		<div className="rounded-xl border border-border-subtle overflow-hidden">
 			<button
 				onClick={() => setOpen((p) => !p)}
-				className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-b border-zinc-800"
+				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
 			>
-				<span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide">
+				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Job Context
 				</span>
 				{open ? (
-					<ChevronUp size={14} className="text-zinc-500" />
+					<ChevronUp size={14} className="text-text-muted" />
 				) : (
-					<ChevronDown size={14} className="text-zinc-500" />
+					<ChevronDown size={14} className="text-text-muted" />
 				)}
 			</button>
 
@@ -100,7 +100,7 @@ function JobContextSection({
 					{job && (
 						<>
 							<div>
-								<p className="text-xs text-zinc-500 mb-0.5">
+								<p className="text-xs text-text-muted mb-0.5">
 									Job
 								</p>
 								<p className="text-sm font-medium text-white">
@@ -110,14 +110,14 @@ function JobContextSection({
 							</div>
 							{job.address && (
 								<div>
-									<p className="text-xs text-zinc-500 mb-0.5">
+									<p className="text-xs text-text-muted mb-0.5">
 										Address
 									</p>
 									<a
 										href={`https://maps.google.com/?q=${encodeURIComponent(job.address)}`}
 										target="_blank"
 										rel="noreferrer"
-										className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300"
+										className="flex items-center gap-1.5 text-sm text-primary-text hover:text-primary-text"
 									>
 										<MapPin size={13} />
 										{job.address}
@@ -126,10 +126,10 @@ function JobContextSection({
 							)}
 							{job.description && (
 								<div>
-									<p className="text-xs text-zinc-500 mb-0.5">
+									<p className="text-xs text-text-muted mb-0.5">
 										Description
 									</p>
-									<p className="text-sm text-zinc-300 break-words">
+									<p className="text-sm text-text-secondary break-words">
 										{job.description}
 									</p>
 								</div>
@@ -139,20 +139,20 @@ function JobContextSection({
 
 					{visit?.description && (
 						<div>
-							<p className="text-xs text-zinc-500 mb-0.5">
+							<p className="text-xs text-text-muted mb-0.5">
 								Visit Notes
 							</p>
-							<p className="text-sm text-zinc-300 break-words">
+							<p className="text-sm text-text-secondary break-words">
 								{visit.description}
 							</p>
 						</div>
 					)}
 
 					<div>
-						<p className="text-xs text-zinc-500 mb-0.5">
+						<p className="text-xs text-text-muted mb-0.5">
 							Scheduled
 						</p>
-						<p className="text-sm text-zinc-300">
+						<p className="text-sm text-text-secondary">
 							{visit
 								? `${formatDateTime(visit.scheduled_start_at, tz)} – ${formatTime(visit.scheduled_end_at, tz)}`
 								: "—"}
@@ -161,7 +161,7 @@ function JobContextSection({
 
 					{visit?.visit_techs && visit.visit_techs.length > 0 && (
 						<div>
-							<p className="text-xs text-zinc-500 mb-1.5 flex items-center gap-1.5">
+							<p className="text-xs text-text-muted mb-1.5 flex items-center gap-1.5">
 								<Users size={11} /> Assigned
 								Technicians
 							</p>
@@ -169,7 +169,7 @@ function JobContextSection({
 								{visit.visit_techs.map((vt) => (
 									<span
 										key={vt.tech_id}
-										className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-zinc-800 border border-zinc-700 text-zinc-300"
+										className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-surface border border-border text-text-secondary"
 									>
 										{vt.tech?.name ??
 											vt.tech_id}
@@ -182,10 +182,10 @@ function JobContextSection({
 					{job?.quote && (
 						<button
 							onClick={onViewQuote}
-							className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+							className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-surface border border-border hover:bg-surface-raised transition-colors"
 						>
 							<div className="text-left">
-								<p className="text-xs text-zinc-500">
+								<p className="text-xs text-text-muted">
 									Quote
 								</p>
 								<p className="text-sm font-medium text-white">
@@ -200,14 +200,14 @@ function JobContextSection({
 											job.quote
 												.status as keyof typeof QuoteStatusColors
 										] ??
-										"bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
+										"bg-zinc-500/20 text-text-secondary border-border-strong/30"
 									}`}
 								>
 									{job.quote.status}
 								</span>
 								<ChevronRight
 									size={14}
-									className="text-zinc-500"
+									className="text-text-muted"
 								/>
 							</div>
 						</button>
@@ -215,16 +215,16 @@ function JobContextSection({
 
 					{/* Client contact */}
 					{job?.client && (
-						<div className="border-t border-zinc-800 pt-3 space-y-2">
+						<div className="border-t border-border-subtle pt-3 space-y-2">
 							<div>
-								<p className="text-xs text-zinc-500 mb-0.5">
+								<p className="text-xs text-text-muted mb-0.5">
 									Client
 								</p>
-								<p className="text-sm font-semibold text-zinc-300">
+								<p className="text-sm font-semibold text-text-secondary">
 									{job.client.name}
 								</p>
 								{primaryContact && (
-									<p className="text-xs text-zinc-500 mt-0.5">
+									<p className="text-xs text-text-muted mt-0.5">
 										{
 											primaryContact.name
 										}
@@ -243,7 +243,7 @@ function JobContextSection({
 												primaryContact.phone ??
 												undefined
 											}
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-xs font-semibold text-green-400 hover:bg-green-500/15 transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-success/10 border border-green-500/20 text-xs font-semibold text-success-text hover:bg-green-500/15 transition-colors"
 										>
 											<Phone
 												size={
@@ -256,7 +256,7 @@ function JobContextSection({
 										<span
 											role="button"
 											aria-disabled="true"
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700/50 text-xs font-semibold text-zinc-600 opacity-50 cursor-not-allowed"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface/50 border border-border/50 text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
 										>
 											<Phone
 												size={
@@ -269,7 +269,7 @@ function JobContextSection({
 									{primaryContact.email ? (
 										<a
 											href={`mailto:${primaryContact.email}`}
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-tertiary hover:bg-surface-raised hover:text-white transition-colors"
 										>
 											<Mail
 												size={
@@ -282,7 +282,7 @@ function JobContextSection({
 										<span
 											role="button"
 											aria-disabled="true"
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700/50 text-xs font-semibold text-zinc-600 opacity-50 cursor-not-allowed"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface/50 border border-border/50 text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
 										>
 											<Mail
 												size={
@@ -294,7 +294,7 @@ function JobContextSection({
 									)}
 								</div>
 							) : (
-								<p className="text-xs text-zinc-600 italic">
+								<p className="text-xs text-text-faint italic">
 									No contact on file
 								</p>
 							)}
@@ -334,17 +334,17 @@ function ArrivalBanner({
 		<div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-4 space-y-3">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<Car size={16} className="text-cyan-400" />
+					<Car size={16} className="text-info-text" />
 					<span className="text-sm font-semibold text-cyan-300">
 						En Route
 					</span>
 				</div>
 				{countdown > 0 ? (
-					<span className="text-sm tabular-nums text-cyan-400 font-bold">
+					<span className="text-sm tabular-nums text-info-text font-bold">
 						{countdown} min to start
 					</span>
 				) : (
-					<span className="text-sm text-amber-400 font-bold">
+					<span className="text-sm text-warning-text font-bold">
 						Arrival time passed
 					</span>
 				)}
@@ -355,14 +355,14 @@ function ArrivalBanner({
 					href={`https://maps.google.com/?q=${encodeURIComponent(address)}`}
 					target="_blank"
 					rel="noreferrer"
-					className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300"
+					className="flex items-center gap-2 text-sm text-primary-text hover:text-primary-text"
 				>
 					<MapPin size={14} />
 					{address}
 				</a>
 			)}
 
-			<p className="text-xs text-zinc-500">
+			<p className="text-xs text-text-muted">
 				Scheduled: {formatDateTime(scheduledStart, tz)}
 			</p>
 		</div>
@@ -387,7 +387,7 @@ function DelayedBanner({ scheduledStart, tz }: { scheduledStart: Date | string; 
 				<AlertTriangle size={15} className="text-orange-400 shrink-0" />
 				<span className="text-sm font-semibold text-orange-300">Visit Delayed</span>
 			</div>
-			<p className="text-xs text-zinc-400">
+			<p className="text-xs text-text-tertiary">
 				Scheduled: {formatDateTime(scheduledStart, tz)}
 			</p>
 			{overdueLabel && (
@@ -403,10 +403,10 @@ function PausedBanner() {
 	return (
 		<div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-yellow-500/8 border border-yellow-500/20">
 			<span className="h-2 w-2 rounded-full bg-yellow-400 flex-shrink-0" />
-			<span className="text-xs text-yellow-400 font-medium uppercase tracking-wide flex-1">
+			<span className="text-xs text-warning-text font-medium uppercase tracking-wide flex-1">
 				Visit Paused
 			</span>
-			<span className="text-xs text-zinc-500">
+			<span className="text-xs text-text-muted">
 				Clock in to resume
 			</span>
 		</div>
@@ -425,10 +425,10 @@ export default function TechnicianVisitDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="max-w-lg mx-auto space-y-4 animate-pulse">
-				<div className="h-7 w-48 bg-zinc-800 rounded" />
-				<div className="h-4 w-32 bg-zinc-800/60 rounded" />
-				<div className="h-24 bg-zinc-800 rounded-xl" />
-				<div className="h-32 bg-zinc-800/60 rounded-xl" />
+				<div className="h-7 w-48 bg-surface rounded" />
+				<div className="h-4 w-32 bg-surface/60 rounded" />
+				<div className="h-24 bg-surface rounded-xl" />
+				<div className="h-32 bg-surface/60 rounded-xl" />
 			</div>
 		);
 	}
@@ -436,7 +436,7 @@ export default function TechnicianVisitDetailPage() {
 	if (!visit) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<p className="text-zinc-500">Visit not found</p>
+				<p className="text-text-muted">Visit not found</p>
 			</div>
 		);
 	}
@@ -676,7 +676,7 @@ export default function TechnicianVisitDetailPage() {
 					<span
 						className={`float-right ml-3 mt-0.5 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
 							VisitStatusColors[status] ??
-							"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
 						}`}
 					>
 						{VisitStatusLabels[status] ?? status}
@@ -684,7 +684,7 @@ export default function TechnicianVisitDetailPage() {
 					{visit.name ?? "Visit"}
 				</h1>
 				{job?.client?.name && (
-					<p className="text-sm text-zinc-400 mt-0.5">
+					<p className="text-sm text-text-tertiary mt-0.5">
 						{job.client.name}
 					</p>
 				)}
@@ -715,7 +715,7 @@ export default function TechnicianVisitDetailPage() {
 						{dispatchPhone && (
 							<a
 								href={`tel:${dispatchPhone}`}
-								className="flex items-center justify-center w-12 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white transition-colors self-start"
+								className="flex items-center justify-center w-12 rounded-xl bg-surface border border-border text-text-tertiary hover:text-white transition-colors self-start"
 								title="Call Dispatch"
 							>
 								<Phone size={18} />

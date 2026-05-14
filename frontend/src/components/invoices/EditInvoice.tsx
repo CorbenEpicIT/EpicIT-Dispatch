@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import {
 	type Invoice,
 	type UpdateInvoiceInput,
@@ -37,9 +37,9 @@ const PAYMENT_TERM_OPTIONS = [
 	{ label: "Net 90", value: "90" },
 ];
 
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
 
 interface EditInvoiceProps {
 	isModalOpen: boolean;
@@ -343,11 +343,11 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 								<label className={LABEL}>
 									Client
 								</label>
-								<div className="border border-zinc-700 px-2.5 h-[34px] flex items-center w-full rounded bg-zinc-800/50 text-zinc-400 text-sm min-w-0 truncate">
+								<div className="border border-border px-2.5 h-[34px] flex items-center w-full rounded bg-surface/50 text-text-tertiary text-sm min-w-0 truncate">
 									{invoice.client?.name ??
 										"—"}
 								</div>
-								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+								<p className="text-[10px] text-text-muted mt-0.5 leading-tight">
 									Cannot be changed
 								</p>
 							</div>
@@ -423,7 +423,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Due Date{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(auto or override)
 									</span>
 								</label>
@@ -449,7 +449,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 						<div className="min-w-0">
 							<label className={LABEL}>
 								Internal Notes{" "}
-								<span className="text-zinc-500 normal-case font-normal">
+								<span className="text-text-muted normal-case font-normal">
 									(not shown to client)
 								</span>
 							</label>
@@ -466,7 +466,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -489,7 +489,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Linked Jobs &amp; Visits{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(read-only)
 									</span>
 								</label>
@@ -509,10 +509,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 												key={
 													sj.id
 												}
-												className="rounded-md border border-zinc-700 bg-zinc-900 overflow-hidden"
+												className="rounded-md border border-border bg-base overflow-hidden"
 											>
 												{/* Job row */}
-												<div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
+												<div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
 													<svg
 														width="12"
 														height="12"
@@ -520,7 +520,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 														fill="none"
 														stroke="currentColor"
 														strokeWidth="2"
-														className="text-zinc-500 flex-shrink-0"
+														className="text-text-muted flex-shrink-0"
 													>
 														<rect
 															x="2"
@@ -544,7 +544,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 														undefined &&
 														jobLink.billed_amount !==
 															null && (
-															<span className="text-xs text-zinc-500 flex-shrink-0">
+															<span className="text-xs text-text-muted flex-shrink-0">
 																billed{" "}
 																{Number(
 																	jobLink.billed_amount
@@ -579,7 +579,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																key={
 																	sv.id
 																}
-																className="flex items-center gap-2 pl-7 pr-3 py-1.5 border-t border-zinc-800 bg-zinc-800/40"
+																className="flex items-center gap-2 pl-7 pr-3 py-1.5 border-t border-border-subtle bg-surface/40"
 															>
 																<svg
 																	width="11"
@@ -588,7 +588,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																	fill="none"
 																	stroke="currentColor"
 																	strokeWidth="2"
-																	className="text-zinc-500 flex-shrink-0"
+																	className="text-text-muted flex-shrink-0"
 																>
 																	<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
 																	<circle
@@ -597,7 +597,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																		r="3"
 																	/>
 																</svg>
-																<span className="text-xs text-zinc-300 flex-1">
+																<span className="text-xs text-text-secondary flex-1">
 																	{
 																		sj.job_number
 																	}{" "}
@@ -614,7 +614,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																		}
 																	)}
 																</span>
-																<span className="text-[10px] text-zinc-500 flex-shrink-0">
+																<span className="text-[10px] text-text-muted flex-shrink-0">
 																	{
 																		sv.status
 																	}
@@ -623,7 +623,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																	undefined &&
 																	visitLink.billed_amount !==
 																		null && (
-																		<span className="text-[10px] text-zinc-500 flex-shrink-0 ml-1">
+																		<span className="text-[10px] text-text-muted flex-shrink-0 ml-1">
 																			billed{" "}
 																			{Number(
 																				visitLink.billed_amount
@@ -677,9 +677,9 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						{/* Summary */}
-						<div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 text-sm space-y-1.5">
+						<div className="p-3 bg-surface/50 rounded-lg border border-border/50 text-sm space-y-1.5">
 							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Invoice
 								</span>
 								<span className="text-white font-medium">
@@ -687,7 +687,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 								</span>
 							</div>
 							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Client
 								</span>
 								<span className="text-white">
@@ -697,7 +697,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							</div>
 							{getValue("memo") && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Memo
 									</span>
 									<span className="text-white truncate max-w-[60%] text-right">
@@ -707,7 +707,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							)}
 							{issueDate && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Issue Date
 									</span>
 									<span className="text-white">
@@ -724,7 +724,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							)}
 							{dueDate && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Due Date
 									</span>
 									<span className="text-white">

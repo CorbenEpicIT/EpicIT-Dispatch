@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
+﻿import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X } from "lucide-react";
@@ -58,14 +58,14 @@ export default function TechnicianLayout() {
 	};
 
 	return (
-		<div className="flex h-screen bg-zinc-950 text-white">
+		<div className="flex h-screen bg-canvas text-white">
 			<div className="flex flex-col flex-1 overflow-hidden">
 				{/* TOP NAV */}
-				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-zinc-950 border-b border-zinc-900">
+				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-canvas border-b border-zinc-900">
 					<div className="flex items-center gap-3 sm:gap-6">
 						<button
 							onClick={handleBack}
-							className="flex items-center gap-2 text-zinc-400 hover:text-white px-2 sm:px-3 py-2 rounded-lg hover:bg-zinc-800 group"
+							className="flex items-center gap-2 text-text-tertiary hover:text-white px-2 sm:px-3 py-2 rounded-lg hover:bg-surface group"
 						>
 							<ArrowLeft
 								size={18}
@@ -84,17 +84,17 @@ export default function TechnicianLayout() {
 						{/* Truck / vehicle icon */}
 						<button
 							onClick={() => navigate("/technician/vehicle")}
-							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-800 transition-colors"
+							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface transition-colors"
 							title={techProfile?.current_vehicle?.name ?? "No vehicle selected"}
 						>
 							<Truck
 								size={20}
-								className={noVehicle ? "text-amber-400" : "text-zinc-400"}
+								className={noVehicle ? "text-warning-text" : "text-text-tertiary"}
 							/>
 							{noVehicle && (
 								<AlertTriangle
 									size={10}
-									className="absolute top-1 right-1 text-amber-400"
+									className="absolute top-1 right-1 text-warning-text"
 								/>
 							)}
 						</button>
@@ -102,10 +102,10 @@ export default function TechnicianLayout() {
 						{/* Bell / notifications icon */}
 						<button
 							onClick={() => navigate("/technician/notifications")}
-							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-800 transition-colors"
+							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface transition-colors"
 							title="Notifications"
 						>
-							<Bell size={20} className="text-zinc-400" />
+							<Bell size={20} className="text-text-tertiary" />
 							{unreadCount > 0 && (
 								<span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
 									{unreadCount > 9 ? "9+" : unreadCount}
@@ -114,7 +114,7 @@ export default function TechnicianLayout() {
 						</button>
 
 						{user && (
-							<span className="hidden sm:block text-sm text-zinc-400">
+							<span className="hidden sm:block text-sm text-text-tertiary">
 								{user.name}
 							</span>
 						)}
@@ -129,8 +129,8 @@ export default function TechnicianLayout() {
 				</header>
 
 				{notifBanner && (
-					<div className="flex items-start gap-2.5 pl-3 pr-4 py-2.5 bg-zinc-900 border-b border-zinc-800">
-						<div className="w-0.5 self-stretch bg-blue-500 rounded-full shrink-0" />
+					<div className="flex items-start gap-2.5 pl-3 pr-4 py-2.5 bg-base border-b border-border-subtle">
+						<div className="w-0.5 self-stretch bg-primary rounded-full shrink-0" />
 						<button
 							className="flex-1 min-w-0 text-left py-0.5"
 							onClick={() => {
@@ -140,18 +140,18 @@ export default function TechnicianLayout() {
 						>
 							<p className="text-[13px] font-semibold text-white leading-snug truncate">{notifBanner.title}</p>
 							{notifBanner.body && (
-								<p className="text-xs text-zinc-400 leading-snug mt-0.5 line-clamp-2">{notifBanner.body}</p>
+								<p className="text-xs text-text-tertiary leading-snug mt-0.5 line-clamp-2">{notifBanner.body}</p>
 							)}
 						</button>
 						<button
 							onClick={() => setNotifBanner(null)}
-							className="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors mt-0.5"
+							className="shrink-0 text-text-muted hover:text-text-secondary transition-colors mt-0.5"
 						>
 							<X size={14} />
 						</button>
 					</div>
 				)}
-				<main className="flex-1 overflow-y-auto bg-zinc-950">
+				<main className="flex-1 overflow-y-auto bg-canvas">
 					<div className="p-4 pb-20 md:px-6 md:pt-6 min-h-full">
 						<Outlet />
 					</div>
@@ -159,13 +159,13 @@ export default function TechnicianLayout() {
 			</div>
 
 			{/* BOTTOM NAV */}
-			<nav className="flex fixed bottom-0 left-0 right-0 z-50 bg-zinc-950 border-t border-zinc-900 h-16">
+			<nav className="flex fixed bottom-0 left-0 right-0 z-50 bg-canvas border-t border-zinc-900 h-16">
 				<NavLink
 					to="/technician"
 					end
 					className={({ isActive }) =>
 						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-							isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+							isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
 						}`
 					}
 				>
@@ -176,7 +176,7 @@ export default function TechnicianLayout() {
 					to="/technician/visits"
 					className={({ isActive }) =>
 						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-							isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+							isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
 						}`
 					}
 				>
@@ -187,7 +187,7 @@ export default function TechnicianLayout() {
 					to="/technician/map"
 					className={({ isActive }) =>
 						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-							isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+							isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
 						}`
 					}
 				>

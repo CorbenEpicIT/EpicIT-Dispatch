@@ -1,4 +1,4 @@
-import LoadSvg from "../../assets/icons/loading.svg?react";
+﻿import LoadSvg from "../../assets/icons/loading.svg?react";
 import { useRef, useState } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
@@ -13,9 +13,9 @@ interface CreateClientProps {
 	createClient: (input: CreateClientInput) => Promise<string>;
 }
 
-const LABEL = "block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+const LABEL = "block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm focus:border-primary focus:outline-none transition-colors";
 
 const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClientProps) => {
 	const nameRef = useRef<HTMLInputElement>(null);
@@ -59,13 +59,13 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 	const content = (
 		<div className="flex flex-col">
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-zinc-700 flex-shrink-0">
+			<div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-border flex-shrink-0">
 				<h2 className="text-lg sm:text-xl font-bold text-white whitespace-nowrap">
 					New Client
 				</h2>
 				<button
 					onClick={() => setIsModalOpen(false)}
-					className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+					className="p-1.5 text-text-tertiary hover:text-white hover:bg-surface rounded transition-colors"
 					disabled={isLoading}
 				>
 					<X size={18} />
@@ -86,7 +86,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 					/>
 					{nameErrors.map((err) => (
 						<p
-							className="mt-1 text-xs text-red-400"
+							className="mt-1 text-xs text-error-text"
 							key={err.message}
 						>
 							{err.message}
@@ -100,7 +100,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 					<AddressForm handleChange={handleChangeAddress} />
 					{addressErrors.map((err) => (
 						<p
-							className="mt-1 text-xs text-red-400"
+							className="mt-1 text-xs text-error-text"
 							key={err.message}
 						>
 							{err.message}
@@ -110,20 +110,20 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 			</div>
 
 			{/* Footer */}
-			<div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-zinc-700 bg-zinc-900 flex-shrink-0">
+			<div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border bg-base flex-shrink-0">
 				{isLoading ? (
 					<LoadSvg className="w-8 h-8" />
 				) : (
 					<>
 						<button
 							onClick={() => setIsModalOpen(false)}
-							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-zinc-700 bg-transparent text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 hover:border-zinc-600 transition-colors whitespace-nowrap"
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-transparent text-sm font-medium text-text-tertiary hover:text-text-primary hover:bg-surface hover:border-border-strong transition-colors whitespace-nowrap"
 						>
 							Cancel
 						</button>
 						<button
 							onClick={invokeCreate}
-							className="inline-flex items-center h-8 px-4 rounded-md bg-green-600 hover:bg-green-500 text-sm font-semibold text-white transition-colors whitespace-nowrap"
+							className="inline-flex items-center h-8 px-4 rounded-md bg-confirm hover:bg-confirm-hover text-sm font-semibold text-white transition-colors whitespace-nowrap"
 						>
 							Create Client
 						</button>

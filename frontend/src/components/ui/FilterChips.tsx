@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+﻿import { X } from "lucide-react";
 
 export type ChipColor = "purple" | "blue" | "green" | "orange";
 
@@ -16,9 +16,9 @@ interface FilterChipsProps {
 }
 
 const COLOR_STYLES: Record<ChipColor, { bg: string; border: string; text: string; ring: string }> = {
-	purple: { bg: "bg-purple-600/20", border: "border-purple-500/30", text: "text-purple-300", ring: "ring-purple-400" },
-	blue:   { bg: "bg-blue-600/20",   border: "border-blue-500/30",   text: "text-blue-300",   ring: "ring-blue-400" },
-	green:  { bg: "bg-green-600/20",  border: "border-green-500/30",  text: "text-green-300",  ring: "ring-green-400" },
+	purple: { bg: "bg-purple-600/20", border: "border-reviewing/30", text: "text-purple-300", ring: "ring-purple-400" },
+	blue:   { bg: "bg-primary-hover/20",   border: "border-primary/30",   text: "text-primary-text",   ring: "ring-blue-400" },
+	green:  { bg: "bg-green-600/20",  border: "border-success/30",  text: "text-green-300",  ring: "ring-green-400" },
 	orange: { bg: "bg-orange-600/20", border: "border-orange-500/30", text: "text-orange-300", ring: "ring-orange-400" },
 };
 
@@ -27,10 +27,10 @@ export default function FilterChips({ filters: rawFilters, resultCount, onClearA
 	if (filters.length === 0) return null;
 
 	return (
-		<div className="mb-3 p-2.5 bg-zinc-800/60 rounded-md border border-zinc-700/60">
+		<div className="mb-3 p-2.5 bg-surface/60 rounded-md border border-border/60">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2 flex-wrap">
-					<span className="text-sm text-zinc-400">Active filters:</span>
+					<span className="text-sm text-text-tertiary">Active filters:</span>
 					{filters.map((chip) => {
 						const { bg, border, text, ring } = COLOR_STYLES[chip.color];
 						return (
@@ -49,13 +49,13 @@ export default function FilterChips({ filters: rawFilters, resultCount, onClearA
 							</div>
 						);
 					})}
-					<span className="text-sm text-zinc-500">
+					<span className="text-sm text-text-muted">
 						• {resultCount} {resultCount === 1 ? "result" : "results"}
 					</span>
 				</div>
 				<button
 					onClick={onClearAll}
-					className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700/50 rounded-md transition-colors"
+					className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-error-text hover:text-error-text hover:bg-surface-raised/50 rounded-md transition-colors"
 				>
 					Clear All
 					<X size={14} />

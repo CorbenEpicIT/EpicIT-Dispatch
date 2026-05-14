@@ -1,4 +1,4 @@
-import { PieChart, Pie, Tooltip, ResponsiveContainer } from "recharts";
+﻿import { PieChart, Pie, Tooltip, ResponsiveContainer } from "recharts";
 import Card from "../ui/Card";
 import { formatCurrency } from "../../util/util";
 import type { RevenueByJobTypeItem } from "../../types/reports";
@@ -27,8 +27,8 @@ function CustomTooltip({
 	if (!active || !payload?.length) return null;
 	const { name, value } = payload[0];
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/80 backdrop-blur-md shadow-lg">
-			<p className="text-xs text-zinc-400">{name}</p>
+		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
+			<p className="text-xs text-text-tertiary">{name}</p>
 			<p className="text-sm font-semibold text-white">
 				{formatCurrency(value)}
 			</p>
@@ -58,7 +58,7 @@ export default function RevenueByJobTypeChart({
 				{/* Center label */}
 				<div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
 					<div className="text-center">
-						<p className="text-xs uppercase tracking-wider text-zinc-400">
+						<p className="text-xs uppercase tracking-wider text-text-tertiary">
 							Total
 						</p>
 						<p className="text-xl font-bold text-white">
@@ -104,7 +104,7 @@ export default function RevenueByJobTypeChart({
 									TYPE_COLORS[entry.type] || FALLBACK_COLOR,
 							}}
 						/>
-						<span className="text-sm text-zinc-400">
+						<span className="text-sm text-text-tertiary">
 							{entry.type}
 						</span>
 						<span className="text-sm font-medium text-white">

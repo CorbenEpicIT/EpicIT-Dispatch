@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+﻿import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Edit2,
@@ -178,7 +178,7 @@ export default function JobDetailPage() {
 					<h1 className="text-3xl font-bold text-white mb-2">
 						{job.name}
 					</h1>
-					<p className="text-zinc-400 text-sm">
+					<p className="text-text-tertiary text-sm">
 						{new Date(job.created_at).toLocaleDateString(
 							"en-US",
 							{
@@ -194,7 +194,7 @@ export default function JobDetailPage() {
 					<span
 						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 							JobStatusColors[job.status] ||
-							"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
 						}`}
 					>
 						{job.status}
@@ -206,13 +206,13 @@ export default function JobDetailPage() {
 								setIsOptionsMenuOpen((v) => !v);
 								setDeleteConfirm(false);
 							}}
-							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+							className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 						>
 							<MoreVertical size={20} />
 						</button>
 
 						{isOptionsMenuOpen && (
-							<div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
 									<button
 										onClick={() => {
@@ -226,12 +226,12 @@ export default function JobDetailPage() {
 												false
 											);
 										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
 									>
 										<Edit2 size={16} />
 										Edit Job
 									</button>
-									<div className="my-1 border-t border-zinc-800" />
+									<div className="my-1 border-t border-border-subtle" />
 									<button
 										onClick={
 											handleDeleteJob
@@ -247,7 +247,7 @@ export default function JobDetailPage() {
 										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
 											deleteConfirm
 												? "bg-red-600 hover:bg-red-700 text-white"
-												: "text-red-400 hover:bg-zinc-800 hover:text-red-300"
+												: "text-error-text hover:bg-surface hover:text-error-text"
 										} disabled:opacity-50 disabled:cursor-not-allowed`}
 									>
 										<Trash2 size={16} />
@@ -270,7 +270,7 @@ export default function JobDetailPage() {
 					<Card title="Job Information" className="h-full">
 						<div className="space-y-4">
 							<div>
-								<h3 className="text-zinc-400 text-sm mb-1">
+								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
 								<p className="text-white break-words">
@@ -279,7 +279,7 @@ export default function JobDetailPage() {
 								</p>
 							</div>
 							<div>
-								<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+								<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 									<MapPin size={14} />
 									Address
 								</h3>
@@ -289,7 +289,7 @@ export default function JobDetailPage() {
 							</div>
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<TrendingUp
 											size={14}
 										/>
@@ -306,7 +306,7 @@ export default function JobDetailPage() {
 													""
 												)
 												.trim() ||
-											"text-blue-400"
+											"text-primary-text"
 										}`}
 									>
 										{job.priority ||
@@ -314,7 +314,7 @@ export default function JobDetailPage() {
 									</p>
 								</div>
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<Calendar
 											size={14}
 										/>
@@ -352,12 +352,12 @@ export default function JobDetailPage() {
 					<div className="text-center py-8">
 						<DollarSign
 							size={40}
-							className="mx-auto text-zinc-600 mb-3"
+							className="mx-auto text-text-faint mb-3"
 						/>
-						<h3 className="text-zinc-400 text-sm font-medium mb-1">
+						<h3 className="text-text-tertiary text-sm font-medium mb-1">
 							No Financial Data
 						</h3>
-						<p className="text-zinc-500 text-xs">
+						<p className="text-text-muted text-xs">
 							Edit this job to add estimated costs and
 							line items.
 						</p>
@@ -365,19 +365,19 @@ export default function JobDetailPage() {
 				) : (
 					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 						<div className="lg:col-span-2">
-							<h3 className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-4">
+							<h3 className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-4">
 								Line Items
 							</h3>
 							{!hasLineItems ? (
 								<div className="text-center py-8">
 									<FileText
 										size={40}
-										className="mx-auto text-zinc-600 mb-3"
+										className="mx-auto text-text-faint mb-3"
 									/>
-									<h3 className="text-zinc-400 text-sm font-medium mb-1">
+									<h3 className="text-text-tertiary text-sm font-medium mb-1">
 										No Line Items
 									</h3>
-									<p className="text-zinc-500 text-xs">
+									<p className="text-text-muted text-xs">
 										No line items have
 										been added to this
 										job yet.
@@ -385,7 +385,7 @@ export default function JobDetailPage() {
 								</div>
 							) : (
 								<div className="space-y-1">
-									<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
+									<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
 										<div className="col-span-5">
 											Description
 										</div>
@@ -412,7 +412,7 @@ export default function JobDetailPage() {
 													item.id ||
 													index
 												}
-												className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
+												className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors"
 											>
 												<div className="col-span-5 text-sm">
 													<p className="text-white font-medium">
@@ -421,7 +421,7 @@ export default function JobDetailPage() {
 														}
 													</p>
 													{item.description && (
-														<p className="text-zinc-400 text-xs mt-0.5">
+														<p className="text-text-tertiary text-xs mt-0.5">
 															{
 																item.description
 															}
@@ -430,7 +430,7 @@ export default function JobDetailPage() {
 												</div>
 												<div className="col-span-1 flex items-center justify-center">
 													{item.item_type && (
-														<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
+														<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
 															{
 																item.item_type
 															}
@@ -470,9 +470,9 @@ export default function JobDetailPage() {
 						</div>
 
 						<div className="lg:col-span-1 space-y-6">
-							<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
+							<div className="p-4 bg-surface/50 rounded-lg border border-border space-y-2">
 								<div className="flex justify-between text-sm">
-									<span className="text-zinc-400">
+									<span className="text-text-tertiary">
 										Total Items:
 									</span>
 									<span className="text-white font-medium tabular-nums">
@@ -481,7 +481,7 @@ export default function JobDetailPage() {
 									</span>
 								</div>
 								<div className="flex justify-between text-sm">
-									<span className="text-zinc-400">
+									<span className="text-text-tertiary">
 										Job Number:
 									</span>
 									<span className="text-white font-medium">
@@ -492,18 +492,18 @@ export default function JobDetailPage() {
 
 							<div className="space-y-3">
 								{job.estimated_total && (
-									<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
+									<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
 										<div>
-											<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-0.5">
+											<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
 												Estimated
 												Total
 											</p>
-											<p className="text-xs text-zinc-500">
+											<p className="text-xs text-text-muted">
 												Initial
 												estimate
 											</p>
 										</div>
-										<p className="text-2xl font-bold text-blue-400 tabular-nums">
+										<p className="text-2xl font-bold text-primary-text tabular-nums">
 											{formatCurrency(
 												Number(
 													job.estimated_total
@@ -514,18 +514,18 @@ export default function JobDetailPage() {
 								)}
 
 								{job.actual_total && (
-									<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
+									<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
 										<div>
-											<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-0.5">
+											<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
 												Actual
 												Total
 											</p>
-											<p className="text-xs text-zinc-500">
+											<p className="text-xs text-text-muted">
 												Final
 												cost
 											</p>
 										</div>
-										<p className="text-2xl font-bold text-green-400 tabular-nums">
+										<p className="text-2xl font-bold text-success-text tabular-nums">
 											{formatCurrency(
 												Number(
 													job.actual_total
@@ -538,7 +538,7 @@ export default function JobDetailPage() {
 								{job.estimated_total &&
 									job.actual_total && (
 										<>
-											<div className="border-t border-zinc-700 my-2" />
+											<div className="border-t border-border my-2" />
 											<div
 												className={`px-4 py-3 rounded-lg border-2 ${
 													Number(
@@ -547,13 +547,13 @@ export default function JobDetailPage() {
 													Number(
 														job.estimated_total
 													)
-														? "bg-red-500/10 border-red-500/30"
-														: "bg-green-500/10 border-green-500/30"
+														? "bg-error/10 border-error/30"
+														: "bg-success/10 border-success/30"
 												}`}
 											>
 												<div className="flex items-center justify-between">
 													<div>
-														<p className="text-zinc-300 text-xs uppercase tracking-wide font-semibold mb-0.5">
+														<p className="text-text-secondary text-xs uppercase tracking-wide font-semibold mb-0.5">
 															Budget
 															Variance
 														</p>
@@ -565,7 +565,7 @@ export default function JobDetailPage() {
 																Number(
 																	job.estimated_total
 																)
-																	? "text-red-300"
+																	? "text-error-text"
 																	: "text-green-300"
 															}`}
 														>
@@ -588,8 +588,8 @@ export default function JobDetailPage() {
 																Number(
 																	job.estimated_total
 																)
-																	? "text-red-400"
-																	: "text-green-400"
+																	? "text-error-text"
+																	: "text-success-text"
 															}`}
 														>
 															{Number(
@@ -617,7 +617,7 @@ export default function JobDetailPage() {
 																Number(
 																	job.estimated_total
 																)
-																	? "text-red-300"
+																	? "text-error-text"
 																	: "text-green-300"
 															}`}
 														>
@@ -648,8 +648,8 @@ export default function JobDetailPage() {
 									job.estimated_total &&
 									job.status !==
 										"Completed" && (
-										<div className="px-4 py-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-											<p className="text-xs text-blue-300 italic">
+										<div className="px-4 py-3 bg-primary/10 border border-primary/30 rounded-lg">
+											<p className="text-xs text-primary-text italic">
 												<span className="font-semibold">
 													Note:
 												</span>{" "}
@@ -687,17 +687,17 @@ export default function JobDetailPage() {
 								`/dispatch/requests/${job.request!.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Request
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{job.request.title}
 								</h4>
-								<div className="flex items-center gap-2 text-xs text-zinc-500 mt-2">
+								<div className="flex items-center gap-2 text-xs text-text-muted mt-2">
 									<Calendar size={12} />
 									<span>
 										{new Date(
@@ -730,11 +730,11 @@ export default function JobDetailPage() {
 						</div>
 					</button>
 				) : (
-					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+					<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Request
 						</p>
-						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+						<div className="flex items-center gap-2 text-text-faint text-sm">
 							<Link2Off size={14} />
 							<span>No request linked</span>
 						</div>
@@ -749,20 +749,20 @@ export default function JobDetailPage() {
 								`/dispatch/quotes/${job.quote!.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Quote
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{job.quote.quote_number}
 								</h4>
-								<p className="text-zinc-400 text-xs mb-2">
+								<p className="text-text-tertiary text-xs mb-2">
 									{job.quote.title}
 								</p>
-								<div className="flex items-center gap-2 text-xs text-zinc-500">
+								<div className="flex items-center gap-2 text-xs text-text-muted">
 									<Calendar size={12} />
 									<span>
 										{new Date(
@@ -780,7 +780,7 @@ export default function JobDetailPage() {
 								</div>
 							</div>
 							<div className="flex flex-col items-end gap-2 flex-shrink-0">
-								<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+								<span className="text-success-text font-semibold text-sm whitespace-nowrap">
 									$
 									{Number(
 										job.quote.total
@@ -807,11 +807,11 @@ export default function JobDetailPage() {
 						</div>
 					</button>
 				) : (
-					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+					<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Quote
 						</p>
-						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+						<div className="flex items-center gap-2 text-text-faint text-sm">
 							<Link2Off size={14} />
 							<span>No quote linked</span>
 						</div>
@@ -826,18 +826,18 @@ export default function JobDetailPage() {
 								`/dispatch/recurring-plans/${recurringPlan.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all text-left group cursor-pointer"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all text-left group cursor-pointer"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Recurring Plan
 						</p>
 						<div className="flex items-start justify-between gap-3 mb-3">
 							<div className="flex items-center gap-2 min-w-0">
 								<Repeat
 									size={14}
-									className="text-blue-400 flex-shrink-0"
+									className="text-primary-text flex-shrink-0"
 								/>
-								<h4 className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors truncate">
+								<h4 className="text-white font-semibold text-sm group-hover:text-primary-text transition-colors truncate">
 									{recurringPlan.name}
 								</h4>
 							</div>
@@ -846,7 +846,7 @@ export default function JobDetailPage() {
 									RecurringPlanStatusColors[
 										recurringPlan.status
 									] ||
-									"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+									"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
 								}`}
 							>
 								{RecurringPlanStatusLabels[
@@ -854,7 +854,7 @@ export default function JobDetailPage() {
 								] || recurringPlan.status}
 							</span>
 						</div>
-						<div className="flex items-center gap-2 text-xs text-zinc-400">
+						<div className="flex items-center gap-2 text-xs text-text-tertiary">
 							<Calendar
 								size={12}
 								className="flex-shrink-0"
@@ -880,13 +880,13 @@ export default function JobDetailPage() {
 				headerAction={
 					<div className="flex items-center gap-3">
 						{linkedInvoices.length > 0 && (
-							<span className="text-sm text-zinc-400">
+							<span className="text-sm text-text-tertiary">
 								{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
 							</span>
 						)}
 						<button
 							onClick={() => setIsCreateInvoiceOpen(true)}
-							className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+							className="flex items-center gap-1.5 rounded bg-primary-hover px-3 py-1.5 text-sm font-medium text-white hover:bg-primary"
 						>
 							<Plus size={14} />
 							Create Invoice
@@ -895,7 +895,7 @@ export default function JobDetailPage() {
 				}
 			>
 				{linkedInvoices.length === 0 ? (
-					<div className="flex items-center gap-2 text-zinc-500 text-sm py-1">
+					<div className="flex items-center gap-2 text-text-muted text-sm py-1">
 						<Receipt size={14} className="flex-shrink-0" />
 						<span>No invoices linked to this job</span>
 					</div>
@@ -905,21 +905,21 @@ export default function JobDetailPage() {
 							<button
 								key={invoice.id}
 								onClick={() => navigate(`/dispatch/invoices/${invoice.id}`)}
-								className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group"
+								className="bg-surface border border-border rounded-lg p-3 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group"
 							>
 								<div className="flex items-center justify-between gap-6 mb-2">
-									<span className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors tabular-nums">
+									<span className="text-white font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
 										{invoice.invoice_number}
 									</span>
 									<span
 										className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-											InvoiceStatusColors[invoice.status as InvoiceStatus] ?? "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+											InvoiceStatusColors[invoice.status as InvoiceStatus] ?? "bg-zinc-500/20 text-text-tertiary border-border-strong/30"
 										}`}
 									>
 										{InvoiceStatusLabels[invoice.status as InvoiceStatus] ?? invoice.status}
 									</span>
 								</div>
-								<div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2">
+								<div className="flex items-center gap-1.5 text-xs text-text-tertiary mb-2">
 									<Calendar size={11} />
 									<span>
 										{invoice.issue_date ? new Date(invoice.issue_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
@@ -930,7 +930,7 @@ export default function JobDetailPage() {
 										{formatCurrency(Number(invoice.total))}
 									</span>
 									{Number(invoice.balance_due) > 0 && (
-										<span className="text-xs text-amber-400 tabular-nums">
+										<span className="text-xs text-warning-text tabular-nums">
 											{formatCurrency(Number(invoice.balance_due))} due
 										</span>
 									)}
@@ -950,7 +950,7 @@ export default function JobDetailPage() {
 							onClick={() =>
 								setIsCreateVisitModalOpen(true)
 							}
-							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors cursor-pointer"
+							className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors cursor-pointer"
 						>
 							<Plus size={16} />
 							Create Visit
@@ -962,19 +962,19 @@ export default function JobDetailPage() {
 					<div className="text-center py-12">
 						<Calendar
 							size={48}
-							className="mx-auto mb-3 opacity-50 text-zinc-600"
+							className="mx-auto mb-3 opacity-50 text-text-faint"
 						/>
-						<p className="text-lg font-medium mb-2 text-zinc-400">
+						<p className="text-lg font-medium mb-2 text-text-tertiary">
 							No visits scheduled
 						</p>
-						<p className="text-sm text-zinc-500 mb-4">
+						<p className="text-sm text-text-muted mb-4">
 							Create a visit to schedule this job
 						</p>
 						<button
 							onClick={() =>
 								setIsCreateVisitModalOpen(true)
 							}
-							className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+							className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
 						>
 							<Plus size={16} />
 							Create First Visit
@@ -990,10 +990,10 @@ export default function JobDetailPage() {
 										`/dispatch/jobs/${jobId}/visits/${visit.id}`
 									)
 								}
-								className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group w-fit"
+								className="bg-surface border border-border rounded-lg p-4 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group w-fit"
 							>
 								{visit.name && (
-									<h4 className="text-white font-semibold text-base mb-2 group-hover:text-blue-400 transition-colors">
+									<h4 className="text-white font-semibold text-base mb-2 group-hover:text-primary-text transition-colors">
 										{visit.name}
 									</h4>
 								)}
@@ -1005,7 +1005,7 @@ export default function JobDetailPage() {
 												VisitStatusColors[
 													visit.status as VisitStatus
 												] ||
-												"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+												"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
 											}`}
 										>
 											{
@@ -1021,17 +1021,17 @@ export default function JobDetailPage() {
 											return (
 												<span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
 													isPartial
-														? "border-amber-800/50 bg-amber-900/50 text-amber-400"
-														: "border-green-800/50 bg-green-900/50 text-green-400"
+														? "border-amber-800/50 bg-amber-900/50 text-warning-text"
+														: "border-green-800/50 bg-green-900/50 text-success-text"
 												}`}>
 													{isPartial ? "Partial" : "Billed"}
 												</span>
 											);
 										})()}
-										<span className="text-zinc-500 text-sm">
+										<span className="text-text-muted text-sm">
 											•
 										</span>
-										<span className="text-xs text-zinc-400">
+										<span className="text-xs text-text-tertiary">
 											{formatVisitTimeConstraints(
 												visit
 											)}
@@ -1039,7 +1039,7 @@ export default function JobDetailPage() {
 									</div>
 									<ChevronRight
 										size={16}
-										className="text-zinc-400 group-hover:text-blue-400 group-hover:translate-x-1 transition-all flex-shrink-0"
+										className="text-text-tertiary group-hover:text-primary-text group-hover:translate-x-1 transition-all flex-shrink-0"
 									/>
 								</div>
 
@@ -1047,9 +1047,9 @@ export default function JobDetailPage() {
 									<div className="flex items-center gap-2 text-sm">
 										<Clock
 											size={16}
-											className="text-zinc-400 flex-shrink-0"
+											className="text-text-tertiary flex-shrink-0"
 										/>
-										<span className="text-zinc-300 whitespace-nowrap">
+										<span className="text-text-secondary whitespace-nowrap">
 											{
 												formatDateTime(
 													visit.scheduled_start_at
@@ -1077,9 +1077,9 @@ export default function JobDetailPage() {
 													size={
 														16
 													}
-													className="text-zinc-400 flex-shrink-0"
+													className="text-text-tertiary flex-shrink-0"
 												/>
-												<span className="text-zinc-300">
+												<span className="text-text-secondary">
 													{visit.visit_techs
 														.map(
 															(
@@ -1098,7 +1098,7 @@ export default function JobDetailPage() {
 
 									{visit.description &&
 										!visit.name && (
-											<div className="text-xs text-zinc-400 italic mt-2 line-clamp-2">
+											<div className="text-xs text-text-tertiary italic mt-2 line-clamp-2">
 												{
 													visit.description
 												}
@@ -1107,7 +1107,7 @@ export default function JobDetailPage() {
 
 									{visit.actual_start_at &&
 										visit.actual_end_at && (
-											<div className="mt-2 pt-2 border-t border-zinc-700 text-xs text-zinc-400">
+											<div className="mt-2 pt-2 border-t border-border text-xs text-text-tertiary">
 												Actual:{" "}
 												{formatTime(
 													visit.actual_start_at
@@ -1136,7 +1136,7 @@ export default function JobDetailPage() {
 								v.visit_techs &&
 								v.visit_techs.length > 0
 						) ? (
-							<span className="text-sm text-zinc-400">
+							<span className="text-sm text-text-tertiary">
 								{visits.reduce(
 									(acc, v) =>
 										acc +
@@ -1155,12 +1155,12 @@ export default function JobDetailPage() {
 							<div className="text-center">
 								<Users
 									size={48}
-									className="mx-auto text-zinc-600 mb-3"
+									className="mx-auto text-text-faint mb-3"
 								/>
-								<h3 className="text-zinc-400 text-lg font-medium mb-2">
+								<h3 className="text-text-tertiary text-lg font-medium mb-2">
 									No Visits Created
 								</h3>
-								<p className="text-zinc-500 text-sm max-w-sm mx-auto">
+								<p className="text-text-muted text-sm max-w-sm mx-auto">
 									Create a visit to assign
 									technicians to this job.
 								</p>
@@ -1174,12 +1174,12 @@ export default function JobDetailPage() {
 						<div className="text-center py-12">
 							<Users
 								size={48}
-								className="mx-auto text-zinc-600 mb-3"
+								className="mx-auto text-text-faint mb-3"
 							/>
-							<h3 className="text-zinc-400 text-lg font-medium mb-2">
+							<h3 className="text-text-tertiary text-lg font-medium mb-2">
 								No Technicians Assigned
 							</h3>
-							<p className="text-zinc-500 text-sm max-w-sm mx-auto">
+							<p className="text-text-muted text-sm max-w-sm mx-auto">
 								Edit a visit to assign technicians
 								to the job.
 							</p>
@@ -1204,7 +1204,7 @@ export default function JobDetailPage() {
 													`/dispatch/jobs/${jobId}/visits/${visit.id}`
 												)
 											}
-											className="w-full flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-300 mb-2 transition-colors group"
+											className="w-full flex items-center gap-2 text-xs text-text-tertiary hover:text-text-secondary mb-2 transition-colors group"
 										>
 											<Calendar
 												size={
@@ -1233,7 +1233,7 @@ export default function JobDetailPage() {
 													VisitStatusColors[
 														visit.status as VisitStatus
 													] ||
-													"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+													"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
 												}`}
 											>
 												{
@@ -1244,7 +1244,7 @@ export default function JobDetailPage() {
 												size={
 													14
 												}
-												className="text-zinc-500 group-hover:text-zinc-300 group-hover:translate-x-0.5 transition-all"
+												className="text-text-muted group-hover:text-text-secondary group-hover:translate-x-0.5 transition-all"
 											/>
 										</button>
 
@@ -1262,7 +1262,7 @@ export default function JobDetailPage() {
 															`/dispatch/technicians/${vt.tech_id}`
 														);
 													}}
-													className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group"
+													className="w-full bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg p-3 transition-all cursor-pointer text-left group"
 												>
 													<div className="flex items-center gap-3">
 														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
@@ -1286,14 +1286,14 @@ export default function JobDetailPage() {
 																)}
 														</div>
 														<div className="flex-1 min-w-0">
-															<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors mb-1">
+															<h4 className="text-white font-medium text-sm truncate group-hover:text-primary-text transition-colors mb-1">
 																{
 																	vt
 																		.tech
 																		.name
 																}
 															</h4>
-															<div className="flex items-center gap-2 text-xs text-zinc-400">
+															<div className="flex items-center gap-2 text-xs text-text-tertiary">
 																<span className="truncate">
 																	{
 																		vt
@@ -1326,18 +1326,18 @@ export default function JobDetailPage() {
 																		.tech
 																		.status ===
 																	"Available"
-																		? "bg-green-500/20 text-green-400 border border-green-500/30"
+																		? "bg-success/20 text-success-text border border-success/30"
 																		: vt
 																					.tech
 																					.status ===
 																			  "Busy"
-																			? "bg-red-500/20 text-red-400 border border-red-500/30"
+																			? "bg-error/20 text-error-text border border-error/30"
 																			: vt
 																						.tech
 																						.status ===
 																				  "Offline"
-																				? "bg-zinc-500/20 text-zinc-400 border border-zinc-500/30"
-																				: "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+																				? "bg-zinc-500/20 text-text-tertiary border border-border-strong/30"
+																				: "bg-primary/20 text-primary-text border border-primary/30"
 																}`}
 															>
 																{
@@ -1350,7 +1350,7 @@ export default function JobDetailPage() {
 																size={
 																	16
 																}
-																className="text-zinc-400 group-hover:translate-x-1 transition-transform"
+																className="text-text-tertiary group-hover:translate-x-1 transition-transform"
 															/>
 														</div>
 													</div>
@@ -1367,21 +1367,21 @@ export default function JobDetailPage() {
 					<div className="text-center py-12">
 						<Map
 							size={48}
-							className="mx-auto text-zinc-600 mb-3"
+							className="mx-auto text-text-faint mb-3"
 						/>
-						<h3 className="text-zinc-400 text-lg font-medium mb-2">
+						<h3 className="text-text-tertiary text-lg font-medium mb-2">
 							GPS Tracking
 						</h3>
-						<p className="text-zinc-500 text-sm max-w-sm mx-auto mb-4">
+						<p className="text-text-muted text-sm max-w-sm mx-auto mb-4">
 							Real-time GPS tracking will display
 							technician locations on an interactive map.
 						</p>
-						<div className="flex items-center justify-center gap-2 text-xs text-zinc-500 mt-4">
+						<div className="flex items-center justify-center gap-2 text-xs text-text-muted mt-4">
 							<MapPin size={14} />
 							<span>Live GPS tracking coming soon</span>
 						</div>
-						<div className="mt-4 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-							<p className="text-xs text-zinc-400">
+						<div className="mt-4 p-3 bg-surface/50 rounded-lg border border-border/50">
+							<p className="text-xs text-text-tertiary">
 								Job Address:{" "}
 								<span className="text-white">
 									{job.address}

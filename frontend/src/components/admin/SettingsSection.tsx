@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+﻿import { useRef, useState, useEffect } from "react";
 import { Upload, Trash2, Building2, Loader2 } from "lucide-react";
 import {
 	useOrgSettings,
@@ -114,49 +114,49 @@ export default function SettingsSection() {
 	};
 
 	const inputBase =
-		"w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+		"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder-zinc-500 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
 
 	return (
 		<div>
 			<div className="max-w-2xl">
 				{/* Page header */}
 				<div className="mb-8">
-					<h2 className="text-xl font-semibold text-zinc-100">
+					<h2 className="text-xl font-semibold text-text-primary">
 						Settings
 					</h2>
 				</div>
 
 				{/* Combined Organization card */}
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900">
-					<div className="border-b border-zinc-800 px-5 py-4">
-						<h2 className="text-sm font-semibold text-zinc-200">
+				<div className="rounded-lg border border-border-subtle bg-base">
+					<div className="border-b border-border-subtle px-5 py-4">
+						<h2 className="text-sm font-semibold text-text-primary">
 							Organization
 						</h2>
-						<p className="mt-0.5 text-xs text-zinc-500">
+						<p className="mt-0.5 text-xs text-text-muted">
 							Profile and branding
 						</p>
 					</div>
 
 					{/* Logo section */}
-					<div className="border-b border-zinc-800 px-5 py-5">
-						<p className="mb-3 text-xs font-medium text-zinc-400">
+					<div className="border-b border-border-subtle px-5 py-5">
+						<p className="mb-3 text-xs font-medium text-text-tertiary">
 							Logo
 						</p>
 						<div className="flex items-center gap-5">
 							{isLoading ? (
-								<div className="h-12 w-12 flex-shrink-0 animate-pulse rounded-md bg-zinc-800" />
+								<div className="h-12 w-12 flex-shrink-0 animate-pulse rounded-md bg-surface" />
 							) : org?.logo_url && !logoImgError ? (
 								<img
 									src={org.logo_url ?? undefined}
 									alt="Organization logo"
-									className="h-12 w-12 flex-shrink-0 rounded-md object-contain bg-zinc-800"
+									className="h-12 w-12 flex-shrink-0 rounded-md object-contain bg-surface"
 									onError={() => setLogoImgError(true)}
 								/>
 							) : (
-								<div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md bg-zinc-800">
+								<div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md bg-surface">
 									<Building2
 										size={20}
-										className="text-zinc-500"
+										className="text-text-muted"
 									/>
 								</div>
 							)}
@@ -171,7 +171,7 @@ export default function SettingsSection() {
 										disabled={
 											uploadMutation.isPending
 										}
-										className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+										className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										{uploadMutation.isPending ? (
 											<Loader2
@@ -201,7 +201,7 @@ export default function SettingsSection() {
 											disabled={
 												deleteMutation.isPending
 											}
-											className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:border-red-800 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50"
+											className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-red-800 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50"
 										>
 											{deleteMutation.isPending ? (
 												<Loader2
@@ -225,13 +225,13 @@ export default function SettingsSection() {
 								</div>
 
 								{(uploadError || deleteError) && (
-									<p className="mt-2 text-xs text-red-400">
+									<p className="mt-2 text-xs text-error-text">
 										{uploadError ??
 											deleteError}
 									</p>
 								)}
 
-								<p className="mt-2 text-xs text-zinc-500">
+								<p className="mt-2 text-xs text-text-muted">
 									JPEG, PNG, or WebP · max 5
 									MB
 								</p>
@@ -254,12 +254,12 @@ export default function SettingsSection() {
 							<div className="sm:col-span-2">
 								<label
 									htmlFor="settings-name"
-									className="mb-1 block text-xs font-medium text-zinc-400"
+									className="mb-1 block text-xs font-medium text-text-tertiary"
 								>
 									Organization Name
 								</label>
 								{isLoading ? (
-									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
+									<div className="h-8 animate-pulse rounded-md bg-surface" />
 								) : (
 									<input
 										id="settings-name"
@@ -296,7 +296,7 @@ export default function SettingsSection() {
 									/>
 								)}
 								{nameError && (
-									<p className="mt-1 text-xs text-red-400">
+									<p className="mt-1 text-xs text-error-text">
 										{nameError}
 									</p>
 								)}
@@ -306,12 +306,12 @@ export default function SettingsSection() {
 							<div>
 								<label
 									htmlFor="settings-phone"
-									className="mb-1 block text-xs font-medium text-zinc-400"
+									className="mb-1 block text-xs font-medium text-text-tertiary"
 								>
 									Phone
 								</label>
 								{isLoading ? (
-									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
+									<div className="h-8 animate-pulse rounded-md bg-surface" />
 								) : (
 									<input
 										id="settings-phone"
@@ -343,12 +343,12 @@ export default function SettingsSection() {
 							<div>
 								<label
 									htmlFor="settings-email"
-									className="mb-1 block text-xs font-medium text-zinc-400"
+									className="mb-1 block text-xs font-medium text-text-tertiary"
 								>
 									Email
 								</label>
 								{isLoading ? (
-									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
+									<div className="h-8 animate-pulse rounded-md bg-surface" />
 								) : (
 									<input
 										id="settings-email"
@@ -378,11 +378,11 @@ export default function SettingsSection() {
 
 							{/* Address — full width, uses AddressForm for geocoding */}
 							<div className="sm:col-span-2">
-								<label className="mb-1 block text-xs font-medium text-zinc-400">
+								<label className="mb-1 block text-xs font-medium text-text-tertiary">
 									Address
 								</label>
 								{isLoading ? (
-									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
+									<div className="h-8 animate-pulse rounded-md bg-surface" />
 								) : (
 									<AddressForm
 										mode="edit"
@@ -408,12 +408,12 @@ export default function SettingsSection() {
 							<div>
 								<label
 									htmlFor="settings-website"
-									className="mb-1 block text-xs font-medium text-zinc-400"
+									className="mb-1 block text-xs font-medium text-text-tertiary"
 								>
 									Website
 								</label>
 								{isLoading ? (
-									<div className="h-8 animate-pulse rounded-md bg-zinc-800" />
+									<div className="h-8 animate-pulse rounded-md bg-surface" />
 								) : (
 									<input
 										id="settings-website"
@@ -449,7 +449,7 @@ export default function SettingsSection() {
 									updateMutation.isPending ||
 									isLoading
 								}
-								className="flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+								className="flex items-center gap-1.5 rounded-md bg-primary-hover px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{updateMutation.isPending && (
 									<Loader2
@@ -463,12 +463,12 @@ export default function SettingsSection() {
 							</button>
 
 							{saveSuccess && (
-								<span className="text-xs text-green-400">
+								<span className="text-xs text-success-text">
 									Changes saved.
 								</span>
 							)}
 							{saveError && (
-								<span className="text-xs text-red-400">
+								<span className="text-xs text-error-text">
 									{saveError}
 								</span>
 							)}

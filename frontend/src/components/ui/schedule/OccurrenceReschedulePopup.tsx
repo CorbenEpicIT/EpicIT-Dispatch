@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { AlertTriangle, ArrowRight, RotateCw } from "lucide-react";
 import TimePicker from "../TimePicker";
 import type { OccurrenceWithPlan } from "./dashboardCalendarUtils";
@@ -211,8 +211,8 @@ export default function OccurrenceReschedulePopup({
 					left: popupLeft,
 					width: popupW,
 					zIndex: 1001,
-					backgroundColor: "#18181b",
-					border: "1px solid #3f3f46",
+					backgroundColor: "var(--color-popup-bg)",
+					border: "1px solid var(--color-border)",
 					borderRadius: 8,
 					boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.7)",
 					overflow: "hidden",
@@ -224,14 +224,14 @@ export default function OccurrenceReschedulePopup({
 				<div
 					style={{
 						padding: "10px 12px 9px",
-						borderBottom: "1px solid #27272a",
+						borderBottom: "1px solid var(--color-border-subtle)",
 					}}
 				>
 					<div
 						style={{
 							fontSize: 12,
 							fontWeight: 700,
-							color: "#f4f4f5",
+							color: "var(--color-sched-text-primary)",
 							letterSpacing: "-0.01em",
 							marginBottom: 2,
 						}}
@@ -241,7 +241,7 @@ export default function OccurrenceReschedulePopup({
 					<div
 						style={{
 							fontSize: 11,
-							color: "#a1a1aa",
+							color: "var(--color-text-tertiary)",
 							whiteSpace: "nowrap",
 							overflow: "hidden",
 							textOverflow: "ellipsis",
@@ -278,15 +278,15 @@ export default function OccurrenceReschedulePopup({
 						!toLabel &&
 						oldDateStr === newDateStr ? (
 							<>
-								<span style={{ color: "#71717a" }}>
+								<span style={{ color: "var(--color-text-muted)" }}>
 									Same Day
 								</span>
-								<span style={{ color: "#3f3f46" }}>
+								<span style={{ color: "var(--color-border)" }}>
 									:
 								</span>
 								<span
 									style={{
-										color: "#93c5fd",
+										color: "var(--color-primary-text)",
 										fontWeight: 600,
 									}}
 								>
@@ -297,7 +297,7 @@ export default function OccurrenceReschedulePopup({
 							</>
 						) : (
 							<>
-								<span style={{ color: "#71717a" }}>
+								<span style={{ color: "var(--color-text-muted)" }}>
 									{fromLabel ??
 										formatDateDisplay(
 											oldDateStr
@@ -306,13 +306,13 @@ export default function OccurrenceReschedulePopup({
 								<ArrowRight
 									size={11}
 									style={{
-										color: "#3b82f6",
+										color: "var(--color-primary)",
 										flexShrink: 0,
 									}}
 								/>
 								<span
 									style={{
-										color: "#93c5fd",
+										color: "var(--color-primary-text)",
 										fontWeight: 600,
 									}}
 								>
@@ -351,8 +351,8 @@ export default function OccurrenceReschedulePopup({
 									)
 								}
 								style={POPUP_SELECT_STYLE}
-								onFocus={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
-								onBlur={(e) => (e.currentTarget.style.borderColor = "#3f3f46")}
+								onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-primary)")}
+								onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
 							>
 								<option value="anytime">
 									Anytime
@@ -392,7 +392,7 @@ export default function OccurrenceReschedulePopup({
 									}}
 								>
 									<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-										<span style={{ fontSize: 9, color: "#a1a1aa", minWidth: 22, flexShrink: 0 }}>From</span>
+										<span style={{ fontSize: 9, color: "var(--color-text-tertiary)", minWidth: 22, flexShrink: 0 }}>From</span>
 										<div style={{ flex: 1, minWidth: 0 }}>
 											<TimePicker
 												value={hhmmToPickerDate(arrivalWindowStart)}
@@ -406,7 +406,7 @@ export default function OccurrenceReschedulePopup({
 										</div>
 									</div>
 									<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-										<span style={{ fontSize: 9, color: "#a1a1aa", minWidth: 22, flexShrink: 0 }}>To</span>
+										<span style={{ fontSize: 9, color: "var(--color-text-tertiary)", minWidth: 22, flexShrink: 0 }}>To</span>
 										<div style={{ flex: 1, minWidth: 0 }}>
 											<TimePicker
 												value={hhmmToPickerDate(arrivalWindowEnd)}
@@ -446,7 +446,7 @@ export default function OccurrenceReschedulePopup({
 						{/* Divider */}
 						<div
 							style={{
-								backgroundColor: "#27272a",
+								backgroundColor: "var(--color-surface)",
 								alignSelf: "stretch",
 							}}
 						/>
@@ -470,8 +470,8 @@ export default function OccurrenceReschedulePopup({
 									)
 								}
 								style={POPUP_SELECT_STYLE}
-								onFocus={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
-								onBlur={(e) => (e.currentTarget.style.borderColor = "#3f3f46")}
+								onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-primary)")}
+								onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
 							>
 								<option value="when_done">
 									When done
@@ -532,7 +532,7 @@ export default function OccurrenceReschedulePopup({
 								<AlertTriangle
 									size={10}
 									style={{
-										color: "#f87171",
+										color: "var(--color-error-text)",
 										flexShrink: 0,
 									}}
 								/>
@@ -540,7 +540,7 @@ export default function OccurrenceReschedulePopup({
 									style={{
 										fontSize: 9,
 										fontWeight: 600,
-										color: "#f87171",
+										color: "var(--color-error-text)",
 										textTransform:
 											"uppercase",
 										letterSpacing:
@@ -566,7 +566,7 @@ export default function OccurrenceReschedulePopup({
 											alignItems: "center",
 											gap: 5,
 											fontSize: 9,
-											color: "#fca5a5",
+											color: "var(--color-error-text)",
 											minWidth: 0,
 										}}
 									>
@@ -577,7 +577,7 @@ export default function OccurrenceReschedulePopup({
 												borderRadius:
 													"50%",
 												backgroundColor:
-													"#a78bfa",
+													"var(--color-reviewing-text)",
 												flexShrink: 0,
 											}}
 										/>
@@ -595,7 +595,7 @@ export default function OccurrenceReschedulePopup({
 										</span>
 										<span
 											style={{
-												color: "#71717a",
+												color: "var(--color-text-muted)",
 												flexShrink: 0,
 											}}
 										>
@@ -640,18 +640,18 @@ export default function OccurrenceReschedulePopup({
 											backgroundColor:
 												occurrenceScope ===
 												scope
-													? "#7c3aed"
+													? "var(--color-sched-occurrence-badge)"
 													: "transparent",
 											borderColor:
 												occurrenceScope ===
 												scope
-													? "#7c3aed"
+													? "var(--color-sched-occurrence-badge)"
 													: "rgba(139,92,246,0.35)",
 											color:
 												occurrenceScope ===
 												scope
 													? "#fff"
-													: "#a78bfa",
+													: "var(--color-reviewing-text)",
 											fontFamily: "inherit",
 											transition: "background-color 0.15s, border-color 0.15s, color 0.15s",
 										}}
@@ -673,7 +673,7 @@ export default function OccurrenceReschedulePopup({
 						alignItems: "center",
 						justifyContent: "space-between",
 						padding: "8px 12px",
-						borderTop: "1px solid #27272a",
+						borderTop: "1px solid var(--color-border-subtle)",
 						gap: 6,
 					}}
 				>
@@ -687,9 +687,9 @@ export default function OccurrenceReschedulePopup({
 							height: 28,
 							fontSize: 11,
 							fontWeight: 400,
-							color: "#a1a1aa",
+							color: "var(--color-text-tertiary)",
 							background: "none",
-							border: "1px solid #3f3f46",
+							border: "1px solid var(--color-border)",
 							borderRadius: 6,
 							cursor: "pointer",
 							padding: "0 9px",
@@ -699,12 +699,12 @@ export default function OccurrenceReschedulePopup({
 						onMouseEnter={(e) => {
 							(
 								e.currentTarget as HTMLElement
-							).style.color = "#d4d4d8";
+							).style.color = "var(--color-sched-text-secondary)";
 						}}
 						onMouseLeave={(e) => {
 							(
 								e.currentTarget as HTMLElement
-							).style.color = "#a1a1aa";
+							).style.color = "var(--color-text-tertiary)";
 						}}
 					>
 						Cancel
@@ -740,11 +740,11 @@ export default function OccurrenceReschedulePopup({
 								border: "1px solid",
 								borderColor: isComplete
 									? "rgba(59,130,246,0.45)"
-									: "#3f3f46",
+									: "var(--color-border)",
 								backgroundColor: "transparent",
 								color: isComplete
-									? "#60a5fa"
-									: "#52525b",
+									? "var(--color-visit-driving-text)"
+									: "var(--color-text-faint)",
 								cursor: isComplete
 									? "pointer"
 									: "default",
@@ -797,7 +797,7 @@ export default function OccurrenceReschedulePopup({
 								padding: "0 12px",
 								borderRadius: 6,
 								border: "none",
-								backgroundColor: "#3b82f6",
+								backgroundColor: "var(--color-primary)",
 								color: "#fff",
 								cursor:
 									isComplete && !isGenerating
@@ -815,12 +815,12 @@ export default function OccurrenceReschedulePopup({
 									(
 										e.currentTarget as HTMLElement
 									).style.backgroundColor =
-										"#2563eb";
+										"var(--color-primary-hover)";
 							}}
 							onMouseLeave={(e) => {
 								(
 									e.currentTarget as HTMLElement
-								).style.backgroundColor = "#3b82f6";
+								).style.backgroundColor = "var(--color-primary)";
 							}}
 						>
 							{isGenerating ? (
