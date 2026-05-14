@@ -14,11 +14,11 @@ export interface OccurrenceWithPlan extends RecurringOccurrence {
 
 export function getStatusColor(status: string): string {
 	switch (status) {
-		case "Scheduled":  return "#3b82f6";
-		case "InProgress": return "#f59e0b";
-		case "Completed":  return "#10b981";
-		case "Cancelled":  return "#ef4444";
-		default:           return "#6b7280";
+		case "Scheduled":  return "var(--color-primary)";
+		case "InProgress": return "var(--color-warning)";
+		case "Completed":  return "var(--color-success)";
+		case "Cancelled":  return "var(--color-error)";
+		default:           return "var(--color-text-muted)";
 	}
 }
 
@@ -146,7 +146,7 @@ export function buildOccurrenceEvents(jobs: Job[], showOccurrences: boolean): Oc
 		_type: "occurrence" as const,
 		_data: occ,
 		calendarId: "occurrences",
-		style: `background:#6b7280;border-left:3px solid ${getPriorityColor(occ.job_obj.priority)}`,
+		style: `background:var(--color-text-muted);border-left:3px solid ${getPriorityColor(occ.job_obj.priority)}`,
 	}));
 }
 

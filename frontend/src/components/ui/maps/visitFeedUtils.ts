@@ -2,22 +2,22 @@ import type { VisitStatus } from "../../../types/jobs";
 import type { FeedEvent, TechStatusChangeType } from "../../../types/technicians";
 
 export const STATUS_COLORS: Record<VisitStatus, string> = {
-	Scheduled:  "#71717a",
-	Driving:    "#3b82f6",
-	OnSite:     "#f59e0b",
-	InProgress: "#06b6d4",
-	Paused:     "#f97316",
-	Delayed:    "#eab308",
-	Completed:  "#22c55e",
-	Cancelled:  "#ef4444",
+	Scheduled:  "var(--color-visit-scheduled)",
+	Driving:    "var(--color-visit-driving)",
+	OnSite:     "var(--color-visit-onsite)",
+	InProgress: "var(--color-visit-inprogress)",
+	Paused:     "var(--color-visit-paused)",
+	Delayed:    "var(--color-visit-delayed)",
+	Completed:  "var(--color-visit-completed)",
+	Cancelled:  "var(--color-visit-cancelled)",
 };
 
 const TECH_CHANGE_COLORS: Record<TechStatusChangeType, string> = {
-	shift_start:         "#22c55e",
-	shift_end:           "#71717a",
-	break_start:         "#f97316",
-	break_end:           "#22c55e",
-	wrapping_up_cleared: "#22c55e",
+	shift_start:         "var(--color-visit-completed)",
+	shift_end:           "var(--color-visit-scheduled)",
+	break_start:         "var(--color-visit-paused)",
+	break_end:           "var(--color-visit-completed)",
+	wrapping_up_cleared: "var(--color-visit-completed)",
 };
 
 const TECH_CHANGE_TEXT: Record<TechStatusChangeType, (name: string) => { primary: string; sub: string }> = {
@@ -39,8 +39,8 @@ export function timeAgo(isoString: string): string {
 }
 
 export function getStatusColor(event: FeedEvent): string {
-	if (event.kind === "tech") return TECH_CHANGE_COLORS[event.changeType] ?? "#71717a";
-	return STATUS_COLORS[event.visitStatus] ?? "#71717a";
+	if (event.kind === "tech") return TECH_CHANGE_COLORS[event.changeType] ?? "var(--color-visit-scheduled)";
+	return STATUS_COLORS[event.visitStatus] ?? "var(--color-visit-scheduled)";
 }
 
 export function getEventText(event: FeedEvent): { primary: string; sub: string } {

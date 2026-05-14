@@ -29,24 +29,24 @@ interface CardStyle {
 }
 
 const GREY_INACTIVE = {
-	gradientColor: "#3f3f46",
-	dotColor: "#52525b",
-	textColor: "#71717a",
+	gradientColor: "var(--color-surface-raised)",
+	dotColor: "var(--color-border-strong)",
+	textColor: "var(--color-text-muted)",
 } as const; // zinc-700 / zinc-600 / zinc-500
 
 const VISIT_CARD_COLORS: Record<
 	"clockedIn" | "active" | "completed" | "cancelled" | "overdue" | "soon" | "scheduled" | "delayed" | "paused",
 	Pick<CardStyle, "gradientColor" | "dotColor" | "textColor">
 > = {
-	clockedIn:  { gradientColor: "#22c55e", dotColor: "#22c55e", textColor: "#4ade80" },  // green-500 / green-400
-	active:     { gradientColor: "#3b82f6", dotColor: "#3b82f6", textColor: "#60a5fa" },  // blue-500 / blue-400
-	completed:  { gradientColor: "#166534", dotColor: "#166534", textColor: "#4ade80" },  // green-800 / green-400
+	clockedIn:  { gradientColor: "var(--color-visit-completed)",      dotColor: "var(--color-visit-completed)",      textColor: "var(--color-success-bright-text)" },
+	active:     { gradientColor: "var(--color-primary)",              dotColor: "var(--color-primary)",              textColor: "var(--color-visit-driving-text)" },
+	completed:  { gradientColor: "var(--color-visit-completed-dark)", dotColor: "var(--color-visit-completed-dark)", textColor: "var(--color-success-bright-text)" },
 	cancelled:  GREY_INACTIVE,
-	overdue:    { gradientColor: "#ef4444", dotColor: "#ef4444", textColor: "#f87171" },  // red-500 / red-400
-	soon:       { gradientColor: "#f59e0b", dotColor: "#f59e0b", textColor: "#fbbf24" },  // amber-500 / amber-400
+	overdue:    { gradientColor: "var(--color-error)",                dotColor: "var(--color-error)",                textColor: "var(--color-error-text)" },
+	soon:       { gradientColor: "var(--color-warning)",              dotColor: "var(--color-warning)",              textColor: "var(--color-warning-text)" },
 	scheduled:  GREY_INACTIVE,
-	delayed:    { gradientColor: "#f97316", dotColor: "#f97316", textColor: "#fb923c" },  // orange-500 / orange-400
-	paused:     { gradientColor: "#eab308", dotColor: "#eab308", textColor: "#facc15" },  // yellow-500 / yellow-400
+	delayed:    { gradientColor: "var(--color-visit-paused)",         dotColor: "var(--color-visit-paused)",         textColor: "var(--color-visit-delayed-text)" },
+	paused:     { gradientColor: "var(--color-visit-delayed)",        dotColor: "var(--color-visit-delayed)",        textColor: "var(--color-visit-paused-text)" },
 };
 
 function getCardStyle(visit: JobVisit, isClockedIn: boolean): CardStyle {
@@ -110,7 +110,7 @@ export default function TechVisitCard({
 		<div
 			style={{
 				padding: "1px 1px 1px 3px",
-				background: `linear-gradient(to right, ${style.gradientColor} 0%, #3f3f46 45%, #3f3f46 100%)`,
+				background: `linear-gradient(to right, ${style.gradientColor} 0%, var(--color-surface-raised) 45%, var(--color-surface-raised) 100%)`,
 				borderRadius: "12px",
 			}}
 		>
