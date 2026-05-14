@@ -1,15 +1,20 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 @import "tailwindcss";
+@import "./styles/theme.css";
 
 :root {
-	--main: #18181b;
+	--main: var(--color-base);
+	/* Animation-only vars — intentionally mirror primary; not Tailwind tokens */
+	--anim-primary-80:    rgba(59, 130, 246, 0.8);
+	--anim-primary-30:    rgba(59, 130, 246, 0.3);
+	--anim-surface-flash: rgba(63, 63, 70, 0.4);
 }
 
 /* Scrollbar */
 * {
 	font-family: "Inter";
 	scrollbar-width: thin;
-	scrollbar-color: #3f3f46 transparent;
+	scrollbar-color: var(--color-border) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -20,11 +25,11 @@
 	background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-	background: #3f3f46;
+	background: var(--color-border);
 	border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-	background: #52525b;
+	background: var(--color-border-strong);
 }
 
 /* Hover-reveal scrollbar — thumb hidden until container is hovered */
@@ -33,14 +38,14 @@
 	transition: scrollbar-color 0.2s ease;
 }
 .scrollbar-on-hover:hover {
-	scrollbar-color: #3f3f46 transparent;
+	scrollbar-color: var(--color-border) transparent;
 }
 .scrollbar-on-hover::-webkit-scrollbar-thumb {
 	background-color: transparent;
 	transition: background-color 0.2s ease;
 }
 .scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
-	background-color: #3f3f46;
+	background-color: var(--color-border);
 }
 
 /* Hide scrollbar entirely while keeping scroll behavior */
@@ -70,13 +75,13 @@ input[type="number"] {
 /* Inventory card highlight animation */
 @keyframes card-highlight {
 	0% {
-		outline-color: rgb(59 130 246 / 0.8);
+		outline-color: var(--anim-primary-80);
 	}
 	60% {
-		outline-color: rgb(59 130 246 / 0.3);
+		outline-color: var(--anim-primary-30);
 	}
 	100% {
-		outline-color: rgb(59 130 246 / 0);
+		outline-color: transparent;
 	}
 }
 .animate-card-highlight {
@@ -87,7 +92,7 @@ input[type="number"] {
 
 @keyframes feedFlash {
 	from {
-		background-color: rgb(63 63 70 / 0.4);
+		background-color: var(--anim-surface-flash);
 	}
 	to {
 		background-color: transparent;

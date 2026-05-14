@@ -1,0 +1,174 @@
+@theme {
+	/* ── Backgrounds / Surfaces ──────────────────────────────────────────── */
+	--color-canvas:         #09090b;
+	--color-base:           #18181b;
+	--color-surface:        #27272a;
+	--color-surface-raised: #3f3f46;
+	--color-surface-inset:  #09090b;
+
+	/* ── Text ────────────────────────────────────────────────────────────── */
+	--color-text-primary:   #ffffff;
+	--color-text-secondary: #d4d4d8;
+	--color-text-tertiary:  #a1a1aa;
+	--color-text-muted:     #71717a;
+	--color-text-faint:     #52525b;
+	--color-text-inverse:   #18181b;
+	--color-text-link:      #3b82f6;
+
+	/* ── Primary (blue) ──────────────────────────────────────────────────── */
+	--color-primary:           #3b82f6;
+	--color-primary-hover:     #2563eb;
+	--color-primary-active:    #1d4ed8;
+	--color-primary-bg:        rgba(59, 130, 246, 0.20);
+	--color-primary-bg-subtle: rgba(59, 130, 246, 0.10);
+	--color-primary-bg-dim:    rgba(59, 130, 246, 0.06);
+	--color-primary-border:    rgba(59, 130, 246, 0.30);
+	--color-primary-text:      #93c5fd;
+
+	/* ── Borders ─────────────────────────────────────────────────────────── */
+	--color-border-subtle: #27272a;
+	--color-border:        #3f3f46;
+	--color-border-strong: #52525b;
+	--color-border-input:  #505058;
+
+	/* ── Confirm CTA (green action buttons) ──────────────────────────────── */
+	--color-confirm:       #16a34a;
+	--color-confirm-hover: #22c55e;
+
+	/* ── Status: success ─────────────────────────────────────────────────── */
+	--color-success:        #10b981;
+	--color-success-text:   #34d399;
+	--color-success-bg:     rgba(16, 185, 129, 0.15);
+	--color-success-border: rgba(16, 185, 129, 0.30);
+
+	/* ── Status: error ───────────────────────────────────────────────────── */
+	--color-error:          #ef4444;
+	--color-error-strong:   #dc2626;
+	--color-error-text:     #f87171;
+	--color-error-bg:       rgba(239, 68, 68, 0.15);
+	--color-error-border:   rgba(239, 68, 68, 0.30);
+
+	/* ── Status: warning ─────────────────────────────────────────────────── */
+	--color-warning:        #f59e0b;
+	--color-warning-text:   #fbbf24;
+	--color-warning-bg:     rgba(245, 158, 11, 0.15);
+	--color-warning-border: rgba(245, 158, 11, 0.30);
+
+	/* ── Status: info ────────────────────────────────────────────────────── */
+	--color-info:           #06b6d4;
+	--color-info-text:      #67e8f9;
+	--color-info-bg:        rgba(6, 182, 212, 0.15);
+	--color-info-border:    rgba(6, 182, 212, 0.30);
+
+	/* ── Status: reviewing (purple) ──────────────────────────────────────── */
+	--color-reviewing:        #8b5cf6;
+	--color-reviewing-text:   #a78bfa;
+	--color-reviewing-bg:     rgba(139, 92, 246, 0.20);
+	--color-reviewing-border: rgba(139, 92, 246, 0.30);
+
+	/* ── Status: rejected (rose) ─────────────────────────────────────────── */
+	--color-rejected:        #f43f5e;
+	--color-rejected-text:   #fb7185;
+	--color-rejected-bg:     rgba(244, 63, 94, 0.20);
+	--color-rejected-border: rgba(244, 63, 94, 0.30);
+
+	/* ── Priority ────────────────────────────────────────────────────────── */
+	--color-priority-emergency: #dc2626;
+	--color-priority-urgent:    #ea580c;
+	--color-priority-high:      #ef4444;
+	--color-priority-medium:    #f59e0b;
+	--color-priority-low:       #10b981;
+	--color-priority-default:   #3b82f6;
+
+	/* ── Visit status ────────────────────────────────────────────────────── */
+	--color-visit-scheduled:  #71717a;
+	--color-visit-driving:    #3b82f6;
+	--color-visit-onsite:     #f59e0b;
+	--color-visit-inprogress: #06b6d4;
+	--color-visit-paused:     #f97316;
+	--color-visit-delayed:    #eab308;
+	--color-visit-completed:  #22c55e;
+	--color-visit-cancelled:  #ef4444;
+
+	/* ── Visit card text variants ─────────────────────────────────────────── */
+	--color-visit-driving-text:   #60a5fa;
+	--color-visit-completed-dark: #166534;
+	--color-visit-delayed-text:   #fb923c;
+	--color-visit-paused-text:    #facc15;
+
+	/* ── Schedule card surfaces ───────────────────────────────────────────── */
+	--color-card-bg:       #2a2d38;
+	--color-occurrence-bg: #2d2f45;
+	--color-popup-bg:      #18181b;
+
+	/* ── Schedule text variants ───────────────────────────────────────────── */
+	--color-sched-text-primary:      #f4f4f5;
+	--color-sched-text-secondary:    #d4d4d8;
+	--color-sched-text-muted:        rgba(255, 255, 255, 0.38);
+	--color-sched-text-client:       rgba(255, 255, 255, 0.42);
+	--color-sched-text-time:         rgba(255, 255, 255, 0.58);
+	--color-sched-text-faint:        #52525b;
+	--color-sched-visit-title:       #e2e8f0;
+	--color-sched-occurrence-title:  #c4b5fd;
+	--color-sched-occurrence-badge:  #7c3aed;
+	--color-sched-today-bg:          #1e3a5f;
+	--color-sched-status-badge-bg:   rgba(59, 130, 246, 0.15);
+	--color-sched-status-badge-text: #93c5fd;
+	--color-sched-open-ended-dash:   rgba(255, 255, 255, 0.38);
+
+	/* ── Calendar (schedule-x) ────────────────────────────────────────────── */
+	--color-cal-month-day: #d4d4d8;
+
+	/* ── Chart tokens ─────────────────────────────────────────────────────── */
+	--color-chart-primary:  #3b82f6;
+	--color-chart-success:  #10b981;
+	--color-chart-warning:  #f59e0b;
+	--color-chart-info:     #06b6d4;
+	--color-chart-error:    #ef4444;
+	--color-chart-fallback: #3f3f46;
+	--color-chart-axis:     #a1a1aa;
+	--color-chart-hole-bg:  #121212;
+
+	/* ── Tech palette — Paul Tol "light" (colorblind-safe, 9 colors) ─────── */
+	--color-tech-1: #77AADD;
+	--color-tech-2: #EE8866;
+	--color-tech-3: #EEDD88;
+	--color-tech-4: #FFAABB;
+	--color-tech-5: #99DDFF;
+	--color-tech-6: #44BB99;
+	--color-tech-7: #BBCC33;
+	--color-tech-8: #AAAA00;
+	--color-tech-9: #DDDDDD;
+
+	/* ── Schedule board tech palette (12 colors) ──────────────────────────── */
+	--color-sched-tech-1:  #3b82f6;
+	--color-sched-tech-2:  #10b981;
+	--color-sched-tech-3:  #f59e0b;
+	--color-sched-tech-4:  #8b5cf6;
+	--color-sched-tech-5:  #ef4444;
+	--color-sched-tech-6:  #06b6d4;
+	--color-sched-tech-7:  #f97316;
+	--color-sched-tech-8:  #ec4899;
+	--color-sched-tech-9:  #84cc16;
+	--color-sched-tech-10: #14b8a6;
+	--color-sched-tech-11: #a855f7;
+	--color-sched-tech-12: #eab308;
+
+	/* ── Mapbox geocoder theme ────────────────────────────────────────────── */
+	--color-mapbox-bg:       #17171a;
+	--color-mapbox-bg-hover: #3f3f46;
+	--color-mapbox-border:   #505058;
+
+	/* ── Gradient / special ───────────────────────────────────────────────── */
+	--color-gradient-tech-teal:   #2dd4bf;
+	--color-dispatcher-avatar-to: #8b5cf6;
+}
+
+/*
+ * Dark-mode architecture note:
+ * The app is currently dark-only. When light mode is added:
+ *   1. Move the values above to a [data-theme="dark"] block.
+ *   2. Set :root (or @theme) to light palette defaults.
+ *   3. Toggle `document.documentElement.dataset.theme` between "light"/"dark".
+ *   No component files need to change — only this file.
+ */
