@@ -24,6 +24,7 @@
 	--color-primary-bg-dim:    rgba(59, 130, 246, 0.06);
 	--color-primary-border:    rgba(59, 130, 246, 0.30);
 	--color-primary-text:      #93c5fd;
+	--color-on-primary:        #ffffff;
 
 	/* ── Borders ─────────────────────────────────────────────────────────── */
 	--color-border-subtle: #27272a;
@@ -162,13 +163,28 @@
 	/* ── Gradient / special ───────────────────────────────────────────────── */
 	--color-gradient-tech-teal:   #2dd4bf;
 	--color-dispatcher-avatar-to: #8b5cf6;
+
+	/* ── Supplemental: colors used in components, no existing semantic home ── */
+	/* zinc-200: ScheduleBoard/ScheduleBoardDayColumn card body text — slightly    */
+	/* off-white vs text-primary (#fff) to reduce harshness on tinted surfaces.   */
+	--color-text-on-surface:   #e4e4e7;
+	/* green-400: TechVisitCard "clockedIn" and "completed" text — brighter than  */
+	/* success-text (#34d399 emerald-400) for legibility on dark gradient strips.  */
+	--color-success-bright-text: #4ade80;
+	/* gray-500: fallback for unassigned/unknown technician color slot.            */
+	--color-tech-unassigned:   #6b7280;
+	/* Sits between border-subtle (#27272a) and border (#3f3f46); used on cards   */
+	/* (ClientCard, DispatcherCard, InventoryItemView) for a subtle inset look.   */
+	--color-border-card:       #3a3a3f;
 }
 
 /*
  * Dark-mode architecture note:
  * The app is currently dark-only. When light mode is added:
- *   1. Move the values above to a [data-theme="dark"] block.
- *   2. Set :root (or @theme) to light palette defaults.
+ *   1. Keep @theme as-is (light palette defaults — @theme is compile-time only, cannot be nested
+ *      inside selectors in Tailwind v4).
+ *   2. Add a plain CSS override block for dark mode:
+ *        [data-theme="dark"] { --color-base: #18181b; --color-surface: #27272a; ... }
  *   3. Toggle `document.documentElement.dataset.theme` between "light"/"dark".
  *   No component files need to change — only this file.
  */

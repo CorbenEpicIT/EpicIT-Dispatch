@@ -4,15 +4,15 @@
    ============================================================================ */
 
 .sx-react-calendar-wrapper {
-	--sx-color-primary: #3b82f6;
-	--sx-color-primary-container: #1d4ed8;
-	--sx-color-on-primary: #ffffff;
-	--sx-color-surface: #18181b;
-	--sx-color-surface-variant: #27272a;
-	--sx-color-on-surface: #e4e4e7;
-	--sx-color-on-surface-variant: #a1a1aa;
-	--sx-color-outline: #52525b;
-	--sx-color-background: #09090b;
+	--sx-color-primary: var(--color-primary);
+	--sx-color-primary-container: var(--color-primary-active);
+	--sx-color-on-primary: var(--color-on-primary);
+	--sx-color-surface: var(--color-base);
+	--sx-color-surface-variant: var(--color-surface);
+	--sx-color-on-surface: var(--color-text-on-surface);
+	--sx-color-on-surface-variant: var(--color-text-tertiary);
+	--sx-color-outline: var(--color-border-strong);
+	--sx-color-background: var(--color-canvas);
 	--sx-font-size-base: 0.875rem;
 	--sx-border-radius: 6px;
 }
@@ -26,7 +26,7 @@
 /* Today highlight */
 .sx__date-grid-day--today,
 .sx__month-grid-day--today {
-	background-color: #1e3a5f;
+	background-color: var(--color-sched-today-bg);
 }
 
 /* Event chip base */
@@ -38,7 +38,7 @@
 
 /* Occurrence badge — purple circle */
 .sx__event[data-type="occurrence-badge"] {
-	background: #7c3aed !important;
+	background: var(--color-sched-occurrence-badge) !important;
 	border: none;
 	border-radius: 50%;
 	width: 20px;
@@ -70,7 +70,7 @@
 
 /* Month day numbers */
 .sx__month-grid-day__header-date {
-	color: #d4d4d8;
+	color: var(--color-cal-month-day);
 }
 
 /* Navigation buttons */
@@ -86,4 +86,3 @@
 .sx-react-calendar-wrapper .sx__date-input-wrapper {
 	display: none;
 }
-

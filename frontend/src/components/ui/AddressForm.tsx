@@ -144,6 +144,8 @@ const AddressForm = ({
 		};
 	}, []);
 
+	// NOTE: These tokens mirror theme.css. If Mapbox Search JS uses shadow DOM,
+	// var() may not resolve — revert to hex values and add a TODO comment.
 	const theme = {
 		variables: {
 			fontFamily: "Inter",
@@ -156,19 +158,19 @@ const AddressForm = ({
 			padding: "0.5rem 0.75rem",
 			spacing: "0.25rem",
 			borderRadius: "6px",
-			colorBackground: "#17171aff",
-			colorBackgroundHover: "#3f3f46",
-			colorBackgroundActive: "#3f3f46",
-			colorText: "#ffffffff",
-			colorPrimary: "#3b82f6",
-			colorSecondary: "#3f3f46",
-			border: "1px solid #505058ff",
+			colorBackground: "var(--color-mapbox-bg)",
+			colorBackgroundHover: "var(--color-mapbox-bg-hover)",
+			colorBackgroundActive: "var(--color-mapbox-bg-hover)",
+			colorText: "var(--color-text-primary)",
+			colorPrimary: "var(--color-primary)",
+			colorSecondary: "var(--color-mapbox-bg-hover)",
+			border: "1px solid var(--color-mapbox-border)",
 			paddingModal: "0.5rem",
 			paddingFooterLabel: "0.25rem",
 		},
 		cssText: `
 			input {
-				color: #ffffff !important;
+				color: var(--color-text-primary) !important;
 			}
 			.mapboxgl-ctrl-geocoder--input {
 				background: transparent !important;
