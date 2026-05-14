@@ -5,8 +5,51 @@
 	--main: #18181b;
 }
 
+/* Scrollbar */
 * {
 	font-family: "Inter";
+	scrollbar-width: thin;
+	scrollbar-color: #3f3f46 transparent;
+}
+
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: #3f3f46;
+	border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #52525b;
+}
+
+/* Hover-reveal scrollbar — thumb hidden until container is hovered */
+.scrollbar-on-hover {
+	scrollbar-color: transparent transparent;
+	transition: scrollbar-color 0.2s ease;
+}
+.scrollbar-on-hover:hover {
+	scrollbar-color: #3f3f46 transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	transition: background-color 0.2s ease;
+}
+.scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+	background-color: #3f3f46;
+}
+
+/* Hide scrollbar entirely while keeping scroll behavior */
+.scrollbar-hide::-webkit-scrollbar {
+	display: none;
+}
+.scrollbar-hide {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
 }
 
 .mapboxgl-marker {
@@ -24,30 +67,17 @@ input[type="number"] {
 	-moz-appearance: textfield;
 }
 
-/* Sidebar nav scrollbar */
-.sidebar-nav::-webkit-scrollbar {
-	width: 4px;
-}
-.sidebar-nav::-webkit-scrollbar-track {
-	background: transparent;
-}
-.sidebar-nav::-webkit-scrollbar-thumb {
-	background: #3f3f46;
-	border-radius: 2px;
-}
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
-	background: #52525b;
-}
-.sidebar-nav {
-	scrollbar-width: thin;
-	scrollbar-color: #3f3f46 transparent;
-}
-
 /* Inventory card highlight animation */
 @keyframes card-highlight {
-	0%   { outline-color: rgb(59 130 246 / 0.8); }
-	60%  { outline-color: rgb(59 130 246 / 0.3); }
-	100% { outline-color: rgb(59 130 246 / 0); }
+	0% {
+		outline-color: rgb(59 130 246 / 0.8);
+	}
+	60% {
+		outline-color: rgb(59 130 246 / 0.3);
+	}
+	100% {
+		outline-color: rgb(59 130 246 / 0);
+	}
 }
 .animate-card-highlight {
 	outline: 2px solid transparent;
@@ -55,35 +85,11 @@ input[type="number"] {
 	animation: card-highlight 2.5s ease-out forwards;
 }
 
-/* Reusable thin scrollbar — zinc theme, cross-browser */
-.scrollbar-thin {
-	scrollbar-width: thin;
-	scrollbar-color: #3f3f46 transparent;
-}
-.scrollbar-thin::-webkit-scrollbar {
-	width: 4px;
-}
-.scrollbar-thin::-webkit-scrollbar-track {
-	background: transparent;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-	background: #3f3f46;
-	border-radius: 2px;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-	background: #52525b;
-}
-
 @keyframes feedFlash {
-	from { background-color: rgb(63 63 70 / 0.4); }
-	to   { background-color: transparent; }
+	from {
+		background-color: rgb(63 63 70 / 0.4);
+	}
+	to {
+		background-color: transparent;
+	}
 }
-
-.activity-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.2s ease; }
-.activity-scroll:hover { scrollbar-color: #52525b #27272a; }
-.activity-scroll::-webkit-scrollbar { width: 6px; }
-.activity-scroll::-webkit-scrollbar-track { background: transparent; }
-.activity-scroll:hover::-webkit-scrollbar-track { background: #27272a; border-radius: 3px; }
-.activity-scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; }
-.activity-scroll:hover::-webkit-scrollbar-thumb { background-color: #52525b; }
-.activity-scroll::-webkit-scrollbar-thumb:hover { background-color: #71717a; }

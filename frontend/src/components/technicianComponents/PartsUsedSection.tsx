@@ -263,7 +263,7 @@ function StockPartPicker({
 					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
 				/>
 			</div>
-			<div className="divide-y divide-zinc-800/40 overflow-y-auto max-h-56 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-zinc-900 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+			<div className="divide-y divide-zinc-800/40 overflow-y-auto max-h-56">
 				{filtered.length === 0 && (
 					<p className="px-4 py-4 text-center text-sm text-zinc-600">
 						No matching parts

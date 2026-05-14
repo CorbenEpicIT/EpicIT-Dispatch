@@ -192,7 +192,7 @@ export default function ActivityFeed() {
 				<>
 					<div
 						ref={scrollRef}
-						className="space-y-0.5 overflow-y-auto max-h-[510px] activity-scroll"
+						className="space-y-0.5 overflow-y-auto max-h-[510px] scrollbar-on-hover"
 					>
 						{(() => {
 							const visible = logs

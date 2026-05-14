@@ -342,16 +342,6 @@ export default function TechnicianDetailsPage() {
 
 				{/* Jobs Accordion */}
 				<Card title="Jobs">
-					<style>{`
-						.tech-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.2s ease; }
-						.tech-scroll:hover { scrollbar-color: #52525b #27272a; }
-						.tech-scroll::-webkit-scrollbar { width: 6px; }
-						.tech-scroll::-webkit-scrollbar-track { background: transparent; }
-						.tech-scroll:hover::-webkit-scrollbar-track { background: #27272a; border-radius: 3px; }
-						.tech-scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; }
-						.tech-scroll:hover::-webkit-scrollbar-thumb { background-color: #52525b; }
-						.tech-scroll::-webkit-scrollbar-thumb:hover { background-color: #71717a; }
-					`}</style>
 					{groupedJobs.length === 0 ? (
 						<div className="py-10 text-center">
 							<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
@@ -365,7 +355,7 @@ export default function TechnicianDetailsPage() {
 							</p>
 						</div>
 					) : (
-						<div className="overflow-y-auto tech-scroll max-h-[520px] -mt-4 -mx-4">
+						<div className="overflow-y-auto scrollbar-on-hover max-h-[520px] -mt-4 -mx-4">
 							{groupedJobs.map(({ job, visits }) => {
 								const isExpanded = expandedJobs.has(
 									job.id

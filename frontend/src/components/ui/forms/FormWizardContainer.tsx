@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { ChevronLeft, ChevronRight, History, X, Save } from "lucide-react";
 import FullPopup from "../FullPopup";
 import StepWizard from "./StepWizard";
@@ -68,16 +67,6 @@ export function FormWizardContainer<T extends number>({
 	canSaveDraft = false,
 	isSavingDraft = false,
 }: FormWizardContainerProps<T>) {
-	const scrollbarStyles = useMemo(
-		() => `
-		.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-		.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-		.custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgb(63 63 70); border-radius: 3px; }
-		.custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgb(82 82 91); }
-		`,
-		[]
-	);
-
 	const isFirstStep = currentStep === (1 as T);
 	const isLastStep = !steps.length || currentStep === steps[steps.length - 1]?.id;
 	const stacked = steps.length >= 4;
@@ -325,14 +314,13 @@ export function FormWizardContainer<T extends number>({
 			onClose={onClose}
 			content={
 				<div className="flex flex-col min-h-0 flex-1">
-					<style>{scrollbarStyles}</style>
 					{header}
 					<div className="border-t border-zinc-700 mx-4 flex-shrink-0" />
 					<div
 						className={`flex-1 min-h-0 ${
 							fullHeightContent
 								? "flex flex-col"
-								: "overflow-y-auto overflow-x-hidden custom-scrollbar [scrollbar-gutter:stable]"
+								: "overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
 						}`}
 					>
 						{fullHeightContent ? (

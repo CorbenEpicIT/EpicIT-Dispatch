@@ -87,14 +87,3 @@
 	display: none;
 }
 
-/* Scrollbar */
-.sx__date-grid-day::-webkit-scrollbar {
-	width: 6px;
-}
-.sx__date-grid-day::-webkit-scrollbar-track {
-	background: transparent;
-}
-.sx__date-grid-day::-webkit-scrollbar-thumb {
-	background: #52525b;
-	border-radius: 3px;
-}

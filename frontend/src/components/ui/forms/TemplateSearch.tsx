@@ -280,7 +280,7 @@ export function TemplateSearch({
 										{clientQuery &&
 											filteredClients.length >
 												0 && (
-												<div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-20 max-h-48 overflow-y-auto custom-scrollbar">
+												<div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-20 max-h-48 overflow-y-auto">
 													{filteredClients.map(
 														(
 															c
@@ -325,7 +325,7 @@ export function TemplateSearch({
 			</div>
 
 			{/* ── Results ── */}
-			<div className="overflow-y-auto custom-scrollbar space-y-1 pt-2 pb-2 max-h-[55vh]">
+			<div className="overflow-y-auto space-y-1 pt-2 pb-2 max-h-[55vh]">
 				{isLoading ? (
 					<div className="flex items-center justify-center py-10 text-zinc-500 text-sm">
 						Loading...

@@ -386,40 +386,6 @@ export default function ClientDetailsPage() {
 
 	return (
 		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
-			<style>{`
-				/* Modern scrollbar - thin and subtle */
-				.workflow-scroll {
-					scrollbar-width: thin;
-					scrollbar-color: transparent transparent;
-					transition: scrollbar-color 0.2s ease;
-				}
-				.workflow-scroll:hover {
-					scrollbar-color: #52525b #27272a;
-				}
-				.workflow-scroll::-webkit-scrollbar {
-					width: 6px;
-				}
-				.workflow-scroll::-webkit-scrollbar-track {
-					background: transparent;
-					margin: 4px 0;
-				}
-				.workflow-scroll:hover::-webkit-scrollbar-track {
-					background: #27272a;
-					border-radius: 3px;
-				}
-				.workflow-scroll::-webkit-scrollbar-thumb {
-					background-color: transparent;
-					border-radius: 3px;
-					transition: background-color 0.2s ease;
-				}
-				.workflow-scroll:hover::-webkit-scrollbar-thumb {
-					background-color: #52525b;
-				}
-				.workflow-scroll::-webkit-scrollbar-thumb:hover {
-					background-color: #71717a;
-				}
-			`}</style>
-
 			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
 				{/* Header */}
 				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
@@ -522,7 +488,7 @@ export default function ClientDetailsPage() {
 
 							{/* Content Area */}
 							{isActiveTab ? (
-								<div className="overflow-y-auto workflow-scroll max-h-[min(480px,60vh)]">
+								<div className="overflow-y-auto scrollbar-on-hover max-h-[min(480px,60vh)]">
 									{displayData.length > 0 ? (
 										<div className="divide-y divide-zinc-800/50">
 											{displayData.map(
