@@ -66,8 +66,26 @@ function getThisMonday(): Date {
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MAX_VISIBLE    = 3;
-const POPUP_W        = 224;
+const MAX_VISIBLE       = 3;
+const MAX_VISIBLE_TODAY = 8;
+const TODAY_BODY_HEIGHT = 180;
+const POPUP_W           = 224;
+
+function colMaxLines(pxWidth: number): number {
+	if (pxWidth >= 180) return 2;
+	if (pxWidth >= 120) return 3;
+	if (pxWidth >= 80)  return 4;
+	return 5;
+}
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+	InProgress: 0, OnSite: 0,
+	Driving: 1,
+	Delayed: 2, Paused: 2,
+	Scheduled: 3,
+	Completed: 4,
+	Cancelled: 5,
+};
 
 function visitTimeLabel(v: VisitWithJob): string {
 	if (v.arrival_constraint === "anytime") return "";
@@ -119,7 +137,10 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 
 	const [scrollZone, setScrollZone] = useState<"left" | "right" | null>(null);
 	const [scrollProgress, setScrollProgress] = useState(0);
+	const [colMode, setColMode] = useState<"full" | "three" | "one">("full");
+	const [containerWidth, setContainerWidth] = useState(0);
 
+	const containerRef       = useRef<HTMLDivElement>(null);
 	const weekGridRef        = useRef<HTMLDivElement>(null);
 	const scrollZoneRef      = useRef<"left" | "right" | null>(null);
 	const scrollEnterTimeRef = useRef<number | null>(null);
@@ -132,6 +153,19 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 	// Cancel RAF on unmount
 	useEffect(() => {
 		return () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); };
+	}, []);
+
+	// Responsive column mode
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
+		const ro = new ResizeObserver(([entry]) => {
+			const w = entry.contentRect.width;
+			setContainerWidth(w);
+			setColMode(w >= 600 ? "full" : w >= 350 ? "three" : "one");
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
 	}, []);
 
 	// Close visit popup on outside click
@@ -168,6 +202,17 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 
 	const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
 	const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+	const visibleDays = useMemo(() => {
+		if (colMode === "full") return weekDays;
+		const todayIdx = weekDays.indexOf(todayStr);
+		if (colMode === "one") return todayIdx >= 0 ? [weekDays[todayIdx]] : [weekDays[0]];
+		if (todayIdx < 0) return weekDays.slice(0, 3);
+		const start = Math.max(0, Math.min(todayIdx - 1, weekDays.length - 3));
+		return weekDays.slice(start, start + 3);
+	}, [colMode, weekDays, todayStr]);
+
+	const isNarrow = colMode !== "full";
 
 	const weekLabel = useMemo(() => {
 		const first = new Date(weekDays[0] + "T12:00:00");
@@ -497,7 +542,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 	}
 
 	return (
-		<div style={{
+		<div ref={containerRef} style={{
 			display: "flex",
 			flexDirection: "column",
 			backgroundColor: "var(--color-popup-bg)",
@@ -526,7 +571,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					>
 						<ChevronLeft size={14} />
 					</button>
-					<span className="text-[13px] font-semibold text-text-primary min-w-[176px] text-center tracking-tight">
+					<span className={`text-[13px] font-semibold text-text-primary text-center tracking-tight ${isNarrow ? "min-w-[100px]" : "min-w-[176px]"}`}>
 						{weekLabel}
 					</span>
 					<button
@@ -550,7 +595,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					}`}
 				>
 					{showVisits ? <Eye size={12} /> : <EyeOff size={12} />}
-					Visits
+					{!isNarrow && "Visits"}
 				</button>
 
 				{/* Recurring toggle */}
@@ -563,7 +608,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					}`}
 				>
 					{showOccurrences ? <Eye size={12} /> : <EyeOff size={12} />}
-					Recurring
+					{!isNarrow && "Recurring"}
 				</button>
 
 				{/* Divider */}
@@ -580,19 +625,24 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 			{/* ── Week grid ────────────────────────────────────────────────────── */}
 			<div
 				ref={weekGridRef}
-				style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", position: "relative" }}
+				style={{ display: "grid", gridTemplateColumns: visibleDays.map(d => d === todayStr ? "2fr" : "1fr").join(" "), position: "relative" }}
 				onDragOver={handleGridDragOver}
 				onDragLeave={handleGridDragLeave}
 			>
-				{weekDays.map((dateStr, i) => {
+				{visibleDays.map((dateStr, i) => {
 					const dayNum = parseInt(dateStr.split("-")[2]);
 					const isToday = dateStr === todayStr;
-					const label = WEEKDAY_LABELS[i];
+					const weekIdx = weekDays.indexOf(dateStr);
+					const label = WEEKDAY_LABELS[weekIdx >= 0 ? weekIdx : i];
+					const totalFr = visibleDays.reduce((sum, d) => sum + (d === todayStr ? 2 : 1), 0);
+					const colFr   = isToday ? 2 : 1;
+					const colPx   = containerWidth > 0 ? Math.floor(containerWidth * colFr / totalFr) : (isToday ? 200 : 120);
+					const maxLines = colMaxLines(colPx);
 					return (
 						<div
 							key={dateStr}
 							style={{
-								borderRight: i < 6 ? "1px solid var(--color-border-subtle)" : "none",
+								borderRight: i < visibleDays.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
 							}}
 						>
 							{/* Day header */}
@@ -602,7 +652,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 								justifyContent: "space-between",
 								padding: "5px 7px 4px",
 								borderBottom: "1px solid var(--color-border-subtle)",
-								backgroundColor: "var(--color-canvas)",
+								backgroundColor: "var(--color-base)",
 							}}>
 								<span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)" }}>
 									{label}
@@ -620,12 +670,19 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 							{/* Day body — drop zone + cards */}
 							<div
 								style={{
-									minHeight: 96,
+									...(isToday
+										? { minHeight: TODAY_BODY_HEIGHT }
+										: { minHeight: 72 }
+									),
 									padding: 4,
 									display: "flex",
 									flexDirection: "column",
 									gap: 2,
-									backgroundColor: dragOverDate === dateStr ? "rgba(59,130,246,0.08)" : "transparent",
+									backgroundColor: dragOverDate === dateStr
+										? "rgba(59,130,246,0.08)"
+										: isToday
+											? "rgba(59,130,246,0.035)"
+											: "transparent",
 									outline: dragOverDate === dateStr ? "2px inset rgba(59,130,246,0.4)" : "none",
 									transition: "background-color 0.1s",
 								}}
@@ -640,8 +697,19 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 										...dayVisits.map((v) => ({ type: "visit" as const, item: v })),
 										...dayOccs.map((o)   => ({ type: "occ"   as const, item: o })),
 									];
-									const visible     = allItems.slice(0, MAX_VISIBLE);
-									const hiddenCount = Math.max(0, allItems.length - MAX_VISIBLE);
+									if (isToday) {
+										allItems.sort((a, b) => {
+											const sa = a.type === "visit" ? (STATUS_SORT_ORDER[a.item.status] ?? 3) : 3;
+											const sb = b.type === "visit" ? (STATUS_SORT_ORDER[b.item.status] ?? 3) : 3;
+											if (sa !== sb) return sa - sb;
+											const ta = new Date(a.type === "visit" ? (a.item.scheduled_start_at ?? 0) : ((a.item as any).occurrence_start_at ?? 0)).getTime();
+											const tb = new Date(b.type === "visit" ? (b.item.scheduled_start_at ?? 0) : ((b.item as any).occurrence_start_at ?? 0)).getTime();
+											return ta - tb;
+										});
+									}
+									const maxVisible  = isToday ? MAX_VISIBLE_TODAY : MAX_VISIBLE;
+									const visible     = allItems.slice(0, maxVisible);
+									const hiddenCount = Math.max(0, allItems.length - maxVisible);
 
 									return (
 										<>
@@ -659,6 +727,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 															priorityColor={getPriorityColor(v.job_obj?.priority)}
 															timeLabel={visitTimeLabel(v)}
 															techs={techs}
+															maxLines={maxLines}
 															isDragging={draggingVisitId === v.id}
 																isGhost={pendingDrop?.visit.id === v.id}
 															onDragStart={(e) => handleVisitDragStart(e, v, dateStr)}
@@ -681,6 +750,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 															priorityColor={getPriorityColor(occ.job_obj?.priority)}
 															timeLabel={occurrenceTimeLabel(occ)}
 															techs={[]}
+															maxLines={maxLines}
 															isOccurrence
 															isDragging={draggingOccurrenceId === occ.id || isGenerating}
 																isGhost={pendingOccurrenceDrop?.occurrence.id === occ.id}

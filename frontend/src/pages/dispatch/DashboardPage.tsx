@@ -1,16 +1,13 @@
-﻿import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	Clock,
-	CheckCircle2,
 	AlertCircle,
-	Calendar,
-	Activity,
 	ChevronRight,
+	ChevronDown,
 	Briefcase,
 	FileText,
-	Phone,
-	ReceiptText,
+	Clock,
+	Plus,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import WeekStrip from "../../components/ui/schedule/WeekStrip";
@@ -38,6 +35,18 @@ export default function DashboardPage() {
 	const [isCreateQuoteModalOpen, setIsCreateQuoteModalOpen] = useState(false);
 	const [isCreateJobModalOpen, setIsCreateJobModalOpen] = useState(false);
 	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
+	const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+	const actionMenuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		function handleClickOutside(e: MouseEvent) {
+			if (actionMenuRef.current && !actionMenuRef.current.contains(e.target as Node)) {
+				setIsActionMenuOpen(false);
+			}
+		}
+		if (isActionMenuOpen) document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [isActionMenuOpen]);
 
 	const { mutateAsync: createRequest } = useCreateRequestMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
@@ -49,27 +58,20 @@ export default function DashboardPage() {
 	const { data: recurringPlans = [] } = useAllRecurringPlansQuery();
 	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
 
-	const technicianStats = useMemo(() => {
-		return {
-			total: allTechnicians.length,
-			online: allTechnicians.filter((t) => t.status === "Available").length,
-			available: allTechnicians.filter((t) => t.status === "Available").length,
-			onBreak: allTechnicians.filter((t) => t.status === "Break").length,
-			offline: allTechnicians.filter((t) => t.status === "Offline").length,
-		};
-	}, [allTechnicians]);
+	const technicianStats = useMemo(() => ({
+		total: allTechnicians.length,
+		online: allTechnicians.filter((t) => t.status !== "Offline").length,
+	}), [allTechnicians]);
 
 	const pipelineCounts = useMemo(
 		() => ({
 			newRequests: requests.filter((r) => r.status === "New").length,
 			reviewing: requests.filter((r) => r.status === "Reviewing").length,
-			quoted: requests.filter((r) => r.status === "Quoted").length,
 			pendingApproval: quotes.filter(
 				(q) => q.status === "Sent" || q.status === "Viewed"
 			).length,
 			approved: quotes.filter((q) => q.status === "Approved").length,
 			unscheduled: jobs.filter((j) => j.status === "Unscheduled").length,
-			scheduled: jobs.filter((j) => j.status === "Scheduled").length,
 			inProgress: jobs
 				.flatMap((j) => j.visits || [])
 				.filter((v) => v.status === "InProgress").length,
@@ -100,9 +102,7 @@ export default function DashboardPage() {
 					.filter(
 						(v) =>
 							v.status === "Scheduled" &&
-							v.visit_techs?.some(
-								(vt) => vt.tech_id === tech.id
-							) &&
+							v.visit_techs?.some((vt) => vt.tech_id === tech.id) &&
 							new Date(v.scheduled_start_at) > new Date()
 					)
 					.sort(
@@ -115,138 +115,160 @@ export default function DashboardPage() {
 					...tech,
 					currentVisit: activeVisits[0] || null,
 					nextVisit: upcomingVisits[0] || null,
-					totalToday:
-						activeVisits.length +
-						upcomingVisits.filter(
-							(v) =>
-								new Date(v.scheduled_start_at).toLocaleDateString("en-CA", { timeZone: tz }) ===
-								new Date().toLocaleDateString("en-CA", { timeZone: tz })
-						).length,
 				};
 			})
 			.sort((a, b) => (a.currentVisit ? -1 : 1));
-	}, [allTechnicians, jobs, tz]);
+	}, [allTechnicians, jobs]);
 
-	const getStatusColor = (status: string) => {
-		const colors: Record<string, string> = {
-			Available: "bg-emerald-500",
-			Busy: "bg-amber-500",
-			Break: "bg-primary",
-			Offline: "bg-zinc-500",
+	const getStatusBorderClass = (status: string) => {
+		const classes: Record<string, string> = {
+			Available: "border-emerald-500",
+			Busy: "border-amber-500",
+			Break: "border-primary",
+			Offline: "border-zinc-600",
 		};
-		return colors[status] || "bg-zinc-500";
+		return classes[status] || "border-zinc-600";
 	};
 
-	const getStatusBadgeClass = (status: string) => {
-		switch (status) {
-			case "Available":
-				return "bg-emerald-500/10 text-success-text";
-			case "Busy":
-				return "bg-warning/10 text-warning-text";
-			case "Break":
-				return "bg-primary/10 text-primary-text";
-			default:
-				return "bg-zinc-500/10 text-text-tertiary";
-		}
+	const formatNextVisit = (visit: JobVisit): string => {
+		const d = new Date(visit.scheduled_start_at);
+		const isToday =
+			d.toLocaleDateString("en-CA", { timeZone: tz }) ===
+			new Date().toLocaleDateString("en-CA", { timeZone: tz });
+		const time = d.toLocaleTimeString("en-US", {
+			hour: "numeric",
+			minute: "2-digit",
+			timeZone: tz,
+		});
+		if (isToday) return time;
+		const weekday = d.toLocaleDateString("en-US", { weekday: "short", timeZone: tz });
+		return `${weekday} ${time}`;
 	};
 
-	const getStatusAbbr = (status: string) => {
-		switch (status) {
-			case "Available":
-				return "Avail";
-			case "Busy":
-				return "Busy";
-			case "Break":
-				return "Break";
-			default:
-				return "Off";
-		}
-	};
+	const pipelineItems = useMemo(() => [
+		{
+			label: "New Requests",
+			count: pipelineCounts.newRequests,
+			topBorder: "border-primary",
+			text: "text-blue-400",
+			path: "/dispatch/requests?status=New",
+		},
+		{
+			label: "Needs Quote",
+			count: pipelineCounts.reviewing,
+			topBorder: "border-amber-500",
+			text: "text-amber-400",
+			path: "/dispatch/requests?status=Reviewing",
+		},
+		{
+			label: "Pending Approval",
+			count: pipelineCounts.pendingApproval,
+			topBorder: "border-purple-500",
+			text: "text-purple-400",
+			path: "/dispatch/quotes?status=Sent",
+		},
+		{
+			label: "Approved Quotes",
+			count: pipelineCounts.approved,
+			topBorder: "border-emerald-500",
+			text: "text-emerald-400",
+			path: "/dispatch/quotes?status=Approved",
+		},
+		{
+			label: "Unscheduled Jobs",
+			count: pipelineCounts.unscheduled,
+			topBorder: "border-orange-500",
+			text: "text-orange-400",
+			path: "/dispatch/jobs?status=Unscheduled",
+		},
+	], [pipelineCounts]);
 
-	const pipelineItems = useMemo(() => {
-		const items = [
-			{
-				label: "New Requests",
-				count: pipelineCounts.newRequests,
-				icon: Phone,
-				bg: "bg-primary/10",
-				border: "border-primary/20",
-				hoverBorder: "group-hover:border-primary/40",
-				text: "text-primary-text",
-				progress: "bg-primary",
-				path: "/dispatch/requests?status=New",
-			},
-			{
-				label: "Needs Quote",
-				count: pipelineCounts.reviewing,
-				icon: FileText,
-				bg: "bg-warning/10",
-				border: "border-warning/20",
-				hoverBorder: "group-hover:border-amber-500/40",
-				text: "text-warning-text",
-				progress: "bg-amber-500",
-				path: "/dispatch/requests?status=Reviewing",
-			},
-			{
-				label: "Pending Approval",
-				count: pipelineCounts.pendingApproval,
-				icon: Clock,
-				bg: "bg-purple-500/10",
-				border: "border-purple-500/20",
-				hoverBorder: "group-hover:border-purple-500/40",
-				text: "text-reviewing-text",
-				progress: "bg-purple-500",
-				path: "/dispatch/quotes?status=Sent",
-			},
-			{
-				label: "Approved Quotes",
-				count: pipelineCounts.approved,
-				icon: CheckCircle2,
-				bg: "bg-emerald-500/10",
-				border: "border-emerald-500/20",
-				hoverBorder: "group-hover:border-emerald-500/40",
-				text: "text-success-text",
-				progress: "bg-emerald-500",
-				path: "/dispatch/quotes?status=Approved",
-			},
-			{
-				label: "Unscheduled",
-				count: pipelineCounts.unscheduled,
-				icon: Calendar,
-				bg: "bg-orange-500/10",
-				border: "border-orange-500/20",
-				hoverBorder: "group-hover:border-orange-500/40",
-				text: "text-orange-400",
-				progress: "bg-orange-500",
-				path: "/dispatch/jobs?status=Unscheduled",
-			},
-		];
-
-		const max = Math.max(...items.map((i) => i.count), 1);
-		return items.map((item) => ({
-			...item,
-			barWidth: Math.round((item.count / max) * 100),
-		}));
-	}, [pipelineCounts]);
-
-
+	const activePlansCount = recurringPlans.filter((p) => p.status === "Active").length;
+	const pausedPlansCount = recurringPlans.filter((p) => p.status === "Paused").length;
 
 	return (
 		<div className="min-h-0 bg-canvas text-text-primary w-full">
-			<div className="w-full px-3 sm:px-5 lg:px-6 ">
+			<div className="w-full px-3 sm:px-5 lg:px-6">
 				{/* Header */}
-				<div className="mb-5">
-					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-						Dispatch Dashboard
-					</h1>
-					<p className="text-sm text-text-tertiary mt-1">
-						{new Date().toLocaleDateString("en-US", {
-							weekday: "long",
-							month: "long",
-							day: "numeric",
-							timeZone: tz,
-						})}
-					</p>
+				<div className="mb-5 flex items-center justify-between gap-4">
+					<div>
+						<div className="flex items-baseline gap-2">
+							<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+								Dispatch Dashboard
+							</h1>
+							<span className="hidden sm:inline text-text-faint text-sm">·</span>
+							<p className="hidden sm:block text-sm text-text-tertiary">
+								{new Date().toLocaleDateString("en-US", {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+									timeZone: tz,
+								})}
+							</p>
+						</div>
+						{/* Situation bar */}
+						<div className="flex items-center gap-2 mt-1.5 flex-wrap">
+							<span className="text-xs text-text-muted">
+								<span className="text-text-secondary font-medium">{technicianStats.online}</span>
+								{" "}of {technicianStats.total} online
+							</span>
+							<span className="w-px h-3 bg-zinc-700" />
+							<span className="text-xs text-text-muted">
+								<span className="text-amber-400 font-medium">{pipelineCounts.inProgress}</span>
+								{" "}in progress
+							</span>
+							<span className="w-px h-3 bg-zinc-700" />
+							<span className="text-xs text-text-muted">
+								<span className="text-orange-400 font-medium">{pipelineCounts.unscheduled}</span>
+								{" "}unscheduled
+							</span>
+							<span className="w-px h-3 bg-zinc-700" />
+							<span className="text-xs text-text-muted">
+								<span className="text-emerald-400 font-medium">{pipelineCounts.completedToday}</span>
+								{" "}done today
+							</span>
+						</div>
+					</div>
+
+					{/* Split action button */}
+					<div className="relative shrink-0" ref={actionMenuRef}>
+						<div className="flex h-10 rounded-md overflow-hidden">
+							<button
+								onClick={() => setIsCreateRequestModalOpen(true)}
+								className="inline-flex items-center justify-center gap-1.5 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors"
+							>
+								<Plus size={14} strokeWidth={2.5} className="-mt-px" />
+								New Request
+							</button>
+							<span className="w-px bg-blue-500" />
+							<button
+								onClick={() => setIsActionMenuOpen((o) => !o)}
+								className="flex items-center px-2.5 bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+								aria-label="More actions"
+							>
+								<ChevronDown size={14} strokeWidth={2.5} className={`transition-transform duration-150 ${isActionMenuOpen ? "rotate-180" : ""}`} />
+							</button>
+						</div>
+
+						{isActionMenuOpen && (
+							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl z-50 py-1">
+								<button
+									onClick={() => { setIsCreateQuoteModalOpen(true); setIsActionMenuOpen(false); }}
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-purple-300 hover:text-purple-200 hover:bg-purple-500/10 transition-colors w-full text-left"
+								>
+									<FileText size={13} className="text-purple-400" />
+									Create Quote
+								</button>
+								<button
+									onClick={() => { setIsCreateJobModalOpen(true); setIsActionMenuOpen(false); }}
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition-colors w-full text-left"
+								>
+									<Briefcase size={13} className="text-amber-400" />
+									Create Job
+								</button>
+							</div>
+						)}
+					</div>
 				</div>
 
 				{/* Week Schedule Calendar */}
@@ -254,21 +276,12 @@ export default function DashboardPage() {
 					{jobsError ? (
 						<div className="flex items-center justify-center h-full">
 							<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
-								<AlertCircle
-									size={16}
-									className="text-error-text"
-								/>
-								<p className="text-sm text-error-text">
-									Failed to load
-									calendar data
-								</p>
+								<AlertCircle size={16} className="text-error-text" />
+								<p className="text-sm text-error-text">Failed to load calendar data</p>
 							</div>
 						</div>
 					) : (
-						<WeekStrip
-							jobs={jobs}
-							technicians={allTechnicians}
-						/>
+						<WeekStrip jobs={jobs} technicians={allTechnicians} />
 					)}
 				</Card>
 
@@ -278,110 +291,59 @@ export default function DashboardPage() {
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
 						{/* Operations Pipeline */}
 						<Card title="Operations Pipeline">
-							<div className="space-y-1">
-								{pipelineItems.map((item) => (
+							{/* 2-col stat grid for first 4 items */}
+							<div className="grid grid-cols-2 gap-x-5 gap-y-4">
+								{pipelineItems.slice(0, 4).map((item) => (
 									<div
 										key={item.label}
-										onClick={() =>
-											navigate(
-												item.path
-											)
-										}
-										className="group flex items-center gap-2 p-2 rounded-lg hover:bg-surface/50 cursor-pointer transition-all active:scale-[0.98]"
+										onClick={() => navigate(item.path)}
+										className={`cursor-pointer group border-t-2 ${item.topBorder} pt-2.5`}
 									>
-										{/* Icon */}
-										<div
-											className={`flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-lg ${item.bg} flex items-center justify-center border ${item.border} ${item.hoverBorder} transition-colors`}
-										>
-											<item.icon
-												size={
-													16
-												}
-												className={
-													item.text
-												}
-											/>
+										<div className={`text-2xl font-bold tabular-nums ${item.text} group-hover:opacity-75 transition-opacity`}>
+											{item.count}
 										</div>
-
-										<div className="flex-1 min-w-0">
-											{/* Label row */}
-											<div className="flex items-start justify-between gap-2 mb-1">
-												<span className="text-sm font-medium text-text-primary leading-tight">
-													{
-														item.label
-													}
-												</span>
-												{/* Count as badge */}
-												<span
-													className={`text-sm font-bold ${item.text} flex-shrink-0 bg-surface/50 px-2 py-0.5 rounded-md`}
-												>
-													{
-														item.count
-													}
-												</span>
-											</div>
-
-											{/* Progress bar */}
-											<div className="w-full bg-surface rounded-full h-1.5">
-												<div
-													className={`${item.progress} h-1.5 rounded-full transition-all duration-300`}
-													style={{
-														width: `${item.barWidth}%`,
-													}}
-												/>
-											</div>
+										<div className="text-[10px] uppercase tracking-wider text-text-muted mt-1 leading-tight">
+											{item.label}
 										</div>
-
-										{/* Chevron */}
-										<ChevronRight
-											size={16}
-											className="text-text-faint group-hover:text-text-tertiary flex-shrink-0 hidden sm:block -mr-1"
-										/>
 									</div>
 								))}
 							</div>
-						</Card>
 
-						<Card title="Recurring Plans">
-							<div className="flex items-center justify-between mb-3">
-								<span className="text-sm text-text-tertiary">
-									Active Plans
-								</span>
-								<span className="text-lg font-bold text-white">
-									{
-										recurringPlans.filter(
-											(p) =>
-												p.status ===
-												"Active"
-										).length
-									}
-								</span>
+							{/* Unscheduled — full-width, inline count + label */}
+							<div
+								onClick={() => navigate(pipelineItems[4].path)}
+								className={`cursor-pointer group border-t-2 ${pipelineItems[4].topBorder} pt-2.5 mt-4 flex items-baseline gap-3`}
+							>
+								<div className={`text-2xl font-bold tabular-nums ${pipelineItems[4].text} group-hover:opacity-75 transition-opacity`}>
+									{pipelineItems[4].count}
+								</div>
+								<div className="text-[10px] uppercase tracking-wider text-text-muted">
+									{pipelineItems[4].label}
+								</div>
 							</div>
-							<div className="flex items-center justify-between mb-3">
-								<span className="text-sm text-text-tertiary">
-									Paused
-								</span>
-								<span className="text-sm font-bold text-text-secondary">
-									{
-										recurringPlans.filter(
-											(p) =>
-												p.status ===
-												"Paused"
-										).length
-									}
-								</span>
-							</div>
-							<div className="pt-3 border-t border-border-subtle">
+
+							{/* Recurring Plans — folded in below pipeline */}
+							<div className="mt-4 pt-4 border-t border-border-subtle">
 								<button
-									onClick={() =>
-										navigate(
-											"/dispatch/jobs?view=templates"
-										)
-									}
-									className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+									onClick={(e) => {
+										e.stopPropagation();
+										navigate("/dispatch/jobs?view=templates");
+									}}
+									className="w-full flex items-center justify-between -mx-1 px-1 py-1 rounded hover:bg-surface/40 transition-colors group"
 								>
-									Manage Plans
-									<ChevronRight size={12} />
+									<span className="text-xs font-medium text-text-tertiary group-hover:text-text-primary transition-colors">
+										Recurring Plans
+									</span>
+									<div className="flex items-center gap-2">
+										<span className="text-xs text-text-muted">
+											<span className="font-semibold text-text-secondary">{activePlansCount}</span> active
+										</span>
+										<span className="w-px h-3 bg-zinc-700" />
+										<span className="text-xs text-text-muted">
+											<span className="font-semibold text-text-secondary">{pausedPlansCount}</span> paused
+										</span>
+										<ChevronRight size={12} className="text-text-faint group-hover:text-text-tertiary transition-colors" />
+									</div>
 								</button>
 							</div>
 						</Card>
@@ -396,28 +358,17 @@ export default function DashboardPage() {
 
 					{/* Right Column */}
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+						{/* Technicians — compact tile grid */}
 						<Card
 							title="Technicians"
 							headerAction={
-								<div className="flex items-center gap-2 min-w-0">
-									<span className="text-xs text-text-muted whitespace-nowrap hidden xl:inline">
-										{
-											technicianStats.online
-										}{" "}
-										of{" "}
-										{
-											technicianStats.total
-										}{" "}
-										online
+								<div className="flex items-center gap-2">
+									<span className="text-xs text-text-muted hidden xl:inline">
+										{technicianStats.online} of {technicianStats.total} online
 									</span>
-									<span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0 hidden xl:inline-block" />
 									<button
-										onClick={() =>
-											navigate(
-												"/dispatch/technicians"
-											)
-										}
-										className="text-xs font-medium text-text-tertiary hover:text-white px-2 py-1 rounded hover:bg-surface transition-colors flex-shrink-0"
+										onClick={() => navigate("/dispatch/technicians")}
+										className="text-xs font-medium text-text-tertiary hover:text-white px-2 py-1 rounded hover:bg-surface transition-colors"
 									>
 										View All
 									</button>
@@ -426,282 +377,66 @@ export default function DashboardPage() {
 						>
 							{techsError ? (
 								<div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg">
-									<AlertCircle
-										size={14}
-										className="text-error-text"
-									/>
-									<p className="text-xs text-error-text">
-										Failed to load
-										technicians
-									</p>
+									<AlertCircle size={14} className="text-error-text" />
+									<p className="text-xs text-error-text">Failed to load technicians</p>
 								</div>
 							) : activeTechnicians.length === 0 ? (
 								<div className="py-8 text-center">
 									<div className="inline-flex items-center justify-center w-12 h-12 bg-surface rounded-full mb-3">
-										<Clock
-											size={20}
-											className="text-text-muted"
-										/>
+										<Clock size={20} className="text-text-muted" />
 									</div>
-									<p className="text-sm text-text-tertiary">
-										No technicians
-										online
-									</p>
+									<p className="text-sm text-text-tertiary">No technicians online</p>
 								</div>
 							) : (
-								<div className="space-y-2">
-									{activeTechnicians
-										.slice(0, 8)
-										.map((tech) => (
+								<>
+									<div
+									className="grid gap-1.5"
+									style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.5rem, 1fr))" }}
+								>
+										{activeTechnicians.slice(0, 9).map((tech) => (
 											<div
-												key={
-													tech.id
-												}
-												onClick={() =>
-													navigate(
-														`/dispatch/technicians/${tech.id}`
-													)
-												}
-												className="group flex items-start gap-3 p-2.5 rounded-lg hover:bg-surface/30 cursor-pointer transition-all"
+												key={tech.id}
+												onClick={() => navigate(`/dispatch/technicians/${tech.id}`)}
+												className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-surface/40 cursor-pointer transition-colors group w-full max-w-[5rem] mx-auto"
 											>
-												{/* Avatar */}
-												<div className="relative flex-shrink-0">
-													<div className="w-9 h-9 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm">
-														{tech.name
-															.charAt(
-																0
-															)
-															.toUpperCase()}
-													</div>
-													<div
-														className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${getStatusColor(tech.status)} rounded-full border-2 border-zinc-900`}
-													/>
-												</div>
-
-												<div className="flex-1 min-w-0">
-													{/* Name + status badge */}
-													<div className="flex items-center justify-between mb-0.5 gap-2">
-														<h4 className="text-sm font-medium text-white truncate group-hover:text-primary-text transition-colors">
-															{
-																tech.name
-															}
-														</h4>
-														<span
-															className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(tech.status)}`}
-														>
-															<span className="inline sm:hidden">
-																{getStatusAbbr(
-																	tech.status
-																)}
-															</span>
-															<span className="hidden sm:inline">
-																{
-																	tech.status
-																}
-															</span>
-														</span>
-													</div>
-
-													{/* Title */}
-													<p className="text-xs text-text-muted truncate mb-1.5">
-														{
-															tech.title
-														}
-													</p>
-
-													{/* Visit status */}
-													{tech.currentVisit ? (
-														<div className="flex items-center gap-1.5 text-xs">
-															<Activity
-																size={
-																	12
-																}
-																className="text-warning-text flex-shrink-0"
-															/>
-															<span className="text-warning-text flex-shrink-0">
-																On
-																Job
-															</span>
-															<span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0" />
-															<span className="text-text-tertiary truncate">
-																{tech
-																	.currentVisit
-																	.job
-																	?.name ||
-																	"Unknown"}
-															</span>
-														</div>
-													) : tech.nextVisit ? (
-														<div className="flex items-center gap-1.5 text-xs min-w-0">
-															<Clock
-																size={
-																	12
-																}
-																className="text-primary-text flex-shrink-0"
-															/>
-															<span className="text-primary-text flex-shrink-0">
-																Next:
-															</span>
-															<span className="text-text-tertiary truncate inline sm:hidden">
-																{new Date(
-																	tech
-																		.nextVisit
-																		.scheduled_start_at
-																).toLocaleDateString(
-																	"en-US",
-																	{
-																		weekday: "short",
-																		month: "short",
-																		day: "numeric",
-																		timeZone: tz,
-																	}
-																)}
-
-																,{" "}
-																{new Date(
-																	tech
-																		.nextVisit
-																		.scheduled_start_at
-																).toLocaleTimeString(
-																	"en-US",
-																	{
-																		hour: "numeric",
-																		minute: "2-digit",
-																		timeZone: tz,
-																	}
-																)}
-															</span>
-															<span className="text-text-tertiary truncate hidden sm:inline">
-																{new Date(
-																	tech
-																		.nextVisit
-																		.scheduled_start_at
-																).toLocaleDateString(
-																	"en-US",
-																	{
-																		weekday: "long",
-																		month: "long",
-																		day: "numeric",
-																		timeZone: tz,
-																	}
-																)}
-
-																,{" "}
-																{new Date(
-																	tech
-																		.nextVisit
-																		.scheduled_start_at
-																).toLocaleTimeString(
-																	"en-US",
-																	{
-																		hour: "numeric",
-																		minute: "2-digit",
-																		timeZone: tz,
-																	}
-																)}
-															</span>
-														</div>
-													) : (
-														<div className="flex items-center gap-1.5 text-xs text-success-text">
-															<CheckCircle2
-																size={
-																	12
-																}
-																className="flex-shrink-0"
-															/>
-															<span>
-																No
-																active
-																visits
-															</span>
-														</div>
+												<div className={`relative w-9 h-9 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm border-b-[3px] ${getStatusBorderClass(tech.status)}`}>
+													{tech.name.charAt(0).toUpperCase()}
+													{tech.currentVisit && (
+														<span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-zinc-900" />
 													)}
+												</div>
+												<div className="w-full text-center">
+													<div className="text-[10px] font-medium text-text-secondary group-hover:text-text-primary truncate transition-colors leading-tight">
+														{tech.name.split(" ")[0]}
+													</div>
+													<div className="text-[9px] leading-tight mt-0.5 truncate">
+														{tech.currentVisit ? (
+															<span className="text-amber-400">On Job</span>
+														) : tech.nextVisit ? (
+															<span className="text-text-muted">{formatNextVisit(tech.nextVisit)}</span>
+														) : (
+															<span className="text-text-faint">—</span>
+														)}
+													</div>
 												</div>
 											</div>
 										))}
-								</div>
-							)}
-
-							{activeTechnicians.length > 8 && (
-								<div className="mt-4 pt-4 border-t border-border-subtle text-center">
-									<button
-										onClick={() =>
-											navigate(
-												"/dispatch/technicians"
-											)
-										}
-										className="text-xs text-text-tertiary hover:text-white font-medium"
-									>
-										+
-										{activeTechnicians.length -
-											8}{" "}
-										more technicians
-									</button>
-								</div>
-							)}
-						</Card>
-
-						<Card title="Quick Actions">
-							<div className="grid grid-cols-2 gap-2">
-								{[
-									{
-										label: "New Request",
-										icon: Phone,
-										color: "text-primary-text",
-										action: () =>
-											setIsCreateRequestModalOpen(
-												true
-											),
-									},
-									{
-										label: "Create Quote",
-										icon: FileText,
-										color: "text-warning-text",
-										action: () =>
-											setIsCreateQuoteModalOpen(
-												true
-											),
-									},
-									{
-										label: "Create Job",
-										icon: Briefcase,
-										color: "text-success-text",
-										action: () =>
-											setIsCreateJobModalOpen(
-												true
-											),
-									},
-									{
-										label: "Schedule",
-										icon: Calendar,
-										color: "text-reviewing-text",
-										action: () =>
-											navigate(
-												"/dispatch/schedule"
-											),
-									},
-								].map((action) => (
-									<button
-										key={action.label}
-										onClick={
-											action.action
-										}
-										className="p-3 bg-surface hover:bg-surface-raised rounded-lg text-left transition-colors group active:scale-[0.98]"
-									>
-										<action.icon
-											size={16}
-											className={`${action.color} mb-2`}
-										/>
-										<div className="text-xs font-medium text-text-primary group-hover:text-white">
-											{
-												action.label
-											}
+									</div>
+									{activeTechnicians.length > 9 && (
+										<div className="mt-3 pt-3 border-t border-border-subtle text-center">
+											<button
+												onClick={() => navigate("/dispatch/technicians")}
+												className="text-xs text-text-tertiary hover:text-white font-medium transition-colors"
+											>
+												+{activeTechnicians.length - 9} more
+											</button>
 										</div>
-									</button>
-								))}
-							</div>
+									)}
+								</>
+							)}
 						</Card>
-					</div>
+
+								</div>
 				</div>
 			</div>
 
@@ -710,10 +445,7 @@ export default function DashboardPage() {
 				setIsModalOpen={setIsCreateRequestModalOpen}
 				createRequest={async (input) => {
 					const newRequest = await createRequest(input);
-					if (!newRequest?.id)
-						throw new Error(
-							"Request creation failed: no ID returned"
-						);
+					if (!newRequest?.id) throw new Error("Request creation failed: no ID returned");
 					navigate(`/dispatch/requests/${newRequest.id}`);
 					return newRequest.id;
 				}}
@@ -724,10 +456,7 @@ export default function DashboardPage() {
 				setIsModalOpen={setIsCreateJobModalOpen}
 				createJob={async (input) => {
 					const newJob = await createJob(input);
-					if (!newJob?.id)
-						throw new Error(
-							"Job creation failed: no ID returned"
-						);
+					if (!newJob?.id) throw new Error("Job creation failed: no ID returned");
 					navigate(`/dispatch/jobs/${newJob.id}`);
 					return newJob.id;
 				}}
@@ -738,10 +467,7 @@ export default function DashboardPage() {
 				setIsModalOpen={setIsCreateQuoteModalOpen}
 				createQuote={async (input) => {
 					const newQuote = await createQuote(input);
-					if (!newQuote?.id)
-						throw new Error(
-							"Quote creation failed: no ID returned"
-						);
+					if (!newQuote?.id) throw new Error("Quote creation failed: no ID returned");
 					navigate(`/dispatch/quotes/${newQuote.id}`);
 					return newQuote.id;
 				}}

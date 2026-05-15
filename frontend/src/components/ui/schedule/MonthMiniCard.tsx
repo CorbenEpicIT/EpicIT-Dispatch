@@ -17,6 +17,7 @@ interface MonthMiniCardProps {
 	priorityColor: string;
 	timeLabel: string;
 	techs: MiniCardTech[];
+	maxLines?: number;
 	isOccurrence?: boolean;
 	isDragging?: boolean;
 	isGhost?: boolean;
@@ -25,14 +26,12 @@ interface MonthMiniCardProps {
 	onClick?: (e: React.MouseEvent) => void;
 }
 
-// 2 lines × (9px font × 1.3 line-height) = 23.4px → ceil to 24
-const MAX_TITLE_H = Math.ceil(9 * 1.3 * 2);
-
 export default function MonthMiniCard({
 	visitName,
 	priorityColor,
 	timeLabel,
 	techs,
+	maxLines = 2,
 	isOccurrence = false,
 	isDragging = false,
 	isGhost = false,
@@ -44,27 +43,26 @@ export default function MonthMiniCard({
 	const visibleTechs = techs.slice(0, 5);
 	const overflow = techs.length - visibleTechs.length;
 
+	const maxTitleH = Math.ceil(9 * 1.3 * maxLines);
 	const titleRef = useRef<HTMLSpanElement>(null);
 
 	useLayoutEffect(() => {
 		const el = titleRef.current;
 		if (!el) return;
 
-		// Reset to full text so scrollHeight reflects actual content
 		el.textContent = visitName;
-		if (el.scrollHeight <= MAX_TITLE_H) return;
+		if (el.scrollHeight <= maxTitleH) return;
 
-		// Binary search: find the longest prefix that fits in 2 lines with "…"
 		let lo = 0;
 		let hi = visitName.length;
 		while (lo < hi) {
 			const mid = (lo + hi + 1) >> 1;
 			el.textContent = visitName.slice(0, mid) + "…";
-			if (el.scrollHeight <= MAX_TITLE_H) lo = mid;
+			if (el.scrollHeight <= maxTitleH) lo = mid;
 			else hi = mid - 1;
 		}
 		el.textContent = lo > 0 ? visitName.slice(0, lo) + "…" : "…";
-	}, [visitName]);
+	}, [visitName, maxLines, maxTitleH]);
 
 	return (
 		<div
@@ -124,7 +122,7 @@ export default function MonthMiniCard({
 					minWidth: 0,
 					padding: "2px 5px 2px 4px",
 					boxSizing: "border-box",
-					maxHeight: 28,
+					maxHeight: maxTitleH + 4,
 					overflow: "hidden",
 				}}
 			>
