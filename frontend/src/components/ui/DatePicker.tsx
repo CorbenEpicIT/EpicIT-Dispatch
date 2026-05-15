@@ -174,7 +174,7 @@ export default function DatePicker({
 					flex items-center justify-between hover:border-border-strong focus:border-primary focus:outline-none
 					transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-sm lg:text-base"
 			>
-				<span className={!value ? "text-text-muted" : "text-white"}>
+				<span className={!value ? "text-text-muted" : "text-text-primary"}>
 					{!value ? "Select date..." : format(value, "MMMM dd, yyyy")}
 				</span>
 

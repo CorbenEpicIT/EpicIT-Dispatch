@@ -15,7 +15,7 @@ interface CreateClientProps {
 
 const LABEL = "block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const INPUT =
-	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm focus:border-primary focus:outline-none transition-colors";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors";
 
 const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClientProps) => {
 	const nameRef = useRef<HTMLInputElement>(null);

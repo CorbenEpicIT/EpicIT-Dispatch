@@ -58,7 +58,7 @@ const MONTH_NAMES = [
 ];
 
 const INPUT =
-	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
 
 export const ScheduleConfiguration = ({
 	startDate,

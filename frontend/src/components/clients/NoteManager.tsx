@@ -143,7 +143,7 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 								onChange={(e) => setContent(e.target.value)}
 								placeholder="Enter your note..."
 								rows={4}
-								className="w-full px-3 py-2 bg-base border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+								className="w-full px-3 py-2 bg-base border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								required
 							/>
 							<button
@@ -225,7 +225,7 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 												onChange={(e) => setContent(e.target.value)}
 												placeholder="Enter your note..."
 												rows={4}
-												className="w-full px-3 py-2 bg-base border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+												className="w-full px-3 py-2 bg-base border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 												required
 											/>
 											<button

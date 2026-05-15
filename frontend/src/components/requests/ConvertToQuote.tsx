@@ -18,7 +18,7 @@ interface ConvertToQuoteProps {
 
 const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const INPUT =
-	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors";
 
 export default function ConvertToQuote({
 	isModalOpen,

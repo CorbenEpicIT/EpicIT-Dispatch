@@ -10,7 +10,7 @@ interface CreateVehicleProps {
 }
 
 const INPUT =
-	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm focus:border-primary focus:outline-none transition-colors min-w-0";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors min-w-0";
 const LABEL = "block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const DIVIDER_LABEL = "flex items-center gap-2 my-1";
 

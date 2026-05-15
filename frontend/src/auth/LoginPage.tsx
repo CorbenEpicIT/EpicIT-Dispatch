@@ -190,7 +190,7 @@ export default function LoginPage() {
 				<select
 					value={role}
 					onChange={(e) => setRole(e.target.value as "dispatcher" | "technician")}
-					className="w-full border rounded px-3 py-2"
+					className="w-full border rounded px-3 py-2 [color-scheme:light]"
 				>
 					<option value="dispatcher">Dispatch/Admin</option>
 					<option value="technician">Technician</option>

@@ -151,7 +151,7 @@ const ContactForm = memo(function ContactForm({
 						aria-controls="search-results"
 						aria-expanded={showSearchResults}
 						role="combobox"
-						className="w-full pl-9 pr-3 py-2 bg-base border border-border rounded text-sm text-white focus:outline-none focus:border-primary"
+						className="w-full pl-9 pr-3 py-2 bg-base border border-border rounded text-sm text-text-primary focus:outline-none focus:border-primary"
 						autoComplete="off"
 					/>
 
@@ -216,7 +216,7 @@ const ContactForm = memo(function ContactForm({
 						placeholder="Full name *"
 						value={formData.name}
 						onChange={onChange}
-						className={`w-full px-3 py-2 bg-base border rounded text-sm text-white focus:outline-none ${
+						className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary focus:outline-none ${
 							fieldErrors.name
 								? "border-red-500 focus:border-red-500"
 								: "border-border focus:border-primary"
@@ -246,7 +246,7 @@ const ContactForm = memo(function ContactForm({
 									formMode === "link" &&
 									!!selectedContact
 								}
-								className={`w-full px-3 py-2 bg-base border rounded text-sm text-white disabled:opacity-50 focus:outline-none ${
+								className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary disabled:opacity-50 focus:outline-none ${
 									fieldErrors.email
 										? "border-red-500 focus:border-red-500"
 										: "border-border focus:border-primary"
@@ -269,7 +269,7 @@ const ContactForm = memo(function ContactForm({
 									formMode === "link" &&
 									!!selectedContact
 								}
-								className={`w-full px-3 py-2 bg-base border rounded text-sm text-white disabled:opacity-50 focus:outline-none ${
+								className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary disabled:opacity-50 focus:outline-none ${
 									fieldErrors.phone
 										? "border-red-500 focus:border-red-500"
 										: "border-border focus:border-primary"
@@ -290,7 +290,7 @@ const ContactForm = memo(function ContactForm({
 							placeholder="Relationship * (e.g., Owner)"
 							value={formData.relationship}
 							onChange={onChange}
-							className={`w-full px-3 py-2 bg-base border rounded text-sm text-white focus:outline-none ${
+							className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary focus:outline-none ${
 								fieldErrors.relationship
 									? "border-red-500 focus:border-red-500"
 									: "border-border focus:border-primary"

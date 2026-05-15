@@ -5,8 +5,8 @@
 :root {
 	--main: var(--color-base);
 	/* Animation-only vars — intentionally mirror primary; not Tailwind tokens */
-	--anim-primary-80:    rgba(59, 130, 246, 0.8);
-	--anim-primary-30:    rgba(59, 130, 246, 0.3);
+	--anim-primary-80: rgba(59, 130, 246, 0.8);
+	--anim-primary-30: rgba(59, 130, 246, 0.3);
 	--anim-surface-flash: rgba(63, 63, 70, 0.4);
 }
 
@@ -60,6 +60,20 @@
 .mapboxgl-marker {
 	transition: transform 0.1s ease-out;
 	will-change: transform;
+}
+
+/* Chrome on Windows overrides bg and text color on textarea/select with native
+     Field/FieldText colors. Unlayered rule with explicit hex fixes both properties.
+     Login/Register form elements have no bg-base/bg-surface class — unaffected. */
+textarea.bg-base,
+select.bg-base {
+	background-color: #18181b;
+	color: #ffffff;
+}
+textarea.bg-surface,
+select.bg-surface {
+	background-color: #27272a;
+	color: #ffffff;
 }
 
 /* Remove increment/decrement arrows from all number inputs globally */

@@ -106,7 +106,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							name="name"
 							value={formData.name}
 							onChange={handleChange}
-							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-primary"
+							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
 							required
 						/>
 					</div>
@@ -118,7 +118,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							value={formData.address}
 							onChange={handleChange}
 							rows={3}
-							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-primary"
+							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
 							required
 						/> */}
 						<AddressForm handleChange={handleChangeAddress} />
