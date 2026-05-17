@@ -1,6 +1,6 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomBytes, randomUUID } from "crypto";
 import {
     createDispatcherSchema,
@@ -15,7 +15,7 @@ export const getAllDispatchers = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
     return await sdb.dispatcher.findMany({
         include: {
-
+            // Empty for now
         },
     });
 };

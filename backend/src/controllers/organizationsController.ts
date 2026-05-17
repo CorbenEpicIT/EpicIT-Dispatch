@@ -1,5 +1,5 @@
 import { ZodError } from "zod";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { log } from "../services/appLogger.js";
 import { logActivity } from "../services/logger.js";

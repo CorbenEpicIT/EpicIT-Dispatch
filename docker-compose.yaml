@@ -17,6 +17,8 @@ services:
       - "3000:3000"
     env_file:
       - ./backend/.env
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=4096"
     depends_on:
       db:
         condition: service_healthy

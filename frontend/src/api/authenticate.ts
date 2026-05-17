@@ -43,10 +43,6 @@ export const loginCall = async (input: User): Promise<AuthResponse> => {
     const tokenToStore = data.token ?? data.pendingToken;
     localStorage.setItem("accessToken", tokenToStore);
     api.defaults.headers.common["Authorization"] = `Bearer ${tokenToStore}`;
-    console.log(localStorage.getItem("accessToken"));
-    console.log("api headers", api.defaults.headers.common["Authorization"]);
-    
-    console.log("response.data.data:", response.data.data);
     return response.data.data!;
 };
 
@@ -56,7 +52,6 @@ export const verifyOTPCall = async (otp: string): Promise<AuthResponse> => {
     if (response.data.error) {
         throw new Error(response.data.error?.message || "OTP verification failed");
     }
-    console.log("OTP verification response:", response.data);
     localStorage.setItem("accessToken", response.data.data!.token);
     api.defaults.headers.common["Authorization"] = `Bearer ${response.data.data!.token}`;
 
@@ -85,10 +80,19 @@ export const requestPasswordResetCall = async (id: string, role: string): Promis
 }
 
 export const resetPasswordCall = async (token: string, newPassword: string, role: string): Promise<{ message: string }> => {
-    const response = await api.post<ApiResponse<{ message: string }>>('/reset-password', { token, newPassword, role });   
+    const response = await api.post<ApiResponse<{ message: string }>>('/reset-password', { token, newPassword, role });
 
     if (response.data.error) {
         throw new Error(response.data.error?.message || "Password reset failed");
     }
     return response.data.data!;
+}
+
+export const refreshTokenCall = async (): Promise<string> => {
+    const response = await api.post<ApiResponse<{ token: string; expiresIn: number }>>('/refresh', {}, { withCredentials: true });
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "Token refresh failed");
+    }
+    return response.data.data!.token;
 }

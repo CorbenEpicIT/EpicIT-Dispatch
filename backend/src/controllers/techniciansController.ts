@@ -7,7 +7,7 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 

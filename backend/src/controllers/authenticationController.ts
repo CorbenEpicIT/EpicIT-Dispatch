@@ -1,13 +1,14 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 import {
 	generateAccessToken,
-	gererateRefreshToken,
+	generateRefreshToken,
 	verifyToken,
 	verifyRefreshToken,
 	generateOTPToken,
+	verifyOTPToken,
 } from "../services/jwtService.js";
 import { createOTP, OTP_DISABLED } from "../services/otpServce.js";
 import { Response } from "express";
@@ -42,38 +43,6 @@ export const login = async (
 	role: string,
 ) => {
 	try {
-		// just for testing
-		if (email === "user" && password === "") {
-			const user = {
-				id: "0",
-				name: email,
-				organization_id: "epic",
-				title: "admin",
-				description: "admin",
-				email: email,
-				phone: null,
-				password: "",
-				last_login: new Date(),
-			};
-			const otp = await createOTP(user.id, role);
-
-			const pendingToken = generateOTPToken(user, role);
-			if (!pendingToken) {
-				return createErrorResponse(
-					ErrorCodes.SERVER_ERROR,
-					"Error generating OTP token",
-				);
-			}
-
-			return { data: { pendingToken } };
-
-			//return issueAuthTokens(res, user.id, role);
-		}
-		// user already has pending token and otp
-		// resend the opt token to user
-		/*if (req.header.authorization?.split(" ")[0] === "Bearer") {
-			
-		}*/
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
 			return createErrorResponse(
@@ -231,11 +200,11 @@ export const issueAuthTokens = async (
 			orgTimezone = org?.timezone ?? null;
 		}
 		const accessToken = generateAccessToken(user, role, orgTimezone);
-		const refreshToken = gererateRefreshToken(user, role);
+		const refreshToken = await generateRefreshToken(user, role);
 		// set refresh token in httpOnly cookie
 		res.cookie("refreshToken", refreshToken, {
 			httpOnly: true,
-			secure: true,
+			secure: process.env.NODE_ENV === "production",
 			sameSite: "strict",
 			maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 		});
@@ -252,7 +221,7 @@ export const issueAuthTokens = async (
 		});
 		let AuthResponse = {
 			token: accessToken,
-			expiresIn: 3600,
+			expiresIn: 900,
 			user: {
 				uid: user.id,
 				email: user.email,
@@ -294,32 +263,12 @@ export const logout = async (res: Response, userData: any, token: string) => {
 	}
 };
 
-// check if user has permission to do whatever they doing
-// not to sure how to structure this yet
-// just here if needed
-export const checkRole = async (userData: UserContext) => {
-	try {
-	} catch (e) {
-		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
-		}
-		return createErrorResponse(
-			ErrorCodes.SERVER_ERROR,
-			"Internal server error",
-		);
-	}
-};
-
 export const checkToken = (token: string) => {
 	return verifyToken(token);
 };
 
-export const checkRefreshToken = (token: string) => {
-	return verifyRefreshToken(token);
+export const checkRefreshToken = async (token: string) => {
+	return await verifyRefreshToken(token);
 };
 
 export const requestPasswordReset = async (email: string, role: string) => {

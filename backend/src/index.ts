@@ -11,127 +11,7 @@ import * as notificationsController from "./controllers/notificationsController.
 import { startVisitReminderInterval } from "./services/notifications.js";
 import { startInvoiceSchedulerInterval } from "./services/invoiceScheduler.js";
 import { rearmWrappingUpTimers } from "./services/wrappingUpTimer.js";
-import {
-	getAllRequests,
-	getRequestById,
-	getRequestsByClientId,
-	insertRequest,
-	updateRequest,
-	deleteRequest,
-	getRequestNotes,
-	getRequestNoteById,
-	insertRequestNote,
-	updateRequestNote,
-	deleteRequestNote,
-} from "./controllers/requestsController.js";
-import * as requestNotesController from "./controllers/requestNotesController.js";
-import {
-	getAllQuotes,
-	getQuoteById,
-	getQuotesByClientId,
-	insertQuote,
-	updateQuote,
-	deleteQuote,
-	getQuoteItems,
-	getQuoteItemById,
-	insertQuoteItem,
-	updateQuoteItem,
-	deleteQuoteItem,
-} from "./controllers/quotesController.js";
-import * as quoteNotesController from "./controllers/quoteNotesController.js";
-import {
-	getAllJobs,
-	getJobById,
-	insertJob,
-	updateJob,
-	deleteJob,
-	getJobsByClientId,
-} from "./controllers/jobsController.js";
-import {
-	getJobNotes,
-	getJobNotesByVisitId,
-	insertJobNote,
-	updateJobNote,
-	deleteJobNote,
-} from "./controllers/jobNotesController.js";
-import {
-	getAllJobVisits,
-	getJobVisitById,
-	getJobVisitsByJobId,
-	getJobVisitsByTechId,
-	getJobVisitsByDateRange,
-	insertJobVisit,
-	updateJobVisit,
-	assignTechniciansToVisit,
-	acceptJobVisit,
-	deleteJobVisit,
-} from "./controllers/jobVisitsController.js";
-import * as recurringPlansController from "./controllers/recurringPlansController.js";
-import * as recurringPlanNotesController from "./controllers/recurringPlanNotesController.js";
-import {
-	getAllClients,
-	getClientById,
-	insertClient,
-	updateClient,
-	deleteClient,
-} from "./controllers/clientsController.js";
-import {
-	getClientContacts,
-	getContactById,
-	getAllContacts,
-	insertContact,
-	updateContact,
-	deleteContact,
-	linkContactToClient,
-	updateClientContact,
-	unlinkContactFromClient,
-	searchContacts,
-} from "./controllers/contactsController.js";
-import {
-	getClientNotes,
-	getNoteById,
-	insertNote,
-	updateNote,
-	deleteNote,
-} from "./controllers/clientNotesController.js";
-import {
-	getAllTechnicians,
-	getTechnicianById,
-	insertTechnician,
-	updateTechnician,
-	deleteTechnician,
-} from "./controllers/techniciansController.js";
-import {
-	getAllDispatchers,
-	getDispatcherById,
-	insertDispatcher,
-	updateDispatcher,
-	deleteDispatcher,
-} from "./controllers/dispatchersController.js";
-import {
-	getAllInventory,
-	getLowStockInventory,
-	updateInventoryThreshold,
-	createInventoryItem,
-	updateInventoryItem,
-	deleteInventoryItem,
-	adjustInventoryStock,
-} from "./controllers/inventoryController.js";
 import multer from "multer";
-import { uploadFile, signImageUrls } from "./services/wasabiService.js";
-import {
-	getOverviewMetrics,
-	getRevenueYTD,
-	getRevenueByJobType,
-	getUnscheduledRevenue,
-	getQuotePipeline,
-	getArrivalPerformance,
-} from "./controllers/reportsController.js";
-import * as draftsController from "./controllers/draftsController.js";
-import * as invoicesController from "./controllers/invoicesController.js";
-import { generateQuotePdf, generateInvoicePdf } from "./lib/pdf/pdfService.js";
-import { sendQuoteEmail, sendInvoiceEmail } from "./services/emailService.js";
-
 import {
 	login,
 	logout,
@@ -141,8 +21,7 @@ import {
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
-import { db } from "./db.js";
-import { getScopedDb, getUserContext } from "./lib/context.js";
+import { getScopedDb } from "./lib/context.js";
 import {
 	httpMetricsMiddleware,
 	prometheusExporter,
@@ -151,6 +30,7 @@ import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
 import { initSocket } from "./services/socketService.js";
+import { refreshAccessToken } from "./services/jwtService.js";
 
 // ============================================
 // Routers
@@ -243,7 +123,11 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 			);
 
 	try {
-		req.user = checkToken(token);
+		const decoded = checkToken(token);
+		if ((decoded as any).stage === "pending_otp") {
+			return res.status(401).json(createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid or expired token"));
+		}
+		req.user = decoded;
 		next();
 	} catch {
 		res.status(401).json(
@@ -295,6 +179,7 @@ app.use(express.json());
 app.use(pinoHttp({ logger: log }));
 app.use(httpMetricsMiddleware);
 
+// Expose Prometheus metrics at /metrics
 app.get("/metrics", (req, res) => prometheusExporter.getMetricsRequestHandler(req, res));
 app.use(requestLogger);
 
@@ -305,7 +190,8 @@ if (!frontend) {
 }
 
 const corsOptions = {
-	origin: process.env.NODE_ENV === "production" ? frontend : "*",
+	//origin: process.env.NODE_ENV === "production" ? frontend : "*",
+	origin: frontend,
 	credentials: true,
 };
 
@@ -462,6 +348,24 @@ app.post("/reset-password", async (req, res, next) => {
 		res.json(createSuccessResponse(null));
 	} catch (err) {
 		next(err);
+	}
+});
+
+app.post("/refresh-token", async (req, res, next) => {
+	try {
+		const cookieHeader = req.headers.cookie ?? "";
+		const match = cookieHeader.split(";").find(c => c.trim().startsWith("refreshToken="));
+		const refreshToken = match?.trim().slice("refreshToken=".length);
+		if (!refreshToken) {
+			return res.status(401).json(
+				createErrorResponse(ErrorCodes.INVALID_TOKEN, "No refresh token provided")
+			);
+		}
+		const result = await refreshAccessToken(refreshToken);
+		if (typeof result !== "string") return res.status(401).json(result);
+		res.json(createSuccessResponse({ token: result, expiresIn: 900}));
+	}catch (e) {
+		next(e);
 	}
 });
 

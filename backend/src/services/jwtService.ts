@@ -1,5 +1,4 @@
 import jwt from "jsonwebtoken";
-import { id } from "zod/v4/locales";
 import { db } from "../db.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 
@@ -17,6 +16,7 @@ interface User {
 }
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const OTP_SECRET = process.env.OTP_SECRET;
 
 export const hasValidRefreshToken = async (userId: string): Promise<string | null> => {
     const record = await db.jwt_refresh_token.findFirst({
@@ -42,11 +42,11 @@ export const generateAccessToken = (user: User, role: string, orgTimezone?: stri
                 organization_timezone: orgTimezone ?? null,
             },
             JWT_SECRET,
-            {expiresIn : '15m'}  // token expires in an hour may change in future
+            {expiresIn : '15m'}
         );
 }
 
-export const gererateRefreshToken = async (user: User, role: string) => {
+export const generateRefreshToken = async (user: User, role: string) => {
     if (!JWT_REFRESH_SECRET) {
         throw new Error("JWT_REFRESH_SECRET is not defined in environment variables");
     }
@@ -75,12 +75,12 @@ export const gererateRefreshToken = async (user: User, role: string) => {
 }
 
 export const generateOTPToken = (user: User, role: string) => {
-    if (!JWT_SECRET) {
-        throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
+    if (!OTP_SECRET) {
+        throw new Error("OTP_SECRET is not defined in environment variables");
     }
     return jwt.sign(
-        { userId: user.id, role, organization_id: user.organization_id, stage: 'pending_otp' },
-        JWT_SECRET,
+        { userId: user.id, role: role, organization_id: user.organization_id, stage: 'pending_otp' },
+        OTP_SECRET!,
         { expiresIn: '10m' }
     );
 }
@@ -89,6 +89,12 @@ export const verifyToken = (token: string) => {
     if (!JWT_SECRET) {
         throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
     }
+
+    const peek = jwt.decode(token) as { stage?: string } | null;
+    if (peek?.stage === "pending_otp") {
+        throw new Error("OTP tokens are not valid for authentication");
+    }
+    
     return jwt.verify(token, JWT_SECRET) as {
         uid: string;
         email: string;
@@ -123,10 +129,10 @@ export const verifyRefreshToken = async (token: string) => {
 }
 
 export const verifyOTPToken = (token: string) => {
-    if (!JWT_SECRET){
-        throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
+    if (!OTP_SECRET){
+        throw new Error("OTP_SECRET is not defined in environment variables");
     }
-    return jwt.verify(token, JWT_SECRET) as {
+    return jwt.verify(token, OTP_SECRET) as {
         userId: string;
         role: string;
         organization_id: string | null;
@@ -172,8 +178,8 @@ export const refreshAccessToken = async (refreshToken: string) => {
         return jwtResult;  
     } catch (e) {
         if (e instanceof jwt.JsonWebTokenError) {
-            throw createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid refresh token");
+            throw new Error("Invalid refresh token");
         }
-        throw e;
+        throw new Error("Internal server error");
     }
 }
