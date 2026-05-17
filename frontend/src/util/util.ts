@@ -1,4 +1,4 @@
-import type { StockStatus } from "../types/inventory";
+﻿import type { StockStatus } from "../types/inventory";
 
 export const camelCaseToRegular = (str: string) => {
 	return str
@@ -92,21 +92,21 @@ export const getStatusLabel = (status: StockStatus): string => {
 export const getStatusBadgeClass = (status: StockStatus): string => {
 	switch (status) {
 		case 'out_of_stock':
-			return 'bg-red-500/20 text-red-400 border border-red-500/30';
+			return 'bg-error/20 text-error-text border border-error/30';
 		case 'low':
-			return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
+			return 'bg-yellow-500/20 text-warning-text border border-yellow-500/30';
 		case 'sufficient':
-			return 'bg-green-500/20 text-green-400 border border-green-500/30';
+			return 'bg-success/20 text-success-text border border-success/30';
 		default:
-			return 'bg-zinc-800 text-zinc-400 border border-zinc-700';
+			return 'bg-surface text-text-tertiary border border-border';
 	}
 };
 
 export const getStockStatusTextColor = (status: StockStatus): string => {
 	switch (status) {
-		case 'out_of_stock': return 'text-red-400';
-		case 'low':          return 'text-yellow-400';
-		default:             return 'text-zinc-100';
+		case 'out_of_stock': return 'text-error-text';
+		case 'low':          return 'text-warning-text';
+		default:             return 'text-text-primary';
 	}
 };
 

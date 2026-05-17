@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { useVehiclesQuery, useCreateVehicleMutation } from "../../hooks/useVehicles";
@@ -53,7 +53,7 @@ export default function VehiclesPage() {
 			<PageHeader title="Vehicles">
 				<button
 					onClick={() => setIsCreateModalOpen(true)}
-					className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
 				>
 					<Plus size={15} />
 					New Vehicle
@@ -107,7 +107,7 @@ export default function VehiclesPage() {
 				<div className="w-full h-[400px] flex flex-col justify-center items-center">
 					<ErrSvg className="w-15 h-15 mb-1" />
 					<h1 className="text-center text-xl mt-1">An error has occurred.</h1>
-					<h2 className="text-center text-zinc-500 mt-1">{error.message}</h2>
+					<h2 className="text-center text-text-muted mt-1">{error.message}</h2>
 				</div>
 			)}
 
@@ -119,7 +119,7 @@ export default function VehiclesPage() {
 						{activeTerms.length > 0 ? "No vehicles found." : "No vehicles yet."}
 					</h1>
 					{activeTerms.length > 0 && (
-						<p className="text-center text-zinc-500 mt-2">Try adjusting your search terms.</p>
+						<p className="text-center text-text-muted mt-2">Try adjusting your search terms.</p>
 					)}
 				</div>
 			)}

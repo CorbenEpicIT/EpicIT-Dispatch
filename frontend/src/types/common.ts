@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // SHARED PRIORITY TYPES
 // ============================================================================
 
@@ -16,10 +16,10 @@ export const PriorityLabels: Record<Priority, string> = {
 
 export const PriorityColors: Record<Priority, string> = {
 	Low: "bg-gray-600/20 text-gray-400 border-gray-700",
-	Medium: "bg-blue-600/20 text-blue-400 border-blue-700",
+	Medium: "bg-primary-hover/20 text-primary-text border-blue-700",
 	High: "bg-orange-600/20 text-orange-400 border-orange-700",
-	Urgent: "bg-red-600/20 text-red-400 border-red-700",
-	Emergency: "bg-red-700/30 text-red-300 border-red-600 font-bold",
+	Urgent: "bg-red-600/20 text-error-text border-red-700",
+	Emergency: "bg-red-700/30 text-error-text border-red-600 font-bold",
 };
 
 // ============================================================================
@@ -424,12 +424,12 @@ export function getGenericStatusColor(status: string): string {
 		statusLower.includes("approved") ||
 		statusLower.includes("accepted")
 	) {
-		return "bg-green-500/20 text-green-400 border-green-500/30";
+		return "bg-success/20 text-success-text border-success/30";
 	}
 
 	// Common negative states
 	if (statusLower.includes("cancelled") || statusLower.includes("rejected")) {
-		return "bg-red-500/20 text-red-400 border-red-500/30";
+		return "bg-error/20 text-error-text border-error/30";
 	}
 
 	// In-progress states
@@ -438,7 +438,7 @@ export function getGenericStatusColor(status: string): string {
 		statusLower.includes("scheduled") ||
 		statusLower.includes("sent")
 	) {
-		return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+		return "bg-primary/20 text-primary-text border-primary/30";
 	}
 
 	// Pending/draft states
@@ -457,5 +457,5 @@ export function getGenericStatusColor(status: string): string {
 	}
 
 	// Default
-	return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+	return "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
 }

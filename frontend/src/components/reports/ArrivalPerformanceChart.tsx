@@ -1,4 +1,4 @@
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+﻿import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import Card from "../ui/Card";
 import type { ArrivalPerformanceResponse } from "../../types/reports";
 
@@ -8,9 +8,9 @@ interface ArrivalPerformanceChartProps {
 }
 
 const COLORS = {
-	Early: "#22c55e",
-	"On-Time": "#3b82f6",
-	Late: "#ef4444",
+	Early: "var(--color-success)",
+	"On-Time": "var(--color-chart-primary)",
+	Late: "var(--color-error)",
 } as const;
 
 type SliceName = keyof typeof COLORS;
@@ -24,7 +24,7 @@ interface Slice {
 
 function buildSlices(data: ArrivalPerformanceResponse): Slice[] {
 	if (data.total === 0) {
-		return [{ name: "No Data", value: 1, pct: 0, color: "#27272a" }];
+		return [{ name: "No Data", value: 1, pct: 0, color: "var(--color-chart-fallback)" }];
 	}
 
 	const pct = (n: number) =>
@@ -49,10 +49,10 @@ function CustomTooltip({
 	if (d.name === "No Data") return null;
 
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/90 backdrop-blur-md shadow-lg border border-zinc-800">
-			<p className="text-xs text-zinc-400">{d.name}</p>
+		<div className="rounded-lg px-3 py-2 bg-base/90 backdrop-blur-md shadow-lg border border-border-subtle">
+			<p className="text-xs text-text-tertiary">{d.name}</p>
 			<p className="text-sm font-semibold text-white">{d.value} visits</p>
-			<p className="text-xs text-zinc-400">{d.pct}% of total</p>
+			<p className="text-xs text-text-tertiary">{d.pct}% of total</p>
 		</div>
 	);
 }
@@ -68,7 +68,7 @@ export default function ArrivalPerformanceChart({
 			className="h-full"
 			title="On-Time Arrival Performance"
 			headerAction={
-				<p className="text-xs font-medium text-zinc-400">{rangeLabel}</p>
+				<p className="text-xs font-medium text-text-tertiary">{rangeLabel}</p>
 			}
 		>
 			{/* Circle chart */}
@@ -105,10 +105,10 @@ export default function ArrivalPerformanceChart({
 							<p className="text-3xl font-bold text-white leading-none">
 								{data.onTimeRate}%
 							</p>
-							<p className="text-xs text-zinc-500 mt-1">on-time rate</p>
+							<p className="text-xs text-text-muted mt-1">on-time rate</p>
 						</>
 					) : (
-						<p className="text-xs text-zinc-500">No data</p>
+						<p className="text-xs text-text-muted">No data</p>
 					)}
 				</div>
 			</div>
@@ -129,13 +129,13 @@ export default function ArrivalPerformanceChart({
 						>
 							{value}
 						</span>
-						<span className="text-xs font-medium text-zinc-300">{label}</span>
-						<span className="text-[10px] text-zinc-600">{sub}</span>
+						<span className="text-xs font-medium text-text-secondary">{label}</span>
+						<span className="text-[10px] text-text-faint">{sub}</span>
 					</div>
 				))}
 			</div>
 
-			<p className="text-center text-[11px] text-zinc-600 mt-3">
+			<p className="text-center text-[11px] text-text-faint mt-3">
 				{data.total} visits with recorded arrival
 			</p>
 		</Card>

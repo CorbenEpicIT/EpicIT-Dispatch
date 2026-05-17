@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../util/util";
+﻿import { formatCurrency } from "../../util/util";
 import type { UnscheduledRevenueResponse, UnscheduledJobRevenue } from "../../types/reports";
 
 interface UnscheduledRevenueProps {
@@ -14,9 +14,9 @@ interface RevenueLevelConfig {
 }
 
 const REVENUE_LEVELS: RevenueLevelConfig[] = [
-	{ key: "new", label: "New", color: "#10b981", dotClass: "bg-emerald-500", days: "< 7 days" },
-	{ key: "warning", label: "Aging", color: "#f59e0b", dotClass: "bg-amber-500", days: "7–30 days" },
-	{ key: "critical", label: "Critical", color: " #ef4444", dotClass: "bg-red-500", days: "> 30 days" },
+	{ key: "new", label: "New", color: "var(--color-success)", dotClass: "bg-emerald-500", days: "< 7 days" },
+	{ key: "warning", label: "Aging", color: "var(--color-warning)", dotClass: "bg-amber-500", days: "7–30 days" },
+	{ key: "critical", label: "Critical", color: "var(--color-error)", dotClass: "bg-red-500", days: "> 30 days" },
 ];
 
 export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
@@ -31,8 +31,8 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 	return (
 		<div className="flex flex-col h-full">
 			<div className="flex items-center justify-between mb-1">
-				<p className="text-sm text-zinc-400 font-medium">Unscheduled Job Revenue</p>
-				<span className="text-[11px] font-medium text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full">
+				<p className="text-sm text-text-tertiary font-medium">Unscheduled Job Revenue</p>
+				<span className="text-[11px] font-medium text-text-tertiary bg-surface px-2 py-0.5 rounded-full">
 					{jobCount} {jobCount === 1 ? "Job" : "Jobs"}
 				</span>
 			</div>
@@ -66,12 +66,12 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 							<span
 								className={`w-2 h-2 rounded-full shrink-0 ${seg.dotClass}`}
 							/>
-							<span className="text-zinc-400">{seg.label}</span>
+							<span className="text-text-tertiary">{seg.label}</span>
 						</div>
 						<span
 							className={`font-medium ${
 								seg.key === "critical" && seg.bucket.revenue > 0
-									? "text-red-400"
+									? "text-error-text"
 									: seg.key === "critical"
 										? "text-zinc-700"
 										: "text-white"
@@ -83,11 +83,11 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 				))}
 			</div>
 
-			<div className="flex items-center justify-center gap-4 mt-auto pt-4 border-t border-zinc-800">
+			<div className="flex items-center justify-center gap-4 mt-auto pt-4 border-t border-border-subtle">
 				{REVENUE_LEVELS.map((level) => (
 					<div key={level.key} className="flex items-center gap-1.5">
 						<span className={`w-2 h-2 rounded-full shrink-0 ${level.dotClass}`} />
-						<span className="text-[11px] text-zinc-500">
+						<span className="text-[11px] text-text-muted">
 							{level.label}
 							<span className="text-zinc-700 ml-1">{level.days}</span>
 						</span>

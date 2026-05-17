@@ -1,4 +1,4 @@
-import { Check, Lock, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+﻿import { Check, Lock, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 import type { FormStep } from "../../../types/common";
 
@@ -67,31 +67,31 @@ const StepWizard = <T extends number>({
 
 	const getStepStyles = (state: (typeof stepStates)[0]) => {
 		if (state.isCurrent)
-			return "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/50";
+			return "bg-primary-hover border-blue-600 text-white shadow-lg shadow-blue-900/50";
 		if (state.isCompleted)
 			return "bg-green-600 border-green-600 text-white hover:bg-green-500";
 		if (state.isPending)
 			return "bg-yellow-500 border-yellow-500 text-zinc-900 hover:bg-yellow-400 font-bold";
 		if (state.isAccessible && !state.isCompleted && !state.isCurrent)
-			return "bg-zinc-900 border-zinc-800 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400";
-		return "bg-zinc-900 border-zinc-800 text-zinc-600";
+			return "bg-base border-border-subtle text-text-faint hover:bg-surface hover:text-text-tertiary";
+		return "bg-base border-border-subtle text-text-faint";
 	};
 
 	const getLabelColor = (state: (typeof stepStates)[0]) => {
 		if (state.isCurrent) return "text-white";
-		if (state.isCompleted) return "text-green-400";
-		if (state.isPending) return "text-yellow-400";
-		return "text-zinc-600";
+		if (state.isCompleted) return "text-success-text";
+		if (state.isPending) return "text-warning-text";
+		return "text-text-faint";
 	};
 
 	const getLineColor = (index: number) => {
 		if (index >= steps.length - 1) return "";
 		const nextState = stepStates[index + 1];
-		if (!nextState) return "bg-zinc-800";
+		if (!nextState) return "bg-surface";
 		if (nextState.isCompleted) return "bg-green-600";
-		if (nextState.isCurrent) return "bg-blue-600";
+		if (nextState.isCurrent) return "bg-primary-hover";
 		if (nextState.isPending) return "bg-yellow-500";
-		return "bg-zinc-800";
+		return "bg-surface";
 	};
 
 	const getCursorStyle = (state: (typeof stepStates)[0]) => {
@@ -179,14 +179,14 @@ const StepWizard = <T extends number>({
 
 			{/* Navigation Footer */}
 			{showNavigation && (
-				<div className="flex items-center justify-between border-t border-zinc-700 bg-zinc-900/50">
+				<div className="flex items-center justify-between border-t border-border bg-base/50">
 					<div>
 						{!isFirstStep && onBack && (
 							<button
 								type="button"
 								onClick={onBack}
 								disabled={isLoading}
-								className="flex items-center gap-1 px-4 py-2 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
+								className="flex items-center gap-1 px-4 py-2 text-text-secondary hover:text-white hover:bg-surface rounded-md transition-colors disabled:opacity-50"
 							>
 								<ChevronLeft size={18} />
 								{backLabel}
@@ -200,7 +200,7 @@ const StepWizard = <T extends number>({
 								type="button"
 								onClick={onCancel}
 								disabled={isLoading}
-								className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
+								className="px-4 py-2 text-text-tertiary hover:text-white hover:bg-surface rounded-md transition-colors disabled:opacity-50"
 							>
 								{cancelLabel}
 							</button>
@@ -211,7 +211,7 @@ const StepWizard = <T extends number>({
 								type="button"
 								onClick={onNext}
 								disabled={!canGoNext || isLoading}
-								className="flex items-center gap-1 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-400 text-white rounded-md font-medium transition-colors"
+								className="flex items-center gap-1 px-5 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-surface-raised disabled:text-text-tertiary text-white rounded-md font-medium transition-colors"
 							>
 								{nextLabel}
 								<ChevronRight size={18} />
@@ -223,7 +223,7 @@ const StepWizard = <T extends number>({
 								disabled={isLoading}
 								className={`
 									flex items-center gap-2 px-5 py-2 rounded-md font-bold transition-colors
-									${isLoading ? "bg-green-700 text-green-100 cursor-wait" : "bg-green-600 hover:bg-green-700 text-white"}
+									${isLoading ? "bg-confirm text-white cursor-wait" : "bg-confirm hover:bg-confirm-hover text-white"}
 								`}
 							>
 								{isLoading ? (

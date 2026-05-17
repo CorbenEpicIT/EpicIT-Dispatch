@@ -95,7 +95,7 @@ export default function DatePicker({
 	const finalPosition = position === "auto" ? calculatedPosition : position;
 
 	const popupClasses = `
-    absolute z-50 bg-zinc-950 border border-zinc-700
+    absolute z-50 bg-canvas border border-border
     rounded-sm shadow-xl p-0.5
     ${finalPosition === "above" ? "bottom-full mb-1" : "top-full mt-1"}
     ${align === "left" ? "left-0" : "right-0"}
@@ -105,17 +105,17 @@ export default function DatePicker({
 		<div className="relative w-full">
 			<style>{`
         .date-picker-dark {
-  --rdp-accent-color: #3b82f6;
-  --rdp-background-color: #18181b;
-  --rdp-accent-background-color: #1e40af;
-  color: #e4e4e7;
+  --rdp-accent-color: var(--color-primary);
+  --rdp-background-color: var(--color-base);
+  --rdp-accent-background-color: var(--color-primary-active);
+  color: var(--color-text-on-surface);
   border-radius: 4px;
   pointer-events: auto !important;
   overscroll-behavior: contain;
   font-size: 0.75rem;
 }
 .date-picker-dark .rdp-month_caption {
-  color: #e4e4e7;
+  color: var(--color-text-on-surface);
   font-weight: 600;
   padding: 0 0 0 0.5rem;
   margin-bottom: 0.15rem;
@@ -123,7 +123,7 @@ export default function DatePicker({
 }
 .date-picker-dark .rdp-weekdays { padding: 0 0.1rem; }
 .date-picker-dark .rdp-weekday {
-  color: #a1a1aa;
+  color: var(--color-text-tertiary);
   font-size: 0.65rem;
   padding: 0.05rem 0.1rem;
   width: 1.8rem;
@@ -141,25 +141,25 @@ export default function DatePicker({
   line-height: 1rem;
 }
 .date-picker-dark .rdp-day_button:hover:not([disabled]):not(.rdp-day_selected) {
-  background-color: #27272a;
+  background-color: var(--color-surface);
 }
 .date-picker-dark .rdp-day_button.rdp-day_selected {
-  background-color: #3b82f6;
+  background-color: var(--color-primary);
   color: white;
 }
 .date-picker-dark .rdp-day_button.rdp-day_today:not(.rdp-day_selected) {
-  color: #3b82f6;
+  color: var(--color-primary);
   font-weight: 600;
 }
 .date-picker-dark .rdp-day_button:disabled { opacity: 0.25; }
 .date-picker-dark .rdp-nav_button {
   padding: 0.15rem;
   border-radius: 4px;
-  color: #e4e4e7;
+  color: var(--color-text-on-surface);
   width: 1.4rem;
   height: 1.4rem;
 }
-.date-picker-dark .rdp-nav_button:hover { background-color: #27272a; }
+.date-picker-dark .rdp-nav_button:hover { background-color: var(--color-surface); }
 .date-picker-dark .rdp-months { padding: 0.25rem; }
 .date-picker-dark .rdp-month { width: 100%; }
 .date-picker-dark .rdp-caption_label { font-size: 0.8rem; }
@@ -170,11 +170,11 @@ export default function DatePicker({
 				type="button"
 				disabled={disabled}
 				onClick={() => setOpen((o) => !o)}
-				className="border border-zinc-700 bg-zinc-900 px-2.5 h-[34px] w-full rounded text-left
-					flex items-center justify-between hover:border-zinc-600 focus:border-blue-500 focus:outline-none
+				className="border border-border bg-base px-2.5 h-[34px] w-full rounded text-left
+					flex items-center justify-between hover:border-border-strong focus:border-primary focus:outline-none
 					transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-sm lg:text-base"
 			>
-				<span className={!value ? "text-zinc-500" : "text-white"}>
+				<span className={!value ? "text-text-muted" : "text-text-primary"}>
 					{!value ? "Select date..." : format(value, "MMMM dd, yyyy")}
 				</span>
 
@@ -184,9 +184,9 @@ export default function DatePicker({
 						<span
 							onClick={handleUndo}
 							title="Undo"
-							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
+							className="hover:bg-surface rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
-							<RotateCcw className="h-3 w-3 text-zinc-400 hover:text-white" />
+							<RotateCcw className="h-3 w-3 text-text-tertiary hover:text-white" />
 						</span>
 					)}
 
@@ -195,9 +195,9 @@ export default function DatePicker({
 						<span
 							onClick={handleClear}
 							title="Clear"
-							className="hover:bg-zinc-800 rounded p-0.5 transition-colors cursor-pointer inline-flex"
+							className="hover:bg-surface rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
-							<X className="h-3 w-3 text-zinc-400 hover:text-white" />
+							<X className="h-3 w-3 text-text-tertiary hover:text-white" />
 						</span>
 					)}
 

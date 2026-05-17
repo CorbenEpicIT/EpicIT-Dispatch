@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { Clock } from "lucide-react";
 
 interface DurationPickerProps {
@@ -235,7 +235,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 		<div className="relative w-full" ref={containerRef}>
 			{/* Input display */}
 			<div
-				className="relative border border-zinc-700 bg-zinc-900 rounded px-2.5 py-1.5 flex items-center justify-between hover:border-zinc-600 focus-within:border-blue-500 transition-colors"
+				className="relative border border-border bg-base rounded px-2.5 py-1.5 flex items-center justify-between hover:border-border-strong focus-within:border-primary transition-colors"
 				tabIndex={0}
 			>
 				<div className="flex items-center gap-2 text-sm">
@@ -244,29 +244,29 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 						onClick={() => handleSectionClick("hour")}
 						className={`cursor-pointer px-1 rounded font-mono ${
 							focusedSection === "hour"
-								? "bg-blue-600 text-white"
-								: "text-zinc-200"
+								? "bg-primary-hover text-white"
+								: "text-text-primary"
 						}`}
 					>
 						{hour}
 					</div>
-					<span className="text-zinc-400 text-xs">hr</span>
+					<span className="text-text-tertiary text-xs">hr</span>
 					<div
 						ref={minuteRef}
 						onClick={() => handleSectionClick("minute")}
 						className={`cursor-pointer px-1 rounded font-mono ${
 							focusedSection === "minute"
-								? "bg-blue-600 text-white"
-								: "text-zinc-200"
+								? "bg-primary-hover text-white"
+								: "text-text-primary"
 						}`}
 					>
 						{minute}
 					</div>
-					<span className="text-zinc-400 text-xs">min</span>
+					<span className="text-text-tertiary text-xs">min</span>
 				</div>
 				<button
 					onClick={() => setOpen(!open)}
-					className="text-zinc-400 hover:text-zinc-200 flex-shrink-0"
+					className="text-text-tertiary hover:text-text-primary flex-shrink-0"
 				>
 					<Clock size={16} />
 				</button>
@@ -276,7 +276,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 			{open && (
 				<div
 					ref={popupRef}
-					className="absolute z-[6000] bg-zinc-900 border border-zinc-700 rounded-md shadow-xl mt-1 p-2"
+					className="absolute z-[6000] bg-base border border-border rounded-md shadow-xl mt-1 p-2"
 					style={{ width: "120px", right: 0 }}
 				>
 					<div className="flex gap-1">
@@ -297,7 +297,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 											false
 										)
 									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-zinc-800 rounded text-center"
+									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-surface rounded text-center"
 								>
 									{h
 										.toString()
@@ -323,7 +323,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 											true
 										)
 									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-zinc-800 rounded text-center"
+									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-surface rounded text-center"
 								>
 									{m
 										.toString()

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+﻿import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleBoardDayColumn, { setSharedDragOffset } from "./ScheduleBoardDayColumn";
@@ -519,15 +519,15 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 	const gridMinWidth = GUTTER_W + 7 * 150;
 
 	return (
-		<div className="flex flex-col h-full bg-zinc-950 text-zinc-200 select-none">
+		<div className="flex flex-col h-full bg-canvas text-text-primary select-none">
 
 			{/* ── Toolbar ──────────────────────────────────────────────────────── */}
-			<div className="flex items-center gap-1.5 px-3 border-b border-zinc-800 shrink-0" style={{ height: 44 }}>
+			<div className="flex items-center gap-1.5 px-3 border-b border-border-subtle shrink-0" style={{ height: 44 }}>
 
 				{/* Today */}
 				<button
 					onClick={goToday}
-					className="h-7 px-3 rounded text-[11px] font-medium border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors shrink-0"
+					className="h-7 px-3 rounded text-[11px] font-medium border border-border text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors shrink-0"
 				>
 					Today
 				</button>
@@ -537,31 +537,31 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					<button
 						aria-label={viewMode === "week" ? "Previous week" : "Previous month"}
 						onClick={viewMode === "week" ? prevWeek : prevMonth}
-						className="h-7 w-7 flex items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
 					>
 						<ChevronLeft size={14} />
 					</button>
-					<span className="text-[13px] font-semibold text-zinc-100 min-w-[144px] text-center tracking-tight">
+					<span className="text-[13px] font-semibold text-text-primary min-w-[144px] text-center tracking-tight">
 						{viewMode === "week" ? weekLabel : monthLabel}
 					</span>
 					<button
 						aria-label={viewMode === "week" ? "Next week" : "Next month"}
 						onClick={viewMode === "week" ? nextWeek : nextMonth}
-						className="h-7 w-7 flex items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
 					>
 						<ChevronRight size={14} />
 					</button>
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				{/* View mode — segmented */}
-				<div className="flex items-center bg-zinc-900 border border-zinc-800 rounded p-0.5 shrink-0">
+				<div className="flex items-center bg-base border border-border-subtle rounded p-0.5 shrink-0">
 					<button
 						onClick={() => setViewMode("week")}
 						className={`h-6 px-3 rounded-sm text-[11px] font-medium transition-colors ${
-							viewMode === "week" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+							viewMode === "week" ? "bg-surface-raised text-text-primary" : "text-text-muted hover:text-text-secondary"
 						}`}
 					>
 						Week
@@ -569,7 +569,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					<button
 						onClick={() => setViewMode("month")}
 						className={`h-6 px-3 rounded-sm text-[11px] font-medium transition-colors ${
-							viewMode === "month" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+							viewMode === "month" ? "bg-surface-raised text-text-primary" : "text-text-muted hover:text-text-secondary"
 						}`}
 					>
 						Month
@@ -577,15 +577,15 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				{/* Layer toggles */}
 				<button
 					onClick={() => setShowVisits((v) => !v)}
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showVisits
-							? "bg-blue-500/10 border-blue-500/25 text-blue-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							? "bg-primary/10 border-primary/25 text-primary-text"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					{showVisits ? <Eye size={12} /> : <EyeOff size={12} />}
@@ -596,7 +596,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showOccurrences
 							? "bg-violet-500/10 border-violet-500/25 text-violet-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					{showOccurrences ? <Eye size={12} /> : <EyeOff size={12} />}
@@ -604,7 +604,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 				</button>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				<TechFilter
 					technicians={technicians}
@@ -654,13 +654,13 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 							height: HEADER_H,
 							position: "sticky",
 							top: 0,
-							borderBottom: "1px solid #3f3f46",
-							backgroundColor: "#09090b",
+							borderBottom: "1px solid var(--color-border)",
+							backgroundColor: "var(--color-canvas)",
 							zIndex: 30,
 						}}
 					>
 						{/* Gutter header cell */}
-						<div style={{ borderRight: "1px solid #3f3f46" }} />
+						<div style={{ borderRight: "1px solid var(--color-border)" }} />
 						{weekDays.map((dateStr) => {
 							const { weekday, day } = formatDayHeader(dateStr);
 							const isToday = dateStr === todayStr;
@@ -668,18 +668,18 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 								<div
 									key={dateStr}
 									style={{
-										borderLeft: "1px solid #3f3f46",
+										borderLeft: "1px solid var(--color-border)",
 										display: "flex",
 										alignItems: "center",
 										paddingLeft: 10,
-										boxShadow: isToday ? "inset 0 -2px 0 #3b82f6" : undefined,
+										boxShadow: isToday ? "inset 0 -2px 0 var(--color-primary)" : undefined,
 									}}
 								>
 									<div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
 										<span style={{
 											fontSize: 10,
 											fontWeight: 600,
-											color: isToday ? "#60a5fa" : "#c4c4c8",
+											color: isToday ? "var(--color-visit-driving-text)" : "var(--color-sched-text-secondary)",
 											textTransform: "uppercase",
 											letterSpacing: "0.05em",
 										}}>
@@ -688,7 +688,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										<span style={{
 											fontSize: 15,
 											fontWeight: 700,
-											color: isToday ? "#3b82f6" : "#e4e4e7",
+											color: isToday ? "var(--color-primary)" : "var(--color-text-on-surface)",
 										}}>
 											{day}
 										</span>
@@ -709,15 +709,15 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 								gridTemplateColumns,
 								position: "sticky",
 								top: HEADER_H,
-								borderBottom: "1px solid #3f3f46",
-								backgroundColor: "#0f0f11",
+								borderBottom: "1px solid var(--color-border)",
+								backgroundColor: "var(--color-canvas)",
 								zIndex: 20,
 							}}
 						>
 							{/* Anytime toggle cell */}
 							<div
 								style={{
-									borderRight: "1px solid #3f3f46",
+									borderRight: "1px solid var(--color-border)",
 									display: "flex",
 									alignItems: "flex-start",
 									justifyContent: "flex-end",
@@ -732,7 +732,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										gap: 3,
 										fontSize: 9,
 										fontWeight: 600,
-										color: "#a1a1aa",
+										color: "var(--color-text-tertiary)",
 										background: "none",
 										border: "none",
 										cursor: "pointer",
@@ -740,7 +740,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										borderRadius: 4,
 										transition: "color 0.15s",
 									}}
-									onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#27272a"; }}
+									onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-surface)"; }}
 									onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
 								>
 									Anytime
@@ -749,7 +749,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										style={{
 											transform: anytimeOpen ? "rotate(180deg)" : "rotate(0deg)",
 											transition: "transform 0.15s ease",
-											color: "#a1a1aa",
+											color: "var(--color-text-tertiary)",
 										}}
 									/>
 								</button>
@@ -767,10 +767,10 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										onDragLeave={handleAnytimeCellDragLeave}
 										onDrop={(e) => handleAnytimeCellDrop(e, dateStr)}
 										style={{
-											borderLeft: "1px solid #3f3f46",
+											borderLeft: "1px solid var(--color-border)",
 											padding: "4px 5px",
 											minHeight: anytimeOpen ? undefined : 28,
-											outline: dragOverAnytimeDay === dateStr ? "2px solid #3b82f6" : undefined,
+											outline: dragOverAnytimeDay === dateStr ? "2px solid var(--color-primary)" : undefined,
 											outlineOffset: -2,
 											transition: "outline 0.1s",
 										}}
@@ -784,7 +784,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 														{hasVisit ? (() => {
 															const first = dayVisits[0];
 															const firstTechId = first.visit_techs?.[0]?.tech_id;
-															const firstTechColor = (firstTechId ? techColorMap.get(firstTechId) : undefined) ?? "#6b7280";
+															const firstTechColor = (firstTechId ? techColorMap.get(firstTechId) : undefined) ?? "var(--color-tech-unassigned)";
 															return (
 																<button
 																	draggable
@@ -817,7 +817,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 																		overflow: "hidden",
 																		wordBreak: "break-word",
 																		fontSize: 9,
-																		color: "#e4e4e7",
+																		color: "var(--color-text-on-surface)",
 																		flex: 1,
 																		textAlign: "left",
 																		lineHeight: 1.4,
@@ -826,7 +826,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 																	</span>
 																	<div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
 																		{(first.visit_techs ?? []).slice(0, 4).map((vt) => {
-																			const tc = techColorMap.get(vt.tech_id) ?? "#6b7280";
+																			const tc = techColorMap.get(vt.tech_id) ?? "var(--color-tech-unassigned)";
 																			const inf = isAllSelected || selectedTechs.has(vt.tech_id);
 																			return (
 																				<span key={vt.tech_id} style={{
@@ -855,7 +855,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 																		gap: 4,
 																		padding: "3px 5px",
 																		borderRadius: 4,
-																		backgroundColor: "#2d2f45",
+																		backgroundColor: "var(--color-occurrence-bg)",
 																		border: "1px solid #7c3aed55",
 																		cursor: "grab",
 																		textAlign: "left",
@@ -870,7 +870,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 																		overflow: "hidden",
 																		wordBreak: "break-word",
 																		fontSize: 9,
-																		color: "#c4b5fd",
+																		color: "var(--color-sched-occurrence-title)",
 																		flex: 1,
 																		textAlign: "left",
 																		lineHeight: 1.4,
@@ -883,9 +883,9 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 														{totalCount > 1 && (
 															<button
 																onClick={() => setAnytimeOpen(true)}
-																style={{ fontSize: 9, color: "#71717a", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "0 2px", transition: "color 0.1s" }}
-																onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#a1a1aa"; }}
-																onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#71717a"; }}
+																style={{ fontSize: 9, color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "0 2px", transition: "color 0.1s" }}
+																onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--color-text-tertiary)"; }}
+																onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--color-text-muted)"; }}
 															>
 																+{totalCount - 1} more
 															</button>
@@ -898,7 +898,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 											<div style={{ maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
 												{dayVisits.map((visit) => {
 													const firstTechId = visit.visit_techs?.[0]?.tech_id;
-													const firstTechColor = (firstTechId ? techColorMap.get(firstTechId) : undefined) ?? "#6b7280";
+													const firstTechColor = (firstTechId ? techColorMap.get(firstTechId) : undefined) ?? "var(--color-tech-unassigned)";
 													return (
 														<button
 															key={visit.id}
@@ -932,7 +932,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 																overflow: "hidden",
 																wordBreak: "break-word",
 																fontSize: 9,
-																color: "#e4e4e7",
+																color: "var(--color-text-on-surface)",
 																flex: 1,
 																textAlign: "left",
 																lineHeight: 1.4,
@@ -941,7 +941,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 															</span>
 															<div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
 																{(visit.visit_techs ?? []).slice(0, 4).map((vt) => {
-																	const tc = techColorMap.get(vt.tech_id) ?? "#6b7280";
+																	const tc = techColorMap.get(vt.tech_id) ?? "var(--color-tech-unassigned)";
 																	const inf = isAllSelected || selectedTechs.has(vt.tech_id);
 																	return (
 																		<span key={vt.tech_id} style={{
@@ -970,7 +970,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 															gap: 4,
 															padding: "3px 5px",
 															borderRadius: 4,
-															backgroundColor: "#2d2f45",
+															backgroundColor: "var(--color-occurrence-bg)",
 															border: "1px solid #7c3aed55",
 															cursor: "grab",
 															textAlign: "left",
@@ -985,7 +985,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 															overflow: "hidden",
 															wordBreak: "break-word",
 															fontSize: 9,
-															color: "#c4b5fd",
+															color: "var(--color-sched-occurrence-title)",
 															flex: 1,
 															textAlign: "left",
 															lineHeight: 1.4,
@@ -995,7 +995,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 													</button>
 												))}
 												{totalCount === 0 && (
-													<span style={{ fontSize: 9, color: "#52525b" }}>—</span>
+													<span style={{ fontSize: 9, color: "var(--color-text-faint)" }}>—</span>
 												)}
 											</div>
 										)}
@@ -1023,8 +1023,8 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 									position: "sticky",
 									left: 0,
 									zIndex: 10,
-									backgroundColor: "#09090b",
-									borderRight: "1px solid #3f3f46",
+									backgroundColor: "var(--color-canvas)",
+									borderRight: "1px solid var(--color-border)",
 									height: totalSlots * SLOT_H,
 								}}
 							>
@@ -1037,7 +1037,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 											left: 0,
 											right: 6,
 											fontSize: 10,
-											color: "#71717a",
+											color: "var(--color-text-muted)",
 											lineHeight: 1,
 											userSelect: "none",
 											textAlign: "right",
@@ -1054,7 +1054,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										left: 0,
 										right: 6,
 										fontSize: 10,
-										color: "#71717a",
+										color: "var(--color-text-muted)",
 										lineHeight: 1,
 										userSelect: "none",
 										textAlign: "right",
@@ -1102,7 +1102,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 														left: 0,
 														right: 0,
 														height: 2,
-														backgroundColor: "#ef4444",
+														backgroundColor: "var(--color-error)",
 														zIndex: 40,
 														pointerEvents: "none",
 													}}
@@ -1115,7 +1115,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 														width: 10,
 														height: 10,
 														borderRadius: "50%",
-														backgroundColor: "#ef4444",
+														backgroundColor: "var(--color-error)",
 														zIndex: 41,
 														pointerEvents: "none",
 													}}
@@ -1143,7 +1143,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					{weekScrollZone === "left" && weekScrollProgress > 0 && (
 						<div style={{ position: "absolute", top: 0, bottom: 0,
 							left: `calc(${weekScrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
+							background: "var(--color-primary)", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
 					)}
 					{weekScrollZone === "left" && (
 						<div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 1, background: "rgba(59,130,246,0.55)" }} />
@@ -1167,7 +1167,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					{weekScrollZone === "right" && weekScrollProgress > 0 && (
 						<div style={{ position: "absolute", top: 0, bottom: 0,
 							right: `calc(${weekScrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
+							background: "var(--color-primary)", boxShadow: "0 0 6px rgba(59,130,246,0.7)" }} />
 					)}
 					{weekScrollZone === "right" && (
 						<div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 1, background: "rgba(59,130,246,0.55)" }} />

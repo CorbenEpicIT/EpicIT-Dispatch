@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+﻿import { useState, useMemo } from "react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { AlertCircle } from "lucide-react";
 import {
@@ -72,7 +72,7 @@ export default function ReportingPage() {
 	} = useArrivalPerformanceQuery(startDateStr, endDateStr);
 
 	return (
-		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
+		<div className="min-h-0 bg-canvas text-text-primary w-full">
 			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
 				{/* Header Section */}
 				<div className="flex items-center justify-between mb-5">
@@ -81,16 +81,16 @@ export default function ReportingPage() {
 					</h1>
 					<div className="flex items-center gap-2">
 						<div className="w-56"><DatePicker value={startDate} onChange={setStartDate} required /></div>
-						<span className="text-zinc-500 text-sm">to</span>
+						<span className="text-text-muted text-sm">to</span>
 						<div className="w-56"><DatePicker value={endDate} onChange={setEndDate} required align="right" /></div>
 					</div>
 				</div>
 
 				{/* Overview Section */}
 				{overviewError ? (
-					<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg mb-5">
-						<AlertCircle size={16} className="text-red-400" />
-						<p className="text-sm text-red-400">
+					<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg mb-5">
+						<AlertCircle size={16} className="text-error-text" />
+						<p className="text-sm text-error-text">
 							Failed to load overview metrics
 						</p>
 					</div>
@@ -101,7 +101,7 @@ export default function ReportingPage() {
 				) : overviewLoading ? (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
 						{Array.from({ length: 4 }).map((_, i) => (
-							<div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 h-24 animate-pulse" />
+							<div key={i} className="bg-base border border-border-subtle rounded-lg p-4 h-24 animate-pulse" />
 						))}
 					</div>
 				) : null}
@@ -122,14 +122,14 @@ export default function ReportingPage() {
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
 					<div className="min-w-0 h-full">
 						{byTypeError ? (
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle size={16} className="text-red-400" />
-								<p className="text-sm text-red-400">
+							<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
+								<AlertCircle size={16} className="text-error-text" />
+								<p className="text-sm text-error-text">
 									Failed to load revenue by job type
 								</p>
 							</div>
 						) : byTypeLoading ? (
-							<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-[400px] animate-pulse" />
+							<div className="bg-base border border-border-subtle rounded-xl p-4 h-[400px] animate-pulse" />
 						) : revenueByJobType ? (
 							<RevenueByJobTypeChart
 								data={revenueByJobType.data}
@@ -140,14 +140,14 @@ export default function ReportingPage() {
 
 					<div className="min-w-0 h-full">
 						{pipelineError ? (
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle size={16} className="text-red-400" />
-								<p className="text-sm text-red-400">
+							<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
+								<AlertCircle size={16} className="text-error-text" />
+								<p className="text-sm text-error-text">
 									Failed to load quote pipeline
 								</p>
 							</div>
 						) : pipelineLoading ? (
-							<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-[400px] animate-pulse" />
+							<div className="bg-base border border-border-subtle rounded-xl p-4 h-[400px] animate-pulse" />
 						) : quotePipeline ? (
 							<QuotePipeline data={quotePipeline} />
 						) : null}
@@ -155,14 +155,14 @@ export default function ReportingPage() {
 
 					<div className="min-w-0 h-full">
 						{arrivalError ? (
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle size={16} className="text-red-400" />
-								<p className="text-sm text-red-400">
+							<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
+								<AlertCircle size={16} className="text-error-text" />
+								<p className="text-sm text-error-text">
 									Failed to load arrival performance
 								</p>
 							</div>
 						) : arrivalLoading ? (
-							<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-[400px] animate-pulse" />
+							<div className="bg-base border border-border-subtle rounded-xl p-4 h-[400px] animate-pulse" />
 						) : arrivalPerformance ? (
 							<ArrivalPerformanceChart
 								data={arrivalPerformance}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
 	ChevronDown,
@@ -183,32 +183,32 @@ export default function AssignTechnicianPage() {
 	const getStatusColor = (status: string) => {
 		switch (status) {
 			case "Scheduled":
-				return "bg-blue-600/20 text-blue-400 border-blue-500/30";
+				return "bg-primary-hover/20 text-primary-text border-primary/30";
 			case "InProgress":
-				return "bg-yellow-600/20 text-yellow-400 border-yellow-500/30";
+				return "bg-yellow-600/20 text-warning-text border-yellow-500/30";
 			case "Completed":
-				return "bg-green-600/20 text-green-400 border-green-500/30";
+				return "bg-green-600/20 text-success-text border-success/30";
 			case "Cancelled":
-				return "bg-red-600/20 text-red-400 border-red-500/30";
+				return "bg-red-600/20 text-error-text border-error/30";
 			case "Unscheduled":
-				return "bg-zinc-700 text-zinc-300 border-zinc-600";
+				return "bg-surface-raised text-text-secondary border-border-strong";
 			default:
-				return "bg-zinc-700 text-zinc-300 border-zinc-600";
+				return "bg-surface-raised text-text-secondary border-border-strong";
 		}
 	};
 
 	const getVisitStatusColor = (status: string) => {
 		switch (status) {
 			case "Scheduled":
-				return "text-blue-400";
+				return "text-primary-text";
 			case "InProgress":
-				return "text-yellow-400";
+				return "text-warning-text";
 			case "Completed":
-				return "text-green-400";
+				return "text-success-text";
 			case "Cancelled":
-				return "text-red-400";
+				return "text-error-text";
 			default:
-				return "text-zinc-400";
+				return "text-text-tertiary";
 		}
 	};
 
@@ -219,7 +219,7 @@ export default function AssignTechnicianPage() {
 			case "Busy":
 				return "bg-yellow-500";
 			case "Break":
-				return "bg-blue-500";
+				return "bg-primary";
 			case "Offline":
 				return "bg-zinc-500";
 			default:
@@ -250,13 +250,13 @@ export default function AssignTechnicianPage() {
 	);
 
 	return (
-		<div className="min-h-screen bg-zinc-950">
+		<div className="min-h-screen bg-canvas">
 			{/* Header Section */}
-			<div className="border-b border-zinc-800">
+			<div className="border-b border-border-subtle">
 				<div className="w-full px-6 pb-6">
 					{/* Page Title */}
 					<div className="mb-3">
-						<h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+						<h2 className="text-sm font-semibold uppercase tracking-wide text-text-tertiary">
 							Assign Technician
 						</h2>
 					</div>
@@ -265,7 +265,7 @@ export default function AssignTechnicianPage() {
 						{/* Avatar + Status */}
 						<div className="relative flex-shrink-0">
 							<div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-0.5">
-								<div className="w-full h-full rounded-2xl bg-zinc-900 flex items-center justify-center">
+								<div className="w-full h-full rounded-2xl bg-base flex items-center justify-center">
 									<span className="text-white text-2xl font-bold">
 										{technician.name
 											.charAt(0)
@@ -274,7 +274,7 @@ export default function AssignTechnicianPage() {
 								</div>
 							</div>
 
-							<div className="absolute -bottom-2 -right-2 flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-full px-2.5 py-1">
+							<div className="absolute -bottom-2 -right-2 flex items-center gap-1.5 bg-base border border-border-subtle rounded-full px-2.5 py-1">
 								<div
 									className={`w-2 h-2 rounded-full ${getTechStatusColor(
 										technician.status
@@ -294,16 +294,16 @@ export default function AssignTechnicianPage() {
 										`/dispatch/technicians/${technicianId}`
 									)
 								}
-								className="text-2xl font-bold text-white leading-tight cursor-pointer hover:text-blue-400 transition-colors"
+								className="text-2xl font-bold text-white leading-tight cursor-pointer hover:text-primary-text transition-colors"
 							>
 								{technician.name}
 							</h1>
 							<div className="flex items-center gap-1.5 mt-1">
 								<Award
 									size={14}
-									className="text-blue-400"
+									className="text-primary-text"
 								/>
-								<span className="text-sm text-zinc-400">
+								<span className="text-sm text-text-tertiary">
 									{technician.title}
 								</span>
 							</div>
@@ -311,21 +311,21 @@ export default function AssignTechnicianPage() {
 
 						{/* Contact Info */}
 						<div className="flex flex-col gap-2 min-w-[260px]">
-							<div className="flex items-center gap-2 text-sm bg-zinc-800/30 rounded-lg px-3 py-2">
+							<div className="flex items-center gap-2 text-sm bg-surface/30 rounded-lg px-3 py-2">
 								<Mail
 									size={14}
-									className="text-zinc-500"
+									className="text-text-muted"
 								/>
-								<span className="text-zinc-300 truncate">
+								<span className="text-text-secondary truncate">
 									{technician.email}
 								</span>
 							</div>
-							<div className="flex items-center gap-2 text-sm bg-zinc-800/30 rounded-lg px-3 py-2">
+							<div className="flex items-center gap-2 text-sm bg-surface/30 rounded-lg px-3 py-2">
 								<Phone
 									size={14}
-									className="text-zinc-500"
+									className="text-text-muted"
 								/>
-								<span className="text-zinc-300">
+								<span className="text-text-secondary">
 									{technician.phone}
 								</span>
 							</div>
@@ -336,20 +336,20 @@ export default function AssignTechnicianPage() {
 
 						{/* Stats */}
 						<div className="flex gap-3">
-							<div className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-3 text-center min-w-[90px]">
+							<div className="bg-surface/50 border border-border rounded-lg px-4 py-3 text-center min-w-[90px]">
 								<div className="text-2xl font-bold text-white">
 									{assignedVisits}
 								</div>
-								<div className="text-xs text-zinc-400 mt-0.5">
+								<div className="text-xs text-text-tertiary mt-0.5">
 									Assigned
 								</div>
 							</div>
 
-							<div className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-3 text-center min-w-[90px]">
-								<div className="text-2xl font-bold text-zinc-400">
+							<div className="bg-surface/50 border border-border rounded-lg px-4 py-3 text-center min-w-[90px]">
+								<div className="text-2xl font-bold text-text-tertiary">
 									{totalVisits}
 								</div>
-								<div className="text-xs text-zinc-400 mt-0.5">
+								<div className="text-xs text-text-tertiary mt-0.5">
 									Total
 								</div>
 							</div>
@@ -361,10 +361,10 @@ export default function AssignTechnicianPage() {
 			{/* Jobs List with Masonry */}
 			<div className="w-full p-6">
 				{!sortedJobs || sortedJobs.length === 0 ? (
-					<div className="flex flex-col items-center justify-center py-12 bg-zinc-900 rounded-lg border border-zinc-800">
+					<div className="flex flex-col items-center justify-center py-12 bg-base rounded-lg border border-border-subtle">
 						<BoxSvg className="w-16 h-16 mb-3 opacity-50" />
-						<p className="text-zinc-400">No jobs available</p>
-						<p className="text-sm text-zinc-500 mt-1">
+						<p className="text-text-tertiary">No jobs available</p>
+						<p className="text-sm text-text-muted mt-1">
 							Create a job to start assigning visits
 						</p>
 					</div>
@@ -385,7 +385,7 @@ export default function AssignTechnicianPage() {
 							return (
 								<div
 									key={job.id}
-									className="job-card bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors mb-4 w-[340px]"
+									className="job-card bg-base rounded-lg border border-border-subtle overflow-hidden hover:border-border transition-colors mb-4 w-[340px]"
 								>
 									{/* Job Header */}
 									<div className="p-4">
@@ -404,7 +404,7 @@ export default function AssignTechnicianPage() {
 											</span>
 										</div>
 
-										<div className="space-y-1 text-xs text-zinc-400 mb-3">
+										<div className="space-y-1 text-xs text-text-tertiary mb-3">
 											<div className="flex items-center gap-1">
 												<Briefcase
 													size={
@@ -449,7 +449,7 @@ export default function AssignTechnicianPage() {
 															: ""}
 														{assignedCount >
 															0 && (
-															<span className="text-blue-400">
+															<span className="text-primary-text">
 																{" "}
 																(
 																{
@@ -470,7 +470,7 @@ export default function AssignTechnicianPage() {
 														job.id
 													)
 												}
-												className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-white text-xs rounded transition-colors"
+												className="flex items-center gap-1 px-2 py-1 bg-surface hover:bg-surface-raised text-white text-xs rounded transition-colors"
 											>
 												{isExpanded ? (
 													<ChevronUp
@@ -496,7 +496,7 @@ export default function AssignTechnicianPage() {
 														job
 													)
 												}
-												className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+												className="flex items-center gap-1 px-2 py-1 bg-primary-hover hover:bg-blue-700 text-white text-xs rounded transition-colors"
 											>
 												<Plus
 													size={
@@ -526,37 +526,37 @@ export default function AssignTechnicianPage() {
 											}
 										}}
 									>
-										<div className="overflow-hidden border-t border-zinc-800 bg-zinc-900/50">
+										<div className="overflow-hidden border-t border-border-subtle bg-base/50">
 											<div className="p-4">
-												<h4 className="text-xs font-semibold text-zinc-400 mb-2">
+												<h4 className="text-xs font-semibold text-text-tertiary mb-2">
 													Details
 												</h4>
 												<div className="space-y-2 text-xs mb-3">
 													<div>
-														<p className="text-zinc-500">
+														<p className="text-text-muted">
 															Description
 														</p>
-														<p className="text-zinc-300">
+														<p className="text-text-secondary">
 															{job.description ||
 																"No description"}
 														</p>
 													</div>
 													<div className="grid grid-cols-2 gap-2">
 														<div>
-															<p className="text-zinc-500">
+															<p className="text-text-muted">
 																Priority
 															</p>
-															<p className="text-zinc-300">
+															<p className="text-text-secondary">
 																{
 																	job.priority
 																}
 															</p>
 														</div>
 														<div>
-															<p className="text-zinc-500">
+															<p className="text-text-muted">
 																Created
 															</p>
-															<p className="text-zinc-300">
+															<p className="text-text-secondary">
 																{new Date(
 																	job.created_at
 																).toLocaleDateString(
@@ -572,8 +572,8 @@ export default function AssignTechnicianPage() {
 												</div>
 
 												{/* Visits Section */}
-												<div className="border-t border-zinc-800 pt-3">
-													<h4 className="text-xs font-semibold text-zinc-400 mb-2">
+												<div className="border-t border-border-subtle pt-3">
+													<h4 className="text-xs font-semibold text-text-tertiary mb-2">
 														Visits{" "}
 														{visitCount >
 															0 &&
@@ -585,8 +585,8 @@ export default function AssignTechnicianPage() {
 														.visits
 														.length ===
 														0 ? (
-														<div className="text-center py-3 bg-zinc-800/50 rounded">
-															<p className="text-zinc-500 text-xs mb-1">
+														<div className="text-center py-3 bg-surface/50 rounded">
+															<p className="text-text-muted text-xs mb-1">
 																No
 																visits
 																scheduled
@@ -597,7 +597,7 @@ export default function AssignTechnicianPage() {
 																		job
 																	)
 																}
-																className="text-blue-400 hover:text-blue-300 text-xs"
+																className="text-primary-text hover:text-primary-text text-xs"
 															>
 																Create
 																first
@@ -635,8 +635,8 @@ export default function AssignTechnicianPage() {
 																			}
 																			className={`border rounded overflow-hidden transition-all ${
 																				isAssigned
-																					? "border-blue-500/50 bg-blue-900/10"
-																					: "border-zinc-700 bg-zinc-800"
+																					? "border-primary/50 bg-blue-900/10"
+																					: "border-border bg-surface"
 																			}`}
 																		>
 																			<div className="p-2">
@@ -647,7 +647,7 @@ export default function AssignTechnicianPage() {
 																								size={
 																									12
 																								}
-																								className="text-zinc-400 flex-shrink-0"
+																								className="text-text-tertiary flex-shrink-0"
 																							/>
 																							<span className="text-white text-xs font-medium truncate">
 																								{visit.name ||
@@ -672,7 +672,7 @@ export default function AssignTechnicianPage() {
 																							</span>
 																						</div>
 
-																						<div className="flex items-center gap-2 text-xs text-zinc-400">
+																						<div className="flex items-center gap-2 text-xs text-text-tertiary">
 																							{constraintInfo && (
 																								<span className="flex items-center gap-1 truncate">
 																									<Clock
@@ -708,21 +708,21 @@ export default function AssignTechnicianPage() {
 																									visit.id
 																								)
 																							}
-																							className="p-1 hover:bg-zinc-700 rounded transition-colors"
+																							className="p-1 hover:bg-surface-raised rounded transition-colors"
 																						>
 																							{isVisitExpanded ? (
 																								<ChevronUp
 																									size={
 																										12
 																									}
-																									className="text-zinc-400"
+																									className="text-text-tertiary"
 																								/>
 																							) : (
 																								<ChevronDown
 																									size={
 																										12
 																									}
-																									className="text-zinc-400"
+																									className="text-text-tertiary"
 																								/>
 																							)}
 																						</button>
@@ -738,8 +738,8 @@ export default function AssignTechnicianPage() {
 																							}
 																							className={`p-1.5 rounded transition-colors ${
 																								isAssigned
-																									? "bg-blue-600 hover:bg-blue-700 text-white"
-																									: "bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
+																									? "bg-primary-hover hover:bg-blue-700 text-white"
+																									: "bg-surface-raised hover:bg-zinc-600 text-text-secondary"
 																							}`}
 																						>
 																							{isAssigned ? (
@@ -761,14 +761,14 @@ export default function AssignTechnicianPage() {
 																			</div>
 
 																			{isVisitExpanded && (
-																				<div className="border-t border-zinc-700 bg-zinc-900/50 p-2">
+																				<div className="border-t border-border bg-base/50 p-2">
 																					<div className="grid grid-cols-2 gap-2 text-xs">
 																						<div>
-																							<p className="text-zinc-500 mb-0.5">
+																							<p className="text-text-muted mb-0.5">
 																								Scheduled
 																								Start
 																							</p>
-																							<p className="text-zinc-300">
+																							<p className="text-text-secondary">
 																								{new Date(
 																									visit.scheduled_start_at
 																								).toLocaleString(
@@ -784,11 +784,11 @@ export default function AssignTechnicianPage() {
 																							</p>
 																						</div>
 																						<div>
-																							<p className="text-zinc-500 mb-0.5">
+																							<p className="text-text-muted mb-0.5">
 																								Scheduled
 																								End
 																							</p>
-																							<p className="text-zinc-300">
+																							<p className="text-text-secondary">
 																								{new Date(
 																									visit.scheduled_end_at
 																								).toLocaleString(
@@ -806,10 +806,10 @@ export default function AssignTechnicianPage() {
 
 																						{/* Arrival Constraint Details */}
 																						<div className="col-span-2">
-																							<p className="text-zinc-500 mb-0.5">
+																							<p className="text-text-muted mb-0.5">
 																								Arrival
 																							</p>
-																							<p className="text-zinc-300 capitalize">
+																							<p className="text-text-secondary capitalize">
 																								{visit.arrival_constraint ===
 																									"at" &&
 																									visit.arrival_time &&
@@ -833,10 +833,10 @@ export default function AssignTechnicianPage() {
 																						{visit.finish_constraint !==
 																							"when_done" && (
 																							<div className="col-span-2">
-																								<p className="text-zinc-500 mb-0.5">
+																								<p className="text-text-muted mb-0.5">
 																									Finish
 																								</p>
-																								<p className="text-zinc-300 capitalize">
+																								<p className="text-text-secondary capitalize">
 																									{visit.finish_constraint ===
 																										"at" &&
 																										visit.finish_time &&
@@ -855,8 +855,8 @@ export default function AssignTechnicianPage() {
 																							.visit_techs
 																							.length >
 																							0 && (
-																							<div className="mt-2 pt-2 border-t border-zinc-700">
-																								<p className="text-zinc-500 text-xs mb-1">
+																							<div className="mt-2 pt-2 border-t border-border">
+																								<p className="text-text-muted text-xs mb-1">
 																									Assigned
 																								</p>
 																								<div className="flex flex-wrap gap-1">
@@ -871,8 +871,8 @@ export default function AssignTechnicianPage() {
 																												className={`px-1.5 py-0.5 rounded text-xs ${
 																													vt.tech_id ===
 																													technicianId
-																														? "bg-blue-600/30 text-blue-300 border border-blue-500/50"
-																														: "bg-zinc-700 text-zinc-300"
+																														? "bg-primary-hover/30 text-primary-text border border-primary/50"
+																														: "bg-surface-raised text-text-secondary"
 																												}`}
 																											>
 																												{

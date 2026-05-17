@@ -1,4 +1,4 @@
-import { Briefcase, Repeat } from "lucide-react";
+﻿import { Briefcase, Repeat } from "lucide-react";
 
 export type JobsView = "jobs" | "templates";
 
@@ -9,14 +9,14 @@ interface ContextToggleProps {
 
 export default function ContextToggle({ value, onChange }: ContextToggleProps) {
 	return (
-		<div className="flex items-center bg-zinc-700 gap-px rounded-md overflow-hidden border border-zinc-700 shrink-0" role="group" aria-label="View context">
+		<div className="flex items-center bg-surface-raised gap-px rounded-md overflow-hidden border border-border shrink-0" role="group" aria-label="View context">
 			<button
 				onClick={() => onChange("jobs")}
 				aria-pressed={value === "jobs"}
 				className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold cursor-pointer transition-colors ${
 					value === "jobs"
-						? "bg-blue-600 text-white"
-						: "bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+						? "bg-primary-hover text-white"
+						: "bg-base text-text-tertiary hover:text-text-primary hover:bg-surface"
 				}`}
 			>
 				<Briefcase size={14} />
@@ -28,7 +28,7 @@ export default function ContextToggle({ value, onChange }: ContextToggleProps) {
 				className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold cursor-pointer transition-colors ${
 					value === "templates"
 						? "bg-purple-600 text-white"
-						: "bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+						: "bg-base text-text-tertiary hover:text-text-primary hover:bg-surface"
 				}`}
 			>
 				<Repeat size={14} />

@@ -1,4 +1,4 @@
-import {
+﻿import {
 	ComposedChart,
 	Bar,
 	XAxis,
@@ -26,9 +26,9 @@ interface BucketConfig {
 }
 
 const BUCKETS: BucketConfig[] = [
-	{ key: "draft", label: "Draft", color: "#3b82f6" },
-	{ key: "sent", label: "Sent", color: "#10b981" },
-	{ key: "viewed", label: "Viewed", color: "#06b6d4" },
+	{ key: "draft", label: "Draft", color: "var(--color-chart-primary)" },
+	{ key: "sent", label: "Sent", color: "var(--color-chart-success)" },
+	{ key: "viewed", label: "Viewed", color: "var(--color-chart-info)" },
 ];
 
 function formatYAxisCurrency(value: number): string {
@@ -52,15 +52,15 @@ function CustomTooltip({
 	const countEntry = payload.find((p) => p.dataKey === "count");
 
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/80 backdrop-blur-md shadow-lg">
-			<p className="text-xs text-zinc-400 mb-1">{label}</p>
+		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
+			<p className="text-xs text-text-tertiary mb-1">{label}</p>
 			{valueEntry && (
 				<p className="text-sm font-semibold text-white">
 					{formatCurrency(valueEntry.value)}
 				</p>
 			)}
 			{countEntry && (
-				<p className="text-xs text-zinc-400">
+				<p className="text-xs text-text-tertiary">
 					{countEntry.value} {countEntry.value === 1 ? "quote" : "quotes"}
 				</p>
 			)}
@@ -86,7 +86,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 			className="h-full"
 			title="Open Quote Pipeline"
 			headerAction={
-				<span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-1 rounded-full">
+				<span className="text-xs font-medium text-text-tertiary bg-surface px-2 py-1 rounded-full">
 					{quoteCount} {quoteCount === 1 ? "Quote" : "Quotes"}
 				</span>
 			}
@@ -108,13 +108,13 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 						dataKey="status"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fill: "#a1a1aa", fontSize: 12 }}
+						tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
 					/>
 					<YAxis
 						yAxisId="left"
 						axisLine={false}
 						tickLine={false}
-						tick={{ fill: "#a1a1aa", fontSize: 11 }}
+						tick={{ fill: "var(--color-chart-axis)", fontSize: 11 }}
 						tickFormatter={formatYAxisCurrency}
 						tickCount={5}
 						domain={[0, (dataMax: number) => Math.round(dataMax * 1.2)]}
@@ -123,7 +123,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 							value: "Total Value ($)",
 							angle: -90,
 							position: "insideLeft",
-							fill: "#a1a1aa",
+							fill: "var(--color-chart-axis)",
 							fontSize: 10,
 							dy: 40,
 						}}
@@ -145,7 +145,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 						<LabelList
 							dataKey="value"
 							position="top"
-							fill="#FFFFFF"
+							fill="var(--color-text-primary)"
 							fontSize={11}
 							fontWeight={600}
 							formatter={(val: unknown) => "$" + Number(val as number).toLocaleString()}

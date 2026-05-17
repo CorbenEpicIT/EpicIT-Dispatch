@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Phone, X, Coffee, LogOut, LogIn } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
@@ -226,13 +226,13 @@ export default function TechnicianDashboardPage() {
 	if (isLoading) {
 		return (
 			<div className="px-4 sm:px-6 pt-5 pb-8 max-w-lg w-full space-y-4 lg:max-w-4xl lg:px-8">
-				<div className="h-7 w-36 bg-zinc-800 rounded animate-pulse" />
-				<div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
-				<div className="h-28 bg-zinc-800 rounded-xl animate-pulse mt-2" />
+				<div className="h-7 w-36 bg-surface rounded animate-pulse" />
+				<div className="h-4 w-28 bg-surface/50 rounded animate-pulse" />
+				<div className="h-28 bg-surface rounded-xl animate-pulse mt-2" />
 				{[1, 2, 3].map((i) => (
 					<div
 						key={i}
-						className="h-[52px] bg-zinc-800/50 rounded-lg animate-pulse"
+						className="h-[52px] bg-surface/50 rounded-lg animate-pulse"
 					/>
 				))}
 			</div>
@@ -242,8 +242,8 @@ export default function TechnicianDashboardPage() {
 	if (error) {
 		return (
 			<div className="px-4 sm:px-6 pt-5 max-w-lg w-full">
-				<div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-					<p className="text-sm text-red-400">
+				<div className="p-4 bg-error/10 border border-error/20 rounded-lg">
+					<p className="text-sm text-error-text">
 						Failed to load schedule.
 					</p>
 				</div>
@@ -262,12 +262,12 @@ export default function TechnicianDashboardPage() {
 						Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"},{" "}
 						{techProfile.name.split(" ")[0]}
 					</h1>
-					<p className="text-sm text-zinc-500">Ready to start your shift?</p>
+					<p className="text-sm text-text-muted">Ready to start your shift?</p>
 				</div>
 				<button
 					onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
 					disabled={goAvailableMutation.isPending}
-					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base transition-colors disabled:opacity-50"
+					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-primary-hover hover:bg-primary text-white font-semibold text-base transition-colors disabled:opacity-50"
 				>
 					<LogIn size={18} />
 					{goAvailableMutation.isPending ? "Starting…" : "Start Shift"}
@@ -280,7 +280,7 @@ export default function TechnicianDashboardPage() {
 		<div className="px-4 sm:px-6 pt-5 pb-10 max-w-lg w-full lg:max-w-4xl lg:px-8">
 			{/* Vehicle warning banner */}
 			{noVehicle && !vehicleBannerDismissed && (
-				<div className="flex items-center justify-between gap-2 mb-4 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
+				<div className="flex items-center justify-between gap-2 mb-4 px-3 py-2.5 rounded-lg bg-warning/10 border border-warning/20 text-warning-text">
 					<button
 						onClick={() => navigate("/technician/vehicle")}
 						className="flex items-center gap-2 flex-1 text-left text-sm"
@@ -290,7 +290,7 @@ export default function TechnicianDashboardPage() {
 					</button>
 					<button
 						onClick={() => setVehicleBannerDismissed(true)}
-						className="text-amber-500/60 hover:text-amber-400"
+						className="text-amber-500/60 hover:text-warning-text"
 					>
 						<X size={15} />
 					</button>
@@ -303,7 +303,7 @@ export default function TechnicianDashboardPage() {
 					<h1 className="text-xl font-bold text-white tracking-tight">
 						My Dashboard
 					</h1>
-					<p className="text-sm text-zinc-500 mt-0.5">
+					<p className="text-sm text-text-muted mt-0.5">
 						{new Date().toLocaleDateString("en-US", {
 							weekday: "long",
 							month: "long",
@@ -313,12 +313,12 @@ export default function TechnicianDashboardPage() {
 					</p>
 				</div>
 				<div className="flex items-center gap-2 flex-shrink-0">
-					<span className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-400 text-xs font-medium tabular-nums">
+					<span className="px-2.5 py-1 rounded-md bg-surface text-text-tertiary text-xs font-medium tabular-nums">
 						{todayVisits.length}{" "}
 						{todayVisits.length === 1 ? "visit" : "visits"}
 					</span>
 					{doneCount > 0 && (
-						<span className="px-2.5 py-1 rounded-md bg-zinc-800 text-green-400 text-xs font-medium tabular-nums">
+						<span className="px-2.5 py-1 rounded-md bg-surface text-success-text text-xs font-medium tabular-nums">
 							{doneCount} done
 						</span>
 					)}
@@ -329,7 +329,7 @@ export default function TechnicianDashboardPage() {
 			<div className="mb-5 flex flex-col gap-2">
 				<a
 					href="tel:"
-					className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors w-full"
+					className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-base border border-border-subtle text-sm text-text-secondary hover:bg-surface hover:text-white transition-colors w-full"
 				>
 					<Phone size={15} />
 					Call Dispatch
@@ -340,7 +340,7 @@ export default function TechnicianDashboardPage() {
 						<button
 							onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
 							disabled={goAvailableMutation.isPending}
-							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-green-700 hover:bg-green-600 text-sm text-white font-medium transition-colors disabled:opacity-50"
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-confirm hover:bg-confirm-hover text-sm text-white font-medium transition-colors disabled:opacity-50"
 						>
 							<Coffee size={15} />
 							{goAvailableMutation.isPending ? "Returning…" : "End Break"}
@@ -349,7 +349,7 @@ export default function TechnicianDashboardPage() {
 						<button
 							onClick={() => setShowBreakPicker(true)}
 							disabled={goOnBreakMutation.isPending}
-							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-base border border-border-subtle text-sm text-text-secondary hover:bg-surface hover:text-white transition-colors disabled:opacity-50"
 						>
 							<Coffee size={15} />
 							Take Break
@@ -372,8 +372,8 @@ export default function TechnicianDashboardPage() {
 							disabled={goOfflineMutation.isPending}
 							className={`flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
 								confirmingEndShift
-									? "bg-red-900/40 border border-red-500/50 text-red-300 motion-safe:animate-pulse"
-									: "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+									? "bg-red-900/40 border border-red-500/50 text-error-text motion-safe:animate-pulse"
+									: "bg-base border border-border-subtle text-text-tertiary hover:bg-surface hover:text-white"
 							}`}
 						>
 							<LogOut size={15} />
@@ -393,26 +393,26 @@ export default function TechnicianDashboardPage() {
 						role="dialog"
 						aria-modal="true"
 						aria-labelledby="break-picker-title"
-						className="w-full max-w-sm mx-4 mb-20 sm:mb-0 bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-3 max-h-[90dvh] overflow-y-auto"
+						className="w-full max-w-sm mx-4 mb-20 sm:mb-0 bg-base border border-border-subtle rounded-2xl p-5 space-y-3 max-h-[90dvh] overflow-y-auto"
 						onClick={(e) => e.stopPropagation()}
 					>
 						<p id="break-picker-title" className="text-sm font-semibold text-white text-center">Why are you taking a break?</p>
 						{breakError && (
-							<p role="alert" className="text-xs text-red-400 text-center px-2">{breakError}</p>
+							<p role="alert" className="text-xs text-error-text text-center px-2">{breakError}</p>
 						)}
 						{BREAK_REASONS.map((r) => (
 							<button
 								key={r.value}
 								onClick={() => handleStartBreak(r.value)}
 								disabled={goOnBreakMutation.isPending}
-								className="w-full min-h-[44px] py-3 rounded-xl text-sm font-medium bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 transition-colors disabled:opacity-40"
+								className="w-full min-h-[44px] py-3 rounded-xl text-sm font-medium bg-surface hover:bg-surface-raised border border-border text-text-primary transition-colors disabled:opacity-40"
 							>
 								{r.label}
 							</button>
 						))}
 						<button
 							onClick={() => { setShowBreakPicker(false); setBreakError(null); }}
-							className="w-full min-h-[44px] py-3 rounded-xl text-sm font-medium bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+							className="w-full min-h-[44px] py-3 rounded-xl text-sm font-medium bg-surface border border-border text-text-tertiary hover:bg-surface-raised hover:text-text-primary transition-colors"
 						>
 							Cancel
 						</button>
@@ -442,8 +442,8 @@ export default function TechnicianDashboardPage() {
 									showDateTime={true}
 								/>
 							) : heroType !== "wrapping-up" && (
-								<div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center">
-									<p className="text-sm text-zinc-600">
+								<div className="rounded-xl border border-border-subtle bg-base/40 px-4 py-6 text-center">
+									<p className="text-sm text-text-faint">
 										No visits scheduled. Check with dispatch.
 									</p>
 								</div>
@@ -470,7 +470,7 @@ export default function TechnicianDashboardPage() {
 					{/* ── Today's schedule with buckets ─────────────────────────────── */}
 					<div>
 						<div className="flex items-center justify-between mb-3">
-							<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-zinc-500">
+							<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-text-muted">
 								Today · {todayVisits.length}{" "}
 								{todayVisits.length === 1
 									? "visit"
@@ -484,7 +484,7 @@ export default function TechnicianDashboardPage() {
 						</div>
 
 						{todayVisits.length === 0 ? (
-							<p className="text-sm text-zinc-600 py-2">
+							<p className="text-sm text-text-faint py-2">
 								Nothing scheduled today.
 							</p>
 						) : (
@@ -495,7 +495,7 @@ export default function TechnicianDashboardPage() {
 										<p className="text-[10px] font-bold uppercase tracking-widest text-red-500/80 mb-1.5 px-0.5">
 											Overdue
 										</p>
-										<div className="rounded-xl border border-red-500/20 bg-zinc-900 overflow-hidden divide-y divide-zinc-800/80">
+										<div className="rounded-xl border border-error/20 bg-base overflow-hidden divide-y divide-border-subtle/80">
 											{overdueVisits.map(
 												(
 													visit
@@ -529,7 +529,7 @@ export default function TechnicianDashboardPage() {
 										<p className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80 mb-1.5 px-0.5">
 											Up Next
 										</p>
-										<div className="rounded-xl border border-amber-500/20 bg-zinc-900 overflow-hidden divide-y divide-zinc-800/80">
+										<div className="rounded-xl border border-warning/20 bg-base overflow-hidden divide-y divide-border-subtle/80">
 											{upNextVisits.map(
 												(
 													visit
@@ -560,10 +560,10 @@ export default function TechnicianDashboardPage() {
 								{/* Upcoming bucket */}
 								{upcomingVisits.length > 0 && (
 									<div>
-										<p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-1.5 px-0.5">
+										<p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1.5 px-0.5">
 											Upcoming
 										</p>
-										<div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden divide-y divide-zinc-800/80">
+										<div className="rounded-xl border border-border-subtle bg-base overflow-hidden divide-y divide-border-subtle/80">
 											{upcomingVisits.map(
 												(
 													visit
@@ -598,7 +598,7 @@ export default function TechnicianDashboardPage() {
 										v.status ===
 											"Cancelled"
 								).length > 0 && (
-									<div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden divide-y divide-zinc-800/80">
+									<div className="rounded-xl border border-border-subtle bg-base overflow-hidden divide-y divide-border-subtle/80">
 										{todayVisits
 											.filter(
 												(
@@ -641,7 +641,7 @@ export default function TechnicianDashboardPage() {
 					{nextDayVisits.length > 0 && (
 						<div className="mb-6 lg:mb-0">
 							<div className="flex items-center justify-between mb-3">
-								<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-zinc-500">
+								<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-text-muted">
 									{formatNextDayHeader(
 										new Date(
 											nextDayVisits[0]
@@ -650,30 +650,30 @@ export default function TechnicianDashboardPage() {
 										tz
 									)}
 								</span>
-								<span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-500">
+								<span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-surface text-text-muted">
 									{nextDayVisits.length}{" "}
 									{nextDayVisits.length === 1
 										? "visit"
 										: "visits"}
 								</span>
 							</div>
-							<div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+							<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 								<div
 									onClick={() =>
 										navigate(
 											`/technician/visits/${nextDayVisits[0].id}`
 										)
 									}
-									className="flex items-center gap-3 px-3 py-3 min-h-[52px] cursor-pointer hover:bg-zinc-800/40 transition-colors duration-150"
+									className="flex items-center gap-3 px-3 py-3 min-h-[52px] cursor-pointer hover:bg-surface/40 transition-colors duration-150"
 								>
-									<div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-zinc-700" />
+									<div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-surface-raised" />
 									<div className="flex-1 min-w-0">
-										<p className="text-sm font-semibold text-zinc-400 truncate">
+										<p className="text-sm font-semibold text-text-tertiary truncate">
 											{nextDayVisits[0]
 												.name ??
 												"Visit"}
 										</p>
-										<p className="text-xs text-zinc-600 truncate">
+										<p className="text-xs text-text-faint truncate">
 											{nextDayVisits[0]
 												.job
 												?.client
@@ -681,7 +681,7 @@ export default function TechnicianDashboardPage() {
 												"—"}
 										</p>
 									</div>
-									<span className="text-xs text-zinc-500 tabular-nums flex-shrink-0">
+									<span className="text-xs text-text-muted tabular-nums flex-shrink-0">
 										{formatTime(
 											nextDayVisits[0]
 												.scheduled_start_at,
@@ -696,9 +696,9 @@ export default function TechnicianDashboardPage() {
 												"/technician/visits"
 											)
 										}
-										className="w-full px-3 py-2 border-t border-zinc-800/60 text-center hover:bg-zinc-800/40 transition-colors duration-150"
+										className="w-full px-3 py-2 border-t border-border-subtle/60 text-center hover:bg-surface/40 transition-colors duration-150"
 									>
-										<span className="text-[11px] text-zinc-500">
+										<span className="text-[11px] text-text-muted">
 											+
 											{nextDayVisits.length -
 												1}{" "}
@@ -741,18 +741,18 @@ function WrappingUpCard({ onAvailable, isLoading }: { onAvailable: () => void; i
 		<div
 			style={{
 				padding: "1px 1px 1px 3px",
-				background: "linear-gradient(to right, #2dd4bf 0%, #3f3f46 45%, #3f3f46 100%)",
+				background: "linear-gradient(to right, var(--color-gradient-tech-teal) 0%, var(--color-surface-raised) 45%, var(--color-surface-raised) 100%)",
 				borderRadius: "12px",
 			}}
 		>
-			<div className="rounded-[11px] bg-zinc-900 px-4 py-4 space-y-3">
+			<div className="rounded-[11px] bg-base px-4 py-4 space-y-3">
 				<div className="flex items-center gap-2">
 					<div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
 					<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-teal-400">
 						Wrapping Up
 					</span>
 				</div>
-				<p className="text-sm text-zinc-400">
+				<p className="text-sm text-text-tertiary">
 					Job complete. Mark yourself available when you're ready.
 				</p>
 				<button
@@ -797,10 +797,10 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 				isActive
 					? "bg-blue-950/25 border-l-[3px] border-l-blue-500 pl-[9px] pr-3 py-3"
 					: isOverdue
-						? "border-l-[3px] border-l-red-500 pl-[9px] pr-3 py-3 hover:bg-zinc-800/40"
+						? "border-l-[3px] border-l-red-500 pl-[9px] pr-3 py-3 hover:bg-surface/40"
 						: isUpNext
-							? "border-l-[3px] border-l-amber-500/50 pl-[9px] pr-3 py-3 hover:bg-zinc-800/40"
-							: "px-3 py-3 hover:bg-zinc-800/40"
+							? "border-l-[3px] border-l-amber-500/50 pl-[9px] pr-3 py-3 hover:bg-surface/40"
+							: "px-3 py-3 hover:bg-surface/40"
 			}`}
 		>
 			<div
@@ -820,13 +820,13 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 				<p
 					className={`text-sm font-semibold truncate leading-snug ${
 						isDone
-							? "text-zinc-600 line-through"
-							: "text-zinc-100"
+							? "text-text-faint line-through"
+							: "text-text-primary"
 					}`}
 				>
 					{visit.name ?? "Visit"}
 				</p>
-				<p className="text-xs text-zinc-600 truncate">
+				<p className="text-xs text-text-faint truncate">
 					{visit.job?.client?.name ?? "—"}
 				</p>
 			</div>
@@ -836,19 +836,19 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 						Done
 					</span>
 				) : isActive ? (
-					<span className="text-[11px] text-blue-400 font-medium">
+					<span className="text-[11px] text-primary-text font-medium">
 						Active
 					</span>
 				) : isOverdue ? (
-					<span className="text-[11px] text-red-400 font-medium">
+					<span className="text-[11px] text-error-text font-medium">
 						Overdue · {formatTime(visit.scheduled_start_at, tz)}
 					</span>
 				) : isUpNext ? (
-					<span className="text-[11px] text-amber-400 font-medium tabular-nums">
+					<span className="text-[11px] text-warning-text font-medium tabular-nums">
 						In {diffMin} min
 					</span>
 				) : (
-					<span className="text-xs text-zinc-500 tabular-nums">
+					<span className="text-xs text-text-muted tabular-nums">
 						{formatTime(visit.scheduled_start_at, tz)}
 					</span>
 				)}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, Camera, ChevronRight, MapPin, CalendarDays } from "lucide-react";
 import VisitActionButtons from "./VisitActionButtons";
@@ -29,24 +29,24 @@ interface CardStyle {
 }
 
 const GREY_INACTIVE = {
-	gradientColor: "#3f3f46",
-	dotColor: "#52525b",
-	textColor: "#71717a",
+	gradientColor: "var(--color-surface-raised)",
+	dotColor: "var(--color-border-strong)",
+	textColor: "var(--color-text-muted)",
 } as const; // zinc-700 / zinc-600 / zinc-500
 
 const VISIT_CARD_COLORS: Record<
 	"clockedIn" | "active" | "completed" | "cancelled" | "overdue" | "soon" | "scheduled" | "delayed" | "paused",
 	Pick<CardStyle, "gradientColor" | "dotColor" | "textColor">
 > = {
-	clockedIn:  { gradientColor: "#22c55e", dotColor: "#22c55e", textColor: "#4ade80" },  // green-500 / green-400
-	active:     { gradientColor: "#3b82f6", dotColor: "#3b82f6", textColor: "#60a5fa" },  // blue-500 / blue-400
-	completed:  { gradientColor: "#166534", dotColor: "#166534", textColor: "#4ade80" },  // green-800 / green-400
+	clockedIn:  { gradientColor: "var(--color-visit-completed)",      dotColor: "var(--color-visit-completed)",      textColor: "var(--color-success-bright-text)" },
+	active:     { gradientColor: "var(--color-primary)",              dotColor: "var(--color-primary)",              textColor: "var(--color-visit-driving-text)" },
+	completed:  { gradientColor: "var(--color-visit-completed-dark)", dotColor: "var(--color-visit-completed-dark)", textColor: "var(--color-success-bright-text)" },
 	cancelled:  GREY_INACTIVE,
-	overdue:    { gradientColor: "#ef4444", dotColor: "#ef4444", textColor: "#f87171" },  // red-500 / red-400
-	soon:       { gradientColor: "#f59e0b", dotColor: "#f59e0b", textColor: "#fbbf24" },  // amber-500 / amber-400
+	overdue:    { gradientColor: "var(--color-error)",                dotColor: "var(--color-error)",                textColor: "var(--color-error-text)" },
+	soon:       { gradientColor: "var(--color-warning)",              dotColor: "var(--color-warning)",              textColor: "var(--color-warning-text)" },
 	scheduled:  GREY_INACTIVE,
-	delayed:    { gradientColor: "#f97316", dotColor: "#f97316", textColor: "#fb923c" },  // orange-500 / orange-400
-	paused:     { gradientColor: "#eab308", dotColor: "#eab308", textColor: "#facc15" },  // yellow-500 / yellow-400
+	delayed:    { gradientColor: "var(--color-visit-paused)",         dotColor: "var(--color-visit-paused)",         textColor: "var(--color-visit-delayed-text)" },
+	paused:     { gradientColor: "var(--color-visit-delayed)",        dotColor: "var(--color-visit-delayed)",        textColor: "var(--color-visit-paused-text)" },
 };
 
 function getCardStyle(visit: JobVisit, isClockedIn: boolean): CardStyle {
@@ -110,16 +110,16 @@ export default function TechVisitCard({
 		<div
 			style={{
 				padding: "1px 1px 1px 3px",
-				background: `linear-gradient(to right, ${style.gradientColor} 0%, #3f3f46 45%, #3f3f46 100%)`,
+				background: `linear-gradient(to right, ${style.gradientColor} 0%, var(--color-surface-raised) 45%, var(--color-surface-raised) 100%)`,
 				borderRadius: "12px",
 			}}
 		>
-			<div className="rounded-[11px] bg-zinc-900 px-4 py-4">
+			<div className="rounded-[11px] bg-base px-4 py-4">
 				{/* Header: title with badge on the right */}
 				<div className="flex items-start justify-between gap-2 mb-0.5">
 					<p
 						className={`flex-1 min-w-0 text-[15px] font-bold leading-snug ${
-							isDone ? "text-zinc-500 line-through" : "text-white"
+							isDone ? "text-text-muted line-through" : "text-white"
 						}`}
 						title={visit.name ?? "Visit"}
 					>
@@ -154,18 +154,18 @@ export default function TechVisitCard({
 
 				{/* Client */}
 				{visit.job?.client?.name && (
-					<p className="text-xs text-zinc-500 mb-0.5">
+					<p className="text-xs text-text-muted mb-0.5">
 						{visit.job.client.name}
 					</p>
 				)}
 
 				{/* Address + optional distance */}
 				{visit.job?.address && (
-					<p className="text-xs text-zinc-400 mb-0.5 flex items-center gap-1">
-						<MapPin size={11} className="text-zinc-600 shrink-0" aria-hidden="true" />
+					<p className="text-xs text-text-tertiary mb-0.5 flex items-center gap-1">
+						<MapPin size={11} className="text-text-faint shrink-0" aria-hidden="true" />
 						{visit.job.address}
 						{showDistance && distanceMiles != null && (
-							<span className="text-zinc-600 ml-2 tabular-nums">
+							<span className="text-text-faint ml-2 tabular-nums">
 								{distanceMiles < 0.1
 									? "< 0.1 mi"
 									: `${distanceMiles.toFixed(1)} mi`}
@@ -176,21 +176,21 @@ export default function TechVisitCard({
 
 				{/* Date/time — visits page only */}
 				{showDateTime && (
-					<p className="text-xs text-zinc-500 mb-0.5 flex items-center gap-1">
-						<CalendarDays size={11} className="text-zinc-600 shrink-0" aria-hidden="true" />
+					<p className="text-xs text-text-muted mb-0.5 flex items-center gap-1">
+						<CalendarDays size={11} className="text-text-faint shrink-0" aria-hidden="true" />
 						{formatDateTime(visit.scheduled_start_at, tz)}
 					</p>
 				)}
 
 				{/* Clock-in elapsed + on-site names — dashboard only (no showDateTime) */}
 				{!showDateTime && isClockedIn && myOpenEntry && (
-					<p className="text-xs text-zinc-400 mb-0.5">
-						<span className="text-zinc-600 mr-1">Since</span>
+					<p className="text-xs text-text-tertiary mb-0.5">
+						<span className="text-text-faint mr-1">Since</span>
 						{formatTime(myOpenEntry.clocked_in_at, tz)}
 					</p>
 				)}
 				{!showDateTime && openEntries.length > 0 && (
-					<p className="text-[11px] text-zinc-500 mb-0.5">
+					<p className="text-[11px] text-text-muted mb-0.5">
 						On site: {openEntries.map((e) => e.tech.name).join(", ")}
 					</p>
 				)}
@@ -200,7 +200,7 @@ export default function TechVisitCard({
 					{isDone ? (
 						<button
 							onClick={() => navigate(`/technician/visits/${visit.id}`)}
-							className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-zinc-800 bg-zinc-800/30 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors text-[12px] font-medium"
+							className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-border-subtle bg-surface/30 text-text-muted hover:text-text-secondary hover:bg-surface/60 transition-colors text-[12px] font-medium"
 						>
 							View Details <ChevronRight size={13} />
 						</button>
@@ -216,12 +216,12 @@ export default function TechVisitCard({
 							</div>
 							{!isOverlay && (
 								<>
-									<div className="w-px bg-zinc-700/60 self-stretch mx-0.5" />
+									<div className="w-px bg-surface-raised/60 self-stretch mx-0.5" />
 									<button
 										onClick={() =>
 											navigate(`/technician/visits/${visit.id}`)
 										}
-										className="flex-[1] flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[48px]"
+										className="flex-[1] flex items-center justify-center gap-1 rounded-lg border border-border bg-surface/50 text-text-tertiary hover:bg-surface hover:text-text-primary hover:border-border-strong transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[48px]"
 										aria-label="View visit details"
 									>
 										{visit.status === "InProgress" ? (
@@ -250,7 +250,7 @@ export default function TechVisitCard({
 					<div className="mt-2">
 						<button
 							onClick={onAddNotePhoto}
-							className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-zinc-700 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+							className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-border text-xs text-text-tertiary hover:bg-surface hover:text-text-primary transition-colors"
 						>
 							<FileText size={12} />
 							<Camera size={12} />

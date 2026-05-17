@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Trash2 } from "lucide-react";
 import type { Client, UpdateClientInput } from "../../types/clients";
@@ -85,14 +85,14 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 			className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
 			onClick={handleBackdropClick}
 		>
-			<div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800 max-h-[90vh] overflow-y-auto scrollbar-hide">
+			<div className="bg-base rounded-xl p-6 w-full max-w-md border border-border-subtle max-h-[90vh] overflow-y-auto scrollbar-hide">
 				<div className="flex justify-between items-center mb-6">
 					<h2 className="text-2xl font-bold text-white">
 						Edit Client
 					</h2>
 					<button
 						onClick={onClose}
-						className="text-zinc-400 hover:text-white transition-colors"
+						className="text-text-tertiary hover:text-white transition-colors"
 					>
 						<X size={24} />
 					</button>
@@ -106,7 +106,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							name="name"
 							value={formData.name}
 							onChange={handleChange}
-							className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
 							required
 						/>
 					</div>
@@ -118,7 +118,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							value={formData.address}
 							onChange={handleChange}
 							rows={3}
-							className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
 							required
 						/> */}
 						<AddressForm handleChange={handleChangeAddress} />
@@ -130,7 +130,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							name="is_active"
 							checked={formData.is_active}
 							onChange={handleChange}
-							className="w-4 h-4 text-blue-600 bg-zinc-800 border-zinc-700 rounded focus:ring-blue-500"
+							className="w-4 h-4 text-blue-600 bg-surface border-border rounded focus:ring-primary"
 						/>
 						<label className="ml-2 ">Active Client</label>
 					</div>
@@ -139,7 +139,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 						<button
 							type="submit"
 							disabled={updateClient.isPending}
-							className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+							className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors"
 						>
 							{updateClient.isPending
 								? "Saving..."
@@ -153,7 +153,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
 								deleteConfirm
 									? "bg-red-600 hover:bg-red-700 text-white"
-									: "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+									: "bg-surface hover:bg-surface-raised text-text-secondary"
 							} disabled:opacity-50 disabled:cursor-not-allowed`}
 						>
 							<Trash2 size={16} />

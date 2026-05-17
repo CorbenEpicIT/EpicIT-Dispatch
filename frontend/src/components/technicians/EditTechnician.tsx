@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Technician, UpdateTechnicianInput } from "../../types/technicians";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
@@ -22,8 +22,8 @@ const STATUS_ENTRIES = (
 );
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 export default function EditTechnician({ isOpen, onClose, technician }: EditTechnicianProps) {
 	const navigate = useNavigate();
@@ -143,7 +143,7 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 						placeholder="Brief description or notes..."
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 				</div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import { useUpdateRequestMutation } from "../../hooks/useRequests";
 import { UpdateRequestSchema, type Request, type UpdateRequestInput } from "../../types/requests";
@@ -151,7 +151,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 					{fieldErrors.map((err, idx) => (
 						<p
 							key={idx}
-							className="text-red-300 text-xs leading-tight"
+							className="text-error-text text-xs leading-tight"
 						>
 							{err.message}
 						</p>
@@ -185,7 +185,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 			<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
 				{/* Title */}
 				<div className="min-w-0">
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Title *
 					</label>
 					<div className="relative">
@@ -196,7 +196,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 							onChange={(e) =>
 								updateField("title", e.target.value)
 							}
-							className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+							className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 							disabled={isLoading}
 						/>
 						<UndoButton
@@ -211,19 +211,19 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 				{/* Client and Priority Row */}
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 					<div className="min-w-0">
-						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 							Client
 						</label>
-						<div className="border border-zinc-700 px-2.5 pt-1.5 pb-1 w-full rounded bg-zinc-800/50 text-zinc-400 text-sm">
+						<div className="border border-border px-2.5 pt-1.5 pb-1 w-full rounded bg-surface/50 text-text-tertiary text-sm">
 							{request.client?.name || "Unknown Client"}
 						</div>
-						<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+						<p className="text-[10px] text-text-muted mt-0.5 leading-tight">
 							Client cannot be changed
 						</p>
 					</div>
 
 					<div className="min-w-0">
-						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+						<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 							Priority
 						</label>
 						<div className="relative">
@@ -256,7 +256,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 
 				{/* Description */}
 				<div className="min-w-0">
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Description *
 					</label>
 					<div className="relative">
@@ -269,7 +269,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 									e.target.value
 								)
 							}
-							className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+							className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 							disabled={isLoading}
 						/>
 						<UndoButtonTop
@@ -283,7 +283,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 
 				{/* Address */}
 				<div className="relative min-w-0" style={{ zIndex: 50 }}>
-					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+					<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 						Address (Optional)
 					</label>
 					<div className="relative">
@@ -306,7 +306,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 						type="button"
 						onClick={() => setShowAdditional((v) => !v)}
 						disabled={isLoading}
-						className="w-full flex items-center justify-between px-2.5 py-1.5 rounded border border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 transition-colors text-xs font-medium text-zinc-400 uppercase tracking-wider disabled:opacity-50"
+						className="w-full flex items-center justify-between px-2.5 py-1.5 rounded border border-border bg-surface/50 hover:bg-surface transition-colors text-xs font-medium text-text-tertiary uppercase tracking-wider disabled:opacity-50"
 					>
 						<span className="flex items-center gap-2 min-w-0 flex-1 mr-2">
 							<span className="flex-shrink-0">
@@ -325,7 +325,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 													key={
 														i
 													}
-													className="px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 text-[10px] font-normal tracking-normal truncate max-w-[80px]"
+													className="px-1.5 py-0.5 rounded bg-surface-raised text-text-secondary text-[10px] font-normal tracking-normal truncate max-w-[80px]"
 												>
 													{
 														tag
@@ -354,7 +354,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 							{/* Source + Source Reference inline half-width */}
 							<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 								<div className="min-w-0">
-									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 										Source
 									</label>
 									<div className="relative">
@@ -374,7 +374,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 														.value
 												)
 											}
-											className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+											className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 											disabled={
 												isLoading
 											}
@@ -397,7 +397,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 
 								{getValue("source").trim() ? (
 									<div className="min-w-0">
-										<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+										<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 											Source
 											Reference
 										</label>
@@ -418,7 +418,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 															.value
 													)
 												}
-												className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+												className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 												disabled={
 													isLoading
 												}
@@ -446,11 +446,11 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 							{/* Estimated Value (left) + Requires Quote (right) */}
 							<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 								<div className="min-w-0">
-									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+									<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 										Estimated Value
 									</label>
 									<div className="relative">
-										<span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">
+										<span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">
 											$
 										</span>
 										<input
@@ -471,7 +471,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 														.value
 												)
 											}
-											className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pl-7 pr-10 min-w-0"
+											className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pl-7 pr-10 min-w-0"
 											disabled={
 												isLoading
 											}
@@ -507,12 +507,12 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 													.checked
 											)
 										}
-										className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer"
+										className="w-4 h-4 rounded border-border bg-base text-blue-600 focus:ring-primary focus:ring-2 cursor-pointer"
 										disabled={isLoading}
 									/>
 									<label
 										htmlFor="requires_quote"
-										className="ml-2 text-xs lg:text-sm text-zinc-400 cursor-pointer"
+										className="ml-2 text-xs lg:text-sm text-text-tertiary cursor-pointer"
 									>
 										Requires Quote
 									</label>
@@ -530,7 +530,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 											disabled={
 												isLoading
 											}
-											className="ml-2 text-zinc-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+											className="ml-2 text-text-tertiary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 										>
 											<RotateCcw
 												size={

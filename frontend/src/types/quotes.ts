@@ -1,4 +1,4 @@
-import z from "zod";
+﻿import z from "zod";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
 import type {
@@ -43,15 +43,15 @@ export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 };
 
 export const QuoteStatusColors: Record<QuoteStatus, string> = {
-	Draft:     "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Issued:    "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Sent:      "bg-green-500/20 text-green-400 border-green-500/30",
+	Draft:     "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+	Issued:    "bg-primary/20 text-primary-text border-primary/30",
+	Sent:      "bg-success/20 text-success-text border-success/30",
 	Viewed:    "bg-teal-500/20 text-teal-400 border-teal-500/30",
-	Approved:  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-	Rejected:  "bg-red-500/20 text-red-400 border-red-500/30",
-	Revised:   "bg-amber-500/20 text-amber-400 border-amber-500/30",
+	Approved:  "bg-emerald-500/20 text-success-text border-emerald-500/30",
+	Rejected:  "bg-error/20 text-error-text border-error/30",
+	Revised:   "bg-warning/20 text-warning-text border-warning/30",
 	Expired:   "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
 
 // ============================================================================

@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+﻿import { NavLink } from "react-router-dom";
 
 export default function SideNavItem({
 	to,
@@ -19,7 +19,7 @@ export default function SideNavItem({
 				`
 				group relative flex items-center h-10 rounded-md mx-2
 				transition-colors duration-200
-				${isActive ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800"}
+				${isActive ? "bg-base text-white" : "text-text-tertiary hover:text-white hover:bg-surface"}
 				`
 			}
 		>

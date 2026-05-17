@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAllTechniciansQuery, useCreateTechnicianMutation } from "../../hooks/useTechnicians";
@@ -113,17 +113,17 @@ export default function TechniciansPage() {
 				title="Technicians"
 				subtitle={
 					<div className="flex flex-wrap gap-3 text-xs">
-						<span className="text-green-400">● Available: {statusCounts.Available || 0}</span>
-						<span className="text-purple-400">● Working: {statusCounts.Working || 0}</span>
+						<span className="text-success-text">● Available: {statusCounts.Available || 0}</span>
+						<span className="text-reviewing-text">● Working: {statusCounts.Working || 0}</span>
 						<span className="text-sky-400">● En Route: {statusCounts.EnRoute || 0}</span>
-						<span className="text-yellow-400">● On Site: {statusCounts.OnSite || 0}</span>
+						<span className="text-warning-text">● On Site: {statusCounts.OnSite || 0}</span>
 						<span className="text-orange-400">● Paused: {statusCounts.Paused || 0}</span>
-						<span className="text-zinc-400">● Offline: {statusCounts.Offline || 0}</span>
+						<span className="text-text-tertiary">● Offline: {statusCounts.Offline || 0}</span>
 					</div>
 				}
 			>
 				<button
-					className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
 					onClick={() => setIsModalOpen(true)}
 				>
 					<Plus size={16} className="text-white" />
@@ -191,7 +191,7 @@ export default function TechniciansPage() {
 					<h1 className="text-center text-xl mt-1">
 						An error has occurred.
 					</h1>
-					<h2 className="text-center text-zinc-500 mt-1">
+					<h2 className="text-center text-text-muted mt-1">
 						{fetchError.message}
 					</h2>
 				</div>
@@ -207,7 +207,7 @@ export default function TechniciansPage() {
 							: "No technicians yet."}
 					</h1>
 					{activeTerms.length > 0 && (
-						<p className="text-center text-zinc-500 mt-2">
+						<p className="text-center text-text-muted mt-2">
 							Try adjusting your search terms
 						</p>
 					)}
@@ -239,14 +239,14 @@ export default function TechniciansPage() {
 					</div>
 
 					{/* Pagination footer */}
-					<div className="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-zinc-800">
+					<div className="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-border-subtle">
 						<div className="flex items-center gap-4">
-							<span className="text-sm text-zinc-400">
+							<span className="text-sm text-text-tertiary">
 								{perPage === 0
 									? `Showing all ${filteredTechnicians.length}`
 									: `Showing ${(currentPage - 1) * perPage + 1}–${Math.min(currentPage * perPage, filteredTechnicians.length)} of ${filteredTechnicians.length}`}
 							</span>
-							<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
+							<div className="flex items-center gap-1 bg-surface border border-border rounded-md p-1">
 								{[12, 24, 48].map((n) => (
 									<button
 										key={n}
@@ -259,7 +259,7 @@ export default function TechniciansPage() {
 											perPage ===
 											n
 												? "bg-zinc-600 text-white"
-												: "text-zinc-400 hover:text-white"
+												: "text-text-tertiary hover:text-white"
 										}`}
 									>
 										{n}
@@ -272,7 +272,7 @@ export default function TechniciansPage() {
 									className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
 										perPage === 0
 											? "bg-zinc-600 text-white"
-											: "text-zinc-400 hover:text-white"
+											: "text-text-tertiary hover:text-white"
 									}`}
 								>
 									All
@@ -294,7 +294,7 @@ export default function TechniciansPage() {
 										)
 									}
 									disabled={currentPage === 1}
-									className="p-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 								>
 									<ChevronLeft size={16} />
 								</button>
@@ -341,7 +341,7 @@ export default function TechniciansPage() {
 										p === "..." ? (
 											<span
 												key={`ellipsis-${i}`}
-												className="px-1.5 text-zinc-500 text-sm"
+												className="px-1.5 text-text-muted text-sm"
 											>
 												…
 											</span>
@@ -358,8 +358,8 @@ export default function TechniciansPage() {
 												className={`min-w-[36px] px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
 													currentPage ===
 													p
-														? "bg-blue-600 border-blue-600 text-white"
-														: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white"
+														? "bg-primary-hover border-blue-600 text-white"
+														: "bg-surface border-border text-text-tertiary hover:text-white"
 												}`}
 											>
 												{p}
@@ -381,7 +381,7 @@ export default function TechniciansPage() {
 										currentPage ===
 										totalPages
 									}
-									className="p-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 								>
 									<ChevronRight size={16} />
 								</button>

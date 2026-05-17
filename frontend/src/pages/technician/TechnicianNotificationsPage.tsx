@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Calendar, Clock, XCircle, FileText, AlarmClock, CheckCheck } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
@@ -30,11 +30,11 @@ function getDateGroup(dateStr: string): string {
 function NotificationIcon({ type }: { type: NotificationType }) {
 	const cls = "shrink-0 mt-0.5";
 	switch (type) {
-		case "visit_assigned":  return <Calendar size={18} className={`${cls} text-blue-400`} />;
-		case "visit_changed":   return <Clock size={18} className={`${cls} text-amber-400`} />;
-		case "visit_cancelled": return <XCircle size={18} className={`${cls} text-red-400`} />;
-		case "note_added":      return <FileText size={18} className={`${cls} text-blue-400`} />;
-		case "visit_reminder":  return <AlarmClock size={18} className={`${cls} text-amber-400`} />;
+		case "visit_assigned":  return <Calendar size={18} className={`${cls} text-primary-text`} />;
+		case "visit_changed":   return <Clock size={18} className={`${cls} text-warning-text`} />;
+		case "visit_cancelled": return <XCircle size={18} className={`${cls} text-error-text`} />;
+		case "note_added":      return <FileText size={18} className={`${cls} text-primary-text`} />;
+		case "visit_reminder":  return <AlarmClock size={18} className={`${cls} text-warning-text`} />;
 	}
 }
 
@@ -56,21 +56,21 @@ function NotificationItem({
 	return (
 		<button
 			onClick={handleClick}
-			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-zinc-800/60 hover:bg-zinc-800/40 transition-colors ${
+			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-border-subtle/60 hover:bg-surface/40 transition-colors ${
 				isUnread ? "border-l-2 border-l-blue-500" : ""
 			}`}
 		>
 			<NotificationIcon type={notif.type} />
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-1.5">
-					{isUnread && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
-					<p className={`text-sm leading-snug truncate ${isUnread ? "font-semibold text-white" : "text-zinc-300"}`}>
+					{isUnread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+					<p className={`text-sm leading-snug truncate ${isUnread ? "font-semibold text-white" : "text-text-secondary"}`}>
 						{notif.title}
 					</p>
 				</div>
-				<p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{notif.body}</p>
+				<p className="text-xs text-text-muted mt-0.5 line-clamp-2">{notif.body}</p>
 			</div>
-			<span className="text-[11px] text-zinc-600 whitespace-nowrap shrink-0 mt-0.5">
+			<span className="text-[11px] text-text-faint whitespace-nowrap shrink-0 mt-0.5">
 				{formatRelativeTime(notif.created_at)}
 			</span>
 		</button>
@@ -114,7 +114,7 @@ export default function TechnicianNotificationsPage() {
 				<div className="flex items-center gap-2">
 					<h1 className="text-lg font-semibold text-white">Notifications</h1>
 					{unreadCount > 0 && (
-						<span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 min-w-[20px]">
+						<span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-primary-text border border-primary/30 min-w-[20px]">
 							{unreadCount}
 						</span>
 					)}
@@ -122,7 +122,7 @@ export default function TechnicianNotificationsPage() {
 				<button
 					onClick={handleMarkAllRead}
 					disabled={!hasUnread || markAllRead.isPending}
-					className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
+					className="flex items-center gap-1.5 text-xs text-primary-text hover:text-primary-text disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<CheckCheck size={14} />
 					Mark all read
@@ -134,26 +134,26 @@ export default function TechnicianNotificationsPage() {
 					<div
 						role="status"
 						aria-label="Loading notifications"
-						className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-blue-500 animate-spin"
+						className="w-6 h-6 rounded-full border-2 border-border border-t-blue-500 animate-spin"
 					/>
 				</div>
 			)}
 
 			{!isLoading && notifications.length === 0 && (
-				<div className="flex flex-col items-center gap-3 py-16 text-zinc-600">
+				<div className="flex flex-col items-center gap-3 py-16 text-text-faint">
 					<Bell size={36} strokeWidth={1.5} />
 					<p className="text-sm">No notifications yet</p>
 				</div>
 			)}
 
 			{!isLoading && notifications.length > 0 && (
-				<div className="rounded-xl border border-zinc-800 overflow-hidden">
+				<div className="rounded-xl border border-border-subtle overflow-hidden">
 					{groupOrder.map((group) => {
 						const items = groups[group];
 						if (!items?.length) return null;
 						return (
 							<div key={group}>
-								<div className="px-4 py-2 bg-zinc-900/60 text-[11px] font-medium text-zinc-500 uppercase tracking-wide">
+								<div className="px-4 py-2 bg-base/60 text-[11px] font-medium text-text-muted uppercase tracking-wide">
 									{group}
 								</div>
 								{items.map((notif) => (

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+﻿import { useState, useMemo, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import MonthMiniCard from "./MonthMiniCard";
@@ -66,8 +66,26 @@ function getThisMonday(): Date {
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MAX_VISIBLE    = 3;
-const POPUP_W        = 224;
+const MAX_VISIBLE       = 3;
+const MAX_VISIBLE_TODAY = 8;
+const TODAY_BODY_HEIGHT = 180;
+const POPUP_W           = 224;
+
+function colMaxLines(pxWidth: number): number {
+	if (pxWidth >= 180) return 2;
+	if (pxWidth >= 120) return 3;
+	if (pxWidth >= 80)  return 4;
+	return 5;
+}
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+	InProgress: 0, OnSite: 0,
+	Driving: 1,
+	Delayed: 2, Paused: 2,
+	Scheduled: 3,
+	Completed: 4,
+	Cancelled: 5,
+};
 
 function visitTimeLabel(v: VisitWithJob): string {
 	if (v.arrival_constraint === "anytime") return "";
@@ -119,7 +137,10 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 
 	const [scrollZone, setScrollZone] = useState<"left" | "right" | null>(null);
 	const [scrollProgress, setScrollProgress] = useState(0);
+	const [colMode, setColMode] = useState<"full" | "three" | "one">("full");
+	const [containerWidth, setContainerWidth] = useState(0);
 
+	const containerRef       = useRef<HTMLDivElement>(null);
 	const weekGridRef        = useRef<HTMLDivElement>(null);
 	const scrollZoneRef      = useRef<"left" | "right" | null>(null);
 	const scrollEnterTimeRef = useRef<number | null>(null);
@@ -132,6 +153,19 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 	// Cancel RAF on unmount
 	useEffect(() => {
 		return () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); };
+	}, []);
+
+	// Responsive column mode
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
+		const ro = new ResizeObserver(([entry]) => {
+			const w = entry.contentRect.width;
+			setContainerWidth(w);
+			setColMode(w >= 600 ? "full" : w >= 350 ? "three" : "one");
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
 	}, []);
 
 	// Close visit popup on outside click
@@ -168,6 +202,17 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 
 	const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
 	const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+	const visibleDays = useMemo(() => {
+		if (colMode === "full") return weekDays;
+		const todayIdx = weekDays.indexOf(todayStr);
+		if (colMode === "one") return todayIdx >= 0 ? [weekDays[todayIdx]] : [weekDays[0]];
+		if (todayIdx < 0) return weekDays.slice(0, 3);
+		const start = Math.max(0, Math.min(todayIdx - 1, weekDays.length - 3));
+		return weekDays.slice(start, start + 3);
+	}, [colMode, weekDays, todayStr]);
+
+	const isNarrow = colMode !== "full";
 
 	const weekLabel = useMemo(() => {
 		const first = new Date(weekDays[0] + "T12:00:00");
@@ -497,23 +542,23 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 	}
 
 	return (
-		<div style={{
+		<div ref={containerRef} style={{
 			display: "flex",
 			flexDirection: "column",
-			backgroundColor: "#18181b",
-			border: "1px solid #27272a",
+			backgroundColor: "var(--color-popup-bg)",
+			border: "1px solid var(--color-border-subtle)",
 			borderRadius: 8,
 			overflow: "hidden",
 			userSelect: "none",
 		}}>
 
 			{/* ── Toolbar ──────────────────────────────────────────────────────── */}
-			<div className="flex items-center gap-1.5 px-3 border-b border-zinc-800 shrink-0" style={{ height: 44 }}>
+			<div className="flex items-center gap-1.5 px-3 border-b border-border-subtle shrink-0" style={{ height: 44 }}>
 
 				{/* Today */}
 				<button
 					onClick={() => setWeekStart(getThisMonday())}
-					className="h-7 px-3 rounded text-[11px] font-medium border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors shrink-0"
+					className="h-7 px-3 rounded text-[11px] font-medium border border-border text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors shrink-0"
 				>
 					Today
 				</button>
@@ -522,35 +567,35 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 				<div className="flex items-center shrink-0">
 					<button
 						onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; })}
-						className="h-7 w-7 flex items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
 					>
 						<ChevronLeft size={14} />
 					</button>
-					<span className="text-[13px] font-semibold text-zinc-100 min-w-[176px] text-center tracking-tight">
+					<span className={`text-[13px] font-semibold text-text-primary text-center tracking-tight ${isNarrow ? "min-w-[100px]" : "min-w-[176px]"}`}>
 						{weekLabel}
 					</span>
 					<button
 						onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; })}
-						className="h-7 w-7 flex items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
 					>
 						<ChevronRight size={14} />
 					</button>
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				{/* Visits toggle */}
 				<button
 					onClick={() => setShowVisits((v) => !v)}
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showVisits
-							? "bg-blue-500/10 border-blue-500/25 text-blue-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							? "bg-primary/10 border-primary/25 text-primary-text"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					{showVisits ? <Eye size={12} /> : <EyeOff size={12} />}
-					Visits
+					{!isNarrow && "Visits"}
 				</button>
 
 				{/* Recurring toggle */}
@@ -559,15 +604,15 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showOccurrences
 							? "bg-violet-500/10 border-violet-500/25 text-violet-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					{showOccurrences ? <Eye size={12} /> : <EyeOff size={12} />}
-					Recurring
+					{!isNarrow && "Recurring"}
 				</button>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-zinc-800 mx-1 shrink-0" />
+				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
 
 				<TechFilter
 					technicians={technicians}
@@ -580,19 +625,24 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 			{/* ── Week grid ────────────────────────────────────────────────────── */}
 			<div
 				ref={weekGridRef}
-				style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", position: "relative" }}
+				style={{ display: "grid", gridTemplateColumns: visibleDays.map(d => d === todayStr ? "2fr" : "1fr").join(" "), position: "relative" }}
 				onDragOver={handleGridDragOver}
 				onDragLeave={handleGridDragLeave}
 			>
-				{weekDays.map((dateStr, i) => {
+				{visibleDays.map((dateStr, i) => {
 					const dayNum = parseInt(dateStr.split("-")[2]);
 					const isToday = dateStr === todayStr;
-					const label = WEEKDAY_LABELS[i];
+					const weekIdx = weekDays.indexOf(dateStr);
+					const label = WEEKDAY_LABELS[weekIdx >= 0 ? weekIdx : i];
+					const totalFr = visibleDays.reduce((sum, d) => sum + (d === todayStr ? 2 : 1), 0);
+					const colFr   = isToday ? 2 : 1;
+					const colPx   = containerWidth > 0 ? Math.floor(containerWidth * colFr / totalFr) : (isToday ? 200 : 120);
+					const maxLines = colMaxLines(colPx);
 					return (
 						<div
 							key={dateStr}
 							style={{
-								borderRight: i < 6 ? "1px solid #27272a" : "none",
+								borderRight: i < visibleDays.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
 							}}
 						>
 							{/* Day header */}
@@ -601,18 +651,18 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 								alignItems: "center",
 								justifyContent: "space-between",
 								padding: "5px 7px 4px",
-								borderBottom: "1px solid #27272a",
-								backgroundColor: "#1c1c1f",
+								borderBottom: "1px solid var(--color-border-subtle)",
+								backgroundColor: "var(--color-base)",
 							}}>
-								<span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#a1a1aa" }}>
+								<span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)" }}>
 									{label}
 								</span>
 								<div style={{
 									width: 22, height: 22, borderRadius: "50%",
 									display: "flex", alignItems: "center", justifyContent: "center",
 									fontSize: 11, fontWeight: 600,
-									backgroundColor: isToday ? "#3b82f6" : "transparent",
-									color: isToday ? "#fff" : "#71717a",
+									backgroundColor: isToday ? "var(--color-primary)" : "transparent",
+									color: isToday ? "#fff" : "var(--color-text-muted)",
 								}}>
 									{dayNum}
 								</div>
@@ -620,12 +670,19 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 							{/* Day body — drop zone + cards */}
 							<div
 								style={{
-									minHeight: 96,
+									...(isToday
+										? { minHeight: TODAY_BODY_HEIGHT }
+										: { minHeight: 72 }
+									),
 									padding: 4,
 									display: "flex",
 									flexDirection: "column",
 									gap: 2,
-									backgroundColor: dragOverDate === dateStr ? "rgba(59,130,246,0.08)" : "transparent",
+									backgroundColor: dragOverDate === dateStr
+										? "rgba(59,130,246,0.08)"
+										: isToday
+											? "rgba(59,130,246,0.035)"
+											: "transparent",
 									outline: dragOverDate === dateStr ? "2px inset rgba(59,130,246,0.4)" : "none",
 									transition: "background-color 0.1s",
 								}}
@@ -640,8 +697,19 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 										...dayVisits.map((v) => ({ type: "visit" as const, item: v })),
 										...dayOccs.map((o)   => ({ type: "occ"   as const, item: o })),
 									];
-									const visible     = allItems.slice(0, MAX_VISIBLE);
-									const hiddenCount = Math.max(0, allItems.length - MAX_VISIBLE);
+									if (isToday) {
+										allItems.sort((a, b) => {
+											const sa = a.type === "visit" ? (STATUS_SORT_ORDER[a.item.status] ?? 3) : 3;
+											const sb = b.type === "visit" ? (STATUS_SORT_ORDER[b.item.status] ?? 3) : 3;
+											if (sa !== sb) return sa - sb;
+											const ta = new Date(a.type === "visit" ? (a.item.scheduled_start_at ?? 0) : ((a.item as any).occurrence_start_at ?? 0)).getTime();
+											const tb = new Date(b.type === "visit" ? (b.item.scheduled_start_at ?? 0) : ((b.item as any).occurrence_start_at ?? 0)).getTime();
+											return ta - tb;
+										});
+									}
+									const maxVisible  = isToday ? MAX_VISIBLE_TODAY : MAX_VISIBLE;
+									const visible     = allItems.slice(0, maxVisible);
+									const hiddenCount = Math.max(0, allItems.length - maxVisible);
 
 									return (
 										<>
@@ -650,7 +718,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 													const v = di.item;
 													const techs = (v.visit_techs ?? []).map((vt) => ({
 														id: vt.tech_id,
-														color: techColorMap.get(vt.tech_id) ?? "#6b7280",
+														color: techColorMap.get(vt.tech_id) ?? "var(--color-tech-unassigned)",
 													}));
 													return (
 														<MonthMiniCard
@@ -659,6 +727,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 															priorityColor={getPriorityColor(v.job_obj?.priority)}
 															timeLabel={visitTimeLabel(v)}
 															techs={techs}
+															maxLines={maxLines}
 															isDragging={draggingVisitId === v.id}
 																isGhost={pendingDrop?.visit.id === v.id}
 															onDragStart={(e) => handleVisitDragStart(e, v, dateStr)}
@@ -681,6 +750,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 															priorityColor={getPriorityColor(occ.job_obj?.priority)}
 															timeLabel={occurrenceTimeLabel(occ)}
 															techs={[]}
+															maxLines={maxLines}
 															isOccurrence
 															isDragging={draggingOccurrenceId === occ.id || isGenerating}
 																isGhost={pendingOccurrenceDrop?.occurrence.id === occ.id}
@@ -703,7 +773,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 													style={{
 														fontSize: 9,
 														fontWeight: 600,
-														color: "#60a5fa",
+														color: "var(--color-visit-driving-text)",
 														background: "none",
 														border: "none",
 														cursor: "pointer",
@@ -750,7 +820,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						<div style={{
 							position: "absolute", top: 0, bottom: 0,
 							left: `calc(${scrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6",
+							background: "var(--color-primary)",
 							boxShadow: "0 0 6px rgba(59,130,246,0.7)",
 						}} />
 					)}
@@ -794,7 +864,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						<div style={{
 							position: "absolute", top: 0, bottom: 0,
 							right: `calc(${scrollProgress * 100}% - 2px)`, width: 2,
-							background: "#3b82f6",
+							background: "var(--color-primary)",
 							boxShadow: "0 0 6px rgba(59,130,246,0.7)",
 						}} />
 					)}

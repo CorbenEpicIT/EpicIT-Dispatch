@@ -1,4 +1,4 @@
-import type { ClientDetailsProps } from "../components/clients/ClientDetailsCard";
+﻿import type { ClientDetailsProps } from "../components/clients/ClientDetailsCard";
 import type { BaseNote, TechReference, DispatcherReference, PricingBreakdown } from "./common";
 
 // ============================================================================
@@ -30,14 +30,14 @@ export const InvoiceStatusLabels: Record<InvoiceStatus, string> = {
 };
 
 export const InvoiceStatusColors: Record<InvoiceStatus, string> = {
-	Draft:        "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Issued:       "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Sent:         "bg-green-500/20 text-green-400 border-green-500/30",
+	Draft:        "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+	Issued:       "bg-primary/20 text-primary-text border-primary/30",
+	Sent:         "bg-success/20 text-success-text border-success/30",
 	Viewed:       "bg-teal-500/20 text-teal-400 border-teal-500/30",
-	PartiallyPaid:"bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Paid:         "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+	PartiallyPaid:"bg-warning/20 text-warning-text border-warning/30",
+	Paid:         "bg-emerald-500/20 text-success-text border-emerald-500/30",
 	Disputed:     "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Void:         "bg-red-500/20 text-red-400 border-red-500/30",
+	Void:         "bg-error/20 text-error-text border-error/30",
 };
 
 // Which statuses are auto-set by the system vs manually set by staff

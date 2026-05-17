@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { AlertTriangle, ArrowRight, RotateCcw, RotateCw } from "lucide-react";
 import TimePicker from "../TimePicker";
 import type { UpdateJobVisitInput } from "../../../types/jobs";
@@ -90,7 +90,7 @@ function detectConflicts(
 			for (const techId of shared) {
 				rows.push({
 					techName: technicians.find((t) => t.id === techId)?.name ?? techId,
-					techColor: techColorMap.get(techId) ?? "#6b7280",
+					techColor: techColorMap.get(techId) ?? "var(--color-tech-unassigned)",
 					visitName: v.job_obj?.name ?? "Visit",
 					timeRange: `${formatTimeSimple(vStart)}–${formatTimeSimple(vEnd)}`,
 				});
@@ -266,8 +266,8 @@ export default function ReschedulePopup({
 					left: popupLeft,
 					width: popupW,
 					zIndex: 1001,
-					backgroundColor: "#18181b",
-					border: "1px solid #3f3f46",
+					backgroundColor: "var(--color-popup-bg)",
+					border: "1px solid var(--color-border)",
 					borderRadius: 8,
 					boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.7)",
 					overflow: "hidden",
@@ -276,11 +276,11 @@ export default function ReschedulePopup({
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<div style={{ padding: "10px 12px 9px", borderBottom: "1px solid #27272a" }}>
+				<div style={{ padding: "10px 12px 9px", borderBottom: "1px solid var(--color-border-subtle)" }}>
 					<div style={{
 						fontSize: 12,
 						fontWeight: 700,
-						color: "#f4f4f5",
+						color: "var(--color-sched-text-primary)",
 						letterSpacing: "-0.01em",
 						marginBottom: 2,
 					}}>
@@ -288,7 +288,7 @@ export default function ReschedulePopup({
 					</div>
 					<div style={{
 						fontSize: 11,
-						color: "#a1a1aa",
+						color: "var(--color-text-tertiary)",
 						whiteSpace: "nowrap",
 						overflow: "hidden",
 						textOverflow: "ellipsis",
@@ -314,15 +314,15 @@ export default function ReschedulePopup({
 					}}>
 						{!fromLabel && !toLabel && oldDateStr === newDateStr ? (
 							<>
-								<span style={{ color: "#71717a" }}>Same Day</span>
-								<span style={{ color: "#3f3f46" }}>:</span>
-								<span style={{ color: "#93c5fd", fontWeight: 600 }}>{formatDateDisplay(newDateStr)}</span>
+								<span style={{ color: "var(--color-text-muted)" }}>Same Day</span>
+								<span style={{ color: "var(--color-border)" }}>:</span>
+								<span style={{ color: "var(--color-primary-text)", fontWeight: 600 }}>{formatDateDisplay(newDateStr)}</span>
 							</>
 						) : (
 							<>
-								<span style={{ color: "#71717a" }}>{fromLabel ?? formatDateDisplay(oldDateStr)}</span>
-								<ArrowRight size={11} style={{ color: "#3b82f6", flexShrink: 0 }} />
-								<span style={{ color: "#93c5fd", fontWeight: 600 }}>{toLabel ?? formatDateDisplay(newDateStr)}</span>
+								<span style={{ color: "var(--color-text-muted)" }}>{fromLabel ?? formatDateDisplay(oldDateStr)}</span>
+								<ArrowRight size={11} style={{ color: "var(--color-primary)", flexShrink: 0 }} />
+								<span style={{ color: "var(--color-primary-text)", fontWeight: 600 }}>{toLabel ?? formatDateDisplay(newDateStr)}</span>
 							</>
 						)}
 					</div>
@@ -337,8 +337,8 @@ export default function ReschedulePopup({
 								value={arrivalConstraint}
 								onChange={(e) => handleArrivalConstraintChange(e.target.value as ArrivalConstraint)}
 								style={POPUP_SELECT_STYLE}
-								onFocus={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
-								onBlur={(e) => (e.currentTarget.style.borderColor = "#3f3f46")}
+								onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-primary)")}
+								onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
 							>
 								<option value="anytime">Anytime</option>
 								<option value="at">Arrive at</option>
@@ -356,7 +356,7 @@ export default function ReschedulePopup({
 							{arrivalConstraint === "between" && (
 								<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
 									<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-										<span style={{ fontSize: 9, color: "#a1a1aa", minWidth: 22, flexShrink: 0 }}>From</span>
+										<span style={{ fontSize: 9, color: "var(--color-text-tertiary)", minWidth: 22, flexShrink: 0 }}>From</span>
 										<div style={{ flex: 1, minWidth: 0 }}>
 											<TimePicker
 												value={hhmmToPickerDate(arrivalWindowStart)}
@@ -366,7 +366,7 @@ export default function ReschedulePopup({
 										</div>
 									</div>
 									<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-										<span style={{ fontSize: 9, color: "#a1a1aa", minWidth: 22, flexShrink: 0 }}>To</span>
+										<span style={{ fontSize: 9, color: "var(--color-text-tertiary)", minWidth: 22, flexShrink: 0 }}>To</span>
 										<div style={{ flex: 1, minWidth: 0 }}>
 											<TimePicker
 												value={hhmmToPickerDate(arrivalWindowEnd)}
@@ -390,7 +390,7 @@ export default function ReschedulePopup({
 						</div>
 
 						{/* Divider */}
-						<div style={{ backgroundColor: "#27272a", alignSelf: "stretch" }} />
+						<div style={{ backgroundColor: "var(--color-surface)", alignSelf: "stretch" }} />
 
 						{/* Finish column */}
 						<div style={{ paddingLeft: 10, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -399,8 +399,8 @@ export default function ReschedulePopup({
 								value={finishConstraint}
 								onChange={(e) => handleFinishConstraintChange(e.target.value as FinishConstraint)}
 								style={POPUP_SELECT_STYLE}
-								onFocus={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
-								onBlur={(e) => (e.currentTarget.style.borderColor = "#3f3f46")}
+								onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-primary)")}
+								onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
 							>
 								<option value="when_done">When done</option>
 								<option value="at">Finish at</option>
@@ -435,19 +435,19 @@ export default function ReschedulePopup({
 								backgroundColor: "rgba(239,68,68,0.1)",
 								borderBottom: "1px solid rgba(239,68,68,0.15)",
 							}}>
-								<AlertTriangle size={10} style={{ color: "#f87171", flexShrink: 0 }} />
-								<span style={{ fontSize: 9, fontWeight: 600, color: "#f87171", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+								<AlertTriangle size={10} style={{ color: "var(--color-error-text)", flexShrink: 0 }} />
+								<span style={{ fontSize: 9, fontWeight: 600, color: "var(--color-error-text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
 									Scheduling conflict
 								</span>
 							</div>
 							<div style={{ padding: "5px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
 								{conflictRows.map((row, i) => (
-									<div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: "#fca5a5", minWidth: 0 }}>
+									<div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: "var(--color-error-text)", minWidth: 0 }}>
 										<span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: row.techColor, flexShrink: 0 }} />
 										<span style={{ fontWeight: 600, flexShrink: 0 }}>{row.techName}</span>
-										<span style={{ color: "#52525b", flexShrink: 0 }}>·</span>
+										<span style={{ color: "var(--color-text-faint)", flexShrink: 0 }}>·</span>
 										<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{row.visitName}</span>
-										<span style={{ color: "#71717a", flexShrink: 0 }}>{row.timeRange}</span>
+										<span style={{ color: "var(--color-text-muted)", flexShrink: 0 }}>{row.timeRange}</span>
 									</div>
 								))}
 							</div>
@@ -472,9 +472,9 @@ export default function ReschedulePopup({
 											borderRadius: 4,
 											border: "1px solid",
 											cursor: "pointer",
-											backgroundColor: recurringScope === scope ? "#7c3aed" : "transparent",
-											borderColor: recurringScope === scope ? "#7c3aed" : "rgba(139,92,246,0.35)",
-											color: recurringScope === scope ? "#fff" : "#a78bfa",
+											backgroundColor: recurringScope === scope ? "var(--color-sched-occurrence-badge)" : "transparent",
+											borderColor: recurringScope === scope ? "var(--color-sched-occurrence-badge)" : "rgba(139,92,246,0.35)",
+											color: recurringScope === scope ? "#fff" : "var(--color-reviewing-text)",
 											fontFamily: "inherit",
 											transition: "background-color 0.15s, border-color 0.15s, color 0.15s",
 										}}
@@ -493,7 +493,7 @@ export default function ReschedulePopup({
 					alignItems: "center",
 					justifyContent: "space-between",
 					padding: "8px 12px",
-					borderTop: "1px solid #27272a",
+					borderTop: "1px solid var(--color-border-subtle)",
 					gap: 6,
 				}}>
 					<button
@@ -505,9 +505,9 @@ export default function ReschedulePopup({
 							height: 28,
 							fontSize: 11,
 							fontWeight: hasChanges ? 600 : 400,
-							color: hasChanges ? "#f59e0b" : "#a1a1aa",
+							color: hasChanges ? "var(--color-warning)" : "var(--color-text-tertiary)",
 							background: hasChanges ? "rgba(245,158,11,0.08)" : "none",
-							border: hasChanges ? "1px solid rgba(245,158,11,0.22)" : "1px solid #3f3f46",
+							border: hasChanges ? "1px solid rgba(245,158,11,0.22)" : "1px solid var(--color-border)",
 							borderRadius: 6,
 							cursor: "pointer",
 							padding: "0 9px",
@@ -515,10 +515,10 @@ export default function ReschedulePopup({
 							transition: "color 0.15s, background 0.15s, border-color 0.15s",
 						}}
 						onMouseEnter={(e) => {
-							(e.currentTarget as HTMLElement).style.color = hasChanges ? "#fbbf24" : "#d4d4d8";
+							(e.currentTarget as HTMLElement).style.color = hasChanges ? "var(--color-warning-text)" : "var(--color-sched-text-secondary)";
 						}}
 						onMouseLeave={(e) => {
-							(e.currentTarget as HTMLElement).style.color = hasChanges ? "#f59e0b" : "#a1a1aa";
+							(e.currentTarget as HTMLElement).style.color = hasChanges ? "var(--color-warning)" : "var(--color-text-tertiary)";
 						}}
 					>
 						{hasChanges && <RotateCcw size={11} />}
@@ -538,7 +538,7 @@ export default function ReschedulePopup({
 							padding: "0 12px",
 							borderRadius: 6,
 							border: "none",
-							backgroundColor: "#3b82f6",
+							backgroundColor: "var(--color-primary)",
 							color: "#fff",
 							cursor: (!isComplete || conflictState === "checking") ? "default" : "pointer",
 							fontFamily: "inherit",
@@ -548,10 +548,10 @@ export default function ReschedulePopup({
 						}}
 						onMouseEnter={(e) => {
 							if (isComplete && conflictState !== "checking")
-								(e.currentTarget as HTMLElement).style.backgroundColor = "#2563eb";
+								(e.currentTarget as HTMLElement).style.backgroundColor = "var(--color-primary-hover)";
 						}}
 						onMouseLeave={(e) => {
-							(e.currentTarget as HTMLElement).style.backgroundColor = "#3b82f6";
+							(e.currentTarget as HTMLElement).style.backgroundColor = "var(--color-primary)";
 						}}
 					>
 						{conflictState === "checking"

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import FullPopup from "../ui/FullPopup";
 import DatePicker from "../ui/DatePicker";
 import { type CreateQuoteInput } from "../../types/quotes";
@@ -16,9 +16,9 @@ interface ConvertToQuoteProps {
 	onConvert: (quoteData: CreateQuoteInput) => Promise<string>;
 }
 
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors";
 
 export default function ConvertToQuote({
 	isModalOpen,
@@ -131,14 +131,14 @@ export default function ConvertToQuote({
 	const content = (
 		<div className="flex flex-col min-h-0 flex-1">
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-zinc-700 flex-shrink-0">
+			<div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-border flex-shrink-0">
 				<h2 className="text-lg sm:text-xl font-bold text-white whitespace-nowrap">
 					Convert to Quote
 				</h2>
 				<button
 					onClick={() => !isLoading && setIsModalOpen(false)}
 					disabled={isLoading}
-					className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors disabled:opacity-50"
+					className="p-1.5 text-text-tertiary hover:text-white hover:bg-surface rounded transition-colors disabled:opacity-50"
 				>
 					<X size={18} />
 				</button>
@@ -159,7 +159,7 @@ export default function ConvertToQuote({
 						onChange={() => setTitleError(null)}
 					/>
 					{titleError && (
-						<p className="text-red-400 text-xs mt-0.5">
+						<p className="text-error-text text-xs mt-0.5">
 							{titleError}
 						</p>
 					)}
@@ -170,7 +170,7 @@ export default function ConvertToQuote({
 					<label className={LABEL}>Description</label>
 					<textarea
 						placeholder="Quote Description"
-						className="border border-zinc-700 px-2.5 py-1.5 w-full h-20 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors"
+						className="border border-border px-2.5 py-1.5 w-full h-20 rounded bg-base text-white text-sm resize-none focus:border-primary focus:outline-none transition-colors"
 						disabled={isLoading}
 						ref={descRef}
 						defaultValue={request.description}
@@ -231,18 +231,18 @@ export default function ConvertToQuote({
 			</div>
 
 			{/* Footer */}
-			<div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-zinc-700 bg-zinc-900 flex-shrink-0">
+			<div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border bg-base flex-shrink-0">
 				<button
 					onClick={() => setIsModalOpen(false)}
 					disabled={isLoading}
-					className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-zinc-700 bg-transparent text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 hover:border-zinc-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+					className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-transparent text-sm font-medium text-text-tertiary hover:text-text-primary hover:bg-surface hover:border-border-strong transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
 				>
 					Cancel
 				</button>
 				<button
 					onClick={invokeConvert}
 					disabled={isLoading}
-					className="inline-flex items-center h-8 px-4 rounded-md bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed whitespace-nowrap"
+					className="inline-flex items-center h-8 px-4 rounded-md bg-primary-hover hover:bg-primary disabled:bg-surface-raised disabled:text-text-muted text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed whitespace-nowrap"
 				>
 					{isLoading ? "Creating..." : "Create Quote"}
 				</button>

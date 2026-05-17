@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+﻿import type { JSX } from "react";
 import ArrowSvg from "../../assets/icons/arrow-down.svg?react";
 
 interface DropdownProps {
@@ -46,8 +46,8 @@ const Dropdown = ({
 		"w-full",
 		"h-full",
 		"px-2.5",
-		"bg-zinc-900",
-		"text-white",
+		"bg-base",
+		"text-text-primary",
 		"text-sm",
 		"lg:text-base",
 		"border-0",
@@ -56,9 +56,9 @@ const Dropdown = ({
 		"pr-8",
 		"rounded",
 		disabled && "cursor-not-allowed opacity-60",
-		error && "text-red-300",
-		"[&>option]:text-white",
-		"[&>option]:bg-zinc-900",
+		error && "text-error-text",
+		"[&>option]:text-text-primary",
+		"[&>option]:bg-base",
 		className,
 	]
 		.filter(Boolean)
@@ -69,14 +69,14 @@ const Dropdown = ({
 		"w-full",
 		"h-[34px]",
 		"border",
-		error ? "border-red-500" : "border-zinc-700",
+		error ? "border-error" : "border-border",
 		"rounded",
-		"bg-zinc-900",
+		"bg-base",
 		"overflow-hidden",
 		disabled && "opacity-60",
 		"transition-colors",
-		!disabled && !error && "hover:border-zinc-600",
-		!disabled && !error && "focus-within:border-blue-500",
+		!disabled && !error && "hover:border-border-strong",
+		!disabled && !error && "focus-within:border-primary",
 	]
 		.filter(Boolean)
 		.join(" ");

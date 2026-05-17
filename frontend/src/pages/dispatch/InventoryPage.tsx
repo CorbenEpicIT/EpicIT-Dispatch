@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+﻿import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import InventoryItemView from "../../components/inventory/InventoryItemView";
 import LowStockList from "../../components/inventory/LowStockList";
@@ -106,14 +106,14 @@ export default function InventoryPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-full">
-				<LoadSvg className="w-12 h-12 animate-spin text-blue-500" />
+				<LoadSvg className="w-12 h-12 animate-spin text-primary" />
 			</div>
 		);
 	}
 
 	if (error) {
 		return (
-			<div className="flex items-center justify-center h-full text-red-400">
+			<div className="flex items-center justify-center h-full text-error-text">
 				Failed to load inventory: {error.message}
 			</div>
 		);
@@ -126,7 +126,7 @@ export default function InventoryPage() {
 				<PageHeader title="Inventory">
 					<button
 						onClick={() => setIsCreateOpen(true)}
-						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors"
+						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary-hover hover:bg-primary text-sm font-medium text-white transition-colors"
 					>
 						<Plus size={14} />
 						New Item
@@ -210,7 +210,7 @@ export default function InventoryPage() {
 												item.id
 											);
 										}}
-										className="absolute top-2 right-2 p-1.5 rounded-md bg-zinc-800/80 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 opacity-0 group-hover:opacity-100 transition-all"
+										className="absolute top-2 right-2 p-1.5 rounded-md bg-surface/80 text-text-muted hover:text-error-text hover:bg-surface opacity-0 group-hover:opacity-100 transition-all"
 										title="Delete item"
 									>
 										<Trash2 size={14} />
@@ -220,7 +220,7 @@ export default function InventoryPage() {
 						))}
 
 						{filteredItems.length === 0 && (
-							<div className="w-full py-12 text-center text-zinc-500">
+							<div className="w-full py-12 text-center text-text-muted">
 								{search
 									? "No items match your search"
 									: 'No inventory items yet. Click "New Item" to add one.'}
@@ -255,17 +255,17 @@ export default function InventoryPage() {
 			{/* Delete Confirmation */}
 			{deleteConfirmId && (
 				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-					<div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full mx-4">
+					<div className="bg-base border border-border rounded-xl p-6 max-w-sm w-full mx-4">
 						<h3 className="text-lg font-semibold text-white mb-2">
 							Delete Item
 						</h3>
-						<p className="text-sm text-zinc-400 mb-4">
+						<p className="text-sm text-text-tertiary mb-4">
 							Are you sure you want to delete this
 							inventory item? This action can be undone by
 							reactivating the item.
 						</p>
 						{deleteError && (
-							<p className="text-sm text-red-400 mb-3">
+							<p className="text-sm text-error-text mb-3">
 								{deleteError}
 							</p>
 						)}
@@ -275,7 +275,7 @@ export default function InventoryPage() {
 									setDeleteConfirmId(null);
 									setDeleteError(null);
 								}}
-								className="px-3 py-1.5 rounded-md border border-zinc-700 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+								className="px-3 py-1.5 rounded-md border border-border text-sm text-text-tertiary hover:text-white hover:bg-surface transition-colors"
 							>
 								Cancel
 							</button>

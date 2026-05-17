@@ -1,4 +1,4 @@
-import z from "zod";
+﻿import z from "zod";
 import type { ClientSummary, ClientWithPrimaryContact } from "./clients";
 import type { BillingRef } from "./invoices";
 import type { Coordinates } from "./location";
@@ -53,11 +53,11 @@ export const JobStatusLabels: Record<JobStatus, string> = {
 };
 
 export const JobStatusColors: Record<JobStatus, string> = {
-	Unscheduled: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	InProgress: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Completed: "bg-green-500/20 text-green-400 border-green-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Unscheduled: "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+	Scheduled: "bg-primary/20 text-primary-text border-primary/30",
+	InProgress: "bg-warning/20 text-warning-text border-warning/30",
+	Completed: "bg-success/20 text-success-text border-success/30",
+	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
 
 export const VisitStatusValues = [
@@ -85,14 +85,14 @@ export const VisitStatusLabels: Record<VisitStatus, string> = {
 };
 
 export const VisitStatusColors: Record<VisitStatus, string> = {
-	Scheduled:  "bg-zinc-700/40 text-zinc-400 border-zinc-600/40",
-	Driving:    "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-	OnSite:     "bg-purple-500/20 text-purple-400 border-purple-500/30",
-	InProgress: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Paused:     "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+	Scheduled:  "bg-surface-raised/40 text-text-tertiary border-border-strong/40",
+	Driving:    "bg-cyan-500/20 text-info-text border-cyan-500/30",
+	OnSite:     "bg-reviewing/20 text-reviewing-text border-reviewing/30",
+	InProgress: "bg-primary/20 text-primary-text border-primary/30",
+	Paused:     "bg-yellow-500/20 text-warning-text border-yellow-500/30",
 	Delayed:    "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Completed:  "bg-green-500/20 text-green-400 border-green-500/30",
-	Cancelled:  "bg-zinc-700/40 text-zinc-500 border-zinc-600/40",
+	Completed:  "bg-success/20 text-success-text border-success/30",
+	Cancelled:  "bg-surface-raised/40 text-text-muted border-border-strong/40",
 };
 
 export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete" | "delay";
@@ -115,7 +115,7 @@ export const LIFECYCLE_TRANSITIONS: Partial<Record<VisitStatus, LifecycleTransit
 	],
 	InProgress: [
 		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-amber-600 hover:bg-amber-700 text-white", confirmColor: "bg-amber-600 hover:bg-amber-700 text-white" },
-		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-green-700 hover:bg-green-600 text-white", confirmColor: "bg-green-500 hover:bg-green-400 animate-pulse text-white" },
+		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-confirm hover:bg-confirm-hover text-white", confirmColor: "bg-confirm-hover hover:bg-confirm-hover animate-pulse text-white" },
 	],
 };
 

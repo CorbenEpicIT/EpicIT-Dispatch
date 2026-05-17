@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Send, X, Mail, FileText, Loader2, AlertCircle } from "lucide-react";
 import FullPopup from "./FullPopup";
 
@@ -60,16 +60,16 @@ export default function SendDocumentModal({
 	const content = (
 		<div className="flex flex-col">
 			{/* Header */}
-			<div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+			<div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
 				<div className="flex items-center gap-2">
-					<Send size={18} className="text-blue-400" />
+					<Send size={18} className="text-primary-text" />
 					<h2 className="text-base font-semibold text-white">
 						Send {docLabel} to Client
 					</h2>
 				</div>
 				<button
 					onClick={onClose}
-					className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors text-zinc-400 hover:text-white"
+					className="p-1.5 hover:bg-surface rounded-md transition-colors text-text-tertiary hover:text-white"
 				>
 					<X size={16} />
 				</button>
@@ -78,29 +78,29 @@ export default function SendDocumentModal({
 			{/* Body */}
 			<div className="px-6 py-5 space-y-5">
 				{/* Document summary */}
-				<div className="flex items-start gap-3 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-					<FileText size={16} className="text-zinc-400 mt-0.5 flex-shrink-0" />
+				<div className="flex items-start gap-3 p-3 bg-surface/50 rounded-lg border border-border/50">
+					<FileText size={16} className="text-text-tertiary mt-0.5 flex-shrink-0" />
 					<div>
 						<p className="text-sm font-medium text-white">{docNumber}</p>
-						<p className="text-xs text-zinc-400 mt-0.5">
+						<p className="text-xs text-text-tertiary mt-0.5">
 							{docLabel} for{" "}
-							<span className="text-zinc-300">{clientName}</span>
+							<span className="text-text-secondary">{clientName}</span>
 						</p>
 					</div>
 				</div>
 
 				{/* Recipient */}
 				<div>
-					<label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">
+					<label className="block text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
 						Recipient
 					</label>
 					{contactName && (
-						<p className="text-xs text-zinc-500 mb-2">{contactName}</p>
+						<p className="text-xs text-text-muted mb-2">{contactName}</p>
 					)}
 					<div className="relative">
 						<Mail
 							size={14}
-							className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+							className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
 						/>
 						<input
 							type="email"
@@ -110,11 +110,11 @@ export default function SendDocumentModal({
 								setError(null);
 							}}
 							placeholder="recipient@example.com"
-							className="w-full pl-9 pr-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors"
+							className="w-full pl-9 pr-3 py-2.5 bg-surface border border-border rounded-md text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
 						/>
 					</div>
 					{!contactEmail && (
-						<p className="mt-1.5 text-xs text-amber-400 flex items-center gap-1">
+						<p className="mt-1.5 text-xs text-warning-text flex items-center gap-1">
 							<AlertCircle size={12} />
 							No primary contact email on file — enter one to proceed.
 						</p>
@@ -123,26 +123,26 @@ export default function SendDocumentModal({
 
 				{/* Error */}
 				{error && (
-					<div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-md">
-						<AlertCircle size={14} className="text-red-400 flex-shrink-0" />
-						<p className="text-sm text-red-400">{error}</p>
+					<div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-md">
+						<AlertCircle size={14} className="text-error-text flex-shrink-0" />
+						<p className="text-sm text-error-text">{error}</p>
 					</div>
 				)}
 			</div>
 
 			{/* Footer */}
-			<div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800">
+			<div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border-subtle">
 				<button
 					onClick={onClose}
 					disabled={isSending}
-					className="px-4 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
+					className="px-4 py-2 text-sm text-text-secondary hover:text-white hover:bg-surface rounded-md transition-colors disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					onClick={handleSend}
 					disabled={isSending || !emailIsValid}
-					className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+					className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors"
 				>
 					{isSending ? (
 						<Loader2 size={14} className="animate-spin" />

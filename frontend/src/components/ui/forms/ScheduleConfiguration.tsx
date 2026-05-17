@@ -1,4 +1,4 @@
-import type { ZodError } from "zod";
+﻿import type { ZodError } from "zod";
 import {
 	RecurringFrequencyValues,
 	WeekdayValues,
@@ -58,7 +58,7 @@ const MONTH_NAMES = [
 ];
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
 
 export const ScheduleConfiguration = ({
 	startDate,
@@ -98,7 +98,7 @@ export const ScheduleConfiguration = ({
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-xs leading-tight">
+					<p key={idx} className="text-error-text text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -121,7 +121,7 @@ export const ScheduleConfiguration = ({
 
 	return (
 		<div className="space-y-2 lg:space-y-3 pt-2 min-w-0">
-			<div className="p-2.5 lg:p-3 bg-zinc-800 rounded-lg border border-zinc-700">
+			<div className="p-2.5 lg:p-3 bg-surface rounded-lg border border-border">
 				<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-white uppercase tracking-wider">
 					Schedule Configuration
 				</h3>
@@ -130,7 +130,7 @@ export const ScheduleConfiguration = ({
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 mb-2 lg:mb-3 min-w-0">
 					{/* Start Date */}
 					<div className="min-w-0">
-						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 							Start Date *
 						</label>
 						<DatePicker
@@ -146,7 +146,7 @@ export const ScheduleConfiguration = ({
 
 					{/* End Date */}
 					<div className="min-w-0">
-						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 							End Date (Optional)
 						</label>
 						<DatePicker
@@ -162,7 +162,7 @@ export const ScheduleConfiguration = ({
 
 					{/* Generation Window */}
 					<div className="min-w-0">
-						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 							Generation Window (days) *
 						</label>
 						<div className="relative min-w-0">
@@ -199,7 +199,7 @@ export const ScheduleConfiguration = ({
 
 					{/* Min Advance */}
 					<div className="min-w-0">
-						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+						<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 							Min. Advance (days) *
 						</label>
 						<div className="relative min-w-0">
@@ -236,8 +236,8 @@ export const ScheduleConfiguration = ({
 				</div>
 
 				{/* Recurrence Pattern */}
-				<div className="border-t border-zinc-700 pt-2 lg:pt-3">
-					<h4 className="text-[10px] lg:text-xs font-medium mb-2 text-zinc-400 uppercase tracking-wider">
+				<div className="border-t border-border pt-2 lg:pt-3">
+					<h4 className="text-[10px] lg:text-xs font-medium mb-2 text-text-tertiary uppercase tracking-wider">
 						Recurrence Pattern *
 					</h4>
 					<ErrorDisplay path="rule" />
@@ -245,7 +245,7 @@ export const ScheduleConfiguration = ({
 					<div className="grid grid-cols-2 gap-2 lg:gap-3 mb-2 lg:mb-3 min-w-0">
 						{/* Frequency */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 								Frequency *
 							</label>
 							<div className="relative min-w-0">
@@ -296,7 +296,7 @@ export const ScheduleConfiguration = ({
 
 						{/* Interval */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 								Repeat Every *
 							</label>
 							<div className="relative min-w-0">
@@ -329,7 +329,7 @@ export const ScheduleConfiguration = ({
 										disabled={isLoading}
 									/>
 								)}
-								<span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs pointer-events-none">
+								<span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary text-xs pointer-events-none">
 									{getIntervalLabel()}
 								</span>
 							</div>
@@ -340,7 +340,7 @@ export const ScheduleConfiguration = ({
 					{frequency === "weekly" && (
 						<div className="mt-2 lg:mt-3">
 							<div className="flex items-center gap-2 mb-1.5">
-								<label className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 									Repeat On *
 								</label>
 								{showUndo("selectedWeekdays") && (
@@ -353,7 +353,7 @@ export const ScheduleConfiguration = ({
 											)
 										}
 										disabled={isLoading}
-										className="text-zinc-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+										className="text-text-tertiary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										<RotateCcw
 											size={12}
@@ -376,8 +376,8 @@ export const ScheduleConfiguration = ({
 											selectedWeekdays.includes(
 												day
 											)
-												? "bg-blue-600 text-white"
-												: "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+												? "bg-primary-hover text-white"
+												: "bg-surface-raised text-text-secondary hover:bg-zinc-600"
 										}`}
 									>
 										{day}
@@ -390,7 +390,7 @@ export const ScheduleConfiguration = ({
 					{/* Monthly */}
 					{frequency === "monthly" && (
 						<div className="mt-2 lg:mt-3 min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 								Day of Month *
 							</label>
 							<div className="relative min-w-0">
@@ -434,7 +434,7 @@ export const ScheduleConfiguration = ({
 					{frequency === "yearly" && (
 						<div className="grid grid-cols-2 gap-2 lg:gap-3 mt-2 lg:mt-3 min-w-0">
 							<div className="min-w-0">
-								<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 									Month *
 								</label>
 								<div className="relative min-w-0">
@@ -503,7 +503,7 @@ export const ScheduleConfiguration = ({
 							</div>
 
 							<div className="min-w-0">
-								<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 lg:mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
 									Day of Month *
 								</label>
 								<div className="relative min-w-0">

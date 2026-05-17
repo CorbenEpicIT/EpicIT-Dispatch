@@ -1,4 +1,4 @@
-import { MapPin, Clock } from "lucide-react";
+﻿import { MapPin, Clock } from "lucide-react";
 import type { Client } from "../../types/clients";
 
 interface ClientCardProps {
@@ -46,7 +46,7 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 	if (viewMode === "list") {
 		return (
 			<div
-				className="flex items-center gap-4 w-full px-4 py-3 bg-zinc-900 border border-[#3a3a3f] rounded-lg hover:border-zinc-500 cursor-pointer transition-all"
+				className="flex items-center gap-4 w-full px-4 py-3 bg-base border border-border-card rounded-lg hover:border-border-strong cursor-pointer transition-all"
 				onClick={onClick}
 			>
 				<div
@@ -59,13 +59,13 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 					{displayName}
 				</h3>
 
-				<div className="flex items-center gap-1.5 text-sm text-zinc-400 flex-1 min-w-0">
+				<div className="flex items-center gap-1.5 text-sm text-text-tertiary flex-1 min-w-0">
 					<MapPin size={14} className="shrink-0" />
 					<span className="truncate">{client.address || "No address provided"}</span>
 				</div>
 
-				<div className="shrink-0 flex items-center gap-4 text-xs text-zinc-500">
-					<span>Jobs: <span className="text-zinc-300">{jobsCount}</span></span>
+				<div className="shrink-0 flex items-center gap-4 text-xs text-text-muted">
+					<span>Jobs: <span className="text-text-secondary">{jobsCount}</span></span>
 					<div className="flex items-center gap-1">
 						<Clock size={12} />
 						<span>{lastActivityText}</span>
@@ -78,8 +78,8 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 	return (
 		<div
 			className="
-				bg-zinc-900 border border-[#3a3a3f] rounded-lg p-4
-				hover:border-zinc-500 hover:shadow-lg transition-all cursor-pointer
+				bg-base border border-border-card rounded-lg p-4
+				hover:border-border-strong hover:shadow-lg transition-all cursor-pointer
 				w-60 h-40 flex flex-col justify-between
 			"
 			onClick={onClick}
@@ -93,19 +93,19 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 					{displayName}
 				</h3>
 
-				<div className="flex items-start gap-2 text-sm text-zinc-400">
+				<div className="flex items-start gap-2 text-sm text-text-tertiary">
 					<MapPin size={16} className="mt-0.5 flex-shrink-0" />
 					<span className="overflow-hidden text-ellipsis whitespace-nowrap">
 						{client.address || "No address provided"}
 					</span>
 				</div>
 
-				<p className="mt-1 text-xs text-zinc-500">
-					Jobs: <span className="text-zinc-300">{jobsCount}</span>
+				<p className="mt-1 text-xs text-text-muted">
+					Jobs: <span className="text-text-secondary">{jobsCount}</span>
 				</p>
 			</div>
 
-			<div className="w-full h-px bg-zinc-800 mb-2" />
+			<div className="w-full h-px bg-surface mb-2" />
 
 			<div className="flex items-center justify-between">
 				<span
@@ -113,15 +113,15 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 						inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
 						${
 							client.is_active
-								? "bg-green-500/10 text-green-400 border border-green-500/20"
-								: "bg-zinc-800 text-zinc-400 border border-zinc-700"
+								? "bg-success/10 text-success-text border border-green-500/20"
+								: "bg-surface text-text-tertiary border border-border"
 						}
 					`}
 				>
 					{client.is_active ? "Active" : "Inactive"}
 				</span>
 
-				<div className="flex items-center text-xs text-zinc-400">
+				<div className="flex items-center text-xs text-text-tertiary">
 					<Clock size={13} className="mr-1 opacity-70" />
 					{lastActivityText}
 				</div>

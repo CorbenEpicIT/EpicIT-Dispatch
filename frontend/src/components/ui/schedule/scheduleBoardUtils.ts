@@ -19,36 +19,30 @@ export const LEFT_PAD = 5;
 export const RIGHT_PAD = 10;
 
 const TECH_COLOR_PALETTE = [
-	"#3b82f6", // blue-500
-	"#10b981", // emerald-500
-	"#f59e0b", // amber-500
-	"#8b5cf6", // violet-500
-	"#ef4444", // red-500
-	"#06b6d4", // cyan-500
-	"#f97316", // orange-500
-	"#ec4899", // pink-500
-	"#84cc16", // lime-500
-	"#14b8a6", // teal-500
-	"#a855f7", // purple-500
-	"#eab308", // yellow-500
+	"var(--color-sched-tech-1)",
+	"var(--color-sched-tech-2)",
+	"var(--color-sched-tech-3)",
+	"var(--color-sched-tech-4)",
+	"var(--color-sched-tech-5)",
+	"var(--color-sched-tech-6)",
+	"var(--color-sched-tech-7)",
+	"var(--color-sched-tech-8)",
+	"var(--color-sched-tech-9)",
+	"var(--color-sched-tech-10)",
+	"var(--color-sched-tech-11)",
+	"var(--color-sched-tech-12)",
 ];
 
 // ─── Priority color ───────────────────────────────────────────────────────────
 
 export function getPriorityColor(priority?: string): string {
 	switch (priority?.toLowerCase()) {
-		case "emergency":
-			return "#dc2626"; // red-600 — most severe
-		case "urgent":
-			return "#ea580c"; // orange-600
-		case "high":
-			return "#ef4444"; // red-500
-		case "medium":
-			return "#f59e0b"; // amber-500
-		case "low":
-			return "#10b981"; // emerald-500
-		default:
-			return "#3b82f6"; // blue-500
+		case "emergency": return "var(--color-priority-emergency)";
+		case "urgent":    return "var(--color-priority-urgent)";
+		case "high":      return "var(--color-priority-high)";
+		case "medium":    return "var(--color-priority-medium)";
+		case "low":       return "var(--color-priority-low)";
+		default:          return "var(--color-priority-default)";
 	}
 }
 
@@ -476,7 +470,7 @@ export function hhmmToPickerDate(hhmm: string): Date | null {
 export const POPUP_LABEL_STYLE: CSSProperties = {
 	fontSize: 9,
 	fontWeight: 700,
-	color: "#a1a1aa",
+	color: "var(--color-text-tertiary)",
 	textTransform: "uppercase",
 	letterSpacing: "0.06em",
 };
@@ -484,15 +478,15 @@ export const POPUP_LABEL_STYLE: CSSProperties = {
 /** Shared muted text style inside reschedule popups */
 export const POPUP_MUTED_STYLE: CSSProperties = {
 	fontSize: 9,
-	color: "#a1a1aa",
+	color: "var(--color-text-tertiary)",
 };
 
 /** Shared <select> style inside reschedule popups */
 export const POPUP_SELECT_STYLE: CSSProperties = {
-	background: "#27272a",
-	border: "1px solid #3f3f46",
+	background: "var(--color-surface)",
+	border: "1px solid var(--color-border)",
 	borderRadius: 4,
-	color: "#e4e4e7",
+	color: "var(--color-sched-text-primary)",
 	fontSize: 10,
 	padding: "4px 6px",
 	cursor: "pointer",

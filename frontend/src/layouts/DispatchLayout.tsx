@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
+﻿import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect, useState } from "react";
 import {
@@ -58,7 +58,7 @@ export default function DispatchLayout() {
 	const ICON_SIZE = 20;
 
 	return (
-		<div className="flex h-screen bg-zinc-950 text-white">
+		<div className="flex h-screen bg-canvas text-white">
 			{/* SIDEBAR */}
 			<aside
 				onMouseEnter={() => setExpanded(true)}
@@ -164,14 +164,14 @@ export default function DispatchLayout() {
 
 			<div className="flex flex-col flex-1 overflow-hidden">
 				{/* TOP NAV */}
-				<header className="flex justify-between items-center px-6 h-14 bg-zinc-950 border-b border-zinc-900">
+				<header className="flex justify-between items-center px-6 h-14 bg-canvas border-b border-zinc-900">
 					<div className="flex items-center gap-6">
 						<div className="font-semibold text-sm whitespace-nowrap">
 							Dispatch Demo
 						</div>
 						<button
 							onClick={handleBack}
-							className="flex items-center gap-2 text-zinc-400 hover:text-white px-3 py-2 rounded-lg hover:bg-zinc-800 group"
+							className="flex items-center gap-2 text-text-tertiary hover:text-white px-3 py-2 rounded-lg hover:bg-surface group"
 						>
 							<ArrowLeft
 								size={18}
@@ -196,7 +196,7 @@ export default function DispatchLayout() {
 					</div>
 				</header>
 
-				<main className="flex-1 overflow-hidden bg-zinc-950">
+				<main className="flex-1 overflow-hidden bg-canvas">
 					<div className="p-4 md:p-6 h-full overflow-y-auto">
 						<Outlet />
 					</div>

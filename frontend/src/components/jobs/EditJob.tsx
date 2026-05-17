@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import {
 	UpdateJobSchema,
@@ -299,7 +299,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-xs leading-tight">
+					<p key={idx} className="text-error-text text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -314,7 +314,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
 						{/* Name */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Job Name *
 							</label>
 							<div className="relative">
@@ -329,7 +329,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -346,20 +346,20 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 						{/* Client and Priority Row */}
 						<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 							<div className="min-w-0">
-								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Client
 								</label>
-								<div className="border border-zinc-700 px-2.5 pt-1.5 pb-1 w-full rounded bg-zinc-800/50 text-zinc-400 text-sm">
+								<div className="border border-border px-2.5 pt-1.5 pb-1 w-full rounded bg-surface/50 text-text-tertiary text-sm">
 									{job.client?.name ||
 										"Unknown Client"}
 								</div>
-								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+								<p className="text-[10px] text-text-muted mt-0.5 leading-tight">
 									Client cannot be changed
 								</p>
 							</div>
 
 							<div className="min-w-0">
-								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Priority
 								</label>
 								<div className="relative">
@@ -405,7 +405,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 
 						{/* Description */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Description *
 							</label>
 							<div className="relative">
@@ -421,7 +421,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -444,7 +444,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 							className="relative min-w-0"
 							style={{ zIndex: 50 }}
 						>
-							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Address *
 							</label>
 							<div className="relative">
@@ -516,13 +516,13 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 
 						{job.actual_total !== null &&
 							job.actual_total !== undefined && (
-								<div className="p-3 lg:p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+								<div className="p-3 lg:p-4 bg-surface rounded-lg border border-border">
 									<div className="flex items-center justify-between text-sm lg:text-base">
-										<span className="text-zinc-400">
+										<span className="text-text-tertiary">
 											Actual
 											Total:
 										</span>
-										<span className="text-blue-400 font-semibold tabular-nums">
+										<span className="text-primary-text font-semibold tabular-nums">
 											$
 											{Number(
 												job.actual_total
@@ -531,8 +531,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 											)}
 										</span>
 									</div>
-									<div className="flex items-center justify-between text-sm lg:text-base mt-2 pt-2 border-t border-zinc-700">
-										<span className="text-zinc-400">
+									<div className="flex items-center justify-between text-sm lg:text-base mt-2 pt-2 border-t border-border">
+										<span className="text-text-tertiary">
 											Variance:
 										</span>
 										<span
@@ -541,8 +541,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 													job.actual_total
 												) >
 												estimatedTotal
-													? "text-red-400"
-													: "text-green-400"
+													? "text-error-text"
+													: "text-success-text"
 											}`}
 										>
 											{Number(

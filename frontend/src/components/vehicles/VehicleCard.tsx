@@ -1,4 +1,4 @@
-import { User, Pencil } from "lucide-react";
+﻿import { User, Pencil } from "lucide-react";
 import type { Vehicle, VehicleStockItem } from "../../types/vehicles";
 
 interface VehicleCardProps {
@@ -48,35 +48,35 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 	if (viewMode === "list") {
 		return (
 			<div
-				className={`w-full bg-zinc-900 rounded-lg border border-zinc-800 px-4 py-2.5 flex items-center gap-4 motion-safe:transition-colors duration-150 ${
-					isInactive ? "opacity-60" : "hover:border-zinc-600"
+				className={`w-full bg-base rounded-lg border border-border-subtle px-4 py-2.5 flex items-center gap-4 motion-safe:transition-colors duration-150 ${
+					isInactive ? "opacity-60" : "hover:border-border-strong"
 				}`}
 			>
 				{/* Name */}
 				<div className="flex-1 min-w-0">
-					<span className="text-sm font-semibold text-zinc-100 truncate block">{vehicle.name}</span>
+					<span className="text-sm font-semibold text-text-primary truncate block">{vehicle.name}</span>
 				</div>
 
 				{/* Details + plate */}
 				<div className="hidden sm:block flex-1 min-w-0">
-					<div className="text-xs text-zinc-400 line-clamp-2">
+					<div className="text-xs text-text-tertiary line-clamp-2">
 						{vehicleDescParts.length > 0 && vehicleDescParts.join(" · ") + " · "}
 						<span className="font-mono">{vehicle.license_plate ?? "—"}</span>
 					</div>
 				</div>
 
 				{/* Status */}
-				<span className={`text-xs font-medium flex-shrink-0 ${isInactive ? "text-zinc-400" : "text-green-400"}`}>
+				<span className={`text-xs font-medium flex-shrink-0 ${isInactive ? "text-text-tertiary" : "text-success-text"}`}>
 					{vehicle.status === "active" ? "Active" : "Inactive"}
 				</span>
 
 				{/* Tech assignment */}
 				<div className="flex items-center gap-1.5 flex-shrink-0">
-					<User size={12} className="text-zinc-500 flex-shrink-0" />
+					<User size={12} className="text-text-muted flex-shrink-0" />
 					{visibleTechs.length === 0 ? (
-						<span className="text-xs text-zinc-500 italic">No technicians</span>
+						<span className="text-xs text-text-muted italic">No technicians</span>
 					) : (
-						<span className="text-xs text-zinc-400">
+						<span className="text-xs text-text-tertiary">
 							{visibleTechs.map((t) => abbrevName(t.name)).join(" · ")}
 							{overflowCount > 0 ? ` +${overflowCount}` : ""}
 						</span>
@@ -85,7 +85,7 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 
 				{/* Stock */}
 				<div className="flex items-center gap-1 flex-shrink-0">
-					<span className={`text-[11px] ${stockColor === "amber" ? "text-amber-600" : "text-zinc-400"}`}>
+					<span className={`text-[11px] ${stockColor === "amber" ? "text-amber-600" : "text-text-tertiary"}`}>
 						Stock
 					</span>
 					<div
@@ -97,10 +97,10 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 				{/* Edit */}
 				<button
 					onClick={(e) => { e.stopPropagation(); onEdit(vehicle); }}
-					className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900"
+					className="w-7 h-7 flex items-center justify-center bg-surface hover:bg-surface-raised border border-border rounded transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900"
 					aria-label={`Edit ${vehicle.name}`}
 				>
-					<Pencil size={13} className="text-zinc-400" />
+					<Pencil size={13} className="text-text-tertiary" />
 				</button>
 			</div>
 		);
@@ -108,35 +108,35 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 
 	return (
 		<div
-			className={`bg-zinc-900 border border-zinc-800 rounded-lg p-3 motion-safe:transition-colors duration-150 ${
-				isInactive ? "opacity-60" : "hover:border-zinc-600"
+			className={`bg-base border border-border-subtle rounded-lg p-3 motion-safe:transition-colors duration-150 ${
+				isInactive ? "opacity-60" : "hover:border-border-strong"
 			}`}
 		>
 			{/* Row 1: name + status */}
 			<div className="flex items-start justify-between gap-2 mb-1.5">
-				<span className="text-sm font-semibold text-zinc-100 truncate">{vehicle.name}</span>
-				<span className={`text-xs font-medium flex-shrink-0 mt-px ${isInactive ? "text-zinc-400" : "text-green-400"}`}>
+				<span className="text-sm font-semibold text-text-primary truncate">{vehicle.name}</span>
+				<span className={`text-xs font-medium flex-shrink-0 mt-px ${isInactive ? "text-text-tertiary" : "text-success-text"}`}>
 					{vehicle.status === "active" ? "Active" : "Inactive"}
 				</span>
 			</div>
 
 			{/* Row 2: sub-line — type · year make model · PLATE */}
-			<div className="text-xs text-zinc-400 mb-2.5 truncate">
+			<div className="text-xs text-text-tertiary mb-2.5 truncate">
 				{vehicleDescParts.length > 0 && vehicleDescParts.join(" · ") + " · "}
 				<span className="font-mono">{vehicle.license_plate ?? "—"}</span>
 			</div>
 
 			{/* Divider */}
-			<div className="h-px bg-zinc-800 mb-2.5" />
+			<div className="h-px bg-surface mb-2.5" />
 
 			{/* Row 3: tech assignment + stock indicator + edit */}
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-1.5 min-w-0">
-					<User size={12} className="text-zinc-500 flex-shrink-0" />
+					<User size={12} className="text-text-muted flex-shrink-0" />
 					{visibleTechs.length === 0 ? (
-						<span className="text-xs text-zinc-500 italic">No technicians</span>
+						<span className="text-xs text-text-muted italic">No technicians</span>
 					) : (
-						<span className="text-xs text-zinc-400 truncate">
+						<span className="text-xs text-text-tertiary truncate">
 							{visibleTechs
 								.map((t) => abbrevName(t.name))
 								.join(" · ")}
@@ -146,7 +146,7 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 				</div>
 				<div className="flex items-center gap-2 flex-shrink-0">
 					<div className="flex items-center gap-1">
-						<span className={`text-[11px] ${stockColor === "amber" ? "text-amber-600" : "text-zinc-400"}`}>
+						<span className={`text-[11px] ${stockColor === "amber" ? "text-amber-600" : "text-text-tertiary"}`}>
 							Stock
 						</span>
 						<div
@@ -156,10 +156,10 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 					</div>
 					<button
 						onClick={(e) => { e.stopPropagation(); onEdit(vehicle); }}
-						className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900"
+						className="w-7 h-7 flex items-center justify-center bg-surface hover:bg-surface-raised border border-border rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900"
 						aria-label={`Edit ${vehicle.name}`}
 					>
-						<Pencil size={13} className="text-zinc-400" />
+						<Pencil size={13} className="text-text-tertiary" />
 					</button>
 				</div>
 			</div>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+﻿import { useState, useMemo, useEffect, useRef } from "react";
 import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
@@ -18,10 +18,10 @@ function getVehicleStatus(v: Vehicle): VehicleStatus {
 
 function VehicleStatusBadge({ status }: { status: VehicleStatus }) {
 	const styles: Record<VehicleStatus, string> = {
-		unavailable: "bg-zinc-700 text-zinc-400",
-		"in-use":    "bg-amber-500/10 text-amber-400",
-		stocked:     "bg-green-500/10 text-green-400",
-		available:   "bg-zinc-800 text-zinc-400",
+		unavailable: "bg-surface-raised text-text-tertiary",
+		"in-use":    "bg-warning/10 text-warning-text",
+		stocked:     "bg-success/10 text-success-text",
+		available:   "bg-surface text-text-tertiary",
 	};
 	const labels: Record<VehicleStatus, string> = {
 		unavailable: "Unavailable",
@@ -62,9 +62,9 @@ function VehicleList({
 	if (vehicles.length === 0) {
 		return (
 			<div className="py-10 flex flex-col items-center gap-3">
-				<Truck size={28} className="text-zinc-600" />
+				<Truck size={28} className="text-text-faint" />
 				<p className="text-sm font-medium text-white">No vehicles available</p>
-				<p className="text-xs text-zinc-500 text-center px-6">
+				<p className="text-xs text-text-muted text-center px-6">
 					Contact your dispatcher to get a vehicle assigned.
 				</p>
 			</div>
@@ -82,23 +82,23 @@ function VehicleList({
 
 				return (
 					<div key={v.id}>
-						<div className={`flex items-center gap-3 px-4 py-3 border-b border-zinc-800/60 ${isCurrent ? "bg-blue-500/[0.07] border-l-2 border-l-blue-500" : ""}`}>
+						<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 ${isCurrent ? "bg-primary/[0.07] border-l-2 border-l-blue-500" : ""}`}>
 							<div className="flex-1 min-w-0">
 								<p className="text-sm font-semibold text-white truncate">{v.name}</p>
 								{subtitle && (
-									<p className={`text-xs mt-0.5 truncate ${isCurrent ? "text-blue-400/60" : "text-zinc-500"}`}>{subtitle}</p>
+									<p className={`text-xs mt-0.5 truncate ${isCurrent ? "text-primary-text/60" : "text-text-muted"}`}>{subtitle}</p>
 								)}
 							</div>
 							<VehicleStatusBadge status={status} />
 							{isCurrent ? (
-								<span className="text-xs font-medium px-3 py-1.5 rounded-lg bg-zinc-700 text-zinc-400 shrink-0">
+								<span className="text-xs font-medium px-3 py-1.5 rounded-lg bg-surface-raised text-text-tertiary shrink-0">
 									Current
 								</span>
 							) : status === "in-use" ? (
 								<button
 									onClick={() => onRideAlongRequest(v.id)}
 									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-white transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
 									Select
 								</button>
@@ -106,14 +106,14 @@ function VehicleList({
 								<button
 									onClick={() => onSelect(v.id)}
 									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-white transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
 									Select
 								</button>
 							) : null}
 						</div>
 						{isRideAlongPending && (
-							<div className="px-4 py-3 bg-amber-500/5 border-b border-amber-500/20 flex items-center justify-between gap-3">
+							<div className="px-4 py-3 bg-amber-500/5 border-b border-warning/20 flex items-center justify-between gap-3">
 								<p className="text-xs text-amber-300">
 									Ride along with{" "}
 									{(v.current_technicians ?? []).map((t) => t.name).join(", ")}?
@@ -122,14 +122,14 @@ function VehicleList({
 									<button
 										onClick={onRideAlongCancel}
 										disabled={isPending}
-										className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 py-2.5 px-1"
+										className="text-xs text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-50 py-2.5 px-1"
 									>
 										Cancel
 									</button>
 									<button
 										onClick={() => onRideAlongConfirm(v.id)}
 										disabled={isPending}
-										className="text-xs font-medium px-3 py-2.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+										className="text-xs font-medium px-3 py-2.5 rounded-lg bg-warning/20 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50 disabled:pointer-events-none"
 									>
 										Confirm
 									</button>
@@ -142,7 +142,7 @@ function VehicleList({
 			{onCancel && (
 				<button
 					onClick={onCancel}
-					className="w-full py-3 text-sm text-zinc-500 hover:text-zinc-300 transition-colors text-center border-t border-zinc-800"
+					className="w-full py-3 text-sm text-text-muted hover:text-text-secondary transition-colors text-center border-t border-border-subtle"
 				>
 					Cancel
 				</button>
@@ -169,21 +169,21 @@ function StockItemRow({
 	const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
 	const unit = formatUnit(item.inventory_item.unit);
 
-	const qtyColor = isEmpty ? "text-red-400" : isLow ? "text-amber-400" : "text-white";
+	const qtyColor = isEmpty ? "text-error-text" : isLow ? "text-warning-text" : "text-white";
 
 	return (
-		<div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800/60 last:border-0">
+		<div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0">
 			<div className="flex-1 min-w-0">
 				<p className="text-sm text-white truncate" title={item.inventory_item.name}>
 					{item.inventory_item.name}
 				</p>
 				<div className="flex items-center gap-2 mt-0.5">
 					{item.inventory_item.category && (
-						<span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">
+						<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-tertiary rounded">
 							{item.inventory_item.category}
 						</span>
 					)}
-					<span className="text-[10px] text-zinc-600">
+					<span className="text-[10px] text-text-faint">
 						Min: {Number(item.qty_min)} {unit}
 					</span>
 				</div>
@@ -192,14 +192,14 @@ function StockItemRow({
 				<p className={`text-base font-semibold tabular-nums ${qtyColor}`}>
 					{Number(item.qty_on_hand)}
 				</p>
-				<p className="text-[10px] text-zinc-600">{unit}</p>
+				<p className="text-[10px] text-text-faint">{unit}</p>
 			</div>
 			{(isEmpty || isLow) && (
 				<button
 					onClick={() => onRestock(item)}
 					title="Request restock"
 					aria-label={`Request restock for ${item.inventory_item.name}`}
-					className="flex items-center justify-center w-11 h-11 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors shrink-0"
+					className="flex items-center justify-center w-11 h-11 rounded-lg bg-warning/10 text-warning-text hover:bg-warning/20 transition-colors shrink-0"
 				>
 					<RotateCcw size={14} />
 				</button>
@@ -212,8 +212,8 @@ function StockItemRow({
 
 function CategoryHeader({ label }: { label: string }) {
 	return (
-		<div className="px-4 py-1.5 bg-zinc-900/80 border-b border-zinc-800/60">
-			<span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+		<div className="px-4 py-1.5 bg-base/80 border-b border-border-subtle/60">
+			<span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
 				{label}
 			</span>
 		</div>
@@ -225,8 +225,8 @@ function CategoryHeader({ label }: { label: string }) {
 function VehicleCardSkeleton() {
 	return (
 		<div className="px-4 py-4 animate-pulse">
-			<div className="h-4 w-36 bg-zinc-800 rounded mb-2" />
-			<div className="h-3 w-28 bg-zinc-800/60 rounded" />
+			<div className="h-4 w-36 bg-surface rounded mb-2" />
+			<div className="h-3 w-28 bg-surface/60 rounded" />
 		</div>
 	);
 }
@@ -434,30 +434,30 @@ export default function TechnicianVehiclePage() {
 		const pending = vehicles.find((v) => v.id === switchPendingId);
 		return (
 			<div className="max-w-lg mx-auto space-y-4">
-				<div className="rounded-xl border border-zinc-800 overflow-hidden">
-					<div className="px-4 py-3 bg-zinc-900/60 border-b border-zinc-800 flex items-center gap-2">
-						<Truck size={15} className="text-zinc-500" />
-						<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Switch Vehicle</span>
+				<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
+						<Truck size={15} className="text-text-muted" />
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Switch Vehicle</span>
 					</div>
 					<div className="px-4 py-5">
-						<p className="text-sm text-zinc-300 mb-1">
+						<p className="text-sm text-text-secondary mb-1">
 							Switch to <span className="text-white font-medium">{pending?.name}</span>?
 						</p>
-						<p className="text-xs text-zinc-500 mb-4">
+						<p className="text-xs text-text-muted mb-4">
 							Parts tracked today stay on record — switching won't remove them.
 						</p>
 						<div className="flex gap-2">
 							<button
 								onClick={() => setSwitchPendingId(null)}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors disabled:opacity-50"
 							>
 								Cancel
 							</button>
 							<button
 								onClick={handleConfirmSwitch}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium transition-colors disabled:opacity-50"
 							>
 								{setVehicle.isPending ? "Switching…" : "Switch"}
 							</button>
@@ -471,10 +471,10 @@ export default function TechnicianVehiclePage() {
 	return (
 		<div className="max-w-lg mx-auto space-y-4">
 			{/* ── Vehicle card ──────────────────────────────────────────────────── */}
-			<div className="rounded-xl border border-zinc-800 overflow-hidden">
-				<div className="px-4 py-3 bg-zinc-900/60 border-b border-zinc-800 flex items-center gap-2">
-					<Truck size={15} className="text-zinc-500" />
-					<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Vehicle</span>
+			<div className="rounded-xl border border-border-subtle overflow-hidden">
+				<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
+					<Truck size={15} className="text-text-muted" />
+					<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Vehicle</span>
 				</div>
 
 				{isPageLoading ? (
@@ -482,13 +482,13 @@ export default function TechnicianVehiclePage() {
 				) : !currentVehicle ? (
 					/* ── State A: No vehicle selected ──────────────────────────── */
 					<>
-						<div className="px-4 py-5 flex items-center gap-3 border-b border-zinc-800">
-							<div className="flex items-center justify-center w-9 h-9 rounded-lg bg-zinc-800 shrink-0">
-								<Truck size={17} className="text-zinc-500" />
+						<div className="px-4 py-5 flex items-center gap-3 border-b border-border-subtle">
+							<div className="flex items-center justify-center w-9 h-9 rounded-lg bg-surface shrink-0">
+								<Truck size={17} className="text-text-muted" />
 							</div>
 							<div>
 								<p className="text-sm font-medium text-white">No vehicle selected</p>
-								<p className="text-xs text-zinc-500 mt-0.5">Select a vehicle to begin your day</p>
+								<p className="text-xs text-text-muted mt-0.5">Select a vehicle to begin your day</p>
 							</div>
 						</div>
 						<VehicleList
@@ -517,17 +517,17 @@ export default function TechnicianVehiclePage() {
 				) : showCheckOutConfirm ? (
 					/* ── Check-out confirmation ─────────────────────────────────── */
 					<div className="px-4 py-4">
-						<p className="text-sm text-zinc-300 mb-1">
+						<p className="text-sm text-text-secondary mb-1">
 							Check out of <span className="text-white font-medium">{currentVehicle.name}</span>?
 						</p>
-						<p className="text-xs text-zinc-500 mb-4">
+						<p className="text-xs text-text-muted mb-4">
 							Your stock records will remain. You can select a vehicle again tomorrow.
 						</p>
 						<div className="flex gap-2">
 							<button
 								onClick={() => setShowCheckOutConfirm(false)}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors disabled:opacity-50"
 							>
 								Cancel
 							</button>
@@ -551,11 +551,11 @@ export default function TechnicianVehiclePage() {
 									const subtitleParts = [cv.color, cv.type].filter(Boolean).join(" ");
 									const subtitle = cv.license_plate ? `${subtitleParts} · ${cv.license_plate}` : subtitleParts;
 									return subtitle ? (
-										<p className="text-sm text-zinc-500 mt-0.5 truncate">{subtitle}</p>
+										<p className="text-sm text-text-muted mt-0.5 truncate">{subtitle}</p>
 									) : null;
 								})()}
 								{currentVehicle.notes && (
-									<p className="text-xs text-zinc-500 mt-2 leading-relaxed line-clamp-3">
+									<p className="text-xs text-text-muted mt-2 leading-relaxed line-clamp-3">
 										{currentVehicle.notes}
 									</p>
 								)}
@@ -563,13 +563,13 @@ export default function TechnicianVehiclePage() {
 							<div className="flex items-center gap-3 shrink-0">
 								<button
 									onClick={() => setShowVehicleList(true)}
-									className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
+									className="text-sm text-primary-text hover:text-primary-text font-medium transition-colors"
 								>
 									Switch
 								</button>
 								<button
 									onClick={() => setShowCheckOutConfirm(true)}
-									className="text-sm text-zinc-500 hover:text-zinc-300 font-medium transition-colors"
+									className="text-sm text-text-muted hover:text-text-secondary font-medium transition-colors"
 								>
 									Check out
 								</button>
@@ -581,45 +581,45 @@ export default function TechnicianVehiclePage() {
 
 			{/* ── Inventory ─────────────────────────────────────────────────────── */}
 			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
-				<div className="rounded-xl border border-zinc-800 overflow-hidden">
-					<div className="px-4 py-3 bg-zinc-900/60 border-b border-zinc-800 flex items-center gap-2">
-						<Package size={15} className="text-zinc-500" />
-						<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Inventory</span>
+				<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
+						<Package size={15} className="text-text-muted" />
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Inventory</span>
 					</div>
 
 					{/* Out of stock bar */}
 					{outOfStockItems.length > 0 && (
-						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-red-500/5 text-red-400 text-xs font-medium">
+						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-red-500/5 text-error-text text-xs font-medium">
 							<PackageX size={13} aria-hidden="true" />
 							{outOfStockItems.length} item{outOfStockItems.length > 1 ? "s" : ""} out of stock
 						</div>
 					)}
 					{/* Low stock bar */}
 					{lowStockItems.length > 0 && (
-						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-amber-500/5 text-amber-400 text-xs font-medium">
+						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-amber-500/5 text-warning-text text-xs font-medium">
 							<AlertTriangle size={13} aria-hidden="true" />
 							{lowStockItems.length} item{lowStockItems.length > 1 ? "s" : ""} low stock
 						</div>
 					)}
 
 					{/* Search + filter + sort toolbar */}
-					<div className="px-4 py-2 border-b border-zinc-800 space-y-2">
+					<div className="px-4 py-2 border-b border-border-subtle space-y-2">
 						<div className="flex items-center gap-2">
 							<div className="relative flex-1">
-								<Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
+								<Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
 								<input
 									type="text"
 									placeholder="Search items..."
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									aria-label="Search inventory items"
-									className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg pl-8 pr-8 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+									className="w-full bg-surface/60 border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong"
 								/>
 								{searchQuery && (
 									<button
 										onClick={() => setSearchQuery("")}
 										aria-label="Clear search"
-										className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+										className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
 									>
 										<X size={13} />
 									</button>
@@ -632,8 +632,8 @@ export default function TechnicianVehiclePage() {
 									title="Filter by category"
 									className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
 										filtersActive
-											? "bg-blue-600/20 border-blue-600/40 text-blue-300"
-											: "bg-zinc-800/60 border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
+											? "bg-primary-hover/20 border-blue-600/40 text-primary-text"
+											: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
 									}`}
 								>
 									<SlidersHorizontal size={13} />
@@ -645,8 +645,8 @@ export default function TechnicianVehiclePage() {
 								title={sortMode === "name" ? "Sort by category" : "Sort by name"}
 								className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
 									sortMode === "category"
-										? "bg-blue-600/20 border-blue-600/40 text-blue-300"
-										: "bg-zinc-800/60 border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
+										? "bg-primary-hover/20 border-blue-600/40 text-primary-text"
+										: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
 								}`}
 							>
 								<ArrowUpDown size={13} />
@@ -664,8 +664,8 @@ export default function TechnicianVehiclePage() {
 											onClick={() => toggleCategory(cat)}
 											className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
 												active
-													? "bg-blue-600/20 border-blue-600/40 text-blue-300"
-													: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+													? "bg-primary-hover/20 border-blue-600/40 text-primary-text"
+													: "bg-surface border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
 											}`}
 										>
 											{cat}
@@ -675,7 +675,7 @@ export default function TechnicianVehiclePage() {
 								{filtersActive && (
 									<button
 										onClick={() => setSelectedCategories([])}
-										className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full text-zinc-500 hover:text-zinc-300 transition-colors"
+										className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full text-text-muted hover:text-text-secondary transition-colors"
 									>
 										<X size={10} />
 										Clear
@@ -687,7 +687,7 @@ export default function TechnicianVehiclePage() {
 
 					{/* Stock list */}
 					{sortedItems.length === 0 ? (
-						<p className="px-4 py-8 text-center text-sm text-zinc-600">
+						<p className="px-4 py-8 text-center text-sm text-text-faint">
 							{searchQuery && filtersActive
 							? `No items match "${searchQuery}" in selected categories`
 							: searchQuery
@@ -719,17 +719,17 @@ export default function TechnicianVehiclePage() {
 
 			{/* Toasts */}
 			{restockSuccess && (
-				<div role="status" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-white shadow-xl whitespace-nowrap">
+				<div role="status" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-surface border border-border rounded-lg px-4 py-2 text-sm text-white shadow-xl whitespace-nowrap">
 					Restock requested for {restockSuccess}
 				</div>
 			)}
 			{restockError && (
-				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-950 border border-red-800 rounded-lg px-4 py-2 text-sm text-red-300 shadow-xl whitespace-nowrap">
+				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-950 border border-red-800 rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
 					{restockError}
 				</div>
 			)}
 			{vehicleError && (
-				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-950 border border-red-800 rounded-lg px-4 py-2 text-sm text-red-300 shadow-xl whitespace-nowrap">
+				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-950 border border-red-800 rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
 					{vehicleError}
 				</div>
 			)}

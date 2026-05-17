@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { Calendar, ChevronDown, Check, X } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { useSearchParams } from "react-router-dom";
@@ -182,8 +182,8 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 				aria-haspopup="listbox"
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive
-						? "bg-blue-950 border-blue-500 text-blue-300"
-						: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white"
+						? "bg-blue-950 border-primary text-primary-text"
+						: "bg-surface border-border text-text-tertiary hover:text-white"
 				}`}
 			>
 				<Calendar size={14} className="shrink-0" />
@@ -206,7 +206,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 				<div
 					role="listbox"
 					aria-label="Date range"
-					className={`absolute right-0 bg-zinc-950 border border-zinc-600 rounded-lg shadow-2xl shadow-black/50 z-50 overflow-hidden ${
+					className={`absolute right-0 bg-canvas border border-border-strong rounded-lg shadow-2xl shadow-black/50 z-50 overflow-hidden ${
 						openAbove ? "bottom-full mb-1.5" : "top-full mt-1.5"
 					} ${tempOption === "custom" ? "w-72" : "w-44"}`}
 				>
@@ -220,8 +220,8 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								onClick={() => handlePresetClick(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 									isOptionHighlighted(option.value)
-										? "bg-blue-950/60 text-blue-300"
-										: "text-zinc-300 hover:bg-zinc-800/70"
+										? "bg-blue-950/60 text-primary-text"
+										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
 								<span>{option.label}</span>
@@ -233,7 +233,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 					</div>
 
 					{tempOption === "custom" && (
-						<div className="border-t border-zinc-700 px-3 py-3">
+						<div className="border-t border-border px-3 py-3">
 							<div className="grid grid-cols-2 gap-2 mb-3">
 								{/* Start box */}
 								<div
@@ -241,17 +241,17 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 									onClick={() => handleFieldClick("start")}
 									className={`flex items-center justify-between px-2.5 py-2 rounded-md border cursor-pointer transition-colors ${
 										editingField === "start"
-											? "border-blue-500 bg-zinc-900"
-											: "border-zinc-700 bg-zinc-900 hover:border-zinc-600"
+											? "border-primary bg-base"
+											: "border-border bg-base hover:border-border-strong"
 									}`}
 								>
 									<div className="min-w-0 flex-1">
-										<p className="text-xs text-zinc-400 mb-0.5">Start time</p>
+										<p className="text-xs text-text-tertiary mb-0.5">Start time</p>
 										<p className="text-xs text-white">
 											{tempStart ? format(tempStart, "MMM d, yyyy") : "—"}
 										</p>
 									</div>
-									<Calendar size={13} className="shrink-0 ml-1.5 text-zinc-500" />
+									<Calendar size={13} className="shrink-0 ml-1.5 text-text-muted" />
 								</div>
 
 								{/* End box */}
@@ -260,17 +260,17 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 									onClick={() => handleFieldClick("end")}
 									className={`flex items-center justify-between px-2.5 py-2 rounded-md border cursor-pointer transition-colors ${
 										editingField === "end"
-											? "border-blue-500 bg-zinc-900"
-											: "border-zinc-700 bg-zinc-900 hover:border-zinc-600"
+											? "border-primary bg-base"
+											: "border-border bg-base hover:border-border-strong"
 									}`}
 								>
 									<div className="min-w-0 flex-1">
-										<p className="text-xs text-zinc-400 mb-0.5">End time</p>
+										<p className="text-xs text-text-tertiary mb-0.5">End time</p>
 										<p className="text-xs text-white">
 											{tempEnd ? format(tempEnd, "MMM d, yyyy") : "—"}
 										</p>
 									</div>
-									<Calendar size={13} className="shrink-0 ml-1.5 text-zinc-500" />
+									<Calendar size={13} className="shrink-0 ml-1.5 text-text-muted" />
 								</div>
 							</div>
 
@@ -278,7 +278,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								type="button"
 								onClick={handleApply}
 								disabled={!tempStart || !tempEnd}
-								className="w-full h-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors text-white cursor-pointer"
+								className="w-full h-8 bg-primary-hover hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors text-white cursor-pointer"
 							>
 								Apply
 							</button>
@@ -300,7 +300,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 						zIndex: 60,
 					}}
 					onMouseDown={(e) => e.preventDefault()}
-					className="bg-zinc-950 border border-zinc-700 rounded-lg shadow-2xl shadow-black/60 p-3"
+					className="bg-canvas border border-border rounded-lg shadow-2xl shadow-black/60 p-3"
 				>
 					<DayPicker
 						mode="single"
@@ -316,23 +316,23 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 
 const DAY_PICKER_DARK_CSS = `
 .date-picker-dark {
-  --rdp-accent-color: #3b82f6;
-  --rdp-accent-background-color: #1e40af;
-  --rdp-today-color: #3b82f6;
-  color: #e4e4e7;
+  --rdp-accent-color: var(--color-primary);
+  --rdp-accent-background-color: var(--color-primary-active);
+  --rdp-today-color: var(--color-primary);
+  color: var(--color-text-on-surface);
   border-radius: 4px;
   pointer-events: auto !important;
   font-size: 0.75rem;
 }
 .date-picker-dark .rdp-month_caption {
-  color: #e4e4e7;
+  color: var(--color-text-on-surface);
   font-weight: 600;
   padding: 0 0 0 0.5rem;
   margin-bottom: 0.15rem;
   font-size: 0.8rem;
 }
 .date-picker-dark .rdp-weekday {
-  color: #a1a1aa;
+  color: var(--color-text-tertiary);
   font-size: 0.65rem;
   padding: 0.05rem 0.1rem;
   width: 1.8rem;
@@ -350,15 +350,15 @@ const DAY_PICKER_DARK_CSS = `
   line-height: 1rem;
 }
 .date-picker-dark .rdp-day_button:hover:not([disabled]):not(.rdp-selected .rdp-day_button) {
-  background-color: #27272a;
+  background-color: var(--color-surface);
 }
 .date-picker-dark .rdp-selected .rdp-day_button {
-  background-color: #3b82f6;
+  background-color: var(--color-primary);
   color: white;
-  border-color: #3b82f6;
+  border-color: var(--color-primary);
 }
 .date-picker-dark .rdp-today:not(.rdp-outside) .rdp-day_button {
-  color: #3b82f6;
+  color: var(--color-primary);
   font-weight: 600;
 }
 .date-picker-dark .rdp-day_button:disabled { opacity: 0.25; }
@@ -366,12 +366,12 @@ const DAY_PICKER_DARK_CSS = `
 .date-picker-dark .rdp-button_previous {
   padding: 0.15rem;
   border-radius: 4px;
-  color: #e4e4e7;
+  color: var(--color-text-on-surface);
   width: 1.4rem;
   height: 1.4rem;
 }
 .date-picker-dark .rdp-button_next:hover,
-.date-picker-dark .rdp-button_previous:hover { background-color: #27272a; }
+.date-picker-dark .rdp-button_previous:hover { background-color: var(--color-surface); }
 .date-picker-dark .rdp-months { padding: 0.25rem; }
 .date-picker-dark .rdp-month { width: 100%; }
 .date-picker-dark .rdp-caption_label { font-size: 0.8rem; }

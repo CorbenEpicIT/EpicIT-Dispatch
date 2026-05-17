@@ -46,8 +46,8 @@ export default function OccurrenceClickPopup({
 			ref={ref}
 			style={{
 				zIndex: 1000,
-				backgroundColor: "#18181b",
-				border: "1px solid #3f3f46",
+				backgroundColor: "var(--color-popup-bg)",
+				border: "1px solid var(--color-border)",
 				borderRadius: 8,
 				boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
 				padding: "10px 12px",
@@ -70,7 +70,7 @@ export default function OccurrenceClickPopup({
 						style={{
 							fontSize: 12,
 							fontWeight: 700,
-							color: "#f4f4f5",
+							color: "var(--color-sched-text-primary)",
 							lineHeight: 1.3,
 							marginBottom: 1,
 						}}
@@ -80,7 +80,7 @@ export default function OccurrenceClickPopup({
 					<div
 						style={{
 							fontSize: 10,
-							color: "#a1a1aa",
+							color: "var(--color-text-tertiary)",
 							whiteSpace: "nowrap",
 							overflow: "hidden",
 							textOverflow: "ellipsis",
@@ -94,7 +94,7 @@ export default function OccurrenceClickPopup({
 					onClick={onClose}
 					style={{
 						fontSize: 16,
-						color: "#52525b",
+						color: "var(--color-text-faint)",
 						background: "none",
 						border: "none",
 						cursor: "pointer",
@@ -104,11 +104,11 @@ export default function OccurrenceClickPopup({
 					}}
 					onMouseEnter={(e) =>
 						((e.currentTarget as HTMLElement).style.color =
-							"#a1a1aa")
+							"var(--color-text-tertiary)")
 					}
 					onMouseLeave={(e) =>
 						((e.currentTarget as HTMLElement).style.color =
-							"#52525b")
+							"var(--color-text-faint)")
 					}
 				>
 					×
@@ -125,7 +125,7 @@ export default function OccurrenceClickPopup({
 					borderRadius: 10,
 					marginBottom: 6,
 					backgroundColor: "rgba(139,92,246,0.15)",
-					color: "#a78bfa",
+					color: "var(--color-reviewing-text)",
 					textTransform: "uppercase",
 					letterSpacing: "0.04em",
 				}}
@@ -134,7 +134,7 @@ export default function OccurrenceClickPopup({
 			</span>
 
 			{/* Time */}
-			<div style={{ fontSize: 10, color: "#d4d4d8", marginBottom: 10 }}>
+			<div style={{ fontSize: 10, color: "var(--color-sched-text-secondary)", marginBottom: 10 }}>
 				{startLabel} – {endLabel}
 			</div>
 
@@ -147,7 +147,7 @@ export default function OccurrenceClickPopup({
 						padding: "6px 0",
 						fontSize: 11,
 						fontWeight: 600,
-						color: "#a78bfa",
+						color: "var(--color-reviewing-text)",
 						backgroundColor: "rgba(139,92,246,0.12)",
 						border: "1px solid rgba(139,92,246,0.25)",
 						borderRadius: 5,
@@ -177,7 +177,7 @@ export default function OccurrenceClickPopup({
 						fontSize: 11,
 						fontWeight: 600,
 						color: "#fff",
-						backgroundColor: "#3b82f6",
+						backgroundColor: "var(--color-primary)",
 						border: "none",
 						borderRadius: 5,
 						cursor: isGenerating ? "default" : "pointer",
@@ -193,12 +193,12 @@ export default function OccurrenceClickPopup({
 						if (!isGenerating)
 							(
 								e.currentTarget as HTMLElement
-							).style.backgroundColor = "#2563eb";
+							).style.backgroundColor = "var(--color-primary-hover)";
 					}}
 					onMouseLeave={(e) => {
 						(
 							e.currentTarget as HTMLElement
-						).style.backgroundColor = "#3b82f6";
+						).style.backgroundColor = "var(--color-primary)";
 					}}
 				>
 					{isGenerating ? (
@@ -224,9 +224,9 @@ export default function OccurrenceClickPopup({
 							width: 28,
 							flexShrink: 0,
 							padding: 0,
-							color: "#71717a",
-							backgroundColor: "#27272a",
-							border: "1px solid #3f3f46",
+							color: "var(--color-text-muted)",
+							backgroundColor: "var(--color-surface)",
+							border: "1px solid var(--color-border)",
 							borderRadius: 5,
 							cursor: "pointer",
 							transition: "color 0.1s, background-color 0.1s",
@@ -234,18 +234,18 @@ export default function OccurrenceClickPopup({
 						onMouseEnter={(e) => {
 							(
 								e.currentTarget as HTMLElement
-							).style.color = "#d4d4d8";
+							).style.color = "var(--color-sched-text-secondary)";
 							(
 								e.currentTarget as HTMLElement
-							).style.backgroundColor = "#3f3f46";
+							).style.backgroundColor = "var(--color-border)";
 						}}
 						onMouseLeave={(e) => {
 							(
 								e.currentTarget as HTMLElement
-							).style.color = "#71717a";
+							).style.color = "var(--color-text-muted)";
 							(
 								e.currentTarget as HTMLElement
-							).style.backgroundColor = "#27272a";
+							).style.backgroundColor = "var(--color-surface)";
 						}}
 					>
 						<Clock size={12} />

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+﻿import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import DynamicMap from "../../components/ui/maps/DynamicMap";
@@ -33,7 +33,7 @@ export default function FullMapPage() {
 
 			<button
 				onClick={() => nav("/dispatch/map")}
-				className="absolute top-4 left-4 z-10 flex items-center justify-center w-9 h-9 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-md hover:bg-zinc-800 transition-colors"
+				className="absolute top-4 left-4 z-10 flex items-center justify-center w-9 h-9 bg-base/90 backdrop-blur border border-border rounded-md hover:bg-surface transition-colors"
 				title="Back to dashboard map"
 			>
 				<ArrowLeft size={16} />
@@ -41,7 +41,7 @@ export default function FullMapPage() {
 
 			<button
 				onClick={() => setPanelOpen((v) => !v)}
-				className="absolute top-4 right-4 z-10 flex items-center justify-center w-9 h-9 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-md hover:bg-zinc-800 transition-colors"
+				className="absolute top-4 right-4 z-10 flex items-center justify-center w-9 h-9 bg-base/90 backdrop-blur border border-border rounded-md hover:bg-surface transition-colors"
 				title={panelOpen ? "Hide panel" : "Show panel"}
 			>
 				{panelOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}

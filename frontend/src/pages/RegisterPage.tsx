@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { registerOrganization } from "../api/organizations";
 
@@ -74,7 +74,7 @@ export default function RegisterPage() {
 				onChange={(e) => { onChange(e.target.value); setErrorMessage(""); }}
 				placeholder={placeholder}
 				required={required}
-				className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+				className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 			/>
 		</div>
 	);
@@ -102,7 +102,7 @@ export default function RegisterPage() {
 							<select
 								value={orgTimezone}
 								onChange={(e) => setOrgTimezone(e.target.value)}
-								className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 							>
 								<option value="America/New_York">Eastern (ET)</option>
 								<option value="America/Chicago">Central (CT)</option>
@@ -128,7 +128,7 @@ export default function RegisterPage() {
 
 						<button
 							type="submit"
-							className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition mt-2"
+							className="w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition mt-2"
 						>
 							Create Account
 						</button>
@@ -142,7 +142,7 @@ export default function RegisterPage() {
 
 				{status === "loading" && (
 					<div className="text-center py-6">
-						<div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+						<div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
 						<h2 className="text-xl font-semibold text-gray-800">Setting up your account...</h2>
 						<p className="text-gray-500 mt-2 text-sm">Just a moment.</p>
 					</div>
@@ -160,7 +160,7 @@ export default function RegisterPage() {
 						<p className="text-gray-500 mt-2 text-sm">Email verification is temporarily disabled while we await sender approval. You can sign in directly.</p>
 						<button
 							onClick={() => navigate("/login")}
-							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+							className="mt-6 w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
 						>
 							Go to Login
 						</button>
@@ -178,7 +178,7 @@ export default function RegisterPage() {
 						<p className="text-gray-500 mt-2 text-sm">{errorMessage}</p>
 						<button
 							onClick={() => { setStatus("input"); setErrorMessage(""); }}
-							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+							className="mt-6 w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
 						>
 							Try Again
 						</button>

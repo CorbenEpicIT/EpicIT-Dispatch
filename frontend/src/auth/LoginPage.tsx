@@ -1,4 +1,4 @@
-import { useNavigate, Link } from "react-router-dom";
+﻿import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "./authStore";
 import { useRef, useState } from "react";
 import { loginCall, verifyOTPCall } from "../api/authenticate.ts"
@@ -150,7 +150,7 @@ export default function LoginPage() {
 						</div>
 					<button
 						type="submit"
-						className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+						className="w-full bg-primary-hover text-white py-2 rounded hover:bg-blue-700"
 					>
 						Verify OTP
 					</button>
@@ -190,14 +190,14 @@ export default function LoginPage() {
 				<select
 					value={role}
 					onChange={(e) => setRole(e.target.value as "dispatcher" | "technician")}
-					className="w-full border rounded px-3 py-2"
+					className="w-full border rounded px-3 py-2 [color-scheme:light]"
 				>
 					<option value="dispatcher">Dispatch/Admin</option>
 					<option value="technician">Technician</option>
 				</select>
 				<button
 					type="submit"
-					className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+					className="w-full bg-primary-hover text-white py-2 rounded hover:bg-blue-700"
 				>
 					Login
 				</button>
