@@ -36,11 +36,7 @@ interface AuthResponse {
 // will only need email and password for now
 // get organization by parsing email if needed
 // might change later
-export const login = async (
-	res: Response,
-	email: string,
-	password: string,
-) => {
+export const login = async (res: Response, email: string, password: string) => {
 	try {
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
@@ -51,15 +47,17 @@ export const login = async (
 		}
 
 		// ask if last login updates automatically or if I have to add that here
-		let user = await db.technician.findUnique({
-						where: {
-							email: email,
-						},
-					}) ?? await db.dispatcher.findUnique({
-						where: {
-							email: email,
-						},
-					});
+		let user =
+			(await db.technician.findUnique({
+				where: {
+					email: email,
+				},
+			})) ??
+			(await db.dispatcher.findUnique({
+				where: {
+					email: email,
+				},
+			}));
 		if (!user) {
 			return createErrorResponse(
 				ErrorCodes.INVALID_CREDENTIALS,
@@ -84,7 +82,10 @@ export const login = async (
 
 		// OTP disabled: bypass the verification step and issue tokens directly.
 		if (OTP_DISABLED) {
-			log.info({ userId: user.id, role: effectiveRole }, "[OTP DISABLED] Bypassing OTP step on login");
+			log.info(
+				{ userId: user.id, role: effectiveRole },
+				"[OTP DISABLED] Bypassing OTP step on login",
+			);
 			return await issueAuthTokens(res, user.id, effectiveRole);
 		}
 
@@ -213,11 +214,15 @@ export const issueAuthTokens = async (
 			organization_id: user.organization_id ?? null,
 			actor_type: role,
 			actor_id: userId,
-			...(forcePasswordReset && { changes: { password_reset: { old: "temporary", new: "user_set" } } }),
+			...(forcePasswordReset && {
+				changes: {
+					password_reset: { old: "temporary", new: "user_set" },
+				},
+			}),
 		});
 		let AuthResponse = {
 			token: accessToken,
-			expiresIn: 900,
+			expiresIn: 86400,
 			user: {
 				uid: user.id,
 				email: user.email,

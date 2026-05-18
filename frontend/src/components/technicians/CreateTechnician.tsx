@@ -12,7 +12,8 @@ interface CreateTechnicianProps {
 
 const INPUT =
 	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
+const LABEL =
+	"block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 const CreateTechnician = ({
 	isModalOpen,
@@ -90,7 +91,10 @@ const CreateTechnician = ({
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-error-text text-xs leading-tight">
+					<p
+						key={idx}
+						className="text-error-text text-xs leading-tight"
+					>
 						{err.message}
 					</p>
 				))}
@@ -99,7 +103,14 @@ const CreateTechnician = ({
 	};
 
 	const isFormValid = useMemo(
-		() => !!(name.trim() && email.trim() && phone.trim() && title.trim() && (!choosePassword || password.trim())),
+		() =>
+			!!(
+				name.trim() &&
+				email.trim() &&
+				phone.trim() &&
+				title.trim() &&
+				(!choosePassword || password.trim())
+			),
 		[name, email, phone, title, choosePassword, password]
 	);
 
@@ -196,7 +207,9 @@ const CreateTechnician = ({
 						<input
 							type="checkbox"
 							checked={choosePassword}
-							onChange={(e) => setChoosePassword(e.target.checked)}
+							onChange={(e) =>
+								setChoosePassword(e.target.checked)
+							}
 							className="form-checkbox h-[28px] w-4 text-primary focus:ring-primary border-border bg-base"
 							disabled={isLoading}
 						/>
@@ -208,7 +221,9 @@ const CreateTechnician = ({
 								type="password"
 								placeholder="Enter password"
 								value={password}
-								onChange={(e) => setPassword(e.target.value)}
+								onChange={(e) =>
+									setPassword(e.target.value)
+								}
 								className={INPUT}
 								disabled={isLoading}
 							/>
@@ -218,7 +233,18 @@ const CreateTechnician = ({
 				</div>
 			</div>
 		),
-		[name, email, phone, title, description, hireDate, isLoading, errors, choosePassword, password]
+		[
+			name,
+			email,
+			phone,
+			title,
+			description,
+			hireDate,
+			isLoading,
+			errors,
+			choosePassword,
+			password,
+		]
 	);
 
 	return (
