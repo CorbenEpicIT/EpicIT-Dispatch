@@ -40,7 +40,6 @@ export const login = async (
 	res: Response,
 	email: string,
 	password: string,
-	role: string,
 ) => {
 	try {
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -52,14 +51,11 @@ export const login = async (
 		}
 
 		// ask if last login updates automatically or if I have to add that here
-		const user =
-			role === "technician"
-				? await db.technician.findUnique({
+		let user = await db.technician.findUnique({
 						where: {
 							email: email,
 						},
-					})
-				: await db.dispatcher.findUnique({
+					}) ?? await db.dispatcher.findUnique({
 						where: {
 							email: email,
 						},
@@ -71,7 +67,7 @@ export const login = async (
 			);
 		}
 		// if dispatcher, use role from db (admin or dispatch)
-		const effectiveRole = "role" in user ? user.role : role;
+		const effectiveRole = "role" in user ? user.role : "technician";
 
 		let match = await bcrypt.compare(password, user.password);
 		if (!user || !match) {
@@ -94,7 +90,7 @@ export const login = async (
 
 		const otp = await createOTP(user.id, effectiveRole);
 
-		const pendingToken = generateOTPToken(user, role);
+		const pendingToken = generateOTPToken(user, effectiveRole);
 		if (!pendingToken) {
 			return createErrorResponse(
 				ErrorCodes.SERVER_ERROR,

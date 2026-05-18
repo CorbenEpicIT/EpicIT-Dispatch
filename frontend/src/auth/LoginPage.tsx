@@ -6,7 +6,6 @@ import { reSplitAlphaNumeric } from "@tanstack/react-table";
 
 export default function LoginPage() {
 	const { login } = useAuthStore();
-	const [role, setRole] = useState<"dispatcher" | "technician">("dispatcher");
 
 	const [name, setName] = useState("");
 	const [password, setPassword] = useState("");
@@ -21,7 +20,7 @@ export default function LoginPage() {
 		e.preventDefault();
 		try {
 			setIsLoading(true);
-			const result = await loginCall({ email: name, password: password, role: role });
+			const result = await loginCall({ email: name, password: password });
 			// If the backend returned a full access token (first login OR OTP
 			// disabled), skip the OTP step and route based on the payload.
 			if (result.token) {
@@ -29,10 +28,10 @@ export default function LoginPage() {
 				if (parts.length === 3) {
 					const payload = JSON.parse(atob(parts[1]));
 					const orgTimezone = payload.organization_timezone ?? "America/Chicago";
-					login(payload.role ?? role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+					login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
 					if (result.forcePasswordReset && result.resetToken) {
-						navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
-					} else if ((payload.role ?? role) === "technician") {
+						navigate(`/reset-password?token=${result.resetToken}&role=${payload.role}`);
+					} else if (payload.role === "technician") {
 						navigate("/technician");
 					} else {
 						navigate("/dispatch");
@@ -60,11 +59,11 @@ export default function LoginPage() {
 			const orgTimezone = payload.organization_timezone ?? "America/Chicago";
 			login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
 			if (result.forcePasswordReset && result.resetToken) {
-				navigate(`/reset-password?token=${result.resetToken}&role=${role}`);
+				navigate(`/reset-password?token=${result.resetToken}&role=${payload.role}`);
 				return;
 			}
-			if (role === "dispatcher") navigate("/dispatch");
-			else navigate("/technician");
+			if (payload.role === "technician") navigate("/technician");
+			else navigate("/dispatch");
 		} catch (error) {
 			console.error("OTP verification failed:", error);
 		}
@@ -74,7 +73,7 @@ export default function LoginPage() {
 	const resendOTP = async () => {
 		try {
 			setIsLoading(true);
-			const result = await loginCall({ email: name, password: password, role: role });
+			const result = await loginCall({ email: name, password: password });
 			console.log("resend OTP result:",result);
 			setOtpSent(true);
 		} catch (error) {
@@ -187,14 +186,6 @@ export default function LoginPage() {
 					onChange={(e)=>setPassword(e.target.value)}
 					className="w-full border rounded px-3 py-2"
 				/>
-				<select
-					value={role}
-					onChange={(e) => setRole(e.target.value as "dispatcher" | "technician")}
-					className="w-full border rounded px-3 py-2 [color-scheme:light]"
-				>
-					<option value="dispatcher">Dispatch/Admin</option>
-					<option value="technician">Technician</option>
-				</select>
 				<button
 					type="submit"
 					className="w-full bg-primary-hover text-white py-2 rounded hover:bg-blue-700"

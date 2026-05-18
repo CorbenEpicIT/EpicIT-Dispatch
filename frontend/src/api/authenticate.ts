@@ -5,11 +5,10 @@ import type { ApiResponse } from "../types/api";
 // AUTHENTICATE API
 // ============================================================================
 
-// temporary will add actual type when I get it figured out
 interface User{
     email: string,
     password: string,
-    role: string
+    // removed role
 }
 
 interface AuthResponse {

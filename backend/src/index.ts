@@ -229,8 +229,8 @@ if (!port) {
 
 app.post("/login", async (req, res, next) => {
 	try {
-		const { email, password, role } = req.body;
-		const result = await login(res, email, password, role);
+		const { email, password } = req.body;
+		const result = await login(res, email, password);
 		if (!result) {
 			return res
 				.status(401)
