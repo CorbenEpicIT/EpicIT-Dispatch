@@ -53,6 +53,7 @@ import requestsRouter from "./routes/requests.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
+import taxRouter from "./routes/tax.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -454,6 +455,11 @@ app.use("/reports", verifyToken, reportsRouter);
 // VEHICLES
 // ============================================
 app.use("/vehicles", verifyToken, vehiclesRouter);
+
+// ============================================
+// TAX RATES & GROUPS
+// ============================================
+app.use("/tax", verifyToken, taxRouter);
 
 // ============================================================
 // ACTIVITY FEED

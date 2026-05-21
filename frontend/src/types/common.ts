@@ -1,4 +1,6 @@
-﻿// ============================================================================
+﻿import type { TaxSnapshot } from "./tax";
+
+// ============================================================================
 // SHARED PRIORITY TYPES
 // ============================================================================
 
@@ -151,11 +153,12 @@ export type DiscountType = (typeof DiscountTypeValues)[number];
 
 export interface PricingBreakdown {
 	subtotal?: number | null;
-	tax_rate?: number | null; // 0..1
+	tax_rate?: number | null; // 0..1 — kept for backward compat (effective blended rate)
 	tax_amount?: number | null;
 	discount_type?: DiscountType | null;
 	discount_value?: number | null;
 	discount_amount?: number | null;
+	tax_snapshot?: TaxSnapshot | null;
 
 	// for quote - ExecutionTotals also used for jobs
 	total?: number | null;
@@ -193,6 +196,9 @@ export interface BaseLineItem {
 	total: number;
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+	taxable?: boolean;
+	tax_group_id?: string | null;
+	tax_amount?: number | null;
 }
 
 //Extended line item for edit forms - tracks new/deleted items
@@ -224,7 +230,7 @@ export interface StepState<T extends number> {
 export type StepValidator<T extends number> = (step: T) => boolean;
 
 //Form field state for edit forms with dirty tracking
-export interface FormFieldState<T = any> {
+export interface FormFieldState<T = unknown> {
 	isDirty: boolean;
 	originalValue: T;
 	currentValue: T;

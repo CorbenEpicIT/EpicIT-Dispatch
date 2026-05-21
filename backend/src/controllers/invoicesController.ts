@@ -19,6 +19,8 @@ import {
 	createInvoiceRecord,
 	syncBilledAmounts,
 	syncInvoicePaymentTotals,
+	recomputeInvoiceTotals,
+	lockInvoiceTaxSnapshot,
 	invoiceInclude,
 } from "../services/invoiceService.js";
 
@@ -193,9 +195,18 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 			"void_reason",
 		] as const);
 
+		const isLocked =
+			existing.tax_snapshot != null &&
+			(existing.tax_snapshot as { locked_at?: string }).locked_at !== "draft";
+
 		const updated = await sdb.$transaction(async (tx) => {
 			// ── Line item replacement ──────────────────────────────────────
 			if (parsed.line_items !== undefined) {
+				// Guard: cannot modify line items on an issued (snapshot-locked) invoice
+				if (isLocked) {
+					throw new Error("Cannot modify line items on an issued invoice");
+				}
+
 				const incoming = parsed.line_items;
 				const existingIds = new Set(
 					existing.line_items.map((i) => i.id),
@@ -229,6 +240,12 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 								sort_order: item.sort_order ?? 0,
 								source_job_id: item.source_job_id ?? null,
 								source_visit_id: item.source_visit_id ?? null,
+								...(item.tax_group_id !== undefined && {
+									tax_group_id: item.tax_group_id,
+								}),
+								...(item.taxable !== undefined && {
+									taxable: item.taxable,
+								}),
 							},
 						});
 					} else {
@@ -247,6 +264,8 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 								sort_order: item.sort_order ?? 0,
 								source_job_id: item.source_job_id ?? null,
 								source_visit_id: item.source_visit_id ?? null,
+								tax_group_id: item.tax_group_id ?? null,
+								taxable: item.taxable !== undefined ? item.taxable : true,
 							},
 						});
 					}
@@ -255,7 +274,30 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 				// Recompute billed_amount for all linked jobs and visits
 				// from the now-current line items' source attribution.
 				await syncBilledAmounts(id, tx as unknown as Prisma.TransactionClient);
+
+				// Recompute invoice tax totals via taxEngine
+				await recomputeInvoiceTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
 			}
+
+			// Recompute when discount changes without a line_items replacement
+			const discountChanged =
+				parsed.discount_type !== undefined || parsed.discount_value !== undefined;
+			if (discountChanged && parsed.line_items === undefined && existing.tax_snapshot == null) {
+				await tx.invoice.update({
+					where: { id },
+					data: {
+						...(parsed.discount_type !== undefined && {
+							discount_type: parsed.discount_type,
+						}),
+						...(parsed.discount_value !== undefined && {
+							discount_value: parsed.discount_value,
+						}),
+					},
+				});
+				await recomputeInvoiceTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
+			}
+
+			const issuedAt = parsed.status === "Issued" && !existing.issued_at ? new Date() : undefined;
 
 			const invoice = await tx.invoice.update({
 				where: { id },
@@ -278,25 +320,25 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 					...(parsed.viewed_at !== undefined && {
 						viewed_at: parsed.viewed_at,
 					}),
-					...(parsed.subtotal !== undefined && {
+					...(!isLocked && parsed.subtotal !== undefined && {
 						subtotal: parsed.subtotal,
 					}),
-					...(parsed.tax_rate !== undefined && {
+					...(!isLocked && parsed.tax_rate !== undefined && {
 						tax_rate: parsed.tax_rate,
 					}),
-					...(parsed.tax_amount !== undefined && {
+					...(!isLocked && parsed.tax_amount !== undefined && {
 						tax_amount: parsed.tax_amount,
 					}),
-					...(parsed.discount_type !== undefined && {
+					...(!isLocked && !discountChanged && parsed.discount_type !== undefined && {
 						discount_type: parsed.discount_type,
 					}),
-					...(parsed.discount_value !== undefined && {
+					...(!isLocked && !discountChanged && parsed.discount_value !== undefined && {
 						discount_value: parsed.discount_value,
 					}),
-					...(parsed.discount_amount !== undefined && {
+					...(!isLocked && !discountChanged && parsed.discount_amount !== undefined && {
 						discount_amount: parsed.discount_amount,
 					}),
-					...(parsed.total !== undefined && { total: parsed.total }),
+					...(!isLocked && parsed.total !== undefined && { total: parsed.total }),
 					...(parsed.memo !== undefined && { memo: parsed.memo }),
 					...(parsed.internal_notes !== undefined && {
 						internal_notes: parsed.internal_notes,
@@ -304,8 +346,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 					...(parsed.void_reason !== undefined && {
 						void_reason: parsed.void_reason,
 					}),
-					...(parsed.status === "Issued" &&
-						!existing.issued_at && { issued_at: new Date() }),
+					...(issuedAt !== undefined && { issued_at: issuedAt }),
 					...(parsed.status === "Sent" &&
 						!existing.sent_at && { sent_at: new Date() }),
 					...(parsed.status === "Sent" &&
@@ -313,7 +354,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 					...(parsed.status === "Void" && {
 						voided_at: new Date(),
 					}),
-					...(parsed.total !== undefined && {
+					...(!isLocked && parsed.total !== undefined && {
 						balance_due: Math.max(
 							0,
 							parsed.total - Number(existing.amount_paid),
@@ -322,6 +363,16 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 				},
 				include: invoiceInclude,
 			});
+
+			// Lock tax snapshot when transitioning to Issued
+			if (issuedAt !== undefined) {
+				await lockInvoiceTaxSnapshot(
+					id,
+					organizationId,
+					tx as unknown as Prisma.TransactionClient,
+					issuedAt,
+				);
+			}
 
 			return invoice;
 		});

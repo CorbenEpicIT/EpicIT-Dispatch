@@ -23,12 +23,16 @@ export default function AdminPage() {
 	};
 
 	return (
-		<div className="text-white">
+		<div>
 			{/* Tab bar */}
-			<div className="flex items-center gap-0 border-b border-border-subtle mb-5">
+			<div role="tablist" aria-label="Admin sections" className="flex items-center border-b border-border-subtle mb-5">
 				{TABS.map((tab) => (
 					<button
 						key={tab.id}
+						id={`tab-${tab.id}`}
+						role="tab"
+						aria-selected={activeTab === tab.id}
+						aria-controls={`tabpanel-${tab.id}`}
 						onClick={() => handleTabChange(tab.id)}
 						className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer ${
 							activeTab === tab.id
@@ -41,8 +45,16 @@ export default function AdminPage() {
 				))}
 			</div>
 
-			{activeTab === "users" && <UsersSection />}
-			{activeTab === "settings" && <SettingsSection />}
+			{activeTab === "users" && (
+				<div role="tabpanel" id="tabpanel-users" aria-labelledby="tab-users">
+					<UsersSection />
+				</div>
+			)}
+			{activeTab === "settings" && (
+				<div role="tabpanel" id="tabpanel-settings" aria-labelledby="tab-settings">
+					<SettingsSection />
+				</div>
+			)}
 		</div>
 	);
 }

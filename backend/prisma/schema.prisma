@@ -244,6 +244,9 @@ model organization {
   job_notes             job_note[]
   recurring_plan_notes  recurring_plan_note[]
   invoice_notes         invoice_note[]
+
+  tax_rates   tax_rate[]
+  tax_groups  tax_group[]
 }
 
 // ============================================================================
@@ -302,6 +305,8 @@ model client {
   is_active       Boolean  @default(true)
   is_tax_exempt   Boolean  @default(false)
   tax_rate        Decimal? @db.Decimal(5, 4)
+  tax_group_id    String?
+  tax_group       tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
   created_at      DateTime @default(now())
   last_activity   DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -458,6 +463,8 @@ model quote {
 
   rejection_reason String?
 
+  tax_snapshot Json?
+
   created_by_dispatcher_id String?
   created_by_dispatcher    dispatcher? @relation("QuoteCreator", fields: [created_by_dispatcher_id], references: [id])
 
@@ -487,8 +494,12 @@ model quote_line_item {
   unit_price  Decimal @db.Decimal(10, 2)
   total       Decimal @db.Decimal(10, 2)
 
-  item_type  line_item_type?
-  sort_order Int     @default(0)
+  item_type    line_item_type?
+  sort_order   Int     @default(0)
+  tax_group_id String?
+  tax_group    tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
+  taxable      Boolean    @default(true)
+  tax_amount   Decimal?   @db.Decimal(10, 2)
 
   @@index([quote_id])
   @@index([sort_order])
@@ -589,8 +600,12 @@ model job_line_item {
   unit_price  Decimal @db.Decimal(10, 2)
   total       Decimal @db.Decimal(10, 2)
 
-  source    line_item_source
-  item_type line_item_type?
+  source       line_item_source
+  item_type    line_item_type?
+  tax_group_id String?
+  tax_group    tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
+  taxable      Boolean    @default(true)
+  tax_amount   Decimal?   @db.Decimal(10, 2)
 
   created_at DateTime @default(now())
 
@@ -886,17 +901,20 @@ model recurring_plan_line_item {
   id                String         @id @default(uuid())
   recurring_plan_id String
   recurring_plan    recurring_plan @relation(fields: [recurring_plan_id], references: [id], onDelete: Cascade)
-  
+
   name              String
   description       String?        @db.Text
   quantity          Decimal        @db.Decimal(10, 2)
   unit_price        Decimal        @db.Decimal(10, 2)
-  
+
   item_type         line_item_type?
   sort_order        Int            @default(0)
-  
+  tax_group_id      String?
+  tax_group         tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
+  taxable           Boolean    @default(true)
+
   created_at        DateTime       @default(now())
-  
+
   @@index([recurring_plan_id])
   @@index([sort_order])
 }
@@ -1313,6 +1331,7 @@ model invoice {
   balance_due              Decimal        @default(0) @db.Decimal(10, 2)
   memo                     String?
   internal_notes           String?
+  tax_snapshot             Json?
   created_at               DateTime       @default(now())
   updated_at               DateTime       @updatedAt
   created_by_dispatcher_id String?
@@ -1348,6 +1367,10 @@ model invoice_line_item {
   total           Decimal        @db.Decimal(10, 2)
   item_type       line_item_type?
   sort_order      Int            @default(0)
+  tax_group_id    String?
+  tax_group       tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
+  taxable         Boolean    @default(true)
+  tax_amount      Decimal?   @db.Decimal(10, 2)
 
   @@index([invoice_id])
   @@index([sort_order])
@@ -1442,4 +1465,65 @@ model jwt_refresh_token {
   createdAt DateTime @default(now())
 
   @@index([userId, role])
+}
+
+// ============================================================================
+// TAX SYSTEM
+// ============================================================================
+
+model tax_rate {
+	id              String       @id @default(uuid())
+	organization_id String
+	organization    organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+	name            String
+	rate            Decimal      @db.Decimal(5, 4) // 0.0000 to 1.0000 — consistent with existing schema
+	description     String?
+	jurisdiction    String?      // free label: "State", "County", "City", "Federal"
+	is_default      Boolean      @default(false)
+	is_active       Boolean      @default(true)
+	created_at      DateTime     @default(now())
+	updated_at      DateTime     @updatedAt
+
+	group_rates     tax_group_rate[]
+
+	@@unique([organization_id, name])
+	@@index([organization_id])
+	@@index([organization_id, is_default])
+	@@index([organization_id, is_active])
+}
+
+model tax_group {
+	id              String       @id @default(uuid())
+	organization_id String
+	organization    organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+	name            String
+	description     String?
+	is_default      Boolean      @default(false)
+	is_active       Boolean      @default(true)
+	created_at      DateTime     @default(now())
+	updated_at      DateTime     @updatedAt
+
+	rates                     tax_group_rate[]
+	invoice_line_items        invoice_line_item[]
+	quote_line_items          quote_line_item[]
+	job_line_items            job_line_item[]
+	recurring_plan_line_items recurring_plan_line_item[]
+	clients                   client[]
+
+	@@unique([organization_id, name])
+	@@index([organization_id])
+	@@index([organization_id, is_default])
+	@@index([organization_id, is_active])
+}
+
+model tax_group_rate {
+	id           String    @id @default(uuid())
+	tax_group_id String
+	tax_group    tax_group @relation(fields: [tax_group_id], references: [id], onDelete: Cascade)
+	tax_rate_id  String
+	tax_rate     tax_rate  @relation(fields: [tax_rate_id], references: [id], onDelete: Restrict)
+	sort_order   Int       @default(0)
+
+	@@unique([tax_group_id, tax_rate_id])
+	@@index([tax_group_id])
 }

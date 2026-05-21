@@ -1,4 +1,4 @@
-﻿import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import {
 	Calendar,
 	DollarSign,
@@ -23,8 +23,9 @@ import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditQuote from "../../components/quotes/EditQuote";
 import ConvertToJob from "../../components/quotes/ConvertToJob";
 import NoteManager from "../../components/quotes/QuoteNoteManager";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { formatCurrency } from "../../util/util";
+import { formatRatePercentLabel } from "../../lib/formatTax";
 import { downloadQuotePdf } from "../../api/quotes";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
 
@@ -55,6 +56,17 @@ export default function QuoteDetailPage() {
 		document.addEventListener("mousedown", handleClickOutside);
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
+
+	// Map group name → combined rate for line item tax badge + totals section
+	// Must be before early returns to satisfy Rules of Hooks
+	const groupRateMap = useMemo(() => {
+		const map = new Map<string, number>();
+		for (const group of quote?.tax_snapshot?.groups ?? []) {
+			const combined = (group.rates ?? []).reduce((sum, r) => sum + r.rate, 0);
+			if (combined > 0) map.set(group.name, combined);
+		}
+		return map;
+	}, [quote?.tax_snapshot]);
 
 	if (isLoading) {
 		return (
@@ -395,8 +407,8 @@ export default function QuoteDetailPage() {
 								{/* Header row */}
 								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
 									<div className="col-span-5 min-w-0">Item / Description</div>
-									<div className="col-span-1 min-w-0 text-center">Type</div>
-									<div className="col-span-2 min-w-0 text-right">Qty</div>
+									<div className="col-span-2 min-w-0 text-center">Type</div>
+									<div className="col-span-1 min-w-0 text-right">Qty</div>
 									<div className="col-span-2 min-w-0 text-right">Unit Price</div>
 									<div className="col-span-2 min-w-0 text-right">Amount</div>
 								</div>
@@ -404,37 +416,61 @@ export default function QuoteDetailPage() {
 								{quote.line_items.map((item, index) => (
 									<div
 										key={item.id || index}
-										className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors items-start"
+										className="border-b border-border-subtle hover:bg-surface/30 transition-colors"
 									>
-										<div className="col-span-5 min-w-0 text-sm">
-											<p className="text-white font-medium break-words">
-												{item.name}
-											</p>
-											{item.description && (
-												<p className="text-text-tertiary text-xs mt-0.5 break-words">
-													{item.description}
+										{/* Primary row — name + all numeric columns */}
+										<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
+											<div className="col-span-5 min-w-0 text-sm">
+												<p className="text-white font-medium break-words">
+													{item.name}
 												</p>
-											)}
+											</div>
+											<div className="col-span-2 min-w-0 flex justify-center">
+												{item.item_type && (
+													<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
+														{item.item_type}
+													</span>
+												)}
+											</div>
+											<div className="col-span-1 min-w-0 text-right text-sm text-white tabular-nums" title={String(item.quantity)}>
+												{Number(item.quantity).toLocaleString("en-US", {
+													minimumFractionDigits: 0,
+													maximumFractionDigits: 2,
+												})}
+											</div>
+											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums">
+												{formatCurrency(Number(item.unit_price))}
+											</div>
+											<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums">
+												{formatCurrency(Number(item.quantity) * Number(item.unit_price))}
+											</div>
 										</div>
-										<div className="col-span-1 min-w-0 flex justify-center pt-0.5">
-											{item.item_type && (
-												<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-													{item.item_type}
-												</span>
-											)}
-										</div>
-										<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
-											{Number(item.quantity).toLocaleString("en-US", {
-												minimumFractionDigits: 0,
-												maximumFractionDigits: 2,
-											})}
-										</div>
-										<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
-											{formatCurrency(Number(item.unit_price))}
-										</div>
-										<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums pt-0.5">
-											{formatCurrency(Number(item.quantity) * Number(item.unit_price))}
-										</div>
+										{/* Sub-row — only renders when secondary content exists */}
+										{(item.description || item.tax_group?.name || item.taxable === false) && (
+											<div className="space-y-1 pb-2.5 min-w-0">
+												{item.description && (
+													<p className="text-xs text-text-tertiary leading-relaxed break-words">
+														{item.description}
+													</p>
+												)}
+												{(item.tax_group?.name || item.taxable === false) && (
+													<div className="flex flex-wrap items-center gap-1.5">
+														{item.tax_group?.name ? (
+															<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
+																{item.tax_group.name}
+																{groupRateMap.has(item.tax_group.name)
+																	? ` · ${formatRatePercentLabel(groupRateMap.get(item.tax_group.name)!)}`
+																	: ""}
+															</span>
+														) : (
+															<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-raised/40 border border-border-strong/30 text-[10px] text-text-faint whitespace-nowrap leading-none">
+																Non-taxable
+															</span>
+														)}
+													</div>
+												)}
+											</div>
+										)}
 									</div>
 								))}
 							</div>
@@ -474,26 +510,53 @@ export default function QuoteDetailPage() {
 									</div>
 								)}
 
-							{quote.tax_amount !== null &&
+							{quote.tax_snapshot ? (
+								<>
+									{(quote.tax_snapshot.groups ?? []).map((group) => {
+										const combinedRate = (group.rates ?? []).reduce(
+											(sum, r) => sum + r.rate,
+											0
+										);
+										return (
+											<div key={group.id} className="flex items-center justify-between text-sm">
+												<span className="text-text-tertiary">
+													{group.name}
+													{combinedRate > 0
+														? ` (${formatRatePercentLabel(combinedRate)})`
+														: ""}
+													:
+												</span>
+												<span className="text-white font-medium tabular-nums">
+													{formatCurrency((group.tax_amount_cents ?? 0) / 100)}
+												</span>
+											</div>
+										);
+									})}
+									{(quote.tax_snapshot.groups ?? []).length > 1 && (
+										<div className="flex items-center justify-between text-sm">
+											<span className="text-text-tertiary font-medium">Total Tax:</span>
+											<span className="text-white font-medium tabular-nums">
+												{formatCurrency((quote.tax_snapshot.total_tax_cents ?? 0) / 100)}
+											</span>
+										</div>
+									)}
+								</>
+							) : quote.tax_amount !== null &&
 								quote.tax_amount !== undefined &&
-								Number(quote.tax_amount) > 0 && (
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-text-tertiary">
-											Tax{" "}
-											{quote.tax_rate
-												? `(${(Number(quote.tax_rate) * 100).toFixed(2)}%)`
-												: ""}
-											:
-										</span>
-										<span className="text-white font-medium tabular-nums">
-											{formatCurrency(
-												Number(
-													quote.tax_amount
-												)
-											)}
-										</span>
-									</div>
-								)}
+								Number(quote.tax_amount) > 0 ? (
+								<div className="flex items-center justify-between text-sm">
+									<span className="text-text-tertiary">
+										Tax{" "}
+										{quote.tax_rate
+											? `(${formatRatePercentLabel(Number(quote.tax_rate))})`
+											: ""}
+										:
+									</span>
+									<span className="text-white font-medium tabular-nums">
+										{formatCurrency(Number(quote.tax_amount))}
+									</span>
+								</div>
+							) : null}
 
 							{quote.discount_amount !== null &&
 								quote.discount_amount !==

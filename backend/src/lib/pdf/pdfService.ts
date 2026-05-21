@@ -7,6 +7,8 @@ import { getQuoteById } from "../../controllers/quotesController.js";
 import { getInvoiceById } from "../../controllers/invoicesController.js";
 import { db } from "../../db.js";
 import { getBuffer } from "../../services/wasabiService.js";
+import type { TaxSnapshot } from "../../services/taxEngine.js";
+import { log } from "../../services/appLogger.js";
 
 type DocElement = ReactElement<DocumentProps, string | JSXElementConstructor<unknown>>;
 
@@ -25,7 +27,8 @@ async function fetchOrg(organizationId: string | null | undefined) {
 		try {
 			const { buffer, contentType } = await getBuffer(org.logo_url);
 			logo_url = `data:${contentType};base64,${buffer.toString("base64")}`;
-		} catch {
+		} catch (err) {
+			log.warn({ err, organizationId, logo_url: org.logo_url }, "PDF: failed to fetch org logo — rendering without it");
 			logo_url = null;
 		}
 	}
@@ -33,47 +36,41 @@ async function fetchOrg(organizationId: string | null | undefined) {
 }
 
 export async function generateQuotePdf(quoteId: string, organizationId: string): Promise<Buffer> {
-	const quote = await getQuoteById(quoteId, organizationId);
+	const [quote, org] = await Promise.all([
+		getQuoteById(quoteId, organizationId),
+		fetchOrg(organizationId),
+	]);
 	if (!quote) throw Object.assign(new Error("Quote not found"), { status: 404 });
-
-	// Auto-promote Draft → Issued on first PDF generation (document is now finalized)
-	let effectiveStatus = quote.status;
-	if (quote.status === "Draft") {
-		await db.quote.update({
-			where: { id: quoteId },
-			data: { status: "Issued", issued_at: new Date() },
-		});
-		effectiveStatus = "Issued";
-	}
-
-	const org = await fetchOrg(quote.organization_id);
 
 	const element = React.createElement(
 		QuotePdfTemplate,
-		{ quote: { ...quote, status: effectiveStatus }, org },
+		{
+			quote: {
+				...quote,
+				tax_snapshot: quote.tax_snapshot as unknown as TaxSnapshot | null,
+			},
+			org,
+		},
 	) as unknown as DocElement;
 	return renderToBuffer(element) as Promise<Buffer>;
 }
 
 export async function generateInvoicePdf(invoiceId: string, organizationId: string): Promise<Buffer> {
-	const invoice = await getInvoiceById(invoiceId, organizationId);
+	const [invoice, org] = await Promise.all([
+		getInvoiceById(invoiceId, organizationId),
+		fetchOrg(organizationId),
+	]);
 	if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
-
-	// Auto-promote Draft → Issued on first PDF generation (document is now finalized)
-	let effectiveStatus = invoice.status;
-	if (invoice.status === "Draft") {
-		await db.invoice.update({
-			where: { id: invoiceId },
-			data: { status: "Issued", issued_at: new Date() },
-		});
-		effectiveStatus = "Issued";
-	}
-
-	const org = await fetchOrg(invoice.organization_id);
 
 	const element = React.createElement(
 		InvoicePdfTemplate,
-		{ invoice: { ...invoice, status: effectiveStatus }, org },
+		{
+			invoice: {
+				...invoice,
+				tax_snapshot: invoice.tax_snapshot as unknown as TaxSnapshot | null,
+			},
+			org,
+		},
 	) as unknown as DocElement;
 	return renderToBuffer(element) as Promise<Buffer>;
 }

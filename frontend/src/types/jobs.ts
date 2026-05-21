@@ -268,6 +268,8 @@ export interface JobLineItem {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
 }
@@ -302,6 +304,8 @@ export interface VisitLineItem {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
 }

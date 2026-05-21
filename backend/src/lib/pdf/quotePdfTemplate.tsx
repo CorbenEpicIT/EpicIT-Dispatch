@@ -1,18 +1,8 @@
-import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
-import type { Decimal } from "@prisma/client/runtime/client";
+﻿import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
+import type { TaxSnapshot } from "../../services/taxEngine.js";
+import { type Numeric, type OrgPdfProps, toNum, fmt, fmtDate, fmtRatePct } from "./pdfHelpers.js";
 
-// ── PDF prop types ────────────────────────────────────────────────────────────
-
-type Numeric = Decimal | number | string | null | undefined;
-
-interface OrgPdfProps {
-	name: string;
-	logo_url?: string | null;
-	phone?: string | null;
-	address?: string | null;
-	email?: string | null;
-	website?: string | null;
-}
+// â”€â”€ PDF prop types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface QuotePdfLineItem {
 	id?: string;
@@ -21,6 +11,8 @@ interface QuotePdfLineItem {
 	quantity: Numeric;
 	unit_price: Numeric;
 	total: Numeric;
+	taxable?: boolean | null;
+	tax_group?: { name: string } | null;
 }
 
 interface QuotePdfNote {
@@ -48,30 +40,16 @@ interface QuotePdfProps {
 	title?: string | null;
 	subtotal?: Numeric;
 	discount_value?: Numeric;
+	discount_amount?: Numeric;
 	discount_type?: string | null;
 	tax_amount?: Numeric;
 	tax_rate?: Numeric;
+	tax_snapshot?: TaxSnapshot | null;
 	total?: Numeric;
 	client?: QuotePdfClient | null;
 	line_items?: QuotePdfLineItem[] | null;
 	notes?: QuotePdfNote[] | null;
 }
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const toNum = (v: unknown): number => (v == null ? 0 : Number(v));
-
-const fmt = (v: unknown): string =>
-	`$${toNum(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-const fmtDate = (d: unknown): string => {
-	if (!d) return "—";
-	return new Date(d as string).toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
-};
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 	Draft:     { bg: "#e5e7eb", text: "#374151" },
@@ -85,13 +63,13 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 	Cancelled: { bg: "#fee2e2", text: "#991b1b" },
 };
 
-// Sent and Viewed are internal workflow states — not meaningful to the quote recipient
+// Sent and Viewed are internal workflow states â€” not meaningful to the quote recipient
 const HIDE_BADGE_STATUSES = new Set(["Sent", "Viewed"]);
 
 const badgeColors = (status: string) =>
 	STATUS_COLORS[status] ?? { bg: "#f3f4f6", text: "#6b7280" };
 
-// ── styles ───────────────────────────────────────────────────────────────────
+// â”€â”€ styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const s = StyleSheet.create({
 	page: {
@@ -173,7 +151,7 @@ const s = StyleSheet.create({
 		width: "50%",
 		paddingLeft: 16,
 	},
-	// Section heading — used for BILL TO and QUOTE DETAILS titles
+	// Section heading â€” used for BILL TO and QUOTE DETAILS titles
 	sectionHeading: {
 		fontSize: 9,
 		fontFamily: "Helvetica-Bold",
@@ -182,7 +160,7 @@ const s = StyleSheet.create({
 		letterSpacing: 1,
 		marginBottom: 7,
 	},
-	// Small muted label — kept for legacy use if needed
+	// Small muted label â€” kept for legacy use if needed
 	sectionLabel: {
 		fontSize: 7,
 		fontFamily: "Helvetica-Bold",
@@ -246,11 +224,19 @@ const s = StyleSheet.create({
 	colTotal: { width: "12%", textAlign: "right" },
 
 	// totals
-	totalsWrapper: { alignItems: "flex-end", paddingBottom: 16 },
+	tableDivider: {
+		borderTopWidth: 2,
+		borderTopColor: "#1e3a5f",
+		marginBottom: 12,
+	},
+	totalsWrapper: {
+		alignItems: "flex-end",
+		paddingBottom: 16,
+	},
 	totalRow: {
 		flexDirection: "row",
 		width: 230,
-		paddingVertical: 2,
+		paddingVertical: 3,
 	},
 	totalLabel: {
 		width: 140,
@@ -259,7 +245,19 @@ const s = StyleSheet.create({
 		textAlign: "right",
 		paddingRight: 14,
 	},
-	totalValue: { width: 90, fontSize: 9, color: "#111827", textAlign: "right" },
+	totalValue: {
+		width: 90,
+		fontSize: 9,
+		color: "#111827",
+		textAlign: "right",
+	},
+	totalValueBold: {
+		width: 90,
+		fontSize: 9,
+		fontFamily: "Helvetica-Bold",
+		color: "#111827",
+		textAlign: "right",
+	},
 	grandRow: {
 		flexDirection: "row",
 		width: 230,
@@ -333,7 +331,7 @@ const s = StyleSheet.create({
 	footerText: { fontSize: 7, color: "#9ca3af" },
 });
 
-// ── component ────────────────────────────────────────────────────────────────
+// â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: OrgPdfProps }) {
 	const bc = badgeColors(quote.status);
@@ -341,21 +339,33 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 
 	const subtotal = toNum(quote.subtotal);
 	const discountValue = toNum(quote.discount_value);
+	// discount_amount is the calculated dollar discount (for percent discounts, discount_value is
+	// the raw percentage input like 20, not the dollar amount); fall back to discount_value for
+	// backward-compat with amount-type discounts where both fields equal the same dollar figure.
+	const discountDisplayAmount = toNum(quote.discount_amount ?? quote.discount_value);
 	const taxAmount = toNum(quote.tax_amount);
+
+	// Map group name → combined rate for line item subtitles; falls back gracefully when
+	// no snapshot exists (draft docs or legacy records).
+	const groupRateMap = new Map<string, number>();
+	for (const group of quote.tax_snapshot?.groups ?? []) {
+		const combined = (group.rates ?? []).reduce((sum, r) => sum + r.rate, 0);
+		if (combined > 0) groupRateMap.set(group.name, combined);
+	}
 	const total = toNum(quote.total);
 	const taxRate = toNum(quote.tax_rate);
 
 	return (
 		<Document>
 			<Page size="A4" style={s.page}>
-				{/* ── Draft watermark ── */}
+				{/* â”€â”€ Draft watermark â”€â”€ */}
 				{quote.status === "Draft" && (
 					<View style={s.draftWatermark}>
 						<Text style={s.draftWatermarkText}>DRAFT</Text>
 					</View>
 				)}
 
-				{/* ── Header ── */}
+				{/* â”€â”€ Header â”€â”€ */}
 				<View style={s.header}>
 					<View style={s.companyBlock}>
 						{org.logo_url && (
@@ -375,11 +385,11 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</View>
 				</View>
 
-				{/* ── Bill To + Quote Details ── */}
+				{/* â”€â”€ Bill To + Quote Details â”€â”€ */}
 				<View style={s.infoRow}>
 					<View style={s.infoColLeft}>
 						<Text style={s.sectionHeading}>Bill To</Text>
-						<Text style={s.clientName}>{quote.client?.name ?? "—"}</Text>
+						<Text style={s.clientName}>{quote.client?.name ?? "â€”"}</Text>
 						{quote.client?.address && (
 							<Text style={s.infoText}>{quote.client.address}</Text>
 						)}
@@ -414,7 +424,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</View>
 				</View>
 
-				{/* ── Line Items ── */}
+				{/* â”€â”€ Line Items â”€â”€ */}
 				<View style={s.tableContainer}>
 					<View style={s.tableHead}>
 						<View style={s.colName}>
@@ -442,6 +452,19 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 						>
 							<View style={s.colName}>
 								<Text style={s.tdText}>{item.name}</Text>
+								{item.tax_group?.name && (
+									<Text style={{ fontSize: 7, color: "#9ca3af", marginTop: 1 }}>
+										{item.tax_group.name}
+										{groupRateMap.has(item.tax_group.name)
+											? ` (${fmtRatePct(groupRateMap.get(item.tax_group.name)!)})`
+											: ""}
+									</Text>
+								)}
+								{item.taxable === false && !item.tax_group?.name && (
+									<Text style={{ fontSize: 7, color: "#9ca3af", marginTop: 1 }}>
+										Non-taxable
+									</Text>
+								)}
 							</View>
 							<View style={s.colDesc}>
 								{item.description ? (
@@ -467,32 +490,70 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					))}
 				</View>
 
-				{/* ── Totals ── */}
+				{/* â”€â”€ Totals â”€â”€ */}
+				<View style={s.tableDivider} />
 				<View style={s.totalsWrapper}>
 					<View style={s.totalRow}>
 						<Text style={s.totalLabel}>Subtotal</Text>
-						<Text style={s.totalValue}>{fmt(subtotal)}</Text>
+						<Text style={s.totalValueBold}>{fmt(subtotal)}</Text>
 					</View>
 
-					{discountValue > 0 && (
+					{discountDisplayAmount > 0 && (
 						<View style={s.totalRow}>
 							<Text style={s.totalLabel}>
 								Discount
 								{quote.discount_type === "percent"
-									? ` (${toNum(quote.discount_value)}%)`
+									? ` (${discountValue}%)`
 									: ""}
 							</Text>
 							<Text style={[s.totalValue, { color: "#059669" }]}>
-								-{fmt(discountValue)}
+								-{fmt(discountDisplayAmount)}
 							</Text>
 						</View>
 					)}
 
-					{taxAmount > 0 && (
-						<View style={s.totalRow}>
-							<Text style={s.totalLabel}>Tax ({taxRate}%)</Text>
-							<Text style={s.totalValue}>{fmt(taxAmount)}</Text>
-						</View>
+					{quote.tax_snapshot != null ? (
+						quote.tax_snapshot.client_exempt ? (
+							<View style={s.totalRow}>
+								<Text style={s.totalLabel}>Tax</Text>
+								<Text style={s.totalValue}>Tax Exempt</Text>
+							</View>
+						) : (
+							<>
+								{(quote.tax_snapshot.groups ?? []).map((group) => {
+									const combinedRate = (group.rates ?? []).reduce(
+										(sum, r) => sum + r.rate,
+										0,
+									);
+									return (
+										<View key={group.id} style={s.totalRow}>
+											<Text style={s.totalLabel}>
+												{group.name}
+												{combinedRate > 0 ? ` (${fmtRatePct(combinedRate)})` : ""}
+											</Text>
+											<Text style={s.totalValue}>
+												{fmt((group.tax_amount_cents ?? 0) / 100)}
+											</Text>
+										</View>
+									);
+								})}
+								{(quote.tax_snapshot.groups ?? []).length > 1 && (
+									<View style={s.totalRow}>
+										<Text style={s.totalLabel}>Total Tax</Text>
+										<Text style={s.totalValueBold}>
+											{fmt((quote.tax_snapshot.total_tax_cents ?? 0) / 100)}
+										</Text>
+									</View>
+								)}
+							</>
+						)
+					) : (
+						taxAmount > 0 && (
+							<View style={s.totalRow}>
+								<Text style={s.totalLabel}>Tax ({fmtRatePct(taxRate)})</Text>
+								<Text style={s.totalValue}>{fmt(taxAmount)}</Text>
+							</View>
+						)
 					)}
 
 					<View style={s.grandRow}>
@@ -501,7 +562,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</View>
 				</View>
 
-				{/* ── Notes ── */}
+				{/* â”€â”€ Notes â”€â”€ */}
 				{(quote.notes ?? []).length > 0 && (
 					<>
 						<View style={s.sectionDivider} />
@@ -516,7 +577,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</>
 				)}
 
-				{/* ── Footer ── */}
+				{/* â”€â”€ Footer â”€â”€ */}
 				<View style={s.footer} fixed>
 					<Text style={s.footerText}>{org.name}</Text>
 					<Text
