@@ -866,7 +866,7 @@ const CreateJobVisit = ({
 														}
 														className="w-4 h-4 accent-blue-600"
 													/>
-													<span className="text-white text-sm lg:text-base flex-1">
+													<span className="text-text-primary text-sm lg:text-base flex-1">
 														{
 															tech.name
 														}{" "}

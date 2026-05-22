@@ -77,6 +77,11 @@ input.bg-surface {
 	background-color: #27272a;
 	color: #ffffff;
 }
+/* Native checkbox (no bg-base class) inside a label also triggers Chrome's form-field
+     color injection on adjacent span children. Adjacent-sibling unlayered rule fixes. */
+.bg-base label > input + span {
+	color: #d4d4d8;
+}
 
 /* Remove increment/decrement arrows from all number inputs globally */
 input[type="number"]::-webkit-outer-spin-button,
