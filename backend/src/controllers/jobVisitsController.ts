@@ -700,6 +700,19 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 						await deductInventoryForVisit(v.id, tx, context);
 					}
 				}
+
+				// ── Actual total rollup ────────────────────────────────────────────────────────────────────
+				// v1: only fires on first Completed transition. If a visit is later un-completed, actual_total
+				// is NOT decremented — it remains at the last computed value until the next completion fires.
+				if (parsed.status === "Completed" && existingVisit.status !== "Completed") {
+					const actualTotal = allVisits
+						.filter((v) => v.status === "Completed")
+						.reduce((sum, v) => sum + Number(v.total), 0);
+					await tx.job.update({
+						where: { id: existingVisit.job_id },
+						data: { actual_total: actualTotal },
+					});
+				}
 			}
 
 			// ── Activity log ──────────────────────────────────────────────
@@ -1349,6 +1362,22 @@ export const applyVisitTransition = async (
 				if (openEntries.length > 0) {
 					await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
 				}
+			}
+
+			// ── Actual total rollup ────────────────────────────────────────────────────────────────────
+			// v1: fires on every complete action. Uses a fresh query (post time-entry recompute) so
+			// the current visit's total reflects any auto-generated labor line items.
+			// Note: un-completing a visit (via PATCH) does NOT decrement actual_total — same v1 semantics as PATCH path.
+			if (action === "complete") {
+				const completedVisits = await tx.job_visit.findMany({
+					where: { job_id: existingVisit.job_id, status: "Completed" },
+					select: { total: true },
+				});
+				const actualTotal = completedVisits.reduce((sum, v) => sum + Number(v.total), 0);
+				await tx.job.update({
+					where: { id: existingVisit.job_id },
+					data: { actual_total: actualTotal },
+				});
 			}
 
 			// ── Tech status updates ───────────────────────────────────────────

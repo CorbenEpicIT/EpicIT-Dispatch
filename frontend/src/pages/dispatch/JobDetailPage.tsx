@@ -34,7 +34,6 @@ import {
 	JobStatusColors,
 	VisitStatusColors,
 	type VisitStatus,
-	type JobLineItem,
 } from "../../types/jobs";
 import { RecurringPlanStatusColors, RecurringPlanStatusLabels } from "../../types/recurringPlans";
 import { QuoteStatusColors } from "../../types/quotes";
@@ -42,7 +41,7 @@ import { RequestStatusColors } from "../../types/requests";
 import { getGenericStatusColor, PriorityColors } from "../../types/common";
 import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
-import FinancialSummary from "../../components/pagesections/FinancialSummary";
+import FinancialSummary, { type FinancialSummaryLineItem } from "../../components/pagesections/FinancialSummary";
 
 export default function JobDetailPage() {
 	const { jobId } = useParams<{ jobId: string }>();
@@ -72,6 +71,42 @@ export default function JobDetailPage() {
 		}
 		return record;
 	}, [linkedInvoices]);
+
+	const lineItems = useMemo((): FinancialSummaryLineItem[] => {
+		const jobItems: FinancialSummaryLineItem[] = (job?.line_items ?? []).map((item) => ({
+			...item,
+			sourceLabel: "Job Charges",
+			isVisitSource: false,
+		}));
+		const visitItems: FinancialSummaryLineItem[] = (visits ?? [])
+			.filter((v) => v.status === "Completed")
+			.flatMap((v) =>
+				(v.line_items ?? []).map((li) => ({
+					...li,
+					sourceLabel: v.scheduled_start_at
+						? `Visit · ${new Date(v.scheduled_start_at).toLocaleDateString("en-US", {
+							month: "short",
+							day: "numeric",
+						})}`
+						: "Visit",
+					isVisitSource: true,
+				}))
+			);
+		return [...jobItems, ...visitItems];
+	}, [job?.line_items, visits]);
+
+	// Merged subtotal from all line items (job + completed visits).
+	// Used instead of job.subtotal so the sidebar reflects the full merged picture.
+	const mergedSubtotal = useMemo(() => {
+		if (lineItems.length === 0) return null;
+		const total = lineItems.reduce((sum, li) => {
+			const t = li.total != null
+				? Number(li.total)
+				: Number(li.quantity) * Number(li.unit_price);
+			return sum + (isNaN(t) ? 0 : t);
+		}, 0);
+		return total > 0 ? total : null;
+	}, [lineItems]);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -124,7 +159,6 @@ export default function JobDetailPage() {
 			new Date(b.scheduled_start_at).getTime()
 	);
 
-	const lineItems: JobLineItem[] = job.line_items || [];
 	const hasLineItems = lineItems.length > 0;
 	const recurringPlan = job.recurring_plan ?? null;
 
@@ -358,10 +392,10 @@ export default function JobDetailPage() {
 			) : (
 				<FinancialSummary
 					lineItems={lineItems}
-					taxSnapshot={job.tax_snapshot}
+					taxSnapshot={null}
 					legacyTaxRate={job.tax_rate != null ? Number(job.tax_rate) : null}
 					legacyTaxAmount={job.tax_amount != null ? Number(job.tax_amount) : null}
-					subtotal={job.subtotal != null ? Number(job.subtotal) : null}
+					subtotal={mergedSubtotal}
 					discountAmount={job.discount_amount != null ? Number(job.discount_amount) : null}
 					discountType={job.discount_type ?? null}
 					discountValue={job.discount_value != null ? Number(job.discount_value) : null}
@@ -383,7 +417,24 @@ export default function JobDetailPage() {
 									</p>
 								</div>
 							)}
-							{job.actual_total && (
+
+							{/* Running Cost — shown while in progress, actual_total accumulating */}
+							{job.actual_total != null && Number(job.actual_total) > 0 && job.status !== "Completed" && (
+								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+									<div>
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+											Running Cost
+										</p>
+										<p className="text-xs text-text-muted">Completed visits so far</p>
+									</div>
+									<p className="text-2xl font-bold text-primary-text tabular-nums">
+										{formatCurrency(Number(job.actual_total))}
+									</p>
+								</div>
+							)}
+
+							{/* Actual Total — shown only when job is fully Completed */}
+							{job.actual_total != null && Number(job.actual_total) > 0 && job.status === "Completed" && (
 								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
 									<div>
 										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
@@ -396,7 +447,9 @@ export default function JobDetailPage() {
 									</p>
 								</div>
 							)}
-							{job.estimated_total && job.actual_total && (
+
+							{/* Budget Variance — only when job Completed and both values exist */}
+							{job.estimated_total != null && Number(job.estimated_total) > 0 && job.actual_total != null && Number(job.actual_total) > 0 && job.status === "Completed" && (
 								<>
 									<div className="border-t border-border my-2" />
 									<div className={`px-4 py-3 rounded-lg border-2 ${Number(job.actual_total) > Number(job.estimated_total) ? "bg-error/10 border-error/30" : "bg-success/10 border-success/30"}`}>
@@ -422,11 +475,13 @@ export default function JobDetailPage() {
 									</div>
 								</>
 							)}
-							{!job.actual_total && job.estimated_total && job.status !== "Completed" && (
+
+							{/* Note — no completed visits yet */}
+							{job.estimated_total != null && (job.actual_total == null || Number(job.actual_total) === 0) && job.status !== "Completed" && (
 								<div className="px-4 py-3 bg-primary/10 border border-primary/30 rounded-lg">
 									<p className="text-xs text-primary-text italic">
 										<span className="font-semibold">Note:</span>{" "}
-										Actual total will be recorded when job is marked as completed
+										Running cost accumulates as visits are completed
 									</p>
 								</div>
 							)}

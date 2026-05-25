@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { FileText } from "lucide-react";
+import { FileText, MapPin, Briefcase } from "lucide-react";
 import Card from "../ui/Card";
 import { formatCurrency } from "../../util/util";
 import { formatRatePercentLabel } from "../../lib/formatTax";
@@ -31,6 +31,10 @@ export interface FinancialSummaryLineItem {
 	/** Per-item tax amount (dollars); fallback when taxSnapshot absent. */
 	tax_amount?: number | null;
 	taxable?: boolean;
+	/** Source attribution label, e.g. "Job Charges" or "Visit · May 2". When present, renders a source chip. */
+	sourceLabel?: string | null;
+	/** True for visit-sourced items (blue pin badge), false/absent for job items (gray briefcase badge). */
+	isVisitSource?: boolean;
 }
 
 export interface FinancialSummaryProps {
@@ -100,10 +104,11 @@ export default function FinancialSummary({
 			for (const item of lineItems) {
 				const g = item.tax_group;
 				if (g?.name && g.rates && g.rates.length > 0 && !map.has(g.name)) {
+					// Number() coercion: Prisma Decimal serialises as string via Express JSON
 					map.set(g.name, g.rates.map(r => ({
 						id: r.tax_rate.id,
 						name: r.tax_rate.name,
-						rate: r.tax_rate.rate,
+						rate: Number(r.tax_rate.rate),
 					})));
 				}
 			}
@@ -135,6 +140,9 @@ export default function FinancialSummary({
 	}, [taxSnapshot]);
 
 	// No snapshot — per-rate totals from line items; split tax_amount by rate weight.
+	// NOTE: tax_rate.rate is a Prisma Decimal, serialised as a string by Express JSON.
+	// All usages explicitly coerce with Number() to prevent string-concatenation NaN
+	// (e.g. reduce("0.06" + "0.02") → "00.060.02" → NaN) when groups have multiple rates.
 	const lineItemCollapsedRates = useMemo((): CollapsedRate[] => {
 		if (collapsedTaxRates.length > 0) return [];
 		const rateMap = new Map<string, CollapsedRate>();
@@ -142,10 +150,11 @@ export default function FinancialSummary({
 			if (!item.taxable || item.tax_amount == null || !item.tax_group?.rates?.length) continue;
 			const itemTaxCents = Math.round(Number(item.tax_amount) * 100);
 			if (itemTaxCents === 0) continue;
-			const combinedRate = item.tax_group.rates.reduce((s, r) => s + r.tax_rate.rate, 0);
+			const combinedRate = item.tax_group.rates.reduce((s, r) => s + Number(r.tax_rate.rate), 0);
 			if (combinedRate === 0) continue;
 			for (const r of item.tax_group.rates) {
-				const share = Math.round(itemTaxCents * (r.tax_rate.rate / combinedRate));
+				const rateNum = Number(r.tax_rate.rate);
+				const share = Math.round(itemTaxCents * (rateNum / combinedRate));
 				const existing = rateMap.get(r.tax_rate.id);
 				if (existing) {
 					existing.amountCents += share;
@@ -153,7 +162,7 @@ export default function FinancialSummary({
 					rateMap.set(r.tax_rate.id, {
 						id: r.tax_rate.id,
 						name: r.tax_rate.name,
-						rate: r.tax_rate.rate,
+						rate: rateNum,
 						amountCents: share,
 					});
 				}
@@ -161,6 +170,8 @@ export default function FinancialSummary({
 		}
 		return [...rateMap.values()];
 	}, [collapsedTaxRates, lineItems]);
+
+	const [visibleCount, setVisibleCount] = useState(10);
 
 	return (
 		<Card title={cardTitle}>
@@ -192,7 +203,7 @@ export default function FinancialSummary({
 							</div>
 
 							{/* Data rows */}
-							{lineItems.map((item, index) => {
+							{lineItems.slice(0, visibleCount).map((item, index) => {
 								const rowTotal =
 									item.total != null
 										? Number(item.total)
@@ -233,7 +244,7 @@ export default function FinancialSummary({
 											</div>
 										</div>
 
-										{/* Sub-row: description + tax badge */}
+										{/* Sub-row: description + source badge + tax badge */}
 										<div className="space-y-1 pb-2.5 min-w-0">
 											{item.description && (
 												<p className="text-xs text-text-tertiary leading-relaxed break-words">
@@ -241,6 +252,22 @@ export default function FinancialSummary({
 												</p>
 											)}
 											<div className="flex flex-wrap items-center gap-1.5">
+												{item.sourceLabel != null && (
+													<span
+														className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap leading-none ${
+															item.isVisitSource
+																? "bg-primary/10 text-primary-text border-primary/20"
+																: "bg-surface-raised/60 text-text-tertiary border-border-strong/50"
+														}`}
+													>
+														{item.isVisitSource ? (
+															<MapPin size={9} className="flex-shrink-0" />
+														) : (
+															<Briefcase size={9} className="flex-shrink-0" />
+														)}
+														<span className="truncate">{item.sourceLabel}</span>
+													</span>
+												)}
 												{item.tax_group?.name ? (
 													<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
 														{item.tax_group.name}
@@ -261,6 +288,22 @@ export default function FinancialSummary({
 									</div>
 								);
 							})}
+
+							{/* Load More */}
+							{visibleCount < lineItems.length && (() => {
+								const remaining = lineItems.length - visibleCount;
+								const label = remaining > 10
+									? `Load 10 of ${remaining} More`
+									: `Load ${remaining} More`;
+								return (
+									<button
+										onClick={() => setVisibleCount(prev => prev + 10)}
+										className="mt-3 w-full py-1.5 text-xs font-medium text-text-tertiary hover:text-white border border-border hover:border-border-strong rounded transition-colors"
+									>
+										{label}
+									</button>
+								);
+							})()}
 						</div>
 					)}
 				</div>
