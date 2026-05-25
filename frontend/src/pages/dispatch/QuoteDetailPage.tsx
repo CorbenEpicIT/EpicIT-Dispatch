@@ -2,7 +2,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
 	Calendar,
 	DollarSign,
-	FileText,
 	MapPin,
 	MoreVertical,
 	Edit2,
@@ -23,10 +22,10 @@ import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditQuote from "../../components/quotes/EditQuote";
 import ConvertToJob from "../../components/quotes/ConvertToJob";
 import NoteManager from "../../components/quotes/QuoteNoteManager";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import { formatCurrency } from "../../util/util";
-import { formatRatePercentLabel } from "../../lib/formatTax";
 import { downloadQuotePdf } from "../../api/quotes";
+import FinancialSummary from "../../components/pagesections/FinancialSummary";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
 
 export default function QuoteDetailPage() {
@@ -56,17 +55,6 @@ export default function QuoteDetailPage() {
 		document.addEventListener("mousedown", handleClickOutside);
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
-
-	// Map group name → combined rate for line item tax badge + totals section
-	// Must be before early returns to satisfy Rules of Hooks
-	const groupRateMap = useMemo(() => {
-		const map = new Map<string, number>();
-		for (const group of quote?.tax_snapshot?.groups ?? []) {
-			const combined = (group.rates ?? []).reduce((sum, r) => sum + r.rate, 0);
-			if (combined > 0) map.set(group.name, combined);
-		}
-		return map;
-	}, [quote?.tax_snapshot]);
 
 	if (isLoading) {
 		return (
@@ -381,230 +369,32 @@ export default function QuoteDetailPage() {
 			</div>
 
 			{/* Financial Summary */}
-			<Card title="Financial Summary">
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-					<div className="lg:col-span-2">
-						<h3 className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-4">
-							Line Items
-						</h3>
-						{!quote.line_items ||
-						quote.line_items.length === 0 ? (
-							<div className="text-center py-8">
-								<FileText
-									size={40}
-									className="mx-auto text-text-faint mb-3"
-								/>
-								<h3 className="text-text-tertiary text-sm font-medium mb-1">
-									No Line Items
-								</h3>
-								<p className="text-text-muted text-xs">
-									No line items have been
-									added to this quote yet.
-								</p>
-							</div>
-						) : (
-							<div>
-								{/* Header row */}
-								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
-									<div className="col-span-5 min-w-0">Item / Description</div>
-									<div className="col-span-2 min-w-0 text-center">Type</div>
-									<div className="col-span-1 min-w-0 text-right">Qty</div>
-									<div className="col-span-2 min-w-0 text-right">Unit Price</div>
-									<div className="col-span-2 min-w-0 text-right">Amount</div>
-								</div>
-								{/* Data rows — items-start so numeric cols don't stretch when description wraps */}
-								{quote.line_items.map((item, index) => (
-									<div
-										key={item.id || index}
-										className="border-b border-border-subtle hover:bg-surface/30 transition-colors"
-									>
-										{/* Primary row — name + all numeric columns */}
-										<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
-											<div className="col-span-5 min-w-0 text-sm">
-												<p className="text-white font-medium break-words">
-													{item.name}
-												</p>
-											</div>
-											<div className="col-span-2 min-w-0 flex justify-center">
-												{item.item_type && (
-													<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-														{item.item_type}
-													</span>
-												)}
-											</div>
-											<div className="col-span-1 min-w-0 text-right text-sm text-white tabular-nums" title={String(item.quantity)}>
-												{Number(item.quantity).toLocaleString("en-US", {
-													minimumFractionDigits: 0,
-													maximumFractionDigits: 2,
-												})}
-											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums">
-												{formatCurrency(Number(item.unit_price))}
-											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums">
-												{formatCurrency(Number(item.quantity) * Number(item.unit_price))}
-											</div>
-										</div>
-										{/* Sub-row — only renders when secondary content exists */}
-										{(item.description || item.tax_group?.name || item.taxable === false) && (
-											<div className="space-y-1 pb-2.5 min-w-0">
-												{item.description && (
-													<p className="text-xs text-text-tertiary leading-relaxed break-words">
-														{item.description}
-													</p>
-												)}
-												{(item.tax_group?.name || item.taxable === false) && (
-													<div className="flex flex-wrap items-center gap-1.5">
-														{item.tax_group?.name ? (
-															<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
-																{item.tax_group.name}
-																{groupRateMap.has(item.tax_group.name)
-																	? ` · ${formatRatePercentLabel(groupRateMap.get(item.tax_group.name)!)}`
-																	: ""}
-															</span>
-														) : (
-															<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-raised/40 border border-border-strong/30 text-[10px] text-text-faint whitespace-nowrap leading-none">
-																Non-taxable
-															</span>
-														)}
-													</div>
-												)}
-											</div>
-										)}
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-
-					<div className="lg:col-span-1 space-y-6">
-						<div className="p-4 bg-surface/50 rounded-lg border border-border space-y-2">
-							<div className="flex items-center justify-between gap-4 text-sm">
-								<span className="text-text-tertiary flex-shrink-0">Total Items:</span>
-								<span className="text-white font-medium tabular-nums">
-									{quote.line_items?.length || 0}
-								</span>
-							</div>
-							<div className="flex items-center justify-between gap-4 text-sm">
-								<span className="text-text-tertiary flex-shrink-0">Quote #:</span>
-								<span className="text-white font-medium truncate">
-									{quote.quote_number}
-								</span>
-							</div>
+			<FinancialSummary
+				lineItems={quote.line_items ?? []}
+				taxSnapshot={quote.tax_snapshot}
+				legacyTaxRate={quote.tax_rate != null ? Number(quote.tax_rate) : null}
+				legacyTaxAmount={quote.tax_amount != null ? Number(quote.tax_amount) : null}
+				subtotal={quote.subtotal != null ? Number(quote.subtotal) : null}
+				discountAmount={quote.discount_amount != null ? Number(quote.discount_amount) : null}
+				discountType={quote.discount_type ?? null}
+				discountValue={quote.discount_value != null ? Number(quote.discount_value) : null}
+				metaLabel="Quote #"
+				metaValue={quote.quote_number}
+				noLineItemsDescription="No line items have been added to this quote yet."
+				totalsContent={
+					<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+						<div>
+							<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+								Quote Total
+							</p>
+							<p className="text-xs text-text-muted">Final amount</p>
 						</div>
-
-						<div className="space-y-3">
-							{quote.subtotal !== null &&
-								quote.subtotal !== undefined && (
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-text-tertiary">
-											Subtotal:
-										</span>
-										<span className="text-white font-medium tabular-nums">
-											{formatCurrency(
-												Number(
-													quote.subtotal
-												)
-											)}
-										</span>
-									</div>
-								)}
-
-							{quote.tax_snapshot ? (
-								<>
-									{(quote.tax_snapshot.groups ?? []).map((group) => {
-										const combinedRate = (group.rates ?? []).reduce(
-											(sum, r) => sum + r.rate,
-											0
-										);
-										return (
-											<div key={group.id} className="flex items-center justify-between text-sm">
-												<span className="text-text-tertiary">
-													{group.name}
-													{combinedRate > 0
-														? ` (${formatRatePercentLabel(combinedRate)})`
-														: ""}
-													:
-												</span>
-												<span className="text-white font-medium tabular-nums">
-													{formatCurrency((group.tax_amount_cents ?? 0) / 100)}
-												</span>
-											</div>
-										);
-									})}
-									{(quote.tax_snapshot.groups ?? []).length > 1 && (
-										<div className="flex items-center justify-between text-sm">
-											<span className="text-text-tertiary font-medium">Total Tax:</span>
-											<span className="text-white font-medium tabular-nums">
-												{formatCurrency((quote.tax_snapshot.total_tax_cents ?? 0) / 100)}
-											</span>
-										</div>
-									)}
-								</>
-							) : quote.tax_amount !== null &&
-								quote.tax_amount !== undefined &&
-								Number(quote.tax_amount) > 0 ? (
-								<div className="flex items-center justify-between text-sm">
-									<span className="text-text-tertiary">
-										Tax{" "}
-										{quote.tax_rate
-											? `(${formatRatePercentLabel(Number(quote.tax_rate))})`
-											: ""}
-										:
-									</span>
-									<span className="text-white font-medium tabular-nums">
-										{formatCurrency(Number(quote.tax_amount))}
-									</span>
-								</div>
-							) : null}
-
-							{quote.discount_amount !== null &&
-								quote.discount_amount !==
-									undefined &&
-								Number(quote.discount_amount) >
-									0 && (
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-text-tertiary">
-											Discount{" "}
-											{quote.discount_type ===
-												"percent" &&
-											quote.discount_value
-												? `(${Number(quote.discount_value)}%)`
-												: ""}
-											:
-										</span>
-										<span className="text-success-text font-medium tabular-nums">
-											-
-											{formatCurrency(
-												Number(
-													quote.discount_amount
-												)
-											)}
-										</span>
-									</div>
-								)}
-
-							<div className="border-t border-border my-2" />
-
-							<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
-								<div>
-									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
-										Quote Total
-									</p>
-									<p className="text-xs text-text-muted">
-										Final amount
-									</p>
-								</div>
-								<p className="text-2xl font-bold text-primary-text tabular-nums">
-									{formatCurrency(
-										Number(quote.total)
-									)}
-								</p>
-							</div>
-						</div>
+						<p className="text-2xl font-bold text-primary-text tabular-nums">
+							{formatCurrency(Number(quote.total))}
+						</p>
 					</div>
-				</div>
-			</Card>
+				}
+			/>
 
 			{/* Relations Row: Request + Job */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">

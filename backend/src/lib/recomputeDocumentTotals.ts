@@ -1,25 +1,22 @@
 /**
  * recomputeDocumentTotals.ts
  *
- * Shared tax recomputation logic for both quotes and invoices.
+ * Shared tax recomputation logic for quotes, invoices, jobs, and job visits.
  * Single source of truth — eliminates the near-identical functions that
  * previously existed in invoiceService.ts (recomputeInvoiceTotals) and
  * quotesController.ts (recomputeQuoteTotals).
  */
 import { Prisma } from "../../generated/prisma/client.js";
-import {
-	calculateDocumentTax,
-	centsToDollars,
-} from "../services/taxEngine.js";
+import { calculateDocumentTax, centsToDollars } from "../services/taxEngine.js";
 import {
 	resolveLineItemTaxInputs,
 	type DocumentLineItemRaw,
 } from "./taxHelpers.js";
 
-export type DocumentModel = "invoice" | "quote";
+export type DocumentModel = "invoice" | "quote" | "job" | "job_visit";
 
 /**
- * Recompute all tax/discount/total fields for a quote or invoice.
+ * Recompute tax/discount/total fields for any document model.
  *
  * - If the document does not exist, returns `false`.
  * - If `tax_snapshot` is already set (locked), skips and returns `false`.
@@ -28,7 +25,7 @@ export type DocumentModel = "invoice" | "quote";
  *
  * Invoice-only: also updates `balance_due`.
  *
- * @param model         "invoice" | "quote"
+ * @param model         "invoice" | "quote" | "job" | "job_visit"
  * @param documentId    Primary key of the document
  * @param organizationId  Required for org-scoped tax group resolution
  * @param tx            Prisma transaction client — caller must wrap in $transaction
@@ -54,7 +51,7 @@ export async function recomputeDocumentTotals(
 	// Fetch from the correct model, including amount_paid for invoices
 	let doc: {
 		client_id: string;
-		tax_snapshot: Prisma.JsonValue | null;
+		tax_snapshot?: Prisma.JsonValue | null;
 		discount_type: string | null;
 		discount_value: Prisma.Decimal | null;
 		amount_paid?: Prisma.Decimal | null;
@@ -78,7 +75,7 @@ export async function recomputeDocumentTotals(
 				line_items: lineItemSelect,
 			},
 		});
-	} else {
+	} else if (model === "quote") {
 		doc = await tx.quote.findFirst({
 			where: { id: documentId },
 			select: {
@@ -89,13 +86,40 @@ export async function recomputeDocumentTotals(
 				line_items: lineItemSelect,
 			},
 		});
+	} else if (model === "job") {
+		const job = await tx.job.findFirst({
+			where: { id: documentId },
+			select: {
+				client_id: true,
+				tax_snapshot: true,
+				discount_type: true,
+				discount_value: true,
+				line_items: lineItemSelect,
+			},
+		});
+		doc = job ?? null;
+	} else {
+		// job_visit — client_id is on the parent job
+		const visit = await tx.job_visit.findFirst({
+			where: { id: documentId },
+			select: {
+				tax_snapshot: true,
+				discount_type: true,
+				discount_value: true,
+				line_items: lineItemSelect,
+				job: { select: { client_id: true } },
+			},
+		});
+		doc = visit ? { ...visit, client_id: visit.job.client_id } : null;
 	}
 
 	if (!doc) return false;
-	if (doc.tax_snapshot != null) {
+	if (
+		(model === "invoice" || model === "quote") &&
+		doc.tax_snapshot != null
+	) {
 		const snap = doc.tax_snapshot as { locked_at?: string };
-		// Only skip recompute if the snapshot is locked (ISO timestamp). A "draft" sentinel
-		// means the snapshot exists but is unlocked and may be recomputed freely.
+		// "draft" = unlocked (recompute freely); ISO string = locked (skip).
 		if (snap.locked_at !== "draft") return false;
 	}
 
@@ -119,20 +143,49 @@ export async function recomputeDocumentTotals(
 		{
 			line_items: inputs,
 			discount_type: (doc.discount_type as "percent" | "amount") ?? null,
-			discount_value: doc.discount_value ? Number(doc.discount_value) : null,
+			discount_value: doc.discount_value
+				? Number(doc.discount_value)
+				: null,
 		},
 		clientExempt,
 		lockedAt,
 	);
 
 	// ── 4. Write per-line-item tax amounts ───────────────────────────────────
-	// Use a Map for O(1) lookup (avoids O(n²) .find inside the loop).
 	const inputMap = new Map(inputs.map((i) => [i.id, i]));
-	const lineItemUpdate = model === "invoice"
-		? (id: string, data: Parameters<typeof tx.invoice_line_item.update>[0]["data"]) =>
-			tx.invoice_line_item.update({ where: { id }, data })
-		: (id: string, data: Parameters<typeof tx.quote_line_item.update>[0]["data"]) =>
-			tx.quote_line_item.update({ where: { id }, data });
+	// `any`: 4-branch ternary over incompatible Prisma update types; each branch is type-safe.
+	const lineItemUpdate: (id: string, data: any) => Promise<any> =
+		model === "invoice"
+			? (
+					id: string,
+					data: Parameters<
+						typeof tx.invoice_line_item.update
+					>[0]["data"],
+				) => tx.invoice_line_item.update({ where: { id }, data })
+			: model === "job"
+				? (
+						id: string,
+						data: Parameters<
+							typeof tx.job_line_item.update
+						>[0]["data"],
+					) => tx.job_line_item.update({ where: { id }, data })
+				: model === "job_visit"
+					? (
+							id: string,
+							data: Parameters<
+								typeof tx.job_visit_line_item.update
+							>[0]["data"],
+						) =>
+							tx.job_visit_line_item.update({
+								where: { id },
+								data,
+							})
+					: (
+							id: string,
+							data: Parameters<
+								typeof tx.quote_line_item.update
+							>[0]["data"],
+						) => tx.quote_line_item.update({ where: { id }, data });
 
 	// Parallelise all updates — they are independent within the transaction.
 	await Promise.all(
@@ -142,7 +195,8 @@ export async function recomputeDocumentTotals(
 			return lineItemUpdate(li.id, {
 				tax_amount: centsToDollars(taxAmountCents),
 				taxable: resolvedInput?.taxable ?? li.taxable,
-				tax_group_id: resolvedInput?.tax_group?.id ?? li.tax_group_id ?? null,
+				tax_group_id:
+					resolvedInput?.tax_group?.id ?? li.tax_group_id ?? null,
 			});
 		}),
 	);
@@ -159,9 +213,8 @@ export async function recomputeDocumentTotals(
 		tax_amount: taxAmount,
 		discount_amount: discountAmount,
 		total,
-		// Always persist snapshot — locked_at is "draft" for unlocked docs, ISO string once issued.
-		// TaxSnapshot is a plain object of JSON-safe primitives; double cast is required
-		// because Prisma's InputJsonValue index signature is incompatible with named types.
+		// locked_at: "draft" while unlocked, ISO string once issued.
+		// Double cast: Prisma.InputJsonValue index sig incompatible with named type.
 		tax_snapshot: taxOutput.snapshot as unknown as Prisma.InputJsonValue,
 	};
 
@@ -171,8 +224,17 @@ export async function recomputeDocumentTotals(
 			where: { id: documentId },
 			data: { ...sharedData, balance_due: balanceDue },
 		});
+	} else if (model === "quote") {
+		await tx.quote.update({ where: { id: documentId }, data: sharedData });
+	} else if (model === "job") {
+		const { total: calculatedTotal, ...jobDataWithSnapshot } = sharedData;
+		await tx.job.update({
+			where: { id: documentId },
+			data: { ...jobDataWithSnapshot, estimated_total: calculatedTotal },
+		});
 	} else {
-		await tx.quote.update({
+		// job_visit
+		await tx.job_visit.update({
 			where: { id: documentId },
 			data: sharedData,
 		});
@@ -181,16 +243,42 @@ export async function recomputeDocumentTotals(
 	return true;
 }
 
+export async function recomputeJobTotals(
+	jobId: string,
+	organizationId: string,
+	tx: Prisma.TransactionClient,
+): Promise<boolean> {
+	return recomputeDocumentTotals("job", jobId, organizationId, tx);
+}
+
+export async function recomputeVisitTotals(
+	visitId: string,
+	organizationId: string,
+	tx: Prisma.TransactionClient,
+): Promise<boolean> {
+	return recomputeDocumentTotals("job_visit", visitId, organizationId, tx);
+}
+
+type SnapshotModel = Extract<DocumentModel, "invoice" | "quote">;
+
 /**
  * Lock the tax snapshot on an invoice or quote when it transitions to Issued.
- * If the snapshot is already set, this is a no-op.
+ * Only valid for "invoice" and "quote" models — job/visit snapshots are never
+ * locked (they recompute freely on every save).
+ * If the snapshot is already locked, this is a no-op.
  */
 export async function lockDocumentTaxSnapshot(
-	model: DocumentModel,
+	model: SnapshotModel,
 	documentId: string,
 	organizationId: string,
 	tx: Prisma.TransactionClient,
 	lockedAt: Date = new Date(),
 ): Promise<void> {
-	await recomputeDocumentTotals(model, documentId, organizationId, tx, lockedAt);
+	await recomputeDocumentTotals(
+		model,
+		documentId,
+		organizationId,
+		tx,
+		lockedAt,
+	);
 }

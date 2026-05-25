@@ -31,6 +31,8 @@ import {
 	type TemplateSearchClient,
 	type TemplateSearchScopeToggle,
 } from "../ui/forms/TemplateSearch";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
+import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -62,6 +64,7 @@ interface CreateJobVisitProps {
 	createVisit: (input: CreateJobVisitInput) => Promise<JobVisit>;
 	preselectedTechId?: string;
 	onSuccess?: (visit: JobVisit) => void;
+	clientExempt?: boolean;
 }
 
 const CreateJobVisit = ({
@@ -71,6 +74,7 @@ const CreateJobVisit = ({
 	createVisit,
 	preselectedTechId,
 	onSuccess,
+	clientExempt = false,
 }: CreateJobVisitProps) => {
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
@@ -112,6 +116,31 @@ const CreateJobVisit = ({
 	);
 
 	const lineItems = useLineItems({ minItems: 1, mode: "create" });
+
+	const { data: taxGroups = [] } = useTaxGroups();
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			lineItems.activeLineItems.map((item) => ({
+				id: item.id,
+				total: Number(item.total),
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[lineItems.activeLineItems],
+	);
+
+	const { groupsSummary, totalTax, resolvedTotal } = useFinancialCalculations(
+		lineItems.subtotal,
+		{
+			taxGroups,
+			lineItemsForCalc,
+			clientExempt,
+			initialDiscountType: "amount",
+			initialDiscountValue: 0,
+		},
+	);
+
 	const dirtyAddLineItem = useCallback(() => {
 		lineItems.addLineItem();
 		markDirty();
@@ -283,6 +312,8 @@ const CreateJobVisit = ({
 						item_type: (li.item_type ?? "") as
 							| LineItemType
 							| "",
+						taxable: li.taxable ?? true,
+						tax_group_id: li.tax_group_id ?? null,
 					}))
 				);
 			} else {
@@ -311,6 +342,8 @@ const CreateJobVisit = ({
 						quantity: number;
 						unit_price: number;
 						item_type?: string | null;
+						taxable?: boolean | null;
+						tax_group_id?: string | null;
 					}>;
 					time_constraints?: {
 						arrivalConstraint: string;
@@ -336,6 +369,8 @@ const CreateJobVisit = ({
 							item_type: (li.item_type ?? "") as
 								| LineItemType
 								| "",
+							taxable: li.taxable ?? true,
+							tax_group_id: li.tax_group_id ?? null,
 						}))
 					);
 				}
@@ -391,6 +426,8 @@ const CreateJobVisit = ({
 				unit_price: item.unit_price,
 				item_type: item.item_type,
 				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
 			})),
 			time_constraints: timeConstraintsState
 				? {
@@ -600,6 +637,8 @@ const CreateJobVisit = ({
 					| LineItemType
 					| undefined,
 				sort_order: index,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
 			}));
 
 		const newVisit: CreateJobVisitInput = {
@@ -815,7 +854,7 @@ const CreateJobVisit = ({
 
 			case 3:
 				return (
-					<div className="min-w-0 flex flex-col">
+					<div className="min-w-0 flex flex-col gap-3">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={lineItems.activeLineItems}
@@ -829,7 +868,50 @@ const CreateJobVisit = ({
 							dirtyFields={lineItems.dirtyLineItemFields}
 							onUndo={lineItems.undoLineItemField}
 							onClear={lineItems.clearLineItemField}
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={(id, groupId, taxable) => {
+								lineItems.setLineItemTaxGroup(id, groupId, taxable);
+								markDirty();
+							}}
+							onTaxGroupBulkSet={(groupId, taxable) => {
+								lineItems.setAllLineItemsTaxGroup(groupId, taxable);
+								markDirty();
+							}}
 						/>
+
+						{lineItems.activeLineItems.some((li) => li.name.trim()) && (
+							<div className="p-3 bg-surface rounded-lg border border-border text-sm space-y-1.5">
+								<div className="flex justify-between text-text-tertiary">
+									<span>Subtotal</span>
+									<span className="tabular-nums">${lineItems.subtotal.toFixed(2)}</span>
+								</div>
+
+								{groupsSummary.map((gs) => (
+									<div key={gs.group.id} className="flex justify-between text-text-tertiary">
+										<span>
+											{gs.group.name}{" "}
+											<span className="text-text-muted text-xs">
+												({(gs.group.combined_rate * 100).toFixed(2)}%)
+											</span>
+										</span>
+										<span className="tabular-nums">${gs.tax_amount.toFixed(2)}</span>
+									</div>
+								))}
+
+								{totalTax > 0 && groupsSummary.length === 0 && (
+									<div className="flex justify-between text-text-tertiary">
+										<span>Tax</span>
+										<span className="tabular-nums">${totalTax.toFixed(2)}</span>
+									</div>
+								)}
+
+								<div className="flex justify-between font-semibold text-white border-t border-border pt-1.5">
+									<span>Total</span>
+									<span className="tabular-nums">${resolvedTotal.toFixed(2)}</span>
+								</div>
+							</div>
+						)}
 					</div>
 				);
 
@@ -938,6 +1020,11 @@ const CreateJobVisit = ({
 		handleTechSelection,
 		ErrorDisplay,
 		markDirty,
+		taxGroups,
+		clientExempt,
+		groupsSummary,
+		totalTax,
+		resolvedTotal,
 	]);
 
 	// ── Hoisted TimeConstraints — stable instance, toggled via display:none ─

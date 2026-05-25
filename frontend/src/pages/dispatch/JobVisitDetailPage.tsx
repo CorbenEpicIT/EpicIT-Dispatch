@@ -3,7 +3,6 @@ import {
 	Edit2,
 	Clock,
 	Users,
-	DollarSign,
 	CheckCircle2,
 	XCircle,
 	Pause,
@@ -11,7 +10,7 @@ import {
 	MoreVertical,
 	Receipt,
 	Calendar,
-	ExternalLink,
+	Briefcase,
 	Plus,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
@@ -34,6 +33,7 @@ import JobNoteManager from "../../components/jobs/JobNoteManager";
 import CreateInvoice from "../../components/invoices/CreateInvoice";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
 import { formatCurrency, formatDate, formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
+import FinancialSummary from "../../components/pagesections/FinancialSummary";
 import { useAuthStore } from "../../auth/authStore";
 
 export default function JobVisitDetailPage() {
@@ -252,12 +252,24 @@ export default function JobVisitDetailPage() {
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
-					<h1 className="text-3xl font-bold text-white mb-2">
+					<h1 className="text-3xl font-bold text-white mb-1">
 						{visit.name || "Job Visit"}
 					</h1>
-					<p className="text-text-tertiary text-sm">
-						{formatDate(visit.scheduled_start_at, tz)}
-					</p>
+					<div className="flex items-center text-sm text-text-tertiary">
+						<span>{formatDate(visit.scheduled_start_at, tz)}</span>
+						{job && (
+							<>
+								<span className="mx-2 text-border-strong">·</span>
+								<button
+									onClick={() => navigate(`/dispatch/jobs/${jobId}`)}
+									className="inline-flex items-center gap-1 text-primary-text hover:text-white transition-colors"
+								>
+									<Briefcase size={12} className="opacity-70" />
+									<span>Job #{job.job_number} · {job.name}</span>
+								</button>
+							</>
+						)}
+					</div>
 				</div>
 
 				<div className="justify-self-end flex items-center gap-3">
@@ -430,20 +442,9 @@ export default function JobVisitDetailPage() {
 			{/* Visit Information (2/3) + Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<div className="lg:col-span-2">
-					<Card
-						title="Visit Information"
-						className="h-full"
-						headerAction={
-							<button
-								onClick={() => navigate(`/dispatch/jobs/${jobId}`)}
-								className="flex items-center gap-1 text-xs text-text-tertiary hover:text-primary-text transition-colors"
-							>
-								<ExternalLink size={12} />
-								View Job
-							</button>
-						}
-					>
+					<Card title="Visit Information" className="h-full">
 						<div className="space-y-4">
+							{/* Description — full width */}
 							{visit.description && (
 								<div>
 									<h3 className="text-text-tertiary text-sm mb-1">
@@ -455,102 +456,111 @@ export default function JobVisitDetailPage() {
 								</div>
 							)}
 
-							<div>
-								<h3 className="text-text-tertiary text-sm mb-1">
-									Schedule Constraints
-								</h3>
-								<p className="text-white font-medium">
-									{formatVisitConstraints()}
-								</p>
-							</div>
-
-							<div>
-								<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
-									<Clock size={14} />
-									Scheduled Time
-								</h3>
-								<div className="space-y-1">
-									<p className="text-white">
-										{formatDate(visit.scheduled_start_at, tz)}
-									</p>
-
-									{visit.arrival_constraint === "at" && visit.arrival_time && (
-										<p className="text-text-tertiary text-sm">
-											Arrive at: {formatConstraintTime(visit.arrival_time)}
+							{/* Scheduling fields — 2-col grid */}
+							<div className="grid grid-cols-2 gap-x-6 gap-y-4">
+								{/* Left: Constraints + Duration */}
+								<div className="space-y-4">
+									<div>
+										<h3 className="text-text-tertiary text-sm mb-1">
+											Schedule Constraints
+										</h3>
+										<p className="text-white font-medium">
+											{formatVisitConstraints()}
 										</p>
+									</div>
+									{duration !== null && (
+										<div>
+											<h3 className="text-text-tertiary text-sm mb-1">
+												{duration.label}
+											</h3>
+											<p className="text-white font-medium">
+												{formatDuration(duration.minutes)}
+											</p>
+										</div>
 									)}
-									{visit.arrival_constraint === "between" &&
-										visit.arrival_window_start &&
-										visit.arrival_window_end && (
+								</div>
+
+								{/* Right: Scheduled Time */}
+								<div>
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
+										<Clock size={14} />
+										Scheduled Time
+									</h3>
+									<div className="space-y-1">
+										<p className="text-white">
+											{formatDate(visit.scheduled_start_at, tz)}
+										</p>
+										{visit.arrival_constraint === "at" && visit.arrival_time && (
 											<p className="text-text-tertiary text-sm">
-												Arrival window: {formatConstraintTime(visit.arrival_window_start)} – {formatConstraintTime(visit.arrival_window_end)}
+												Arrive at: {formatConstraintTime(visit.arrival_time)}
 											</p>
 										)}
-									{visit.arrival_constraint === "by" && visit.arrival_window_end && (
-										<p className="text-text-tertiary text-sm">
-											Arrive by: {formatConstraintTime(visit.arrival_window_end)}
-										</p>
-									)}
-									{visit.finish_constraint === "at" && visit.finish_time && (
-										<p className="text-text-tertiary text-sm">
-											Finish at: {formatConstraintTime(visit.finish_time)}
-										</p>
-									)}
-									{visit.finish_constraint === "by" && visit.finish_time && (
-										<p className="text-text-tertiary text-sm">
-											Finish by: {formatConstraintTime(visit.finish_time)}
-										</p>
-									)}
+										{visit.arrival_constraint === "between" &&
+											visit.arrival_window_start &&
+											visit.arrival_window_end && (
+												<p className="text-text-tertiary text-sm">
+													Arrival window: {formatConstraintTime(visit.arrival_window_start)} –{" "}
+													{formatConstraintTime(visit.arrival_window_end)}
+												</p>
+											)}
+										{visit.arrival_constraint === "by" && visit.arrival_window_end && (
+											<p className="text-text-tertiary text-sm">
+												Arrive by: {formatConstraintTime(visit.arrival_window_end)}
+											</p>
+										)}
+										{visit.finish_constraint === "at" && visit.finish_time && (
+											<p className="text-text-tertiary text-sm">
+												Finish at: {formatConstraintTime(visit.finish_time)}
+											</p>
+										)}
+										{visit.finish_constraint === "by" && visit.finish_time && (
+											<p className="text-text-tertiary text-sm">
+												Finish by: {formatConstraintTime(visit.finish_time)}
+											</p>
+										)}
+									</div>
 								</div>
 							</div>
 
-							{duration !== null && (
-								<div>
-									<h3 className="text-text-tertiary text-sm mb-1">
-										{duration.label}
-									</h3>
-									<p className="text-white font-medium">
-										{formatDuration(duration.minutes)}
-									</p>
-								</div>
-							)}
-
-							{(visit.actual_start_at ||
-								visit.actual_end_at) && (
+							{/* Footer: Actual Times — 2-col grid */}
+							{(visit.actual_start_at || visit.actual_end_at) && (
 								<div className="pt-4 border-t border-border">
 									<h3 className="text-text-tertiary text-sm mb-2">
 										Actual Times
 									</h3>
-									<div className="space-y-1">
+									<div className="grid grid-cols-2 gap-x-6">
 										{visit.actual_start_at && (
-											<p className="text-white text-sm">
-												Started:{" "}
-												{formatDateTime(
-													visit.actual_start_at, tz
-												)}
-											</p>
+											<div>
+												<p className="text-text-tertiary text-xs mb-0.5">
+													Started
+												</p>
+												<p className="text-white text-sm">
+													{formatDateTime(visit.actual_start_at, tz)}
+												</p>
+											</div>
 										)}
 										{visit.actual_end_at && (
-											<p className="text-white text-sm">
-												Ended:{" "}
-												{formatDateTime(
-													visit.actual_end_at, tz
-												)}
-											</p>
+											<div>
+												<p className="text-text-tertiary text-xs mb-0.5">
+													Ended
+												</p>
+												<p className="text-white text-sm">
+													{formatDateTime(visit.actual_end_at, tz)}
+												</p>
+											</div>
 										)}
 									</div>
 								</div>
 							)}
 
+							{/* Footer: Cancellation Reason — full width */}
 							{visit.cancellation_reason && (
 								<div className="pt-4 border-t border-border">
 									<h3 className="text-text-tertiary text-sm mb-1">
 										Cancellation Reason
 									</h3>
 									<p className="text-white">
-										{
-											visit.cancellation_reason
-										}
+										{visit.cancellation_reason}
 									</p>
 								</div>
 							)}
@@ -575,168 +585,33 @@ export default function JobVisitDetailPage() {
 			</div>
 
 			{/* Visit Financial Summary */}
-			<Card title="Visit Financial Summary">
-				{!hasLineItems ? (
-					<div className="text-center py-8">
-						<DollarSign
-							size={40}
-							className="mx-auto text-text-faint mb-3"
-						/>
-						<h3 className="text-text-tertiary text-sm font-medium mb-1">
-							No Line Items
-						</h3>
-						<p className="text-text-muted text-xs">
-							No line items have been added to this visit
-							yet.
+			<FinancialSummary
+				lineItems={lineItems}
+				taxSnapshot={visit.tax_snapshot}
+				legacyTaxRate={visit.tax_rate != null ? Number(visit.tax_rate) : null}
+				legacyTaxAmount={visit.tax_amount != null ? Number(visit.tax_amount) : null}
+				subtotal={visit.subtotal != null ? Number(visit.subtotal) : null}
+				discountAmount={visit.discount_amount != null ? Number(visit.discount_amount) : null}
+				discountType={visit.discount_type ?? null}
+				discountValue={visit.discount_value != null ? Number(visit.discount_value) : null}
+				metaLabel="Visit Date"
+				metaValue={formatDateTime(visit.scheduled_start_at, tz).split(" at ")[0]}
+				cardTitle="Visit Financial Summary"
+				noLineItemsDescription="No line items have been added to this visit yet."
+				totalsContent={
+					<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+						<div>
+							<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+								Visit Total
+							</p>
+							<p className="text-xs text-text-muted">Final amount</p>
+						</div>
+						<p className="text-2xl font-bold text-primary-text tabular-nums">
+							{formatCurrency(Number(visit.total ?? 0))}
 						</p>
 					</div>
-				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-						<div className="lg:col-span-2">
-							<h3 className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-4">
-								Line Items
-							</h3>
-							<div className="space-y-1">
-								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
-									<div className="col-span-5">
-										Description
-									</div>
-									<div className="col-span-1 text-center">
-										Type
-									</div>
-									<div className="col-span-2 text-right">
-										Qty
-									</div>
-									<div className="col-span-2 text-right">
-										Unit Price
-									</div>
-									<div className="col-span-2 text-right">
-										Amount
-									</div>
-								</div>
-								{lineItems.map((item, index) => (
-									<div
-										key={
-											item.id ||
-											index
-										}
-										className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors"
-									>
-										<div className="col-span-5 text-sm">
-											<p className="text-white font-medium">
-												{
-													item.name
-												}
-											</p>
-											{item.description && (
-												<p className="text-text-tertiary text-xs mt-0.5">
-													{
-														item.description
-													}
-												</p>
-											)}
-										</div>
-										<div className="col-span-1 flex items-center justify-center">
-											{item.item_type && (
-												<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-													{
-														item.item_type
-													}
-												</span>
-											)}
-										</div>
-										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-											{Number(
-												item.quantity
-											).toLocaleString(
-												"en-US",
-												{
-													minimumFractionDigits: 0,
-													maximumFractionDigits: 2,
-												}
-											)}
-										</div>
-										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-											{formatCurrency(
-												Number(
-													item.unit_price
-												)
-											)}
-										</div>
-										<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
-											{formatCurrency(
-												Number(
-													item.total
-												)
-											)}
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-
-						<div className="lg:col-span-1 space-y-6">
-							<div className="p-4 bg-surface/50 rounded-lg border border-border space-y-2">
-								<div className="flex justify-between text-sm">
-									<span className="text-text-tertiary">
-										Total Items:
-									</span>
-									<span className="text-white font-medium tabular-nums">
-										{lineItems.length}
-									</span>
-								</div>
-								<div className="flex justify-between text-sm">
-									<span className="text-text-tertiary">
-										Visit Date:
-									</span>
-									<span className="text-white font-medium">
-										{
-											formatDateTime(
-												visit.scheduled_start_at, tz
-											).split(
-												" at "
-											)[0]
-										}
-									</span>
-								</div>
-							</div>
-
-							<div className="flex items-center justify-between px-4 py-3 bg-primary/10 rounded-lg border-2 border-primary/30">
-								<div>
-									<p className="text-text-secondary text-xs uppercase tracking-wide font-semibold mb-0.5">
-										Visit Total
-									</p>
-									<p className="text-xs text-primary-text">
-										Total charges
-									</p>
-								</div>
-								<p className="text-2xl font-bold text-primary-text tabular-nums">
-									{formatCurrency(
-										lineItems.reduce(
-											(
-												sum,
-												item
-											) =>
-												sum +
-												Number(
-													item.total
-												),
-											0
-										)
-									)}
-								</p>
-							</div>
-
-							<div className="px-4 py-3 bg-surface/50 border border-border rounded-lg">
-								<p className="text-xs text-text-tertiary italic">
-									Line items represent work
-									performed during this visit.
-								</p>
-							</div>
-						</div>
-					</div>
-				)}
-			</Card>
+				}
+			/>
 
 			<div className={`flex flex-col lg:flex-row gap-6 ${linkedInvoices.length >= 2 ? "items-start" : ""}`}>
 				<div className="w-full lg:w-80 flex-shrink-0 flex flex-col">
@@ -921,6 +796,7 @@ export default function JobVisitDetailPage() {
 					setIsModalOpen={setIsEditModalOpen}
 					visit={visit}
 					jobId={jobId!}
+					clientExempt={job?.client?.is_tax_exempt ?? false}
 				/>
 			)}
 

@@ -98,7 +98,24 @@ export const getAllJobs = async (organizationId: string) => {
 					},
 				},
 			},
-			line_items: true,
+			line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 		},
 		orderBy: { created_at: "desc" },
 	});
@@ -162,7 +179,24 @@ export const getJobById = async (id: string, organizationId: string) => {
 					notes: true,
 				},
 			},
-			line_items: true,
+			line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 			recurring_plan: {
 				select: {
 					id: true,
@@ -539,7 +573,24 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 							notes: true,
 						},
 					},
-					line_items: true,
+					line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 					recurring_plan: {
 						select: {
 							id: true,
@@ -886,7 +937,24 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 							},
 						},
 					},
-					line_items: true,
+					line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 					notes: true,
 				},
 			});

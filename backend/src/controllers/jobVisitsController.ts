@@ -15,6 +15,7 @@ import { createNotification } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
 import { buildRecurringPlanInvoicePayload } from "../services/invoiceGenerator.js";
 import { createInvoiceRecord } from "../services/invoiceService.js";
+import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
 
 const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
 function toPauseReason(v: string | undefined): pause_reason_type | undefined {
@@ -162,6 +163,22 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 			},
 			line_items: {
 				orderBy: { sort_order: "asc" },
+				include: {
+					tax_group: {
+						select: {
+							id: true,
+							name: true,
+							rates: {
+								include: {
+									tax_rate: {
+										select: { id: true, name: true, rate: true },
+									},
+								},
+								orderBy: { sort_order: "asc" as const },
+							},
+						},
+					},
+				},
 			},
 			time_entries: {
 				orderBy: { clocked_in_at: "asc" },
@@ -199,6 +216,22 @@ export const getJobVisitsByJobId = async (jobId: string, organization_id: string
 			},
 			line_items: {
 				orderBy: { sort_order: "asc" },
+				include: {
+					tax_group: {
+						select: {
+							id: true,
+							name: true,
+							rates: {
+								include: {
+									tax_rate: {
+										select: { id: true, name: true, rate: true },
+									},
+								},
+								orderBy: { sort_order: "asc" as const },
+							},
+						},
+					},
+				},
 			},
 			notes: true,
 			_count: {
@@ -356,6 +389,26 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 				});
 			}
 
+			// ── Create line items ─────────────────────────────────────────────
+			if (parsed.line_items && parsed.line_items.length > 0) {
+				await tx.job_visit_line_item.createMany({
+					data: parsed.line_items.map((li, index) => ({
+						visit_id: visit.id,
+						name: li.name,
+						description: li.description ?? null,
+						quantity: li.quantity,
+						unit_price: li.unit_price,
+						total: li.total ?? parseFloat((li.quantity * li.unit_price).toFixed(2)),
+						item_type: li.item_type ?? null,
+						sort_order: li.sort_order ?? index,
+						source: "manual" as const,
+						tax_group_id: li.tax_group_id ?? null,
+						taxable: li.taxable ?? true,
+					})),
+				});
+				await recomputeVisitTotals(visit.id, organization_id, tx as unknown as Prisma.TransactionClient);
+			}
+
 			if (job.status === "Unscheduled") {
 				await tx.job.update({
 					where: { id: parsed.job_id },
@@ -412,6 +465,25 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 					},
 					visit_techs: {
 						include: { tech: true },
+					},
+					line_items: {
+						orderBy: { sort_order: "asc" },
+						include: {
+							tax_group: {
+								select: {
+									id: true,
+									name: true,
+									rates: {
+										select: {
+											tax_rate: {
+												select: { id: true, name: true, rate: true },
+											},
+										},
+										orderBy: { sort_order: "asc" as const },
+									},
+								},
+							},
+						},
 					},
 					notes: true,
 				},
@@ -554,6 +626,8 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 										Number(item.unit_price),
 								item_type: item.item_type ?? null,
 								sort_order: item.sort_order ?? 0,
+								tax_group_id: item.tax_group_id ?? null,
+								taxable: item.taxable ?? true,
 							},
 						});
 					} else {
@@ -572,10 +646,17 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 								source: "manual",
 								item_type: item.item_type ?? null,
 								sort_order: item.sort_order ?? 0,
+								tax_group_id: item.tax_group_id ?? null,
+								taxable: item.taxable ?? true,
 							},
 						});
 					}
 				}
+			}
+
+			// ── Recompute visit totals ────────────────────────────────────
+			if (parsed.line_items !== undefined) {
+				await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
 			}
 
 			// ── Job status sync ───────────────────────────────────────────
@@ -651,7 +732,25 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				include: {
 					job: { include: { client: true, quote: true } },
 					visit_techs: { include: { tech: true } },
-					line_items: { orderBy: { sort_order: "asc" } },
+					line_items: {
+						orderBy: { sort_order: "asc" },
+						include: {
+							tax_group: {
+								select: {
+									id: true,
+									name: true,
+									rates: {
+										select: {
+											tax_rate: {
+												select: { id: true, name: true, rate: true },
+											},
+										},
+										orderBy: { sort_order: "asc" as const },
+									},
+								},
+							},
+						},
+					},
 					notes: true,
 				},
 			});
@@ -1248,18 +1347,7 @@ export const applyVisitTransition = async (
 				}
 
 				if (openEntries.length > 0) {
-					const allItems = await tx.job_visit_line_item.findMany({ where: { visit_id: id } });
-					const newSubtotal = allItems.reduce((s, li) => s + Number(li.total), 0);
-					const taxRate = Number(existingVisit.tax_rate ?? 0);
-					const newTaxAmount = parseFloat((newSubtotal * taxRate).toFixed(2));
-					await tx.job_visit.update({
-						where: { id },
-						data: {
-							subtotal: newSubtotal,
-							tax_amount: newTaxAmount,
-							total: parseFloat((newSubtotal + newTaxAmount).toFixed(2)),
-						},
-					});
+					await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
 				}
 			}
 
@@ -1482,18 +1570,7 @@ export const cancelJobVisit = async (
 			}
 
 			if (openEntries.length > 0) {
-				const allItems = await tx.job_visit_line_item.findMany({ where: { visit_id: id } });
-				const newSubtotal = allItems.reduce((s, li) => s + Number(li.total), 0);
-				const taxRate = Number(existingVisit.tax_rate ?? 0);
-				const newTaxAmount = parseFloat((newSubtotal * taxRate).toFixed(2));
-				await tx.job_visit.update({
-					where: { id },
-					data: {
-						subtotal: newSubtotal,
-						tax_amount: newTaxAmount,
-						total: parseFloat((newSubtotal + newTaxAmount).toFixed(2)),
-					},
-				});
+				await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
 			}
 
 			// ── Step 2: Reset tech_status for non-Done techs ─────────────────────

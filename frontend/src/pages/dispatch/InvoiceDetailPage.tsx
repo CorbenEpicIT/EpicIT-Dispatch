@@ -50,6 +50,7 @@ import {
 } from "../../types/invoices";
 import { formatCurrency, formatDate } from "../../util/util";
 import { formatRatePercentLabel } from "../../lib/formatTax";
+import type { TaxSnapshotRate } from "../../types/tax";
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -68,6 +69,14 @@ const formatDateTime = (val: string | Date | null | undefined): string => {
 interface InvoiceLineItemWithSource extends InvoiceLineItem {
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+}
+
+/** Collapsed per-rate tax entry used in the totals section. */
+interface CollapsedRate {
+	id: string;
+	name: string;
+	rate: number;
+	amountCents: number;
 }
 
 /** Strongly-typed shape for a job group used when rendering the linked section. */
@@ -126,8 +135,6 @@ function buildLinkedJobGroups(invoice: Invoice): LinkedJobGroup[] {
 
 	return Array.from(groupMap.values());
 }
-
-// ── Optimistic payment helpers ────────────────────────────────────────────────
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -264,16 +271,61 @@ export default function InvoiceDetailPage() {
 		}
 	};
 
-	// Map group name → combined rate for line item tax badge + totals section
+	// Map group name → individual rates array for line item tax badge + totals section
 	// Must be above early returns — useMemo must not be called conditionally
-	const groupRateMap = useMemo(() => {
-		const map = new Map<string, number>();
+	const groupRatesMap = useMemo(() => {
+		const map = new Map<string, TaxSnapshotRate[]>();
 		for (const group of invoice?.tax_snapshot?.groups ?? []) {
-			const combined = (group.rates ?? []).reduce((sum, r) => sum + r.rate, 0);
-			if (combined > 0) map.set(group.name, combined);
+			if ((group.rates ?? []).length > 0) map.set(group.name, group.rates);
 		}
 		return map;
 	}, [invoice?.tax_snapshot]);
+
+	// Per-rate totals from snapshot; deduplicate by rate ID, sum amounts, drop group names.
+	const collapsedTaxRates = useMemo((): CollapsedRate[] => {
+		if (!invoice?.tax_snapshot) return [];
+		const rateMap = new Map<string, CollapsedRate>();
+		for (const group of invoice.tax_snapshot.groups ?? []) {
+			for (const rate of group.rates ?? []) {
+				const cents = Math.round(rate.rate * (group.taxable_amount_cents ?? 0));
+				const entry = rateMap.get(rate.id);
+				if (entry) {
+					entry.amountCents += cents;
+				} else {
+					rateMap.set(rate.id, { id: rate.id, name: rate.name, rate: rate.rate, amountCents: cents });
+				}
+			}
+		}
+		return [...rateMap.values()];
+	}, [invoice?.tax_snapshot]);
+
+	// Fallback: derive per-rate totals from line items when no snapshot exists.
+	const lineItemCollapsedRates = useMemo((): CollapsedRate[] => {
+		if (collapsedTaxRates.length > 0) return [];
+		const rateMap = new Map<string, CollapsedRate>();
+		for (const item of (invoice?.line_items ?? []) as InvoiceLineItemWithSource[]) {
+			if (!item.taxable || item.tax_amount == null || !item.tax_group?.rates?.length) continue;
+			const itemTaxCents = Math.round(Number(item.tax_amount) * 100);
+			if (itemTaxCents === 0) continue;
+			const combinedRate = item.tax_group.rates.reduce((s, r) => s + r.tax_rate.rate, 0);
+			if (combinedRate === 0) continue;
+			for (const r of item.tax_group.rates) {
+				const share = Math.round(itemTaxCents * (r.tax_rate.rate / combinedRate));
+				const existing = rateMap.get(r.tax_rate.id);
+				if (existing) {
+					existing.amountCents += share;
+				} else {
+					rateMap.set(r.tax_rate.id, {
+						id: r.tax_rate.id,
+						name: r.tax_rate.name,
+						rate: r.tax_rate.rate,
+						amountCents: share,
+					});
+				}
+			}
+		}
+		return [...rateMap.values()];
+	}, [collapsedTaxRates, invoice?.line_items]);
 
 	// ── Guards ────────────────────────────────────────────────────────────────
 
@@ -912,15 +964,17 @@ export default function InvoiceDetailPage() {
 															{item.tax_group?.name ? (
 																<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
 																	{item.tax_group.name}
-																	{groupRateMap.has(item.tax_group.name)
-																		? ` · ${formatRatePercentLabel(groupRateMap.get(item.tax_group.name)!)}`
+																	{groupRatesMap.has(item.tax_group.name)
+																		? ` · ${groupRatesMap.get(item.tax_group.name)!
+																			.map(r => `${r.name} ${formatRatePercentLabel(r.rate)}`)
+																			.join(" + ")}`
 																		: ""}
 																</span>
-															) : item.taxable === false ? (
+															) : (
 																<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-raised/40 border border-border-strong/30 text-[10px] text-text-faint whitespace-nowrap leading-none">
-																	Non-taxable
+																	No Tax
 																</span>
-															) : null}
+															)}
 														</div>
 													)}
 												</div>
@@ -946,106 +1000,49 @@ export default function InvoiceDetailPage() {
 											</span>
 										</div>
 									)}
-									{invoice.tax_snapshot ? (
-										<>
-											{(
-												invoice
-													.tax_snapshot
-													.groups ??
-												[]
-											).map(
-												(
-													group
-												) => {
-													const combinedRate =
-														(
-															group.rates ??
-															[]
-														).reduce(
-															(
-																sum,
-																r
-															) =>
-																sum +
-																r.rate,
-															0
-														);
-													return (
-														<div
-															key={
-																group.id
-															}
-															className="flex justify-between text-sm"
-														>
+									{(() => {
+										const rates = collapsedTaxRates.length > 0 ? collapsedTaxRates : lineItemCollapsedRates;
+										const totalTaxCents = rates.reduce((s, r) => s + r.amountCents, 0);
+										if (rates.length > 0) {
+											return (
+												<>
+													{rates.map((rate) => (
+														<div key={rate.id} className="flex justify-between text-sm">
 															<span className="text-text-tertiary">
-																{
-																	group.name
-																}
-																{combinedRate >
-																0
-																	? ` (${formatRatePercentLabel(combinedRate)})`
-																	: ""}
+																{rate.name} ({formatRatePercentLabel(rate.rate)})
 															</span>
 															<span className="text-white tabular-nums">
-																{formatCurrency(
-																	(group.tax_amount_cents ??
-																		0) /
-																		100
-																)}
+																{formatCurrency(rate.amountCents / 100)}
 															</span>
 														</div>
-													);
-												}
-											)}
-											{(
-												invoice
-													.tax_snapshot
-													.groups ??
-												[]
-											).length >
-												1 && (
+													))}
+													{rates.length > 1 && (
+														<div className="flex justify-between text-sm">
+															<span className="text-text-tertiary font-medium">
+																Total Tax
+															</span>
+															<span className="text-white tabular-nums font-medium">
+																{formatCurrency(totalTaxCents / 100)}
+															</span>
+														</div>
+													)}
+												</>
+											);
+										}
+										if (invoice.tax_rate != null && Number(invoice.tax_rate) > 0) {
+											return (
 												<div className="flex justify-between text-sm">
-													<span className="text-text-tertiary font-medium">
-														Total
-														Tax
+													<span className="text-text-tertiary">
+														Tax ({formatRatePercentLabel(Number(invoice.tax_rate))})
 													</span>
-													<span className="text-white tabular-nums font-medium">
-														{formatCurrency(
-															(invoice
-																.tax_snapshot
-																.total_tax_cents ??
-																0) /
-																100
-														)}
+													<span className="text-white tabular-nums">
+														{formatCurrency(Number(invoice.tax_amount ?? 0))}
 													</span>
 												</div>
-											)}
-										</>
-									) : invoice.tax_rate !=
-											null &&
-									  Number(invoice.tax_rate) >
-											0 ? (
-										<div className="flex justify-between text-sm">
-											<span className="text-text-tertiary">
-												Tax
-												(
-												{formatRatePercentLabel(
-													Number(
-														invoice.tax_rate
-													)
-												)}
-												)
-											</span>
-											<span className="text-white tabular-nums">
-												{formatCurrency(
-													Number(
-														invoice.tax_amount ??
-															0
-													)
-												)}
-											</span>
-										</div>
-									) : null}
+											);
+										}
+										return null;
+									})()}
 									{invoice.discount_amount !=
 										null &&
 										Number(

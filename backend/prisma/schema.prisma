@@ -568,6 +568,7 @@ model job {
   discount_amount Decimal? @db.Decimal(10, 2)
   estimated_total Decimal? @db.Decimal(10, 2)
   actual_total    Decimal? @db.Decimal(10, 2)
+  tax_snapshot    Json?
 
   deduct_inventory_on String @default("job_completion") // "job_completion" | "visit_completion"
 
@@ -644,6 +645,7 @@ model job_visit {
   discount_value  Decimal? @db.Decimal(10, 2)
   discount_amount Decimal? @db.Decimal(10, 2)
   total           Decimal  @default(0) @db.Decimal(10, 2)
+  tax_snapshot    Json?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -680,6 +682,11 @@ model job_visit_line_item {
 
   inventory_item_id String?
   inventory_item    inventory_item? @relation(fields: [inventory_item_id], references: [id])
+
+  tax_group_id    String?
+  tax_group       tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
+  taxable         Boolean    @default(true)
+  tax_amount      Decimal?   @db.Decimal(10, 2)
 
   sort_order Int @default(0)
   created_at DateTime @default(now())
@@ -1507,6 +1514,7 @@ model tax_group {
 	invoice_line_items        invoice_line_item[]
 	quote_line_items          quote_line_item[]
 	job_line_items            job_line_item[]
+	job_visit_line_items      job_visit_line_item[]
 	recurring_plan_line_items recurring_plan_line_item[]
 	clients                   client[]
 

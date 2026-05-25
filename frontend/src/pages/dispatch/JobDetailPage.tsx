@@ -7,9 +7,8 @@ import {
 	Clock,
 	Users,
 	TrendingUp,
-	Map,
+	Map as MapIcon,
 	Plus,
-	FileText,
 	DollarSign,
 	ChevronRight,
 	MoreVertical,
@@ -43,6 +42,7 @@ import { RequestStatusColors } from "../../types/requests";
 import { getGenericStatusColor, PriorityColors } from "../../types/common";
 import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
+import FinancialSummary from "../../components/pagesections/FinancialSummary";
 
 export default function JobDetailPage() {
 	const { jobId } = useParams<{ jobId: string }>();
@@ -347,331 +347,93 @@ export default function JobDetailPage() {
 			</div>
 
 			{/* Financial Summary */}
-			<Card title="Financial Summary">
-				{!job.estimated_total && !job.actual_total && !hasLineItems ? (
+			{!job.estimated_total && !job.actual_total && !hasLineItems ? (
+				<Card title="Financial Summary">
 					<div className="text-center py-8">
-						<DollarSign
-							size={40}
-							className="mx-auto text-text-faint mb-3"
-						/>
-						<h3 className="text-text-tertiary text-sm font-medium mb-1">
-							No Financial Data
-						</h3>
-						<p className="text-text-muted text-xs">
-							Edit this job to add estimated costs and
-							line items.
-						</p>
+						<DollarSign size={40} className="mx-auto text-text-faint mb-3" />
+						<h3 className="text-text-tertiary text-sm font-medium mb-1">No Financial Data</h3>
+						<p className="text-text-muted text-xs">Edit this job to add estimated costs and line items.</p>
 					</div>
-				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-						<div className="lg:col-span-2">
-							<h3 className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-4">
-								Line Items
-							</h3>
-							{!hasLineItems ? (
-								<div className="text-center py-8">
-									<FileText
-										size={40}
-										className="mx-auto text-text-faint mb-3"
-									/>
-									<h3 className="text-text-tertiary text-sm font-medium mb-1">
-										No Line Items
-									</h3>
-									<p className="text-text-muted text-xs">
-										No line items have
-										been added to this
-										job yet.
+				</Card>
+			) : (
+				<FinancialSummary
+					lineItems={lineItems}
+					taxSnapshot={job.tax_snapshot}
+					legacyTaxRate={job.tax_rate != null ? Number(job.tax_rate) : null}
+					legacyTaxAmount={job.tax_amount != null ? Number(job.tax_amount) : null}
+					subtotal={job.subtotal != null ? Number(job.subtotal) : null}
+					discountAmount={job.discount_amount != null ? Number(job.discount_amount) : null}
+					discountType={job.discount_type ?? null}
+					discountValue={job.discount_value != null ? Number(job.discount_value) : null}
+					metaLabel="Job Number"
+					metaValue={job.job_number}
+					noLineItemsDescription="No line items have been added to this job yet."
+					totalsContent={
+						<>
+							{job.estimated_total && (
+								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+									<div>
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+											Estimated Total
+										</p>
+										<p className="text-xs text-text-muted">Initial estimate</p>
+									</div>
+									<p className="text-2xl font-bold text-primary-text tabular-nums">
+										{formatCurrency(Number(job.estimated_total))}
 									</p>
 								</div>
-							) : (
-								<div className="space-y-1">
-									<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
-										<div className="col-span-5">
-											Description
-										</div>
-										<div className="col-span-1 text-center">
-											Type
-										</div>
-										<div className="col-span-2 text-right">
-											Qty
-										</div>
-										<div className="col-span-2 text-right">
-											Unit Price
-										</div>
-										<div className="col-span-2 text-right">
-											Amount
-										</div>
+							)}
+							{job.actual_total && (
+								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+									<div>
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+											Actual Total
+										</p>
+										<p className="text-xs text-text-muted">Final cost</p>
 									</div>
-									{lineItems.map(
-										(
-											item: JobLineItem,
-											index: number
-										) => (
-											<div
-												key={
-													item.id ||
-													index
-												}
-												className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors"
-											>
-												<div className="col-span-5 text-sm">
-													<p className="text-white font-medium">
-														{
-															item.name
-														}
-													</p>
-													{item.description && (
-														<p className="text-text-tertiary text-xs mt-0.5">
-															{
-																item.description
-															}
-														</p>
-													)}
-												</div>
-												<div className="col-span-1 flex items-center justify-center">
-													{item.item_type && (
-														<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-															{
-																item.item_type
-															}
-														</span>
-													)}
-												</div>
-												<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-													{Number(
-														item.quantity
-													).toLocaleString(
-														"en-US",
-														{
-															minimumFractionDigits: 0,
-															maximumFractionDigits: 2,
-														}
-													)}
-												</div>
-												<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-													{formatCurrency(
-														Number(
-															item.unit_price
-														)
-													)}
-												</div>
-												<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
-													{formatCurrency(
-														Number(
-															item.total
-														)
-													)}
-												</div>
-											</div>
-										)
-									)}
+									<p className="text-2xl font-bold text-success-text tabular-nums">
+										{formatCurrency(Number(job.actual_total))}
+									</p>
 								</div>
 							)}
-						</div>
-
-						<div className="lg:col-span-1 space-y-6">
-							<div className="p-4 bg-surface/50 rounded-lg border border-border space-y-2">
-								<div className="flex justify-between text-sm">
-									<span className="text-text-tertiary">
-										Total Items:
-									</span>
-									<span className="text-white font-medium tabular-nums">
-										{lineItems.length ||
-											0}
-									</span>
-								</div>
-								<div className="flex justify-between text-sm">
-									<span className="text-text-tertiary">
-										Job Number:
-									</span>
-									<span className="text-white font-medium">
-										{job.job_number}
-									</span>
-								</div>
-							</div>
-
-							<div className="space-y-3">
-								{job.estimated_total && (
-									<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
-										<div>
-											<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
-												Estimated
-												Total
-											</p>
-											<p className="text-xs text-text-muted">
-												Initial
-												estimate
-											</p>
-										</div>
-										<p className="text-2xl font-bold text-primary-text tabular-nums">
-											{formatCurrency(
-												Number(
-													job.estimated_total
-												)
-											)}
-										</p>
-									</div>
-								)}
-
-								{job.actual_total && (
-									<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
-										<div>
-											<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
-												Actual
-												Total
-											</p>
-											<p className="text-xs text-text-muted">
-												Final
-												cost
-											</p>
-										</div>
-										<p className="text-2xl font-bold text-success-text tabular-nums">
-											{formatCurrency(
-												Number(
-													job.actual_total
-												)
-											)}
-										</p>
-									</div>
-								)}
-
-								{job.estimated_total &&
-									job.actual_total && (
-										<>
-											<div className="border-t border-border my-2" />
-											<div
-												className={`px-4 py-3 rounded-lg border-2 ${
-													Number(
-														job.actual_total
-													) >
-													Number(
-														job.estimated_total
-													)
-														? "bg-error/10 border-error/30"
-														: "bg-success/10 border-success/30"
-												}`}
-											>
-												<div className="flex items-center justify-between">
-													<div>
-														<p className="text-text-secondary text-xs uppercase tracking-wide font-semibold mb-0.5">
-															Budget
-															Variance
-														</p>
-														<p
-															className={`text-xs ${
-																Number(
-																	job.actual_total
-																) >
-																Number(
-																	job.estimated_total
-																)
-																	? "text-error-text"
-																	: "text-green-300"
-															}`}
-														>
-															{Number(
-																job.actual_total
-															) >
-															Number(
-																job.estimated_total
-															)
-																? "Over Budget"
-																: "Under Budget"}
-														</p>
-													</div>
-													<div className="text-right">
-														<p
-															className={`text-xl font-bold tabular-nums ${
-																Number(
-																	job.actual_total
-																) >
-																Number(
-																	job.estimated_total
-																)
-																	? "text-error-text"
-																	: "text-success-text"
-															}`}
-														>
-															{Number(
-																job.actual_total
-															) >
-															Number(
-																job.estimated_total
-															)
-																? "+"
-																: ""}
-															{formatCurrency(
-																Number(
-																	job.actual_total
-																) -
-																	Number(
-																		job.estimated_total
-																	)
-															)}
-														</p>
-														<p
-															className={`text-sm font-semibold tabular-nums ${
-																Number(
-																	job.actual_total
-																) >
-																Number(
-																	job.estimated_total
-																)
-																	? "text-error-text"
-																	: "text-green-300"
-															}`}
-														>
-															{(
-																((Number(
-																	job.actual_total
-																) -
-																	Number(
-																		job.estimated_total
-																	)) /
-																	Number(
-																		job.estimated_total
-																	)) *
-																100
-															).toFixed(
-																1
-															)}
-
-															%
-														</p>
-													</div>
-												</div>
+							{job.estimated_total && job.actual_total && (
+								<>
+									<div className="border-t border-border my-2" />
+									<div className={`px-4 py-3 rounded-lg border-2 ${Number(job.actual_total) > Number(job.estimated_total) ? "bg-error/10 border-error/30" : "bg-success/10 border-success/30"}`}>
+										<div className="flex items-center justify-between">
+											<div>
+												<p className="text-text-secondary text-xs uppercase tracking-wide font-semibold mb-0.5">
+													Budget Variance
+												</p>
+												<p className={`text-xs ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-green-300"}`}>
+													{Number(job.actual_total) > Number(job.estimated_total) ? "Over Budget" : "Under Budget"}
+												</p>
 											</div>
-										</>
-									)}
-
-								{!job.actual_total &&
-									job.estimated_total &&
-									job.status !==
-										"Completed" && (
-										<div className="px-4 py-3 bg-primary/10 border border-primary/30 rounded-lg">
-											<p className="text-xs text-primary-text italic">
-												<span className="font-semibold">
-													Note:
-												</span>{" "}
-												Actual
-												total
-												will
-												be
-												recorded
-												when
-												job
-												is
-												marked
-												as
-												completed
-											</p>
+											<div className="text-right">
+												<p className={`text-xl font-bold tabular-nums ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-success-text"}`}>
+													{Number(job.actual_total) > Number(job.estimated_total) ? "+" : ""}
+													{formatCurrency(Number(job.actual_total) - Number(job.estimated_total))}
+												</p>
+												<p className={`text-sm font-semibold tabular-nums ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-green-300"}`}>
+													{(((Number(job.actual_total) - Number(job.estimated_total)) / Number(job.estimated_total)) * 100).toFixed(1)}%
+												</p>
+											</div>
 										</div>
-									)}
-							</div>
-						</div>
-					</div>
-				)}
-			</Card>
+									</div>
+								</>
+							)}
+							{!job.actual_total && job.estimated_total && job.status !== "Completed" && (
+								<div className="px-4 py-3 bg-primary/10 border border-primary/30 rounded-lg">
+									<p className="text-xs text-primary-text italic">
+										<span className="font-semibold">Note:</span>{" "}
+										Actual total will be recorded when job is marked as completed
+									</p>
+								</div>
+							)}
+						</>
+					}
+				/>
+			)}
 
 			{/* Relations Row: Request + Quote + (optional) Recurring Plan */}
 			<div
@@ -1365,7 +1127,7 @@ export default function JobDetailPage() {
 
 				<Card title="Technician Location" className="h-fit">
 					<div className="text-center py-12">
-						<Map
+						<MapIcon
 							size={48}
 							className="mx-auto text-text-faint mb-3"
 						/>
@@ -1407,6 +1169,7 @@ export default function JobDetailPage() {
 				setIsModalOpen={setIsCreateVisitModalOpen}
 				jobId={jobId!}
 				createVisit={createJobVisitMutation}
+				clientExempt={job?.client?.is_tax_exempt ?? false}
 			/>
 
 			<CreateInvoice
