@@ -91,7 +91,10 @@ export default function VehiclesPage() {
 					highlighted: duplicateTerm === term,
 				}))}
 				resultCount={filteredVehicles?.length ?? 0}
-				onClearAll={() => { clearAll(); setSearchInput(""); }}
+				onClearAll={() => {
+					clearAll();
+					setSearchInput("");
+				}}
 			/>
 
 			{/* Loading */}
@@ -106,8 +109,12 @@ export default function VehiclesPage() {
 			{error && !isLoading && (
 				<div className="w-full h-[400px] flex flex-col justify-center items-center">
 					<ErrSvg className="w-15 h-15 mb-1" />
-					<h1 className="text-center text-xl mt-1">An error has occurred.</h1>
-					<h2 className="text-center text-text-muted mt-1">{error.message}</h2>
+					<h1 className="text-center text-xl mt-1">
+						An error has occurred.
+					</h1>
+					<h2 className="text-center text-text-muted mt-1">
+						{error.message}
+					</h2>
 				</div>
 			)}
 
@@ -116,33 +123,43 @@ export default function VehiclesPage() {
 				<div className="w-full h-[400px] flex flex-col justify-center items-center">
 					<BoxSvg className="w-15 h-15 mb-1" />
 					<h1 className="text-center text-xl mt-1">
-						{activeTerms.length > 0 ? "No vehicles found." : "No vehicles yet."}
+						{activeTerms.length > 0
+							? "No vehicles found."
+							: "No vehicles yet."}
 					</h1>
 					{activeTerms.length > 0 && (
-						<p className="text-center text-text-muted mt-2">Try adjusting your search terms.</p>
+						<p className="text-center text-text-muted mt-2">
+							Try adjusting your search terms.
+						</p>
 					)}
 				</div>
 			)}
 
 			{/* Grid / List */}
-			{!isLoading && !error && filteredVehicles && filteredVehicles.length > 0 && (
-				<div
-					className={
-						viewMode === "card"
-							? "grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(288px,1fr))]"
-							: "flex flex-col gap-2"
-					}
-				>
-					{filteredVehicles.map((vehicle) => (
-						<VehicleCard
-							key={vehicle.id}
-							vehicle={vehicle}
-							viewMode={viewMode}
-							onEdit={(v) => { setSelectedVehicle(v); setIsEditModalOpen(true); }}
-						/>
-					))}
-				</div>
-			)}
+			{!isLoading &&
+				!error &&
+				filteredVehicles &&
+				filteredVehicles.length > 0 && (
+					<div
+						className={
+							viewMode === "card"
+								? "grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(288px,1fr))]"
+								: "flex flex-col gap-2"
+						}
+					>
+						{filteredVehicles.map((vehicle) => (
+							<VehicleCard
+								key={vehicle.id}
+								vehicle={vehicle}
+								viewMode={viewMode}
+								onEdit={(v) => {
+									setSelectedVehicle(v);
+									setIsEditModalOpen(true);
+								}}
+							/>
+						))}
+					</div>
+				)}
 
 			<CreateVehicle
 				isModalOpen={isCreateModalOpen}
@@ -156,7 +173,10 @@ export default function VehiclesPage() {
 			{selectedVehicle && (
 				<EditVehicle
 					isOpen={isEditModalOpen}
-					onClose={() => { setIsEditModalOpen(false); setSelectedVehicle(null); }}
+					onClose={() => {
+						setIsEditModalOpen(false);
+						setSelectedVehicle(null);
+					}}
 					vehicle={selectedVehicle}
 				/>
 			)}
