@@ -112,7 +112,7 @@ export default function VehiclesPage() {
 					<h1 className="text-center text-xl mt-1">
 						An error has occurred.
 					</h1>
-					<h2 className="text-center text-zinc-500 mt-1">
+					<h2 className="text-center text-text-muted mt-1">
 						{error.message}
 					</h2>
 				</div>
@@ -128,7 +128,7 @@ export default function VehiclesPage() {
 							: "No vehicles yet."}
 					</h1>
 					{activeTerms.length > 0 && (
-						<p className="text-center text-zinc-500 mt-2">
+						<p className="text-center text-text-muted mt-2">
 							Try adjusting your search terms.
 						</p>
 					)}

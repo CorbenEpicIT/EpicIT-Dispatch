@@ -1,6 +1,12 @@
 import { Settings, Trash2, MapPin } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
-import { calculateStockStatus, getStatusLabel, getStatusBadgeClass, getStockStatusTextColor, getStockStatusDotColor } from "../../util/util";
+import {
+	calculateStockStatus,
+	getStatusLabel,
+	getStatusBadgeClass,
+	getStockStatusTextColor,
+	getStockStatusDotColor,
+} from "../../util/util";
 import ImageCarousel from "./ImageCarousel";
 
 interface InventoryItemViewProps {
@@ -20,7 +26,8 @@ export default function InventoryItemView({
 	onDelete,
 	isHighlighted = false,
 }: InventoryItemViewProps) {
-	const stockStatus = item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
+	const stockStatus =
+		item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 	const threshold = item.low_stock_threshold;
 
 	if (viewMode === "list") {
@@ -50,7 +57,9 @@ export default function InventoryItemView({
 						>
 							{item.quantity}
 						</div>
-						<div className="text-[9px] text-zinc-500 uppercase tracking-wide mt-0.5">qty</div>
+						<div className="text-[9px] text-zinc-500 uppercase tracking-wide mt-0.5">
+							qty
+						</div>
 					</div>
 
 					{/* Min */}
@@ -58,7 +67,9 @@ export default function InventoryItemView({
 						<div className="text-sm text-zinc-400 leading-none">
 							{threshold !== null ? threshold : "—"}
 						</div>
-						<div className="text-[9px] text-zinc-500 uppercase tracking-wide mt-0.5">min</div>
+						<div className="text-[9px] text-zinc-500 uppercase tracking-wide mt-0.5">
+							min
+						</div>
 					</div>
 
 					{/* Actions — opacity-0 until group hover */}
@@ -101,8 +112,13 @@ export default function InventoryItemView({
 				)}
 				{item.location && (
 					<div className="flex items-start gap-1 mt-1">
-						<MapPin size={10} className="text-zinc-500 mt-px shrink-0" />
-						<span className="text-[11px] text-zinc-500 leading-snug">{item.location}</span>
+						<MapPin
+							size={10}
+							className="text-zinc-500 mt-px shrink-0"
+						/>
+						<span className="text-[11px] text-zinc-500 leading-snug">
+							{item.location}
+						</span>
 					</div>
 				)}
 			</div>
@@ -116,18 +132,82 @@ export default function InventoryItemView({
 		>
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
 			<h1 className="font-bold text-lg">{item.name}</h1>
-			<p className="line-clamp-2 text-zinc-300">{item.description}</p>
-			<hr className="my-2 text-zinc-600"></hr>
-			<div className="flex">
-				<div>
-					<h2 className="font-semibold">Location</h2>
-					<h3 className="text-zinc-300">{item.location}</h3>
+			{item.tags && item.tags.length > 0 && (
+				<div className="flex flex-wrap gap-1 mt-1 max-h-[44px] overflow-hidden">
+					{item.tags.map((tag) => (
+						<span
+							key={tag.id}
+							className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface text-text-secondary border border-border-subtle"
+						>
+							{tag.label}
+						</span>
+					))}
 				</div>
-				<div className="flex-1 mx-3"></div>
+			)}
+			<hr className="my-2 text-text-faint" />
+			<div className="grid grid-cols-2 gap-x-4 gap-y-3">
 				<div>
-					<h2 className="font-semibold">Quantity</h2>
-					<h3 className="text-zinc-300">{item.quantity}</h3>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+						Location
+					</h2>
+					<p className="text-text-secondary text-sm mt-0.5">
+						{item.location ?? "—"}
+					</p>
 				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+						SKU
+					</h2>
+					<p className="text-text-secondary text-sm mt-0.5">
+						{item.sku ?? "—"}
+					</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+						Unit Price
+					</h2>
+					<p className="text-text-secondary text-sm mt-0.5">
+						{item.unit_price != null
+							? `$${Number(item.unit_price).toFixed(2)}`
+							: "—"}
+					</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+						Cost
+					</h2>
+					<p className="text-text-secondary text-sm mt-0.5">
+						{item.cost != null
+							? `$${Number(item.cost).toFixed(2)}`
+							: "—"}
+					</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+						Quantity
+					</h2>
+					<p className="text-text-secondary text-sm mt-0.5">
+						{item.quantity}
+					</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+						Last Updated
+					</h2>
+					<p className="text-text-secondary text-sm mt-0.5">
+						{new Date(item.updated_at).toLocaleDateString()}
+					</p>
+				</div>
+				{item.description && (
+					<div className="col-span-2">
+						<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+							Description
+						</h2>
+						<p className="text-text-secondary text-sm mt-0.5 line-clamp-3">
+							{item.description}
+						</p>
+					</div>
+				)}
 			</div>
 			<div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between">
 				<div className="flex items-center gap-2">
@@ -137,7 +217,9 @@ export default function InventoryItemView({
 						{getStatusLabel(stockStatus)}
 					</span>
 					<span className="text-xs text-zinc-400">
-						{threshold !== null ? `Alert: ${threshold}` : "No alert set"}
+						{threshold !== null
+							? `Alert: ${threshold}`
+							: "No alert set"}
 					</span>
 				</div>
 				{onEditThreshold && (

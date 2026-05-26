@@ -8,6 +8,24 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { createNotification } from "./notificationsController.js";
+import { signImageUrl, toRawUrl } from "../services/wasabiService.js";
+
+type NoteLike = { photos?: { photo_url: string }[] | null } | null | undefined;
+
+async function signNotePhotos<T extends NoteLike>(note: T): Promise<T> {
+	if (!note || !note.photos || note.photos.length === 0) return note;
+	const photos = await Promise.all(
+		note.photos.map(async (p) => ({
+			...p,
+			photo_url: (await signImageUrl(p.photo_url)) ?? p.photo_url,
+		})),
+	);
+	return { ...note, photos } as T;
+}
+
+async function signNotePhotosMany<T extends NoteLike>(notes: T[]): Promise<T[]> {
+	return Promise.all(notes.map((n) => signNotePhotos(n)));
+}
 
 const noteInclude = {
 	creator_tech: {

@@ -241,7 +241,18 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 			);
 
 	try {
-		req.user = checkToken(token);
+		const decoded = checkToken(token);
+		if ((decoded as any).stage === "pending_otp") {
+			return res
+				.status(401)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"Invalid or expired token",
+					),
+				);
+		}
+		req.user = decoded;
 		next();
 	} catch {
 		res.status(401).json(
@@ -293,7 +304,9 @@ app.use(express.json());
 app.use(pinoHttp({ logger: log }));
 app.use(httpMetricsMiddleware);
 
-app.get("/metrics", (req, res) => prometheusExporter.getMetricsRequestHandler(req, res));
+app.get("/metrics", (req, res) =>
+	prometheusExporter.getMetricsRequestHandler(req, res),
+);
 app.use(requestLogger);
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
