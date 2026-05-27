@@ -1,5 +1,17 @@
 import { getScopedDb } from "../lib/context.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import {
+	dollarsToCents,
+	centsToDollars,
+} from "./taxEngine.js";
+import {
+	type DocumentLineItemRaw,
+	resolveLineItemTaxInputs,
+} from "../lib/taxHelpers.js";
+import {
+	recomputeDocumentTotals,
+	lockDocumentTaxSnapshot,
+} from "../lib/recomputeDocumentTotals.js";
 
 // ============================================================================
 // TYPES
@@ -30,6 +42,8 @@ export interface CreateInvoicePayload {
 		sort_order?: number;
 		source_job_id?: string | null;
 		source_visit_id?: string | null;
+		tax_group_id?: string | null;
+		taxable?: boolean;
 	}>;
 	job_ids?: string[];
 	job_billings?: Array<{ job_id: string; billed_amount: number }>;
@@ -47,6 +61,8 @@ export const invoiceInclude = {
 			name: true,
 			address: true,
 			is_active: true,
+			is_tax_exempt: true,
+			tax_group_id: true,
 			contacts: {
 				where: { is_primary: true },
 				include: {
@@ -66,7 +82,12 @@ export const invoiceInclude = {
 	created_by_dispatcher: {
 		select: { id: true, name: true, email: true },
 	},
-	line_items: { orderBy: { sort_order: "asc" as const } },
+	line_items: {
+		orderBy: { sort_order: "asc" as const },
+		include: {
+			tax_group: { select: { name: true } },
+		},
+	},
 	jobs: {
 		include: {
 			job: {
@@ -146,28 +167,6 @@ async function generateInvoiceNumber(
 	return `INV-${next.toString().padStart(6, "0")}`;
 }
 
-async function resolveTaxRate(
-	clientId: string,
-	organizationId: string,
-	tx: Prisma.TransactionClient,
-): Promise<number> {
-	const client = await tx.client.findFirst({
-		where: { id: clientId, organization_id: organizationId },
-		select: {
-			is_tax_exempt: true,
-			tax_rate: true,
-			organization: { select: { tax_rate: true } },
-		},
-	});
-
-	if (!client) return 0;
-	if (client.is_tax_exempt) return 0;
-	if (client.tax_rate !== null && client.tax_rate !== undefined)
-		return Number(client.tax_rate);
-	if (client.organization?.tax_rate !== undefined)
-		return Number(client.organization.tax_rate);
-	return 0;
-}
 
 // ============================================================================
 // EXPORTED HELPERS — used by invoicesController
@@ -276,6 +275,36 @@ export async function syncBilledAmounts(
 }
 
 // ============================================================================
+// EXPORTED HELPERS — tax recalculation
+// ============================================================================
+
+/**
+ * Recompute tax totals for an invoice from its current line items.
+ * Thin wrapper around the shared recomputeDocumentTotals helper.
+ */
+export async function recomputeInvoiceTotals(
+	invoiceId: string,
+	organizationId: string,
+	tx: Prisma.TransactionClient,
+	lockedAt?: Date,
+): Promise<boolean> {
+	return recomputeDocumentTotals("invoice", invoiceId, organizationId, tx, lockedAt);
+}
+
+/**
+ * Lock the tax snapshot on an invoice when it transitions to Issued.
+ * If the snapshot is already set, this is a no-op.
+ */
+export async function lockInvoiceTaxSnapshot(
+	invoiceId: string,
+	organizationId: string,
+	tx: Prisma.TransactionClient,
+	lockedAt: Date = new Date(),
+): Promise<void> {
+	await lockDocumentTaxSnapshot("invoice", invoiceId, organizationId, tx, lockedAt);
+}
+
+// ============================================================================
 // MAIN: createInvoiceRecord
 // ============================================================================
 
@@ -286,9 +315,10 @@ export async function createInvoiceRecord(
 	existingTx?: Prisma.TransactionClient,
 ) {
 	const doWork = async (tx: Prisma.TransactionClient) => {
-		// Validate client exists and belongs to this org
+		// Validate client exists — select tax fields here so we don't need a second query below.
 		const client = await tx.client.findFirst({
 			where: { id: payload.client_id, organization_id: organizationId },
+			select: { id: true, is_tax_exempt: true, tax_group_id: true },
 		});
 		if (!client) throw new Error("Client not found");
 
@@ -345,25 +375,36 @@ export async function createInvoiceRecord(
 			}
 		}
 
-		// Resolve tax rate — use payload.tax_rate if explicitly provided, else cascade
-		const taxRate =
-			payload.tax_rate !== undefined
-				? payload.tax_rate
-				: await resolveTaxRate(payload.client_id, organizationId, tx);
+		// Compute line item totals (needed for discount calculation before DB write)
+		const lineItemsForTax = (payload.line_items ?? []).map((item, idx) => ({
+			// Temp id — replaced after DB create, but we need stable keys for the map
+			id: `_tmp_${idx}`,
+			total: item.total !== undefined ? item.total : item.quantity * item.unit_price,
+			tax_group_id: item.tax_group_id ?? null,
+			taxable: item.taxable !== undefined ? item.taxable : true,
+		}));
 
-		// Server always recomputes financial totals from source values
-		const subtotal = payload.subtotal ?? 0;
-		let discountAmount = 0;
-		if (payload.discount_type === "percent" && payload.discount_value != null) {
-			discountAmount = (subtotal * payload.discount_value) / 100;
-		} else if (payload.discount_type === "amount" && payload.discount_value != null) {
-			discountAmount = payload.discount_value;
-		}
-		// Clamp: discount cannot exceed subtotal or go negative
-		discountAmount = Math.min(Math.max(0, discountAmount), Math.max(0, subtotal));
-		const taxable = subtotal - discountAmount;
-		const taxAmount = Math.round(taxable * (taxRate / 100) * 100) / 100;
-		const total = Math.round((taxable + taxAmount) * 100) / 100;
+		// client already fetched above with tax fields selected — no second query needed.
+		const clientExempt = client.is_tax_exempt;
+
+		// Preliminary subtotal and discount via inline arithmetic — avoid calling the full
+		// tax engine here because all tax_group lookups would be null anyway (line items
+		// don't exist in the DB yet). The engine is called properly after line items are created.
+		const subtotal_cents = lineItemsForTax.reduce((s, li) => s + dollarsToCents(li.total), 0);
+		const rawDiscount_cents = (() => {
+			const v = payload.discount_value ?? 0;
+			if (!payload.discount_type || !v) return 0;
+			return payload.discount_type === "percent"
+				? Math.floor(subtotal_cents * (v / 100))
+				: dollarsToCents(v);
+		})();
+		const discount_cents = Math.min(Math.max(rawDiscount_cents, 0), subtotal_cents);
+
+		const subtotal = centsToDollars(subtotal_cents);
+		const discountAmount = centsToDollars(discount_cents);
+		// Tax amount will be recomputed properly after line items exist; use 0 for now
+		const taxAmount = 0;
+		const total = centsToDollars(subtotal_cents - discount_cents);
 
 		const invoiceNumber = await generateInvoiceNumber(tx, organizationId);
 
@@ -386,7 +427,7 @@ export async function createInvoiceRecord(
 				due_date: dueDate ?? null,
 				payment_terms_days: payload.payment_terms_days ?? null,
 				subtotal,
-				tax_rate: taxRate,
+				tax_rate: 0, // legacy field — kept for schema compat; actual tax is per-line-item
 				tax_amount: taxAmount,
 				discount_type: payload.discount_type ?? null,
 				discount_value: payload.discount_value ?? null,
@@ -417,8 +458,13 @@ export async function createInvoiceRecord(
 					sort_order: item.sort_order ?? idx,
 					source_job_id: item.source_job_id ?? null,
 					source_visit_id: item.source_visit_id ?? null,
+					tax_group_id: item.tax_group_id ?? null,
+					taxable: item.taxable !== undefined ? item.taxable : true,
 				})),
 			});
+
+			// Recompute invoice totals using taxEngine now that line items exist with real IDs
+			await recomputeInvoiceTotals(invoice.id, organizationId, tx);
 		}
 
 		// Link jobs (traceability-only — no billed_amount)

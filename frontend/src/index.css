@@ -62,18 +62,25 @@
 	will-change: transform;
 }
 
-/* Chrome on Windows overrides bg and text color on textarea/select with native
+/* Chrome on Windows overrides bg and text color on form elements with native
      Field/FieldText colors. Unlayered rule with explicit hex fixes both properties.
      Login/Register form elements have no bg-base/bg-surface class — unaffected. */
 textarea.bg-base,
-select.bg-base {
+select.bg-base,
+input.bg-base {
 	background-color: #18181b;
 	color: #ffffff;
 }
 textarea.bg-surface,
-select.bg-surface {
+select.bg-surface,
+input.bg-surface {
 	background-color: #27272a;
 	color: #ffffff;
+}
+/* Native checkbox (no bg-base class) inside a label also triggers Chrome's form-field
+     color injection on adjacent span children. Adjacent-sibling unlayered rule fixes. */
+.bg-base label > input + span {
+	color: #d4d4d8;
 }
 
 /* Remove increment/decrement arrows from all number inputs globally */

@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { db } from "../db.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import {
 	createJobSchema,
 	updateJobSchema,
@@ -9,33 +10,9 @@ import {
 } from "../lib/validate/jobs.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
-import { Prisma } from "../../generated/prisma/client.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
 import { log } from "../services/appLogger.js";
-
-async function generateJobNumber(organizationId: string): Promise<string> {
-	const sdb = getScopedDb(organizationId);
-	const lastJob = await sdb.job.findFirst({
-		where: {
-			job_number: {
-				startsWith: "J-",
-			},
-		},
-		orderBy: {
-			job_number: "desc",
-		},
-	});
-
-	let nextNumber = 1;
-	if (lastJob) {
-		const match = lastJob.job_number.match(/J-(\d+)/);
-		if (match) {
-			nextNumber = parseInt(match[1]) + 1;
-		}
-	}
-
-	return `J-${nextNumber.toString().padStart(4, "0")}`;
-}
+import { generateJobNumber } from "../db.js";
 
 // ============================================================================
 // JOB CRUD
@@ -98,7 +75,24 @@ export const getAllJobs = async (organizationId: string) => {
 					},
 				},
 			},
-			line_items: true,
+			line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 		},
 		orderBy: { created_at: "desc" },
 	});
@@ -162,7 +156,24 @@ export const getJobById = async (id: string, organizationId: string) => {
 					notes: true,
 				},
 			},
-			line_items: true,
+			line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 			recurring_plan: {
 				select: {
 					id: true,
@@ -407,7 +418,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 				throw new Error("Job description is required");
 			}
 
-			const jobNumber = await generateJobNumber(organizationId);
+			const jobNumber = await generateJobNumber(tx, organizationId);
 
 			const job = await tx.job.create({
 				data: {
@@ -539,7 +550,24 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 							notes: true,
 						},
 					},
-					line_items: true,
+					line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 					recurring_plan: {
 						select: {
 							id: true,
@@ -886,7 +914,24 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 							},
 						},
 					},
-					line_items: true,
+					line_items: {
+							include: {
+								tax_group: {
+									select: {
+										id: true,
+										name: true,
+										rates: {
+											select: {
+												tax_rate: {
+													select: { id: true, name: true, rate: true },
+												},
+											},
+											orderBy: { sort_order: "asc" as const },
+										},
+									},
+								},
+							},
+						},
 					notes: true,
 				},
 			});

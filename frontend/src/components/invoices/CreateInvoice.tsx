@@ -15,6 +15,7 @@ import FinancialSummary from "../ui/forms/FinancialSummary";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
+import { useTaxGroups, useDefaultTaxGroup } from "../../hooks/useTaxGroups";
 import { X, Briefcase, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 
 type Step = 1 | 2 | 3;
@@ -74,6 +75,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	// Synchronous in-flight guard for handleImportFromVisits — prevents double-import
 	// on rapid double-click before React re-renders the disabled button state.
 	const importingFromVisitsRef = useRef(false);
+	// Cache fetched visit data so re-imports hit memory, not the network
+	const visitDataCacheRef = useRef<Map<string, Awaited<ReturnType<typeof getJobVisitById>>>>(new Map());
 
 	// ── Job / visit picker state ──────────────────────────────────────────
 	const [linkedJobIds, setLinkedJobIds] = useState<Set<string>>(new Set());
@@ -96,6 +99,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	const { data: initialJobVisits = [] } = useJobVisitsByJobIdQuery(initialJobId ?? "");
 	const { mutateAsync: insertInvoice } = useCreateInvoiceMutation();
 	const { mutateAsync: checkOverlap } = useOverlapCheckMutation();
+	const { data: taxGroups = [] } = useTaxGroups();
+	const { data: defaultTaxGroup } = useDefaultTaxGroup();
+	const clientExempt = useMemo(
+		() => clients?.find((c) => c.id === clientId)?.is_tax_exempt ?? false,
+		[clients, clientId]
+	);
 
 	// ── Hooks ─────────────────────────────────────────────────────────────
 	const {
@@ -108,11 +117,25 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		subtotal,
 		resetLineItems,
 		seedLineItems,
+		appendLineItems,
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
 		originalLineItems,
-	} = useLineItems({ minItems: 0, mode: "create" });
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
+	} = useLineItems({ minItems: 0, mode: "create", defaultTaxGroupId: defaultTaxGroup?.id ?? null });
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems]
+	);
 
 	const {
 		taxRate,
@@ -124,12 +147,17 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		setDiscountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		reset: resetFinancials,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
-	} = useFinancialCalculations(subtotal);
+	} = useFinancialCalculations(subtotal, { taxGroups, lineItemsForCalc, clientExempt });
 
 	const {
 		currentStep,
@@ -197,7 +225,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		for (const jobId of linkedJobIds) {
 			const job = clientJobs.find((j) => j.id === jobId);
 			if (!job) continue;
-			const items = (job as any).line_items ?? [];
+			const items = job.line_items ?? [];
 			if (items.length > 0 && !importedSources.has(jobId)) {
 				sources.push({ id: jobId, label: `${job.job_number}`, items });
 			}
@@ -205,11 +233,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 
 		for (const [visitId] of visitBillings) {
 			const job = clientJobs.find((j) =>
-				((j as any).visits ?? []).some((v: any) => v.id === visitId)
+				(j.visits ?? []).some((v) => v.id === visitId)
 			);
 			if (!job) continue;
-			const visit = ((job as any).visits ?? []).find(
-				(v: any) => v.id === visitId
+			const visit = (job.visits ?? []).find(
+				(v) => v.id === visitId
 			);
 			if (!visit) continue;
 			const items = visit.line_items ?? [];
@@ -269,7 +297,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 			const billings = new Map(
 				initialVisitIds.map((id) => {
 					const matched = initialJobVisits.find((v) => v.id === id);
-					return [id, matched ? Number((matched as any).total ?? 0) : 0];
+					return [id, matched ? Number(matched.total ?? 0) : 0];
 				}),
 			);
 			setVisitBillings(billings);
@@ -284,7 +312,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				setLinkedJobIds(new Set([initialJobId]));
 				setExpandedJobs(new Set([initialJobId]));
 				setVisitBillings(
-					new Map(completedVisits.map((v) => [v.id, Number((v as any).total ?? 0)])),
+					new Map(completedVisits.map((v) => [v.id, Number(v.total ?? 0)])),
 				);
 			}
 		}
@@ -312,7 +340,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 					next.delete(jobId);
 					setVisitBillings((vPrev) => {
 						const vNext = new Map(vPrev);
-						for (const visit of (job as any).visits ?? []) {
+						for (const visit of job.visits ?? []) {
 							vNext.delete(visit.id);
 						}
 						return vNext;
@@ -328,7 +356,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 
 					setVisitBillings((vPrev) => {
 						const vNext = new Map(vPrev);
-						for (const visit of (job as any).visits ?? []) {
+						for (const visit of job.visits ?? []) {
 							if (
 								visit.status === "Completed" &&
 								!visitBillingMap.has(visit.id)
@@ -362,8 +390,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				} else {
 					next.set(visitId, visitTotal);
 					const parentJob = clientJobs.find((j) =>
-						((j as any).visits ?? []).some(
-							(v: any) => v.id === visitId
+						(j.visits ?? []).some(
+							(v) => v.id === visitId
 						)
 					);
 					if (parentJob) {
@@ -380,18 +408,23 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		[clientJobs, markDirty]
 	);
 
-	// ── Import line items ─────────────────────────────────────────────────
-	const handleImportLineItems = useCallback(() => {
-		const allSeeds: any[] = [];
-		const newImportedIds: string[] = [];
+	// ── Import all (jobs + visits) ────────────────────────────────────────
+	const handleImportAll = useCallback(async () => {
+		if (importingFromVisitsRef.current) return;
+		importingFromVisitsRef.current = true;
+		setImportingLineItems(true);
+		setEmptyVisitWarnings([]);
+		try {
+			const seeds: Parameters<typeof appendLineItems>[0] = [];
+			const newImportedJobIds: string[] = [];
 
-		for (const jobId of linkedJobIds) {
-			const job = clientJobs.find((j) => j.id === jobId);
-			if (!job) continue;
-
-			if (!importedSources.has(jobId) && (job as any).line_items?.length) {
-				for (const item of (job as any).line_items) {
-					allSeeds.push({
+			// Job-level line items (from already-loaded local data)
+			for (const jobId of linkedJobIds) {
+				if (importedSources.has(jobId)) continue;
+				const job = clientJobs.find((j) => j.id === jobId);
+				if (!job || !job.line_items?.length) continue;
+				for (const item of job.line_items) {
+					seeds.push({
 						name: item.name ?? "",
 						description: item.description ?? "",
 						quantity: Number(item.quantity ?? 1),
@@ -401,55 +434,62 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 						source_visit_id: null,
 					});
 				}
-				newImportedIds.push(jobId);
+				newImportedJobIds.push(jobId);
 			}
 
-			const jobVisits: any[] = (job as any).visits ?? [];
-			for (const visit of jobVisits) {
-				if (!visitBillings.has(visit.id)) continue;
-				if (importedSources.has(visit.id)) continue;
-				if (!visit.line_items?.length) continue;
-				for (const item of visit.line_items) {
-					allSeeds.push({
-						name: item.name ?? "",
-						description: item.description ?? "",
-						quantity: Number(item.quantity ?? 1),
-						unit_price: Number(item.unit_price ?? 0),
-						item_type: item.item_type ?? "",
-						source_job_id: jobId,
-						source_visit_id: visit.id,
-					});
+			// Visit line items (API fetch with cache; smart restore on re-click)
+			if (visitBillings.size > 0) {
+				const allVisitIds = [...visitBillings.keys()];
+				const uncachedIds = allVisitIds.filter((id) => !visitDataCacheRef.current.has(id));
+				if (uncachedIds.length > 0) {
+					const fetched = await Promise.all(uncachedIds.map((id) => getJobVisitById(id)));
+					fetched.forEach((v) => visitDataCacheRef.current.set(v.id, v));
 				}
-				newImportedIds.push(visit.id);
+				const empty: string[] = [];
+				for (const visitId of allVisitIds) {
+					const visit = visitDataCacheRef.current.get(visitId)!;
+					if (!visit.line_items?.length) {
+						const dateLabel = new Date(visit.scheduled_start_at).toLocaleDateString("en-US", {
+							month: "short",
+							day: "numeric",
+						});
+						empty.push(`${dateLabel} (#${visit.id.slice(0, 6)})`);
+						continue;
+					}
+					// Only add items not already present for this visit (restore-on-re-click)
+					const existingNames = new Set(
+						activeLineItems
+							.filter((li) => li.source_visit_id === visitId)
+							.map((li) => li.name)
+					);
+					for (const li of visit.line_items) {
+						if (existingNames.has(li.name)) continue;
+						seeds.push({
+							name: li.name,
+							description: li.description ?? "",
+							quantity: Number(li.quantity),
+							unit_price: Number(li.unit_price),
+							item_type: li.item_type ?? "",
+							source_visit_id: visit.id,
+							source_job_id: visit.job?.id ?? null,
+						});
+					}
+				}
+				setEmptyVisitWarnings(empty);
 			}
-		}
 
-		if (allSeeds.length > 0) {
-			const existingSeeds = activeLineItems
-				.filter((li) => li.name.trim() !== "" || li.unit_price > 0)
-				.map((li) => ({
-					name: li.name,
-					description: li.description ?? "",
-					quantity: Number(li.quantity),
-					unit_price: Number(li.unit_price),
-					item_type: li.item_type ?? "",
-					source_job_id: (li as any).source_job_id ?? null,
-					source_visit_id: (li as any).source_visit_id ?? null,
-				}));
-			seedLineItems([...existingSeeds, ...allSeeds]);
+			if (seeds.length > 0) {
+				appendLineItems(seeds);
+				markDirty();
+			}
+			if (newImportedJobIds.length > 0) {
+				setImportedSources((prev) => new Set([...prev, ...newImportedJobIds]));
+			}
+		} finally {
+			importingFromVisitsRef.current = false;
+			setImportingLineItems(false);
 		}
-
-		if (newImportedIds.length > 0) {
-			setImportedSources((prev) => new Set<string>([...prev, ...newImportedIds]));
-		}
-	}, [
-		visitBillings,
-		linkedJobIds,
-		clientJobs,
-		importedSources,
-		activeLineItems,
-		seedLineItems,
-	]);
+	}, [visitBillings, linkedJobIds, clientJobs, importedSources, activeLineItems, appendLineItems, markDirty]);
 
 	// ── Validation ────────────────────────────────────────────────────────
 	const validateStep1 = useCallback((): boolean => !!clientId.trim(), [clientId]);
@@ -513,54 +553,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		[currentStep, visitedSteps, validateStep]
 	);
 
-	// ── Import from selected visits ──────────────────────────────────────
-	const handleImportFromVisits = useCallback(async () => {
-		// Ref guard: prevents double-import on rapid double-click before React
-		// re-renders the disabled button (state update is async, ref is synchronous)
-		if (importingFromVisitsRef.current || visitBillings.size === 0) return;
-		// Skip visits already imported to prevent duplicate line items on repeated clicks
-		const visitIds = [...visitBillings.keys()].filter((id) => !importedSources.has(id));
-		if (visitIds.length === 0) return;
-		importingFromVisitsRef.current = true;
-		setImportingLineItems(true);
-		setEmptyVisitWarnings([]);
-		try {
-			const fetchedVisits = await Promise.all(visitIds.map((id) => getJobVisitById(id)));
-			const empty: string[] = [];
-			const seeds: Parameters<typeof seedLineItems>[0] = [];
-			for (const visit of fetchedVisits) {
-				if (!visit.line_items || visit.line_items.length === 0) {
-					const dateLabel = new Date(visit.scheduled_start_at).toLocaleDateString("en-US", {
-						month: "short",
-						day: "numeric",
-					});
-					empty.push(`${dateLabel} (#${visit.id.slice(0, 6)})`);
-					continue;
-				}
-				for (const li of visit.line_items) {
-					seeds.push({
-						name: li.name,
-						description: li.description ?? "",
-						quantity: Number(li.quantity),
-						unit_price: Number(li.unit_price),
-						item_type: li.item_type as any,
-						source_visit_id: visit.id,
-						source_job_id: (visit as any).job?.id ?? null,
-					});
-				}
-			}
-			setEmptyVisitWarnings(empty);
-			if (seeds.length > 0) {
-				seedLineItems(seeds);
-				markDirty();
-			}
-			// Mark all fetched visits as imported (including empty ones)
-			setImportedSources((prev) => new Set([...prev, ...visitIds]));
-		} finally {
-			importingFromVisitsRef.current = false;
-			setImportingLineItems(false);
-		}
-	}, [visitBillings, importedSources, seedLineItems, markDirty]);
 
 	// ── Dirty wrappers ────────────────────────────────────────────────────
 	const dirtyAddLineItem = useCallback(() => {
@@ -608,21 +600,20 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				item_type: (item.item_type || undefined) as
 					| LineItemType
 					| undefined,
-				source_job_id: (item as any).source_job_id ?? undefined,
-				source_visit_id: (item as any).source_visit_id ?? undefined,
+				taxable: item.taxable,
+				tax_group_id: item.tax_group_id ?? undefined,
+				source_job_id: item.source_job_id ?? undefined,
+				source_visit_id: item.source_visit_id ?? undefined,
 			}));
 
 		const safeSubtotal = isNaN(subtotal) ? 0 : subtotal;
-		const safeTaxRate = isNaN(taxRate) ? 0 : taxRate;
-		const safeTaxAmount = isNaN(taxAmount) ? 0 : taxAmount;
 		const safeDiscountValue = isNaN(discountValue ?? 0) ? 0 : (discountValue ?? 0);
 		const safeDiscountAmount = isNaN(discountAmount ?? 0) ? 0 : (discountAmount ?? 0);
-		const safeTotal = isNaN(total) ? 0 : total;
 
 		const visitBilledAmounts = new Map<string, number>();
 		for (const [visitId] of visitBillings) {
 			const total = preparedLineItems
-				.filter((li) => (li as any).source_visit_id === visitId)
+				.filter((li) => li.source_visit_id === visitId)
 				.reduce((sum, li) => sum + (li.total ?? 0), 0);
 			visitBilledAmounts.set(visitId, total);
 		}
@@ -636,8 +627,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 			const jobOnlyTotal = preparedLineItems
 				.filter(
 					(li) =>
-						(li as any).source_job_id === job_id &&
-						!(li as any).source_visit_id
+						li.source_job_id === job_id &&
+						!li.source_visit_id
 				)
 				.reduce((sum, li) => sum + (li.total ?? 0), 0);
 			return { job_id, billed_amount: jobOnlyTotal };
@@ -658,12 +649,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 					? preparedVisitBillings
 					: undefined,
 			subtotal: safeSubtotal,
-			tax_rate: safeTaxRate / 100,
-			tax_amount: safeTaxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: safeDiscountValue,
 			discount_amount: safeDiscountAmount,
-			total: safeTotal,
+			total: resolvedTotal,
 			line_items: preparedLineItems.length ? preparedLineItems : undefined,
 		};
 
@@ -875,15 +866,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 											jobBillingMap.get(
 												job.id
 											);
-										const visits: any[] =
-											(job as any)
-												.visits ??
+										const visits =
+											job.visits ??
 											[];
 										const linkedVisitCount =
 											visits.filter(
-												(
-													v: any
-												) =>
+												(v) =>
 													visitBillings.has(
 														v.id
 													)
@@ -1084,7 +1072,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 														) : (
 															visits.map(
 																(
-																	visit: any
+																	visit
 																) => {
 																	const isVisitSelected =
 																		visitBillings.has(
@@ -1246,9 +1234,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 						id: job.id,
 						job_number: job.job_number,
 						name: job.name,
-						visits: ((job as any).visits ?? [])
-							.filter((v: any) => visitBillings.has(v.id))
-							.map((v: any) => ({
+						visits: (job.visits ?? [])
+							.filter((v) => visitBillings.has(v.id))
+							.map((v) => ({
 								id: v.id,
 								scheduled_start_at:
 									v.scheduled_start_at,
@@ -1261,8 +1249,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 					.reduce((n, visitId) => {
 						for (const job of clientJobs) {
 							const visit = (
-								(job as any).visits ?? []
-							).find((v: any) => v.id === visitId);
+								job.visits ?? []
+							).find((v) => v.id === visitId);
 							if (visit)
 								return (
 									n +
@@ -1277,27 +1265,22 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 					.filter((jobId) => !importedSources.has(jobId))
 					.reduce((n, jobId) => {
 						const job = clientJobs.find((j) => j.id === jobId);
-						return n + ((job as any).line_items?.length ?? 0);
+						return n + (job?.line_items?.length ?? 0);
 					}, 0);
 
 				const totalImportable = importableCount + jobImportableCount;
 
+				const hasImportSource = visitBillings.size > 0 || totalImportable > 0;
+				const importLabel = totalImportable > 0
+					? `Import ${totalImportable} item${totalImportable !== 1 ? "s" : ""}`
+					: visitBillings.size > 0
+						? "Import from visits"
+						: undefined;
+
 				return (
 					<div className="min-w-0 flex flex-col -mt-3 sm:-mt-4">
-						{visitBillings.size > 0 && (
-							<div className="mb-3 flex items-center gap-2 px-4 pt-3 sm:px-6">
-								<button
-									type="button"
-									onClick={handleImportFromVisits}
-									disabled={importingLineItems}
-									className="flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-raised disabled:opacity-50"
-								>
-									{importingLineItems ? "Importing…" : "Import from selected visits"}
-								</button>
-							</div>
-						)}
 						{emptyVisitWarnings.length > 0 && (
-							<div className="mb-2 mx-4 sm:mx-6 rounded border border-yellow-700/50 bg-yellow-950/40 px-3 py-2 text-sm text-yellow-300">
+							<div className="mb-2 mx-4 sm:mx-6 mt-3 rounded border border-yellow-700/50 bg-yellow-950/40 px-3 py-2 text-sm text-yellow-300">
 								{emptyVisitWarnings.length === 1
 									? `Visit on ${emptyVisitWarnings[0]} has no line items — add manually or deselect it.`
 									: `${emptyVisitWarnings.length} visits have no line items (${emptyVisitWarnings.join(", ")}) — add manually or deselect them.`}
@@ -1319,17 +1302,14 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							onUndoSource={undoLineItemSource}
 							originalLineItemsMap={originalLineItems}
 							sourceJobs={sourceJobsForStep2}
-							onImport={
-								totalImportable > 0
-									? handleImportLineItems
-									: undefined
-							}
-							importLabel={
-								totalImportable > 0
-									? `Import ${totalImportable} line item${totalImportable !== 1 ? "s" : ""}`
-									: undefined
-							}
+							onImport={hasImportSource ? handleImportAll : undefined}
+							importLabel={importLabel}
+							importLoading={importingLineItems}
 							stickyHeader
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={setLineItemTaxGroup}
+							onTaxGroupBulkSet={setAllLineItemsTaxGroup}
 						/>
 					</div>
 				);
@@ -1436,10 +1416,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							discountType={discountType}
 							discountValue={discountValue}
 							discountAmount={discountAmount}
-							total={total}
+							total={resolvedTotal}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
+							clientExempt={clientExempt}
 							isLoading={isLoading}
 							mode="create"
-							onTaxRateChange={(v) => {
+							onTaxRateChange={groupsSummary.length > 0 ? undefined : (v) => {
 								setTaxRate(v);
 								markDirty();
 							}}
@@ -1497,14 +1480,20 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		discountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		clientExempt,
+		taxGroups,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 		clients,
 		defaultClientId,
 		importSources,
-		handleImportLineItems,
+		handleImportAll,
 		submitError,
 	]);
 

@@ -2,7 +2,23 @@
 import { Trash2, RotateCcw, X, Briefcase, ChevronDown, ChevronRight, MapPin } from "lucide-react";
 import { LineItemTypeValues, LineItemTypeLabels, type BaseLineItem } from "../../../types/common";
 import type { InventoryItem } from "../../../types/inventory";
+import type { TaxGroup } from "../../../types/tax";
 import Dropdown from "../../ui/Dropdown";
+import TaxGroupSelector from "./TaxGroupSelector";
+
+// ── Shared primitives ─────────────────────────────────────────────────────────
+
+const CheckIcon = () => (
+	<svg width="7" height="5" viewBox="0 0 8 6" fill="none">
+		<path
+			d="M1 3L3 5L7 1"
+			stroke="white"
+			strokeWidth="1.5"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+		/>
+	</svg>
+);
 
 // ── Source context passed down from the invoice form ─────────────────────────
 export interface SourceJob {
@@ -37,6 +53,9 @@ interface LineItemCardProps {
 	originalLineItemsMap?: Map<string, BaseLineItem>;
 	sourceJobs?: SourceJob[];
 	inventoryItems?: InventoryItem[];
+	taxGroups?: TaxGroup[];
+	clientExempt?: boolean;
+	onTaxChange?: (id: string, groupId: string | null, taxable: boolean) => void;
 }
 
 function InventoryAutofillInput({
@@ -168,13 +187,14 @@ const LineItemCard = memo(
 		originalLineItemsMap,
 		sourceJobs = [],
 		inventoryItems,
+		taxGroups = [],
+		clientExempt = false,
+		onTaxChange,
 	}: LineItemCardProps) => {
 		const isDirty = (field: string) => dirtyFields[`li:${item.id}:${field}`];
 		const showUndo = (field: keyof BaseLineItem) => !!onUndo && isDirty(field);
 		const origItem = originalLineItemsMap?.get(item.id);
-		const origHasSource = !!(
-			(origItem as any)?.source_job_id || (origItem as any)?.source_visit_id
-		);
+		const origHasSource = !!(origItem?.source_job_id || origItem?.source_visit_id);
 		const isSourceDirty =
 			!!onUndoSource && !!dirtyFields[`li:${item.id}:source`] && origHasSource;
 		const showClear = (field: keyof BaseLineItem, value: string) =>
@@ -274,113 +294,50 @@ const LineItemCard = memo(
 				</div>
 
 				<div className="space-y-2 min-w-0">
-					{/* Row 1: Name + Type */}
-					<div className="grid grid-cols-2 gap-2 min-w-0">
-						<div className="relative min-w-0">
-							{isInventoryType ? (
-								<InventoryAutofillInput
-									item={item}
-									inventoryItems={inventoryItems!}
-									isLoading={isLoading}
-									onUpdate={onUpdate}
-									onUndo={onUndo}
-									showUndo={showUndo("name")}
+					{/* Row 1: Name */}
+					<div className="relative min-w-0">
+						{isInventoryType ? (
+							<InventoryAutofillInput
+								item={item}
+								inventoryItems={inventoryItems!}
+								isLoading={isLoading}
+								onUpdate={onUpdate}
+								onUndo={onUndo}
+								showUndo={showUndo("name")}
+							/>
+						) : (
+							<>
+								<input
+									type="text"
+									placeholder="Item name *"
+									value={item.name}
+									onChange={(e) =>
+										onUpdate(
+											item.id,
+											"name",
+											e.target.value
+										)
+									}
+									disabled={isLoading}
+									className="border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm pr-8 min-w-0"
 								/>
-							) : (
-								<>
-									<input
-										type="text"
-										placeholder="Item name *"
-										value={item.name}
-										onChange={(e) =>
-											onUpdate(
+								{showUndo("name") && (
+									<button
+										type="button"
+										title="Undo"
+										onClick={() =>
+											onUndo!(
 												item.id,
-												"name",
-												e.target.value
+												"name"
 											)
 										}
-										disabled={isLoading}
-										className="border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm pr-8 min-w-0"
-									/>
-									{showUndo("name") && (
-										<button
-											type="button"
-											title="Undo"
-											onClick={() =>
-												onUndo!(
-													item.id,
-													"name"
-												)
-											}
-											className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
-										>
-											<RotateCcw size={14} />
-										</button>
-									)}
-								</>
-							)}
-						</div>
-
-						<div className="relative min-w-0">
-							<Dropdown
-								entries={LineItemTypeValues.map(
-									(type) => (
-										<option
-											key={type}
-											value={type}
-										>
-											{
-												LineItemTypeLabels[
-													type
-												]
-											}
-										</option>
-									)
+										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+									>
+										<RotateCcw size={14} />
+									</button>
 								)}
-								value={item.item_type}
-								onChange={(newValue) =>
-									onUpdate(
-										item.id,
-										"item_type",
-										newValue
-									)
-								}
-								placeholder="Type (optional)"
-								disabled={isLoading}
-							/>
-							{showUndo("item_type") ? (
-								<button
-									type="button"
-									title="Undo"
-									onClick={() =>
-										onUndo!(
-											item.id,
-											"item_type"
-										)
-									}
-									className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors z-10"
-								>
-									<RotateCcw size={14} />
-								</button>
-							) : showClear(
-									"item_type",
-									item.item_type
-							  ) ? (
-								<button
-									type="button"
-									title="Clear"
-									onClick={() =>
-										onClear!(
-											item.id,
-											"item_type"
-										)
-									}
-									className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-error-text transition-colors z-10"
-								>
-									<X size={14} />
-								</button>
-							) : null}
-						</div>
+							</>
+						)}
 					</div>
 
 					{/* Row 2: Description */}
@@ -430,7 +387,63 @@ const LineItemCard = memo(
 						) : null}
 					</div>
 
-					{/* Row 3: Qty × Unit Price = Total on one line */}
+					{/* Row 3: Item Type + Tax Group */}
+					<div className="grid grid-cols-2 gap-2 min-w-0">
+						<div className="relative min-w-0">
+							<Dropdown
+								entries={LineItemTypeValues.map(
+									(type) => (
+										<option
+											key={type}
+											value={type}
+										>
+											{LineItemTypeLabels[type]}
+										</option>
+									)
+								)}
+								value={item.item_type}
+								onChange={(newValue) =>
+									onUpdate(item.id, "item_type", newValue)
+								}
+								placeholder="Type (optional)"
+								disabled={isLoading}
+							/>
+							{showUndo("item_type") ? (
+								<button
+									type="button"
+									title="Undo"
+									onClick={() => onUndo!(item.id, "item_type")}
+									className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors z-10"
+								>
+									<RotateCcw size={14} />
+								</button>
+							) : showClear("item_type", item.item_type) ? (
+								<button
+									type="button"
+									title="Clear"
+									onClick={() => onClear!(item.id, "item_type")}
+									className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-error-text transition-colors z-10"
+								>
+									<X size={14} />
+								</button>
+							) : null}
+						</div>
+
+						{onTaxChange && (
+							<TaxGroupSelector
+								value={item.tax_group_id ?? null}
+								taxable={item.taxable ?? true}
+								taxGroups={taxGroups}
+								clientExempt={clientExempt}
+								onChange={(groupId, taxable) =>
+									onTaxChange(item.id, groupId, taxable)
+								}
+								disabled={isLoading}
+							/>
+						)}
+					</div>
+
+					{/* Row 4: Qty × Unit Price = Total on one line */}
 					<div className="flex items-end gap-1.5 min-w-0">
 						{/* Quantity */}
 						<div className="relative w-[88px] flex-shrink-0">
@@ -548,7 +561,7 @@ const LineItemCard = memo(
 						</div>
 					</div>
 
-					{/* Row 4: Source Attribution (invoice context only) */}
+					{/* Row 5: Source Attribution (invoice context only) */}
 					{sourceJobs.length > 0 && (
 						<div className="min-w-0" ref={sourceRef}>
 							<label className="block mb-1 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
@@ -675,22 +688,7 @@ const LineItemCard = memo(
 																	: "border-border-strong"
 															}`}
 														>
-															{isJobSelected && (
-																<svg
-																	width="7"
-																	height="5"
-																	viewBox="0 0 8 6"
-																	fill="none"
-																>
-																	<path
-																		d="M1 3L3 5L7 1"
-																		stroke="white"
-																		strokeWidth="1.5"
-																		strokeLinecap="round"
-																		strokeLinejoin="round"
-																	/>
-																</svg>
-															)}
+															{isJobSelected && <CheckIcon />}
 														</div>
 														<Briefcase
 															size={
@@ -774,22 +772,7 @@ const LineItemCard = memo(
 																				: "border-border-strong"
 																		}`}
 																	>
-																		{isVisitSelected && (
-																			<svg
-																				width="7"
-																				height="5"
-																				viewBox="0 0 8 6"
-																				fill="none"
-																			>
-																				<path
-																					d="M1 3L3 5L7 1"
-																					stroke="white"
-																					strokeWidth="1.5"
-																					strokeLinecap="round"
-																					strokeLinejoin="round"
-																				/>
-																			</svg>
-																		)}
+																		{isVisitSelected && <CheckIcon />}
 																	</div>
 																	<MapPin
 																		size={

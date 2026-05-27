@@ -48,6 +48,8 @@ export interface Client {
 	address: string;
 	coords: Coordinates;
 	is_active: boolean;
+	is_tax_exempt: boolean;
+	tax_group_id: string | null;
 	created_at: Date | string;
 	last_activity: Date | string;
 
@@ -72,6 +74,8 @@ export interface ClientWithPrimaryContact {
 	address: string;
 	coords?: Coordinates;
 	is_active: boolean;
+	is_tax_exempt?: boolean;
+	tax_group_id?: string | null;
 	contacts?: {
 		is_primary: boolean;
 		contact: ContactInfo;

@@ -12,26 +12,48 @@ import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { db } from "../db.js";
+import {
+	centsToDollars,
+} from "../services/taxEngine.js";
+import {
+	recomputeDocumentTotals,
+	lockDocumentTaxSnapshot,
+} from "../lib/recomputeDocumentTotals.js";
 
-async function generateQuoteNumber(organizationId: string): Promise<string> {
-	const sdb = getScopedDb(organizationId);
-	const lastQuote = await sdb.quote.findFirst({
-		where: {
-			quote_number: {
-				startsWith: "Q-",
-			},
-		},
-		orderBy: {
-			quote_number: "desc",
-		},
+// ============================================================================
+// TAX HELPERS (quotes)
+// ============================================================================
+
+/** Thin wrapper — delegates to shared recomputeDocumentTotals. */
+async function recomputeQuoteTotals(
+	quoteId: string,
+	organizationId: string,
+	tx: Prisma.TransactionClient,
+	lockedAt?: Date,
+): Promise<boolean> {
+	return recomputeDocumentTotals("quote", quoteId, organizationId, tx, lockedAt);
+}
+
+async function lockQuoteTaxSnapshot(
+	quoteId: string,
+	organizationId: string,
+	tx: Prisma.TransactionClient,
+	lockedAt: Date = new Date(),
+): Promise<void> {
+	await lockDocumentTaxSnapshot("quote", quoteId, organizationId, tx, lockedAt);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function generateQuoteNumber(tx: any): Promise<string> {
+	const lastQuote = await tx.quote.findFirst({
+		where: { quote_number: { startsWith: "Q-" } },
+		orderBy: { quote_number: "desc" },
 	});
 
 	let nextNumber = 1;
 	if (lastQuote) {
 		const match = lastQuote.quote_number.match(/Q-(\d+)/);
-		if (match) {
-			nextNumber = parseInt(match[1]) + 1;
-		}
+		if (match) nextNumber = parseInt(match[1]) + 1;
 	}
 
 	return `Q-${nextNumber.toString().padStart(4, "0")}`;
@@ -82,6 +104,8 @@ export const getQuoteById = async (quoteId: string, organizationId: string) => {
 					address: true,
 					coords: true,
 					is_active: true,
+					is_tax_exempt: true,
+					tax_group_id: true,
 					contacts: {
 						where: { is_primary: true },
 						include: {
@@ -118,6 +142,9 @@ export const getQuoteById = async (quoteId: string, organizationId: string) => {
 			},
 			line_items: {
 				orderBy: { sort_order: "asc" },
+				include: {
+					tax_group: { select: { name: true } },
+				},
 			},
 			notes: {
 				include: {
@@ -178,8 +205,8 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 		for (let attempt = 0; attempt < 5; attempt++) {
 			try {
 				created = await sdb.$transaction(async (tx) => {
-			const client = await sdb.client.findFirst({
-				where: { id: parsed.client_id },
+			const client = await tx.client.findFirst({
+				where: { id: parsed.client_id, organization_id: organizationId },
 			});
 
 			if (!client) {
@@ -195,8 +222,8 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 
 			// If linked to request, inherit missing fields
 			if (parsed.request_id) {
-				const request = await sdb.request.findFirst({
-					where: { id: parsed.request_id },
+				const request = await tx.request.findFirst({
+					where: { id: parsed.request_id, organization_id: organizationId },
 				});
 
 				if (!request) {
@@ -237,7 +264,7 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 				throw new Error("Description is required for quote");
 			}
 
-			const quoteNumber = await generateQuoteNumber(organizationId);
+			const quoteNumber = await generateQuoteNumber(tx);
 
 			const quoteData: Prisma.quoteCreateInput = {
 				quote_number: quoteNumber,
@@ -262,6 +289,11 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 				subtotal: parsed.subtotal ?? 0,
 				total: parsed.total ?? 0,
 
+				...(parsed.tax_rate !== undefined && { tax_rate: parsed.tax_rate }),
+				...(parsed.tax_amount !== undefined && { tax_amount: parsed.tax_amount }),
+				...(parsed.discount_type !== undefined && { discount_type: parsed.discount_type }),
+				...(parsed.discount_value !== undefined && { discount_value: parsed.discount_value }),
+				...(parsed.discount_amount !== undefined && { discount_amount: parsed.discount_amount }),
 				...(coords && { coords: coords }),
 				...(parsed.valid_until && {
 					valid_until: new Date(parsed.valid_until),
@@ -270,28 +302,6 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 					expires_at: new Date(parsed.expires_at),
 				}),
 			};
-
-			if (parsed.subtotal !== undefined) {
-				quoteData.subtotal = parsed.subtotal;
-			}
-			if (parsed.tax_rate !== undefined) {
-				quoteData.tax_rate = parsed.tax_rate;
-			}
-			if (parsed.tax_amount !== undefined) {
-				quoteData.tax_amount = parsed.tax_amount;
-			}
-			if (parsed.discount_type !== undefined) {
-				quoteData.discount_type = parsed.discount_type;
-			}
-			if (parsed.discount_value !== undefined) {
-				quoteData.discount_value = parsed.discount_value;
-			}
-			if (parsed.discount_amount !== undefined) {
-				quoteData.discount_amount = parsed.discount_amount;
-			}
-			if (parsed.total !== undefined) {
-				quoteData.total = parsed.total;
-			}
 
 			const quote = await tx.quote.create({
 				data: quoteData,
@@ -304,11 +314,16 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 						description: item.description || null,
 						quantity: item.quantity,
 						unit_price: item.unit_price,
-						total: item.total,
+						total: item.total ?? item.quantity * item.unit_price,
 						item_type: item.item_type || null,
 						sort_order: item.sort_order ?? index,
+						tax_group_id: item.tax_group_id ?? null,
+						taxable: item.taxable !== undefined ? item.taxable : true,
 					})),
 				});
+
+				// Recompute quote tax totals now that line items exist
+				await recomputeQuoteTotals(quote.id, organizationId, tx as unknown as Prisma.TransactionClient);
 			}
 
 			await tx.client.update({
@@ -529,9 +544,15 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 									description: item.description || null,
 									quantity: item.quantity,
 									unit_price: item.unit_price,
-									total: item.total,
+									total: item.total ?? item.quantity * item.unit_price,
 									item_type: item.item_type || null,
 									sort_order: item.sort_order ?? index,
+									...(item.tax_group_id !== undefined && {
+										tax_group_id: item.tax_group_id,
+									}),
+									...(item.taxable !== undefined && {
+										taxable: item.taxable,
+									}),
 								},
 							});
 
@@ -565,9 +586,11 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 								description: item.description || null,
 								quantity: item.quantity,
 								unit_price: item.unit_price,
-								total: item.total,
+								total: item.total ?? item.quantity * item.unit_price,
 								item_type: item.item_type || null,
 								sort_order: item.sort_order ?? index,
+								tax_group_id: item.tax_group_id ?? null,
+								taxable: item.taxable !== undefined ? item.taxable : true,
 							},
 						});
 
@@ -593,6 +616,9 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 						});
 					}
 				}
+
+				// Recompute quote tax totals after line item changes
+				await recomputeQuoteTotals(quoteId, organizationId, tx as unknown as Prisma.TransactionClient);
 			}
 
 			// Enforce valid status transitions
@@ -614,6 +640,28 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 			const isFirstRejected =
 				parsed.status === "Rejected" && existing.status !== "Rejected";
 
+			// If discount changed but line_items was not in the payload, still recompute totals.
+			// Guard: skip if tax snapshot is already locked (issued quote).
+			const discountChanged =
+				parsed.discount_type !== undefined || parsed.discount_value !== undefined;
+			if (discountChanged && parsed.line_items === undefined && existing.tax_snapshot == null) {
+				// Apply discount updates to DB first so recompute reads the new values
+				await tx.quote.update({
+					where: { id: quoteId },
+					data: {
+						...(parsed.discount_type !== undefined && {
+							discount_type: parsed.discount_type,
+						}),
+						...(parsed.discount_value !== undefined && {
+							discount_value: parsed.discount_value,
+						}),
+					},
+				});
+				await recomputeQuoteTotals(quoteId, organizationId, tx as unknown as Prisma.TransactionClient);
+			}
+
+			const issuedAt = (isFirstIssued || isDraftDirectSend) ? new Date() : undefined;
+
 			const quote = await tx.quote.update({
 				where: { id: quoteId },
 				data: {
@@ -630,25 +678,24 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 					...(parsed.priority !== undefined && {
 						priority: parsed.priority,
 					}),
-					...(parsed.subtotal !== undefined && {
+					// Note: subtotal/tax_amount/total are managed by recomputeQuoteTotals;
+					// only write them if the caller explicitly sends them AND no recompute happened
+					...(!discountChanged && parsed.subtotal !== undefined && {
 						subtotal: parsed.subtotal,
 					}),
-					...(parsed.tax_rate !== undefined && {
-						tax_rate: parsed.tax_rate,
-					}),
-					...(parsed.tax_amount !== undefined && {
+					...(!discountChanged && parsed.tax_amount !== undefined && {
 						tax_amount: parsed.tax_amount,
 					}),
-					...(parsed.discount_type !== undefined && {
+					...(!discountChanged && parsed.discount_type !== undefined && {
 						discount_type: parsed.discount_type,
 					}),
-					...(parsed.discount_value !== undefined && {
+					...(!discountChanged && parsed.discount_value !== undefined && {
 						discount_value: parsed.discount_value,
 					}),
-					...(parsed.discount_amount !== undefined && {
+					...(!discountChanged && parsed.discount_amount !== undefined && {
 						discount_amount: parsed.discount_amount,
 					}),
-					...(parsed.total !== undefined && { total: parsed.total }),
+					...(!discountChanged && parsed.total !== undefined && { total: parsed.total }),
 					...(parsed.valid_until !== undefined && {
 						valid_until: parsed.valid_until
 							? new Date(parsed.valid_until)
@@ -666,7 +713,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 						rejection_reason: parsed.rejection_reason,
 					}),
 					// Auto-timestamps
-					...((isFirstIssued || isDraftDirectSend) && { issued_at: new Date() }),
+					...(issuedAt !== undefined && { issued_at: issuedAt }),
 					...(isFirstSent && { sent_at: new Date() }),
 					...(isFirstViewed && { viewed_at: new Date() }),
 					...(isFirstApproved && { approved_at: new Date() }),
@@ -679,6 +726,16 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 					line_items: true,
 				},
 			});
+
+			// Lock tax snapshot when transitioning to Issued
+			if (issuedAt !== undefined) {
+				await lockQuoteTaxSnapshot(
+					quoteId,
+					organizationId,
+					tx as unknown as Prisma.TransactionClient,
+					issuedAt,
+				);
+			}
 
 			// Sync request status if linked
 			if (quote.request_id && parsed.status) {
@@ -852,6 +909,8 @@ export const insertQuoteItem = async (
 					total: total,
 					item_type: parsed.item_type || null,
 					sort_order: parsed.sort_order,
+					tax_group_id: parsed.tax_group_id ?? null,
+					taxable: parsed.taxable !== undefined ? parsed.taxable : true,
 				},
 			});
 
@@ -875,6 +934,9 @@ export const insertQuoteItem = async (
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
 			});
+
+			// Recompute quote totals after adding a line item
+			await recomputeQuoteTotals(quoteId, organizationId, tx as unknown as Prisma.TransactionClient);
 
 			return item;
 		});
@@ -956,6 +1018,12 @@ export const updateQuoteItem = async (
 					...(parsed.sort_order !== undefined && {
 						sort_order: parsed.sort_order,
 					}),
+					...(parsed.tax_group_id !== undefined && {
+						tax_group_id: parsed.tax_group_id,
+					}),
+					...(parsed.taxable !== undefined && {
+						taxable: parsed.taxable,
+					}),
 				},
 			});
 
@@ -976,6 +1044,9 @@ export const updateQuoteItem = async (
 					user_agent: context?.userAgent,
 				});
 			}
+
+			// Recompute quote totals after updating a line item
+			await recomputeQuoteTotals(quoteId, organizationId, tx as unknown as Prisma.TransactionClient);
 
 			return item;
 		});
@@ -1036,6 +1107,9 @@ export const deleteQuoteItem = async (
 			await tx.quote_line_item.delete({
 				where: { id: itemId },
 			});
+
+			// Recompute quote totals after removing a line item
+			await recomputeQuoteTotals(quoteId, organizationId, tx as unknown as Prisma.TransactionClient);
 		});
 
 		return { err: "", message: "Item deleted successfully" };

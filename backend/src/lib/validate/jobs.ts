@@ -55,6 +55,8 @@ export const createJobSchema = z
 						.enum(["labor", "material", "equipment", "other"])
 						.optional()
 						.nullable(),
+					tax_group_id: z.string().uuid().nullable().optional(),
+					taxable: z.boolean().optional(),
 				}),
 			)
 			.optional(),
@@ -126,6 +128,8 @@ export const updateJobSchema = z
 							"field_addition",
 						])
 						.optional(),
+					tax_group_id: z.string().uuid().nullable().optional(),
+					taxable: z.boolean().optional(),
 				}),
 			)
 			.optional(),
@@ -170,6 +174,8 @@ export const createJobLineItemSchema = z
 		item_type: z
 			.enum(["labor", "material", "equipment", "other"])
 			.optional(),
+		tax_group_id: z.string().uuid().nullable().optional(),
+		taxable: z.boolean().optional(),
 	})
 	.transform((data) => ({
 		...data,
@@ -198,6 +204,8 @@ export const updateJobLineItemSchema = z
 		item_type: z
 			.enum(["labor", "material", "equipment", "other"])
 			.optional(),
+		tax_group_id: z.string().uuid().nullable().optional(),
+		taxable: z.boolean().optional(),
 	})
 	.transform((data) => ({
 		...data,

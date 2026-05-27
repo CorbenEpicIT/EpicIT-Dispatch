@@ -32,6 +32,7 @@ import {
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
+import { useTaxGroups, useDefaultTaxGroup } from "../../hooks/useTaxGroups";
 import { QuoteStatusColors } from "../../types/quotes";
 
 type Step = 1 | 2 | 3;
@@ -74,6 +75,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 	const [expiresAtDate, setExpiresAtDate] = useState<Date | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
+	const [submitError, setSubmitError] = useState<string | null>(null);
 
 	const [sourceMode, setSourceMode] = useState<SourceType | null>(null);
 	const [sourceClientFilter, setSourceClientFilter] = useState("");
@@ -90,6 +92,13 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 
 	const isSourceSearchOpen = sourceMode !== null;
 
+	const { data: taxGroups = [] } = useTaxGroups();
+	const { data: defaultTaxGroup } = useDefaultTaxGroup();
+	const clientExempt = useMemo(
+		() => clients?.find((c) => c.id === clientId)?.is_tax_exempt ?? false,
+		[clients, clientId]
+	);
+
 	const {
 		activeLineItems,
 		addLineItem,
@@ -101,7 +110,20 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
-	} = useLineItems({ minItems: 1, mode: "create" });
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
+	} = useLineItems({ minItems: 1, mode: "create", defaultTaxGroupId: defaultTaxGroup?.id ?? null });
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems]
+	);
 
 	const {
 		taxRate,
@@ -113,9 +135,14 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		setDiscountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		reset: resetFinancials,
 		setOriginals: setFinancialOriginals,
-	} = useFinancialCalculations(subtotal);
+	} = useFinancialCalculations(subtotal, { taxGroups, lineItemsForCalc, clientExempt });
 
 	const {
 		currentStep,
@@ -176,6 +203,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		resetLineItems();
 		resetFinancials();
 		setErrors(null);
+		setSubmitError(null);
 		setSourceMode(null);
 		setSourceClientFilter("");
 		setCurrentDraftId(null);
@@ -203,7 +231,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		[removeLineItem, markDirty]
 	);
 	const dirtyUpdateLineItem = useCallback(
-		(id: string, field: keyof BaseLineItem, value: string | number) => {
+		(id: string, field: keyof BaseLineItem, value: string | number | boolean) => {
 			updateLineItem(id, field, value);
 			markDirty();
 		},
@@ -238,6 +266,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 						quantity: Number(li.quantity),
 						unit_price: Number(li.unit_price),
 						item_type: li.item_type ?? "",
+						taxable: li.taxable ?? true,
+						tax_group_id: li.tax_group_id ?? null,
 					}))
 				);
 			} else {
@@ -307,6 +337,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							quantity: Number(li.quantity),
 							unit_price: Number(li.unit_price),
 							item_type: li.item_type ?? "",
+							taxable: li.taxable ?? true,
+							tax_group_id: li.tax_group_id ?? null,
 						}))
 					);
 				}
@@ -467,6 +499,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 				unit_price: Number(item.unit_price),
 				total: item.total,
 				item_type: item.item_type || undefined,
+				taxable: item.taxable,
+				tax_group_id: item.tax_group_id ?? undefined,
 				sort_order: index,
 			})
 		);
@@ -479,12 +513,12 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 			description: description.trim(),
 			priority: priority as Priority,
 			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			total,
+			total: resolvedTotal,
 			valid_until: validUntilDate ? validUntilDate.toISOString() : undefined,
 			expires_at: expiresAtDate ? expiresAtDate.toISOString() : undefined,
 			line_items: preparedLineItems,
@@ -528,6 +562,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 			navigate(`/dispatch/quotes/${quoteId}`);
 		} catch (error) {
 			console.error("Failed to create quote:", error);
+			setSubmitError(error instanceof Error ? error.message : "Failed to create quote. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -709,6 +744,10 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							dirtyFields={dirtyLineItemFields}
 							onUndo={undoLineItemField}
 							onClear={clearLineItemField}
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={setLineItemTaxGroup}
+							onTaxGroupBulkSet={setAllLineItemsTaxGroup}
 						/>
 					</div>
 				);
@@ -723,10 +762,13 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							discountType={discountType}
 							discountValue={discountValue}
 							discountAmount={discountAmount}
-							total={total}
+							total={resolvedTotal}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
+							clientExempt={clientExempt}
 							isLoading={isLoading}
 							mode="create"
-							onTaxRateChange={(v) => {
+							onTaxRateChange={groupsSummary.length > 0 ? undefined : (v) => {
 								setTaxRate(v);
 								markDirty();
 							}}
@@ -863,7 +905,14 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 				createDraftMutation.isPending || updateDraftMutation.isPending
 			}
 		>
-			{stepContent}
+			<>
+				{submitError && (
+					<div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+						{submitError}
+					</div>
+				)}
+				{stepContent}
+			</>
 		</FormWizardContainer>
 	);
 };

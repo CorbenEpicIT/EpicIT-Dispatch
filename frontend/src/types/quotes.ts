@@ -11,6 +11,7 @@ import type {
 	DiscountType,
 } from "./common";
 import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
+import type { TaxSnapshot } from "./tax";
 
 // ============================================================================
 // QUOTE-SPECIFIC TYPES
@@ -53,6 +54,10 @@ export const QuoteStatusColors: Record<QuoteStatus, string> = {
 	Expired:   "bg-orange-500/20 text-orange-400 border-orange-500/30",
 	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
+
+export function isQuoteEditable(status: QuoteStatus): boolean {
+	return ["Draft", "Issued", "Sent", "Viewed", "Revised"].includes(status);
+}
 
 // ============================================================================
 // QUOTE SUMMARY TYPES (for listings and references)
@@ -99,6 +104,7 @@ export interface Quote {
 	discount_type?: DiscountType | null;
 	discount_value?: number | null;
 	discount_amount: number;
+	tax_snapshot?: TaxSnapshot | null;
 	total: number;
 
 	created_at: Date;
@@ -215,6 +221,10 @@ export interface QuoteLineItem {
 	total: number;
 	item_type: LineItemType | null;
 	sort_order: number;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 }
 
 export interface CreateQuoteLineItemInput {
@@ -225,6 +235,8 @@ export interface CreateQuoteLineItemInput {
 	total: number;
 	item_type?: LineItemType;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateQuoteLineItemInput {
@@ -235,6 +247,8 @@ export interface UpdateQuoteLineItemInput {
 	total?: number;
 	item_type?: LineItemType | null;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 // ============================================================================

@@ -53,6 +53,7 @@ import requestsRouter from "./routes/requests.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
+import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
@@ -126,7 +127,14 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 	try {
 		const decoded = checkToken(token);
 		if ((decoded as any).stage === "pending_otp") {
-			return res.status(401).json(createErrorResponse(ErrorCodes.INVALID_TOKEN, "Invalid or expired token"));
+			return res
+				.status(401)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"Invalid or expired token",
+					),
+				);
 		}
 		req.user = decoded;
 		next();
@@ -181,7 +189,9 @@ app.use(pinoHttp({ logger: log }));
 app.use(httpMetricsMiddleware);
 
 // Expose Prometheus metrics at /metrics
-app.get("/metrics", (req, res) => prometheusExporter.getMetricsRequestHandler(req, res));
+app.get("/metrics", (req, res) =>
+	prometheusExporter.getMetricsRequestHandler(req, res),
+);
 app.use(requestLogger);
 
 let frontend: string | undefined = process.env["FRONTEND_URL"];
@@ -208,7 +218,9 @@ initSocket(io);
 notificationsController.setSocketIo(io);
 startVisitReminderInterval();
 startInvoiceSchedulerInterval();
-rearmWrappingUpTimers().catch((e) => log.error(e, "Failed to rearm WrappingUp timers"));
+rearmWrappingUpTimers().catch((e) =>
+	log.error(e, "Failed to rearm WrappingUp timers"),
+);
 
 // Each technician joins their personal room; all clients join their org room
 io.on("connection", (socket) => {
@@ -355,17 +367,24 @@ app.post("/reset-password", async (req, res, next) => {
 app.post("/refresh-token", async (req, res, next) => {
 	try {
 		const cookieHeader = req.headers.cookie ?? "";
-		const match = cookieHeader.split(";").find(c => c.trim().startsWith("refreshToken="));
+		const match = cookieHeader
+			.split(";")
+			.find((c) => c.trim().startsWith("refreshToken="));
 		const refreshToken = match?.trim().slice("refreshToken=".length);
 		if (!refreshToken) {
-			return res.status(401).json(
-				createErrorResponse(ErrorCodes.INVALID_TOKEN, "No refresh token provided")
-			);
+			return res
+				.status(401)
+				.json(
+					createErrorResponse(
+						ErrorCodes.INVALID_TOKEN,
+						"No refresh token provided",
+					),
+				);
 		}
 		const result = await refreshAccessToken(refreshToken);
 		if (typeof result !== "string") return res.status(401).json(result);
-		res.json(createSuccessResponse({ token: result, expiresIn: 900}));
-	}catch (e) {
+		res.json(createSuccessResponse({ token: result, expiresIn: 900 }));
+	} catch (e) {
 		next(e);
 	}
 });
@@ -461,10 +480,14 @@ app.use("/reports", verifyToken, reportsRouter);
 // ============================================
 app.use("/vehicles", verifyToken, vehiclesRouter);
 
+// ============================================
+// TAX RATES & GROUPS
+// ============================================
+app.use("/tax", verifyToken, taxRouter);
+
 // ============================================================
 // ACTIVITY FEED
 // ============================================================
-
 
 app.get("/logs/recent", async (req, res, next) => {
 	try {

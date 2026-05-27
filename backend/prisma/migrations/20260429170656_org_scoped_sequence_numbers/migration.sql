@@ -6,14 +6,9 @@
   - A unique constraint covering the columns `[organization_id,quote_number]` on the table `quote` will be added. If there are existing duplicate values, this will fail.
 
 */
--- DropIndex
-DROP INDEX "invoice_invoice_number_key";
-
--- DropIndex
-DROP INDEX "job_job_number_key";
-
--- DropIndex
-DROP INDEX "quote_quote_number_key";
+DROP INDEX IF EXISTS "invoice_invoice_number_key";
+DROP INDEX IF EXISTS "job_job_number_key";
+DROP INDEX IF EXISTS "quote_quote_number_key";
 
 -- CreateIndex
 CREATE UNIQUE INDEX "invoice_organization_id_invoice_number_key" ON "invoice"("organization_id", "invoice_number");

@@ -14,6 +14,8 @@ import {
 	useAssignTechniciansToVisitMutation,
 } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
+import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import {
 	CreateJobVisitSchema,
 	type CreateJobVisitInput,
@@ -50,6 +52,7 @@ interface EditJobVisitProps {
 	setIsModalOpen: (isOpen: boolean) => void;
 	visit: JobVisit;
 	jobId: string;
+	clientExempt: boolean;
 }
 
 const formatTimeString = (date: Date | null): string | null => {
@@ -66,7 +69,7 @@ const parseHHMMToDate = (hhmm: string | null | undefined, baseDate: Date): Date 
 	return d;
 };
 
-export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: EditJobVisitProps) {
+export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clientExempt }: EditJobVisitProps) {
 	const updateVisit = useUpdateJobVisitMutation();
 	const assignTechs = useAssignTechniciansToVisitMutation();
 	const { data: technicians } = useAllTechniciansQuery();
@@ -94,6 +97,32 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 	// minItems: 0 — allow all items to be deleted, including recurring plan template items.
 	// Dispatchers and techs should be able to freely add, edit, and remove visit line items.
 	const lineItems = useLineItems({ minItems: 0, mode: "edit" });
+
+	const { data: taxGroups = [] } = useTaxGroups();
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			lineItems.activeLineItems
+				.filter((li) => !(li as any).isDeleted)
+				.map((li) => ({
+					id: li.id,
+					total: Number(li.total),
+					taxable: li.taxable ?? true,
+					tax_group_id: li.tax_group_id ?? null,
+				})),
+		[lineItems.activeLineItems],
+	);
+
+	const { groupsSummary, totalTax, resolvedTotal } = useFinancialCalculations(
+		lineItems.subtotal,
+		{
+			taxGroups,
+			lineItemsForCalc,
+			clientExempt,
+			initialDiscountType: visit.discount_type || "amount",
+			initialDiscountValue: visit.discount_value ? Number(visit.discount_value) : 0,
+		},
+	);
 
 	const {
 		currentStep,
@@ -205,6 +234,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							| LineItemType
 							| "",
 						total: Number(item.total),
+						taxable: item.taxable ?? true,
+						tax_group_id: item.tax_group_id ?? null,
 						isNew: false,
 						isDeleted: false,
 					}))
@@ -331,6 +362,8 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 					| undefined,
 				sort_order: index,
 				total: item.total,
+				tax_group_id: item.tax_group_id ?? undefined,
+				taxable: item.taxable,
 			}));
 
 		const candidate: CreateJobVisitInput = {
@@ -603,7 +636,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 
 			case 3:
 				return (
-					<div className="min-w-0 flex flex-col">
+					<div className="min-w-0 flex flex-col gap-3">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
 							lineItems={lineItems.activeLineItems}
@@ -617,7 +650,44 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 							dirtyFields={lineItems.dirtyLineItemFields}
 							onUndo={lineItems.undoLineItemField}
 							onClear={lineItems.clearLineItemField}
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={lineItems.setLineItemTaxGroup}
+							onTaxGroupBulkSet={lineItems.setAllLineItemsTaxGroup}
 						/>
+
+						{lineItems.activeLineItems.some((li) => !(li as any).isDeleted) && (
+							<div className="p-3 bg-surface rounded-lg border border-border text-sm space-y-1.5">
+								<div className="flex justify-between text-text-tertiary">
+									<span>Subtotal</span>
+									<span className="tabular-nums">${lineItems.subtotal.toFixed(2)}</span>
+								</div>
+
+								{groupsSummary.map((gs) => (
+									<div key={gs.group.id} className="flex justify-between text-text-tertiary">
+										<span>
+											{gs.group.name}{" "}
+											<span className="text-text-muted text-xs">
+												({(gs.group.combined_rate * 100).toFixed(2)}%)
+											</span>
+										</span>
+										<span className="tabular-nums">${gs.tax_amount.toFixed(2)}</span>
+									</div>
+								))}
+
+								{totalTax > 0 && groupsSummary.length === 0 && (
+									<div className="flex justify-between text-text-tertiary">
+										<span>Tax</span>
+										<span className="tabular-nums">${totalTax.toFixed(2)}</span>
+									</div>
+								)}
+
+								<div className="flex justify-between font-semibold text-white border-t border-border pt-1.5">
+									<span>Total</span>
+									<span className="tabular-nums">${resolvedTotal.toFixed(2)}</span>
+								</div>
+							</div>
+						)}
 					</div>
 				);
 
@@ -654,7 +724,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 														}
 														className="w-4 h-4 accent-blue-600"
 													/>
-													<span className="text-white text-sm lg:text-base flex-1">
+													<span className="text-text-primary text-sm lg:text-base flex-1">
 														{
 															tech.name
 														}{" "}
@@ -716,6 +786,12 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit }: Edi
 		selectedTechIds,
 		handleTechSelection,
 		ErrorDisplay,
+		taxGroups,
+		clientExempt,
+		lineItemsForCalc,
+		groupsSummary,
+		totalTax,
+		resolvedTotal,
 	]);
 
 	return (

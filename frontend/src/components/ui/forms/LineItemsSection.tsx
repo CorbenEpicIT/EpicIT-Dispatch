@@ -1,7 +1,10 @@
 ﻿import { Plus, Download } from "lucide-react";
+import { useState } from "react";
 import LineItemCard, { type SourceJob } from "./LineItemCard";
 import type { BaseLineItem } from "../../../types/common";
 import type { InventoryItem } from "../../../types/inventory";
+import type { TaxGroup } from "../../../types/tax";
+import { formatTaxGroupLabel } from "../../../types/tax";
 
 interface LineItemsSectionProps {
 	lineItems: BaseLineItem[];
@@ -27,9 +30,15 @@ interface LineItemsSectionProps {
 	// Import — if provided, shows the import button
 	onImport?: () => void;
 	importLabel?: string;
+	importLoading?: boolean;
 	// When true, the header row sticks to the top of the nearest scroll container
 	stickyHeader?: boolean;
 	inventoryItems?: InventoryItem[];
+	// Tax
+	taxGroups?: TaxGroup[];
+	clientExempt?: boolean;
+	onTaxChange?: (id: string, groupId: string | null, taxable: boolean) => void;
+	onTaxGroupBulkSet?: (groupId: string | null, taxable: boolean) => void;
 }
 
 const LineItemsSection = ({
@@ -50,10 +59,16 @@ const LineItemsSection = ({
 	sourceJobs = [],
 	onImport,
 	importLabel,
+	importLoading = false,
 	stickyHeader = false,
 	inventoryItems,
+	taxGroups = [],
+	clientExempt = false,
+	onTaxChange,
+	onTaxGroupBulkSet,
 }: LineItemsSectionProps) => {
 	const canRemove = lineItems.length > minItems;
+	const [bulkSelectKey, setBulkSelectKey] = useState(0);
 
 	return (
 		<div className="flex flex-col gap-2 lg:gap-3">
@@ -70,18 +85,51 @@ const LineItemsSection = ({
 						Line Items {required && "*"}
 					</h3>
 					<div className="flex items-center gap-2 min-w-0">
-						{/* Import button — only shown when there are linked visit items to import */}
+						{/* Import button — shown when there are linked visit/job items to import */}
 						{onImport && (
 							<button
 								type="button"
 								onClick={onImport}
-								disabled={isLoading}
-								className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-raised hover:bg-zinc-600 border border-border-strong hover:border-border-strong rounded text-xs font-medium text-text-secondary hover:text-white transition-colors flex-shrink-0"
-								title={importLabel}
+								disabled={isLoading || importLoading}
+								className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-primary-border bg-primary-bg-dim text-xs font-medium text-primary-text hover:bg-primary-bg-subtle hover:border-primary/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
 							>
 								<Download size={12} />
-								{importLabel ?? "Import line items"}
+								{importLoading ? "Importing…" : (importLabel ?? "Import")}
 							</button>
+						)}
+						{/* Bulk tax group selector — hidden when exempt or no groups configured */}
+						{!clientExempt && taxGroups.length > 0 && onTaxGroupBulkSet && (
+							<div className="flex items-center gap-1.5 flex-shrink-0">
+								<span className="text-xs text-text-tertiary">Tax:</span>
+								<select
+									key={bulkSelectKey}
+									onChange={(e) => {
+										const val = e.target.value;
+										if (val === "none") onTaxGroupBulkSet(null, false);
+										else onTaxGroupBulkSet(val, true);
+										setBulkSelectKey((k) => k + 1);
+									}}
+									defaultValue=""
+									disabled={isLoading}
+									title="Apply tax group to all items"
+									className="border border-border px-2 h-[26px] rounded bg-base text-xs text-text-muted transition-colors focus:outline-none focus:border-primary hover:border-border-strong disabled:opacity-50 disabled:cursor-not-allowed [&>option]:bg-base [&>option]:text-text-primary"
+								>
+									<option value="" disabled hidden>
+										Apply to all…
+									</option>
+									<option value="none">
+										No Tax
+									</option>
+									{taxGroups.map((group) => (
+										<option
+											key={group.id}
+											value={group.id}
+										>
+											{formatTaxGroupLabel(group)}
+										</option>
+									))}
+								</select>
+							</div>
 						)}
 						<div className="text-xs lg:text-sm text-text-tertiary flex-shrink-0">
 							Subtotal:{" "}
@@ -113,6 +161,9 @@ const LineItemsSection = ({
 						onUpdateSource={onUpdateSource}
 						sourceJobs={sourceJobs}
 						inventoryItems={inventoryItems}
+						taxGroups={taxGroups}
+						clientExempt={clientExempt}
+						onTaxChange={onTaxChange}
 					/>
 				))}
 			</div>
@@ -121,7 +172,7 @@ const LineItemsSection = ({
 				type="button"
 				onClick={onAdd}
 				disabled={isLoading}
-				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 rounded text-xs lg:text-sm font-medium transition-colors"
+				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-xs lg:text-sm font-medium text-white transition-colors"
 			>
 				<Plus size={14} />
 				Add Item

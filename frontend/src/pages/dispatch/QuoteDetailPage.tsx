@@ -1,8 +1,7 @@
-﻿import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import {
 	Calendar,
 	DollarSign,
-	FileText,
 	MapPin,
 	MoreVertical,
 	Edit2,
@@ -26,6 +25,7 @@ import NoteManager from "../../components/quotes/QuoteNoteManager";
 import { useState, useRef, useEffect } from "react";
 import { formatCurrency } from "../../util/util";
 import { downloadQuotePdf } from "../../api/quotes";
+import FinancialSummary from "../../components/pagesections/FinancialSummary";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
 import { usePermission } from "../../hooks/usePermission";
 
@@ -393,179 +393,32 @@ export default function QuoteDetailPage() {
 			</div>
 
 			{/* Financial Summary */}
-			<Card title="Financial Summary">
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-					<div className="lg:col-span-2">
-						<h3 className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-4">
-							Line Items
-						</h3>
-						{!quote.line_items ||
-						quote.line_items.length === 0 ? (
-							<div className="text-center py-8">
-								<FileText
-									size={40}
-									className="mx-auto text-text-faint mb-3"
-								/>
-								<h3 className="text-text-tertiary text-sm font-medium mb-1">
-									No Line Items
-								</h3>
-								<p className="text-text-muted text-xs">
-									No line items have been
-									added to this quote yet.
-								</p>
-							</div>
-						) : (
-							<div>
-								{/* Header row */}
-								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
-									<div className="col-span-5 min-w-0">Item / Description</div>
-									<div className="col-span-1 min-w-0 text-center">Type</div>
-									<div className="col-span-2 min-w-0 text-right">Qty</div>
-									<div className="col-span-2 min-w-0 text-right">Unit Price</div>
-									<div className="col-span-2 min-w-0 text-right">Amount</div>
-								</div>
-								{/* Data rows — items-start so numeric cols don't stretch when description wraps */}
-								{quote.line_items.map((item, index) => (
-									<div
-										key={item.id || index}
-										className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors items-start"
-									>
-										<div className="col-span-5 min-w-0 text-sm">
-											<p className="text-white font-medium break-words">
-												{item.name}
-											</p>
-											{item.description && (
-												<p className="text-text-tertiary text-xs mt-0.5 break-words">
-													{item.description}
-												</p>
-											)}
-										</div>
-										<div className="col-span-1 min-w-0 flex justify-center pt-0.5">
-											{item.item_type && (
-												<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-													{item.item_type}
-												</span>
-											)}
-										</div>
-										<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
-											{Number(item.quantity).toLocaleString("en-US", {
-												minimumFractionDigits: 0,
-												maximumFractionDigits: 2,
-											})}
-										</div>
-										<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
-											{formatCurrency(Number(item.unit_price))}
-										</div>
-										<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums pt-0.5">
-											{formatCurrency(Number(item.quantity) * Number(item.unit_price))}
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-
-					<div className="lg:col-span-1 space-y-6">
-						<div className="p-4 bg-surface/50 rounded-lg border border-border space-y-2">
-							<div className="flex items-center justify-between gap-4 text-sm">
-								<span className="text-text-tertiary flex-shrink-0">Total Items:</span>
-								<span className="text-white font-medium tabular-nums">
-									{quote.line_items?.length || 0}
-								</span>
-							</div>
-							<div className="flex items-center justify-between gap-4 text-sm">
-								<span className="text-text-tertiary flex-shrink-0">Quote #:</span>
-								<span className="text-white font-medium truncate">
-									{quote.quote_number}
-								</span>
-							</div>
+			<FinancialSummary
+				lineItems={quote.line_items ?? []}
+				taxSnapshot={quote.tax_snapshot}
+				legacyTaxRate={quote.tax_rate != null ? Number(quote.tax_rate) : null}
+				legacyTaxAmount={quote.tax_amount != null ? Number(quote.tax_amount) : null}
+				subtotal={quote.subtotal != null ? Number(quote.subtotal) : null}
+				discountAmount={quote.discount_amount != null ? Number(quote.discount_amount) : null}
+				discountType={quote.discount_type ?? null}
+				discountValue={quote.discount_value != null ? Number(quote.discount_value) : null}
+				metaLabel="Quote #"
+				metaValue={quote.quote_number}
+				noLineItemsDescription="No line items have been added to this quote yet."
+				totalsContent={
+					<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+						<div>
+							<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+								Quote Total
+							</p>
+							<p className="text-xs text-text-muted">Final amount</p>
 						</div>
-
-						<div className="space-y-3">
-							{quote.subtotal !== null &&
-								quote.subtotal !== undefined && (
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-text-tertiary">
-											Subtotal:
-										</span>
-										<span className="text-white font-medium tabular-nums">
-											{formatCurrency(
-												Number(
-													quote.subtotal
-												)
-											)}
-										</span>
-									</div>
-								)}
-
-							{quote.tax_amount !== null &&
-								quote.tax_amount !== undefined &&
-								Number(quote.tax_amount) > 0 && (
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-text-tertiary">
-											Tax{" "}
-											{quote.tax_rate
-												? `(${(Number(quote.tax_rate) * 100).toFixed(2)}%)`
-												: ""}
-											:
-										</span>
-										<span className="text-white font-medium tabular-nums">
-											{formatCurrency(
-												Number(
-													quote.tax_amount
-												)
-											)}
-										</span>
-									</div>
-								)}
-
-							{quote.discount_amount !== null &&
-								quote.discount_amount !==
-									undefined &&
-								Number(quote.discount_amount) >
-									0 && (
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-text-tertiary">
-											Discount{" "}
-											{quote.discount_type ===
-												"percent" &&
-											quote.discount_value
-												? `(${Number(quote.discount_value)}%)`
-												: ""}
-											:
-										</span>
-										<span className="text-success-text font-medium tabular-nums">
-											-
-											{formatCurrency(
-												Number(
-													quote.discount_amount
-												)
-											)}
-										</span>
-									</div>
-								)}
-
-							<div className="border-t border-border my-2" />
-
-							<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
-								<div>
-									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
-										Quote Total
-									</p>
-									<p className="text-xs text-text-muted">
-										Final amount
-									</p>
-								</div>
-								<p className="text-2xl font-bold text-primary-text tabular-nums">
-									{formatCurrency(
-										Number(quote.total)
-									)}
-								</p>
-							</div>
-						</div>
+						<p className="text-2xl font-bold text-primary-text tabular-nums">
+							{formatCurrency(Number(quote.total))}
+						</p>
 					</div>
-				</div>
-			</Card>
+				}
+			/>
 
 			{/* Relations Row: Request + Job */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">

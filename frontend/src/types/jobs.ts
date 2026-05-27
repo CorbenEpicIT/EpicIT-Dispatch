@@ -268,6 +268,12 @@ export interface JobLineItem {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
 }
@@ -280,6 +286,8 @@ export interface CreateJobLineItemInput {
 	total?: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateJobLineItemInput {
@@ -291,6 +299,8 @@ export interface UpdateJobLineItemInput {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface VisitLineItem {
@@ -302,6 +312,12 @@ export interface VisitLineItem {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
 }
@@ -315,6 +331,8 @@ export interface CreateVisitLineItemInput {
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateVisitLineItemInput {
@@ -327,6 +345,8 @@ export interface UpdateVisitLineItemInput {
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 // ============================================================================
@@ -586,6 +606,8 @@ export const CreateJobVisitSchema = z
 					source: z.enum(LineItemSourceValues).optional(),
 					item_type: z.enum(LineItemTypeValues).optional().nullable(),
 					sort_order: z.number().nonnegative().default(0),
+					taxable: z.boolean().optional(),
+					tax_group_id: z.string().uuid().nullable().optional(),
 				})
 			)
 			.optional(),
@@ -704,6 +726,8 @@ export const UpdateJobVisitSchema = z
 					source: z.enum(LineItemSourceValues).optional(),
 					item_type: z.enum(LineItemTypeValues).optional().nullable(),
 					sort_order: z.number().nonnegative().default(0),
+					taxable: z.boolean().optional(),
+					tax_group_id: z.string().uuid().nullable().optional(),
 				})
 			)
 			.optional(),

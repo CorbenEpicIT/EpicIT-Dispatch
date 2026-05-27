@@ -25,28 +25,33 @@ export default function RegisterPage() {
 		if (!adminName.trim()) return "Your name is required.";
 		if (password !== confirmPassword) return "Passwords do not match.";
 		if (password.length < 8) return "Password must be at least 8 characters.";
-		if (!/[A-Z]/.test(password)) return "Password must contain at least one capital letter.";
+		if (!/[A-Z]/.test(password))
+			return "Password must contain at least one capital letter.";
 		if (!/[0-9]/.test(password)) return "Password must contain at least one number.";
-		if (!/[^A-Za-z0-9]/.test(password)) return "Password must contain at least one special character.";
+		if (!/[^A-Za-z0-9]/.test(password))
+			return "Password must contain at least one special character.";
 		return null;
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const err = validate();
-		if (err) { setErrorMessage(err); return; }
+		if (err) {
+			setErrorMessage(err);
+			return;
+		}
 
 		setStatus("loading");
 		try {
 			await registerOrganization({
-				org_name:     orgName.trim(),
-				admin_name:   adminName.trim(),
-				admin_email:  adminEmail.trim(),
+				org_name: orgName.trim(),
+				admin_name: adminName.trim(),
+				admin_email: adminEmail.trim(),
 				admin_password: password,
-				admin_phone:  adminPhone.trim() || undefined,
-				org_phone:    orgPhone.trim() || undefined,
-				org_address:  orgAddress.trim() || undefined,
-				org_website:  orgWebsite.trim() || undefined,
+				admin_phone: adminPhone.trim() || undefined,
+				org_phone: orgPhone.trim() || undefined,
+				org_address: orgAddress.trim() || undefined,
+				org_website: orgWebsite.trim() || undefined,
 				org_timezone: orgTimezone || undefined,
 			});
 			setStatus("success");
@@ -62,16 +67,24 @@ export default function RegisterPage() {
 		value: string,
 		onChange: (v: string) => void,
 		placeholder?: string,
-		required = true,
+		required = true
 	) => (
 		<div>
 			<label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">
-				{label}{!required && <span className="ml-1 text-gray-400 normal-case">(optional)</span>}
+				{label}
+				{!required && (
+					<span className="ml-1 text-gray-400 normal-case">
+						(optional)
+					</span>
+				)}
 			</label>
 			<input
 				type={type}
 				value={value}
-				onChange={(e) => { onChange(e.target.value); setErrorMessage(""); }}
+				onChange={(e) => {
+					onChange(e.target.value);
+					setErrorMessage("");
+				}}
 				placeholder={placeholder}
 				required={required}
 				className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -82,48 +95,139 @@ export default function RegisterPage() {
 	return (
 		<div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
 			<div className="bg-white rounded-2xl shadow-md p-10 max-w-md w-full">
-
 				{status === "input" && (
 					<form onSubmit={handleSubmit} className="space-y-4">
 						<div className="text-center mb-2">
-							<h1 className="text-2xl font-semibold text-gray-800">Create your account</h1>
-							<p className="text-gray-500 text-sm mt-1">Set up your organization and admin account.</p>
+							<h1 className="text-2xl font-semibold text-gray-800">
+								Create your account
+							</h1>
+							<p className="text-gray-500 text-sm mt-1">
+								Set up your organization and admin
+								account.
+							</p>
 						</div>
 
-						<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-2">Organization</p>
-						{field("Organization Name", "text", orgName, setOrgName, "e.g. Acme HVAC")}
-						{field("Organization Phone", "tel", orgPhone, setOrgPhone, "+1 (555) 000-0000", false)}
-						{field("Address", "text", orgAddress, setOrgAddress, "123 Main St, Chicago, IL", false)}
-						{field("Website", "url", orgWebsite, setOrgWebsite, "https://example.com", false)}
+						<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-2">
+							Organization
+						</p>
+						{field(
+							"Organization Name",
+							"text",
+							orgName,
+							setOrgName,
+							"e.g. Acme HVAC"
+						)}
+						{field(
+							"Organization Phone",
+							"tel",
+							orgPhone,
+							setOrgPhone,
+							"+1 (555) 000-0000",
+							false
+						)}
+						{field(
+							"Address",
+							"text",
+							orgAddress,
+							setOrgAddress,
+							"123 Main St, Chicago, IL",
+							false
+						)}
+						{field(
+							"Website",
+							"url",
+							orgWebsite,
+							setOrgWebsite,
+							"https://example.com",
+							false
+						)}
 						<div>
 							<label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">
-								Timezone<span className="ml-1 text-gray-400 normal-case">(optional)</span>
+								Timezone
+								<span className="ml-1 text-gray-400 normal-case">
+									(optional)
+								</span>
 							</label>
 							<select
 								value={orgTimezone}
-								onChange={(e) => setOrgTimezone(e.target.value)}
+								onChange={(e) =>
+									setOrgTimezone(
+										e.target.value
+									)
+								}
 								className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 							>
-								<option value="America/New_York">Eastern (ET)</option>
-								<option value="America/Chicago">Central (CT)</option>
-								<option value="America/Denver">Mountain (MT)</option>
-								<option value="America/Los_Angeles">Pacific (PT)</option>
-								<option value="America/Anchorage">Alaska (AKT)</option>
-								<option value="Pacific/Honolulu">Hawaii (HT)</option>
-								<option value="America/Phoenix">Arizona (no DST)</option>
-								<option value="America/Puerto_Rico">Puerto Rico (AST)</option>
+								<option value="America/New_York">
+									Eastern (ET)
+								</option>
+								<option value="America/Chicago">
+									Central (CT)
+								</option>
+								<option value="America/Denver">
+									Mountain (MT)
+								</option>
+								<option value="America/Los_Angeles">
+									Pacific (PT)
+								</option>
+								<option value="America/Anchorage">
+									Alaska (AKT)
+								</option>
+								<option value="Pacific/Honolulu">
+									Hawaii (HT)
+								</option>
+								<option value="America/Phoenix">
+									Arizona (no DST)
+								</option>
+								<option value="America/Puerto_Rico">
+									Puerto Rico (AST)
+								</option>
 							</select>
 						</div>
 
-						<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-2">Admin Account</p>
-						{field("Your Name", "text", adminName, setAdminName, "Full name")}
-						{field("Email", "email", adminEmail, setAdminEmail, "you@company.com")}
-						{field("Phone", "tel", adminPhone, setAdminPhone, "+1 (555) 000-0000", false)}
-						{field("Password", "password", password, setPassword, "Min. 8 characters")}
-						{field("Confirm Password", "password", confirmPassword, setConfirmPassword, "Repeat password")}
+						<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-2">
+							Admin Account
+						</p>
+						{field(
+							"Your Name",
+							"text",
+							adminName,
+							setAdminName,
+							"Full name"
+						)}
+						{field(
+							"Email",
+							"email",
+							adminEmail,
+							setAdminEmail,
+							"you@company.com"
+						)}
+						{field(
+							"Phone",
+							"tel",
+							adminPhone,
+							setAdminPhone,
+							"+1 (555) 000-0000",
+							false
+						)}
+						{field(
+							"Password",
+							"password",
+							password,
+							setPassword,
+							"Min. 8 characters"
+						)}
+						{field(
+							"Confirm Password",
+							"password",
+							confirmPassword,
+							setConfirmPassword,
+							"Repeat password"
+						)}
 
 						{errorMessage && (
-							<p className="text-red-500 text-sm">{errorMessage}</p>
+							<p className="text-red-500 text-sm">
+								{errorMessage}
+							</p>
 						)}
 
 						<button
@@ -135,7 +239,12 @@ export default function RegisterPage() {
 
 						<p className="text-sm text-gray-500 text-center">
 							Already have an account?{" "}
-							<Link to="/login" className="text-blue-600 hover:underline">Sign in</Link>
+							<Link
+								to="/login"
+								className="text-blue-600 hover:underline"
+							>
+								Sign in
+							</Link>
 						</p>
 					</form>
 				)}
@@ -143,21 +252,41 @@ export default function RegisterPage() {
 				{status === "loading" && (
 					<div className="text-center py-6">
 						<div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-						<h2 className="text-xl font-semibold text-gray-800">Setting up your account...</h2>
-						<p className="text-gray-500 mt-2 text-sm">Just a moment.</p>
+						<h2 className="text-xl font-semibold text-gray-800">
+							Setting up your account...
+						</h2>
+						<p className="text-gray-500 mt-2 text-sm">
+							Just a moment.
+						</p>
 					</div>
 				)}
 
 				{status === "success" && (
 					<div className="text-center py-6">
 						<div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-							<svg className="w-7 h-7 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+							<svg
+								className="w-7 h-7 text-green-500"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={2}
+									d="M5 13l4 4L19 7"
+								/>
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-gray-800">Account Created!</h2>
+						<h2 className="text-xl font-semibold text-gray-800">
+							Account Created!
+						</h2>
 						{/* Email functionality is temporarily disabled pending Postmark approval. */}
-						<p className="text-gray-500 mt-2 text-sm">Email verification is temporarily disabled while we await sender approval. You can sign in directly.</p>
+						<p className="text-gray-500 mt-2 text-sm">
+							Email verification is temporarily disabled
+							while we await sender approval. You can sign
+							in directly.
+						</p>
 						<button
 							onClick={() => navigate("/login")}
 							className="mt-6 w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
@@ -170,14 +299,31 @@ export default function RegisterPage() {
 				{status === "error" && (
 					<div className="text-center py-6">
 						<div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-							<svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+							<svg
+								className="w-7 h-7 text-red-500"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={2}
+									d="M6 18L18 6M6 6l12 12"
+								/>
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-gray-800">Registration Failed</h2>
-						<p className="text-gray-500 mt-2 text-sm">{errorMessage}</p>
+						<h2 className="text-xl font-semibold text-gray-800">
+							Registration Failed
+						</h2>
+						<p className="text-gray-500 mt-2 text-sm">
+							{errorMessage}
+						</p>
 						<button
-							onClick={() => { setStatus("input"); setErrorMessage(""); }}
+							onClick={() => {
+								setStatus("input");
+								setErrorMessage("");
+							}}
 							className="mt-6 w-full bg-primary-hover hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
 						>
 							Try Again

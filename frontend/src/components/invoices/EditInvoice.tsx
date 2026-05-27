@@ -16,6 +16,8 @@ import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useDirtyTracking } from "../../hooks/forms/useDirtyTracking";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
+import { isEditable } from "../../types/invoices";
 import type { SourceJob } from "../ui/forms/LineItemCard";
 
 type Step = 1 | 2 | 3;
@@ -50,6 +52,7 @@ interface EditInvoiceProps {
 const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps) => {
 	const { mutateAsync: updateInvoice } = useUpdateInvoiceMutation();
 	const [isLoading, setIsLoading] = useState(false);
+	const [submitError, setSubmitError] = useState<string | null>(null);
 
 	type FormFields = {
 		memo: string;
@@ -71,6 +74,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 	const [originalPaymentTermsDays, setOriginalPaymentTermsDays] = useState<string>("");
 
 	// ── Line items ────────────────────────────────────────────────────────
+	const { data: taxGroups = [] } = useTaxGroups();
+	const clientExempt = invoice.client?.is_tax_exempt ?? false;
+	const taxEditable = isEditable(invoice.status);
+
 	const {
 		activeLineItems,
 		addLineItem,
@@ -84,7 +91,20 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		undoLineItemField,
 		clearLineItemField,
 		originalLineItems,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 	} = useLineItems({ minItems: 0, mode: "edit" });
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems]
+	);
 
 	// ── Financials ────────────────────────────────────────────────────────
 	const {
@@ -97,6 +117,11 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		setDiscountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
@@ -106,6 +131,9 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		initialTaxRate: invoice.tax_rate ? Number(invoice.tax_rate) * 100 : 0,
 		initialDiscountType: invoice.discount_type || "amount",
 		initialDiscountValue: invoice.discount_value ? Number(invoice.discount_value) : 0,
+		taxGroups,
+		lineItemsForCalc,
+		clientExempt,
 	});
 
 	// ── Wizard ────────────────────────────────────────────────────────────
@@ -122,6 +150,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 	useEffect(() => {
 		if (!isModalOpen || !invoice) return;
 
+		setSubmitError(null);
 		resetWizard();
 
 		setOriginals({
@@ -151,9 +180,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				unit_price: Number(item.unit_price),
 				item_type: (item.item_type ?? "") as LineItemType | "",
 				total: Number(item.total),
-				// Preserve existing source attribution
-				source_job_id: (item as any).source_job_id ?? null,
-				source_visit_id: (item as any).source_visit_id ?? null,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+				source_job_id: item.source_job_id ?? null,
+				source_visit_id: item.source_visit_id ?? null,
 				isNew: false,
 				isDeleted: false,
 			})
@@ -282,11 +312,15 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 					item_type: (item.item_type || undefined) as
 						| LineItemType
 						| undefined,
+					taxable: item.taxable,
+					tax_group_id: item.tax_group_id ?? undefined,
 					sort_order: index,
-					source_job_id: (item as any).source_job_id ?? undefined,
-					source_visit_id: (item as any).source_visit_id ?? undefined,
+					source_job_id: item.source_job_id ?? undefined,
+					source_visit_id: item.source_visit_id ?? undefined,
 				};
 			});
+
+
 
 		const updates: UpdateInvoiceInput = {
 			memo: getValue("memo").trim() || undefined,
@@ -297,21 +331,23 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				? parseInt(paymentTermsDays, 10)
 				: undefined,
 			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			total,
+			total: resolvedTotal,
 			line_items: preparedLineItems,
 		};
 
 		setIsLoading(true);
 		try {
 			await updateInvoice({ id: invoice.id, updates });
+			setSubmitError(null);
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to update invoice:", error);
+			setSubmitError(error instanceof Error ? error.message : "Failed to update invoice. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -669,6 +705,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							originalLineItemsMap={originalLineItems}
 							sourceJobs={sourceJobs}
 							stickyHeader
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={taxEditable ? setLineItemTaxGroup : undefined}
+							onTaxGroupBulkSet={taxEditable ? setAllLineItemsTaxGroup : undefined}
 						/>
 					</div>
 				);
@@ -748,10 +788,13 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							discountType={discountType}
 							discountValue={discountValue}
 							discountAmount={discountAmount}
-							total={total}
+							total={resolvedTotal}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
+							clientExempt={clientExempt}
 							isLoading={isLoading}
 							mode="edit"
-							onTaxRateChange={setTaxRate}
+							onTaxRateChange={groupsSummary.length > 0 ? undefined : setTaxRate}
 							onDiscountTypeChange={setDiscountType}
 							onDiscountValueChange={setDiscountValue}
 							totalLabel="Invoice Total"
@@ -798,6 +841,13 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		discountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		taxEditable,
+		taxGroups,
+		clientExempt,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
@@ -822,7 +872,14 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 			submitLabel="Save Changes"
 			isEditMode={true}
 		>
-			{stepContent}
+			<>
+				{submitError && (
+					<div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+						{submitError}
+					</div>
+				)}
+				{stepContent}
+			</>
 		</FormWizardContainer>
 	);
 };

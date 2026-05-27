@@ -11,6 +11,7 @@ import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import { useUpdateJobMutation } from "../../hooks/useJobs";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import FinancialSummary from "../ui/forms/FinancialSummary";
@@ -46,6 +47,8 @@ const PRIORITY_ENTRIES = (
 
 const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 	const updateJob = useUpdateJobMutation();
+	const { data: taxGroups = [] } = useTaxGroups();
+	const clientExempt = job.client?.is_tax_exempt ?? false;
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
@@ -73,10 +76,25 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 	} = useLineItems({
 		minItems: 1,
 		mode: "edit",
 	});
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems
+				.filter((li) => !(li as any).isDeleted)
+				.map((li) => ({
+					id: li.id,
+					total: Number(li.total),
+					taxable: li.taxable ?? true,
+					tax_group_id: li.tax_group_id ?? null,
+				})),
+		[activeLineItems],
+	);
 
 	const {
 		taxRate,
@@ -93,10 +111,18 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		undoTax,
 		undoDiscount,
 		setOriginals: setFinancialOriginals,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 	} = useFinancialCalculations(subtotal, {
 		initialTaxRate: job.tax_rate ? Number(job.tax_rate) * 100 : 0,
 		initialDiscountType: job.discount_type || "amount",
 		initialDiscountValue: job.discount_value ? Number(job.discount_value) : 0,
+		taxGroups,
+		lineItemsForCalc,
+		clientExempt,
 	});
 
 	const validateStep1 = useCallback((): boolean => {
@@ -181,6 +207,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 					unit_price: Number(item.unit_price),
 					item_type: item.item_type || "",
 					total: Number(item.total),
+					taxable: item.taxable ?? true,
+					tax_group_id: item.tax_group_id ?? null,
 					isNew: false,
 					isDeleted: false,
 				})) || [];
@@ -250,6 +278,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 				unit_price: Number(item.unit_price),
 				total: Number(item.total),
 				item_type: (item.item_type || undefined) as any,
+				tax_group_id: item.tax_group_id ?? undefined,
+				taxable: item.taxable,
 			};
 		});
 
@@ -263,12 +293,12 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 			coords: geoData?.coords !== job.coords ? geoData?.coords : undefined,
 			priority: getValue("priority") as Priority,
 			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			estimated_total: estimatedTotal,
+			estimated_total: resolvedTotal,
 			line_items: lineItemUpdates.length > 0 ? lineItemUpdates : undefined,
 		};
 
@@ -488,6 +518,10 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 							dirtyFields={dirtyLineItemFields}
 							onUndo={undoLineItemField}
 							onClear={clearLineItemField}
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={setLineItemTaxGroup}
+							onTaxGroupBulkSet={setAllLineItemsTaxGroup}
 						/>
 					</div>
 				);
@@ -512,6 +546,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 							isDiscountDirty={isDiscountDirty}
 							onTaxUndo={undoTax}
 							onDiscountUndo={undoDiscount}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
 						/>
 
 						{job.actual_total !== null &&
@@ -588,6 +624,11 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
+		taxGroups,
+		clientExempt,
+		lineItemsForCalc,
 		taxRate,
 		taxAmount,
 		discountType,
@@ -598,6 +639,8 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
+		groupsSummary,
+		totalTax,
 	]);
 
 	return (

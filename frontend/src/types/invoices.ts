@@ -111,6 +111,10 @@ export interface InvoiceLineItem {
 	// Soft traceability
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 }
 
 export interface CreateInvoiceLineItemInput {
@@ -123,6 +127,8 @@ export interface CreateInvoiceLineItemInput {
 	sort_order?: number;
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateInvoiceLineItemInput extends CreateInvoiceLineItemInput {
@@ -224,7 +230,7 @@ export interface Invoice extends PricingBreakdown {
 	created_by_dispatcher_id?: string | null;
 
 	// Relations
-	client?: (ClientDetailsProps["client"] & { id: string }) | null;
+	client?: (ClientDetailsProps["client"] & { id: string; is_tax_exempt?: boolean; tax_group_id?: string | null }) | null;
 	created_by_dispatcher?: { id: string; name: string; email: string } | null;
 	recurring_plan?: RecurringPlanReference | null;
 	recurring_plan_id?: string | null;

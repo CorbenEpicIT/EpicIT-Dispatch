@@ -35,14 +35,22 @@ import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
 
-import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuthStore } from "./auth/authStore";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useAuthStore, isTokenExpired } from "./auth/authStore";
 import { usePermission, useAnyPermission } from "./hooks/usePermission";
-import type { JSX } from "react";
+import { useEffect, type JSX } from "react";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
-	const { user } = useAuthStore();
-	return user ? children : <Navigate to="/login" replace />;
+	const { user, logout } = useAuthStore();
+	const location = useLocation();
+	const expired = user ? isTokenExpired() : false;
+
+	useEffect(() => {
+		if (expired) logout();
+	}, [expired, logout, location.pathname]);
+
+	if (!user || expired) return <Navigate to="/login" replace />;
+	return children;
 }
 // stops technicians from accessing dispatch routes 
 function RequireDispatcher({ children }: { children: JSX.Element }) {

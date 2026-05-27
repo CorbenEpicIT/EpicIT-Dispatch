@@ -43,3 +43,15 @@ export const adjustStockSchema = z.object({
 });
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
+
+export const createTagSchema = z.object({
+	label: z.string().min(1, "Label is required").max(100),
+});
+
+export const updateTagSchema = z.object({
+	label: z.string().min(1, "Label is required").max(100),
+});
+
+export const setItemTagsSchema = z.object({
+	tag_ids: z.array(z.string()),
+});

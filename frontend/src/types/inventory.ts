@@ -1,5 +1,13 @@
 export type StockStatus = 'sufficient' | 'low' | 'out_of_stock' | null;
 
+export interface InventoryTag {
+	id: string;
+	label: string;
+	organization_id: string;
+	created_at: string;
+	updated_at: string;
+}
+
 export interface InventoryItem {
 	id: string;
 	name: string;
@@ -19,6 +27,7 @@ export interface InventoryItem {
 	created_at: string;
 	updated_at: string;
 	stock_status?: StockStatus;
+	tags?: InventoryTag[];
 	_count?: {
 		visit_line_items: number;
 	};

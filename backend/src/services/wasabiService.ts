@@ -12,6 +12,8 @@ const WASABI_SECRET = process.env.WASABI_SECRET;
 const WASABI_BUCKET = process.env.WASABI_BUCKET;
 const WASABI_REGION = process.env.WASABI_REGION || "us-east-1";
 
+const SIGNED_URL_TTL_SECONDS = 3600;
+
 let s3Client: S3Client | null = null;
 
 function getClient(): S3Client {
@@ -34,6 +36,10 @@ function getClient(): S3Client {
 	return s3Client;
 }
 
+function rawUrlForKey(key: string): string {
+	return `https://s3.${WASABI_REGION}.wasabisys.com/${WASABI_BUCKET}/${key}`;
+}
+
 export const uploadFile = async (
 	file: Buffer,
 	contentType: string,
@@ -52,12 +58,22 @@ export const uploadFile = async (
 		}),
 	);
 
-	return `https://s3.${WASABI_REGION}.wasabisys.com/${WASABI_BUCKET}/${key}`;
+	return rawUrlForKey(key);
 };
 
-function extractKey(url: string): string {
-	return url.split(`${WASABI_BUCKET}/`).pop() ?? url;
+function keyFromUrl(url: string): string {
+	const base = url.split("?")[0];
+	return base.split(`${WASABI_BUCKET}/`).pop() ?? base;
 }
+
+// Strip query strings / signing params so we always persist the canonical
+// (un-signed) URL in the database. Inputs that are already canonical pass through.
+export const toRawUrl = (url: string): string => {
+	if (!url) return url;
+	if (!url.includes("?")) return url;
+	const key = keyFromUrl(url);
+	return rawUrlForKey(key);
+};
 
 export const fetchBuffer = async (
 	key: string,
@@ -79,13 +95,19 @@ export const fetchBuffer = async (
 export const getBuffer = async (
 	url: string,
 ): Promise<{ buffer: Buffer; contentType: string }> => {
-	return fetchBuffer(extractKey(url));
+	return fetchBuffer(keyFromUrl(url));
 };
 
-function keyFromUrl(url: string): string {
-	const base = url.split("?")[0];
-	return base.split(`${WASABI_BUCKET}/`).pop() ?? base;
-}
+export const signImageUrl = async (
+	url: string | null | undefined,
+): Promise<string | null> => {
+	if (!url) return null;
+	return getSignedUrl(
+		getClient(),
+		new GetObjectCommand({ Bucket: WASABI_BUCKET!, Key: keyFromUrl(url) }),
+		{ expiresIn: SIGNED_URL_TTL_SECONDS },
+	);
+};
 
 export const signImageUrls = async (urls: string[]): Promise<string[]> => {
 	if (!urls.length) return [];
@@ -94,7 +116,7 @@ export const signImageUrls = async (urls: string[]): Promise<string[]> => {
 			getSignedUrl(
 				getClient(),
 				new GetObjectCommand({ Bucket: WASABI_BUCKET!, Key: keyFromUrl(url) }),
-				{ expiresIn: 3600 },
+				{ expiresIn: SIGNED_URL_TTL_SECONDS },
 			),
 		),
 	);

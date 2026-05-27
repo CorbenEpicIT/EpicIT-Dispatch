@@ -5,19 +5,20 @@ import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { useOrgRolesQuery } from "../../hooks/useOrgRoles";
 
 interface CreateDispatcherProps {
-    isModalOpen: boolean;
-    setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    createDispatcher: (input: CreateDispatcherInput) => Promise<string>;
+	isModalOpen: boolean;
+	setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+	createDispatcher: (input: CreateDispatcherInput) => Promise<string>;
 }
 
 const INPUT =
-    "border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL =
+	"block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 const CreateDispatcher = ({
-    isModalOpen,
-    setIsModalOpen,
-    createDispatcher,
+	isModalOpen,
+	setIsModalOpen,
+	createDispatcher,
 }: CreateDispatcherProps) => {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -52,15 +53,15 @@ const CreateDispatcher = ({
         setOrganizationRoleId(null);
     }, []);
 
-    useEffect(() => {
-        if (!isModalOpen) {
-            resetForm();
-            setIsLoading(false);
-        }
-    }, [isModalOpen, resetForm]);
+	useEffect(() => {
+		if (!isModalOpen) {
+			resetForm();
+			setIsLoading(false);
+		}
+	}, [isModalOpen, resetForm]);
 
-    const invokeCreate = async () => {
-        if (isLoading) return;
+	const invokeCreate = async () => {
+		if (isLoading) return;
 
         const newDispatcher: CreateDispatcherInput = {
             name: name.trim(),
@@ -72,89 +73,99 @@ const CreateDispatcher = ({
             organization_role_id: organizationRoleId,
         };
 
-        const parseResult = CreateDispatcherSchema.safeParse(newDispatcher);
-        if (!parseResult.success) {
-            setErrors(parseResult.error);
-            return;
-        }
+		const parseResult = CreateDispatcherSchema.safeParse(newDispatcher);
+		if (!parseResult.success) {
+			setErrors(parseResult.error);
+			return;
+		}
 
-        setErrors(null);
-        setIsLoading(true);
-        try {
-            await createDispatcher(newDispatcher);
-            setIsModalOpen(false);
-            resetForm();
-        } catch (error) {
-            console.error("Failed to create dispatcher:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+		setErrors(null);
+		setIsLoading(true);
+		try {
+			await createDispatcher(newDispatcher);
+			setIsModalOpen(false);
+			resetForm();
+		} catch (error) {
+			console.error("Failed to create dispatcher:", error);
+		} finally {
+			setIsLoading(false);
+		}
+	};
 
-    const ErrorDisplay = ({ path }: { path: string }) => {
-        if (!errors) return null;
-        const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
-        if (fieldErrors.length === 0) return null;
-        return (
-            <div className="mt-0.5">
-                {fieldErrors.map((err, idx) => (
-                    <p key={idx} className="text-error-text text-xs leading-tight">
-                        {err.message}
-                    </p>
-                ))}
-            </div>
-        );
-    };
+	const ErrorDisplay = ({ path }: { path: string }) => {
+		if (!errors) return null;
+		const fieldErrors = errors.issues.filter((err) => err.path[0] === path);
+		if (fieldErrors.length === 0) return null;
+		return (
+			<div className="mt-0.5">
+				{fieldErrors.map((err, idx) => (
+					<p
+						key={idx}
+						className="text-error-text text-xs leading-tight"
+					>
+						{err.message}
+					</p>
+				))}
+			</div>
+		);
+	};
 
-    const isFormValid = useMemo(
-        () => !!(name.trim() && email.trim() && phone.trim() && title.trim() && (!choosePassword || password.trim())),
-        [name, email, phone, title, choosePassword, password]
-    );
+	const isFormValid = useMemo(
+		() =>
+			!!(
+				name.trim() &&
+				email.trim() &&
+				phone.trim() &&
+				title.trim() &&
+				(!choosePassword || password.trim())
+			),
+		[name, email, phone, title, choosePassword, password]
+	);
 
-    const formContent = useMemo(
-        () => (
-            <div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
-                {/* Name */}
-                <div className="min-w-0">
-                    <label className={LABEL}>Full Name *</label>
-                    <input
-                        type="text"
-                        placeholder="Full Name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className={INPUT}
-                        disabled={isLoading}
-                    />
-                    <ErrorDisplay path="name" />
-                </div>
+	const formContent = useMemo(
+		() => (
+			<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+				{/* Name */}
+				<div className="min-w-0">
+					<label className={LABEL}>Full Name *</label>
+					<input
+						type="text"
+						placeholder="Full Name"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						className={INPUT}
+						disabled={isLoading}
+					/>
+					<ErrorDisplay path="name" />
+				</div>
 
-                {/* Email + Phone */}
-                <div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
-                    <div className="min-w-0">
-                        <label className={LABEL}>Email *</label>
-                        <input
-                            type="email"
-                            placeholder="email@example.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className={INPUT}
-                            disabled={isLoading}
-                        />
-                        <ErrorDisplay path="email" />
-                    </div>
-                    <div className="min-w-0">
-                        <label className={LABEL}>Phone *</label>
-                        <input
-                            type="tel"
-                            placeholder="(555) 123-4567"
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            className={INPUT}
-                            disabled={isLoading}
-                        />
-                        <ErrorDisplay path="phone" />
-                    </div>
-                </div>
+				{/* Email + Phone */}
+				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+					<div className="min-w-0">
+						<label className={LABEL}>Email *</label>
+						<input
+							type="email"
+							placeholder="email@example.com"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
+						<ErrorDisplay path="email" />
+					</div>
+					<div className="min-w-0">
+						<label className={LABEL}>Phone *</label>
+						<input
+							type="tel"
+							placeholder="(555) 123-4567"
+							value={phone}
+							onChange={(e) => setPhone(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
+						<ErrorDisplay path="phone" />
+					</div>
+				</div>
 
                 {/* Title */}
                 <div className="min-w-0">
@@ -186,65 +197,79 @@ const CreateDispatcher = ({
                     </select>
                 </div>
 
-                {/* Description */}
-                <div className="min-w-0">
-                    <label className={LABEL}>Description</label>
-                    <textarea
-                        placeholder="Brief description or notes..."
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
-                        disabled={isLoading}
-                    />
-                </div>
-                {/* Password */}
-                <div className="min-w-0 flex items-center space-x-2">
-                    <div className="min-w-0">
-                        <label className={LABEL}>Choose Password</label>
-                        <input
-                            type="checkbox"
-                            checked={choosePassword}
-                            onChange={(e) => setChoosePassword(e.target.checked)}
-                            className="form-checkbox h-[28px] w-4 text-primary focus:ring-primary border-border bg-base"
-                            disabled={isLoading}
-                        />
-                    </div>
-                    {choosePassword && (
-                        <div className="min-w-0">
-                            <label className={LABEL}>Password *</label>
-                            <input
-                                type="password"
-                                placeholder="Enter password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className={INPUT}
-                                disabled={isLoading}
-                            />
-                            <ErrorDisplay path="password" />
-                        </div>
-                    )}
-                </div>
-            </div>
-        ),
-        [name, email, phone, title, description, isLoading, errors, choosePassword, password, organizationRoleId, dispatcherRoles]
-    );
+				{/* Description */}
+				<div className="min-w-0">
+					<label className={LABEL}>Description</label>
+					<textarea
+						placeholder="Brief description or notes..."
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+						disabled={isLoading}
+					/>
+				</div>
+				{/* Password */}
+				<div className="min-w-0 flex items-center space-x-2">
+					<div className="min-w-0">
+						<label className={LABEL}>Choose Password</label>
+						<input
+							type="checkbox"
+							checked={choosePassword}
+							onChange={(e) =>
+								setChoosePassword(e.target.checked)
+							}
+							className="form-checkbox h-[28px] w-4 text-primary focus:ring-primary border-border bg-base"
+							disabled={isLoading}
+						/>
+					</div>
+					{choosePassword && (
+						<div className="min-w-0">
+							<label className={LABEL}>Password *</label>
+							<input
+								type="password"
+								placeholder="Enter password"
+								value={password}
+								onChange={(e) =>
+									setPassword(e.target.value)
+								}
+								className={INPUT}
+								disabled={isLoading}
+							/>
+							<ErrorDisplay path="password" />
+						</div>
+					)}
+				</div>
+			</div>
+		),
+		[
+			name,
+			email,
+			phone,
+			title,
+			description,
+			isLoading,
+			errors,
+			choosePassword,
+			password,
+		]
+	);
 
-    return (
-        <FormWizardContainer
-            title="Create Dispatcher"
-            steps={[]}
-            currentStep={1}
-            visitedSteps={new Set([1])}
-            isLoading={isLoading}
-            isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
-            onSubmit={invokeCreate}
-            canGoNext={isFormValid}
-            submitLabel="Create Dispatcher"
-        >
-            {formContent}
-        </FormWizardContainer>
-    );
+	return (
+		<FormWizardContainer
+			title="Create Dispatcher"
+			steps={[]}
+			currentStep={1}
+			visitedSteps={new Set([1])}
+			isLoading={isLoading}
+			isOpen={isModalOpen}
+			onClose={() => setIsModalOpen(false)}
+			onSubmit={invokeCreate}
+			canGoNext={isFormValid}
+			submitLabel="Create Dispatcher"
+		>
+			{formContent}
+		</FormWizardContainer>
+	);
 };
 
 export default CreateDispatcher;

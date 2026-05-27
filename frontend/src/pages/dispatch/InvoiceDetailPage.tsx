@@ -1,5 +1,5 @@
-﻿import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
 	Edit2,
 	Calendar,
@@ -50,6 +50,8 @@ import {
 } from "../../types/invoices";
 import { formatCurrency, formatDate } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
+import { formatRatePercentLabel } from "../../lib/formatTax";
+import type { TaxSnapshotRate } from "../../types/tax";
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -68,6 +70,14 @@ const formatDateTime = (val: string | Date | null | undefined): string => {
 interface InvoiceLineItemWithSource extends InvoiceLineItem {
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+}
+
+/** Collapsed per-rate tax entry used in the totals section. */
+interface CollapsedRate {
+	id: string;
+	name: string;
+	rate: number;
+	amountCents: number;
 }
 
 /** Strongly-typed shape for a job group used when rendering the linked section. */
@@ -126,8 +136,6 @@ function buildLinkedJobGroups(invoice: Invoice): LinkedJobGroup[] {
 
 	return Array.from(groupMap.values());
 }
-
-// ── Optimistic payment helpers ────────────────────────────────────────────────
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -272,6 +280,62 @@ export default function InvoiceDetailPage() {
 		}
 	};
 
+	// Map group name → individual rates array for line item tax badge + totals section
+	// Must be above early returns — useMemo must not be called conditionally
+	const groupRatesMap = useMemo(() => {
+		const map = new Map<string, TaxSnapshotRate[]>();
+		for (const group of invoice?.tax_snapshot?.groups ?? []) {
+			if ((group.rates ?? []).length > 0) map.set(group.name, group.rates);
+		}
+		return map;
+	}, [invoice?.tax_snapshot]);
+
+	// Per-rate totals from snapshot; deduplicate by rate ID, sum amounts, drop group names.
+	const collapsedTaxRates = useMemo((): CollapsedRate[] => {
+		if (!invoice?.tax_snapshot) return [];
+		const rateMap = new Map<string, CollapsedRate>();
+		for (const group of invoice.tax_snapshot.groups ?? []) {
+			for (const rate of group.rates ?? []) {
+				const cents = Math.round(rate.rate * (group.taxable_amount_cents ?? 0));
+				const entry = rateMap.get(rate.id);
+				if (entry) {
+					entry.amountCents += cents;
+				} else {
+					rateMap.set(rate.id, { id: rate.id, name: rate.name, rate: rate.rate, amountCents: cents });
+				}
+			}
+		}
+		return [...rateMap.values()];
+	}, [invoice?.tax_snapshot]);
+
+	// Fallback: derive per-rate totals from line items when no snapshot exists.
+	const lineItemCollapsedRates = useMemo((): CollapsedRate[] => {
+		if (collapsedTaxRates.length > 0) return [];
+		const rateMap = new Map<string, CollapsedRate>();
+		for (const item of (invoice?.line_items ?? []) as InvoiceLineItemWithSource[]) {
+			if (!item.taxable || item.tax_amount == null || !item.tax_group?.rates?.length) continue;
+			const itemTaxCents = Math.round(Number(item.tax_amount) * 100);
+			if (itemTaxCents === 0) continue;
+			const combinedRate = item.tax_group.rates.reduce((s, r) => s + r.tax_rate.rate, 0);
+			if (combinedRate === 0) continue;
+			for (const r of item.tax_group.rates) {
+				const share = Math.round(itemTaxCents * (r.tax_rate.rate / combinedRate));
+				const existing = rateMap.get(r.tax_rate.id);
+				if (existing) {
+					existing.amountCents += share;
+				} else {
+					rateMap.set(r.tax_rate.id, {
+						id: r.tax_rate.id,
+						name: r.tax_rate.name,
+						rate: r.tax_rate.rate,
+						amountCents: share,
+					});
+				}
+			}
+		}
+		return [...rateMap.values()];
+	}, [collapsedTaxRates, invoice?.line_items]);
+
 	// ── Guards ────────────────────────────────────────────────────────────────
 
 	if (isLoading) {
@@ -328,7 +392,10 @@ export default function InvoiceDetailPage() {
 							)}
 						</div>
 						{invoice.memo && (
-							<p className="text-text-secondary text-sm break-words min-w-0 line-clamp-2" title={invoice.memo}>
+							<p
+								className="text-text-secondary text-sm break-words min-w-0 line-clamp-2"
+								title={invoice.memo}
+							>
 								{invoice.memo}
 							</p>
 						)}
@@ -415,16 +482,31 @@ export default function InvoiceDetailPage() {
 											</button>
 									)}
 									<button
-										onClick={handleDownloadPdf}
-										disabled={isPdfLoading}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										onClick={
+											handleDownloadPdf
+										}
+										disabled={
+											isPdfLoading
+										}
+										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										{isPdfLoading ? (
-											<Loader2 size={16} className="animate-spin" />
+											<Loader2
+												size={
+													16
+												}
+												className="animate-spin"
+											/>
 										) : (
-											<Download size={16} />
+											<Download
+												size={
+													16
+												}
+											/>
 										)}
-										{isPdfLoading ? "Generating..." : "Download PDF"}
+										{isPdfLoading
+											? "Generating..."
+											: "Download PDF"}
 									</button>
 									{invoice.status === "Draft" && (
 											<button
@@ -595,21 +677,34 @@ export default function InvoiceDetailPage() {
 									Created
 								</p>
 								<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
-									<Calendar size={13} className="text-text-muted flex-shrink-0" />
-									{formatDate(invoice.created_at)}
+									<Calendar
+										size={13}
+										className="text-text-muted flex-shrink-0"
+									/>
+									{formatDate(
+										invoice.created_at
+									)}
 								</p>
 							</div>
-							{invoice.status !== "Draft" && invoice.issue_date != null && (
-								<div className="min-w-0">
-									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
-										Issue Date
-									</p>
-									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
-										<Calendar size={13} className="text-text-muted flex-shrink-0" />
-										{formatDate(invoice.issue_date)}
-									</p>
-								</div>
-							)}
+							{invoice.status !== "Draft" &&
+								invoice.issue_date != null && (
+									<div className="min-w-0">
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
+											Issue Date
+										</p>
+										<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
+											<Calendar
+												size={
+													13
+												}
+												className="text-text-muted flex-shrink-0"
+											/>
+											{formatDate(
+												invoice.issue_date
+											)}
+										</p>
+									</div>
+								)}
 							{invoice.due_date != null && (
 								<div className="min-w-0">
 									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
@@ -692,7 +787,9 @@ export default function InvoiceDetailPage() {
 										Void Reason
 									</p>
 									<p className="text-text-secondary text-sm italic break-words">
-										{invoice.void_reason}
+										{
+											invoice.void_reason
+										}
 									</p>
 								</div>
 							)}
@@ -726,30 +823,56 @@ export default function InvoiceDetailPage() {
 							<div>
 								{/* Header row */}
 								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
-									<div className="col-span-5 min-w-0">Item / Description</div>
-									<div className="col-span-1 min-w-0 text-center">Type</div>
-									<div className="col-span-2 min-w-0 text-right">Qty</div>
-									<div className="col-span-2 min-w-0 text-right">Unit Price</div>
-									<div className="col-span-2 min-w-0 text-right">Amount</div>
+									<div className="col-span-5 min-w-0">
+										Item / Description
+									</div>
+									<div className="col-span-2 min-w-0 text-center">
+										Type
+									</div>
+									<div className="col-span-1 min-w-0 text-right">
+										Qty
+									</div>
+									<div className="col-span-2 min-w-0 text-right">
+										Unit Price
+									</div>
+									<div className="col-span-2 min-w-0 text-right">
+										Amount
+									</div>
 								</div>
 								{/* Data rows — items-start keeps numeric cols top-aligned when description wraps */}
 								{lineItems.map((item, index) => {
-									const sourceVisitId = item.source_visit_id;
-									const sourceJobId = item.source_job_id;
-									let sourceLabel: string | null = null;
+									const sourceVisitId =
+										item.source_visit_id;
+									const sourceJobId =
+										item.source_job_id;
+									let sourceLabel:
+										| string
+										| null = null;
 									let isVisitSource = false;
 
 									if (sourceVisitId != null) {
-										const iv = (invoice.visits ?? []).find(
-											(v) => v.visit_id === sourceVisitId,
+										const iv = (
+											invoice.visits ??
+											[]
+										).find(
+											(v) =>
+												v.visit_id ===
+												sourceVisitId
 										);
 										if (iv != null) {
 											sourceLabel = `${iv.visit.job.job_number} · Visit ${formatDate(iv.visit.scheduled_start_at)}`;
 											isVisitSource = true;
 										}
-									} else if (sourceJobId != null) {
-										const ij = (invoice.jobs ?? []).find(
-											(j) => j.job_id === sourceJobId,
+									} else if (
+										sourceJobId != null
+									) {
+										const ij = (
+											invoice.jobs ??
+											[]
+										).find(
+											(j) =>
+												j.job_id ===
+												sourceJobId
 										);
 										if (ij != null) {
 											sourceLabel = `${ij.job.job_number} · ${ij.job.name}`;
@@ -758,64 +881,110 @@ export default function InvoiceDetailPage() {
 
 									return (
 										<div
-											key={item.id ?? index}
-											className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors items-start"
+											key={
+												item.id ??
+												index
+											}
+											className="border-b border-border-subtle hover:bg-surface/30 transition-colors"
 										>
-											{/* Name + description + source — constrained to column */}
-											<div className="col-span-5 min-w-0 text-sm">
-												<p className="text-white font-medium break-words">
-													{item.name}
-												</p>
-												{item.description != null && item.description !== "" && (
-													<p className="text-text-tertiary text-xs mt-0.5 break-words">
-														{item.description}
+											{/* Primary row — name + all numeric columns */}
+											<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
+												<div className="col-span-5 min-w-0 text-sm">
+													<p className="text-white font-medium break-words">
+														{
+															item.name
+														}
 													</p>
-												)}
-												{sourceLabel != null && (
-													<p className="mt-1">
-														<span
-															className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border max-w-full truncate ${
-																isVisitSource
-																	? "bg-primary/10 text-primary-text border-primary/20"
-																	: "bg-surface-raised/60 text-text-tertiary border-border-strong/50"
-															}`}
-														>
-															{isVisitSource ? (
-																<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-																	<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-																	<circle cx="12" cy="10" r="3" />
-																</svg>
-															) : (
-																<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-																	<rect x="2" y="7" width="20" height="14" rx="2" />
-																	<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-																</svg>
-															)}
-															<span className="truncate">{sourceLabel}</span>
+												</div>
+												<div className="col-span-2 min-w-0 flex justify-center">
+													{item.item_type !=
+														null && (
+														<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
+															{
+																item.item_type
+															}
 														</span>
-													</p>
-												)}
+													)}
+												</div>
+												<div className="col-span-1 min-w-0 text-right text-sm text-white tabular-nums" title={String(item.quantity)}>
+													{Number(
+														item.quantity
+													).toLocaleString(
+														"en-US",
+														{
+															minimumFractionDigits: 0,
+															maximumFractionDigits: 2,
+														}
+													)}
+												</div>
+												<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums">
+													{formatCurrency(
+														Number(
+															item.unit_price
+														)
+													)}
+												</div>
+												<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums">
+													{formatCurrency(
+														Number(
+															item.total
+														)
+													)}
+												</div>
 											</div>
-											{/* Type badge */}
-											<div className="col-span-1 min-w-0 flex justify-center pt-0.5">
-												{item.item_type != null && (
-													<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-														{item.item_type}
-													</span>
-												)}
-											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
-												{Number(item.quantity).toLocaleString("en-US", {
-													minimumFractionDigits: 0,
-													maximumFractionDigits: 2,
-												})}
-											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums pt-0.5">
-												{formatCurrency(Number(item.unit_price))}
-											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums pt-0.5">
-												{formatCurrency(Number(item.total))}
-											</div>
+											{/* Sub-row — only renders when secondary content exists */}
+											{((item.description != null && item.description !== "") ||
+												sourceLabel != null ||
+												item.tax_group?.name ||
+												item.taxable === false) && (
+												<div className="space-y-1 pb-2.5 min-w-0">
+													{item.description != null && item.description !== "" && (
+														<p className="text-xs text-text-tertiary leading-relaxed break-words">
+															{item.description}
+														</p>
+													)}
+													{(sourceLabel != null || item.tax_group?.name || item.taxable === false) && (
+														<div className="flex flex-wrap items-center gap-1.5">
+															{sourceLabel != null && (
+																<span
+																	className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap leading-none ${
+																		isVisitSource
+																			? "bg-primary/10 text-primary-text border-primary/20"
+																			: "bg-surface-raised/60 text-text-tertiary border-border-strong/50"
+																	}`}
+																>
+																	{isVisitSource ? (
+																		<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
+																			<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+																			<circle cx="12" cy="10" r="3" />
+																		</svg>
+																	) : (
+																		<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
+																			<rect x="2" y="7" width="20" height="14" rx="2" />
+																			<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+																		</svg>
+																	)}
+																	<span className="truncate">{sourceLabel}</span>
+																</span>
+															)}
+															{item.tax_group?.name ? (
+																<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
+																	{item.tax_group.name}
+																	{groupRatesMap.has(item.tax_group.name)
+																		? ` · ${groupRatesMap.get(item.tax_group.name)!
+																			.map(r => `${r.name} ${formatRatePercentLabel(r.rate)}`)
+																			.join(" + ")}`
+																		: ""}
+																</span>
+															) : (
+																<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-raised/40 border border-border-strong/30 text-[10px] text-text-faint whitespace-nowrap leading-none">
+																	No Tax
+																</span>
+															)}
+														</div>
+													)}
+												</div>
+											)}
 										</div>
 									);
 								})}
@@ -837,34 +1006,49 @@ export default function InvoiceDetailPage() {
 											</span>
 										</div>
 									)}
-									{invoice.tax_rate != null &&
-										Number(
-											invoice.tax_rate
-										) > 0 && (
-											<div className="flex justify-between text-sm">
-												<span className="text-text-tertiary">
-													Tax
-													(
-													{(
-														Number(
-															invoice.tax_rate
-														) *
-														100
-													).toFixed(
-														1
+									{(() => {
+										const rates = collapsedTaxRates.length > 0 ? collapsedTaxRates : lineItemCollapsedRates;
+										const totalTaxCents = rates.reduce((s, r) => s + r.amountCents, 0);
+										if (rates.length > 0) {
+											return (
+												<>
+													{rates.map((rate) => (
+														<div key={rate.id} className="flex justify-between text-sm">
+															<span className="text-text-tertiary">
+																{rate.name} ({formatRatePercentLabel(rate.rate)})
+															</span>
+															<span className="text-white tabular-nums">
+																{formatCurrency(rate.amountCents / 100)}
+															</span>
+														</div>
+													))}
+													{rates.length > 1 && (
+														<div className="flex justify-between text-sm">
+															<span className="text-text-tertiary font-medium">
+																Total Tax
+															</span>
+															<span className="text-white tabular-nums font-medium">
+																{formatCurrency(totalTaxCents / 100)}
+															</span>
+														</div>
 													)}
-													%)
-												</span>
-												<span className="text-white tabular-nums">
-													{formatCurrency(
-														Number(
-															invoice.tax_amount ??
-																0
-														)
-													)}
-												</span>
-											</div>
-										)}
+												</>
+											);
+										}
+										if (invoice.tax_rate != null && Number(invoice.tax_rate) > 0) {
+											return (
+												<div className="flex justify-between text-sm">
+													<span className="text-text-tertiary">
+														Tax ({formatRatePercentLabel(Number(invoice.tax_rate))})
+													</span>
+													<span className="text-white tabular-nums">
+														{formatCurrency(Number(invoice.tax_amount ?? 0))}
+													</span>
+												</div>
+											);
+										}
+										return null;
+									})()}
 									{invoice.discount_amount !=
 										null &&
 										Number(
@@ -1026,11 +1210,16 @@ export default function InvoiceDetailPage() {
 													</>
 												)}
 											</p>
-											{payment.note != null && payment.note !== "" && (
-												<p className="text-text-tertiary text-xs mt-1 italic break-words">
-													{payment.note}
-												</p>
-											)}
+											{payment.note !=
+												null &&
+												payment.note !==
+													"" && (
+													<p className="text-text-tertiary text-xs mt-1 italic break-words">
+														{
+															payment.note
+														}
+													</p>
+												)}
 										</div>
 										<button
 											onClick={() =>
@@ -1068,13 +1257,23 @@ export default function InvoiceDetailPage() {
 									Recurring Plan
 								</p>
 								<div className="flex items-center gap-2 min-w-0">
-									<Repeat size={13} className="text-primary-text flex-shrink-0" />
+									<Repeat
+										size={13}
+										className="text-primary-text flex-shrink-0"
+									/>
 									<span className="text-white text-sm font-medium group-hover:text-primary-text transition-colors truncate">
-										{invoice.recurring_plan.name}
+										{
+											invoice
+												.recurring_plan
+												.name
+										}
 									</span>
 								</div>
 							</div>
-							<ChevronRight size={13} className="text-text-muted group-hover:text-primary-text transition-colors flex-shrink-0" />
+							<ChevronRight
+								size={13}
+								className="text-text-muted group-hover:text-primary-text transition-colors flex-shrink-0"
+							/>
 						</button>
 					)}
 				</div>
@@ -1113,11 +1312,17 @@ export default function InvoiceDetailPage() {
 													group.jobName
 												}
 											</p>
-											{group.billedAmount != null && group.billedAmount > 0 && (
-												<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
-													Billed {formatCurrency(group.billedAmount)}
-												</p>
-											)}
+											{group.billedAmount !=
+												null &&
+												group.billedAmount >
+													0 && (
+													<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
+														Billed{" "}
+														{formatCurrency(
+															group.billedAmount
+														)}
+													</p>
+												)}
 										</div>
 										<ChevronRight
 											size={13}
@@ -1169,9 +1374,13 @@ export default function InvoiceDetailPage() {
 													v.scheduledStartAt
 												)}
 											</p>
-											{v.billedAmount > 0 && (
+											{v.billedAmount >
+												0 && (
 												<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
-													Billed {formatCurrency(v.billedAmount)}
+													Billed{" "}
+													{formatCurrency(
+														v.billedAmount
+													)}
 												</p>
 											)}
 										</div>
@@ -1186,7 +1395,6 @@ export default function InvoiceDetailPage() {
 					</div>
 				</Card>
 			)}
-
 
 			{/* Notes */}
 			<InvoiceNoteManager invoiceId={invoiceId!} />

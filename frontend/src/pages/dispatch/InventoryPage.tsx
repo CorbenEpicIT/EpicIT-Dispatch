@@ -1,10 +1,18 @@
-﻿import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Plus, Trash2, FileSpreadsheet, Settings2 } from "lucide-react";
 import InventoryItemView from "../../components/inventory/InventoryItemView";
 import LowStockList from "../../components/inventory/LowStockList";
 import EditInventory from "../../components/inventory/EditInventory";
 import CreateInventoryItem from "../../components/inventory/CreateInventoryItem";
-import { useAllInventoryQuery, useDeleteInventoryItemMutation } from "../../hooks/useInventory";
+import InventoryImportExport from "../../components/inventory/InventoryImportExport";
+import TagPicker from "../../components/inventory/TagPicker";
+import TagManagerModal from "../../components/inventory/TagManagerModal";
+import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import {
+	useAllInventoryQuery,
+	useDeleteInventoryItemMutation,
+	useInventoryTagsQuery,
+} from "../../hooks/useInventory";
 import type { InventoryItem, InventorySortOption } from "../../types/inventory";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import SearchBar from "../../components/ui/SearchBar";
@@ -25,9 +33,12 @@ const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 export default function InventoryPage() {
 	const [sort, setSort] = useState<InventorySortOption>("name");
 	const [search, setSearch] = useState("");
+	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 	const [thresholdItem, setThresholdItem] = useState<InventoryItem | null>(null);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
+	const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+	const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<"card" | "list">("card");
@@ -40,18 +51,41 @@ export default function InventoryPage() {
 
 	const { data: inventoryItems = [], isLoading, error } = useAllInventoryQuery(sort);
 
+	const { data: allTags = [] } = useInventoryTagsQuery();
+
 	const deleteMutation = useDeleteInventoryItemMutation();
 
 	const filteredItems = useMemo(() => {
-		if (!search.trim()) return inventoryItems;
-		const q = search.toLowerCase();
-		return inventoryItems.filter(
-			(item) =>
-				item.name.toLowerCase().includes(q) ||
-				(item.sku && item.sku.toLowerCase().includes(q)) ||
-				item.location.toLowerCase().includes(q)
-		);
-	}, [inventoryItems, search]);
+		let items = inventoryItems;
+
+		if (search.trim()) {
+			const q = search.toLowerCase();
+			items = items.filter(
+				(item) =>
+					item.name.toLowerCase().includes(q) ||
+					(item.sku && item.sku.toLowerCase().includes(q)) ||
+					item.location.toLowerCase().includes(q),
+			);
+		}
+
+		if (selectedTagIds.length > 0) {
+			items = items.filter((item) =>
+				item.tags?.some((t) => selectedTagIds.includes(t.id)),
+			);
+		}
+
+		return items;
+	}, [inventoryItems, search, selectedTagIds]);
+
+	const activeTagChips: FilterChip[] = selectedTagIds.flatMap((id) => {
+		const tag = allTags.find((t) => t.id === id);
+		if (!tag) return [];
+		return [{
+			label: tag.label,
+			color: "blue" as const,
+			onRemove: () => setSelectedTagIds((prev) => prev.filter((i) => i !== id)),
+		}];
+	});
 
 	const scrollAndHighlight = useCallback((itemId: string) => {
 		cardRefs.current
@@ -129,6 +163,20 @@ export default function InventoryPage() {
 			<div className="flex-1 flex flex-col min-h-0 p-4 mr-7">
 				<PageHeader title="Inventory">
 						<button
+						onClick={() => setIsTagManagerOpen(true)}
+						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
+						title="Manage tags"
+					>
+						<Settings2 size={14} />
+					</button>
+					<button
+						onClick={() => setIsImportExportOpen(true)}
+						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
+					>
+						<FileSpreadsheet size={14} />
+						Import / Export
+					</button>
+					<button
 							title={!MANAGE_INVENTORY ? "You don't have permission to perform this action" : undefined}
 							disabled={!MANAGE_INVENTORY}
 							onClick={() => {
@@ -152,18 +200,33 @@ export default function InventoryPage() {
 						/>
 					}
 					middle={
-						<StatusFilter
-							placeholder="Sort"
-							hideAll
-							value={sort}
-							onChange={(v) =>
-								v &&
-								setSort(v as InventorySortOption)
-							}
-							options={SORT_OPTIONS}
-						/>
+						<div className="flex items-center gap-2">
+							<TagPicker
+								tags={allTags}
+								selectedIds={selectedTagIds}
+								onChange={setSelectedTagIds}
+							/>
+							<StatusFilter
+								placeholder="Sort"
+								hideAll
+								value={sort}
+								onChange={(v) =>
+									v && setSort(v as InventorySortOption)
+								}
+								options={SORT_OPTIONS}
+							/>
+						</div>
 					}
 					right={<ViewToggle value={viewMode} onChange={setViewMode} />}
+				/>
+
+				<FilterChips
+					filters={activeTagChips}
+					resultCount={filteredItems.length}
+					onClearAll={() => {
+						setSearch("");
+						setSelectedTagIds([]);
+					}}
 				/>
 
 				<div className="flex-1 overflow-auto min-h-0">
@@ -178,15 +241,8 @@ export default function InventoryPage() {
 							<div
 								key={item.id}
 								ref={(el) => {
-									if (el)
-										cardRefs.current.set(
-											item.id,
-											el
-										);
-									else
-										cardRefs.current.delete(
-											item.id
-										);
+									if (el) cardRefs.current.set(item.id, el);
+									else cardRefs.current.delete(item.id);
 								}}
 								className="relative group h-full"
 							>
@@ -213,7 +269,7 @@ export default function InventoryPage() {
 									}}
 								/>
 								{/* Delete overlay — card mode only; list mode uses inline actions */}
-								{viewMode === "card" && (
+								{(viewMode === "card" && !MANAGE_INVENTORY) && (
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
@@ -233,9 +289,9 @@ export default function InventoryPage() {
 
 						{filteredItems.length === 0 && (
 							<div className="w-full py-12 text-center text-text-muted">
-								{search
-									? "No items match your search"
-									: 'No inventory items yet. Click "New Item" to add one.'}
+								{search || selectedTagIds.length > 0
+									? "No items match your filters"
+									: "No inventory items yet. Click \"New Item\" to add one."}
 							</div>
 						)}
 					</div>
@@ -253,6 +309,18 @@ export default function InventoryPage() {
 					item={thresholdItem}
 				/>
 			)}
+
+			{/* Import / Export Modal */}
+			<InventoryImportExport
+				isOpen={isImportExportOpen}
+				onClose={() => setIsImportExportOpen(false)}
+			/>
+
+			{/* Tag Manager */}
+			<TagManagerModal
+				isOpen={isTagManagerOpen}
+				onClose={() => setIsTagManagerOpen(false)}
+			/>
 
 			{/* Create/Edit Modal */}
 			<CreateInventoryItem
@@ -272,8 +340,7 @@ export default function InventoryPage() {
 							Delete Item
 						</h3>
 						<p className="text-sm text-text-tertiary mb-4">
-							Are you sure you want to delete this
-							inventory item? This action can be undone by
+							Are you sure you want to delete this inventory item? This action can be undone by
 							reactivating the item.
 						</p>
 						{deleteError && (
@@ -292,17 +359,11 @@ export default function InventoryPage() {
 								Cancel
 							</button>
 							<button
-								onClick={() =>
-									handleDelete(
-										deleteConfirmId
-									)
-								}
+								onClick={() => handleDelete(deleteConfirmId)}
 								disabled={deleteMutation.isPending || !MANAGE_INVENTORY}
 								className="px-3 py-1.5 rounded-md bg-red-600 hover:enabled:bg-red-500 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 							>
-								{deleteMutation.isPending
-									? "Deleting..."
-									: "Delete"}
+								{deleteMutation.isPending ? "Deleting..." : "Delete"}
 							</button>
 						</div>
 					</div>
