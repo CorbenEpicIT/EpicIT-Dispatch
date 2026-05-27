@@ -982,8 +982,9 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 													contactLink
 												)
 											}
-											className="p-2 text-text-tertiary hover:text-primary-text hover:bg-surface-raised rounded transition-colors"
-											title="Edit"
+											disabled={!EDIT_CONTACTS}
+											className="p-2 text-text-tertiary hover:text-primary-text hover:bg-surface-raised rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+											title={!EDIT_CONTACTS ? "You don't have permission to perform this action" : "Edit"}
 										>
 											<Edit2
 												size={
@@ -998,17 +999,19 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 													contactLink
 												)
 											}
-											className={`p-2 rounded transition-colors ${
+											disabled={!EDIT_CONTACTS}
+											className={`p-2 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 												confirmingDeleteId ===
 												contact.id
 													? "text-error-text bg-error/10 animate-pulse"
 													: "text-text-tertiary hover:text-error-text hover:bg-surface-raised"
 											}`}
 											title={
-												confirmingDeleteId ===
-												contact.id
-													? "Click to confirm"
-													: "Remove"
+												!EDIT_CONTACTS
+													? "You don't have permission to perform this action"
+													: confirmingDeleteId === contact.id
+														? "Click to confirm"
+														: "Remove"
 											}
 										>
 											<Trash2

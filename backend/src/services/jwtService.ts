@@ -50,6 +50,7 @@ export const generateAccessToken = (
 			role: role,
 			organization_id: user.organization_id,
 			organization_timezone: orgTimezone ?? null,
+			permissions: permissions ?? null,
 		},
 		JWT_SECRET,
 		{ expiresIn: "24h" },

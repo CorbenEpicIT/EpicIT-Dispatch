@@ -181,14 +181,16 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 										<div className="flex gap-2 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
 											<button
 												onClick={() => handleEdit(note)}
-												className="text-text-tertiary hover:text-primary-text transition-colors"
+												disabled={!EDIT_NOTES}
+												className="text-text-tertiary hover:text-primary-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<Edit2 size={14} />
 											</button>
 											<button
 												onClick={() => handleDelete(note.id)}
+												disabled={!EDIT_NOTES}
 												onMouseLeave={() => setDeleteConfirmId(null)}
-												className={`transition-colors ${
+												className={`transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 													deleteConfirmId === note.id
 														? "text-red-500 hover:text-red-600"
 														: "text-text-tertiary hover:text-error-text"

@@ -254,7 +254,8 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 														note
 													)
 												}
-												className="text-text-tertiary hover:text-primary-text transition-colors"
+												disabled={!EDIT_NOTES}
+												className="text-text-tertiary hover:text-primary-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 												aria-label="Edit note"
 											>
 												<Edit2
@@ -269,12 +270,13 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 														note.id
 													)
 												}
+												disabled={!EDIT_NOTES}
 												onMouseLeave={() =>
 													setDeleteConfirmId(
 														null
 													)
 												}
-												className={`transition-colors ${
+												className={`transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 													deleteConfirmId ===
 													note.id
 														? "text-red-500 hover:text-red-600"
