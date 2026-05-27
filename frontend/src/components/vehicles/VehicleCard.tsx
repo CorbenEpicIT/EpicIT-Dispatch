@@ -1,5 +1,6 @@
 ﻿import { User, Pencil } from "lucide-react";
 import type { Vehicle, VehicleStockItem } from "../../types/vehicles";
+import { usePermission } from "../../hooks/usePermission";
 
 interface VehicleCardProps {
 	vehicle: Vehicle;
@@ -44,6 +45,9 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 		vehicle.type,
 		[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" "),
 	].filter(Boolean);
+
+	// permissions
+	const EDIT_VEHICLES = usePermission("manage_inventory");
 
 	if (viewMode === "list") {
 		return (
@@ -96,8 +100,14 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 
 				{/* Edit */}
 				<button
-					onClick={(e) => { e.stopPropagation(); onEdit(vehicle); }}
-					className="w-7 h-7 flex items-center justify-center bg-surface hover:bg-surface-raised border border-border rounded transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900"
+					disabled={!EDIT_VEHICLES}
+					title={!EDIT_VEHICLES ? "You don't have permission to perform this action" : ""}
+					onClick={(e) => { 
+						if (!EDIT_VEHICLES) return;
+						e.stopPropagation(); 
+						onEdit(vehicle); 
+					}}
+					className="w-7 h-7 flex items-center justify-center bg-surface hover:enabled:bg-surface-raised border border-border rounded transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900 disabled:opacity-40 disabled:cursor-not-allowed"
 					aria-label={`Edit ${vehicle.name}`}
 				>
 					<Pencil size={13} className="text-text-tertiary" />
@@ -155,8 +165,14 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 						/>
 					</div>
 					<button
-						onClick={(e) => { e.stopPropagation(); onEdit(vehicle); }}
-						className="w-7 h-7 flex items-center justify-center bg-surface hover:bg-surface-raised border border-border rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900"
+						disabled={!EDIT_VEHICLES}
+						title={!EDIT_VEHICLES ? "You don't have permission to perform this action" : ""}
+						onClick={(e) => { 
+							if (!EDIT_VEHICLES) return; 
+							e.stopPropagation(); 
+							onEdit(vehicle); 
+						}}
+						className="w-7 h-7 flex items-center justify-center bg-surface hover:enabled:bg-surface-raised border border-border rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900 disabled:opacity-40 disabled:cursor-not-allowed"
 						aria-label={`Edit ${vehicle.name}`}
 					>
 						<Pencil size={13} className="text-text-tertiary" />

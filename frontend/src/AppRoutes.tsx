@@ -1,5 +1,6 @@
 import LoginPage from "./auth/LoginPage";
 import DispatchLayout from "./layouts/DispatchLayout";
+import DispatcherDetailPage from "./pages/dispatch/DispatcherDetailPage";
 import TechnicianLayout from "./layouts/TechnicianLayout";
 import TechnicianDashboardPage from "./pages/technician/TechnicianDashboardPage";
 import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
@@ -36,6 +37,7 @@ import RegisterPage from "./pages/RegisterPage";
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./auth/authStore";
+import { usePermission, useAnyPermission } from "./hooks/usePermission";
 import type { JSX } from "react";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -49,15 +51,30 @@ function RequireDispatcher({ children }: { children: JSX.Element }) {
 	if (user.role === "technician") return <Navigate to="/technician" replace />;
 	return children;
 }
-// stops dispatch users from accessing admin page
+// stops dispatch users from accessing admin page unless they have view_admin permission
 function RequireAdmin({ children }: { children: JSX.Element }) {
 	const { user } = useAuthStore();
+	const hasViewAdmin = usePermission("view_admin");
 	if (!user) return <Navigate to="/login" replace />;
-	if (user.role !== "admin") return <Navigate to="/dispatch" replace />;
+	if (user.role !== "admin" && !hasViewAdmin) return <Navigate to="/dispatch" replace />;
 	return children;
 }
 
+function RequirePermission({ permission, children }: { permission: string; children: JSX.Element }) {
+	const allowed = usePermission(permission);
+	return allowed ? children : <Navigate to="/dispatch" replace />;
+}
+
+function RequireAnyPermission({ permissions, children }: { permissions: string[]; children: JSX.Element }) {
+	const allowed = useAnyPermission(permissions);
+	return allowed ? children : <Navigate to="/dispatch" replace />;
+}
+
 export default function AppRoutes() {
+	// Wait for auth store to hydrate before rendering routes to prevent flicker of protected pages on load
+	const hasHydrated = useAuthStore((s) => s._hasHydrated);
+	if (!hasHydrated) return null;
+
 	return (
 		<Routes>
 			<Route path="/login" element={<LoginPage />} />
@@ -74,42 +91,42 @@ export default function AppRoutes() {
 			>
 				<Route index element={<DashboardPage />} />
 				<Route path="schedule" element={<SchedulePage />} />
-				<Route path="clients" element={<ClientsPage />} />
-				<Route path="clients/:clientId" element={<ClientDetailsPage />} />
-				<Route path="jobs" element={<JobsPage />} />
-				<Route path="jobs/:jobId" element={<JobDetailPage />} />
+				<Route path="clients" element={<RequirePermission permission="view_clients"><ClientsPage /></RequirePermission>} />
+				<Route path="clients/:clientId" element={<RequirePermission permission="view_clients"><ClientDetailsPage /></RequirePermission>} />
+				<Route path="jobs" element={<RequirePermission permission="view_jobs"><JobsPage /></RequirePermission>} />
+				<Route path="jobs/:jobId" element={<RequirePermission permission="view_jobs"><JobDetailPage /></RequirePermission>} />
 				<Route
 					path="jobs/:jobId/visits/:visitId"
-					element={<JobVisitDetailPage />}
+					element={<RequireAnyPermission permissions={["view_jobs", "view_visits"]}><JobVisitDetailPage /></RequireAnyPermission>}
 				/>
-
 				<Route
 					path="recurring-plans/:recurringPlanId"
-					element={<RecurringPlanDetailPage />}
+					element={<RequirePermission permission="view_recurring_plans"><RecurringPlanDetailPage /></RequirePermission>}
 				/>
-				<Route path="technicians" element={<TechniciansPage />} />
+				<Route path="dispatch/dispatchers/:dispatcherId" element={<RequirePermission permission="view_dispatchers"><DispatcherDetailPage /></RequirePermission>} />
+				<Route path="technicians" element={<RequirePermission permission="view_technicians"><TechniciansPage /></RequirePermission>} />
 				<Route
 					path="technicians/:technicianId"
-					element={<TechnicianDetailsPage />}
+					element={<RequirePermission permission="view_technicians"><TechnicianDetailsPage /></RequirePermission>}
 				/>
 				<Route
 					path="technicians/:technicianId/assign"
-					element={<AssignTechnicianPage />}
+					element={<RequirePermission permission="manage_technicians"><AssignTechnicianPage /></RequirePermission>}
 				/>
 				<Route path="map" element={<MapPage />} />
-				<Route path="reporting" element={<ReportingPage />} />
-				<Route path="inventory" element={<InventoryPage />} />
-				<Route path="quotes" element={<QuotesPage />} />
-				<Route path="quotes/:quoteId" element={<QuoteDetailPage />} />
-				<Route path="requests" element={<RequestsPage />} />
+				<Route path="reporting" element={<RequirePermission permission="view_reports"><ReportingPage /></RequirePermission>} />
+				<Route path="inventory" element={<RequirePermission permission="view_inventory"><InventoryPage /></RequirePermission>} />
+				<Route path="quotes" element={<RequirePermission permission="view_quotes"><QuotesPage /></RequirePermission>} />
+				<Route path="quotes/:quoteId" element={<RequirePermission permission="view_quotes"><QuoteDetailPage /></RequirePermission>} />
+				<Route path="requests" element={<RequirePermission permission="view_requests"><RequestsPage /></RequirePermission>} />
 				<Route
 					path="requests/:requestId"
-					element={<RequestDetailsPage />}
+					element={<RequirePermission permission="view_requests"><RequestDetailsPage /></RequirePermission>}
 				/>
-				<Route path="invoices" element={<InvoicesPage />} />
-				<Route path="invoices/:invoiceId" element={<InvoiceDetailPage />} />
-				<Route path="admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
-				<Route path="vehicles" element={<VehiclesPage />} />
+				<Route path="invoices" element={<RequirePermission permission="view_invoices"><InvoicesPage /></RequirePermission>} />
+				<Route path="invoices/:invoiceId" element={<RequirePermission permission="view_invoices"><InvoiceDetailPage /></RequirePermission>} />
+				<Route path="admin" element={<RequireAnyPermission permissions={["view_admin", "manage_organization", "manage_roles"]}><AdminPage /></RequireAnyPermission>} />
+				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehiclesPage /></RequireAnyPermission>} />
 			</Route>
 
 			<Route
@@ -130,8 +147,8 @@ export default function AppRoutes() {
 				}
 			>
 				<Route index element={<TechnicianDashboardPage />} />
-				<Route path="visits" element={<TechnicianVisitsPage />} />
-				<Route path="visits/:visitId" element={<TechnicianVisitDetailPage />} />
+				<Route path="visits" element={<RequirePermission permission="view_visits"><TechnicianVisitsPage /></RequirePermission>} />
+				<Route path="visits/:visitId" element={<RequirePermission permission="view_visits"><TechnicianVisitDetailPage /></RequirePermission>} />
 				<Route path="notifications" element={<TechnicianNotificationsPage />} />
 				<Route path="vehicle" element={<TechnicianVehiclePage />} />
 				<Route path="map" element={<TechnicianMapPage />} />

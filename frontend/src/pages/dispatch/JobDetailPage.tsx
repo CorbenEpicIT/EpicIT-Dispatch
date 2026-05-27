@@ -43,6 +43,7 @@ import { RequestStatusColors } from "../../types/requests";
 import { getGenericStatusColor, PriorityColors } from "../../types/common";
 import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function JobDetailPage() {
 	const { jobId } = useParams<{ jobId: string }>();
@@ -58,6 +59,12 @@ export default function JobDetailPage() {
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+	// permissions
+	const CREATE_JOB = usePermission("create_jobs");
+	const EDIT_JOB = usePermission("edit_jobs");
+	const DELETE_JOB = usePermission("delete_jobs");
+	const CREATE_INVOICE = usePermission("create_invoices");
 
 	const deleteJobMutation = useDeleteJobMutation();
 
@@ -215,48 +222,48 @@ export default function JobDetailPage() {
 							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
 									<button
+										title={!EDIT_JOB ? "You don't have permission to perform this action" : ""}
 										onClick={() => {
-											setIsEditModalOpen(
-												true
-											);
-											setIsOptionsMenuOpen(
-												false
-											);
-											setDeleteConfirm(
-												false
-											);
+											if (!EDIT_JOB) return;
+											setIsEditModalOpen(true);
+											setIsOptionsMenuOpen(false);
+											setDeleteConfirm(false);
 										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
+										disabled={!EDIT_JOB}
+										className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Edit2 size={16} />
 										Edit Job
 									</button>
-									<div className="my-1 border-t border-border-subtle" />
-									<button
-										onClick={
-											handleDeleteJob
-										}
-										onMouseLeave={() =>
-											setDeleteConfirm(
-												false
-											)
-										}
-										disabled={
-											deleteJobMutation.isPending
-										}
-										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-											deleteConfirm
-												? "bg-red-600 hover:bg-red-700 text-white"
-												: "text-error-text hover:bg-surface hover:text-error-text"
-										} disabled:opacity-50 disabled:cursor-not-allowed`}
-									>
-										<Trash2 size={16} />
-										{deleteJobMutation.isPending
-											? "Deleting..."
-											: deleteConfirm
-												? "Click Again to Confirm"
-												: "Delete Job"}
-									</button>
+									
+									{DELETE_JOB && (
+										<div className="my-1 border-t border-border-subtle" />
+									)}
+									{DELETE_JOB && (
+										<button
+											onClick={
+												handleDeleteJob
+											}
+											onMouseLeave={() =>
+												setDeleteConfirm(false)
+											}
+											disabled={
+												deleteJobMutation.isPending
+											}
+											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+												deleteConfirm
+													? "bg-red-600 hover:bg-red-700 text-white"
+													: "text-error-text hover:bg-surface hover:text-error-text"
+											} disabled:opacity-50 disabled:cursor-not-allowed`}
+										>
+											<Trash2 size={16} />
+											{deleteJobMutation.isPending
+												? "Deleting..."
+												: deleteConfirm
+													? "Click Again to Confirm"
+													: "Delete Job"}
+										</button>
+									)}
 								</div>
 							</div>
 						)}
@@ -884,13 +891,18 @@ export default function JobDetailPage() {
 								{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
 							</span>
 						)}
-						<button
-							onClick={() => setIsCreateInvoiceOpen(true)}
-							className="flex items-center gap-1.5 rounded bg-primary-hover px-3 py-1.5 text-sm font-medium text-white hover:bg-primary"
-						>
-							<Plus size={14} />
-							Create Invoice
-						</button>
+							<button
+								title={!CREATE_INVOICE ? "You don't have permission to perform this action" : undefined}
+								onClick={() => {
+									if (!CREATE_INVOICE) return;
+									setIsCreateInvoiceOpen(true)
+								}}
+								disabled={!CREATE_INVOICE}
+								className="flex items-center gap-1.5 rounded bg-primary-hover px-3 py-1.5 text-sm font-medium text-white hover:enabled:bg-primary disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={14} />
+								Create Invoice
+							</button>
 					</div>
 				}
 			>
@@ -946,15 +958,18 @@ export default function JobDetailPage() {
 				title="Scheduled Visits"
 				headerAction={
 					visits.length > 0 ? (
-						<button
-							onClick={() =>
-								setIsCreateVisitModalOpen(true)
-							}
-							className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors cursor-pointer"
-						>
-							<Plus size={16} />
-							Create Visit
-						</button>
+							<button
+								title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+								onClick={() =>{
+									if (!CREATE_JOB) return;
+									setIsCreateVisitModalOpen(true)
+								}}
+								disabled={!CREATE_JOB}
+								className="flex items-center gap-2 px-4 py-2 bg-primary-hover rounded-md text-sm font-medium transition-colors hover:enabled:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={16} />
+								Create Visit
+							</button>
 					) : undefined
 				}
 			>
@@ -970,15 +985,18 @@ export default function JobDetailPage() {
 						<p className="text-sm text-text-muted mb-4">
 							Create a visit to schedule this job
 						</p>
-						<button
-							onClick={() =>
-								setIsCreateVisitModalOpen(true)
-							}
-							className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-						>
-							<Plus size={16} />
-							Create First Visit
-						</button>
+							<button
+								title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+								onClick={() => {
+									if (!CREATE_JOB) return;
+									setIsCreateVisitModalOpen(true);
+								}}
+								disabled={!CREATE_JOB}
+								className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={16} />
+								Create First Visit
+							</button>
 					</div>
 				) : (
 					<div className="flex flex-wrap gap-3">

@@ -28,10 +28,11 @@ import type { Job } from "../types/jobs";
 // RECURRING PLAN QUERIES
 // ============================================
 
-export const useAllRecurringPlansQuery = (): UseQueryResult<RecurringPlan[], Error> => {
+export const useAllRecurringPlansQuery = (enabled = true): UseQueryResult<RecurringPlan[], Error> => {
 	return useQuery({
 		queryKey: ["recurringPlans"],
 		queryFn: recurringPlanApi.getAllRecurringPlans,
+		enabled,
 	});
 };
 

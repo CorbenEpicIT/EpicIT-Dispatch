@@ -16,12 +16,13 @@ import {
 } from '../controllers/inventoryController.js';
 import { uploadFile } from "../services/wasabiService.js";
 import { imageUpload } from "../lib/upload.js";
+import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 
 
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
     try {
         const { low_stock, sort } = req.query;
         const orgId = req.user!.organization_id as string;
@@ -35,7 +36,7 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
@@ -58,9 +59,9 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await updateInventoryItem(id, req.body, orgId, context);
@@ -83,9 +84,9 @@ router.patch("/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await deleteInventoryItem(id, orgId, context);
@@ -108,9 +109,9 @@ router.delete("/:id", async (req, res, next) => {
     }
 });
 
-router.patch("/:id/stock", async (req, res, next) => {
+router.patch("/:id/stock", requireAnyPermission("manage_inventory", "use_inventory"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await adjustInventoryStock(id, req.body, orgId, context);
@@ -136,6 +137,7 @@ router.patch("/:id/stock", async (req, res, next) => {
 
 router.post(
     "/upload-image",
+    requirePermission("manage_inventory"),
     imageUpload.single("image"),
     async (req, res, next) => {
         try {
@@ -164,9 +166,9 @@ router.post(
 
 // ── Inventory threshold ───────────────────────────────────────────────────────
 
-router.patch("/:id/threshold", async (req, res, next) => {
+router.patch("/:id/threshold", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await updateInventoryThreshold(id, req.body, orgId, context);

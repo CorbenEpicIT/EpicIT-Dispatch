@@ -15,7 +15,7 @@ export const getAllDispatchers = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
     return await sdb.dispatcher.findMany({
         include: {
-            // Empty for now
+            organization_role: { select: { id: true, name: true } },
         },
     });
 };
@@ -232,6 +232,8 @@ export const deleteDispatcher = async (id: string, organization_id: string, cont
                 user_agent: context?.userAgent,
             });
         });
+
+        return { message: "Dispatcher deleted successfully" };
     } catch (error) {
         log.error({ err: error }, "Error deleting dispatcher");
         return { err: "Internal server error" };

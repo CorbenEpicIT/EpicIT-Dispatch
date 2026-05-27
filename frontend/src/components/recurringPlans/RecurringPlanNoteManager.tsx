@@ -8,6 +8,7 @@ import {
 	useUpdateRecurringPlanNoteMutation,
 	useDeleteRecurringPlanNoteMutation,
 } from "../../hooks/useRecurringPlans";
+import { usePermission } from "../../hooks/usePermission";
 
 interface RecurringPlanNoteManagerProps {
 	jobId: string;
@@ -25,6 +26,9 @@ export default function RecurringPlanNoteManager({ jobId }: RecurringPlanNoteMan
 	const createNote = useCreateRecurringPlanNoteMutation();
 	const updateNote = useUpdateRecurringPlanNoteMutation();
 	const deleteNote = useDeleteRecurringPlanNoteMutation();
+
+	// permissions
+	const EDIT_NOTES = usePermission("manage_recurring_plans");
 
 	const resetForm = () => {
 		setContent("");
@@ -51,6 +55,7 @@ export default function RecurringPlanNoteManager({ jobId }: RecurringPlanNoteMan
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (!EDIT_NOTES) return;
 		setErrorMessage(null);
 
 		if (!content.trim()) return;
@@ -78,12 +83,14 @@ export default function RecurringPlanNoteManager({ jobId }: RecurringPlanNoteMan
 	};
 
 	const handleEdit = (note: RecurringPlanNote) => {
+		if (!EDIT_NOTES) return;
 		setContent(note.content);
 		setEditingId(note.id);
 		setIsAdding(true);
 	};
 
 	const handleDelete = async (noteId: string) => {
+		if (!EDIT_NOTES) return;
 		if (deleteConfirmId !== noteId) {
 			setDeleteConfirmId(noteId);
 			return;
@@ -110,8 +117,13 @@ export default function RecurringPlanNoteManager({ jobId }: RecurringPlanNoteMan
 			title="Plan Notes"
 			headerAction={
 				<button
-					onClick={() => setIsAdding(true)}
-					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					disabled={!EDIT_NOTES}
+					title={!EDIT_NOTES ? "You don't have permission to perform this action" : ""}
+					onClick={() => {
+						if (!EDIT_NOTES) return;
+						setIsAdding(true)
+					}}
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Plus size={14} />
 					Add Note

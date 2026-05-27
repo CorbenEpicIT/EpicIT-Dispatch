@@ -125,6 +125,8 @@ export interface Technician {
 	last_edited_client_notes?: unknown[];
 	created_job_notes?: unknown[];
 	last_edited_job_notes?: unknown[];
+	role_id: string | null;
+	organization_role: { id: string; name: string } | null;
 }
 
 export interface CreateTechnicianInput {
@@ -134,6 +136,7 @@ export interface CreateTechnicianInput {
 	password?: string;
 	title: string;
 	description?: string;
+	organization_role_id?: string | null;
 	status?: TechnicianStatus;
 	hire_date?: Date;
 	coords?: {
@@ -165,6 +168,7 @@ export const CreateTechnicianSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
+	organization_role_id: z.string().uuid("Invalid role ID").nullable().optional(),
 	status: z.enum(TechnicianStatusValues).default("Offline"),
 	hire_date: z.coerce
 		.date()

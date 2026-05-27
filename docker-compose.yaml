@@ -19,6 +19,7 @@ services:
       - ./backend/.env
     environment:
       NODE_OPTIONS: "--max-old-space-size=4096"
+      NODE_ENV: "development"
     depends_on:
       db:
         condition: service_healthy

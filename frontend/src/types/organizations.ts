@@ -27,3 +27,11 @@ export interface RegisterOrganizationResponse {
     org: { id: string; name: string };
     admin: { id: string; name: string; email: string };
 }
+
+export interface OrganizationRole {
+    id: string;
+    name: string;
+    base_tier: "dispatcher" | "technician";
+    permissions: string[];
+    is_default: boolean;
+}

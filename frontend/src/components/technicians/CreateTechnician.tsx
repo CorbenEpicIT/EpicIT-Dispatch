@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { CreateTechnicianSchema, type CreateTechnicianInput } from "../../types/technicians";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import DatePicker from "../ui/DatePicker";
+import { useOrgRolesQuery } from "../../hooks/useOrgRoles";
 
 interface CreateTechnicianProps {
 	isModalOpen: boolean;
@@ -28,8 +29,19 @@ const CreateTechnician = ({
 	const [hireDate, setHireDate] = useState<Date>(new Date());
 	const [password, setPassword] = useState("");
 	const [choosePassword, setChoosePassword] = useState(false);
+	const [organizationRoleId, setOrganizationRoleId] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
+
+	const { data: roles } = useOrgRolesQuery();
+	const technicianRoles = useMemo(() => (roles ?? []).filter((r) => r.base_tier === "technician"), [roles]);
+
+	useEffect(() => {
+		if (isModalOpen && technicianRoles.length > 0 && organizationRoleId === null) {
+			const defaultRole = technicianRoles.find((r) => r.is_default);
+			if (defaultRole) setOrganizationRoleId(defaultRole.id);
+		}
+	}, [isModalOpen, technicianRoles]);
 
 	const resetForm = useCallback(() => {
 		setName("");
@@ -41,6 +53,7 @@ const CreateTechnician = ({
 		setErrors(null);
 		setPassword("");
 		setChoosePassword(false);
+		setOrganizationRoleId(null);
 	}, []);
 
 	useEffect(() => {
@@ -60,6 +73,7 @@ const CreateTechnician = ({
 			password: choosePassword ? password.trim() : undefined,
 			title: title.trim(),
 			description: description.trim(),
+			organization_role_id: organizationRoleId,
 			status,
 			hire_date: hireDate,
 		};
@@ -174,8 +188,22 @@ const CreateTechnician = ({
 					/>
 				</div>
 
-				{/* Hire Date — half width */}
+				{/* Role + Hire Date */}
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+					<div className="min-w-0">
+						<label className={LABEL}>Role</label>
+						<select
+							value={organizationRoleId ?? ""}
+							onChange={(e) => setOrganizationRoleId(e.target.value || null)}
+							className={INPUT}
+							disabled={isLoading}
+						>
+							<option value="">— No Role —</option>
+							{technicianRoles.map((r) => (
+								<option key={r.id} value={r.id}>{r.name}</option>
+							))}
+						</select>
+					</div>
 					<div className="min-w-0">
 						<label className={LABEL}>Hire Date</label>
 						<DatePicker
@@ -218,7 +246,7 @@ const CreateTechnician = ({
 				</div>
 			</div>
 		),
-		[name, email, phone, title, description, hireDate, isLoading, errors, choosePassword, password]
+		[name, email, phone, title, description, hireDate, isLoading, errors, choosePassword, password, organizationRoleId, technicianRoles]
 	);
 
 	return (

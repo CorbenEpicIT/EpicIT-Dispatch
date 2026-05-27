@@ -2,22 +2,15 @@
 import { useNavigate } from "react-router-dom";
 import type { Dispatcher, UpdateDispatcherInput } from "../../types/dispatchers";
 import { useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
+import { useOrgRolesQuery, useAssignOrgRoleMutation } from "../../hooks/useOrgRoles";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import DatePicker from "../ui/DatePicker";
-import Dropdown from "../ui/Dropdown";
 
 interface EditDispatcherProps {
     isOpen: boolean;
     onClose: () => void;
     dispatcher: Dispatcher;
 }
-
-const ROLE_ENTRIES = (
-    <>
-        <option value="dispatcher">Dispatcher</option>
-        <option value="admin">Admin</option>
-    </>
-);
 
 const INPUT =
     "border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
@@ -31,11 +24,14 @@ export default function EditDispatcher({ isOpen, onClose, dispatcher }: EditDisp
     const [phone, setPhone] = useState(dispatcher.phone);
     const [title, setTitle] = useState(dispatcher.title);
     const [description, setDescription] = useState(dispatcher.description || "");
-    const [role, setRole] = useState<UpdateDispatcherInput["role"]>(dispatcher.role);
+    const [organizationRoleId, setOrganizationRoleId] = useState<string>(dispatcher.organization_role?.id ?? "");
 
     const updateDispatcher = useUpdateDispatcherMutation();
+    const assignRole = useAssignOrgRoleMutation();
+    const { data: orgRoles } = useOrgRolesQuery();
+    const dispatcherRoles = orgRoles?.filter((r) => r.base_tier === "dispatcher") ?? [];
 
-    const isLoading = updateDispatcher.isPending;
+    const isLoading = updateDispatcher.isPending || assignRole.isPending;
 
     useEffect(() => {
         if (isOpen) {
@@ -44,7 +40,7 @@ export default function EditDispatcher({ isOpen, onClose, dispatcher }: EditDisp
             setPhone(dispatcher.phone);
             setTitle(dispatcher.title);
             setDescription(dispatcher.description || "");
-            setRole(dispatcher.role);
+            setOrganizationRoleId(dispatcher.organization_role?.id ?? "");
         }
     }, [isOpen, dispatcher]);
 
@@ -52,15 +48,16 @@ export default function EditDispatcher({ isOpen, onClose, dispatcher }: EditDisp
         try {
             await updateDispatcher.mutateAsync({
                 id: dispatcher.id,
-                data: {
-                    name,
-                    email,
-                    phone,
-                    title,
-                    description,
-                    role,
-                },
+                data: { name, email, phone, title, description },
             });
+            const newRoleId = organizationRoleId || null;
+            if (newRoleId !== (dispatcher.organization_role?.id ?? null)) {
+                await assignRole.mutateAsync({
+                    user_id: dispatcher.id,
+                    user_type: "dispatcher",
+                    role_id: newRoleId,
+                });
+            }
             onClose();
         } catch (error) {
             console.error("Failed to update dispatcher:", error);
@@ -139,25 +136,26 @@ export default function EditDispatcher({ isOpen, onClose, dispatcher }: EditDisp
                     />
                 </div>
 
-                {/* Role */}
-                <div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+                {/* Permission Role */}
+                {dispatcher.role !== "admin" && (
                     <div className="min-w-0">
-                        <label className={LABEL}>Role</label>
-                        <Dropdown
-                            entries={ROLE_ENTRIES}
-                            value={role?.toLocaleLowerCase() || "dispatcher"}
-                            onChange={(v) =>
-                                setRole(
-                                    v as UpdateDispatcherInput["role"]
-                                )
-                            }
+                        <label className={LABEL}>Permission Role</label>
+                        <select
+                            value={organizationRoleId}
+                            onChange={(e) => setOrganizationRoleId(e.target.value)}
+                            className={INPUT}
                             disabled={isLoading}
-                        />
+                        >
+                            <option value="">— No Role —</option>
+                            {dispatcherRoles.map((r) => (
+                                <option key={r.id} value={r.id}>{r.name}</option>
+                            ))}
+                        </select>
                     </div>
-                </div>
+                )}
             </div>
         ),
-        [name, email, phone, title, description, role, isLoading]
+        [name, email, phone, title, description, organizationRoleId, dispatcherRoles, isLoading]
     );
 
     return (

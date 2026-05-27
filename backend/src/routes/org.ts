@@ -6,6 +6,7 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import { getUserContext } from '../lib/context.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 // This file does not use the getScopedDb 
 // but uses 'where { organization_id: orgId }' on thin ice here
 import { db } from '../db.js';
@@ -32,7 +33,7 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.patch("/", async (req, res, next) => {
+router.patch("/", requirePermission("manage_organization"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id;
         if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
@@ -64,6 +65,7 @@ router.patch("/", async (req, res, next) => {
 
 router.post(
     "/logo",
+    requirePermission("manage_organization"),
     imageUpload.single("image"),
     async (req, res, next) => {
         try {
@@ -82,7 +84,7 @@ router.post(
     },
 );
 
-router.delete("/logo", async (req, res, next) => {
+router.delete("/logo", requirePermission("manage_organization"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id;
         if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));

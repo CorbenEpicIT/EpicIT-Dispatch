@@ -13,10 +13,11 @@ import {
     deleteDispatcher
 } from "../controllers/dispatchersController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requirePermission("view_dispatchers"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const dispatcher = await getAllDispatchers(orgId);
@@ -28,9 +29,9 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requirePermission("view_dispatchers"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const dispatcher = await getDispatcherById(id, orgId);
 
@@ -51,7 +52,7 @@ router.get("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("manage_dispatchers"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -79,9 +80,9 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requirePermission("manage_dispatchers"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateDispatcher(id, req.body, orgId, context);
@@ -108,9 +109,9 @@ router.put("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/:id/reset-password", async (req, res, next) => {
+router.post("/:id/reset-password", requirePermission("manage_dispatchers"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const user = await getDispatcherById(id, orgId);
         if (!user) {
@@ -142,11 +143,12 @@ router.post("/:id/reset-password", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("manage_dispatchers"), async (req, res, next) => {
     try {
-        /*const { id } = req.params;
+        const id = req.params.id as string;
+        const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await deleteDispatcher(id, context);
+        const result = await deleteDispatcher(id, orgId, context);
 
         if (result.err) {
             return res
@@ -156,10 +158,10 @@ router.delete("/:id", async (req, res, next) => {
 
         res.status(200).json(
             createSuccessResponse({
-                message: result.message || "Technician deleted successfully",
+                message: result.message || "Dispatcher deleted successfully",
                 id,
             }),
-        );*/
+        );
     } catch (err) {
         next(err);
     }

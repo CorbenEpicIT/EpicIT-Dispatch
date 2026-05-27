@@ -3,6 +3,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import bcryptjs from "bcryptjs";
+import { getAllPermissions } from "../src/lib/permissionCatalogs.js";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -66,6 +67,43 @@ async function main() {
 	});
 
 	// ============================================================================
+	// Organization Roles
+	// ============================================================================
+
+	const adminRole = await db.organization_role.create({
+		data: {
+			organization_id: org.id,
+			name: "Administrator",
+			base_tier: "dispatcher",
+			permissions: getAllPermissions("dispatcher"),
+			is_default: false,
+		},
+	});
+
+	const [dispatcherRole, technicianRole] = await Promise.all([
+		db.organization_role.create({
+			data: {
+				organization_id: org.id,
+				name: "Default Dispatcher",
+				base_tier: "dispatcher",
+				permissions: getAllPermissions("dispatcher").filter(
+					(p) => p !== "manage_roles" && p !== "view_admin" && p !== "manage_organization" && p !== "manage_dispatchers"
+				),
+				is_default: true,
+			},
+		}),
+		db.organization_role.create({
+			data: {
+				organization_id: org.id,
+				name: "Default Technician",
+				base_tier: "technician",
+				permissions: getAllPermissions("technician"),
+				is_default: true,
+			},
+		}),
+	]);
+
+	// ============================================================================
 	// Users
 	// ============================================================================
 
@@ -83,8 +121,26 @@ async function main() {
 			description: "Lead dispatcher and operations manager.",
 			email_verified_at: new Date(),
 			email_verification_token: null,
-			last_login: new Date(), // set null to test password reseting on first login
+			last_login: new Date(),
 			role: "admin",
+			organization_role_id: adminRole.id,
+		},
+	});
+
+	await db.dispatcher.create({
+		data: {
+			organization_id: org.id,
+			name: "Sam Torres",
+			email: "dispatcher@epichvac.com",
+			phone: "6082550199",
+			password: dispatcherPassword,
+			title: "Dispatcher",
+			description: "Test dispatcher account.",
+			email_verified_at: new Date(),
+			email_verification_token: null,
+			last_login: new Date(),
+			role: "dispatcher",
+			organization_role_id: dispatcherRole.id,
 		},
 	});
 
@@ -103,6 +159,7 @@ async function main() {
 				hire_date: new Date("2015-03-12"),
 				coords: { lat: 43.8014, lng: -91.2396 },
 				hourly_rate: 95.00,
+				organization_role_id: technicianRole.id,
 			},
 		}),
 		db.technician.create({
@@ -119,6 +176,7 @@ async function main() {
 				hire_date: new Date("2020-07-01"),
 				coords: { lat: 43.8129, lng: -91.2559 },
 				hourly_rate: 75.00,
+				organization_role_id: technicianRole.id,
 			},
 		}),
 		db.technician.create({
@@ -134,6 +192,7 @@ async function main() {
 				hire_date: new Date("2022-04-18"),
 				coords: { lat: 43.8014, lng: -91.2396 },
 				hourly_rate: 65.00,
+				organization_role_id: technicianRole.id,
 			},
 		}),
 	]);

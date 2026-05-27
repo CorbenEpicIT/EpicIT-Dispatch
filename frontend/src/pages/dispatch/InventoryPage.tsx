@@ -12,6 +12,7 @@ import ViewToggle from "../../components/ui/ViewToggle";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
+import { usePermission } from "../../hooks/usePermission";
 
 const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 	{ value: "name", label: "Name A-Z" },
@@ -33,6 +34,9 @@ export default function InventoryPage() {
 	const [highlightedItemIds, setHighlightedItemIds] = useState<Set<string>>(new Set());
 	const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+	//permissions
+	const MANAGE_INVENTORY = usePermission("manage_inventory");
 
 	const { data: inventoryItems = [], isLoading, error } = useAllInventoryQuery(sort);
 
@@ -124,13 +128,18 @@ export default function InventoryPage() {
 			{/* Main content */}
 			<div className="flex-1 flex flex-col min-h-0 p-4 mr-7">
 				<PageHeader title="Inventory">
-					<button
-						onClick={() => setIsCreateOpen(true)}
-						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary-hover hover:bg-primary text-sm font-medium text-white transition-colors"
-					>
-						<Plus size={14} />
-						New Item
-					</button>
+						<button
+							title={!MANAGE_INVENTORY ? "You don't have permission to perform this action" : undefined}
+							disabled={!MANAGE_INVENTORY}
+							onClick={() => {
+								if (!MANAGE_INVENTORY) return;
+								setIsCreateOpen(true);
+							}}
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary-hover hover:enabled:bg-primary text-sm font-medium text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							<Plus size={14} />
+							New Item
+						</button>
 				</PageHeader>
 
 				<PageControls
@@ -192,20 +201,23 @@ export default function InventoryPage() {
 											item
 										)
 									}
-									onClick={() =>
-										setEditingItem(item)
-									}
-									onDelete={() =>
+									onClick={() => {
+										if (!MANAGE_INVENTORY) return;
+										setEditingItem(item);
+									}}
+									onDelete={() => {
+										if (!MANAGE_INVENTORY) return;
 										setDeleteConfirmId(
 											item.id
 										)
-									}
+									}}
 								/>
 								{/* Delete overlay — card mode only; list mode uses inline actions */}
 								{viewMode === "card" && (
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
+											if (!MANAGE_INVENTORY) return;
 											setDeleteConfirmId(
 												item.id
 											);
@@ -285,8 +297,8 @@ export default function InventoryPage() {
 										deleteConfirmId
 									)
 								}
-								disabled={deleteMutation.isPending}
-								className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-500 text-sm font-medium text-white transition-colors disabled:opacity-50"
+								disabled={deleteMutation.isPending || !MANAGE_INVENTORY}
+								className="px-3 py-1.5 rounded-md bg-red-600 hover:enabled:bg-red-500 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								{deleteMutation.isPending
 									? "Deleting..."

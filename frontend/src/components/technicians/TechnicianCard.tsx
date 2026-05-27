@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import type { Technician } from "../../types/technicians";
 import { TechnicianStatusColors, TechnicianStatusDotColors, TechnicianStatusLabels } from "../../types/technicians";
 import { useRef, useState, useEffect } from "react";
+import { usePermission } from "../../hooks/usePermission";
 
 interface TechnicianCardProps {
   technician: Technician;
   onClick?: () => void;
   onEdit?: (technician: Technician) => void;
+  onAssignRole?: (technician: Technician) => void;
   viewMode?: "card" | "list";
 }
 
@@ -51,7 +53,7 @@ function formatLastLogin(raw: unknown) {
   });
 }
 
-export default function TechnicianCard({ technician, onClick, onEdit, viewMode }: TechnicianCardProps) {
+export default function TechnicianCard({ technician, onClick, onEdit, onAssignRole, viewMode }: TechnicianCardProps) {
   const navigate = useNavigate();
 
   const displayName = capitalizeWords(technician.name);
@@ -59,6 +61,8 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
   const statusColorClass = TechnicianStatusColors[technician.status];
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const MANAGE_TECHNICIAN = usePermission("manage_technicians");
+  const VIEW_TECHNICIAN = usePermission("view_technicians");
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -75,61 +79,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
     navigate(`/dispatch/technicians/${technician.id}/assign`);
   };
 
-  if (viewMode === "list") {
-      return (
-          <div
-              onClick={onClick}
-              className="w-full bg-base rounded-lg border border-border shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
-          >
-              {/* Avatar */}
-              <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
-                  {technician.name.charAt(0).toUpperCase()}
-              </div>
-
-              {/* Name */}
-              <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
-              </div>
-
-              {/* Status */}
-              <div className="min-w-[7rem] flex-shrink-0 flex items-center">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
-                      {TechnicianStatusLabels[technician.status]}
-                  </span>
-              </div>
-
-              {/* Email */}
-              <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 text-sm text-text-secondary">
-                  <Mail size={16} className="text-text-tertiary flex-shrink-0" />
-                  <span className="truncate">{technician.email}</span>
-              </div>
-
-              {/* Title */}
-              <div className="flex-1 min-w-0 hidden md:flex items-center gap-2 text-sm text-text-secondary">
-                  <Briefcase size={16} className="text-text-tertiary flex-shrink-0" />
-                  <span className="truncate">{technician.title}</span>
-              </div>
-
-              {/* Last Login */}
-              <div className="flex-1 min-w-0 hidden lg:flex items-center gap-2 text-sm text-text-secondary">
-                  <Clock size={13} className="opacity-70 flex-shrink-0" />
-                  <span className="truncate">Last login: {lastLoginText}</span>
-              </div>
-
-              {/* Actions */}
-              <div className="flex-shrink-0 relative" ref={dropdownRef}>
-                  <button
-                      onClick={(e) => {
-                          e.stopPropagation();
-                          setDropdownOpen((prev) => !prev);
-                      }}
-                      className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
-                  >
-                      <MoreHorizontal size={18} />
-                      <span className="text-sm font-medium">Options</span>
-                  </button>
-
-                  {dropdownOpen && (
+  const OPTIONS = (
                       <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
                           <button
                               onClick={(e) => {
@@ -160,9 +110,80 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
                           >
                               Update User
                           </button>
+                          <button
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDropdownOpen(false);
+                                  onAssignRole?.(technician);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                          >
+                              Assign Role
+                          </button>
                       </div>
+                  );
+
+  if (viewMode === "list") {
+      return (
+          <div
+              onClick={VIEW_TECHNICIAN ? onClick : undefined}
+              className="w-full bg-base rounded-lg border border-border shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
+          >
+              {/* Avatar */}
+              <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+                  {technician.name.charAt(0).toUpperCase()}
+              </div>
+
+              {/* Name */}
+              <div className="flex-1 min-w-0">
+                  <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+              </div>
+
+              {/* Status + role */}
+              <div className="w-40 flex-shrink-0 flex flex-col gap-0.5">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border w-fit ${statusColorClass}`}>
+                      {TechnicianStatusLabels[technician.status]}
+                  </span>
+                  {technician.organization_role && (
+                      <span className="text-xs text-text-tertiary truncate">{technician.organization_role.name}</span>
                   )}
               </div>
+
+              {/* Email */}
+              <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 text-sm text-text-secondary">
+                  <Mail size={16} className="text-text-tertiary flex-shrink-0" />
+                  <span className="truncate">{technician.email}</span>
+              </div>
+
+              {/* Title */}
+              <div className="flex-1 min-w-0 hidden md:flex items-center gap-2 text-sm text-text-secondary">
+                  <Briefcase size={16} className="text-text-tertiary flex-shrink-0" />
+                  <span className="truncate">{technician.title}</span>
+              </div>
+
+              {/* Last Login */}
+              <div className="flex-1 min-w-0 hidden lg:flex items-center gap-2 text-sm text-text-secondary">
+                  <Clock size={13} className="opacity-70 flex-shrink-0" />
+                  <span className="truncate">Last login: {lastLoginText}</span>
+              </div>
+
+              {/* Actions */}
+              {MANAGE_TECHNICIAN && (
+                <div className="flex-shrink-0 relative" ref={dropdownRef}>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setDropdownOpen((prev) => !prev);
+                        }}
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+                    >
+                        <MoreHorizontal size={18} />
+                        <span className="text-sm font-medium">Options</span>
+                    </button>
+
+                    {dropdownOpen && OPTIONS}
+                </div>
+              )}
           </div>
       );
   }
@@ -185,14 +206,15 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-white font-semibold text-lg truncate">
-            {displayName}
-          </h3>
-          <span
-            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}
-          >
-            {TechnicianStatusLabels[technician.status]}
-          </span>
+          <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+              {TechnicianStatusLabels[technician.status]}
+            </span>
+            {technician.organization_role && (
+              <span className="text-xs text-text-tertiary">{technician.organization_role.name}</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -224,59 +246,44 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
         <Clock size={13} className="opacity-70" />
         <span>Last login: {lastLoginText}</span>
       </div>
-
+      
+      
       <div className="flex gap-2 mt-1">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick?.();
-          }}
-          className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-white text-sm font-medium rounded-md transition-colors"
-        >
-          View Details
-        </button>
-        <button
-          onClick={handleAssignClick}
-          className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
-        >
-          Assign Visits
-        </button>
-
-        <div className="relative" ref={dropdownRef}>
+        {VIEW_TECHNICIAN && (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setDropdownOpen((prev) => !prev);
+              onClick?.();
             }}
-            className="px-3 py-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+            className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-white text-sm font-medium rounded-md transition-colors"
           >
-            <MoreHorizontal size={18} />
+            View Details
           </button>
+        )}
+        {MANAGE_TECHNICIAN && (
+          <button
+            onClick={handleAssignClick}
+            className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+          >
+            Assign Visits
+          </button>
+        )}
 
-          {dropdownOpen && (
-            <div className="absolute right-0 bottom-full mb-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDropdownOpen(false);
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
-              >
-                Reset Password
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDropdownOpen(false);
-                  onEdit?.(technician);
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
-              >
-                Update User
-              </button>
-            </div>
-          )}
-        </div>
+        {MANAGE_TECHNICIAN && (
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen((prev) => !prev);
+              }}
+              className="px-3 py-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+
+            {dropdownOpen && OPTIONS}
+          </div>  
+        )}
       </div>
     </div>
   );

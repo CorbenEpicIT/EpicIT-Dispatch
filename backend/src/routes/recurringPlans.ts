@@ -6,10 +6,11 @@ import {
 } from "../types/responses.js";
 import * as recurringPlansController from "../controllers/recurringPlansController.js";
 import { getUserContext } from '../lib/context.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requirePermission("view_recurring_plans"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const plans = await recurringPlansController.getAllRecurringPlans(orgId);
@@ -19,9 +20,9 @@ router.get("/", async (req, res, next) => {
 	}
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requirePermission("view_recurring_plans"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const plan = await recurringPlansController.getRecurringPlanById(id, orgId);
 
@@ -42,7 +43,7 @@ router.get("/:id", async (req, res, next) => {
 	}
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("manage_recurring_plans"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const context = getUserContext(req);

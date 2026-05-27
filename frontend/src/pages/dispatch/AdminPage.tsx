@@ -1,22 +1,34 @@
 ﻿import { useState } from "react";
 import UsersSection from "../../components/admin/UsersSection";
 import SettingsSection from "../../components/admin/SettingsSection";
+import RolesSection from "../../components/admin/RolesSection";
+import { usePermission } from "../../hooks/usePermission";
 
-type AdminTab = "users" | "settings";
+type AdminTab = "users" | "settings" | "roles";
 
 const STORAGE_KEY = "adminPage_activeTab";
 
-const TABS: { id: AdminTab; label: string }[] = [
-	{ id: "users", label: "Users" },
-	{ id: "settings", label: "Settings" },
+const TABS: { id: AdminTab; label: string; permission?: string }[] = [
+	{ id: "users", label: "Users", permission: "view_admin" },
+	{ id: "settings", label: "Settings", permission: "manage_organization" },
+	{ id: "roles", label: "Roles", permission: "manage_roles" },
 ];
 
 export default function AdminPage() {
+	const VIEW_ADMIN = usePermission("view_admin");
+	const MANAGE_ORGANIZATION = usePermission("manage_organization");
+	const MANAGE_ROLES = usePermission("manage_roles");
+	const permMap = {
+		view_admin: VIEW_ADMIN,
+		manage_organization: MANAGE_ORGANIZATION,
+		manage_roles: MANAGE_ROLES,
+	}
+	const visibleTabs = TABS.filter((tab) => permMap[tab.permission as keyof typeof permMap]);
 	const [activeTab, setActiveTab] = useState<AdminTab>(() => {
-		const stored = sessionStorage.getItem(STORAGE_KEY);
-		return stored === "users" || stored === "settings" ? stored : "users";
+		const stored = sessionStorage.getItem(STORAGE_KEY) as AdminTab | null;
+		if (stored && !visibleTabs.some(tab => tab.id === stored)) return stored;
+		return visibleTabs[0]?.id ?? "users";
 	});
-
 	const handleTabChange = (tab: AdminTab) => {
 		sessionStorage.setItem(STORAGE_KEY, tab);
 		setActiveTab(tab);
@@ -26,7 +38,7 @@ export default function AdminPage() {
 		<div className="text-white">
 			{/* Tab bar */}
 			<div className="flex items-center gap-0 border-b border-border-subtle mb-5">
-				{TABS.map((tab) => (
+				{visibleTabs.map((tab) => (
 					<button
 						key={tab.id}
 						onClick={() => handleTabChange(tab.id)}
@@ -43,6 +55,7 @@ export default function AdminPage() {
 
 			{activeTab === "users" && <UsersSection />}
 			{activeTab === "settings" && <SettingsSection />}
+			{activeTab === "roles" && <RolesSection />}
 		</div>
 	);
 }

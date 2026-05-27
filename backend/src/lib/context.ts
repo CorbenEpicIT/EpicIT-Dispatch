@@ -49,6 +49,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"invoice_note",
 	"log",
 	"vehicle",
+	"organization_role",
 ]);
 /*
 Here's the complete list of models that have no organization_id column and

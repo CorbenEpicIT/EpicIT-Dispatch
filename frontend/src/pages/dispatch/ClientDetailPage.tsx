@@ -24,6 +24,7 @@ import {
 	type InvoiceStatus,
 } from "../../types/invoices";
 import { formatCurrency, formatDate } from "../../util/util";
+import { usePermission } from "../../hooks/usePermission";
 
 type MainTab = "active" | "requests" | "quotes" | "jobs" | "plans" | "invoices";
 const ITEMS_LIMIT = 8;
@@ -50,6 +51,10 @@ export default function ClientDetailsPage() {
 
 	const { data: client, isLoading, error } = useClientByIdQuery(clientId!);
 	const { data: invoices } = useInvoicesByClientIdQuery(clientId!);
+
+	//permissions
+	const EDIT_CLIENT = usePermission("edit_clients");
+	const DELETE_CLIENT = usePermission("delete_clients");
 
 	const workflowData = useMemo(() => {
 		if (!client) return { active: [], requests: [], quotes: [], jobs: [], plans: [], invoices: [] };
@@ -405,15 +410,20 @@ export default function ClientDetailsPage() {
 						>
 							{client.is_active ? "Active" : "Inactive"}
 						</span>
-						<button
-							className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap"
-							onClick={() => setIsEditModalOpen(true)}
-						>
-							<Edit size={12} />
-							<span className="hidden sm:inline">
-								Edit
-							</span>
-						</button>
+							<button
+								title={!EDIT_CLIENT ? "You don't have permission to perform this action" : undefined}
+								disabled={!EDIT_CLIENT}
+								className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+								onClick={() => {
+									if (!EDIT_CLIENT) return;
+									setIsEditModalOpen(true);
+								}}
+							>
+								<Edit size={12} />
+								<span className="hidden sm:inline">
+									Edit
+								</span>
+							</button>
 					</div>
 				</div>
 

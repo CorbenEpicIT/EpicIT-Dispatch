@@ -2,9 +2,13 @@
 *	File Created by Max, 3/5/26
 *	Centralizing api variable so headers stay consistent 
 */
-
 import axios from "axios";
+import { useAuthStore } from "../auth/authStore";
 const BASE_URL: string = import.meta.env.VITE_BACKEND_URL;
+const refreshClient = axios.create({
+	baseURL: BASE_URL,
+	withCredentials: true,
+});
 let isRefreshing = false;
 let failedQueue: { resolve: (token: string) => void; reject: (error?: any) => void }[] = [];
 const processQueue = (error: any, token: string | null = null) => {
@@ -43,20 +47,41 @@ api.interceptors.response.use((response) => response, async (error) => {
 	originalRequest._retry = true;
 	isRefreshing = true;
 	try {
-		const response = await api.post<{ data: {token: string} }>("/refresh-token", {}, { withCredentials: true });
+		const response = await refreshClient.post<{ data: {token: string} }>("/refresh-token");
+		if (!response.data?.data?.token) {
+			isRefreshing = false;
+			throw new Error("No token in refresh response");
+		}
 		const newToken = response.data.data.token;
 		localStorage.setItem("accessToken", newToken);
 		api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+		try {
+			const parts = newToken.split(".");
+			if (parts.length === 3) {
+				const payload = JSON.parse(atob(parts[1]));
+				const { user, login } = useAuthStore.getState();
+				if (user) {
+					login(
+						payload.role,
+						user.name,
+						payload.uid,
+						payload.organization_id ?? null,
+						payload.organization_timezone ?? user.orgTimezone,
+						payload.permissions ?? []
+					);
+				}
+			}
+		} catch { /* ignore errors, token still updated in localStorage */ }
 		processQueue(null, newToken);
 		originalRequest.headers.Authorization = `Bearer ${newToken}`;
+		isRefreshing = false;
 		return api(originalRequest);
 	}catch (err) {
 		processQueue(err, null);
 		localStorage.removeItem("accessToken");
 		delete api.defaults.headers.common["Authorization"];
 		window.location.href = "/login";
-		return Promise.reject(err);
-	} finally {
 		isRefreshing = false;
+		return Promise.reject(err);
 	}
 });

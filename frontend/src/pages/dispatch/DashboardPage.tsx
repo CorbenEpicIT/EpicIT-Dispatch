@@ -25,6 +25,7 @@ import CreateQuote from "../../components/quotes/CreateQuote";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
 import LowStockWidget from "../../components/dashboard/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function DashboardPage() {
 	const navigate = useNavigate();
@@ -37,6 +38,11 @@ export default function DashboardPage() {
 	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
 	const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
 	const actionMenuRef = useRef<HTMLDivElement>(null);
+
+	// permissions
+	const CREATE_REQUEST = usePermission("create_requests");
+	const CREATE_QUOTE = usePermission("create_quotes");
+	const CREATE_JOB = usePermission("create_jobs");
 
 	useEffect(() => {
 		function handleClickOutside(e: MouseEvent) {
@@ -234,16 +240,21 @@ export default function DashboardPage() {
 					<div className="relative shrink-0" ref={actionMenuRef}>
 						<div className="flex h-10 rounded-md overflow-hidden">
 							<button
+								title={!CREATE_REQUEST ? "You don't have permission to perform this action" : ""}
+								disabled={!CREATE_REQUEST}
 								onClick={() => setIsCreateRequestModalOpen(true)}
-								className="inline-flex items-center justify-center gap-1.5 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors"
+								className="inline-flex items-center justify-center gap-1.5 px-4 bg-blue-600 hover:enabled:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={14} strokeWidth={2.5} className="-mt-px" />
 								New Request
 							</button>
-							<span className="w-px bg-blue-500" />
+							
+							<span className={(!CREATE_QUOTE && !CREATE_JOB) ? "w-px bg-blue-500 opacity-40" : "w-px bg-blue-500"} />
 							<button
+								disabled={!CREATE_QUOTE && !CREATE_JOB}
+								title={!CREATE_QUOTE && !CREATE_JOB ? "You don't have permission to perform other actions" : "Create Quote or Job"}
 								onClick={() => setIsActionMenuOpen((o) => !o)}
-								className="flex items-center px-2.5 bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+								className="flex items-center px-2.5 bg-blue-600 hover:enabled:bg-blue-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								aria-label="More actions"
 							>
 								<ChevronDown size={14} strokeWidth={2.5} className={`transition-transform duration-150 ${isActionMenuOpen ? "rotate-180" : ""}`} />
@@ -253,15 +264,19 @@ export default function DashboardPage() {
 						{isActionMenuOpen && (
 							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl z-50 py-1">
 								<button
+									disabled={!CREATE_QUOTE}
+									title={!CREATE_QUOTE ? "You don't have permission to perform this action" : ""}
 									onClick={() => { setIsCreateQuoteModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-purple-300 hover:text-purple-200 hover:bg-purple-500/10 transition-colors w-full text-left"
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-purple-300 hover:enabled:text-purple-200 hover:enabled:bg-purple-500/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									<FileText size={13} className="text-purple-400" />
 									Create Quote
 								</button>
 								<button
+									disabled={!CREATE_JOB}
+									title={!CREATE_JOB ? "You don't have permission to perform this action" : ""}
 									onClick={() => { setIsCreateJobModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition-colors w-full text-left"
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-amber-300 hover:enabled:text-amber-200 hover:enabled:bg-amber-500/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									<Briefcase size={13} className="text-amber-400" />
 									Create Job

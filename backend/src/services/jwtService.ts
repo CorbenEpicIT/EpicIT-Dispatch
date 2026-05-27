@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { db } from "../db.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
+import { getAllPermissions } from "../lib/permissionCatalogs.js";
 
 // copied from prisma schema
 interface User {
@@ -29,7 +30,7 @@ export const hasValidRefreshToken = async (userId: string): Promise<string | nul
     return record?.token ?? null;
 }
 
-export const generateAccessToken = (user: User, role: string, orgTimezone?: string | null)=>{
+export const generateAccessToken = (user: User, role: string, orgTimezone?: string | null, permissions?: string[] | null) => {
         if (!JWT_SECRET) {
             throw new Error("JWT_ACCESS_SECRET is not defined in environment variables");
         }
@@ -40,6 +41,7 @@ export const generateAccessToken = (user: User, role: string, orgTimezone?: stri
                 role: role,
                 organization_id: user.organization_id,
                 organization_timezone: orgTimezone ?? null,
+                permissions: permissions ?? null,
             },
             JWT_SECRET,
             {expiresIn : '15m'}
@@ -101,6 +103,7 @@ export const verifyToken = (token: string) => {
         role: string;
         organization_id: string | null;
         organization_timezone: string | null;
+        permissions: string[] | null;
     };
 }
 
@@ -151,8 +154,8 @@ export const refreshAccessToken = async (refreshToken: string) => {
         }
         
         const dbUser = user.role === "technician"
-            ? await db.technician.findUnique({ where: { id: user.id }, select: { organization_id: true } })
-            : await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true } });
+            ? await db.technician.findUnique({ where: { id: user.id }, select: { organization_id: true, organization_role_id: true } })
+            : await db.dispatcher.findUnique({ where: { id: user.id }, select: { organization_id: true, organization_role_id: true } });
 
         let orgTimezone: string | null = null;
         if (dbUser?.organization_id) {
@@ -163,6 +166,19 @@ export const refreshAccessToken = async (refreshToken: string) => {
             orgTimezone = org?.timezone ?? null;
         }
 
+        let permissions: string[];
+        if (user.role === "admin") {
+            permissions = getAllPermissions("dispatcher");
+        } else if (dbUser?.organization_role_id) {
+            const orgRole = await db.organization_role.findUnique({
+                where: { id: dbUser.organization_role_id },
+                select: { permissions: true },
+            });
+            permissions = (orgRole?.permissions as string[]) ?? [];
+        } else {
+            permissions = [];
+        }
+
         const jwtResult = jwt.sign(
                     {
                         uid: user.id,
@@ -170,6 +186,7 @@ export const refreshAccessToken = async (refreshToken: string) => {
                         role: user.role,
                         organization_id: dbUser?.organization_id ?? null,
                         organization_timezone: orgTimezone,
+                        permissions,
                     },
                     JWT_SECRET,
                     {expiresIn : '15m'}

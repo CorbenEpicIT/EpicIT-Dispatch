@@ -2,7 +2,7 @@
 import type { ZodError } from "zod";
 import { CreateDispatcherSchema, type CreateDispatcherInput } from "../../types/dispatchers";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
-import DatePicker from "../ui/DatePicker";
+import { useOrgRolesQuery } from "../../hooks/useOrgRoles";
 
 interface CreateDispatcherProps {
     isModalOpen: boolean;
@@ -24,10 +24,21 @@ const CreateDispatcher = ({
     const [phone, setPhone] = useState("");
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
+    const [organizationRoleId, setOrganizationRoleId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<ZodError | null>(null);
     const [password, setPassword] = useState("");
     const [choosePassword, setChoosePassword] = useState(false);
+
+    const { data: roles } = useOrgRolesQuery();
+    const dispatcherRoles = useMemo(() => (roles ?? []).filter((r) => r.base_tier === "dispatcher"), [roles]);
+
+    useEffect(() => {
+        if (isModalOpen && dispatcherRoles.length > 0 && organizationRoleId === null) {
+            const defaultRole = dispatcherRoles.find((r) => r.is_default);
+            if (defaultRole) setOrganizationRoleId(defaultRole.id);
+        }
+    }, [isModalOpen, dispatcherRoles]);
 
     const resetForm = useCallback(() => {
         setName("");
@@ -38,6 +49,7 @@ const CreateDispatcher = ({
         setErrors(null);
         setPassword("");
         setChoosePassword(false);
+        setOrganizationRoleId(null);
     }, []);
 
     useEffect(() => {
@@ -57,6 +69,7 @@ const CreateDispatcher = ({
             password: choosePassword ? password.trim() : undefined,
             title: title.trim(),
             description: description.trim(),
+            organization_role_id: organizationRoleId,
         };
 
         const parseResult = CreateDispatcherSchema.safeParse(newDispatcher);
@@ -157,6 +170,22 @@ const CreateDispatcher = ({
                     <ErrorDisplay path="title" />
                 </div>
 
+                {/* Role */}
+                <div className="min-w-0">
+                    <label className={LABEL}>Role</label>
+                    <select
+                        value={organizationRoleId ?? ""}
+                        onChange={(e) => setOrganizationRoleId(e.target.value || null)}
+                        className={INPUT}
+                        disabled={isLoading}
+                    >
+                        <option value="">— No Role —</option>
+                        {dispatcherRoles.map((r) => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                    </select>
+                </div>
+
                 {/* Description */}
                 <div className="min-w-0">
                     <label className={LABEL}>Description</label>
@@ -197,7 +226,7 @@ const CreateDispatcher = ({
                 </div>
             </div>
         ),
-        [name, email, phone, title, description, isLoading, errors, choosePassword, password]
+        [name, email, phone, title, description, isLoading, errors, choosePassword, password, organizationRoleId, dispatcherRoles]
     );
 
     return (

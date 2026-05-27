@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import type { Technician, UpdateTechnicianInput } from "../../types/technicians";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
+import { useOrgRolesQuery, useAssignOrgRoleMutation } from "../../hooks/useOrgRoles";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import DatePicker from "../ui/DatePicker";
 import Dropdown from "../ui/Dropdown";
@@ -37,10 +38,14 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 	const [hireDate, setHireDate] = useState<Date>(
 		technician.hire_date ? new Date(technician.hire_date) : new Date()
 	);
+	const [organizationRoleId, setOrganizationRoleId] = useState<string>(technician.organization_role?.id ?? "");
 
 	const updateTechnician = useUpdateTechnicianMutation();
+	const assignRole = useAssignOrgRoleMutation();
+	const { data: orgRoles } = useOrgRolesQuery();
+	const technicianRoles = orgRoles?.filter((r) => r.base_tier === "technician") ?? [];
 
-	const isLoading = updateTechnician.isPending;
+	const isLoading = updateTechnician.isPending || assignRole.isPending;
 
 	useEffect(() => {
 		if (isOpen) {
@@ -53,6 +58,7 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 			setHireDate(
 				technician.hire_date ? new Date(technician.hire_date) : new Date()
 			);
+			setOrganizationRoleId(technician.organization_role?.id ?? "");
 		}
 	}, [isOpen, technician]);
 
@@ -70,6 +76,14 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 					hire_date: hireDate,
 				},
 			});
+			const newRoleId = organizationRoleId || null;
+			if (newRoleId !== (technician.organization_role?.id ?? null)) {
+				await assignRole.mutateAsync({
+					user_id: technician.id,
+					user_type: "technician",
+					role_id: newRoleId,
+				});
+			}
 			onClose();
 		} catch (error) {
 			console.error("Failed to update technician:", error);
@@ -148,6 +162,22 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 					/>
 				</div>
 
+				{/* Permission Role */}
+				<div className="min-w-0">
+					<label className={LABEL}>Permission Role</label>
+					<select
+						value={organizationRoleId}
+						onChange={(e) => setOrganizationRoleId(e.target.value)}
+						className={INPUT}
+						disabled={isLoading}
+					>
+						<option value="">— No Role —</option>
+						{technicianRoles.map((r) => (
+							<option key={r.id} value={r.id}>{r.name}</option>
+						))}
+					</select>
+				</div>
+
 				{/* Status + Hire Date */}
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
 					<div className="min-w-0">
@@ -177,7 +207,7 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 				</div>
 			</div>
 		),
-		[name, email, phone, title, description, status, hireDate, isLoading]
+		[name, email, phone, title, description, status, hireDate, organizationRoleId, technicianRoles, isLoading]
 	);
 
 	return (

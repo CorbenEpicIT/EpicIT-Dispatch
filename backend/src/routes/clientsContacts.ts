@@ -35,6 +35,7 @@ import { getJobsByClientId } from "../controllers/jobsController.js";
 import { getQuotesByClientId } from '../controllers/quotesController.js';
 import { getRequestsByClientId } from '../controllers/requestsController.js';
 import * as invoicesController from '../controllers/invoicesController.js';
+import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
@@ -42,7 +43,7 @@ const router = Router();
 // CLIENTS
 // ============================================
 
-router.get("/clients", async (req, res, next) => {
+router.get("/clients", requirePermission("view_clients"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const clients = await getAllClients(orgId);
@@ -52,9 +53,9 @@ router.get("/clients", async (req, res, next) => {
     }
 });
 
-router.get("/clients/:id", async (req, res, next) => {
+router.get("/clients/:id", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const client = await getClientById(id, orgId);
 
@@ -75,7 +76,7 @@ router.get("/clients/:id", async (req, res, next) => {
     }
 });
 
-router.post("/clients", async (req, res, next) => {
+router.post("/clients", requirePermission("create_clients"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -103,9 +104,9 @@ router.post("/clients", async (req, res, next) => {
     }
 });
 
-router.put("/clients/:id", async (req, res, next) => {
+router.put("/clients/:id", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateClient(id, req.body, orgId, context);
@@ -132,9 +133,9 @@ router.put("/clients/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/clients/:id", async (req, res, next) => {
+router.delete("/clients/:id", requirePermission("delete_clients"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteClient(id, orgId, context);
@@ -157,9 +158,9 @@ router.delete("/clients/:id", async (req, res, next) => {
 });
 
 // Quotes for a client
-router.get("/clients/:clientId/quotes", async (req, res, next) => {
+router.get("/clients/:clientId/quotes", requirePermission("view_clients"), async (req, res, next) => {
 	try {
-		const { clientId } = req.params;
+		const clientId = req.params.clientId as string;
 		const orgId = req.user!.organization_id as string;
 		const quotes = await getQuotesByClientId(clientId, orgId);
 		res.json(createSuccessResponse(quotes, { count: quotes.length }));
@@ -169,9 +170,9 @@ router.get("/clients/:clientId/quotes", async (req, res, next) => {
 });
 
 // requests for a client
-router.get("/clients/:clientId/requests", async (req, res, next) => {
+router.get("/clients/:clientId/requests", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const { clientId } = req.params;
+        const clientId = req.params.clientId as string;
         const orgId = req.user!.organization_id as string;
         const requests = await getRequestsByClientId(clientId, orgId);
         res.json(createSuccessResponse(requests, { count: requests.length }));
@@ -181,11 +182,11 @@ router.get("/clients/:clientId/requests", async (req, res, next) => {
 });
 
 // invoices for a client
-router.get("/clients/:clientId/invoices", async (req, res, next) => {
+router.get("/clients/:clientId/invoices", requirePermission("view_clients"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const invoices = await invoicesController.getInvoicesByClientId(
-            req.params.clientId,
+            req.params.clientId as string,
             orgId,
         );
         res.json(createSuccessResponse(invoices, { count: invoices.length }));
@@ -199,7 +200,7 @@ router.get("/clients/:clientId/invoices", async (req, res, next) => {
 // ============================================
 
 // Search contacts
-router.get("/contacts/search", async (req, res, next) => {
+router.get("/contacts/search", requirePermission("view_clients"), async (req, res, next) => {
     try {
         const { q, exclude_client_id } = req.query;
         const orgId = req.user!.organization_id as string;
@@ -222,9 +223,9 @@ router.get("/contacts/search", async (req, res, next) => {
     }
 });
 
-router.get("/clients/:clientId/contacts", async (req, res, next) => {
+router.get("/clients/:clientId/contacts", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const { clientId } = req.params;
+        const clientId = req.params.clientId as string;
         const contacts = await getClientContacts(clientId, req.user!.organization_id as string);
         res.json(createSuccessResponse(contacts, { count: contacts.length }));
     } catch (err) {
@@ -232,9 +233,9 @@ router.get("/clients/:clientId/contacts", async (req, res, next) => {
     }
 });
 
-router.get("/contacts/:contactId", async (req, res, next) => {
+router.get("/contacts/:contactId", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const { contactId } = req.params;
+        const contactId = req.params.contactId as string;
         const orgId = req.user!.organization_id as string;
         const contact = await getContactById(contactId, orgId);
 
@@ -255,7 +256,7 @@ router.get("/contacts/:contactId", async (req, res, next) => {
     }
 });
 
-router.get("/contacts", async (req, res, next) => {
+router.get("/contacts", requirePermission("view_clients"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const contacts = await getAllContacts(orgId);
@@ -265,7 +266,7 @@ router.get("/contacts", async (req, res, next) => {
     }
 });
 
-router.post("/contacts", async (req, res, next) => {
+router.post("/contacts", requirePermission("create_clients"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -291,9 +292,9 @@ router.post("/contacts", async (req, res, next) => {
 });
 
 // Update an independent contact
-router.put("/contacts/:contactId", async (req, res, next) => {
+router.put("/contacts/:contactId", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const { contactId } = req.params;
+        const contactId = req.params.contactId as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateContact(contactId, req.body, orgId, context);
@@ -317,9 +318,9 @@ router.put("/contacts/:contactId", async (req, res, next) => {
 });
 
 // Delete an independent contact (only if not linked)
-router.delete("/contacts/:contactId", async (req, res, next) => {
+router.delete("/contacts/:contactId", requirePermission("delete_clients"), async (req, res, next) => {
     try {
-        const { contactId } = req.params;
+        const contactId = req.params.contactId as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteContact(contactId, orgId, context);
@@ -340,9 +341,9 @@ router.delete("/contacts/:contactId", async (req, res, next) => {
 });
 
 // Link an existing contact to a client
-router.post("/clients/:clientId/contacts/link", async (req, res, next) => {
+router.post("/clients/:clientId/contacts/link", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const { clientId } = req.params;
+        const clientId = req.params.id as string;
         const { contact_id, relationship, is_primary, is_billing } = req.body;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -380,9 +381,10 @@ router.post("/clients/:clientId/contacts/link", async (req, res, next) => {
 // Update a client-contact relationship
 router.put(
     "/clients/:clientId/contacts/:contactId/relationship",
+    requirePermission("edit_clients"),
     async (req, res, next) => {
         try {
-            const { clientId, contactId } = req.params;
+            const { clientId, contactId } = req.params as { clientId: string; contactId: string };
             const context = getUserContext(req);
             const result = await updateClientContact(
                 contactId,
@@ -416,9 +418,10 @@ router.put(
 // Unlink a contact from a client
 router.delete(
     "/clients/:clientId/contacts/:contactId/link",
+    requirePermission("edit_clients"),
     async (req, res, next) => {
         try {
-            const { clientId, contactId } = req.params;
+            const { clientId, contactId } = req.params as { clientId: string; contactId: string };
             const context = getUserContext(req);
             const result = await unlinkContactFromClient(
                 contactId,
@@ -454,9 +457,9 @@ router.delete(
 // CLIENT NOTES
 // ============================================
 
-router.get("/clients/:clientId/notes", async (req, res, next) => {
+router.get("/clients/:clientId/notes", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const { clientId } = req.params;
+        const clientId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const notes = await getClientNotes(clientId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -465,9 +468,9 @@ router.get("/clients/:clientId/notes", async (req, res, next) => {
     }
 });
 
-router.get("/clients/:clientId/notes/:noteId", async (req, res, next) => {
+router.get("/clients/:clientId/notes/:noteId", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const { clientId, noteId } = req.params;
+        const { clientId, noteId } = req.params as { clientId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const note = await getNoteById(clientId, noteId, orgId);
 
@@ -485,9 +488,9 @@ router.get("/clients/:clientId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.post("/clients/:clientId/notes", async (req, res, next) => {
+router.post("/clients/:clientId/notes", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const { clientId } = req.params;
+        const clientId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await insertNote(clientId, req.body, orgId, context);
@@ -509,9 +512,9 @@ router.post("/clients/:clientId/notes", async (req, res, next) => {
     }
 });
 
-router.put("/clients/:clientId/notes/:noteId", async (req, res, next) => {
+router.put("/clients/:clientId/notes/:noteId", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const { clientId, noteId } = req.params;
+        const { clientId, noteId } = req.params as { clientId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateNote(clientId, noteId, req.body, orgId, context);
@@ -533,9 +536,9 @@ router.put("/clients/:clientId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.delete("/clients/:clientId/notes/:noteId", async (req, res, next) => {
+router.delete("/clients/:clientId/notes/:noteId", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const { clientId, noteId } = req.params;
+        const { clientId, noteId } = req.params as { clientId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteNote(clientId, noteId, orgId, context);
@@ -560,9 +563,9 @@ router.delete("/clients/:clientId/notes/:noteId", async (req, res, next) => {
 // CLIENT JOBS (Read-only)
 // ============================================
 
-router.get("/clients/:clientId/jobs", async (req, res, next) => {
+router.get("/clients/:clientId/jobs", requireAnyPermission("view_clients", "view_jobs"), async (req, res, next) => {
     try {
-        const { clientId } = req.params;
+        const clientId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const jobs = await getJobsByClientId(clientId, orgId);
         res.json(createSuccessResponse(jobs, { count: jobs.length }));

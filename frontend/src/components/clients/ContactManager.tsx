@@ -27,6 +27,7 @@ import {
 	useSearchContactsQuery,
 	useLinkContactMutation,
 } from "../../hooks/useClients";
+import { usePermission } from "../../hooks/usePermission";
 
 interface ContactManagerProps {
 	clientId: string;
@@ -437,6 +438,9 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 	const unlinkContact = useUnlinkContactFromClientMutation();
 	const linkContact = useLinkContactMutation();
 
+	// permissions
+	const EDIT_CONTACTS = usePermission("edit_clients");
+
 	const resetForm = useCallback(() => {
 		setFormMode(null);
 		setEditingContactId(null);
@@ -451,11 +455,13 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 	}, []);
 
 	const openCreateForm = useCallback(() => {
+		if (!EDIT_CONTACTS) return;
 		resetForm();
 		setFormMode("create");
 	}, [resetForm]);
 
 	const openLinkForm = useCallback(() => {
+		if (!EDIT_CONTACTS) return;
 		resetForm();
 		setFormMode("link");
 	}, [resetForm]);
@@ -535,7 +541,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 	const handleSubmit = useCallback(
 		async (e: React.FormEvent) => {
 			e.preventDefault();
-
+			if (!EDIT_CONTACTS) return;
 			if (!validateForm(contactLinks)) {
 				return;
 			}
@@ -610,6 +616,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 
 	const handleUnlink = useCallback(
 		async (contactLink: ClientContactLink) => {
+			if (!EDIT_CONTACTS) return;
 			if (!contactLink.contact) return;
 			await unlinkContact.mutateAsync({
 				clientId,
@@ -621,6 +628,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 
 	const handleDeleteClick = useCallback(
 		(contactId: string, contactLink: ClientContactLink) => {
+			if (!EDIT_CONTACTS) return;
 			if (confirmingDeleteId === contactId) {
 				handleUnlink(contactLink);
 				setConfirmingDeleteId(null);
@@ -634,6 +642,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 	);
 
 	const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+		if (!EDIT_CONTACTS) return;
 		const { name, value } = e.target;
 		setFormData((prev) => ({ ...prev, [name]: value }));
 		setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
@@ -719,8 +728,10 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 				!formMode && (
 					<div className="flex gap-2">
 						<button
+							disabled={!EDIT_CONTACTS}
+							title={!EDIT_CONTACTS ? "You don't have permission to perform this action" : ""}
 							onClick={openLinkForm}
-							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-surface-raised hover:bg-zinc-600 rounded text-xs font-medium transition-colors whitespace-nowrap"
+							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-surface-raised hover:enabled:bg-zinc-600 rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							<LinkIcon size={12} />
 							<span className="hidden sm:inline">
@@ -728,8 +739,10 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 							</span>
 						</button>
 						<button
+							disabled={!EDIT_CONTACTS}
+							title={!EDIT_CONTACTS ? "You don't have permission to perform this action" : ""}
 							onClick={openCreateForm}
-							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap"
+							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							<Plus size={12} />
 							<span className="hidden sm:inline">

@@ -24,6 +24,7 @@ import ConvertToQuote from "../../components/requests/ConvertToQuote";
 import ConvertToJob from "../../components/requests/ConvertToJob";
 import NoteManager from "../../components/requests/RequestNoteManager";
 import { useState, useRef, useEffect } from "react";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function RequestDetailPage() {
 	const { requestId } = useParams<{ requestId: string }>();
@@ -40,6 +41,11 @@ export default function RequestDetailPage() {
 	const [hasManualStatusChange, setHasManualStatusChange] = useState(false);
 	const [hasAutoUpdated, setHasAutoUpdated] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+
+	// permissions
+	const EDIT_REQUEST = usePermission("edit_requests");
+	const CREATE_QUOTE = usePermission("create_quotes");
+	const CREATE_JOB = usePermission("create_jobs");
 
 	// Auto-update: New → Reviewing after 5 seconds
 	useEffect(() => {
@@ -145,18 +151,22 @@ export default function RequestDetailPage() {
 	};
 
 	const handleEdit = () => {
+		if (!EDIT_REQUEST) return;
 		setShowActionsMenu(false);
 		setIsEditModalOpen(true);
 	};
 	const handleConvertToQuote = () => {
+		if (!CREATE_QUOTE) return;
 		setShowActionsMenu(false);
 		setIsConvertToQuoteModalOpen(true);
 	};
 	const handleConvertToJob = () => {
+		if (!CREATE_JOB) return;
 		setShowActionsMenu(false);
 		setIsConvertToJobModalOpen(true);
 	};
 	const handleResetToNew = async () => {
+		if (!EDIT_REQUEST) return;
 		setShowActionsMenu(false);
 		setHasManualStatusChange(true);
 		await updateRequest({ id: request.id, data: { status: "New" } });
@@ -188,54 +198,45 @@ export default function RequestDetailPage() {
 						{showActionsMenu && (
 							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={handleEdit}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-									>
-										<Edit2 size={16} />{" "}
-										Edit Request
-									</button>
-									<button
-										onClick={
-											handleConvertToQuote
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-									>
-										<FileText
-											size={16}
-										/>{" "}
-										Convert to Quote
-									</button>
-									<button
-										onClick={
-											handleConvertToJob
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-									>
-										<Briefcase
-											size={16}
-										/>{" "}
-										Convert to Job
-									</button>
-									{request.status ===
-										"Reviewing" && (
+										<button
+											title={!EDIT_REQUEST ? "You don't have permission to perform this action" : undefined}
+											disabled={!EDIT_REQUEST}
+											onClick={handleEdit}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit2 size={16} />{" "}
+											Edit Request
+										</button>
+										<button
+											title={!CREATE_QUOTE ? "You don't have permission to perform this action" : undefined}
+											onClick={handleConvertToQuote}
+											disabled={!CREATE_QUOTE}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<FileText size={16} />{" "}
+											Convert to Quote
+										</button>
+										<button
+											title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+											onClick={handleConvertToJob}
+											disabled={!CREATE_JOB}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Briefcase size={16} />{" "}
+											Convert to Job
+										</button>
+									{request.status === "Reviewing" && (
 										<>
 											<div className="border-t border-border-subtle my-1" />
-											<button
-												onClick={
-													handleResetToNew
-												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 text-text-tertiary"
-											>
-												<RotateCcw
-													size={
-														16
-													}
-												/>{" "}
-												Reset
-												to
-												New
-											</button>
+												<button
+													title={!EDIT_REQUEST ? "You don't have permission to perform this action" : undefined}
+													onClick={handleResetToNew}
+													disabled={!EDIT_REQUEST}
+													className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 text-text-tertiary disabled:opacity-40 disabled:cursor-not-allowed"
+												>
+													<RotateCcw size={16} />{" "}
+													Reset to New
+												</button>
 										</>
 									)}
 								</div>
@@ -490,16 +491,18 @@ export default function RequestDetailPage() {
 								</div>
 							</div>
 							<div className="col-span-1 flex items-center justify-end">
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										handleConvertToQuote();
-									}}
-									className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
-								>
-									<FileText size={12} />{" "}
-									Convert to Quote
-								</button>
+									<button
+										title={!CREATE_QUOTE ? "You don't have permission to perform this action" : undefined}
+										onClick={(e) => {
+											e.stopPropagation();
+											handleConvertToQuote();
+										}}
+										disabled={!CREATE_QUOTE}
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+									>
+										<FileText size={12} />{" "}
+										Convert to Quote
+									</button>
 							</div>
 						</div>
 					</div>
@@ -565,16 +568,18 @@ export default function RequestDetailPage() {
 								</div>
 							</div>
 							<div className="col-span-1 flex items-center justify-end">
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										handleConvertToJob();
-									}}
-									className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
-								>
-									<Briefcase size={12} />{" "}
-									Convert to Job
-								</button>
+									<button
+										title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+										onClick={(e) => {
+											e.stopPropagation();
+											handleConvertToJob();
+										}}
+										disabled={!CREATE_JOB}
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+									>
+										<Briefcase size={12} />{" "}
+										Convert to Job
+									</button>
 							</div>
 						</div>
 					</div>

@@ -14,6 +14,7 @@ import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
+import { usePermission } from "../../hooks/usePermission";
 
 type viewMode = "list" | "card";
 
@@ -37,6 +38,9 @@ export default function TechniciansPage() {
 
 	const queryParams = new URLSearchParams(location.search);
 	const statusFilter = queryParams.get("status");
+
+	// permissions
+	const MANAGE_TECHNICIANS = usePermission("manage_technicians");
 
 	useEffect(() => {
 		setCurrentPage(1);
@@ -122,13 +126,18 @@ export default function TechniciansPage() {
 					</div>
 				}
 			>
-				<button
-					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-					onClick={() => setIsModalOpen(true)}
-				>
-					<Plus size={16} className="text-white" />
-					New Technician
-				</button>
+					<button
+						title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
+						disabled={!MANAGE_TECHNICIANS}
+						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						onClick={() => {
+							if (!MANAGE_TECHNICIANS) return;
+							setIsModalOpen(true);
+						}}
+					>
+						<Plus size={16} className="text-white" />
+						New Technician
+					</button>
 			</PageHeader>
 			<PageControls
 				className="mb-4"

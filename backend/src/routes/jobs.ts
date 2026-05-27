@@ -5,6 +5,7 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import { getUserContext } from '../lib/context.js';
+import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 import {
     getAllJobs,
     getJobById,
@@ -28,7 +29,7 @@ import * as recurringPlanNotesController from "../controllers/recurringPlanNotes
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requireAnyPermission("view_jobs", "view_assigned_jobs", "view_all_jobs"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const jobs = await getAllJobs(orgId);
@@ -38,9 +39,9 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requireAnyPermission("view_jobs", "view_assigned_jobs", "view_all_jobs"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const job = await getJobById(id, orgId);
 
@@ -58,7 +59,7 @@ router.get("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("create_jobs"), async (req, res, next) => {
     try {
         const context = getUserContext(req);
         const result = await insertJob(req, context);
@@ -80,7 +81,7 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", requirePermission("edit_jobs"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -103,9 +104,9 @@ router.patch("/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("delete_jobs"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteJob(id, orgId, context);
@@ -124,9 +125,9 @@ router.delete("/:id", async (req, res, next) => {
     }
 });
 
-router.get("/:jobId/visits", async (req, res, next) => {
+router.get("/:jobId/visits", requireAnyPermission("view_jobs", "view_visits", "view_assigned_jobs"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const visits = await getJobVisitsByJobId(jobId, orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
@@ -144,9 +145,9 @@ router.get("/:jobId/visits", async (req, res, next) => {
 // JOB NOTES
 // ============================================
 
-router.get("/:jobId/notes", async (req, res, next) => {
+router.get("/:jobId/notes", requireAnyPermission("view_jobs", "view_assigned_jobs"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const notes = await getJobNotes(jobId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -155,11 +156,11 @@ router.get("/:jobId/notes", async (req, res, next) => {
     }
 });
 
-router.get("/:jobId/visits/:visitId/invoices", async (req, res, next) => {
+router.get("/:jobId/visits/:visitId/invoices", requirePermission("view_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const invoices = await invoicesController.getInvoicesByVisitId(
-            req.params.visitId,
+            req.params.visitId as string,
             orgId,
         );
         res.json(createSuccessResponse(invoices, { count: invoices.length }));
@@ -168,9 +169,9 @@ router.get("/:jobId/visits/:visitId/invoices", async (req, res, next) => {
     }
 });
 
-router.get("/:jobId/visits/:visitId/notes", async (req, res, next) => {
+router.get("/:jobId/visits/:visitId/notes", requireAnyPermission("view_jobs", "view_visits", "view_assigned_jobs"), async (req, res, next) => {
     try {
-        const { jobId, visitId } = req.params;
+        const { jobId, visitId } = req.params as { jobId: string; visitId: string };
         const orgId = req.user!.organization_id as string;
         const notes = await getJobNotesByVisitId(jobId, visitId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -179,9 +180,9 @@ router.get("/:jobId/visits/:visitId/notes", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/notes", async (req, res, next) => {
+router.post("/:jobId/notes", requireAnyPermission("edit_jobs", "add_job_notes"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await insertJobNote(jobId, req.body, orgId, context);
@@ -203,9 +204,9 @@ router.post("/:jobId/notes", async (req, res, next) => {
     }
 });
 
-router.put("/:jobId/notes/:noteId", async (req, res, next) => {
+router.put("/:jobId/notes/:noteId", requireAnyPermission("edit_jobs", "add_job_notes"), async (req, res, next) => {
     try {
-        const { jobId, noteId } = req.params;
+        const { jobId, noteId } = req.params as { jobId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateJobNote(jobId, noteId, req.body, orgId, context);
@@ -227,9 +228,9 @@ router.put("/:jobId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.delete("/:jobId/notes/:noteId", async (req, res, next) => {
+router.delete("/:jobId/notes/:noteId", requirePermission("edit_jobs"), async (req, res, next) => {
     try {
-        const { jobId, noteId } = req.params;
+        const { jobId, noteId } = req.params as { jobId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteJobNote(jobId, noteId, orgId, context);
@@ -251,11 +252,11 @@ router.delete("/:jobId/notes/:noteId", async (req, res, next) => {
 });
 
 // invoices
-router.get("/:jobId/invoices", async (req, res, next) => {
+router.get("/:jobId/invoices", requirePermission("view_invoices"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const invoices = await invoicesController.getInvoicesByJobId(
-			req.params.jobId,
+			req.params.jobId as string,
 			orgId,
 		);
 		res.json(createSuccessResponse(invoices, { count: invoices.length }));
@@ -265,9 +266,9 @@ router.get("/:jobId/invoices", async (req, res, next) => {
 });
 
 // occurrences
-router.get("/:jobId/occurrences", async (req, res, next) => {
+router.get("/:jobId/occurrences", requireAnyPermission("view_recurring_plans", "view_jobs"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const occurrences =
             await recurringPlansController.getOccurrencesByJobId(jobId, req.user!.organization_id as string,);
         res.json(
@@ -278,9 +279,9 @@ router.get("/:jobId/occurrences", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/occurrences/generate", async (req, res, next) => {
+router.post("/:jobId/occurrences/generate", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.generateOccurrences(
             jobId,
@@ -311,9 +312,9 @@ router.post("/:jobId/occurrences/generate", async (req, res, next) => {
 // RECURRING PLAN NOTES ROUTES
 // ============================================
 
-router.get("/:jobId/recurring-plan/notes", async (req, res, next) => {
+router.get("/:jobId/recurring-plan/notes", requirePermission("view_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
 
         const plan =
@@ -340,7 +341,7 @@ router.get("/:jobId/recurring-plan/notes", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/recurring-plan/notes", async (req, res, next) => {
+router.post("/:jobId/recurring-plan/notes", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -369,7 +370,7 @@ router.post("/:jobId/recurring-plan/notes", async (req, res, next) => {
     }
 });
 
-router.put("/:jobId/recurring-plan/notes/:noteId", async (req, res, next) => {
+router.put("/:jobId/recurring-plan/notes/:noteId", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -400,9 +401,10 @@ router.put("/:jobId/recurring-plan/notes/:noteId", async (req, res, next) => {
 
 router.delete(
     "/:jobId/recurring-plan/notes/:noteId",
+    requirePermission("manage_recurring_plans"),
     async (req, res, next) => {
         try {
-            const { jobId, noteId } = req.params;
+            const { jobId, noteId } = req.params as { jobId: string; noteId: string };
             const orgId = req.user!.organization_id as string;
             const context = getUserContext(req);
             const result =
@@ -433,9 +435,9 @@ router.delete(
 );
 
 // recurring plans
-router.get("/:jobId/recurring-plan", async (req, res, next) => {
+router.get("/:jobId/recurring-plan", requirePermission("view_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const plan =
             await recurringPlansController.getRecurringPlanByJobId(jobId, orgId);
@@ -457,9 +459,9 @@ router.get("/:jobId/recurring-plan", async (req, res, next) => {
     }
 });
 
-router.put("/:jobId/recurring-plan", async (req, res, next) => {
+router.put("/:jobId/recurring-plan", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.updateRecurringPlan(
@@ -487,9 +489,9 @@ router.put("/:jobId/recurring-plan", async (req, res, next) => {
     }
 });
 
-router.put("/:jobId/recurring-plan/template", async (req, res, next) => {
+router.put("/:jobId/recurring-plan/template", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result =
@@ -518,9 +520,9 @@ router.put("/:jobId/recurring-plan/template", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/recurring-plan/pause", async (req, res, next) => {
+router.post("/:jobId/recurring-plan/pause", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.pauseRecurringPlan(
@@ -547,9 +549,9 @@ router.post("/:jobId/recurring-plan/pause", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/recurring-plan/resume", async (req, res, next) => {
+router.post("/:jobId/recurring-plan/resume", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.resumeRecurringPlan(
@@ -576,9 +578,9 @@ router.post("/:jobId/recurring-plan/resume", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/recurring-plan/cancel", async (req, res, next) => {
+router.post("/:jobId/recurring-plan/cancel", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.cancelRecurringPlan(
@@ -605,9 +607,9 @@ router.post("/:jobId/recurring-plan/cancel", async (req, res, next) => {
     }
 });
 
-router.post("/:jobId/recurring-plan/complete", async (req, res, next) => {
+router.post("/:jobId/recurring-plan/complete", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { jobId } = req.params;
+        const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await recurringPlansController.completeRecurringPlan(
@@ -640,9 +642,10 @@ router.post("/:jobId/recurring-plan/complete", async (req, res, next) => {
 
 router.put(
     "/:jobId/recurring-plan/invoice-schedule",
+    requirePermission("manage_recurring_plans"),
     async (req, res, next) => {
         try {
-            const { jobId } = req.params;
+            const jobId = req.params.id as string;
             const orgId = req.user!.organization_id as string;
             const result = await recurringPlansController.upsertInvoiceSchedule(
                 jobId,
@@ -665,9 +668,10 @@ router.put(
 
 router.delete(
     "/:jobId/recurring-plan/invoice-schedule",
+    requirePermission("manage_recurring_plans"),
     async (req, res, next) => {
         try {
-            const { jobId } = req.params;
+            const jobId = req.params.id as string;
             const orgId = req.user!.organization_id as string;
             const result =
                 await recurringPlansController.deleteInvoiceSchedule(jobId, orgId);

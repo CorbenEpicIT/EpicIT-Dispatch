@@ -53,6 +53,7 @@ import requestsRouter from "./routes/requests.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
+import organizationRolesRouter from "./routes/organizationRoles.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -373,6 +374,11 @@ app.post("/refresh-token", async (req, res, next) => {
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)
 // ================================================================================
 app.use("/organizations", organizationsRouter);
+
+// ================================================================================
+// ORGANIZATION ROLES
+// ================================================================================
+app.use("/organization-roles", verifyToken, organizationRolesRouter);
 
 // ============================================
 // DRAFT ROUTES

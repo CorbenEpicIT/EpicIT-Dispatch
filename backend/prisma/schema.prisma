@@ -244,6 +244,22 @@ model organization {
   job_notes             job_note[]
   recurring_plan_notes  recurring_plan_note[]
   invoice_notes         invoice_note[]
+  organization_roles    organization_role[]
+}
+
+model organization_role {
+  id              String        @id @default(uuid())
+  organization_id String?
+  organization    organization? @relation(fields: [organization_id], references: [id])
+  name            String
+  base_tier       String        // "dispatcher" | "technician"
+  permissions     String[]
+  is_default      Boolean       @default(false)
+
+  technicians  technician[]  @relation("TechnicianRole")
+  dispatchers  dispatcher[]  @relation("DispatcherRole")
+
+  @@index([organization_id])
 }
 
 // ============================================================================
@@ -1109,6 +1125,9 @@ model technician {
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
 
+  organization_role_id String?
+  organization_role    organization_role? @relation("TechnicianRole", fields: [organization_role_id], references: [id])
+
   current_vehicle_id String?
   current_vehicle    vehicle? @relation("CurrentVehicle", fields: [current_vehicle_id], references: [id])
 
@@ -1155,6 +1174,9 @@ model dispatcher {
   email_verification_token  String?   @unique
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
+
+  organization_role_id String?
+  organization_role    organization_role? @relation("DispatcherRole", fields: [organization_role_id], references: [id])
 
   created_requests        request[]        @relation("RequestCreator")
   created_quotes          quote[]          @relation("QuoteCreator")

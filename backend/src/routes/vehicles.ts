@@ -11,10 +11,11 @@ import {
 	deleteVehicleStockItem,
 	createRestockRequest,
 } from "../controllers/vehiclesController.js";
+import { requirePermission, requireAnyPermission } from "../lib/requirePermissions.js";
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requireAnyPermission("view_inventory", "manage_technicians"), async (req, res, next) => {
 	try {
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const { status } = req.query as { status?: string };
@@ -25,7 +26,7 @@ router.get("/", async (req, res, next) => {
 	}
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("manage_technicians"), async (req, res, next) => {
 	try {
 		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
@@ -39,9 +40,9 @@ router.post("/", async (req, res, next) => {
 	}
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requirePermission("manage_technicians"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const result = await updateVehicle(id, req.body, orgId, context);
@@ -55,9 +56,9 @@ router.put("/:id", async (req, res, next) => {
 	}
 });
 
-router.get("/:id/stock", async (req, res, next) => {
+router.get("/:id/stock", requireAnyPermission("view_inventory", "manage_technicians", "use_inventory"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const result = await listVehicleStock(id, orgId);
 		if (result.err) {
@@ -69,9 +70,9 @@ router.get("/:id/stock", async (req, res, next) => {
 	}
 });
 
-router.post("/:id/stock", async (req, res, next) => {
+router.post("/:id/stock", requireAnyPermission("manage_inventory", "manage_technicians"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const result = await addVehicleStockItem(id, req.body, orgId, context);
@@ -85,9 +86,9 @@ router.post("/:id/stock", async (req, res, next) => {
 	}
 });
 
-router.put("/:id/stock/:itemId", async (req, res, next) => {
+router.put("/:id/stock/:itemId", requireAnyPermission("manage_inventory", "manage_technicians"), async (req, res, next) => {
 	try {
-		const { id, itemId } = req.params;
+		const { id, itemId } = req.params as { id: string; itemId: string };
 		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const result = await updateVehicleStockItem(id, itemId, req.body, orgId, context);
@@ -101,9 +102,9 @@ router.put("/:id/stock/:itemId", async (req, res, next) => {
 	}
 });
 
-router.delete("/:id/stock/:itemId", async (req, res, next) => {
+router.delete("/:id/stock/:itemId", requireAnyPermission("manage_inventory", "manage_technicians"), async (req, res, next) => {
 	try {
-		const { id, itemId } = req.params;
+		const { id, itemId } = req.params as { id: string; itemId: string };
 		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const result = await deleteVehicleStockItem(id, itemId, orgId, context);
@@ -117,9 +118,9 @@ router.delete("/:id/stock/:itemId", async (req, res, next) => {
 	}
 });
 
-router.post("/:id/stock/:itemId/restock-request", async (req, res, next) => {
+router.post("/:id/stock/:itemId/restock-request", requireAnyPermission("use_inventory", "manage_inventory"), async (req, res, next) => {
 	try {
-		const { id, itemId } = req.params;
+		const { id, itemId } = req.params as { id: string; itemId: string };
 		const technicianId = req.user?.uid ?? "";
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const result = await createRestockRequest(id, itemId, technicianId, req.body, orgId);

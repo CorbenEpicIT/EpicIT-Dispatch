@@ -27,6 +27,7 @@ import { useState, useRef, useEffect } from "react";
 import { formatCurrency } from "../../util/util";
 import { downloadQuotePdf } from "../../api/quotes";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function QuoteDetailPage() {
 	const { quoteId } = useParams<{ quoteId: string }>();
@@ -44,6 +45,12 @@ export default function QuoteDetailPage() {
 	const [isPdfLoading, setIsPdfLoading] = useState(false);
 	const [isSendModalOpen, setIsSendModalOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+
+	// permissions
+	const EDIT_QUOTE = usePermission("edit_quotes");
+	const DELETE_QUOTE = usePermission("delete_quotes");
+	const CREATE_JOB = usePermission("create_jobs");
+	//const SEND_QUOTE = usePermission(""); No dedicated send quote permission, will consider how to handle this later
 
 	useEffect(() => {
 		function handleClickOutside(event: MouseEvent) {
@@ -77,10 +84,11 @@ export default function QuoteDetailPage() {
 		"bg-zinc-500/20 text-text-tertiary border-border-strong/30";
 
 	const handleEdit = () => {
+		if (!EDIT_QUOTE) return;
 		setShowActionsMenu(false);
 		setIsEditModalOpen(true);
 	};
-	const handleSendToClient = () => {
+	const handleSendToClient = () => { // no specific permissions yet
 		setShowActionsMenu(false);
 		setIsSendModalOpen(true);
 	};
@@ -89,6 +97,7 @@ export default function QuoteDetailPage() {
 		await sendQuote({ id: quote.id, recipientEmail: email });
 	};
 	const handleMarkAsIssued = async () => {
+		if (!EDIT_QUOTE) return;
 		setShowActionsMenu(false);
 		try {
 			await updateQuote({ id: quote.id, data: { status: "Issued" } });
@@ -98,6 +107,7 @@ export default function QuoteDetailPage() {
 	};
 
 	const handleMarkAsApproved = async () => {
+		if (!EDIT_QUOTE) return;
 		setShowActionsMenu(false);
 		try {
 			await updateQuote({ id: quote.id, data: { status: "Approved" } });
@@ -106,6 +116,7 @@ export default function QuoteDetailPage() {
 		}
 	};
 	const handleConvertToJob = () => {
+		if (!CREATE_JOB) return;
 		setShowActionsMenu(false);
 		setIsConvertToJobModalOpen(true);
 	};
@@ -123,6 +134,7 @@ export default function QuoteDetailPage() {
 	};
 
 	const handleDelete = async () => {
+		if (!DELETE_QUOTE) return;
 		if (!deleteConfirm) {
 			setDeleteConfirm(true);
 			return;
@@ -176,23 +188,28 @@ export default function QuoteDetailPage() {
 						{showActionsMenu && (
 							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={handleEdit}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-									>
-										<Edit2 size={16} />{" "}
-										Edit Quote
-									</button>
-									{quote.status === "Draft" && (
 										<button
-											onClick={handleMarkAsIssued}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 text-primary-text hover:text-primary-text"
+											title={!EDIT_QUOTE ? "You don't have permission to perform this action" : undefined}
+											disabled={!EDIT_QUOTE}
+											onClick={handleEdit}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 										>
-											<CheckCircle size={16} />
-											Mark as Issued
+											<Edit2 size={16} />{" "}
+											Edit Quote
 										</button>
+									{quote.status === "Draft" && (
+											<button
+												title={!EDIT_QUOTE ? "You don't have permission to perform this action" : undefined}
+												disabled={!EDIT_QUOTE}
+												onClick={handleMarkAsIssued}
+												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 text-primary-text hover:text-primary-text disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<CheckCircle size={16} />
+												Mark as Issued
+											</button>
 									)}
 									{quote.status !== "Approved" && quote.status !== "Rejected" && quote.status !== "Revised" && quote.status !== "Expired" && quote.status !== "Cancelled" && (
+										// for now anyone with view access can send to client
 										<button
 											onClick={handleSendToClient}
 											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
@@ -204,7 +221,7 @@ export default function QuoteDetailPage() {
 									<button
 										onClick={handleDownloadPdf}
 										disabled={isPdfLoading}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										{isPdfLoading ? (
 											<Loader2 size={16} className="animate-spin" />
@@ -214,56 +231,63 @@ export default function QuoteDetailPage() {
 										{isPdfLoading ? "Generating..." : "Download PDF"}
 									</button>
 									{(quote.status === "Issued" || quote.status === "Sent" || quote.status === "Viewed") && (
+											<button
+												title={!EDIT_QUOTE ? "You don't have permission to perform this action" : undefined}
+												disabled={!EDIT_QUOTE}
+												onClick={handleMarkAsApproved}
+												className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-success-text hover:text-emerald-300 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<CheckCircle size={16} />
+												Mark as Approved
+											</button>
+									)}
 										<button
-											onClick={handleMarkAsApproved}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-success-text hover:text-emerald-300 transition-colors flex items-center gap-2"
+											title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+											onClick={
+												handleConvertToJob
+											}
+											disabled={
+												!!quote.job || !CREATE_JOB
+											}
+											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 										>
-											<CheckCircle size={16} />
-											Mark as Approved
+											<Briefcase
+												size={16}
+											/>
+											{quote.job
+												? "Job Already Created"
+												: "Convert to Job"}
+										</button>
+									{!DELETE_QUOTE && (
+										<div className="my-1 border-t border-border-subtle" />
+									)}
+									{DELETE_QUOTE && (
+										<button
+											onClick={
+												handleDelete
+											}
+											onMouseLeave={() =>
+												setDeleteConfirm(
+													false
+												)
+											}
+											disabled={
+												deleteQuote.isPending || !DELETE_QUOTE
+											}
+											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+												deleteConfirm
+													? "bg-red-600 hover:bg-red-700 text-white"
+													: "text-error-text hover:bg-surface hover:text-error-text"
+											} disabled:opacity-40 disabled:cursor-not-allowed`}
+										>
+											<Trash2 size={16} />
+											{deleteQuote.isPending
+												? "Deleting..."
+												: deleteConfirm
+													? "Click Again to Confirm"
+													: "Delete Quote"}
 										</button>
 									)}
-									<button
-										onClick={
-											handleConvertToJob
-										}
-										disabled={
-											!!quote.job
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-									>
-										<Briefcase
-											size={16}
-										/>
-										{quote.job
-											? "Job Already Created"
-											: "Convert to Job"}
-									</button>
-									<div className="my-1 border-t border-border-subtle" />
-									<button
-										onClick={
-											handleDelete
-										}
-										onMouseLeave={() =>
-											setDeleteConfirm(
-												false
-											)
-										}
-										disabled={
-											deleteQuote.isPending
-										}
-										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-											deleteConfirm
-												? "bg-red-600 hover:bg-red-700 text-white"
-												: "text-error-text hover:bg-surface hover:text-error-text"
-										} disabled:opacity-50 disabled:cursor-not-allowed`}
-									>
-										<Trash2 size={16} />
-										{deleteQuote.isPending
-											? "Deleting..."
-											: deleteConfirm
-												? "Click Again to Confirm"
-												: "Delete Quote"}
-									</button>
 								</div>
 							</div>
 						)}
@@ -675,16 +699,19 @@ export default function QuoteDetailPage() {
 								</div>
 							</div>
 							<div className="col-span-1 flex items-center justify-end">
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										handleConvertToJob();
-									}}
-									className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
-								>
-									<Briefcase size={12} />{" "}
-									Convert to Job
-								</button>
+									<button
+										title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+										disabled={!CREATE_JOB}
+										onClick={(e) => {
+											if (!CREATE_JOB) return;
+											e.stopPropagation();
+											handleConvertToJob();
+										}}
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+									>
+										<Briefcase size={12} />{" "}
+										Convert to Job
+									</button>
 							</div>
 						</div>
 					</div>

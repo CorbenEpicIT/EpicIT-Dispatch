@@ -16,6 +16,7 @@ import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function VehiclesPage() {
 	const navigate = useNavigate();
@@ -36,6 +37,9 @@ export default function VehiclesPage() {
 
 	const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
 
+	// Permissions
+	const MANAGE_VEHICLES = usePermission("manage_inventory"); // vechicles are grouped under inventory permissions 
+
 	const filteredVehicles = vehicles?.filter((v) => {
 		if (activeTerms.length === 0) return true;
 		return activeTerms.every((term) => {
@@ -51,13 +55,15 @@ export default function VehiclesPage() {
 	return (
 		<div className="text-white">
 			<PageHeader title="Vehicles">
-				<button
-					onClick={() => setIsCreateModalOpen(true)}
-					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-				>
-					<Plus size={15} />
-					New Vehicle
-				</button>
+				{MANAGE_VEHICLES && (
+					<button
+						onClick={() => setIsCreateModalOpen(true)}
+						className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+					>
+						<Plus size={15} />
+						New Vehicle
+					</button>
+				)}
 			</PageHeader>
 
 			<PageControls

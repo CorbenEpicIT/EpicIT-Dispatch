@@ -13,9 +13,11 @@ export interface Dispatcher {
   phone: string | null;
   title: string;
   description: string;
-  last_login: string; 
+  last_login: string;
   email_verified_at: Date | null;
   email_verification_token: string | null;
+  role_id: string | null;
+  organization_role: { id: string; name: string } | null;
 }
 
 export interface CreateDispatcherInput {
@@ -27,6 +29,7 @@ export interface CreateDispatcherInput {
   title: string;
   description: string;
   role?: string;
+  organization_role_id?: string | null;
 }
  
 export interface UpdateDispatcherInput {
@@ -57,6 +60,7 @@ export const CreateDispatcherSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
+	organization_role_id: z.string().uuid("Invalid role ID").nullable().optional(),
 });
  
 export const UpdateDispatcherSchema = z

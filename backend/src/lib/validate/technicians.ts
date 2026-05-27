@@ -9,6 +9,7 @@ export const createTechnicianSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
+	organization_role_id: z.string().uuid("Valid role ID is required").nullable().optional(),
 	status: technicianStatusEnum.default("Offline"),
 	coords: z.object({
 		lat: z.number(),

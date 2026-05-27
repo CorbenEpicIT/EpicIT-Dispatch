@@ -28,7 +28,8 @@ export default function LoginPage() {
 				if (parts.length === 3) {
 					const payload = JSON.parse(atob(parts[1]));
 					const orgTimezone = payload.organization_timezone ?? "America/Chicago";
-					login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+					const permissions: string[] = payload.permissions ?? [];
+					login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone, permissions);
 					if (result.forcePasswordReset && result.resetToken) {
 						navigate(`/reset-password?token=${result.resetToken}&role=${payload.role}`);
 					} else if (payload.role === "technician") {
@@ -57,7 +58,8 @@ export default function LoginPage() {
 			const payload = JSON.parse(atob(parts[1]));
 			if (!payload.uid) throw new Error("Token is missing user ID — contact support");
 			const orgTimezone = payload.organization_timezone ?? "America/Chicago";
-			login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone);
+			const permissions: string[] = payload.permissions ?? [];
+			login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone, permissions);
 			if (result.forcePasswordReset && result.resetToken) {
 				navigate(`/reset-password?token=${result.resetToken}&role=${payload.role}`);
 				return;

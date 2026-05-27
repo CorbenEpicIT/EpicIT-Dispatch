@@ -8,6 +8,7 @@ import {
 	useUpdateClientNoteMutation,
 	useDeleteClientNoteMutation,
 } from "../../hooks/useClients";
+import { usePermission } from "../../hooks/usePermission";
 
 interface NoteManagerProps {
 	clientId: string;
@@ -25,6 +26,9 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 	const createNote = useCreateClientNoteMutation();
 	const updateNote = useUpdateClientNoteMutation();
 	const deleteNote = useDeleteClientNoteMutation();
+
+	// permissions
+	const EDIT_NOTES = usePermission("edit_clients");
 
 	const resetForm = () => {
 		setContent("");
@@ -51,6 +55,7 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (!EDIT_NOTES) return;
 		setErrorMessage(null);
 
 		if (!content.trim()) return;
@@ -77,12 +82,14 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 	};
 
 	const handleEdit = (note: ClientNote) => {
+		if (!EDIT_NOTES) return;
 		setContent(note.content);
 		setEditingId(note.id);
 		setIsAdding(true);
 	};
 
 	const handleDelete = async (noteId: string) => {
+		if (!EDIT_NOTES) return;
 		if (deleteConfirmId !== noteId) {
 			setDeleteConfirmId(noteId);
 			return;
@@ -109,8 +116,13 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 			title="Notes"
 			headerAction={
 				<button
-					onClick={() => setIsAdding(true)}
-					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					disabled={!EDIT_NOTES}
+					title={!EDIT_NOTES ? "You don't have permission to perform this action" : ""}
+					onClick={() => {
+						if (!EDIT_NOTES) return;
+						setIsAdding(true)
+					}}
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Plus size={14} />
 					Add Note

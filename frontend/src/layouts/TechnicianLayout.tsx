@@ -5,6 +5,8 @@ import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X } f
 import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
 import type { TechnicianNotification } from "../types/notifications";
+import { usePermission, useAnyPermission } from "../hooks/usePermission";
+import { queryClient } from "../main";
 
 export default function TechnicianLayout() {
 	const { user, logout } = useAuthStore();
@@ -54,6 +56,7 @@ export default function TechnicianLayout() {
 		}
 		if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
 		logout();
+		queryClient.clear();
 		navigate("/login");
 	};
 
@@ -172,17 +175,19 @@ export default function TechnicianLayout() {
 					<House size={22} />
 					<span>Dashboard</span>
 				</NavLink>
-				<NavLink
-					to="/technician/visits"
-					className={({ isActive }) =>
-						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-							isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
-						}`
-					}
-				>
-					<ClipboardList size={22} />
-					<span>My Visits</span>
-				</NavLink>
+				{usePermission("view_visits") && (
+					<NavLink
+						to="/technician/visits"
+						className={({ isActive }) =>
+							`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
+								isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
+							}`
+						}
+					>
+						<ClipboardList size={22} />
+						<span>My Visits</span>
+					</NavLink>
+				)}
 				<NavLink
 					to="/technician/map"
 					className={({ isActive }) =>

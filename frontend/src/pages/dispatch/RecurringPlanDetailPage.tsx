@@ -65,6 +65,7 @@ import {
 } from "../../types/jobs";
 import { PriorityColors } from "../../types/common";
 import { formatCurrency } from "../../util/util";
+import { usePermission } from "../../hooks/usePermission";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -104,6 +105,10 @@ export default function RecurringPlanDetailPage() {
 	const generateMutation = useGenerateOccurrencesMutation();
 	const generateVisitMutation = useGenerateVisitFromOccurrenceMutation();
 	const generateInvoiceMutation = useGenerateInvoiceMutation();
+
+	// permissions
+	const MANAGE_RECURRING_PLANS = usePermission("manage_recurring_plans");
+	const CREATE_INVOICE = usePermission("create_invoices");
 
 	useEffect(() => {
 		const handleOutsideClick = (event: MouseEvent) => {
@@ -208,7 +213,7 @@ export default function RecurringPlanDetailPage() {
 	const pastHasPrev = pastPage > 0;
 
 	const handlePause = async () => {
-		if (!jobContainerId) return;
+		if (!jobContainerId || !MANAGE_RECURRING_PLANS) return;
 		try {
 			await pauseMutation.mutateAsync(jobContainerId);
 			setShowActionsMenu(false);
@@ -218,7 +223,7 @@ export default function RecurringPlanDetailPage() {
 	};
 
 	const handleResume = async () => {
-		if (!jobContainerId) return;
+		if (!jobContainerId || !MANAGE_RECURRING_PLANS) return;
 		try {
 			await resumeMutation.mutateAsync(jobContainerId);
 			setShowActionsMenu(false);
@@ -228,7 +233,7 @@ export default function RecurringPlanDetailPage() {
 	};
 
 	const handleCancel = async () => {
-		if (!jobContainerId) return;
+		if (!jobContainerId || !MANAGE_RECURRING_PLANS) return;
 		if (
 			window.confirm(
 				"Are you sure you want to cancel this recurring plan? All future planned occurrences will be cancelled."
@@ -260,6 +265,7 @@ export default function RecurringPlanDetailPage() {
 	};
 
 	const handleEdit = () => {
+		if (!MANAGE_RECURRING_PLANS) return;
 		setShowActionsMenu(false);
 		setIsEditModalOpen(true);
 	};
@@ -458,15 +464,17 @@ export default function RecurringPlanDetailPage() {
 								{occurrence.status ===
 									"planned" && (
 									<button
-										onClick={() =>
+										title={!MANAGE_RECURRING_PLANS ? "You don't have permission to perform this action" : "Generate visit from this occurrence"}
+										onClick={() => {
+											if (!MANAGE_RECURRING_PLANS) return;
 											handleGenerateVisit(
 												occurrence.id
 											)
-										}
+										}}
 										disabled={
-											generateVisitMutation.isPending
+											generateVisitMutation.isPending || !MANAGE_RECURRING_PLANS
 										}
-										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors disabled:opacity-50"
+										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-primary-hover hover:enabled:bg-blue-700 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Plus size={12} />
 										Create
@@ -650,19 +658,22 @@ export default function RecurringPlanDetailPage() {
 						{showActionsMenu && (
 							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={handleEdit}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-									>
-										<Edit2 size={16} />
-										Edit Plan
-									</button>
-
+										<button
+											title={!MANAGE_RECURRING_PLANS ? "You don't have permission to perform this action" : ""}
+											disabled={!MANAGE_RECURRING_PLANS}
+											onClick={handleEdit}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit2 size={16} />
+											Edit Plan
+										</button>
 									{plan.status ===
 										"Active" && (
 										<>
 											<button
+												title={!MANAGE_RECURRING_PLANS ? "You don't have permission to perform this action" : ""}
 												onClick={() => {
+													if (!MANAGE_RECURRING_PLANS) return;
 													setShowActionsMenu(
 														false
 													);
@@ -671,9 +682,9 @@ export default function RecurringPlanDetailPage() {
 													);
 												}}
 												disabled={
-													generateMutation.isPending
+													generateMutation.isPending || !MANAGE_RECURRING_PLANS
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<RefreshCw
 													size={
@@ -688,9 +699,9 @@ export default function RecurringPlanDetailPage() {
 													handlePause
 												}
 												disabled={
-													pauseMutation.isPending
+													pauseMutation.isPending || !MANAGE_RECURRING_PLANS
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<PauseCircle
 													size={
@@ -707,9 +718,10 @@ export default function RecurringPlanDetailPage() {
 										<>
 											<div className="border-t border-border-subtle my-1" />
 											<button
+												title={!CREATE_INVOICE ? "You don't have permission to perform this action" : ""}
 												onClick={handleGenerateInvoice}
-												disabled={generateInvoiceMutation.isPending}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												disabled={generateInvoiceMutation.isPending || !CREATE_INVOICE}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<ReceiptText size={16} />
 												{generateInvoiceMutation.isPending ? "Generating…" : "Generate Invoice"}
@@ -719,22 +731,23 @@ export default function RecurringPlanDetailPage() {
 
 									{plan.status ===
 										"Paused" && (
-										<button
-											onClick={
-												handleResume
-											}
-											disabled={
-												resumeMutation.isPending
-											}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
-										>
-											<PlayCircle
-												size={
-													16
+											<button
+												title={!MANAGE_RECURRING_PLANS ? "You don't have permission to perform this action" : ""}
+												onClick={
+													handleResume
 												}
-											/>
-											Resume Plan
-										</button>
+												disabled={
+													resumeMutation.isPending || !MANAGE_RECURRING_PLANS
+												}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<PlayCircle
+													size={
+														16
+													}
+												/>
+												Resume Plan
+											</button>
 									)}
 
 									{(plan.status ===
@@ -743,13 +756,14 @@ export default function RecurringPlanDetailPage() {
 											"Paused") && (
 										<>
 											<button
+												title={!MANAGE_RECURRING_PLANS ? "You don't have permission to perform this action" : ""}
 												onClick={
 													handleComplete
 												}
 												disabled={
-													completeMutation.isPending
+													completeMutation.isPending || !MANAGE_RECURRING_PLANS
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<CheckCircle2
 													size={
@@ -759,24 +773,28 @@ export default function RecurringPlanDetailPage() {
 												Complete
 												Plan
 											</button>
-											<div className="border-t border-border-subtle my-1" />
-											<button
-												onClick={
-													handleCancel
-												}
-												disabled={
-													cancelMutation.isPending
-												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-red-900/30 transition-colors flex items-center gap-2 text-error-text disabled:opacity-50"
-											>
-												<XCircle
-													size={
-														16
-													}
-												/>
-												Cancel
-												Plan
-											</button>
+											{!MANAGE_RECURRING_PLANS && (
+												<>
+													<div className="border-t border-border-subtle my-1" />
+													<button
+														onClick={
+															handleCancel
+														}
+														disabled={
+															cancelMutation.isPending || !MANAGE_RECURRING_PLANS
+														}
+														className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-red-900/30 transition-colors flex items-center gap-2 text-error-text disabled:opacity-40 disabled:cursor-not-allowed"
+													>
+														<XCircle
+															size={
+																16
+															}
+														/>
+														Cancel
+														Plan
+													</button>
+												</>
+											)}
 										</>
 									)}
 								</div>

@@ -11,10 +11,11 @@ import { getArrivalPerformance,
     getRevenueYTD,
     getUnscheduledRevenue
 } from '../controllers/reportsController.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.get("/overview", async (req, res, next) => {
+router.get("/overview", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
@@ -40,7 +41,7 @@ router.get("/overview", async (req, res, next) => {
 	}
 });
 
-router.get("/revenue-ytd", async (req, res, next) => {
+router.get("/revenue-ytd", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const { year } = req.query as {
@@ -57,7 +58,7 @@ router.get("/revenue-ytd", async (req, res, next) => {
 	}
 });
 
-router.get("/revenue-by-job-type", async (req, res, next) => {
+router.get("/revenue-by-job-type", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
@@ -83,7 +84,7 @@ router.get("/revenue-by-job-type", async (req, res, next) => {
 	}
 });
 
-router.get("/unscheduled-revenue", async (req, res, next) => {
+router.get("/unscheduled-revenue", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const unscheduledRevenue = await getUnscheduledRevenue(orgId);
@@ -93,7 +94,7 @@ router.get("/unscheduled-revenue", async (req, res, next) => {
 	}
 });
 
-router.get("/quote-pipeline", async (req, res, next) => {
+router.get("/quote-pipeline", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {
@@ -119,7 +120,7 @@ router.get("/quote-pipeline", async (req, res, next) => {
 	}
 });
 
-router.get("/arrival-performance", async (req, res, next) => {
+router.get("/arrival-performance", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const { startDate, endDate } = req.query as {

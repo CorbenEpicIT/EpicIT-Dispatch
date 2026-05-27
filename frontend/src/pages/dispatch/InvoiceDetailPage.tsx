@@ -49,6 +49,7 @@ import {
 	type CreateInvoicePaymentInput,
 } from "../../types/invoices";
 import { formatCurrency, formatDate } from "../../util/util";
+import { usePermission } from "../../hooks/usePermission";
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -157,6 +158,10 @@ export default function InvoiceDetailPage() {
 		note: "",
 	});
 
+	//permissions
+	const EDIT_INVOICE = usePermission("edit_invoices");
+	const DELETE_INVOICE = usePermission("delete_invoices");
+
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -176,6 +181,7 @@ export default function InvoiceDetailPage() {
 	// ── Handlers ──────────────────────────────────────────────────────────────
 
 	const handleDelete = async () => {
+		if (!DELETE_INVOICE) return;
 		if (!invoiceId || !invoice) return;
 		if (!deleteConfirm) {
 			setDeleteConfirm(true);
@@ -190,6 +196,7 @@ export default function InvoiceDetailPage() {
 	};
 
 	const handleStatusTransition = async (newStatus: InvoiceStatus) => {
+		if (!EDIT_INVOICE) return;
 		if (!invoiceId) return;
 		try {
 			await updateInvoice({ id: invoiceId, updates: { status: newStatus } });
@@ -199,6 +206,7 @@ export default function InvoiceDetailPage() {
 	};
 
 	const handleVoid = async () => {
+		if (!EDIT_INVOICE) return;
 		if (!invoiceId) return;
 		const reason = prompt("Enter a reason for voiding this invoice:");
 		if (!reason?.trim()) return;
@@ -217,6 +225,7 @@ export default function InvoiceDetailPage() {
 	}, []);
 
 	const openPaymentModal = useCallback(() => {
+		if (!EDIT_INVOICE) return;
 		resetPaymentForm();
 		setIsPaymentModalOpen(true);
 	}, [resetPaymentForm]);
@@ -343,22 +352,29 @@ export default function InvoiceDetailPage() {
 					</span>
 
 					{(invoice.status === "Draft" || invoice.status === "Issued") && (
-						<button
-							onClick={() => setIsSendModalOpen(true)}
-							className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-						>
-							<Send size={14} />
-							Send
-						</button>
+							<button
+								title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+								disabled={!EDIT_INVOICE}
+								onClick={() => {
+									if (!EDIT_INVOICE) return;
+									setIsSendModalOpen(true);
+								}}
+								className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Send size={14} />
+								Send
+							</button>
 					)}
 					{payable && (
-						<button
-							onClick={openPaymentModal}
-							className="flex items-center gap-2 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors"
-						>
-							<CreditCard size={14} />
-							Record Payment
-						</button>
+							<button
+								title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+								disabled={!EDIT_INVOICE}
+								onClick={openPaymentModal}
+								className="flex items-center gap-2 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<CreditCard size={14} />
+								Record Payment
+							</button>
 					)}
 
 					<div className="relative" ref={optionsMenuRef}>
@@ -376,29 +392,32 @@ export default function InvoiceDetailPage() {
 							<div className="absolute right-0 mt-2 w-60 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
 									{editable && (
-										<button
-											onClick={() => {
-												setIsEditModalOpen(
-													true
-												);
-												setIsOptionsMenuOpen(
-													false
-												);
-											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-										>
-											<Edit2
-												size={
-													16
-												}
-											/>
-											Edit Invoice
-										</button>
+											<button
+												title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+												disabled={!EDIT_INVOICE}
+												onClick={() => {
+													if (!EDIT_INVOICE) return;
+													setIsEditModalOpen(
+														true
+													);
+													setIsOptionsMenuOpen(
+														false
+													);
+												}}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Edit2
+													size={
+														16
+													}
+												/>
+												Edit Invoice
+											</button>
 									)}
 									<button
 										onClick={handleDownloadPdf}
 										disabled={isPdfLoading}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										{isPdfLoading ? (
 											<Loader2 size={16} className="animate-spin" />
@@ -408,50 +427,59 @@ export default function InvoiceDetailPage() {
 										{isPdfLoading ? "Generating..." : "Download PDF"}
 									</button>
 									{invoice.status === "Draft" && (
-										<button
-											onClick={() => {
-												handleStatusTransition("Issued");
-												setIsOptionsMenuOpen(false);
-											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-primary-text hover:text-primary-text transition-colors flex items-center gap-2"
-										>
-											<CheckCircle size={16} />
-											Mark as Issued
-										</button>
+											<button
+												title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+												disabled={!EDIT_INVOICE}
+												onClick={() => {
+													if (!EDIT_INVOICE) return;
+													handleStatusTransition("Issued");
+													setIsOptionsMenuOpen(false);
+												}}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface text-primary-text hover:text-primary-text transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<CheckCircle size={16} />
+												Mark as Issued
+											</button>
 									)}
 									{(invoice.status === "Sent" || invoice.status === "Viewed" || invoice.status === "PartiallyPaid") && (
-										<button
-											onClick={() => {
-												handleStatusTransition("Disputed");
-												setIsOptionsMenuOpen(false);
-											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-2"
-										>
-											<AlertTriangle size={16} />
-											Mark as Disputed
-										</button>
+											<button
+												title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+												disabled={!EDIT_INVOICE}
+												onClick={() => {
+													if (!EDIT_INVOICE) return;
+													handleStatusTransition("Disputed");
+													setIsOptionsMenuOpen(false);
+												}}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<AlertTriangle size={16} />
+												Mark as Disputed
+											</button>
 									)}
 									{invoice.status ===
 										"Disputed" && (
-										<button
-											onClick={() => {
-												handleStatusTransition(
-													"Sent"
-												);
-												setIsOptionsMenuOpen(
-													false
-												);
-											}}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-										>
-											<CheckCircle
-												size={
-													16
-												}
-											/>
-											Resolve
-											Dispute
-										</button>
+											<button
+												title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+												disabled={!EDIT_INVOICE}
+												onClick={() => {
+													if (!EDIT_INVOICE) return;
+													handleStatusTransition(
+														"Sent"
+													);
+													setIsOptionsMenuOpen(
+														false
+													);
+												}}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<CheckCircle
+													size={
+														16
+													}
+												/>
+												Resolve
+												Dispute
+											</button>
 									)}
 									{invoice.status !==
 										"Void" &&
@@ -460,13 +488,16 @@ export default function InvoiceDetailPage() {
 											<>
 												<div className="my-1 border-t border-border-subtle" />
 												<button
+													title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+													disabled={!EDIT_INVOICE}
 													onClick={() => {
+														if (!EDIT_INVOICE) return;
 														handleVoid();
 														setIsOptionsMenuOpen(
 															false
 														);
 													}}
-													className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-text-tertiary hover:text-text-secondary transition-colors flex items-center gap-2"
+													className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface text-text-tertiary hover:text-text-secondary transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 												>
 													<XCircle
 														size={
@@ -478,7 +509,7 @@ export default function InvoiceDetailPage() {
 												</button>
 											</>
 										)}
-									{deletable && (
+									{(deletable && DELETE_INVOICE) && (
 										<>
 											<div className="my-1 border-t border-border-subtle" />
 											<button
@@ -497,7 +528,7 @@ export default function InvoiceDetailPage() {
 													deleteConfirm
 														? "bg-red-600 hover:bg-red-700 text-white"
 														: "text-error-text hover:bg-surface hover:text-error-text"
-												} disabled:opacity-50 disabled:cursor-not-allowed`}
+												} disabled:opacity-40 disabled:cursor-not-allowed`}
 											>
 												<Trash2
 													size={
@@ -916,13 +947,15 @@ export default function InvoiceDetailPage() {
 						title="Payments"
 						headerAction={
 							payable ? (
-								<button
-									onClick={openPaymentModal}
-									className="flex items-center gap-1.5 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-xs font-medium transition-colors"
-								>
-									<Plus size={13} />
-									Record
-								</button>
+									<button
+										title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
+										disabled={!EDIT_INVOICE}
+										onClick={openPaymentModal}
+										className="flex items-center gap-1.5 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+									>
+										<Plus size={13} />
+										Record
+									</button>
 							) : undefined
 						}
 					>
@@ -1338,7 +1371,7 @@ export default function InvoiceDetailPage() {
 									!paymentForm.amount ||
 									isRecordingPayment
 								}
-								className="flex-1 px-4 py-2 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								className="flex-1 px-4 py-2 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								{isRecordingPayment
 									? "Recording..."

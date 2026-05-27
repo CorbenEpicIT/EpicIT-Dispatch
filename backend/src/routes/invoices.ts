@@ -6,6 +6,7 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import { getUserContext, getScopedDb } from '../lib/context.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 import { logActivity } from '../services/logger.js';
 import * as invoicesController from '../controllers/invoicesController.js';
 import { createInvoiceRecord } from '../services/invoiceService.js';
@@ -18,7 +19,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requirePermission("view_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const invoices = await invoicesController.getAllInvoices(orgId);
@@ -28,10 +29,11 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requirePermission("view_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const invoice = await invoicesController.getInvoiceById(req.params.id, orgId);
+        const id = req.params.id as string;
+        const invoice = await invoicesController.getInvoiceById(id, orgId);
         if (!invoice)
             return res
                 .status(404)
@@ -47,14 +49,15 @@ router.get("/:id", async (req, res, next) => {
     }
 });
 
-router.get("/:id/pdf", async (req, res, next) => {
+router.get("/:id/pdf", requirePermission("view_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const buffer = await generateInvoicePdf(req.params.id, orgId);
+        const id = req.params.id as string;
+        const buffer = await generateInvoicePdf(id, orgId);
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader(
             "Content-Disposition",
-            `attachment; filename="invoice-${req.params.id}.pdf"`,
+            `attachment; filename="invoice-${id}.pdf"`,
         );
         res.send(buffer);
     } catch (err: any) {
@@ -69,9 +72,9 @@ router.get("/:id/pdf", async (req, res, next) => {
 
 
 
-router.post("/:id/send", async (req, res, next) => {
+router.post("/:id/send", requirePermission("edit_invoices"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const recipientEmail: string | undefined = req.body?.recipient_email;
         if (!recipientEmail) {
             return res
@@ -105,7 +108,7 @@ router.post("/:id/send", async (req, res, next) => {
 
 // ── Pipeline: overlap check ───────────────────────────────────────────────────
 
-router.post("/overlap-check", async (req, res, next) => {
+router.post("/overlap-check", requirePermission("create_invoices"), async (req, res, next) => {
     try {
         const { visit_ids } = overlapCheckSchema.parse(req.body);
         const orgId = req.user!.organization_id as string;
@@ -123,7 +126,7 @@ router.post("/overlap-check", async (req, res, next) => {
 
 // ── Pipeline: generate invoice from recurring plan ────────────────────────────
 
-router.post("/generate", async (req, res, next) => {
+router.post("/generate", requirePermission("create_invoices"), async (req, res, next) => {
     try {
         const parsed = generateInvoiceSchema.parse(req.body);
         const orgId = req.user!.organization_id as string;
@@ -226,7 +229,7 @@ router.post("/generate", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("create_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -246,7 +249,7 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", requirePermission("edit_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -268,12 +271,12 @@ router.patch("/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("delete_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.deleteInvoice(
-            req.params.id,
+            req.params.id as string,
             orgId,
             context,
         );
@@ -291,10 +294,10 @@ router.delete("/:id", async (req, res, next) => {
 
 // ── Payments ─────────────────────────────────────────────────────────────────
 
-router.get("/:invoiceId/payments", async (req, res, next) => {
+router.get("/:invoiceId/payments", requirePermission("view_invoices"), async (req, res, next) => {
     try {
         const payments = await invoicesController.getInvoicePayments(
-            req.params.invoiceId, req.user!.organization_id as string,
+            req.params.invoiceId as string, req.user!.organization_id as string,
         );
         res.json(createSuccessResponse(payments, { count: payments.length }));
     } catch (err) {
@@ -302,12 +305,12 @@ router.get("/:invoiceId/payments", async (req, res, next) => {
     }
 });
 
-router.post("/:invoiceId/payments", async (req, res, next) => {
+router.post("/:invoiceId/payments", requirePermission("edit_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.insertInvoicePayment(
-            req.params.invoiceId,
+            req.params.invoiceId as string,
             req.body,
             orgId,
             context,
@@ -331,13 +334,14 @@ router.post("/:invoiceId/payments", async (req, res, next) => {
 
 router.delete(
     "/:invoiceId/payments/:paymentId",
+    requirePermission("edit_invoices"),
     async (req, res, next) => {
         try {
             const orgId = req.user!.organization_id as string;
             const context = getUserContext(req);
             const result = await invoicesController.deleteInvoicePayment(
-                req.params.invoiceId,
-                req.params.paymentId,
+                req.params.invoiceId as string,
+                req.params.paymentId as string,
                 orgId,
                 context,
             );
@@ -361,11 +365,11 @@ router.delete(
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
-router.get("/:invoiceId/notes", async (req, res, next) => {
+router.get("/:invoiceId/notes", requirePermission("view_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const notes = await invoicesController.getInvoiceNotes(
-            req.params.invoiceId,
+            req.params.invoiceId as string,
             orgId,
         );
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -374,12 +378,12 @@ router.get("/:invoiceId/notes", async (req, res, next) => {
     }
 });
 
-router.post("/:invoiceId/notes", async (req, res, next) => {
+router.post("/:invoiceId/notes", requirePermission("edit_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.insertInvoiceNote(
-            req.params.invoiceId,
+            req.params.invoiceId as string,
             req.body,
             orgId,
             context,
@@ -401,13 +405,13 @@ router.post("/:invoiceId/notes", async (req, res, next) => {
     }
 });
 
-router.put("/:invoiceId/notes/:noteId", async (req, res, next) => {
+router.put("/:invoiceId/notes/:noteId", requirePermission("edit_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.updateInvoiceNote(
-            req.params.invoiceId,
-            req.params.noteId,
+            req.params.invoiceId as string,
+            req.params.noteId as string,
             req.body,
             orgId,
             context,
@@ -429,13 +433,13 @@ router.put("/:invoiceId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.delete("/:invoiceId/notes/:noteId", async (req, res, next) => {
+router.delete("/:invoiceId/notes/:noteId", requirePermission("edit_invoices"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await invoicesController.deleteInvoiceNote(
-            req.params.invoiceId,
-            req.params.noteId,
+            req.params.invoiceId as string,
+            req.params.noteId as string,
             orgId,
             context,
         );

@@ -14,6 +14,7 @@ import ViewToggle from "../../components/ui/ViewToggle";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function ClientsPage() {
 	const navigate = useNavigate();
@@ -30,6 +31,9 @@ export default function ClientsPage() {
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+
+	//permissions
+	const CREATE_CLIENT = usePermission("create_clients");
 
 	useEffect(() => {
 		const handleOutsideClick = (e: MouseEvent) => {
@@ -71,13 +75,15 @@ export default function ClientsPage() {
 	return (
 		<div className="text-white">
 			<PageHeader title="Clients">
-				<button
-					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-					onClick={() => setIsModalOpen(true)}
-				>
-					<Plus size={16} className="text-white" />
-					New Client
-				</button>
+					<button
+						title={!CREATE_CLIENT ? "You don't have permission to perform this action" : undefined}
+						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						onClick={() => setIsModalOpen(true)}
+						disabled={!CREATE_CLIENT}
+					>
+						<Plus size={16} className="text-white" />
+						New Client
+					</button>
 				<div className="relative" ref={menuRef}>
 					<button
 						onClick={() => setShowActionsMenu(!showActionsMenu)}

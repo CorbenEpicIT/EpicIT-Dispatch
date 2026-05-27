@@ -21,10 +21,11 @@ import { getUserContext } from '../lib/context.js';
 import { getJobVisitsByTechId } from '../controllers/jobVisitsController.js';
 import { getSocket } from "../services/socketService.js";
 import { setTechnicianVehicle } from "../controllers/vehiclesController.js";
+import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requirePermission("view_technicians"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const technicians = await getAllTechnicians(orgId);
@@ -36,9 +37,9 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requirePermission("view_technicians"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const technician = await getTechnicianById(id, orgId);
 
@@ -59,7 +60,7 @@ router.get("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("manage_technicians"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -87,9 +88,9 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.post("/:id/ping", async (req, res, next) => {
+router.post("/:id/ping", requirePermission("manage_technicians"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
 
@@ -132,9 +133,9 @@ router.post("/:id/ping", async (req, res, next) => {
     }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requirePermission("manage_technicians"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateTechnician(id, req.body, orgId, context);
@@ -161,9 +162,9 @@ router.put("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/:id/reset-password", async (req, res, next) => {
+router.post("/:id/reset-password", requirePermission("manage_technicians"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const user = await getTechnicianById(id, orgId);
         if (!user) {
@@ -195,9 +196,9 @@ router.post("/:id/reset-password", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("manage_technicians"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteTechnician(id, orgId, context);
@@ -220,9 +221,9 @@ router.delete("/:id", async (req, res, next) => {
 });
 
 // Get job visits for a technician
-router.get("/:techId/visits", async (req, res, next) => {
+router.get("/:techId/visits", requireAnyPermission("view_technicians", "view_visits"), async (req, res, next) => {
     try {
-        const { techId } = req.params;
+        const techId = req.params.techId as string;
         const orgId = req.user!.organization_id as string;
         const visits = await getJobVisitsByTechId(techId, orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
@@ -231,9 +232,9 @@ router.get("/:techId/visits", async (req, res, next) => {
     }
 });
 
-router.put("/:id/vehicle", async (req, res, next) => {
+router.put("/:id/vehicle", requirePermission("manage_technicians"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const { vehicle_id } = req.body as { vehicle_id: string | null };
 		const result = await setTechnicianVehicle(id, vehicle_id ?? null, orgId);
@@ -250,7 +251,7 @@ router.put("/:id/vehicle", async (req, res, next) => {
 // Shift start (Offline → Available) or return from break
 router.post("/:id/available", async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const tech = await getTechnicianById(id, orgId);
 		if (!tech) {
@@ -289,7 +290,7 @@ router.post("/:id/available", async (req, res, next) => {
 // Shift end → Offline
 router.post("/:id/offline", async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await goOffline(id, orgId);
 		if (result.err) {
@@ -313,7 +314,7 @@ router.post("/:id/offline", async (req, res, next) => {
 // Take a break
 router.post("/:id/break", async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const { reason } = req.body as { reason?: string };
 		if (!reason) {
@@ -342,7 +343,7 @@ router.post("/:id/break", async (req, res, next) => {
 // Tech explicitly clears WrappingUp → Available
 router.post("/:id/done", async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		import("../services/wrappingUpTimer.js").then(({ cancelWrappingUpTimer }) => {
 			cancelWrappingUpTimer(id);

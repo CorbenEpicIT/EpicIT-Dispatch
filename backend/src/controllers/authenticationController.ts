@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import bcrypt from "bcryptjs";
+import { getAllPermissions } from "../lib/permissionCatalogs.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 import {
 	generateAccessToken,
@@ -45,7 +46,7 @@ export const login = async (
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
 			return createErrorResponse(
-				"INVALID_CREDENTIALS",
+				ErrorCodes.INVALID_CREDENTIALS,
 				"Invalid credentials",
 			);
 		}
@@ -195,7 +196,24 @@ export const issueAuthTokens = async (
 			});
 			orgTimezone = org?.timezone ?? null;
 		}
-		const accessToken = generateAccessToken(user, role, orgTimezone);
+
+		let rolePermissions: string[];
+		if (role === "admin") {
+			rolePermissions = getAllPermissions("dispatcher");
+		} else {
+			const roleId = (user as { organization_role_id?: string | null }).organization_role_id;
+			if (roleId) {
+				const orgRole = await db.organization_role.findUnique({
+					where: { id: roleId },
+					select: { permissions: true },
+				});
+				rolePermissions = (orgRole?.permissions as string[]) ?? [];
+			} else {
+				rolePermissions = [];
+			}
+		}
+
+		const accessToken = generateAccessToken(user, role, orgTimezone, rolePermissions);
 		const refreshToken = await generateRefreshToken(user, role);
 		// set refresh token in httpOnly cookie
 		res.cookie("refreshToken", refreshToken, {

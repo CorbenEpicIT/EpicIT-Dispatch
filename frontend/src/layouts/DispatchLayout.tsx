@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
+import { usePermission, useAnyPermission } from "../hooks/usePermission";
+import { queryClient } from "../main";
 
 export default function DispatchLayout() {
 	const { logout } = useAuthStore();
@@ -52,6 +54,7 @@ export default function DispatchLayout() {
 
 	const handleLogout = () => {
 		logout();
+		queryClient.clear();
 		navigate("/login");
 	};
 
@@ -82,83 +85,92 @@ export default function DispatchLayout() {
 						icon={<Calendar size={ICON_SIZE} />}
 						label="Schedule"
 					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/requests"
-						icon={<Phone size={ICON_SIZE} />}
-						label="Requests"
-					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/quotes"
-						icon={<FileText size={ICON_SIZE} />}
-						label="Quotes"
-					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/jobs"
-						icon={<Briefcase size={ICON_SIZE} />}
-						label="Jobs"
-					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/invoices"
-						icon={<ReceiptText size={ICON_SIZE} />}
-						label="Invoices"
-					/>
-
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/clients"
-						icon={<Users size={ICON_SIZE} />}
-						label="Clients"
-					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/inventory"
-						icon={<Package size={ICON_SIZE} />}
-						label="Inventory"
-					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/vehicles"
-						icon={<Truck size={ICON_SIZE} />}
-						label="Vehicles"
-					/>
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/technicians"
-						icon={<Wrench size={ICON_SIZE} />}
-						label="Technicians"
-					/>
+					{usePermission("view_requests") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/requests"
+							icon={<Phone size={ICON_SIZE} />}
+							label="Requests"
+						/>
+					)}
+					{usePermission("view_quotes") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/quotes"
+							icon={<FileText size={ICON_SIZE} />}
+							label="Quotes"
+						/>
+					)}
+					{usePermission("view_jobs") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/jobs"
+							icon={<Briefcase size={ICON_SIZE} />}
+							label="Jobs"
+						/>
+					)}
+					{usePermission("view_invoices") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/invoices"
+							icon={<ReceiptText size={ICON_SIZE} />}
+							label="Invoices"
+						/>
+					)}
+					{usePermission("view_clients") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/clients"
+							icon={<Users size={ICON_SIZE} />}
+							label="Clients"
+						/>
+					)}
+					{usePermission("view_inventory") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/inventory"
+							icon={<Package size={ICON_SIZE} />}
+							label="Inventory"
+						/>
+					)}
+					{useAnyPermission(["view_inventory", "manage_technicians"]) && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/vehicles"
+							icon={<Truck size={ICON_SIZE} />}
+							label="Vehicles"
+						/>
+					)}
+					{usePermission("view_technicians") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/technicians"
+							icon={<Wrench size={ICON_SIZE} />}
+							label="Technicians"
+						/>
+					)}
 					<SideNavItem
 						expanded={expanded}
 						to="/dispatch/map"
 						icon={<Map size={ICON_SIZE} />}
 						label="Map"
 					/>
-
-					<SideNavItem
-						expanded={expanded}
-						to="/dispatch/reporting"
-						icon={<ChartColumnDecreasing size={ICON_SIZE} />}
-						label="Reporting"
-					/>
-					{
-						/* Admin page only visible to dispatch role */
-						user?.role === "admin" && (
-							<SideNavItem
-								expanded={expanded}
-								to="/dispatch/admin"
-								icon={
-									<ShieldUser
-										size={ICON_SIZE}
-									/>
-								}
-								label="Admin"
-							/>
-						)
-					}
+					{usePermission("view_reports") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/reporting"
+							icon={<ChartColumnDecreasing size={ICON_SIZE} />}
+							label="Reporting"
+						/>
+					)}
+					{(user?.role === "admin" || useAnyPermission(["view_admin", "manage_organization", "manage_roles"])) && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/admin"
+							icon={<ShieldUser size={ICON_SIZE} />}
+							label="Admin"
+						/>
+					)}
 				</nav>
 			</aside>
 

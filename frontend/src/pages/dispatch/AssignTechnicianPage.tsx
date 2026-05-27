@@ -26,6 +26,7 @@ import type { Job, JobVisit, ArrivalConstraint, FinishConstraint } from "../../t
 import type { Priority } from "../../types/common";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function AssignTechnicianPage() {
 	const { technicianId } = useParams<{ technicianId: string }>();
@@ -40,6 +41,9 @@ export default function AssignTechnicianPage() {
 	const [expandedVisits, setExpandedVisits] = useState<Set<string>>(new Set());
 	const [isCreatingVisit, setIsCreatingVisit] = useState(false);
 	const [creatingVisitForJob, setCreatingVisitForJob] = useState<Job | null>(null);
+
+	//permissions 
+	const CREATE_JOB = usePermission("create_jobs");
 
 	const isVisitAssigned = (visit: JobVisit) => {
 		return visit.visit_techs?.some((vt) => vt.tech_id === technicianId);
@@ -119,6 +123,7 @@ export default function AssignTechnicianPage() {
 	}, [expandedJobs, expandedVisits, layout]);
 
 	const toggleJob = (jobId: string) => {
+		if (!CREATE_JOB) return;
 		setExpandedJobs((prev) => {
 			const next = new Set(prev);
 			if (next.has(jobId)) {
@@ -131,6 +136,7 @@ export default function AssignTechnicianPage() {
 	};
 
 	const toggleVisit = (visitId: string) => {
+		if (!CREATE_JOB) return;
 		setExpandedVisits((prev) => {
 			const next = new Set(prev);
 			if (next.has(visitId)) {
@@ -143,6 +149,7 @@ export default function AssignTechnicianPage() {
 	};
 
 	const toggleVisitSelection = async (visit: JobVisit) => {
+		if (!CREATE_JOB) return;
 		const isAlreadyAssigned = visit.visit_techs?.some(
 			(vt) => vt.tech_id === technicianId
 		);
@@ -176,6 +183,7 @@ export default function AssignTechnicianPage() {
 	};
 
 	const handleCreateVisit = (job: Job) => {
+		if (!CREATE_JOB) return;
 		setCreatingVisitForJob(job);
 		setIsCreatingVisit(true);
 	};
@@ -491,12 +499,15 @@ export default function AssignTechnicianPage() {
 											</button>
 
 											<button
-												onClick={() =>
+												disabled={!CREATE_JOB}
+												title ={!CREATE_JOB ? "You don't have permission to perform this action" : ""}
+												onClick={() => {
+													if (!CREATE_JOB) return;
 													handleCreateVisit(
 														job
 													)
-												}
-												className="flex items-center gap-1 px-2 py-1 bg-primary-hover hover:bg-blue-700 text-white text-xs rounded transition-colors"
+												}}
+												className="flex items-center gap-1 px-2 py-1 bg-primary-hover hover:enabled:bg-blue-700 text-white text-xs rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<Plus
 													size={

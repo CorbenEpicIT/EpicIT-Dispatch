@@ -26,6 +26,7 @@ import {
 	type JobStatus,
 	type VisitStatus,
 } from "../../types/jobs";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function TechnicianDetailsPage() {
 	const { technicianId } = useParams<{ technicianId: string }>();
@@ -48,6 +49,9 @@ export default function TechnicianDetailsPage() {
 
 	const { data: technician, isLoading, error } = useTechnicianByIdQuery(technicianId);
 
+	// permissions
+	const MANAGE_TECHNICIANS = usePermission("manage_technicians");
+
 	useEffect(() => {
 		const handleClickOutside = (e: MouseEvent) => {
 			if (
@@ -63,6 +67,7 @@ export default function TechnicianDetailsPage() {
 	}, []);
 
 	const handleDelete = async () => {
+		if (!MANAGE_TECHNICIANS) return;
 		if (!deleteConfirm) {
 			setDeleteConfirm(true);
 			return;
@@ -207,49 +212,57 @@ export default function TechnicianDetailsPage() {
 						{isOptionsMenuOpen && (
 							<div className="absolute right-0 mt-2 w-52 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={() => {
-											setIsEditModalOpen(
-												true
-											);
-											setIsOptionsMenuOpen(
-												false
-											);
-											setDeleteConfirm(
-												false
-											);
-										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 text-text-primary"
-									>
-										<Edit size={14} />
-										Edit Technician
-									</button>
-									<div className="my-1 border-t border-border-subtle" />
-									<button
-										onClick={
-											handleDelete
-										}
-										onMouseLeave={() =>
-											setDeleteConfirm(
-												false
-											)
-										}
-										disabled={
-											deleteTechnician.isPending
-										}
-										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-											deleteConfirm
-												? "bg-red-600 hover:bg-red-700 text-white"
-												: "text-error-text hover:bg-surface hover:text-error-text"
-										} disabled:opacity-50 disabled:cursor-not-allowed`}
-									>
-										<Trash2 size={14} />
-										{deleteTechnician.isPending
-											? "Deleting..."
-											: deleteConfirm
-												? "Click Again to Confirm"
-												: "Delete Technician"}
-									</button>
+										<button
+											title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
+											disabled={!MANAGE_TECHNICIANS}
+											onClick={() => {
+												if (!MANAGE_TECHNICIANS) return;
+												setIsEditModalOpen(
+													true
+												);
+												setIsOptionsMenuOpen(
+													false
+												);
+												setDeleteConfirm(
+													false
+												);
+											}}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit size={14} />
+											Edit Technician
+										</button>
+									
+									{!MANAGE_TECHNICIANS && (
+									  <>
+										<div className="my-1 border-t border-border-subtle" />
+										<button
+											onClick={
+												handleDelete
+											}
+											onMouseLeave={() =>
+												setDeleteConfirm(
+													false
+												)
+											}
+											disabled={
+												deleteTechnician.isPending || !MANAGE_TECHNICIANS
+											}
+											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+												deleteConfirm
+													? "bg-red-600 hover:bg-red-700 text-white"
+													: "text-error-text hover:bg-surface hover:text-error-text"
+											} disabled:opacity-40 disabled:cursor-not-allowed`}
+										>
+											<Trash2 size={14} />
+											{deleteTechnician.isPending
+												? "Deleting..."
+												: deleteConfirm
+													? "Click Again to Confirm"
+													: "Delete Technician"}
+										</button>
+									  </>
+									)}
 								</div>
 							</div>
 						)}

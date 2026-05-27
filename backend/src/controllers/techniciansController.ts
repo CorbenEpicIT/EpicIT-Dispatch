@@ -29,6 +29,7 @@ export const getAllTechnicians = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
 	return await sdb.technician.findMany({
 		include: {
+			organization_role: { select: { id: true, name: true } },
 			visit_techs: {
 				include: {
 					visit: {

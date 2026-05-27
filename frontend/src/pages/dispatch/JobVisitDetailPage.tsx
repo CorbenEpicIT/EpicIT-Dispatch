@@ -35,6 +35,7 @@ import CreateInvoice from "../../components/invoices/CreateInvoice";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
 import { formatCurrency, formatDate, formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function JobVisitDetailPage() {
 	const { jobId, visitId } = useParams<{ jobId: string; visitId: string }>();
@@ -58,6 +59,10 @@ export default function JobVisitDetailPage() {
 	const delayVisitMutation = useDelayJobVisitMutation();
 
 	const isLoading = visitLoading || jobLoading;
+
+	// permissions
+	const EDIT_VISIT = usePermission("edit_jobs");
+	const CREATE_INVOICE = usePermission("create_invoices");
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -287,52 +292,56 @@ export default function JobVisitDetailPage() {
 						{isOptionsMenuOpen && (
 							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={() => {
-											setIsEditModalOpen(
-												true
-											);
-											setIsOptionsMenuOpen(
-												false
-											);
-										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2"
-									>
-										<Edit2 size={16} />
-										Edit Visit
-									</button>
-
+										<button
+											title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+											disabled={!EDIT_VISIT}
+											onClick={() => {
+												if (!EDIT_VISIT) return;
+												setIsEditModalOpen(
+													true
+												);
+												setIsOptionsMenuOpen(
+													false
+												);
+											}}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit2 size={16} />
+											Edit Visit
+										</button>
 									{visit.status ===
 										"Scheduled" && (
-										<button
-											onClick={
-												handleStartVisit
-											}
-											disabled={
-												startVisitMutation.isPending
-											}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
-										>
-											<Play
-												size={
-													16
+											<button
+												title ={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+												onClick={
+													handleStartVisit
 												}
-											/>
-											Start Visit
-										</button>
+												disabled={
+													startVisitMutation.isPending || !EDIT_VISIT
+												}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Play
+													size={
+														16
+													}
+												/>
+												Start Visit
+											</button>
 									)}
 
 									{visit.status ===
 										"InProgress" && (
 										<>
 											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
 												onClick={
 													handlePauseVisit
 												}
 												disabled={
-													pauseVisitMutation.isPending
+													pauseVisitMutation.isPending || !EDIT_VISIT
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<Pause
 													size={
@@ -347,9 +356,9 @@ export default function JobVisitDetailPage() {
 													handleCompleteVisit
 												}
 												disabled={
-													completeVisitMutation.isPending
+													completeVisitMutation.isPending || !EDIT_VISIT
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<CheckCircle2
 													size={
@@ -364,35 +373,39 @@ export default function JobVisitDetailPage() {
 
 									{visit.status ===
 										"Paused" && (
-										<button
-											onClick={
-												handleResumeVisit
-											}
-											disabled={
-												resumeVisitMutation.isPending
-											}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
-										>
-											<Play
-												size={
-													16
+										<>
+											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+												onClick={
+													handleResumeVisit
 												}
-											/>
-											Resume Visit
-										</button>
+												disabled={
+													resumeVisitMutation.isPending || !EDIT_VISIT
+												}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Play
+													size={
+														16
+													}
+												/>
+												Resume Visit
+											</button>
+										</>
 									)}
 
 									{(visit.status === "Scheduled" ||
 										visit.status === "Driving" ||
 										visit.status === "OnSite") && (
-										<button
-											onClick={handleDelayVisit}
-											disabled={delayVisitMutation.isPending}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50 text-warning-text"
-										>
-											<Clock size={16} />
-											Mark Delayed
-										</button>
+											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+												onClick={handleDelayVisit}
+												disabled={delayVisitMutation.isPending || !EDIT_VISIT}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Clock size={16} />
+												Mark Delayed
+											</button>
 									)}
 
 									{(visit.status === "Scheduled" ||
@@ -402,13 +415,14 @@ export default function JobVisitDetailPage() {
 										<>
 											<div className="border-t border-border-subtle my-1" />
 											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
 												onClick={
 													handleCancelVisit
 												}
 												disabled={
-													cancelVisitMutation.isPending
+													cancelVisitMutation.isPending || !EDIT_VISIT
 												}
-												className="w-full px-4 py-2 text-left text-sm text-error-text hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm text-error-text hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<XCircle
 													size={
@@ -743,16 +757,17 @@ export default function JobVisitDetailPage() {
 				{/* Linked Invoices */}
 				<Card
 					title="Linked Invoices" className="h-full"
-				headerAction={
-					<button
-						onClick={() => setIsCreateInvoiceOpen(true)}
-						className="flex items-center gap-1 text-xs text-primary-text hover:text-primary-text transition-colors"
-					>
-						<Plus size={12} />
-						Create Invoice
-					</button>
-				}
-			>
+					headerAction={
+						CREATE_INVOICE && (
+						<button
+							onClick={() => setIsCreateInvoiceOpen(true)}
+							className="flex items-center gap-1 text-xs text-primary-text hover:text-primary-text transition-colors"
+						>
+							<Plus size={12} />
+							Create Invoice
+						</button>
+					)}
+				>
 				{(() => {
 					const committedRefs = visit.invoice_visits?.filter(
 						(iv) => !["Draft", "Void"].includes(iv.invoice.status)
