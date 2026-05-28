@@ -8,6 +8,10 @@ export const createClientSchema = z.object({
 		lon: z.number(),
 	}),
 	is_active: z.boolean().optional().default(true),
+	qb_customer_id: z.string().optional(),
+	qb_contact_name: z.string().optional(),
+	qb_contact_email: z.string().optional(),
+	qb_contact_phone: z.string().optional(),
 });
 
 export const updateClientSchema = z

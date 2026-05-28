@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { isQBConnected, pushInvoice, pushPayment } from "../services/quickbooksService.js";
 import {
 	createInvoiceSchema,
 	updateInvoiceSchema,
@@ -112,6 +113,17 @@ export const insertInvoice = async (req: Request, organizationId: string, contex
 						user_agent: context?.userAgent,
 					});
 				}
+				// Fire-and-forget QB sync — failure must not block invoice creation
+				if (created) {
+					isQBConnected(organizationId)
+						.then((connected) => (connected ? pushInvoice(created!.id, organizationId) : null))
+						.catch(() => {
+							db.invoice
+								.update({ where: { id: created!.id }, data: { qb_sync_status: "failed" } })
+								.catch(() => {});
+						});
+				}
+
 				break; // success — exit retry loop
 			} catch (e) {
 				// Retry on invoice_number unique constraint collision
@@ -360,6 +372,13 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 							parsed.total - Number(existing.amount_paid),
 						),
 					}),
+					...(parsed.qb_sync_status !== undefined ? 
+					{
+						qb_sync_status: parsed.qb_sync_status
+					} : 
+					{
+						qb_sync_status: "not_synced"
+					}),
 				},
 				include: invoiceInclude,
 			});
@@ -502,6 +521,13 @@ export const insertInvoicePayment = async (
 
 			return payment;
 		});
+
+		// Fire-and-forget QB payment sync
+		isQBConnected(organizationId)
+			.then((connected) =>
+				connected ? pushPayment(invoiceId, organizationId, Number(parsed.amount)) : null,
+			)
+			.catch(() => {});
 
 		await logActivity({
 			event_type: "invoice_payment.created",

@@ -10,7 +10,10 @@ interface ClientCardProps {
 function capitalizeWords(str: string) {
 	return str
 		.toLowerCase()
-		.replace(/\b\w/g, (char) => char.toUpperCase());
+		.replace(/(^|[\s-/])([a-z])/g, (_, separator, letter) => {
+			return separator + letter.toUpperCase();
+		});
+
 }
 
 function formatLastActivity(raw: unknown) {

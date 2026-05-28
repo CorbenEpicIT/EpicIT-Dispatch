@@ -459,7 +459,7 @@ router.delete(
 
 router.get("/clients/:clientId/notes", requirePermission("view_clients"), async (req, res, next) => {
     try {
-        const clientId = req.params.id as string;
+        const clientId = req.params.clientId as string;
         const orgId = req.user!.organization_id as string;
         const notes = await getClientNotes(clientId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -490,7 +490,7 @@ router.get("/clients/:clientId/notes/:noteId", requirePermission("view_clients")
 
 router.post("/clients/:clientId/notes", requirePermission("edit_clients"), async (req, res, next) => {
     try {
-        const clientId = req.params.id as string;
+        const clientId = req.params.clientId as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await insertNote(clientId, req.body, orgId, context);

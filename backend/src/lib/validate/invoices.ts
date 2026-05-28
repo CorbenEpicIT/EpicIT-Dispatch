@@ -1,5 +1,6 @@
 import z from "zod";
 import { baseLineItemSchema, discountTypeEnum, validateDiscountRange } from "./shared.js";
+import { qb_sync_status } from "../../../generated/prisma/enums.js";
 
 // ============================================================================
 // ENUMS
@@ -14,6 +15,12 @@ const invoiceStatusEnum = z.enum([
 	"Paid",
 	"Disputed",
 	"Void",
+]);
+
+const invoiceQBSyncStatus = z.enum([
+	"not_synced",
+	"synced",
+	"failed",
 ]);
 
 // ============================================================================
@@ -144,6 +151,9 @@ export const updateInvoiceSchema = z
 				}),
 			)
 			.optional(),
+
+		//QuickBooks sync status
+		qb_sync_status: invoiceQBSyncStatus.optional(),
 	})
 	.superRefine(validateDiscountRange);
 

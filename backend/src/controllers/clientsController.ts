@@ -6,6 +6,7 @@ import {
 } from "../lib/validate/clients.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
+import { insertContact } from "./contactsController.js"
 
 const buildClientInclude = () => ({
 	jobs: {
@@ -114,6 +115,17 @@ export const insertClient = async (
 				},
 			});
 
+			// adds qb relation
+			if (parsed.qb_customer_id) {
+				await tx.client_external_mapping.create({
+					data: {
+						client_id: client.id,
+						provider: "quickbooks",
+						external_id: parsed.qb_customer_id,
+					},
+				});
+			}
+
 			await logActivity({
 				event_type: "client.created",
 				action: "created",
@@ -140,6 +152,30 @@ export const insertClient = async (
 				include: buildClientInclude(),
 			});
 		});
+		
+		// attempt to create contact if the qb info exists
+		if (parsed.qb_contact_email || parsed.qb_contact_phone) {
+			const contactResult = await insertContact({
+				name: parsed.qb_contact_name || parsed.name,
+				email: parsed.qb_contact_email,
+				phone: parsed.qb_contact_phone,
+				client_id: created!.id,
+				is_primary: true,
+				relationship: "contact",
+			}, organizationId);
+
+			// contact already exists in this org — link it instead of failing
+			if (contactResult.existingContact) {
+				await sdb.client_contact.create({
+					data: {
+						client_id: created!.id,
+						contact_id: contactResult.existingContact.id,
+						is_primary: true,
+						relationship: "contact",
+					},
+				}).catch(() => {});  // ignore if already linked to this client
+			}
+		}
 
 		return { err: "", item: created };
 	} catch (e) {

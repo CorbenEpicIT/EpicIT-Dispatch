@@ -61,6 +61,34 @@ export interface Client {
 	notes: ClientNoteSummary[];
 }
 
+export interface QBCustomerLite {
+  Id: string;
+  DisplayName: string;
+
+  PrimaryEmailAddr?: {
+    Address: string;
+  };
+
+  PrimaryPhone? : { FreeFormNumber?: string }
+  GivenName?: string
+  FamilyName?: string
+
+  BillAddr?: {
+    Line1?: string;
+    City?: string;
+    CountrySubDivisionCode?: string;
+    PostalCode?: string;
+    Country?: string;
+  };
+
+  Active?: boolean;
+
+  MetaData?: {
+    CreateTime?: string;
+    LastUpdatedTime?: string;
+  };
+}
+
 export interface ClientSummary {
 	id: string;
 	name: string;
@@ -91,6 +119,10 @@ export interface CreateClientInput {
 	address: string;
 	coords: Coordinates;
 	is_active?: boolean;
+	qb_customer_id?: string;
+	qb_contact_name?: string
+	qb_contact_email?: string
+	qb_contact_phone?: string
 }
 
 export interface UpdateClientInput {
@@ -257,3 +289,37 @@ export const CreateClientNoteSchema = z.object({
 export const UpdateClientNoteSchema = z.object({
 	content: z.string().min(1, "Note content is required"),
 });
+
+// ============================================================================
+// Conversion Function
+// ============================================================================
+
+export function mapQbCustomerToClient(qb: QBCustomerLite): Client {
+  return {
+    id: qb.Id,
+    name: qb.DisplayName,
+
+    address: qb.BillAddr
+      ? `${qb.BillAddr.Line1 ?? ""}, ${qb.BillAddr.City ?? ""}, ${qb.BillAddr.CountrySubDivisionCode ?? ""} ${qb.BillAddr.PostalCode ?? ""}`.trim()
+      : "",
+
+    coords: {
+      lat: 0, // QuickBooks does NOT provide coordinates
+      lon: 0,
+    },
+
+    is_active: qb.Active ?? true,
+    is_tax_exempt: false, // QuickBooks doesn't reliably model this in Customer
+    tax_group_id: null,
+
+    created_at: qb.MetaData?.CreateTime ?? new Date().toISOString(),
+    last_activity: qb.MetaData?.LastUpdatedTime ?? new Date().toISOString(),
+
+    jobs: [],
+    quotes: [],
+    requests: [],
+    recurring_plans: [],
+    contacts: [],
+    notes: [],
+  };
+}

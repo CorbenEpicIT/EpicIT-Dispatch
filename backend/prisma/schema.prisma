@@ -207,6 +207,12 @@ enum DispatcherRole {
   admin
 }
 
+/* QuickBooks sync status for invoices */
+enum qb_sync_status {
+  not_synced
+  synced
+  failed
+}
 
 model organization {
   id        String  @id @default(uuid())
@@ -222,6 +228,12 @@ model organization {
   wrapping_up_minutes Int     @default(15)
 
   logo_key String?
+
+  // quickbooks integration fields
+  qb_realm_id         String?
+  qb_access_token     String?
+  qb_refresh_token    String?
+  qb_token_expires_at DateTime? 
   
   clients               client[]
   contacts              contact[]
@@ -335,11 +347,26 @@ model client {
   notes           client_note[]
   recurring_plans recurring_plan[]
   invoices        invoice[]
+  client_external_mapping client_external_mapping[]
 
   @@index([is_active])
   @@index([is_tax_exempt])
   @@index([created_at])
   @@index([organization_id])
+}
+
+model client_external_mapping {
+  id          String @id @default(uuid())
+
+  client_id   String 
+  provider    String
+
+  external_id String
+
+  client      client @relation(fields: [client_id], references: [id])
+
+  @@unique([provider, external_id])
+  @@index([client_id])
 }
 
 model client_note {
@@ -1319,6 +1346,16 @@ model log {
   @@index([organization_id])
 }
 
+model external_sync_log {
+  id            String   @id @default(uuid())
+  provider      String
+  entity_type   String   // "customer", "invoice"
+  external_id   String
+  action        String   // "upsert", "delete"
+  payload       Json
+  created_at    DateTime @default(now())
+}
+
 // ============================================================================
 // INVOICING
 // ============================================================================
@@ -1382,6 +1419,8 @@ model invoice {
   updated_at               DateTime       @updatedAt
   created_by_dispatcher_id String?
   created_by_dispatcher    dispatcher?    @relation(fields: [created_by_dispatcher_id], references: [id], onDelete: SetNull)
+  qb_invoice_id            String?        @unique // For QuickBooks integration
+  qb_sync_status           qb_sync_status @default(not_synced)
 
   line_items invoice_line_item[]
   jobs       invoice_job[]

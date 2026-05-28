@@ -229,6 +229,10 @@ export interface Invoice extends PricingBreakdown {
 	updated_at: Date | string;
 	created_by_dispatcher_id?: string | null;
 
+	// QuickBooks
+	qb_sync_status?: "not_synced" | "synced" | "failed";
+	qb_invoice_id?: string | null;
+
 	// Relations
 	client?: (ClientDetailsProps["client"] & { id: string; is_tax_exempt?: boolean; tax_group_id?: string | null }) | null;
 	created_by_dispatcher?: { id: string; name: string; email: string } | null;

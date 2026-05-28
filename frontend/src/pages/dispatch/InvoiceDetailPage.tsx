@@ -9,8 +9,10 @@ import {
 	Trash2,
 	Send,
 	CheckCircle,
+	CheckCircle2,
 	XCircle,
 	AlertTriangle,
+	AlertCircle,
 	ChevronRight,
 	Plus,
 	Clock,
@@ -19,6 +21,7 @@ import {
 	Briefcase,
 	Download,
 	Loader2,
+	Mail,
 } from "lucide-react";
 import {
 	useInvoiceByIdQuery,
@@ -52,6 +55,11 @@ import { formatCurrency, formatDate } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
 import { formatRatePercentLabel } from "../../lib/formatTax";
 import type { TaxSnapshotRate } from "../../types/tax";
+import { 
+	useQBStatusQuery, 
+	useQBInvoiceSyncMutation, 
+	useQBInvoiceEmailMutation
+} from "../../hooks/useQuickbooks";
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -170,7 +178,13 @@ export default function InvoiceDetailPage() {
 	const EDIT_INVOICE = usePermission("edit_invoices");
 	const DELETE_INVOICE = usePermission("delete_invoices");
 
+	const { data: qbStatus } = useQBStatusQuery();
+	const { mutate: syncToQB, isPending: isSyncingQB } = useQBInvoiceSyncMutation();
+
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+	const sendEmailMutation = useQBInvoiceEmailMutation();
+	const primaryEmail = invoice?.client?.contacts?.find(c => c.is_primary)?.contact?.email;
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -388,6 +402,62 @@ export default function InvoiceDetailPage() {
 								<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error-text border border-error/30">
 									<AlertTriangle size={11} />
 									Overdue
+								</span>
+							)}
+							{qbStatus?.connected && invoice.qb_sync_status === "synced" && (
+								<span className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" title="Synced to QuickBooks">
+									<CheckCircle2 size={11} />
+									QB Synced
+									<button
+										onClick={() => sendEmailMutation.mutate({
+											invoiceId: invoice.id,
+											sendTo: primaryEmail ?? "",
+										})}
+										disabled={sendEmailMutation.isPending || !primaryEmail}
+										className="ml-1 underline hover:no-underline disabled:opacity-50 flex items-center gap-1"
+									>
+										{sendEmailMutation.isPending ? <Loader2 size={11}/> : <Mail size={11}/>}
+										Send via QuickBooks
+									</button>
+								</span>
+							)}
+							{qbStatus?.connected && invoice.qb_sync_status === "failed" && (
+								<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error-text border border-error/30">
+									<AlertCircle size={11} />
+									QB Sync Failed
+									<button
+										onClick={() => syncToQB(invoiceId!)}
+										disabled={isSyncingQB}
+										className="ml-1 underline hover:no-underline disabled:opacity-50"
+										title="Retry sync"
+									>
+										{isSyncingQB ? "Retrying..." : "Retry"}
+									</button>
+								</span>
+							)}
+							{qbStatus?.connected && invoice.qb_sync_status === "not_synced" && (
+								<span className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-zinc-500/20 text-text-tertiary border border-border-strong/30">
+									<Clock size={11} />
+									QB Pending
+									<button
+										onClick={() => syncToQB(invoiceId!)}
+										disabled={isSyncingQB}
+										className="ml-1 underline hover:no-underline disabled:opacity-50"
+										title="Sync to QuickBooks"
+									>
+										{isSyncingQB ? "Syncing..." : "Sync"}
+									</button>
+									<button
+										onClick={() => sendEmailMutation.mutate({
+											invoiceId: invoice.id,
+											sendTo: primaryEmail ?? "",
+										})}
+										disabled={sendEmailMutation.isPending || !primaryEmail}
+										className="ml-1 underline hover:no-underline disabled:opacity-50 flex items-center gap-1"
+									>
+										{sendEmailMutation.isPending ? <Loader2 size={14}/> : <Mail size={14}/>}
+										Send via QuickBooks
+									</button>
 								</span>
 							)}
 						</div>

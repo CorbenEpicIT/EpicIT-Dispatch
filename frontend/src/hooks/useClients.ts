@@ -54,6 +54,7 @@ export const useCreateClientMutation = (): UseMutationResult<Client, Error, Crea
 		onSuccess: (newClient: Client) => {
 			queryClient.invalidateQueries({ queryKey: ["clients"] });
 			queryClient.setQueryData(["clients", newClient.id], newClient);
+			queryClient.invalidateQueries({ queryKey: ["qbMappedCustomers"] });
 		},
 		onError: (error) => {
 			console.error("Failed to create client:", error);
