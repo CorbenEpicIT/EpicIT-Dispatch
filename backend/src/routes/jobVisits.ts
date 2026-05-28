@@ -98,7 +98,7 @@ router.get(
     },
 );
 
-router.post("/", requirePermission("create_jobs"), async (req, res, next) => {
+router.post("/", requireAnyPermission("create_jobs", "edit_jobs"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);

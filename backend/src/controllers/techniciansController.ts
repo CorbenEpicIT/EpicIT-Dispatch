@@ -397,6 +397,8 @@ export const deleteTechnician = async (
 				where: { tech_id: id },
 			});
 
+			await tx.technician.delete({ where: { id } });
+
 			await logActivity({
 				event_type: "technician.deleted",
 				action: "deleted",

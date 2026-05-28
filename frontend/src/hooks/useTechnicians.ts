@@ -86,15 +86,18 @@ export const useDeleteTechnicianMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: technicianApi.deleteTechnician,
 		onMutate: async (deletedId: string) => {
-			await queryClient.cancelQueries({
-				queryKey: ["technicians", deletedId],
-			});
+			await queryClient.cancelQueries({ queryKey: ["technicians"] });
+			const previousList = queryClient.getQueryData<Technician[]>(["technicians"]);
+			queryClient.setQueryData<Technician[]>(["technicians"], (old) =>
+				(old ?? []).filter((t) => t.id !== deletedId)
+			);
+			return { previousList };
 		},
 		onSuccess: (_, deletedId) => {
-			queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			queryClient.removeQueries({ queryKey: ["technicians", deletedId] });
 		},
-		onError: (error: Error) => {
+		onError: (error: Error, _id, context) => {
+			queryClient.setQueryData(["technicians"], context?.previousList);
 			console.error(`Failed to delete technician:`, error.message);
 		},
 	});

@@ -258,35 +258,35 @@ export default function QuoteDetailPage() {
 												? "Job Already Created"
 												: "Convert to Job"}
 										</button>
-									{!DELETE_QUOTE && (
-										<div className="my-1 border-t border-border-subtle" />
-									)}
 									{DELETE_QUOTE && (
-										<button
-											onClick={
-												handleDelete
-											}
-											onMouseLeave={() =>
-												setDeleteConfirm(
-													false
-												)
-											}
-											disabled={
-												deleteQuote.isPending || !DELETE_QUOTE
-											}
-											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-												deleteConfirm
-													? "bg-red-600 hover:bg-red-700 text-white"
-													: "text-error-text hover:bg-surface hover:text-error-text"
-											} disabled:opacity-40 disabled:cursor-not-allowed`}
-										>
-											<Trash2 size={16} />
-											{deleteQuote.isPending
-												? "Deleting..."
-												: deleteConfirm
-													? "Click Again to Confirm"
-													: "Delete Quote"}
-										</button>
+										<>
+											<div className="my-1 border-t border-border-subtle" />
+											<button
+												onClick={
+													handleDelete
+												}
+												onMouseLeave={() =>
+													setDeleteConfirm(
+														false
+													)
+												}
+												disabled={
+													deleteQuote.isPending || !DELETE_QUOTE
+												}
+												className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+													deleteConfirm
+														? "bg-red-600 hover:bg-red-700 text-white"
+														: "text-error-text hover:bg-surface hover:text-error-text"
+												} disabled:opacity-40 disabled:cursor-not-allowed`}
+											>
+												<Trash2 size={16} />
+												{deleteQuote.isPending
+													? "Deleting..."
+													: deleteConfirm
+														? "Click Again to Confirm"
+														: "Delete Quote"}
+											</button>
+										</>
 									)}
 								</div>
 							</div>

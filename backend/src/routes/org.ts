@@ -119,18 +119,8 @@ router.patch("/", requirePermission("manage_organization"), async (req, res, nex
 	}
 });
 
-router.post(
-    "/logo",
-    requirePermission("manage_organization"),
-    imageUpload.single("image"),
-    async (req, res, next) => {
-        try {
-            if (!req.file) {
-                return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No image file provided"));
-            }
-            const orgId = req.user!.organization_id;
-            if (!orgId) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Organization not found"));
-router.post("/logo", imageUpload.single("image"), async (req, res, next) => {
+
+router.post("/logo", requirePermission("manage_organization"), imageUpload.single("image"), async (req, res, next) => {
 	try {
 		if (!req.file) {
 			return res

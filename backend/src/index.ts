@@ -55,6 +55,8 @@ import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
 import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
+import quickbooksRouter from "./routes/quickbooks.js";
+import { handleCallback } from "./services/quickbooksService.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -136,7 +138,7 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 					),
 				);
 		}
-		req.user = decoded;
+		req.user = { ...decoded, permissions: decoded.permissions ?? null };
 		next();
 	} catch {
 		res.status(401).json(
@@ -390,6 +392,29 @@ app.post("/refresh-token", async (req, res, next) => {
 });
 
 // ================================================================================
+// QUICKBOOKS OAUTH CALLBACK (public — Intuit redirects here, no JWT)
+// ================================================================================
+app.get("/integrations/quickbooks/callback", async (req, res, next) => {
+	try {
+		const { state: orgId, error, realmId } = req.query as Record<string, string>;
+		const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173";
+
+		if (error || !orgId || !realmId) {
+			return res.redirect(`${frontendUrl}/dispatch/admin?qb=error`);
+		}
+
+		const qs = new URLSearchParams(req.query as Record<string, string>).toString();
+		const fullUrl = `${process.env.QB_REDIRECT_URI}?${qs}`;
+		await handleCallback(fullUrl, orgId, realmId);
+
+		res.redirect(`${frontendUrl}/dispatch/admin?qb=connected`);
+	} catch (err) {
+		const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173";
+		res.redirect(`${frontendUrl}/dispatch/admin?qb=error`);
+	}
+});
+
+// ================================================================================
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)
 // ================================================================================
 app.use("/organizations", organizationsRouter);
@@ -438,6 +463,11 @@ app.use("/occurrences", verifyToken, occurrencesRouter);
 // INVOICE ROUTES
 // ============================================
 app.use("/invoices", verifyToken, invoicesRouter);
+
+// ============================================
+// QUICKBOOKS (authenticated)
+// ============================================
+app.use("/integrations/quickbooks", verifyToken, quickbooksRouter);
 
 // ============================================
 // CLIENTS + CONTACTS

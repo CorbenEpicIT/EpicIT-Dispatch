@@ -80,6 +80,7 @@ export const DISPATCHER_CATALOG = [
 			{ id: "view_admin", label: "View Admin Page" },
 			{ id: "manage_roles", label: "Manage Roles" },
 			{ id: "manage_organization", label: "Manage Organization" },
+			{ id: "manage_taxes", label: "Manage Taxes" },
 		],
 	},
 ] as const;

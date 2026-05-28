@@ -16,6 +16,7 @@ import {
 	deleteTaxGroup,
 	type TaxResult,
 } from "../controllers/taxController.js";
+import { requirePermission } from "../lib/requirePermissions.js";
 
 const router = Router();
 
@@ -47,7 +48,7 @@ function sendTaxResult<T>(
 // TAX RATE ROUTES
 // ============================================
 
-router.get("/rates", async (req, res, next) => {
+router.get("/rates", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const includeInactive = req.query.include_inactive === "true";
@@ -58,7 +59,7 @@ router.get("/rates", async (req, res, next) => {
 	}
 });
 
-router.post("/rates", async (req, res, next) => {
+router.post("/rates", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const result = await createTaxRate(req.body, orgId);
@@ -68,9 +69,9 @@ router.post("/rates", async (req, res, next) => {
 	}
 });
 
-router.patch("/rates/:id", async (req, res, next) => {
+router.patch("/rates/:id", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await updateTaxRate(id, req.body, orgId);
 		sendTaxResult(res, result);
@@ -79,9 +80,9 @@ router.patch("/rates/:id", async (req, res, next) => {
 	}
 });
 
-router.delete("/rates/:id", async (req, res, next) => {
+router.delete("/rates/:id", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await deleteTaxRate(id, orgId);
 		sendTaxResult(res, result);
@@ -95,7 +96,7 @@ router.delete("/rates/:id", async (req, res, next) => {
 // ============================================
 
 // Must be before /:id to avoid route conflict
-router.get("/groups/default", async (req, res, next) => {
+router.get("/groups/default", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const group = await getDefaultTaxGroup(orgId);
@@ -105,7 +106,7 @@ router.get("/groups/default", async (req, res, next) => {
 	}
 });
 
-router.get("/groups", async (req, res, next) => {
+router.get("/groups", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const includeInactive = req.query.include_inactive === "true";
@@ -116,7 +117,7 @@ router.get("/groups", async (req, res, next) => {
 	}
 });
 
-router.post("/groups", async (req, res, next) => {
+router.post("/groups", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const result = await createTaxGroup(req.body, orgId);
@@ -126,9 +127,9 @@ router.post("/groups", async (req, res, next) => {
 	}
 });
 
-router.patch("/groups/:id", async (req, res, next) => {
+router.patch("/groups/:id", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await updateTaxGroup(id, req.body, orgId);
 		sendTaxResult(res, result);
@@ -137,9 +138,9 @@ router.patch("/groups/:id", async (req, res, next) => {
 	}
 });
 
-router.delete("/groups/:id", async (req, res, next) => {
+router.delete("/groups/:id", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await deleteTaxGroup(id, orgId);
 		sendTaxResult(res, result);

@@ -13,7 +13,7 @@ import {
     deleteDispatcher
 } from "../controllers/dispatchersController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
-import { requirePermission } from '../lib/requirePermissions.js';
+import { requirePermission, requirePermissionOrSelf } from '../lib/requirePermissions.js';
 
 const router = Router();
 
@@ -29,7 +29,7 @@ router.get("/", requirePermission("view_dispatchers"), async (req, res, next) =>
     }
 });
 
-router.get("/:id", requirePermission("view_dispatchers"), async (req, res, next) => {
+router.get("/:id", requirePermissionOrSelf("view_dispatchers"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;

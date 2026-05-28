@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect, type ReactNode } from "react";
-import { Upload, Trash2, Building2, Loader2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Upload, Trash2, Building2, Loader2, CheckCircle2, XCircle, Link2, Link2Off } from "lucide-react";
+import { useQBStatusQuery, useQBConnectMutation, useQBDisconnectMutation } from "../../hooks/useQuickbooks";
 import {
 	useOrgSettings,
 	useUploadOrgLogo,
@@ -10,6 +12,7 @@ import type { OrgSettingsUpdate } from "../../api/org";
 import AddressForm from "../../components/ui/AddressForm";
 import type { GeocodeResult } from "../../types/location";
 import TaxSettingsSection from "./TaxSettingsSection";
+import { usePermission } from "../../hooks/usePermission";
 
 // ── Layout primitive ─────────────────────────────────────────────────────────
 
@@ -60,6 +63,10 @@ function OrgSettingsSection() {
 	const uploadMutation = useUploadOrgLogo();
 	const deleteMutation = useDeleteOrgLogo();
 	const updateMutation = useUpdateOrgSettings();
+
+	// permissions
+	const MANAGE_ORGANIZATION = usePermission("manage_organization");
+	const MANAGE_TAXES = usePermission("manage_taxes");
 
 	const [form, setForm] = useState<OrgSettingsUpdate>({
 		name: "",
@@ -440,6 +447,96 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 	);
 }
 
+// ── QuickBooks section ────────────────────────────────────────────────────────
+
+function QuickBooksSection() {
+	const [searchParams, setSearchParams] = useSearchParams();
+	const qbParam = searchParams.get("qb");
+
+	const { data: status, isLoading } = useQBStatusQuery();
+	const connectMutation = useQBConnectMutation();
+	const disconnectMutation = useQBDisconnectMutation();
+
+	useEffect(() => {
+		if (qbParam) {
+			const timer = setTimeout(() => {
+				searchParams.delete("qb");
+				setSearchParams(searchParams, { replace: true });
+			}, 5000);
+			return () => clearTimeout(timer);
+		}
+	}, [qbParam]);
+
+	return (
+		<div className="rounded-lg border border-border-subtle bg-base">
+			{qbParam === "connected" && (
+				<div className="flex items-center gap-2 border-b border-border-subtle px-5 py-3 text-xs text-success-text">
+					<CheckCircle2 size={13} />
+					QuickBooks connected successfully.
+				</div>
+			)}
+			{qbParam === "error" && (
+				<div className="flex items-center gap-2 border-b border-border-subtle px-5 py-3 text-xs text-error-text">
+					<XCircle size={13} />
+					QuickBooks connection failed. Please try again.
+				</div>
+			)}
+
+			<div className="px-5 py-5">
+				{isLoading ? (
+					<div className="flex items-center gap-2 text-xs text-text-muted">
+						<Loader2 size={13} className="animate-spin" />
+						Checking connection…
+					</div>
+				) : status?.connected ? (
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-2">
+							<span className="h-2 w-2 rounded-full bg-success" />
+							<span className="text-sm text-text-primary">Connected</span>
+							{status.realmId && (
+								<span className="text-xs text-text-muted">· Realm {status.realmId}</span>
+							)}
+						</div>
+						<button
+							onClick={() => disconnectMutation.mutate()}
+							disabled={disconnectMutation.isPending}
+							className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-red-800 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{disconnectMutation.isPending ? (
+								<Loader2 size={12} className="animate-spin" />
+							) : (
+								<Link2Off size={12} />
+							)}
+							{disconnectMutation.isPending ? "Disconnecting…" : "Disconnect"}
+						</button>
+					</div>
+				) : (
+					<div className="flex items-center justify-between">
+						<div>
+							<p className="text-sm text-text-primary">Not connected</p>
+							<p className="mt-0.5 text-xs text-text-muted">
+								Connect to sync invoices and payments automatically.
+							</p>
+						</div>
+						<button
+							onClick={() => connectMutation.mutate()}
+							disabled={connectMutation.isPending}
+							className="flex items-center gap-1.5 rounded-md bg-primary-hover px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{connectMutation.isPending ? (
+								<Loader2 size={12} className="animate-spin" />
+							) : (
+								<Link2 size={12} />
+							)}
+							{connectMutation.isPending ? "Redirecting…" : "Connect QuickBooks"}
+						</button>
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
 // ── Settings page shell ───────────────────────────────────────────────────────
 
 export default function SettingsSection() {
@@ -469,6 +566,13 @@ export default function SettingsSection() {
 					}
 				>
 					<TaxSettingsSection showInactive={showTaxInactive} />
+				</SettingRow>
+
+				<SettingRow
+					title="QuickBooks"
+					description="Sync invoices and payments to QuickBooks Online."
+				>
+					<QuickBooksSection />
 				</SettingRow>
 			</div>
 		</div>

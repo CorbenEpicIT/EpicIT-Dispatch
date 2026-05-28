@@ -21,7 +21,11 @@ import { getUserContext } from '../lib/context.js';
 import { getJobVisitsByTechId } from '../controllers/jobVisitsController.js';
 import { getSocket } from "../services/socketService.js";
 import { setTechnicianVehicle } from "../controllers/vehiclesController.js";
-import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
+import { 
+    requirePermission,
+    requireAnyPermission, 
+    requirePermissionOrSelf 
+} from '../lib/requirePermissions.js';
 
 const router = Router();
 
@@ -37,7 +41,7 @@ router.get("/", requirePermission("view_technicians"), async (req, res, next) =>
     }
 });
 
-router.get("/:id", requirePermission("view_technicians"), async (req, res, next) => {
+router.get("/:id", requirePermissionOrSelf("view_technicians"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
@@ -88,7 +92,7 @@ router.post("/", requirePermission("manage_technicians"), async (req, res, next)
     }
 });
 
-router.post("/:id/ping", requirePermission("manage_technicians"), async (req, res, next) => {
+router.post("/:id/ping", requirePermissionOrSelf("manage_technicians"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
@@ -232,7 +236,7 @@ router.get("/:techId/visits", requireAnyPermission("view_technicians", "view_vis
     }
 });
 
-router.put("/:id/vehicle", requirePermission("manage_technicians"), async (req, res, next) => {
+router.put("/:id/vehicle", requireAnyPermission("manage_technicians", "use_inventory"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;

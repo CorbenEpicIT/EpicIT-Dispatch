@@ -15,7 +15,7 @@ import { requirePermission, requireAnyPermission } from "../lib/requirePermissio
 
 const router = Router();
 
-router.get("/", requireAnyPermission("view_inventory", "manage_technicians"), async (req, res, next) => {
+router.get("/", requireAnyPermission("view_inventory", "manage_technicians", "use_inventory"), async (req, res, next) => {
 	try {
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const { status } = req.query as { status?: string };

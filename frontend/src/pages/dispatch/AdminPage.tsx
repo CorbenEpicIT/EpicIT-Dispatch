@@ -18,15 +18,16 @@ export default function AdminPage() {
 	const VIEW_ADMIN = usePermission("view_admin");
 	const MANAGE_ORGANIZATION = usePermission("manage_organization");
 	const MANAGE_ROLES = usePermission("manage_roles");
+	const MANAGE_TAXES = usePermission("manage_taxes");
 	const permMap = {
 		view_admin: VIEW_ADMIN,
-		manage_organization: MANAGE_ORGANIZATION,
+		manage_organization: MANAGE_ORGANIZATION || MANAGE_TAXES,
 		manage_roles: MANAGE_ROLES,
 	}
 	const visibleTabs = TABS.filter((tab) => permMap[tab.permission as keyof typeof permMap]);
 	const [activeTab, setActiveTab] = useState<AdminTab>(() => {
 		const stored = sessionStorage.getItem(STORAGE_KEY) as AdminTab | null;
-		if (stored && !visibleTabs.some(tab => tab.id === stored)) return stored;
+		if (stored && visibleTabs.some(tab => tab.id === stored)) return stored;
 		return visibleTabs[0]?.id ?? "users";
 	});
 	const handleTabChange = (tab: AdminTab) => {

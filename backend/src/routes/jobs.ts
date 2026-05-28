@@ -145,7 +145,7 @@ router.get("/:jobId/visits", requireAnyPermission("view_jobs", "view_visits", "v
 // JOB NOTES
 // ============================================
 
-router.get("/:jobId/notes", requireAnyPermission("view_jobs", "view_assigned_jobs"), async (req, res, next) => {
+router.get("/:jobId/notes", requireAnyPermission("view_jobs", "view_assigned_jobs", "view_all_jobs"), async (req, res, next) => {
     try {
         const jobId = req.params.id as string;
         const orgId = req.user!.organization_id as string;

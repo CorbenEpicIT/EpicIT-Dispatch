@@ -199,6 +199,7 @@ router.post(
 
 router.post(
     "/import",
+    requirePermission("manage_inventory"),
     spreadsheetUpload.single("file"),
     async (req, res, next) => {
         try {
@@ -219,7 +220,7 @@ router.post(
 
 // ── Low-stock export ──────────────────────────────────────────────────────────
 
-router.get("/export/low-stock", async (req, res, next) => {
+router.get("/export/low-stock", requirePermission("view_inventory"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const buffer = await exportLowStockToXlsx(orgId);
@@ -282,9 +283,9 @@ router.patch("/:id/threshold", requirePermission("manage_inventory"), async (req
 
 // ── Item tags ─────────────────────────────────────────────────────────────────
 
-router.put("/:id/tags", async (req, res, next) => {
+router.put("/:id/tags", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await setItemTags(id, req.body, orgId, context);
@@ -302,7 +303,7 @@ router.put("/:id/tags", async (req, res, next) => {
 
 // ── Org tags CRUD ─────────────────────────────────────────────────────────────
 
-router.get("/tags", async (req, res, next) => {
+router.get("/tags", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const tags = await getOrgTags(orgId);
@@ -312,7 +313,7 @@ router.get("/tags", async (req, res, next) => {
     }
 });
 
-router.post("/tags", async (req, res, next) => {
+router.post("/tags", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const result = await createTag(req.body, orgId);
@@ -327,9 +328,9 @@ router.post("/tags", async (req, res, next) => {
     }
 });
 
-router.patch("/tags/:tagId", async (req, res, next) => {
+router.patch("/tags/:tagId", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
-        const { tagId } = req.params;
+        const tagId = req.params.tagId as string;
         const orgId = req.user!.organization_id as string;
         const result = await updateTag(tagId, req.body, orgId);
 
@@ -344,9 +345,9 @@ router.patch("/tags/:tagId", async (req, res, next) => {
     }
 });
 
-router.delete("/tags/:tagId", async (req, res, next) => {
+router.delete("/tags/:tagId", requirePermission("manage_inventory"), async (req, res, next) => {
     try {
-        const { tagId } = req.params;
+        const tagId = req.params.tagId as string;
         const orgId = req.user!.organization_id as string;
         const result = await deleteTag(tagId, orgId);
 

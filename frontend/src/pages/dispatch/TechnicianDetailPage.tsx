@@ -127,6 +127,9 @@ export default function TechnicianDetailsPage() {
 	});
 
 	const ACTIVE_STATUSES = ["InProgress", "OnSite", "Driving", "Paused", "Delayed"];
+	const hasActiveVisits = visitTechs.some((vt) =>
+		["Scheduled", "InProgress", "OnSite", "Driving", "Paused", "Delayed"].includes(vt.visit.status)
+	);
 	const activeVisit =
 		visitTechs
 			.map((vt) => vt.visit)
@@ -232,11 +235,10 @@ export default function TechnicianDetailsPage() {
 											<Edit size={14} />
 											Edit Technician
 										</button>
-									
-									{!MANAGE_TECHNICIANS && (
+									{MANAGE_TECHNICIANS && !hasActiveVisits && (
 									  <>
-										<div className="my-1 border-t border-border-subtle" />
-										<button
+									  	<div className="my-1 border-t border-border-subtle" />
+									  	<button
 											onClick={
 												handleDelete
 											}
@@ -246,7 +248,7 @@ export default function TechnicianDetailsPage() {
 												)
 											}
 											disabled={
-												deleteTechnician.isPending || !MANAGE_TECHNICIANS
+												deleteTechnician.isPending
 											}
 											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
 												deleteConfirm

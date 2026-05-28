@@ -8,7 +8,7 @@ const DISPATCHER_CATALOG = [
 	{ category: "Reports", permissions: ["view_reports", "export_reports"] },
 	{ category: "Recurring Plans", permissions: ["view_recurring_plans", "manage_recurring_plans"] },
 	{ category: "Team", permissions: ["view_technicians", "manage_technicians", "view_dispatchers", "manage_dispatchers"] },
-	{ category: "Administration", permissions: ["view_admin", "manage_roles", "manage_organization"] },
+	{ category: "Administration", permissions: ["view_admin", "manage_roles", "manage_organization", "manage_taxes"] },
 ] as const;
 
 const TECHNICIAN_CATALOG = [
