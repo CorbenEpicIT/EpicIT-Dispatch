@@ -38,7 +38,7 @@ ALTER TABLE "recurring_plan_line_item" ADD COLUMN     "tax_group_id" TEXT,
 ADD COLUMN     "taxable" BOOLEAN NOT NULL DEFAULT true;
 
 -- CreateTable
-CREATE TABLE "tax_rate" (
+CREATE TABLE IF NOT EXISTS "tax_rate" (
     "id" TEXT NOT NULL,
     "organization_id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE "tax_rate" (
 );
 
 -- CreateTable
-CREATE TABLE "tax_group" (
+CREATE TABLE IF NOT EXISTS "tax_group" (
     "id" TEXT NOT NULL,
     "organization_id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -69,7 +69,7 @@ CREATE TABLE "tax_group" (
 );
 
 -- CreateTable
-CREATE TABLE "tax_group_rate" (
+CREATE TABLE IF NOT EXISTS "tax_group_rate" (
     "id" TEXT NOT NULL,
     "tax_group_id" TEXT NOT NULL,
     "tax_rate_id" TEXT NOT NULL,
@@ -79,40 +79,40 @@ CREATE TABLE "tax_group_rate" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "tax_rate_organization_id_name_key" ON "tax_rate"("organization_id", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "tax_rate_organization_id_name_key" ON "tax_rate"("organization_id", "name");
 
 -- CreateIndex
-CREATE INDEX "tax_rate_organization_id_idx" ON "tax_rate"("organization_id");
+CREATE INDEX IF NOT EXISTS "tax_rate_organization_id_idx" ON "tax_rate"("organization_id");
 
 -- CreateIndex
-CREATE INDEX "tax_rate_organization_id_is_default_idx" ON "tax_rate"("organization_id", "is_default");
+CREATE INDEX IF NOT EXISTS "tax_rate_organization_id_is_default_idx" ON "tax_rate"("organization_id", "is_default");
 
 -- CreateIndex
-CREATE INDEX "tax_rate_organization_id_is_active_idx" ON "tax_rate"("organization_id", "is_active");
+CREATE INDEX IF NOT EXISTS "tax_rate_organization_id_is_active_idx" ON "tax_rate"("organization_id", "is_active");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "tax_group_organization_id_name_key" ON "tax_group"("organization_id", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "tax_group_organization_id_name_key" ON "tax_group"("organization_id", "name");
 
 -- CreateIndex
-CREATE INDEX "tax_group_organization_id_idx" ON "tax_group"("organization_id");
+CREATE INDEX IF NOT EXISTS "tax_group_organization_id_idx" ON "tax_group"("organization_id");
 
 -- CreateIndex
-CREATE INDEX "tax_group_organization_id_is_default_idx" ON "tax_group"("organization_id", "is_default");
+CREATE INDEX IF NOT EXISTS "tax_group_organization_id_is_default_idx" ON "tax_group"("organization_id", "is_default");
 
 -- CreateIndex
-CREATE INDEX "tax_group_organization_id_is_active_idx" ON "tax_group"("organization_id", "is_active");
+CREATE INDEX IF NOT EXISTS "tax_group_organization_id_is_active_idx" ON "tax_group"("organization_id", "is_active");
 
 -- CreateIndex
-CREATE INDEX "tax_group_rate_tax_group_id_idx" ON "tax_group_rate"("tax_group_id");
+CREATE INDEX IF NOT EXISTS "tax_group_rate_tax_group_id_idx" ON "tax_group_rate"("tax_group_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "tax_group_rate_tax_group_id_tax_rate_id_key" ON "tax_group_rate"("tax_group_id", "tax_rate_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "tax_group_rate_tax_group_id_tax_rate_id_key" ON "tax_group_rate"("tax_group_id", "tax_rate_id");
 
 -- CreateIndex
-CREATE INDEX "technician_shift_tech_id_ended_at_idx" ON "technician_shift"("tech_id", "ended_at");
+CREATE INDEX IF NOT EXISTS "technician_shift_tech_id_ended_at_idx" ON "technician_shift"("tech_id", "ended_at");
 
 -- CreateIndex
-CREATE INDEX "technician_shift_break_tech_id_ended_at_idx" ON "technician_shift_break"("tech_id", "ended_at");
+CREATE INDEX IF NOT EXISTS "technician_shift_break_tech_id_ended_at_idx" ON "technician_shift_break"("tech_id", "ended_at");
 
 -- AddForeignKey
 ALTER TABLE "client" ADD CONSTRAINT "client_tax_group_id_fkey" FOREIGN KEY ("tax_group_id") REFERENCES "tax_group"("id") ON DELETE SET NULL ON UPDATE CASCADE;
