@@ -9,6 +9,7 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
+import { getAllPermissions } from "../lib/permissionCatalogs.js";
 
 
 export const getAllDispatchers = async (organizationId: string) => {
@@ -22,12 +23,18 @@ export const getAllDispatchers = async (organizationId: string) => {
 
 export const getDispatcherById = async (id: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-    return await sdb.dispatcher.findFirst({
+    const dispatcher = await sdb.dispatcher.findFirst({
         where: { id },
-        /*include: {
-            Default for now
-        },*/
+        include: {
+            organization_role: { select: { id: true, name: true, permissions: true } },
+        },
     });
+    if (!dispatcher) return null;
+    const permissions: string[] =
+        dispatcher.role === "admin"
+            ? getAllPermissions("dispatcher")
+            : (dispatcher.organization_role?.permissions as string[] | null) ?? [];
+    return { ...dispatcher, permissions };
 };
 
 export const insertDispatcher = async (

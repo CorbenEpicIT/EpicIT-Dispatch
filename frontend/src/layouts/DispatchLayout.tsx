@@ -17,11 +17,13 @@ import {
 	ReceiptText,
 	ShieldUser,
 	Truck,
+	UserRoundCog
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
 import { usePermission, useAnyPermission } from "../hooks/usePermission";
 import { queryClient } from "../main";
+import DispatcherUserMenu from "../components/nav/DispatcherUserMenu";
 
 export default function DispatchLayout() {
 	const { logout } = useAuthStore();
@@ -163,6 +165,12 @@ export default function DispatchLayout() {
 							label="Reporting"
 						/>
 					)}
+					<SideNavItem
+						expanded={expanded}
+						to="/dispatch/user-settings"
+						icon={<UserRoundCog size={ICON_SIZE} />}
+						label="Settings"
+					/>
 					{(user?.role === "admin" || useAnyPermission(["view_admin", "manage_organization", "manage_roles"])) && (
 						<SideNavItem
 							expanded={expanded}
@@ -198,13 +206,7 @@ export default function DispatchLayout() {
 					{/* RIGHT SIDE */}
 					<div className="flex items-center gap-3">
 						<GlobalSearch />
-
-						<button
-							onClick={handleLogout}
-							className="text-sm bg-red-500 px-3 py-1.5 rounded hover:bg-red-600"
-						>
-							Logout
-						</button>
+						<DispatcherUserMenu />
 					</div>
 				</header>
 

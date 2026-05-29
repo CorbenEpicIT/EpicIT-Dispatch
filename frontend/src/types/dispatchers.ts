@@ -18,6 +18,7 @@ export interface Dispatcher {
   email_verification_token: string | null;
   role_id: string | null;
   organization_role: { id: string; name: string } | null;
+  permissions: string[];
 }
 
 export interface CreateDispatcherInput {

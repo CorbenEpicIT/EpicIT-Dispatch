@@ -6,10 +6,10 @@ import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
 import type { TechnicianNotification } from "../types/notifications";
 import { usePermission, useAnyPermission } from "../hooks/usePermission";
-import { queryClient } from "../main";
+import TechnicianUserMenu from "../components/nav/TechnicianUserMenu";
 
 export default function TechnicianLayout() {
-	const { user, logout } = useAuthStore();
+	const { user } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const navigationCount = useRef(0);
@@ -43,21 +43,6 @@ export default function TechnicianLayout() {
 			return;
 		}
 		navigate("/technician");
-	};
-
-	const [confirmingLogout, setConfirmingLogout] = useState(false);
-	const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	const handleLogout = () => {
-		if (!confirmingLogout) {
-			setConfirmingLogout(true);
-			logoutTimerRef.current = setTimeout(() => setConfirmingLogout(false), 3000);
-			return;
-		}
-		if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
-		logout();
-		queryClient.clear();
-		navigate("/login");
 	};
 
 	return (
@@ -115,19 +100,8 @@ export default function TechnicianLayout() {
 								</span>
 							)}
 						</button>
-
-						{user && (
-							<span className="hidden sm:block text-sm text-text-tertiary">
-								{user.name}
-							</span>
-						)}
-						<button
-							onClick={handleLogout}
-							onMouseLeave={() => { if (confirmingLogout) { if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current); setConfirmingLogout(false); } }}
-							className={`text-sm px-3 py-1.5 rounded transition-colors ${confirmingLogout ? "bg-red-600 text-white motion-safe:animate-pulse" : "bg-red-500 hover:bg-red-600 text-white"}`}
-						>
-							{confirmingLogout ? "Confirm Logout" : "Logout"}
-						</button>
+						<TechnicianUserMenu />
+						
 					</div>
 				</header>
 

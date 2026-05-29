@@ -34,6 +34,7 @@ import VehiclesPage from "./pages/dispatch/VehiclesPage";
 import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
+import UserSettingsPage from "./pages/dispatch/UserSettingsPage";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
@@ -111,7 +112,7 @@ export default function AppRoutes() {
 					path="recurring-plans/:recurringPlanId"
 					element={<RequirePermission permission="view_recurring_plans"><RecurringPlanDetailPage /></RequirePermission>}
 				/>
-				<Route path="dispatch/dispatchers/:dispatcherId" element={<RequirePermission permission="view_dispatchers"><DispatcherDetailPage /></RequirePermission>} />
+				<Route path="dispatchers/:dispatcherId" element={<RequirePermission permission="view_dispatchers"><DispatcherDetailPage /></RequirePermission>} />
 				<Route path="technicians" element={<RequirePermission permission="view_technicians"><TechniciansPage /></RequirePermission>} />
 				<Route
 					path="technicians/:technicianId"
@@ -133,6 +134,7 @@ export default function AppRoutes() {
 				/>
 				<Route path="invoices" element={<RequirePermission permission="view_invoices"><InvoicesPage /></RequirePermission>} />
 				<Route path="invoices/:invoiceId" element={<RequirePermission permission="view_invoices"><InvoiceDetailPage /></RequirePermission>} />
+				<Route path="user-settings" element={<RequireAuth><UserSettingsPage /></RequireAuth>} />
 				<Route path="admin" element={<RequireAnyPermission permissions={["view_admin", "manage_organization", "manage_roles"]}><AdminPage /></RequireAnyPermission>} />
 				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehiclesPage /></RequireAnyPermission>} />
 			</Route>
@@ -160,6 +162,7 @@ export default function AppRoutes() {
 				<Route path="notifications" element={<TechnicianNotificationsPage />} />
 				<Route path="vehicle" element={<TechnicianVehiclePage />} />
 				<Route path="map" element={<TechnicianMapPage />} />
+				<Route path="user-settings" element={<UserSettingsPage />} />
 			</Route>
 
 			<Route path="*" element={<Navigate to="/login" replace />} />

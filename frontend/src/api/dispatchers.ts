@@ -16,7 +16,7 @@ export const getAllDispatchers = async (): Promise<Dispatcher[]> => {
 }
 
 export const getDispatcherById = async (id: string): Promise<Dispatcher> => {
-    const response = await api.get<ApiResponse<Dispatcher>>(`/Dispatchers/${id}`);
+    const response = await api.get<ApiResponse<Dispatcher>>(`/dispatchers/${id}`);
     
     if (!response.data.data) {
         throw new Error('Dispatcher not found');
