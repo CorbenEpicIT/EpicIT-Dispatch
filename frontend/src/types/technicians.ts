@@ -116,7 +116,7 @@ export interface Technician {
 	coords: Coordinates;
 	status: TechnicianStatus;
 	hire_date: Date;
-	last_login: Date;
+	last_login: Date | null;
 	current_vehicle_id: string | null;
 	current_vehicle?: { id: string; name: string; type: string; license_plate: string | null; color: string | null; notes: string | null } | null;
 	visit_techs?: VisitTechnician[];

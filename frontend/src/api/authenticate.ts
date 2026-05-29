@@ -78,12 +78,15 @@ export const requestPasswordResetCall = async (id: string, role: string): Promis
     return response.data.data!;
 }
 
-export const resetPasswordCall = async (token: string, newPassword: string, role: string): Promise<{ message: string }> => {
-    const response = await api.post<ApiResponse<{ message: string }>>('/reset-password', { token, newPassword, role });
+export const resetPasswordCall = async (token: string, newPassword: string, role: string): Promise<AuthResponse> => {
+    const response = await api.post<ApiResponse<AuthResponse>>('/reset-password', { token, newPassword, role });
 
     if (response.data.error) {
         throw new Error(response.data.error?.message || "Password reset failed");
     }
+    const tokenToStore = response.data.data!.token;
+    localStorage.setItem("accessToken", tokenToStore);
+    api.defaults.headers.common["Authorization"] = `Bearer ${tokenToStore}`;
     return response.data.data!;
 }
 

@@ -148,7 +148,8 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 	}
 };
 
-const requireRole = (...roles: string[]) => {
+// replaced with role based permissions, keeping in case its needed at a future date
+/*const requireRole = (...roles: string[]) => {
 	return (req: Request, res: Response, next: NextFunction) => {
 		if (!req.user) {
 			return res
@@ -176,7 +177,7 @@ const requireRole = (...roles: string[]) => {
 		}
 		next();
 	};
-};
+};*/
 
 // ============================================
 // APP SETUP
@@ -347,7 +348,7 @@ app.post("/reset-password", async (req, res, next) => {
 		const { token, newPassword, role } = req.body;
 		const result = await resetPassword(token, newPassword, role);
 
-		if (result.err) {
+		if (result.err || !result.userId || !result.role) {
 			return res
 				.status(400)
 				.json(
@@ -357,8 +358,8 @@ app.post("/reset-password", async (req, res, next) => {
 					),
 				);
 		}
-
-		res.json(createSuccessResponse(null));
+		const authResult = await issueAuthTokens(res, result.userId, result.role);
+		res.json(createSuccessResponse(authResult?.data ?? null));
 	} catch (err) {
 		next(err);
 	}
@@ -470,7 +471,7 @@ app.use("/email", verifyToken, emailRouter);
 app.use("/inventory", verifyToken, inventoryRouter);
 
 // ── Org settings ─────────────────────────────────────────────────────────────
-app.use("/org", verifyToken, requireRole("dispatcher"), orgRouter);
+app.use("/org", verifyToken, orgRouter);
 
 // ============================================
 // REPORTS

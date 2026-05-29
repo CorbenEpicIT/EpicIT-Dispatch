@@ -407,7 +407,7 @@ export const resetPassword = async (
 			actor_id: user.id,
 			changes: { password: { old: "[hashed]", new: "[hashed]" } },
 		});
-		return { err: "" };
+		return { err: "", userId: user.id, role};
 	} catch (e) {
 		log.error({ err: e }, "Password reset error");
 		if (e instanceof ZodError) {

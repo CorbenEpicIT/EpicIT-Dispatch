@@ -233,7 +233,7 @@ export default function InventoryPage() {
 					<div
 						className={
 							viewMode === "card"
-								? "w-full flex flex-wrap gap-3"
+								? "grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3"
 								: "grid grid-cols-1 min-[820px]:grid-cols-2 gap-2"
 						}
 					>

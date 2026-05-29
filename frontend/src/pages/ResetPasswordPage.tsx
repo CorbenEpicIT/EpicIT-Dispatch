@@ -1,8 +1,10 @@
 ﻿import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { resetPasswordCall } from "../api/authenticate";
+import { useAuthStore } from "../auth/authStore";
 
 export default function ResetPasswordPage() {
+    const { login } = useAuthStore();
     const [searchParams] = useSearchParams();
     const [status, setStatus] = useState<"input" | "loading" | "success" | "error">("input");
     const navigate = useNavigate();
@@ -51,9 +53,12 @@ export default function ResetPasswordPage() {
         
         setStatus("loading");
         try {
-            await resetPasswordCall(token, newPassword, role);
-            setStatus("success");
-            setTimeout(() => navigate("/login"), 3000);
+            const result = await resetPasswordCall(token, newPassword, role);
+            const parts = result.token.split(".");
+            const payload = JSON.parse(atob(parts[1]));
+            const orgTimezone = payload.organization_timezone ?? "America/Chicago";
+            login(payload.role, payload.email, payload.uid, payload.organization_id ?? null, orgTimezone, payload.permissions ?? []);
+            navigate(payload.role === "technician" ? "/technician" : "/dispatch");
         } catch {
             setStatus("error");
         }

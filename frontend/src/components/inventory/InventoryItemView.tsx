@@ -99,6 +99,22 @@ export default function InventoryItemView({
 						{item.description}
 					</div>
 				)}
+				{(item.category || item.unit || item.sku || item.unit_price !== null) && (
+					<div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+						{item.category && (
+							<span className="text-xs text-text-muted">{item.category}</span>
+						)}
+						{item.unit && (
+							<span className="text-xs text-text-muted">{item.unit}</span>
+						)}
+						{item.sku && (
+							<span className="text-xs text-text-muted">{item.sku}</span>
+						)}
+						{item.unit_price !== null && (
+							<span className="text-xs text-text-muted">${Number(item.unit_price).toFixed(2)}</span>
+						)}
+					</div>
+				)}
 				{item.location && (
 					<div className="flex items-start gap-1 mt-1">
 						<MapPin size={10} className="text-text-muted mt-px shrink-0" />
@@ -111,7 +127,7 @@ export default function InventoryItemView({
 
 	return (
 		<div
-			className={`p-5 w-70 bg-base rounded-xl shadow-md border border-border-card relative cursor-pointer hover:border-border-strong transition-colors ${isHighlighted ? "animate-card-highlight" : ""}`}
+			className={`p-5 w-full bg-base rounded-xl shadow-md border border-border-card relative cursor-pointer hover:border-border-strong transition-colors h-full flex flex-col ${isHighlighted ? "animate-card-highlight" : ""}`}
 			onClick={onClick}
 		>
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
@@ -129,7 +145,7 @@ export default function InventoryItemView({
 				</div>
 			)}
 			<hr className="my-2 text-text-faint" />
-			<div className="grid grid-cols-2 gap-x-4 gap-y-3">
+			<div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1">
 				<div>
 					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Location</h2>
 					<p className="text-text-secondary text-sm mt-0.5">{item.location ?? "—"}</p>
@@ -160,10 +176,18 @@ export default function InventoryItemView({
 						{new Date(item.updated_at).toLocaleDateString()}
 					</p>
 				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Category</h2>
+					<p className="text-text-secondary text-sm mt-0.5">{item.category ?? "-"}</p>
+				</div>
+				<div>
+					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Unit</h2>
+					<p className="text-text-secondary text-sm mt-0.5">{item.unit || "-"}</p>
+				</div>
 				{item.description && (
 					<div className="col-span-2">
 						<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Description</h2>
-						<p className="text-text-secondary text-sm mt-0.5 line-clamp-3">{item.description}</p>
+						<p className="text-text-secondary text-sm mt-0.5">{item.description}</p>
 					</div>
 				)}
 			</div>

@@ -48,6 +48,9 @@ export default function TechnicianDetailsPage() {
 	const deleteTechnician = useDeleteTechnicianMutation();
 
 	const { data: technician, isLoading, error } = useTechnicianByIdQuery(technicianId);
+	const lastLogin = technician?.last_login ?
+								`${new Date(technician.last_login).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, ${new Date(technician.last_login).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+								: "Never";
 
 	// permissions
 	const MANAGE_TECHNICIANS = usePermission("manage_technicians");
@@ -319,7 +322,7 @@ export default function TechnicianDetailsPage() {
 							{
 								icon: Clock,
 								label: "Last Login",
-								value: `${new Date(technician.last_login).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, ${new Date(technician.last_login).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
+								value: lastLogin,
 							},
 						].map(({ icon: Icon, label, value }) => (
 							<div
