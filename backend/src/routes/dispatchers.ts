@@ -80,7 +80,7 @@ router.post("/", requirePermission("manage_dispatchers"), async (req, res, next)
     }
 });
 
-router.put("/:id", requirePermission("manage_dispatchers"), async (req, res, next) => {
+router.put("/:id", requirePermissionOrSelf("manage_dispatchers"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;

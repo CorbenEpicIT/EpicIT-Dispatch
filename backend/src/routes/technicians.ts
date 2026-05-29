@@ -137,7 +137,7 @@ router.post("/:id/ping", requirePermissionOrSelf("manage_technicians"), async (r
     }
 });
 
-router.put("/:id", requirePermission("manage_technicians"), async (req, res, next) => {
+router.put("/:id", requirePermissionOrSelf("manage_technicians"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
@@ -236,6 +236,7 @@ router.get("/:techId/visits", requireAnyPermission("view_technicians", "view_vis
     }
 });
 
+// permissions could be an issue if use_inventory is removed from tech, not urgent fix 
 router.put("/:id/vehicle", requireAnyPermission("manage_technicians", "use_inventory"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
