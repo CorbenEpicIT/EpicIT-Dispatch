@@ -131,7 +131,7 @@ export default function ConvertToJob({
 		<div className="flex flex-col min-h-0 flex-1">
 			{/* Header */}
 			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-border-subtle flex-shrink-0">
-				<h2 className="text-lg lg:text-xl font-bold text-white">
+				<h2 className="text-lg lg:text-xl font-bold text-text-primary">
 					Convert to Job
 				</h2>
 			</div>
@@ -146,7 +146,7 @@ export default function ConvertToJob({
 					<input
 						type="text"
 						placeholder="Job Name"
-						className="border border-border px-2.5 py-1.5 lg:py-2 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors"
 						disabled={isLoading}
 						ref={nameRef}
 						defaultValue={request.title}
@@ -166,7 +166,7 @@ export default function ConvertToJob({
 					</label>
 					<textarea
 						placeholder="Job Description"
-						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors"
 						disabled={isLoading}
 						ref={descRef}
 						defaultValue={request.description}
@@ -205,8 +205,8 @@ export default function ConvertToJob({
 				</div>
 
 				{/* Note */}
-				<div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-md">
-					<p className="text-xs text-amber-200">
+				<div className="p-3 bg-warning-bg border border-warning-border rounded-md">
+					<p className="text-xs text-warning-text">
 						Note: The job will be created in "Unscheduled"
 						status. You can create visits and assign technicians
 						after creation.
@@ -219,14 +219,14 @@ export default function ConvertToJob({
 				<button
 					onClick={() => setIsModalOpen(false)}
 					disabled={isLoading}
-					className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-white hover:bg-surface rounded-md border border-border transition-colors disabled:opacity-50"
+					className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface rounded-md border border-border transition-colors disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					onClick={invokeConvert}
 					disabled={isLoading}
-					className="px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+					className="px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-primary-active text-on-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{isLoading ? "Creating..." : "Create Job"}
 				</button>

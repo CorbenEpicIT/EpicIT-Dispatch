@@ -53,7 +53,7 @@ export const JobStatusLabels: Record<JobStatus, string> = {
 };
 
 export const JobStatusColors: Record<JobStatus, string> = {
-	Unscheduled: "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+	Unscheduled: "bg-neutral/20 text-text-tertiary border-border-strong/30",
 	Scheduled: "bg-primary/20 text-primary-text border-primary/30",
 	InProgress: "bg-warning/20 text-warning-text border-warning/30",
 	Completed: "bg-success/20 text-success-text border-success/30",
@@ -86,11 +86,11 @@ export const VisitStatusLabels: Record<VisitStatus, string> = {
 
 export const VisitStatusColors: Record<VisitStatus, string> = {
 	Scheduled:  "bg-surface-raised/40 text-text-tertiary border-border-strong/40",
-	Driving:    "bg-cyan-500/20 text-info-text border-cyan-500/30",
+	Driving:    "bg-info/20 text-info-text border-info/30",
 	OnSite:     "bg-reviewing/20 text-reviewing-text border-reviewing/30",
 	InProgress: "bg-primary/20 text-primary-text border-primary/30",
-	Paused:     "bg-yellow-500/20 text-warning-text border-yellow-500/30",
-	Delayed:    "bg-orange-500/20 text-orange-400 border-orange-500/30",
+	Paused:     "bg-warning/20 text-warning-text border-warning/30",
+	Delayed:    "bg-orange/20 text-orange-text border-orange/30",
 	Completed:  "bg-success/20 text-success-text border-success/30",
 	Cancelled:  "bg-surface-raised/40 text-text-muted border-border-strong/40",
 };
@@ -108,14 +108,14 @@ export interface LifecycleTransition {
 
 export const LIFECYCLE_TRANSITIONS: Partial<Record<VisitStatus, LifecycleTransition[]>> = {
 	Scheduled: [
-		{ action: "drive", label: "I'm Driving", confirmLabel: "Confirm Driving", needsConfirm: true, color: "bg-cyan-700 hover:bg-cyan-600 text-white", confirmColor: "bg-cyan-500 hover:bg-cyan-400 animate-pulse text-white" },
+		{ action: "drive", label: "I'm Driving", confirmLabel: "Confirm Driving", needsConfirm: true, color: "bg-action-drive hover:bg-action-drive-hover text-on-primary", confirmColor: "bg-action-drive-hover hover:bg-action-drive animate-pulse text-on-primary" },
 	],
 	Driving: [
-		{ action: "arrive", label: "I've Arrived", confirmLabel: "Confirm Arrived", needsConfirm: true, color: "bg-purple-700 hover:bg-purple-600 text-white", confirmColor: "bg-purple-500 hover:bg-purple-400 animate-pulse text-white" },
+		{ action: "arrive", label: "I've Arrived", confirmLabel: "Confirm Arrived", needsConfirm: true, color: "bg-plan hover:bg-plan-hover text-on-primary", confirmColor: "bg-plan-hover hover:bg-plan animate-pulse text-on-primary" },
 	],
 	InProgress: [
-		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-amber-600 hover:bg-amber-700 text-white", confirmColor: "bg-amber-600 hover:bg-amber-700 text-white" },
-		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-confirm hover:bg-confirm-hover text-white", confirmColor: "bg-confirm-hover hover:bg-confirm-hover animate-pulse text-white" },
+		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-action-pause hover:bg-action-pause-hover text-on-primary", confirmColor: "bg-action-pause hover:bg-action-pause-hover text-on-primary" },
+		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-confirm hover:bg-confirm-hover text-on-primary", confirmColor: "bg-confirm-hover hover:bg-confirm animate-pulse text-on-primary" },
 	],
 };
 

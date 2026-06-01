@@ -158,7 +158,7 @@ export default function InventoryPage() {
 	}
 
 	return (
-		<div className="flex h-full text-white">
+		<div className="flex h-full text-text-primary">
 			{/* Main content */}
 			<div className="flex-1 flex flex-col min-h-0 p-4 mr-7">
 				<PageHeader title="Inventory">
@@ -183,7 +183,7 @@ export default function InventoryPage() {
 								if (!MANAGE_INVENTORY) return;
 								setIsCreateOpen(true);
 							}}
-							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary-hover hover:enabled:bg-primary text-sm font-medium text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary-hover hover:enabled:bg-primary-active text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							<Plus size={14} />
 							New Item

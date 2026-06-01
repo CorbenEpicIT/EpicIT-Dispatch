@@ -405,7 +405,7 @@ const FinancialSummary = ({
 				<span className="text-xs font-bold text-text-tertiary uppercase tracking-wider">
 					{totalLabel}
 				</span>
-				<span className="text-lg font-bold text-white font-mono tabular-nums tracking-tight">
+				<span className="text-lg font-bold text-text-primary font-mono tabular-nums tracking-tight">
 					${displayTotal.toFixed(2)}
 				</span>
 			</div>

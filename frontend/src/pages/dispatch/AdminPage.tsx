@@ -49,7 +49,7 @@ export default function AdminPage() {
 						onClick={() => handleTabChange(tab.id)}
 						className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer ${
 							activeTab === tab.id
-								? "border-primary text-white"
+								? "border-primary text-text-primary"
 								: "border-transparent text-text-tertiary hover:text-text-primary"
 						}`}
 					>

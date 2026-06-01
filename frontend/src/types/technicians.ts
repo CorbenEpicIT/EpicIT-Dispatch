@@ -26,25 +26,25 @@ export const TechnicianStatusLabels: Record<TechnicianStatus, string> = {
 };
 
 export const TechnicianStatusColors: Record<TechnicianStatus, string> = {
-	Available:  "bg-success/10 text-success-text border-green-500/20",
-	Working:    "bg-purple-500/10 text-reviewing-text border-purple-500/20",
+	Available:  "bg-success/10 text-success-text border-success/20",
+	Working:    "bg-reviewing/10 text-reviewing-text border-reviewing/20",
 	EnRoute:    "bg-sky-500/10 text-sky-400 border-sky-500/20",
-	OnSite:     "bg-yellow-500/10 text-warning-text border-yellow-500/20",
-	Paused:     "bg-orange-500/10 text-orange-400 border-orange-500/20",
+	OnSite:     "bg-warning/10 text-warning-text border-warning/20",
+	Paused:     "bg-orange/10 text-orange-text border-orange/20",
 	WrappingUp: "bg-teal-400/10 text-teal-300 border-teal-400/20",
 	Break:      "bg-amber-400/10 text-amber-300 border-amber-400/20",
-	Offline:    "bg-zinc-600/10 text-text-tertiary border-border-strong/20",
+	Offline:    "bg-neutral/10 text-text-tertiary border-border-strong/20",
 };
 
 export const TechnicianStatusDotColors: Record<TechnicianStatus, string> = {
-	Available:  "bg-green-500",
-	Working:    "bg-purple-500",
+	Available:  "bg-success",
+	Working:    "bg-reviewing",
 	EnRoute:    "bg-sky-500",
-	OnSite:     "bg-yellow-500",
-	Paused:     "bg-orange-500",
+	OnSite:     "bg-warning",
+	Paused:     "bg-orange",
 	WrappingUp: "bg-teal-400",
 	Break:      "bg-amber-400",
-	Offline:    "bg-zinc-500",
+	Offline:    "bg-neutral",
 };
 
 // ============================================================================

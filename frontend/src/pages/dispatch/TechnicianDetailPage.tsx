@@ -96,11 +96,11 @@ export default function TechnicianDetailsPage() {
 			<div className="p-6">
 				<button
 					onClick={() => navigate("/dispatch/technicians")}
-					className="text-text-tertiary hover:text-white mb-4 transition-colors"
+					className="text-text-tertiary hover:text-text-primary mb-4 transition-colors"
 				>
 					← Back to Technicians
 				</button>
-				<div className="text-white">Technician not found</div>
+				<div className="text-text-primary">Technician not found</div>
 			</div>
 		);
 	}
@@ -158,7 +158,7 @@ export default function TechnicianDetailsPage() {
 		});
 
 	const statCards = [
-		{ label: "Total Jobs", value: groupedJobs.length, color: "text-white" },
+		{ label: "Total Jobs", value: groupedJobs.length, color: "text-text-primary" },
 		{
 			label: "Completed",
 			value: visitTechs.filter((vt) => vt.visit.status === "Completed").length,
@@ -177,20 +177,20 @@ export default function TechnicianDetailsPage() {
 	];
 
 	return (
-		<div className="text-white space-y-6 p-6">
+		<div className="text-text-primary space-y-6 p-6">
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex items-center gap-4 min-w-0">
 					<div className="relative flex-shrink-0">
-						<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-bold text-xl">
+						<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-border to-border-strong flex items-center justify-center text-white font-bold text-xl">
 							{technician.name.charAt(0).toUpperCase()}
 						</div>
 						<div
-							className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 ${TechnicianStatusDotColors[technician.status]} rounded-full border-2 border-zinc-950`}
+							className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 ${TechnicianStatusDotColors[technician.status]} rounded-full border-2 border-canvas`}
 						/>
 					</div>
 					<div className="min-w-0">
-						<h1 className="text-2xl sm:text-3xl font-bold text-white truncate">
+						<h1 className="text-2xl sm:text-3xl font-bold text-text-primary truncate">
 							{technician.name}
 						</h1>
 						<p className="text-text-tertiary text-sm mt-0.5">
@@ -339,7 +339,7 @@ export default function TechnicianDetailsPage() {
 									<p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">
 										{label}
 									</p>
-									<p className="text-sm text-white truncate">
+									<p className="text-sm text-text-primary truncate">
 										{value}
 									</p>
 								</div>
@@ -382,7 +382,7 @@ export default function TechnicianDetailsPage() {
 									JobStatusColors[
 										job.status as JobStatus
 									] ??
-									"bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+									"bg-neutral/20 text-text-tertiary border-border-strong/30";
 								const jobLabel =
 									JobStatusLabels[
 										job.status as JobStatus
@@ -409,7 +409,7 @@ export default function TechnicianDetailsPage() {
 													className="text-text-muted group-hover:text-text-secondary transition-colors flex-shrink-0"
 												/>
 												<div className="min-w-0">
-													<p className="text-xs font-medium text-text-secondary group-hover:text-white transition-colors truncate leading-tight">
+													<p className="text-xs font-medium text-text-secondary group-hover:text-text-primary transition-colors truncate leading-tight">
 														{
 															job.name
 														}
@@ -484,7 +484,7 @@ export default function TechnicianDetailsPage() {
 															VisitStatusColors[
 																visit.status as VisitStatus
 															] ??
-															"bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+															"bg-neutral/20 text-text-tertiary border-border-strong/30";
 														const visitLabel =
 															VisitStatusLabels[
 																visit.status as VisitStatus
@@ -504,12 +504,12 @@ export default function TechnicianDetailsPage() {
 															>
 																<div className="flex-1 min-w-0">
 																	<div className="flex items-center gap-1.5 flex-wrap">
-																		<span className="text-xs font-medium text-text-secondary group-hover:text-white transition-colors">
+																		<span className="text-xs font-medium text-text-secondary group-hover:text-text-primary transition-colors">
 																			{fmtDate(
 																				visit.scheduled_start_at
 																			)}
 																		</span>
-																		<span className="text-zinc-700">
+																		<span className="text-border">
 																			·
 																		</span>
 																		<span className="text-xs text-text-muted">

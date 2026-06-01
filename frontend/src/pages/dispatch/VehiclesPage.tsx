@@ -53,14 +53,14 @@ export default function VehiclesPage() {
 	});
 
 	return (
-		<div className="text-white">
+		<div className="text-text-primary">
 			<PageHeader title="Vehicles">
 				{MANAGE_VEHICLES && (
 					<button
 						onClick={() => setIsCreateModalOpen(true)}
-						className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 					>
-						<Plus size={15} />
+						<Plus size={16} />
 						New Vehicle
 					</button>
 				)}

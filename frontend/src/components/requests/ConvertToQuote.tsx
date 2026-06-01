@@ -132,13 +132,13 @@ export default function ConvertToQuote({
 		<div className="flex flex-col min-h-0 flex-1">
 			{/* Header */}
 			<div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-border flex-shrink-0">
-				<h2 className="text-lg sm:text-xl font-bold text-white whitespace-nowrap">
+				<h2 className="text-lg sm:text-xl font-bold text-text-primary whitespace-nowrap">
 					Convert to Quote
 				</h2>
 				<button
 					onClick={() => !isLoading && setIsModalOpen(false)}
 					disabled={isLoading}
-					className="p-1.5 text-text-tertiary hover:text-white hover:bg-surface rounded transition-colors disabled:opacity-50"
+					className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface rounded transition-colors disabled:opacity-50"
 				>
 					<X size={18} />
 				</button>
@@ -170,7 +170,7 @@ export default function ConvertToQuote({
 					<label className={LABEL}>Description</label>
 					<textarea
 						placeholder="Quote Description"
-						className="border border-border px-2.5 py-1.5 w-full h-20 rounded bg-base text-white text-sm resize-none focus:border-primary focus:outline-none transition-colors"
+						className="border border-border px-2.5 py-1.5 w-full h-20 rounded bg-base text-text-primary text-sm resize-none focus:border-primary focus:outline-none transition-colors"
 						disabled={isLoading}
 						ref={descRef}
 						defaultValue={request.description}
@@ -222,8 +222,8 @@ export default function ConvertToQuote({
 				</div>
 
 				{/* Note */}
-				<div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-md">
-					<p className="text-xs text-amber-200">
+				<div className="p-3 bg-warning-bg border border-warning-border rounded-md">
+					<p className="text-xs text-warning-text">
 						The quote will be created with no line items. You
 						can add pricing details after creation.
 					</p>
@@ -242,7 +242,7 @@ export default function ConvertToQuote({
 				<button
 					onClick={invokeConvert}
 					disabled={isLoading}
-					className="inline-flex items-center h-8 px-4 rounded-md bg-primary-hover hover:bg-primary disabled:bg-surface-raised disabled:text-text-muted text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed whitespace-nowrap"
+					className="inline-flex items-center h-8 px-4 rounded-md bg-primary-hover hover:bg-primary disabled:bg-surface-raised disabled:text-text-muted text-sm font-semibold text-on-primary transition-colors disabled:cursor-not-allowed whitespace-nowrap"
 				>
 					{isLoading ? "Creating..." : "Create Quote"}
 				</button>

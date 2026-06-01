@@ -216,7 +216,7 @@ export default function FinancialSummary({
 										{/* Primary row */}
 										<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
 											<div className="col-span-5 min-w-0 text-sm">
-												<p className="text-white font-medium break-words">
+												<p className="text-text-primary font-medium break-words">
 													{item.name}
 												</p>
 											</div>
@@ -228,7 +228,7 @@ export default function FinancialSummary({
 												)}
 											</div>
 											<div
-												className="col-span-1 min-w-0 text-right text-sm text-white tabular-nums"
+												className="col-span-1 min-w-0 text-right text-sm text-text-primary tabular-nums"
 												title={String(item.quantity)}
 											>
 												{Number(item.quantity).toLocaleString("en-US", {
@@ -236,10 +236,10 @@ export default function FinancialSummary({
 													maximumFractionDigits: 2,
 												})}
 											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums">
+											<div className="col-span-2 min-w-0 text-right text-sm text-text-primary tabular-nums">
 												{formatCurrency(Number(item.unit_price))}
 											</div>
-											<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums">
+											<div className="col-span-2 min-w-0 text-right text-sm text-text-primary font-semibold tabular-nums">
 												{formatCurrency(rowTotal)}
 											</div>
 										</div>
@@ -298,7 +298,7 @@ export default function FinancialSummary({
 								return (
 									<button
 										onClick={() => setVisibleCount(prev => prev + 10)}
-										className="mt-3 w-full py-1.5 text-xs font-medium text-text-tertiary hover:text-white border border-border hover:border-border-strong rounded transition-colors"
+										className="mt-3 w-full py-1.5 text-xs font-medium text-text-tertiary hover:text-text-primary border border-border hover:border-border-strong rounded transition-colors"
 									>
 										{label}
 									</button>
@@ -315,7 +315,7 @@ export default function FinancialSummary({
 					<div className="p-4 bg-surface/50 rounded-lg border border-border">
 						<div className="flex items-start justify-between gap-4">
 							<div>
-								<p className="text-2xl font-bold text-white tabular-nums leading-none">
+								<p className="text-2xl font-bold text-text-primary tabular-nums leading-none">
 									{lineItems.length}
 								</p>
 								<p className="text-[10px] text-text-tertiary uppercase tracking-wide font-semibold mt-1">
@@ -326,7 +326,7 @@ export default function FinancialSummary({
 								<p className="text-[10px] text-text-tertiary uppercase tracking-wide font-semibold">
 									{metaLabel}
 								</p>
-								<p className="text-sm font-medium text-white mt-1 break-all">
+								<p className="text-sm font-medium text-text-primary mt-1 break-all">
 									{metaValue}
 								</p>
 							</div>
@@ -338,7 +338,7 @@ export default function FinancialSummary({
 						{subtotal != null && (
 							<div className="flex items-center justify-between text-sm">
 								<span className="text-text-tertiary">Subtotal:</span>
-								<span className="text-white font-medium tabular-nums">
+								<span className="text-text-primary font-medium tabular-nums">
 									{formatCurrency(subtotal)}
 								</span>
 							</div>
@@ -357,7 +357,7 @@ export default function FinancialSummary({
 												<span className="text-text-tertiary">
 													{rate.name} ({formatRatePercentLabel(rate.rate)}):
 												</span>
-												<span className="text-white font-medium tabular-nums">
+												<span className="text-text-primary font-medium tabular-nums">
 													{formatCurrency(rate.amountCents / 100)}
 												</span>
 											</div>
@@ -365,7 +365,7 @@ export default function FinancialSummary({
 										{rates.length > 1 && (
 											<div className="flex items-center justify-between text-sm">
 												<span className="text-text-tertiary font-medium">Total Tax:</span>
-												<span className="text-white font-medium tabular-nums">
+												<span className="text-text-primary font-medium tabular-nums">
 													{formatCurrency(totalTaxCents / 100)}
 												</span>
 											</div>
@@ -379,7 +379,7 @@ export default function FinancialSummary({
 										<span className="text-text-tertiary">
 											Tax{legacyTaxRate != null ? ` (${formatRatePercentLabel(Number(legacyTaxRate))})` : ""}:
 										</span>
-										<span className="text-white font-medium tabular-nums">
+										<span className="text-text-primary font-medium tabular-nums">
 											{formatCurrency(Number(legacyTaxAmount))}
 										</span>
 									</div>

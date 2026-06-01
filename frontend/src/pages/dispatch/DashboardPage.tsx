@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+﻿import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	AlertCircle,
@@ -128,12 +128,12 @@ export default function DashboardPage() {
 
 	const getStatusBorderClass = (status: string) => {
 		const classes: Record<string, string> = {
-			Available: "border-emerald-500",
-			Busy: "border-amber-500",
+			Available: "border-success",
+			Busy: "border-warning",
 			Break: "border-primary",
-			Offline: "border-zinc-600",
+			Offline: "border-border-strong",
 		};
-		return classes[status] || "border-zinc-600";
+		return classes[status] || "border-border-strong";
 	};
 
 	const formatNextVisit = (visit: JobVisit): string => {
@@ -156,35 +156,35 @@ export default function DashboardPage() {
 			label: "New Requests",
 			count: pipelineCounts.newRequests,
 			topBorder: "border-primary",
-			text: "text-blue-400",
+			text: "text-primary-text",
 			path: "/dispatch/requests?status=New",
 		},
 		{
 			label: "Needs Quote",
 			count: pipelineCounts.reviewing,
-			topBorder: "border-amber-500",
-			text: "text-amber-400",
+			topBorder: "border-warning",
+			text: "text-warning-text",
 			path: "/dispatch/requests?status=Reviewing",
 		},
 		{
 			label: "Pending Approval",
 			count: pipelineCounts.pendingApproval,
-			topBorder: "border-purple-500",
-			text: "text-purple-400",
+			topBorder: "border-reviewing",
+			text: "text-reviewing-text",
 			path: "/dispatch/quotes?status=Sent",
 		},
 		{
 			label: "Approved Quotes",
 			count: pipelineCounts.approved,
-			topBorder: "border-emerald-500",
-			text: "text-emerald-400",
+			topBorder: "border-success",
+			text: "text-success-text",
 			path: "/dispatch/quotes?status=Approved",
 		},
 		{
 			label: "Unscheduled Jobs",
 			count: pipelineCounts.unscheduled,
-			topBorder: "border-orange-500",
-			text: "text-orange-400",
+			topBorder: "border-orange",
+			text: "text-orange-text",
 			path: "/dispatch/jobs?status=Unscheduled",
 		},
 	], [pipelineCounts]);
@@ -199,10 +199,10 @@ export default function DashboardPage() {
 				<div className="mb-5 flex items-center justify-between gap-4">
 					<div>
 						<div className="flex items-baseline gap-2">
-							<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+							<h1 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
 								Dispatch Dashboard
 							</h1>
-							<span className="hidden sm:inline text-text-faint text-sm">·</span>
+							<span className="hidden sm:inline text-text-faint text-sm">Â·</span>
 							<p className="hidden sm:block text-sm text-text-tertiary">
 								{new Date().toLocaleDateString("en-US", {
 									weekday: "long",
@@ -218,19 +218,19 @@ export default function DashboardPage() {
 								<span className="text-text-secondary font-medium">{technicianStats.online}</span>
 								{" "}of {technicianStats.total} online
 							</span>
-							<span className="w-px h-3 bg-zinc-700" />
+							<span className="w-px h-3 bg-border" />
 							<span className="text-xs text-text-muted">
-								<span className="text-amber-400 font-medium">{pipelineCounts.inProgress}</span>
+								<span className="text-warning-text font-medium">{pipelineCounts.inProgress}</span>
 								{" "}in progress
 							</span>
-							<span className="w-px h-3 bg-zinc-700" />
+							<span className="w-px h-3 bg-border" />
 							<span className="text-xs text-text-muted">
-								<span className="text-orange-400 font-medium">{pipelineCounts.unscheduled}</span>
+								<span className="text-orange-text font-medium">{pipelineCounts.unscheduled}</span>
 								{" "}unscheduled
 							</span>
-							<span className="w-px h-3 bg-zinc-700" />
+							<span className="w-px h-3 bg-border" />
 							<span className="text-xs text-text-muted">
-								<span className="text-emerald-400 font-medium">{pipelineCounts.completedToday}</span>
+								<span className="text-success-text font-medium">{pipelineCounts.completedToday}</span>
 								{" "}done today
 							</span>
 						</div>
@@ -243,18 +243,18 @@ export default function DashboardPage() {
 								title={!CREATE_REQUEST ? "You don't have permission to perform this action" : ""}
 								disabled={!CREATE_REQUEST}
 								onClick={() => setIsCreateRequestModalOpen(true)}
-								className="inline-flex items-center justify-center gap-1.5 px-4 bg-blue-600 hover:enabled:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="inline-flex items-center justify-center gap-1.5 px-4 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={14} strokeWidth={2.5} className="-mt-px" />
 								New Request
 							</button>
 							
-							<span className={(!CREATE_QUOTE && !CREATE_JOB) ? "w-px bg-blue-500 opacity-40" : "w-px bg-blue-500"} />
+							<span className={(!CREATE_QUOTE && !CREATE_JOB) ? "w-px bg-primary opacity-40" : "w-px bg-primary"} />
 							<button
 								disabled={!CREATE_QUOTE && !CREATE_JOB}
 								title={!CREATE_QUOTE && !CREATE_JOB ? "You don't have permission to perform other actions" : "Create Quote or Job"}
 								onClick={() => setIsActionMenuOpen((o) => !o)}
-								className="flex items-center px-2.5 bg-blue-600 hover:enabled:bg-blue-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center px-2.5 bg-primary-hover hover:enabled:bg-primary-active text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								aria-label="More actions"
 							>
 								<ChevronDown size={14} strokeWidth={2.5} className={`transition-transform duration-150 ${isActionMenuOpen ? "rotate-180" : ""}`} />
@@ -262,23 +262,23 @@ export default function DashboardPage() {
 						</div>
 
 						{isActionMenuOpen && (
-							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl z-50 py-1">
+							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-canvas border border-border-strong rounded-lg shadow-xl z-50 py-1">
 								<button
 									disabled={!CREATE_QUOTE}
 									title={!CREATE_QUOTE ? "You don't have permission to perform this action" : ""}
 									onClick={() => { setIsCreateQuoteModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-purple-300 hover:enabled:text-purple-200 hover:enabled:bg-purple-500/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-reviewing-text hover:enabled:bg-reviewing/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
 								>
-									<FileText size={13} className="text-purple-400" />
+									<FileText size={13} className="text-reviewing-text" />
 									Create Quote
 								</button>
 								<button
 									disabled={!CREATE_JOB}
 									title={!CREATE_JOB ? "You don't have permission to perform this action" : ""}
 									onClick={() => { setIsCreateJobModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-amber-300 hover:enabled:text-amber-200 hover:enabled:bg-amber-500/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-warning-text hover:enabled:bg-warning/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
 								>
-									<Briefcase size={13} className="text-amber-400" />
+									<Briefcase size={13} className="text-warning-text" />
 									Create Job
 								</button>
 							</div>
@@ -324,7 +324,7 @@ export default function DashboardPage() {
 								))}
 							</div>
 
-							{/* Unscheduled — full-width, inline count + label */}
+							{/* Unscheduled â€” full-width, inline count + label */}
 							<div
 								onClick={() => navigate(pipelineItems[4].path)}
 								className={`cursor-pointer group border-t-2 ${pipelineItems[4].topBorder} pt-2.5 mt-4 flex items-baseline gap-3`}
@@ -337,7 +337,7 @@ export default function DashboardPage() {
 								</div>
 							</div>
 
-							{/* Recurring Plans — folded in below pipeline */}
+							{/* Recurring Plans â€” folded in below pipeline */}
 							<div className="mt-4 pt-4 border-t border-border-subtle">
 								<button
 									onClick={(e) => {
@@ -353,7 +353,7 @@ export default function DashboardPage() {
 										<span className="text-xs text-text-muted">
 											<span className="font-semibold text-text-secondary">{activePlansCount}</span> active
 										</span>
-										<span className="w-px h-3 bg-zinc-700" />
+										<span className="w-px h-3 bg-border" />
 										<span className="text-xs text-text-muted">
 											<span className="font-semibold text-text-secondary">{pausedPlansCount}</span> paused
 										</span>
@@ -373,7 +373,7 @@ export default function DashboardPage() {
 
 					{/* Right Column */}
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
-						{/* Technicians — compact tile grid */}
+						{/* Technicians â€” compact tile grid */}
 						<Card
 							title="Technicians"
 							headerAction={
@@ -383,7 +383,7 @@ export default function DashboardPage() {
 									</span>
 									<button
 										onClick={() => navigate("/dispatch/technicians")}
-										className="text-xs font-medium text-text-tertiary hover:text-white px-2 py-1 rounded hover:bg-surface transition-colors"
+										className="text-xs font-medium text-text-tertiary hover:text-text-primary px-2 py-1 rounded hover:bg-surface transition-colors"
 									>
 										View All
 									</button>
@@ -414,10 +414,10 @@ export default function DashboardPage() {
 												onClick={() => navigate(`/dispatch/technicians/${tech.id}`)}
 												className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-surface/40 cursor-pointer transition-colors group w-full max-w-[5rem] mx-auto"
 											>
-												<div className={`relative w-9 h-9 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm border-b-[3px] ${getStatusBorderClass(tech.status)}`}>
+												<div className={`relative w-9 h-9 rounded-lg bg-gradient-to-br from-border to-border-strong flex items-center justify-center text-white font-semibold text-sm border-b-[3px] ${getStatusBorderClass(tech.status)}`}>
 													{tech.name.charAt(0).toUpperCase()}
 													{tech.currentVisit && (
-														<span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-zinc-900" />
+														<span className="absolute -top-1 -right-1 w-2 h-2 bg-warning rounded-full border border-base" />
 													)}
 												</div>
 												<div className="w-full text-center">
@@ -426,11 +426,11 @@ export default function DashboardPage() {
 													</div>
 													<div className="text-[9px] leading-tight mt-0.5 truncate">
 														{tech.currentVisit ? (
-															<span className="text-amber-400">On Job</span>
+															<span className="text-warning-text">On Job</span>
 														) : tech.nextVisit ? (
 															<span className="text-text-muted">{formatNextVisit(tech.nextVisit)}</span>
 														) : (
-															<span className="text-text-faint">—</span>
+															<span className="text-text-faint">â€”</span>
 														)}
 													</div>
 												</div>
@@ -441,7 +441,7 @@ export default function DashboardPage() {
 										<div className="mt-3 pt-3 border-t border-border-subtle text-center">
 											<button
 												onClick={() => navigate("/dispatch/technicians")}
-												className="text-xs text-text-tertiary hover:text-white font-medium transition-colors"
+												className="text-xs text-text-tertiary hover:text-text-primary font-medium transition-colors"
 											>
 												+{activeTechnicians.length - 9} more
 											</button>

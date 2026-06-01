@@ -14,7 +14,7 @@ export default function Card({ title, headerAction, children, className = "" }: 
 		>
 			{title && (
 				<div className="flex items-center justify-between p-4 border-b border-border-subtle">
-					<h3 className="font-semibold text-white">{title}</h3>
+					<h3 className="font-semibold text-text-primary">{title}</h3>
 					{headerAction && <div>{headerAction}</div>}
 				</div>
 			)}

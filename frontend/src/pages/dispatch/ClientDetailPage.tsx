@@ -166,27 +166,27 @@ export default function ClientDetailsPage() {
 	const getStatusColor = (item: WorkflowItem) => {
 		if (item.type === "invoice") {
 			return InvoiceStatusColors[item.status as InvoiceStatus]
-				?? "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+				?? "bg-neutral/20 text-text-tertiary border-border-strong/30";
 		}
 		const colors: Record<string, string> = {
 			New: "bg-primary/20 text-primary-text border-primary/30",
 			Reviewing: "bg-reviewing/20 text-reviewing-text border-reviewing/30",
 			Quoted: "bg-warning/20 text-warning-text border-warning/30",
-			Draft: "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+			Draft: "bg-neutral/20 text-text-tertiary border-border-strong/30",
 			Sent: "bg-primary/20 text-primary-text border-primary/30",
 			Viewed: "bg-reviewing/20 text-reviewing-text border-reviewing/30",
-			Approved: "bg-emerald-500/20 text-success-text border-emerald-500/30",
+			Approved: "bg-success/20 text-success-text border-success/30",
 			Rejected: "bg-error/20 text-error-text border-error/30",
-			Unscheduled: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+			Unscheduled: "bg-orange/20 text-orange-text border-orange/30",
 			Scheduled: "bg-primary/20 text-primary-text border-primary/30",
 			InProgress: "bg-warning/20 text-warning-text border-warning/30",
-			Completed: "bg-emerald-500/20 text-success-text border-emerald-500/30",
-			Cancelled: "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
-			ConvertedToJob: "bg-emerald-500/20 text-success-text border-emerald-500/30",
-			Active: "bg-emerald-500/20 text-success-text border-emerald-500/30",
+			Completed: "bg-success/20 text-success-text border-success/30",
+			Cancelled: "bg-neutral/20 text-text-tertiary border-border-strong/30",
+			ConvertedToJob: "bg-success/20 text-success-text border-success/30",
+			Active: "bg-success/20 text-success-text border-success/30",
 			Paused: "bg-warning/20 text-warning-text border-warning/30",
 		};
-		return colors[item.status] || "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+		return colors[item.status] || "bg-neutral/20 text-text-tertiary border-border-strong/30";
 	};
 
 	const getTypeIcon = (type: string) => {
@@ -363,8 +363,8 @@ export default function ClientDetailsPage() {
 					size={32}
 					className={
 						activeTab === "active"
-							? "text-emerald-500/30 mx-auto mb-3"
-							: "text-zinc-700 mx-auto mb-3"
+							? "text-success/30 mx-auto mb-3"
+							: "text-text-muted mx-auto mb-3"
 					}
 				/>
 				{activeTab === "active" ? (

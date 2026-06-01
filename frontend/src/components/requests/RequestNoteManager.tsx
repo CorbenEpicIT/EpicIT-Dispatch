@@ -123,7 +123,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 						if (!EDIT_NOTES) return;
 						setIsAdding(true)
 					}}
-					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Plus size={14} />
 					Add Note
@@ -138,19 +138,19 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 						className="p-4 bg-surface rounded-lg border border-border"
 					>
 						<div className="flex justify-between items-center mb-4">
-							<h3 className="text-white font-semibold">
+							<h3 className="text-text-primary font-semibold">
 								New Note
 							</h3>
 							<button
 								onClick={resetForm}
-								className="text-text-tertiary hover:text-white transition-colors"
+								className="text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<X size={20} />
 							</button>
 						</div>
 
 						{errorMessage && (
-							<div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
+							<div className="mb-4 p-3 bg-error-bg border border-error-border rounded-md text-error-text text-sm">
 								{errorMessage}
 							</div>
 						)}
@@ -163,7 +163,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 								}
 								placeholder="Enter your note..."
 								rows={4}
-								className="w-full px-3 py-2 bg-base border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+								className="w-full px-3 py-2 bg-base border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								required
 							/>
 							<button
@@ -172,7 +172,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 									createNote.isPending ||
 									updateNote.isPending
 								}
-								className="w-full px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
+								className="w-full px-4 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded-md text-sm font-medium transition-colors"
 							>
 								{createNote.isPending ||
 								updateNote.isPending
@@ -189,7 +189,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 							<div key={note.id}>
 								<div className="p-3 bg-surface rounded-lg border border-border group hover:border-border-strong transition-colors">
 									<div className="flex justify-between items-start mb-2">
-										<p className="text-white text-sm flex-1">
+										<p className="text-text-primary text-sm flex-1">
 											{
 												note.content
 											}
@@ -225,7 +225,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 												className={`transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 													deleteConfirmId ===
 													note.id
-														? "text-red-500 hover:text-red-600"
+														? "text-error hover:text-error-strong"
 														: "text-text-tertiary hover:text-error-text"
 												}`}
 												title={
@@ -242,7 +242,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 													className={
 														deleteConfirmId ===
 														note.id
-															? "fill-red-500"
+															? "fill-error"
 															: ""
 													}
 												/>
@@ -271,7 +271,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 										className="mt-2 p-4 bg-surface rounded-lg border border-border"
 									>
 										<div className="flex justify-between items-center mb-4">
-											<h3 className="text-white font-semibold">
+											<h3 className="text-text-primary font-semibold">
 												Edit
 												Note
 											</h3>
@@ -279,7 +279,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 												onClick={
 													resetForm
 												}
-												className="text-text-tertiary hover:text-white transition-colors"
+												className="text-text-tertiary hover:text-text-primary transition-colors"
 											>
 												<X
 													size={
@@ -290,7 +290,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 										</div>
 
 										{errorMessage && (
-											<div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
+											<div className="mb-4 p-3 bg-error-bg border border-error-border rounded-md text-error-text text-sm">
 												{
 													errorMessage
 												}
@@ -320,7 +320,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 												rows={
 													4
 												}
-												className="w-full px-3 py-2 bg-base border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+												className="w-full px-3 py-2 bg-base border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 												required
 											/>
 											<button
@@ -329,7 +329,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 													createNote.isPending ||
 													updateNote.isPending
 												}
-												className="w-full px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
+												className="w-full px-4 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded-md text-sm font-medium transition-colors"
 											>
 												{createNote.isPending ||
 												updateNote.isPending

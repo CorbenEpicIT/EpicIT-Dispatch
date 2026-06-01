@@ -51,11 +51,11 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 			>
 				<div
 					className={`shrink-0 w-2 h-2 rounded-full ${
-						client.is_active ? "bg-green-400" : "bg-zinc-600"
+						client.is_active ? "bg-success-text" : "bg-neutral"
 					}`}
 				/>
 
-				<h3 className="text-white font-semibold text-sm shrink-0">
+				<h3 className="text-text-primary font-semibold text-sm shrink-0">
 					{displayName}
 				</h3>
 
@@ -87,7 +87,7 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 			<div className="flex-1 min-h-0">
 				<h3
 					className="
-						text-white font-semibold text-lg mb-2
+						text-text-primary font-semibold text-lg mb-2
 						overflow-hidden text-ellipsis whitespace-nowrap"
 				>
 					{displayName}
@@ -113,7 +113,7 @@ export default function ClientCard({ client, onClick, viewMode = "card" }: Clien
 						inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
 						${
 							client.is_active
-								? "bg-success/10 text-success-text border border-green-500/20"
+								? "bg-success/10 text-success-text border border-success/20"
 								: "bg-surface text-text-tertiary border border-border"
 						}
 					`}

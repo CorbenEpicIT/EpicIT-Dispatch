@@ -147,7 +147,7 @@ export default function JobDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading job details...</div>
+				<div className="text-text-primary text-lg">Loading job details...</div>
 			</div>
 		);
 	}
@@ -155,7 +155,7 @@ export default function JobDetailPage() {
 	if (!job) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Job not found</div>
+				<div className="text-text-primary text-lg">Job not found</div>
 			</div>
 		);
 	}
@@ -212,11 +212,11 @@ export default function JobDetailPage() {
 	};
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
-					<h1 className="text-3xl font-bold text-white mb-2">
+					<h1 className="text-3xl font-bold text-text-primary mb-2">
 						{job.name}
 					</h1>
 					<p className="text-text-tertiary text-sm">
@@ -235,7 +235,7 @@ export default function JobDetailPage() {
 					<span
 						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 							JobStatusColors[job.status] ||
-							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+							"bg-neutral/20 text-text-tertiary border-border-strong/30"
 						}`}
 					>
 						{job.status}
@@ -286,7 +286,7 @@ export default function JobDetailPage() {
 											}
 											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
 												deleteConfirm
-													? "bg-red-600 hover:bg-red-700 text-white"
+													? "bg-error hover:bg-error-strong text-on-primary"
 													: "text-error-text hover:bg-surface hover:text-error-text"
 											} disabled:opacity-50 disabled:cursor-not-allowed`}
 										>
@@ -314,7 +314,7 @@ export default function JobDetailPage() {
 								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{job.description ||
 										"No description provided"}
 								</p>
@@ -324,7 +324,7 @@ export default function JobDetailPage() {
 									<MapPin size={14} />
 									Address
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{job.address}
 								</p>
 							</div>
@@ -361,7 +361,7 @@ export default function JobDetailPage() {
 										/>
 										Created
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											job.created_at
 										).toLocaleDateString(
@@ -465,7 +465,7 @@ export default function JobDetailPage() {
 												<p className="text-text-secondary text-xs uppercase tracking-wide font-semibold mb-0.5">
 													Budget Variance
 												</p>
-												<p className={`text-xs ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-green-300"}`}>
+												<p className={`text-xs ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-success-text"}`}>
 													{Number(job.actual_total) > Number(job.estimated_total) ? "Over Budget" : "Under Budget"}
 												</p>
 											</div>
@@ -474,7 +474,7 @@ export default function JobDetailPage() {
 													{Number(job.actual_total) > Number(job.estimated_total) ? "+" : ""}
 													{formatCurrency(Number(job.actual_total) - Number(job.estimated_total))}
 												</p>
-												<p className={`text-sm font-semibold tabular-nums ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-green-300"}`}>
+												<p className={`text-sm font-semibold tabular-nums ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-success-text"}`}>
 													{(((Number(job.actual_total) - Number(job.estimated_total)) / Number(job.estimated_total)) * 100).toFixed(1)}%
 												</p>
 											</div>
@@ -518,7 +518,7 @@ export default function JobDetailPage() {
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{job.request.title}
 								</h4>
 								<div className="flex items-center gap-2 text-xs text-text-muted mt-2">
@@ -580,7 +580,7 @@ export default function JobDetailPage() {
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{job.quote.quote_number}
 								</h4>
 								<p className="text-text-tertiary text-xs mb-2">
@@ -661,7 +661,7 @@ export default function JobDetailPage() {
 									size={14}
 									className="text-primary-text flex-shrink-0"
 								/>
-								<h4 className="text-white font-semibold text-sm group-hover:text-primary-text transition-colors truncate">
+								<h4 className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors truncate">
 									{recurringPlan.name}
 								</h4>
 							</div>
@@ -670,7 +670,7 @@ export default function JobDetailPage() {
 									RecurringPlanStatusColors[
 										recurringPlan.status
 									] ||
-									"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+									"bg-neutral/20 text-text-tertiary border-border-strong/30"
 								}`}
 							>
 								{RecurringPlanStatusLabels[
@@ -715,7 +715,7 @@ export default function JobDetailPage() {
 									setIsCreateInvoiceOpen(true)
 								}}
 								disabled={!CREATE_INVOICE}
-								className="flex items-center gap-1.5 rounded bg-primary-hover px-3 py-1.5 text-sm font-medium text-white hover:enabled:bg-primary disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-1.5 rounded-md bg-primary-hover px-3 py-1.5 text-sm font-medium text-on-primary transition-colors hover:enabled:bg-primary-active disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={14} />
 								Create Invoice
@@ -737,12 +737,12 @@ export default function JobDetailPage() {
 								className="bg-surface border border-border rounded-lg p-3 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group"
 							>
 								<div className="flex items-center justify-between gap-6 mb-2">
-									<span className="text-white font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
+									<span className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
 										{invoice.invoice_number}
 									</span>
 									<span
 										className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-											InvoiceStatusColors[invoice.status as InvoiceStatus] ?? "bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+											InvoiceStatusColors[invoice.status as InvoiceStatus] ?? "bg-neutral/20 text-text-tertiary border-border-strong/30"
 										}`}
 									>
 										{InvoiceStatusLabels[invoice.status as InvoiceStatus] ?? invoice.status}
@@ -755,7 +755,7 @@ export default function JobDetailPage() {
 									</span>
 								</div>
 								<div className="flex items-baseline gap-2">
-									<span className="text-white font-semibold text-sm tabular-nums">
+									<span className="text-text-primary font-semibold text-sm tabular-nums">
 										{formatCurrency(Number(invoice.total))}
 									</span>
 									{Number(invoice.balance_due) > 0 && (
@@ -782,7 +782,7 @@ export default function JobDetailPage() {
 									setIsCreateVisitModalOpen(true)
 								}}
 								disabled={!CREATE_JOB}
-								className="flex items-center gap-2 px-4 py-2 bg-primary-hover rounded-md text-sm font-medium transition-colors hover:enabled:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-2 px-4 py-2 bg-primary-hover rounded-md text-sm font-medium transition-colors hover:enabled:bg-primary-active disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={16} />
 								Create Visit
@@ -809,7 +809,7 @@ export default function JobDetailPage() {
 									setIsCreateVisitModalOpen(true);
 								}}
 								disabled={!CREATE_JOB}
-								className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={16} />
 								Create First Visit
@@ -828,7 +828,7 @@ export default function JobDetailPage() {
 								className="bg-surface border border-border rounded-lg p-4 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group w-fit"
 							>
 								{visit.name && (
-									<h4 className="text-white font-semibold text-base mb-2 group-hover:text-primary-text transition-colors">
+									<h4 className="text-text-primary font-semibold text-base mb-2 group-hover:text-primary-text transition-colors">
 										{visit.name}
 									</h4>
 								)}
@@ -840,7 +840,7 @@ export default function JobDetailPage() {
 												VisitStatusColors[
 													visit.status as VisitStatus
 												] ||
-												"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+												"bg-neutral/20 text-text-tertiary border-border-strong/30"
 											}`}
 										>
 											{
@@ -856,8 +856,8 @@ export default function JobDetailPage() {
 											return (
 												<span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
 													isPartial
-														? "border-amber-800/50 bg-amber-900/50 text-warning-text"
-														: "border-green-800/50 bg-green-900/50 text-success-text"
+														? "border-warning-border bg-warning-bg text-warning-text"
+														: "border-success-border bg-success-bg text-success-text"
 												}`}>
 													{isPartial ? "Partial" : "Billed"}
 												</span>
@@ -1068,7 +1068,7 @@ export default function JobDetailPage() {
 													VisitStatusColors[
 														visit.status as VisitStatus
 													] ||
-													"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+													"bg-neutral/20 text-text-tertiary border-border-strong/30"
 												}`}
 											>
 												{
@@ -1100,7 +1100,7 @@ export default function JobDetailPage() {
 													className="w-full bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg p-3 transition-all cursor-pointer text-left group"
 												>
 													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
+														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-plan flex items-center justify-center flex-shrink-0 text-on-primary font-semibold text-sm">
 															{vt.tech.name
 																.split(
 																	" "
@@ -1121,7 +1121,7 @@ export default function JobDetailPage() {
 																)}
 														</div>
 														<div className="flex-1 min-w-0">
-															<h4 className="text-white font-medium text-sm truncate group-hover:text-primary-text transition-colors mb-1">
+															<h4 className="text-text-primary font-medium text-sm truncate group-hover:text-primary-text transition-colors mb-1">
 																{
 																	vt
 																		.tech
@@ -1171,7 +1171,7 @@ export default function JobDetailPage() {
 																						.tech
 																						.status ===
 																				  "Offline"
-																				? "bg-zinc-500/20 text-text-tertiary border border-border-strong/30"
+																				? "bg-neutral/20 text-text-tertiary border border-border-strong/30"
 																				: "bg-primary/20 text-primary-text border border-primary/30"
 																}`}
 															>
@@ -1218,7 +1218,7 @@ export default function JobDetailPage() {
 						<div className="mt-4 p-3 bg-surface/50 rounded-lg border border-border/50">
 							<p className="text-xs text-text-tertiary">
 								Job Address:{" "}
-								<span className="text-white">
+								<span className="text-text-primary">
 									{job.address}
 								</span>
 							</p>

@@ -31,13 +31,13 @@ export const RequestStatusLabels: Record<RequestStatus, string> = {
 };
 
 export const RequestStatusColors: Record<RequestStatus, string> = {
-	New: "bg-primary-hover/20 text-primary-text border-blue-700",
-	Reviewing: "bg-yellow-600/20 text-warning-text border-yellow-700",
-	Quoted: "bg-purple-600/20 text-reviewing-text border-purple-700",
-	QuoteApproved: "bg-green-600/20 text-success-text border-green-700",
-	QuoteRejected: "bg-red-600/20 text-error-text border-red-700",
-	ConvertedToJob: "bg-emerald-600/20 text-success-text border-emerald-700",
-	Cancelled: "bg-gray-600/20 text-gray-400 border-gray-700",
+	New:            "bg-primary/20 text-primary-text border-primary/30",
+	Reviewing:      "bg-warning/20 text-warning-text border-warning/30",
+	Quoted:         "bg-reviewing/20 text-reviewing-text border-reviewing/30",
+	QuoteApproved:  "bg-success/20 text-success-text border-success/30",
+	QuoteRejected:  "bg-error/20 text-error-text border-error/30",
+	ConvertedToJob: "bg-success/20 text-success-text border-success/30",
+	Cancelled:      "bg-neutral/20 text-text-tertiary border-border-strong/30",
 };
 
 // ============================================================================

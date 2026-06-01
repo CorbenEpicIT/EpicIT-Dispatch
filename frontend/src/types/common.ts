@@ -17,11 +17,11 @@ export const PriorityLabels: Record<Priority, string> = {
 };
 
 export const PriorityColors: Record<Priority, string> = {
-	Low: "bg-gray-600/20 text-gray-400 border-gray-700",
-	Medium: "bg-primary-hover/20 text-primary-text border-blue-700",
-	High: "bg-orange-600/20 text-orange-400 border-orange-700",
-	Urgent: "bg-red-600/20 text-error-text border-red-700",
-	Emergency: "bg-red-700/30 text-error-text border-red-600 font-bold",
+	Low:       "bg-neutral/20 text-text-tertiary border-border-strong/30",
+	Medium:    "bg-primary/20 text-primary-text border-primary/30",
+	High:      "bg-orange/20 text-orange-text border-orange/30",
+	Urgent:    "bg-error/20 text-error-text border-error/30",
+	Emergency: "bg-error/20 text-error-text border-error/30 font-bold",
 };
 
 // ============================================================================
@@ -424,7 +424,6 @@ export function isCompleteWorkflow(entity: {
 export function getGenericStatusColor(status: string): string {
 	const statusLower = status.toLowerCase();
 
-	// Common positive states
 	if (
 		statusLower.includes("completed") ||
 		statusLower.includes("approved") ||
@@ -433,12 +432,10 @@ export function getGenericStatusColor(status: string): string {
 		return "bg-success/20 text-success-text border-success/30";
 	}
 
-	// Common negative states
 	if (statusLower.includes("cancelled") || statusLower.includes("rejected")) {
 		return "bg-error/20 text-error-text border-error/30";
 	}
 
-	// In-progress states
 	if (
 		statusLower.includes("progress") ||
 		statusLower.includes("scheduled") ||
@@ -447,21 +444,18 @@ export function getGenericStatusColor(status: string): string {
 		return "bg-primary/20 text-primary-text border-primary/30";
 	}
 
-	// Pending/draft states
 	if (
 		statusLower.includes("draft") ||
 		statusLower.includes("pending") ||
 		statusLower.includes("new") ||
 		statusLower.includes("unscheduled")
 	) {
-		return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+		return "bg-neutral/20 text-text-tertiary border-border-strong/30";
 	}
 
-	// Warning states
 	if (statusLower.includes("expired") || statusLower.includes("reviewing")) {
-		return "bg-orange-500/20 text-orange-400 border-orange-500/30";
+		return "bg-orange/20 text-orange-text border-orange/30";
 	}
 
-	// Default
-	return "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+	return "bg-neutral/20 text-text-tertiary border-border-strong/30";
 }

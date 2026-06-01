@@ -75,7 +75,7 @@ export default function RequestDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading request details...</div>
+				<div className="text-text-primary text-lg">Loading request details...</div>
 			</div>
 		);
 	}
@@ -83,7 +83,7 @@ export default function RequestDetailPage() {
 	if (!request) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Request not found</div>
+				<div className="text-text-primary text-lg">Request not found</div>
 			</div>
 		);
 	}
@@ -100,32 +100,32 @@ export default function RequestDetailPage() {
 			case "Quoted":
 				return "bg-warning/20 text-warning-text border-warning/30";
 			case "QuoteApproved":
-				return "bg-emerald-500/20 text-success-text border-emerald-500/30";
+				return "bg-success/20 text-success-text border-success/30";
 			case "QuoteRejected":
 				return "bg-rejected/20 text-rejected-text border-rejected/30";
 			case "ConvertedToJob":
 				return "bg-success/20 text-success-text border-success/30";
 			case "Cancelled":
-				return "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+				return "bg-neutral/20 text-text-tertiary border-border-strong/30";
 			case "Unscheduled":
-				return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+				return "bg-neutral/20 text-text-tertiary border-neutral/30";
 			case "Scheduled":
 				return "bg-primary/20 text-primary-text border-primary/30";
 			case "InProgress":
-				return "bg-yellow-500/20 text-warning-text border-yellow-500/30";
+				return "bg-warning-bg text-warning-text border-warning-border";
 			case "Completed":
 				return "bg-success/20 text-success-text border-success/30";
 			default:
-				return "bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+				return "bg-neutral/20 text-text-tertiary border-border-strong/30";
 		}
 	};
 
 	const getPriorityColor = (priority: string) => {
 		switch (priority?.toLowerCase()) {
 			case "emergency":
-				return "text-red-500";
+				return "text-error";
 			case "urgent":
-				return "text-orange-400";
+				return "text-orange-text";
 			case "high":
 				return "text-error-text";
 			case "medium":
@@ -173,10 +173,10 @@ export default function RequestDetailPage() {
 	};
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
-				<h1 className="text-3xl font-bold text-white">{request.title}</h1>
+				<h1 className="text-3xl font-bold text-text-primary">{request.title}</h1>
 
 				<div className="justify-self-end flex items-center gap-3">
 					<span
@@ -255,7 +255,7 @@ export default function RequestDetailPage() {
 								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{request.description ||
 										"No description provided"}
 								</p>
@@ -267,7 +267,7 @@ export default function RequestDetailPage() {
 										<MapPin size={14} />{" "}
 										Address
 									</h3>
-									<p className="text-white break-words">
+									<p className="text-text-primary break-words">
 										{request.address}
 									</p>
 								</div>
@@ -294,7 +294,7 @@ export default function RequestDetailPage() {
 										/>{" "}
 										Created
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											request.created_at
 										).toLocaleDateString(
@@ -317,7 +317,7 @@ export default function RequestDetailPage() {
 										/>{" "}
 										Estimated Value
 									</h3>
-									<p className="text-white font-medium">
+									<p className="text-text-primary font-medium">
 										$
 										{Number(
 											request.estimated_value
@@ -341,7 +341,7 @@ export default function RequestDetailPage() {
 										Source
 									</h3>
 									<div className="flex items-center gap-2">
-										<span className="text-white capitalize">
+										<span className="text-text-primary capitalize">
 											{
 												request.source
 											}
@@ -432,7 +432,7 @@ export default function RequestDetailPage() {
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{firstQuote.quote_number}
 								</h4>
 								<p className="text-text-tertiary text-xs mb-2">
@@ -498,7 +498,7 @@ export default function RequestDetailPage() {
 											handleConvertToQuote();
 										}}
 										disabled={!CREATE_QUOTE}
-										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<FileText size={12} />{" "}
 										Convert to Quote
@@ -521,7 +521,7 @@ export default function RequestDetailPage() {
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{firstJob.job_number}
 								</h4>
 								<p className="text-text-tertiary text-xs mb-2">
@@ -575,7 +575,7 @@ export default function RequestDetailPage() {
 											handleConvertToJob();
 										}}
 										disabled={!CREATE_JOB}
-										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Briefcase size={12} />{" "}
 										Convert to Job

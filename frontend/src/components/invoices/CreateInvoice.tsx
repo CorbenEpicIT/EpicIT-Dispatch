@@ -837,7 +837,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									);
 									markDirty();
 								}}
-								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 						</div>
@@ -915,7 +915,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 																	? "border-primary bg-primary"
 																	: linkedVisitCount >
 																		  0
-																		? "border-blue-400 bg-transparent"
+																		? "border-primary-text bg-transparent"
 																		: "border-border-strong bg-transparent"
 															}`}
 														>
@@ -928,7 +928,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 																>
 																	<path
 																		d="M1 3L3 5L7 1"
-																		stroke="white"
+																		stroke="currentColor"
 																		strokeWidth="1.5"
 																		strokeLinecap="round"
 																		strokeLinejoin="round"
@@ -938,7 +938,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 															{!isJobLinked &&
 																linkedVisitCount >
 																	0 && (
-																	<div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+																	<div className="w-1.5 h-1.5 rounded-full bg-primary-text" />
 																)}
 														</div>
 														<Briefcase
@@ -952,7 +952,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 															}
 														/>
 														<div className="flex-1 min-w-0">
-															<span className="block truncate text-sm font-medium text-white">
+															<span className="block truncate text-sm font-medium text-text-primary">
 																{
 																	job.job_number
 																}{" "}
@@ -1033,9 +1033,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 															className={`px-3 py-2 transition-colors flex-shrink-0 border-l-2 ${
 																hasAnyLink
 																	? isExpanded
-																		? "border-primary text-primary-text hover:text-white bg-primary/5"
-																		: "border-primary/50 text-primary-text hover:text-white"
-																	: "border-border-strong text-text-tertiary hover:text-white hover:border-zinc-400"
+																		? "border-primary text-primary-text hover:text-text-primary bg-primary/5"
+																		: "border-primary/50 text-primary-text hover:text-text-primary"
+																	: "border-border-strong text-text-tertiary hover:text-text-primary hover:border-text-tertiary"
 															}`}
 															title={
 																isExpanded
@@ -1127,7 +1127,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 																						>
 																							<path
 																								d="M1 3L3 5L7 1"
-																								stroke="white"
+																								stroke="currentColor"
 																								strokeWidth="1.5"
 																								strokeLinecap="round"
 																								strokeLinejoin="round"
@@ -1204,7 +1204,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 										{visitBillings.size >
 											0 && (
 											<>
-												<span className="text-zinc-700">
+												<span className="text-text-faint">
 													·
 												</span>
 												<span>
@@ -1280,7 +1280,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				return (
 					<div className="min-w-0 flex flex-col -mt-3 sm:-mt-4">
 						{emptyVisitWarnings.length > 0 && (
-							<div className="mb-2 mx-4 sm:mx-6 mt-3 rounded border border-yellow-700/50 bg-yellow-950/40 px-3 py-2 text-sm text-yellow-300">
+							<div className="mb-2 mx-4 sm:mx-6 mt-3 rounded border border-warning-border bg-warning-bg px-3 py-2 text-sm text-warning-text">
 								{emptyVisitWarnings.length === 1
 									? `Visit on ${emptyVisitWarnings[0]} has no line items — add manually or deselect it.`
 									: `${emptyVisitWarnings.length} visits have no line items (${emptyVisitWarnings.join(", ")}) — add manually or deselect them.`}
@@ -1327,7 +1327,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						{submitError && (
-							<div className="rounded border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-error-text">
+							<div className="rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
 								{submitError}
 							</div>
 						)}
@@ -1336,7 +1336,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Client
 								</span>
-								<span className="text-white font-medium">
+								<span className="text-text-primary font-medium">
 									{clients?.find(
 										(c) =>
 											c.id ===
@@ -1349,7 +1349,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Memo
 									</span>
-									<span className="text-white truncate max-w-[60%] text-right">
+									<span className="text-text-primary truncate max-w-[60%] text-right">
 										{memo}
 									</span>
 								</div>
@@ -1359,7 +1359,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Payment Terms
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{paymentTermsDays ===
 										"0"
 											? "Due on Receipt"
@@ -1372,7 +1372,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Due Date
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{dueDateLabel}
 									</span>
 								</div>
@@ -1502,7 +1502,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		{showOverlapModal && (
 			<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
 				<div className="w-full max-w-lg rounded-lg border border-border bg-base p-6 shadow-xl">
-					<h3 className="mb-1 text-base font-semibold text-white">Visits Already Billed</h3>
+					<h3 className="mb-1 text-base font-semibold text-text-primary">Visits Already Billed</h3>
 					<p className="mb-4 text-sm text-text-tertiary">
 						These visits are on active invoices. You can still proceed — this may be intentional
 						(partial billing, corrections).
@@ -1539,7 +1539,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 								setShowOverlapModal(false);
 								goNext();
 							}}
-							className="rounded bg-primary-hover px-4 py-2 text-sm font-medium text-white hover:bg-primary"
+							className="rounded bg-primary-hover px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary"
 						>
 							Continue Anyway
 						</button>

@@ -701,7 +701,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 									);
 									markDirty();
 								}}
-								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
@@ -907,7 +907,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		>
 			<>
 				{submitError && (
-					<div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
 						{submitError}
 					</div>
 				)}

@@ -56,7 +56,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 						<User size={14} />
 						Client Name
 					</h3>
-					<p className="text-white mb-2">
+					<p className="text-text-primary mb-2">
 						{client?.name || "Unknown Client"}
 					</p>
 					{(client?.phone || client?.email) && (
@@ -90,7 +90,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 						<h3 className="text-text-tertiary text-sm mb-1">
 							Address
 						</h3>
-						<p className="text-white text-sm break-words">
+						<p className="text-text-primary text-sm break-words">
 							{client.address}
 						</p>
 					</div>
@@ -109,14 +109,14 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 							)}
 						</div>
 						<div className="space-y-1.5">
-							<p className="text-white font-medium pb-2">
+							<p className="text-text-primary font-medium pb-2">
 								{primaryContact.name}
 							</p>
 							{(primaryContact.phone ||
 								primaryContact.email) && (
 								<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
 									{primaryContact.phone && (
-										<div className="flex items-center gap-2 text-sm text-white pr-6">
+										<div className="flex items-center gap-2 text-sm text-text-primary pr-6">
 											<Phone
 												size={
 													14
@@ -131,7 +131,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 										</div>
 									)}
 									{primaryContact.email && (
-										<div className="flex items-center gap-2 text-sm text-white min-w-0">
+										<div className="flex items-center gap-2 text-sm text-text-primary min-w-0">
 											<Mail
 												size={
 													14
@@ -154,7 +154,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 				{showDispatchLink && (
 					<button
 						onClick={() => navigate(`/dispatch/clients/${client_id}`)}
-						className="w-full mt-2 px-4 py-2 bg-surface-raised hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors cursor-pointer"
+						className="w-full mt-2 px-4 py-2 bg-surface-raised hover:bg-surface-strong rounded-md text-sm font-medium transition-colors cursor-pointer"
 					>
 						View Full Client Profile
 					</button>

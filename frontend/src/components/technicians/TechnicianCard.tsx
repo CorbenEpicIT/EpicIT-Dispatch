@@ -111,7 +111,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                                   setDropdownOpen(false);
                                   onClick?.();
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                           >
                               View Details
                           </button>
@@ -120,7 +120,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                                   e.stopPropagation();
                                   setDropdownOpen(false);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                           >
                               Reset Password
                           </button>
@@ -130,7 +130,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                                   setDropdownOpen(false);
                                   onEdit?.(technician);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                           >
                               Update User
                           </button>
@@ -140,7 +140,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                                   setDropdownOpen(false);
                                   onAssignRole?.(technician);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                              className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                           >
                               Assign Role
                           </button>
@@ -182,7 +182,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
 
               {/* Name */}
               <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+                  <h3 className="text-text-primary font-semibold text-lg truncate">{displayName}</h3>
               </div>
 
               {/* Status + role */}
@@ -221,7 +221,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                             e.stopPropagation();
                             setDropdownOpen((prev) => !prev);
                         }}
-                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
                     >
                         <MoreHorizontal size={18} />
                         <span className="text-sm font-medium">Options</span>
@@ -248,11 +248,11 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
             {technician.name.charAt(0).toUpperCase()}
           </div>
           
-            <div className={`absolute bottom-0 right-0 w-4 h-4 border-2 border-zinc-900 rounded-full ${TechnicianStatusDotColors[technician.status]}`} />
+            <div className={`absolute bottom-0 right-0 w-4 h-4 border-2 border-base rounded-full ${TechnicianStatusDotColors[technician.status]}`} />
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+          <h3 className="text-text-primary font-semibold text-lg truncate">{displayName}</h3>
           <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
               {TechnicianStatusLabels[technician.status]}
@@ -301,7 +301,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
               e.stopPropagation();
               onClick?.();
             }}
-            className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-white text-sm font-medium rounded-md transition-colors"
+            className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors"
           >
             View Details
           </button>
@@ -309,7 +309,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
         {MANAGE_TECHNICIAN && (
           <button
             onClick={handleAssignClick}
-            className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+            className="flex-1 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-sm font-medium rounded-md transition-colors"
           >
             Assign Visits
           </button>
@@ -322,7 +322,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                 e.stopPropagation();
                 setDropdownOpen((prev) => !prev);
               }}
-              className="px-3 py-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+              className="px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
             >
               <MoreHorizontal size={18} />
             </button>

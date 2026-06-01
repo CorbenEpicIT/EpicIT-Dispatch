@@ -341,7 +341,7 @@ export default function InvoiceDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading invoice...</div>
+				<div className="text-text-primary text-lg">Loading invoice...</div>
 			</div>
 		);
 	}
@@ -349,7 +349,7 @@ export default function InvoiceDetailPage() {
 	if (!invoice) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Invoice not found</div>
+				<div className="text-text-primary text-lg">Invoice not found</div>
 			</div>
 		);
 	}
@@ -373,7 +373,7 @@ export default function InvoiceDetailPage() {
 	// ── Render ────────────────────────────────────────────────────────────────
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-start">
 				<div>
@@ -381,7 +381,7 @@ export default function InvoiceDetailPage() {
 					    wrapping memo beneath on narrow viewports */}
 					<div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
 						<div className="flex items-center gap-3 flex-shrink-0">
-							<h1 className="text-3xl font-bold text-white">
+							<h1 className="text-3xl font-bold text-text-primary">
 								{invoice.invoice_number}
 							</h1>
 							{overdue && (
@@ -426,7 +426,7 @@ export default function InvoiceDetailPage() {
 									if (!EDIT_INVOICE) return;
 									setIsSendModalOpen(true);
 								}}
-								className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Send size={14} />
 								Send
@@ -532,7 +532,7 @@ export default function InvoiceDetailPage() {
 													handleStatusTransition("Disputed");
 													setIsOptionsMenuOpen(false);
 												}}
-												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface text-orange-text hover:text-orange-text transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<AlertTriangle size={16} />
 												Mark as Disputed
@@ -608,7 +608,7 @@ export default function InvoiceDetailPage() {
 												}
 												className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
 													deleteConfirm
-														? "bg-red-600 hover:bg-red-700 text-white"
+														? "bg-error hover:bg-error-strong text-on-primary"
 														: "text-error-text hover:bg-surface hover:text-error-text"
 												} disabled:opacity-40 disabled:cursor-not-allowed`}
 											>
@@ -639,14 +639,14 @@ export default function InvoiceDetailPage() {
 						<span className="text-text-tertiary">
 							Payment Progress
 						</span>
-						<span className="text-white font-medium tabular-nums">
+						<span className="text-text-primary font-medium tabular-nums">
 							{formatCurrency(amountPaid)} of{" "}
 							{formatCurrency(total)}
 						</span>
 					</div>
 					<div className="w-full bg-surface rounded-full h-2">
 						<div
-							className="bg-green-500 h-2 rounded-full transition-all duration-500"
+							className="bg-success h-2 rounded-full transition-all duration-500"
 							style={{
 								width: `${Math.min(100, paymentProgress * 100)}%`,
 							}}
@@ -676,7 +676,7 @@ export default function InvoiceDetailPage() {
 								<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 									Created
 								</p>
-								<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
+								<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
 									<Calendar
 										size={13}
 										className="text-text-muted flex-shrink-0"
@@ -692,7 +692,7 @@ export default function InvoiceDetailPage() {
 										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 											Issue Date
 										</p>
-										<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
+										<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
 											<Calendar
 												size={
 													13
@@ -714,14 +714,14 @@ export default function InvoiceDetailPage() {
 										className={`text-sm flex items-center gap-1.5 whitespace-nowrap ${
 											overdue
 												? "text-error-text"
-												: "text-white"
+												: "text-text-primary"
 										}`}
 									>
 										<Clock
 											size={13}
 											className={
 												overdue
-													? "text-red-500 flex-shrink-0"
+													? "text-error flex-shrink-0"
 													: "text-text-muted flex-shrink-0"
 											}
 										/>
@@ -741,7 +741,7 @@ export default function InvoiceDetailPage() {
 									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Payment Terms
 									</p>
-									<p className="text-white text-sm whitespace-nowrap">
+									<p className="text-text-primary text-sm whitespace-nowrap">
 										{invoice.payment_terms_days ===
 										0
 											? "Due on Receipt"
@@ -754,7 +754,7 @@ export default function InvoiceDetailPage() {
 									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Sent
 									</p>
-									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
+									<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
 										<Send
 											size={13}
 											className="text-text-muted flex-shrink-0"
@@ -770,10 +770,10 @@ export default function InvoiceDetailPage() {
 									<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
 										Paid
 									</p>
-									<p className="text-white text-sm flex items-center gap-1.5 whitespace-nowrap">
+									<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
 										<CheckCircle
 											size={13}
-											className="text-green-500 flex-shrink-0"
+											className="text-success flex-shrink-0"
 										/>
 										{formatDateTime(
 											invoice.paid_at
@@ -890,7 +890,7 @@ export default function InvoiceDetailPage() {
 											{/* Primary row — name + all numeric columns */}
 											<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
 												<div className="col-span-5 min-w-0 text-sm">
-													<p className="text-white font-medium break-words">
+													<p className="text-text-primary font-medium break-words">
 														{
 															item.name
 														}
@@ -906,7 +906,7 @@ export default function InvoiceDetailPage() {
 														</span>
 													)}
 												</div>
-												<div className="col-span-1 min-w-0 text-right text-sm text-white tabular-nums" title={String(item.quantity)}>
+												<div className="col-span-1 min-w-0 text-right text-sm text-text-primary tabular-nums" title={String(item.quantity)}>
 													{Number(
 														item.quantity
 													).toLocaleString(
@@ -917,14 +917,14 @@ export default function InvoiceDetailPage() {
 														}
 													)}
 												</div>
-												<div className="col-span-2 min-w-0 text-right text-sm text-white tabular-nums">
+												<div className="col-span-2 min-w-0 text-right text-sm text-text-primary tabular-nums">
 													{formatCurrency(
 														Number(
 															item.unit_price
 														)
 													)}
 												</div>
-												<div className="col-span-2 min-w-0 text-right text-sm text-white font-semibold tabular-nums">
+												<div className="col-span-2 min-w-0 text-right text-sm text-text-primary font-semibold tabular-nums">
 													{formatCurrency(
 														Number(
 															item.total
@@ -997,7 +997,7 @@ export default function InvoiceDetailPage() {
 											<span className="text-text-tertiary">
 												Subtotal
 											</span>
-											<span className="text-white tabular-nums">
+											<span className="text-text-primary tabular-nums">
 												{formatCurrency(
 													Number(
 														invoice.subtotal
@@ -1017,7 +1017,7 @@ export default function InvoiceDetailPage() {
 															<span className="text-text-tertiary">
 																{rate.name} ({formatRatePercentLabel(rate.rate)})
 															</span>
-															<span className="text-white tabular-nums">
+															<span className="text-text-primary tabular-nums">
 																{formatCurrency(rate.amountCents / 100)}
 															</span>
 														</div>
@@ -1027,7 +1027,7 @@ export default function InvoiceDetailPage() {
 															<span className="text-text-tertiary font-medium">
 																Total Tax
 															</span>
-															<span className="text-white tabular-nums font-medium">
+															<span className="text-text-primary tabular-nums font-medium">
 																{formatCurrency(totalTaxCents / 100)}
 															</span>
 														</div>
@@ -1041,7 +1041,7 @@ export default function InvoiceDetailPage() {
 													<span className="text-text-tertiary">
 														Tax ({formatRatePercentLabel(Number(invoice.tax_rate))})
 													</span>
-													<span className="text-white tabular-nums">
+													<span className="text-text-primary tabular-nums">
 														{formatCurrency(Number(invoice.tax_amount ?? 0))}
 													</span>
 												</div>
@@ -1069,10 +1069,10 @@ export default function InvoiceDetailPage() {
 											</div>
 										)}
 									<div className="flex justify-between pt-2 border-t border-border">
-										<span className="text-white font-semibold">
+										<span className="text-text-primary font-semibold">
 											Total
 										</span>
-										<span className="text-white font-bold text-lg tabular-nums">
+										<span className="text-text-primary font-bold text-lg tabular-nums">
 											{formatCurrency(
 												total
 											)}
@@ -1093,7 +1093,7 @@ export default function InvoiceDetailPage() {
 												</span>
 											</div>
 											<div className="flex justify-between pt-2 border-t border-border">
-												<span className="text-white font-semibold">
+												<span className="text-text-primary font-semibold">
 													Balance
 													Due
 												</span>
@@ -1162,7 +1162,7 @@ export default function InvoiceDetailPage() {
 									>
 										<div className="flex-1 min-w-0">
 											<div className="flex items-center gap-2">
-												<span className="text-white font-semibold text-sm tabular-nums">
+												<span className="text-text-primary font-semibold text-sm tabular-nums">
 													{formatCurrency(
 														Number(
 															payment.amount
@@ -1261,7 +1261,7 @@ export default function InvoiceDetailPage() {
 										size={13}
 										className="text-primary-text flex-shrink-0"
 									/>
-									<span className="text-white text-sm font-medium group-hover:text-primary-text transition-colors truncate">
+									<span className="text-text-primary text-sm font-medium group-hover:text-primary-text transition-colors truncate">
 										{
 											invoice
 												.recurring_plan
@@ -1296,14 +1296,14 @@ export default function InvoiceDetailPage() {
 												`/dispatch/jobs/${group.jobId}`
 											)
 										}
-										className="inline-flex items-center gap-2 px-3 py-2 bg-surface/60 hover:bg-surface border border-border-strong/50 hover:border-zinc-400 rounded-lg transition-all text-left group flex-shrink-0"
+										className="inline-flex items-center gap-2 px-3 py-2 bg-surface/60 hover:bg-surface border border-border-strong/50 hover:border-text-tertiary rounded-lg transition-all text-left group flex-shrink-0"
 									>
 										<Briefcase
 											size={13}
 											className="text-text-tertiary flex-shrink-0 group-hover:text-primary-text transition-colors"
 										/>
 										<div className="flex flex-col justify-center min-h-[38px]">
-											<p className="text-white text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
+											<p className="text-text-primary text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
 												{
 													group.jobNumber
 												}{" "}
@@ -1368,7 +1368,7 @@ export default function InvoiceDetailPage() {
 											/>
 										</svg>
 										<div className="flex flex-col justify-center min-h-[38px]">
-											<p className="text-white text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
+											<p className="text-text-primary text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
 												Visit{" "}
 												{formatDate(
 													v.scheduledStartAt
@@ -1405,7 +1405,7 @@ export default function InvoiceDetailPage() {
 					<div className="bg-base border border-border-subtle rounded-xl w-full max-w-md shadow-2xl">
 						<div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
 							<div className="flex flex-col">
-								<h3 className="text-white font-semibold text-base">
+								<h3 className="text-text-primary font-semibold text-base">
 									Record Payment
 								</h3>
 								<span className="text-xs text-text-muted mt-0.5">
@@ -1425,7 +1425,7 @@ export default function InvoiceDetailPage() {
 							</div>
 							<button
 								onClick={closePaymentModal}
-								className="text-text-muted hover:text-white transition-colors text-sm"
+								className="text-text-muted hover:text-text-primary transition-colors text-sm"
 							>
 								✕
 							</button>
@@ -1480,7 +1480,7 @@ export default function InvoiceDetailPage() {
 											})
 										)
 									}
-									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								/>
 							</div>
 
@@ -1517,7 +1517,7 @@ export default function InvoiceDetailPage() {
 											})
 										);
 									}}
-									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								>
 									<option value="">
 										— Select method —
@@ -1561,7 +1561,7 @@ export default function InvoiceDetailPage() {
 											})
 										)
 									}
-									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								/>
 							</div>
 						</div>
