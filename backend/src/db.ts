@@ -15,34 +15,97 @@ if (process.env.NODE_ENV !== "production") {
 	globalForPrisma.prisma = db;
 }
 
-// Tx type loose enough to accept both the base Prisma transaction client and
-// the extended one returned by getScopedDb's $transaction callback.
+// Narrow Tx types — loose enough to accept both Prisma.TransactionClient and
+// the extended client returned by getScopedDb's $transaction callback.
+// Advisory lock constants: 1=quote, 2=job, 3=invoice (two-int overload, separate
+// PG lock space from any single-bigint locks; no cross-entity collision possible).
+
+type QuoteNumberTx = {
+	$executeRaw: (
+		template: TemplateStringsArray,
+		...values: unknown[]
+	) => Promise<number>;
+	quote: {
+		findFirst: (args: {
+			where: {
+				organization_id: string;
+				quote_number: { startsWith: string };
+			};
+			orderBy: { created_at?: "asc" | "desc" };
+		}) => Promise<{ quote_number: string } | null>;
+	};
+};
+
 type JobNumberTx = {
-	$executeRaw: (template: TemplateStringsArray, ...values: unknown[]) => Promise<number>;
+	$executeRaw: (
+		template: TemplateStringsArray,
+		...values: unknown[]
+	) => Promise<number>;
 	job: {
 		findFirst: (args: {
-			where: { organization_id: string; job_number: { startsWith: string } };
-			orderBy: { job_number: "asc" | "desc" };
+			where: {
+				organization_id: string;
+				job_number: { startsWith: string };
+			};
+			orderBy: {
+				job_number?: "asc" | "desc";
+				created_at?: "asc" | "desc";
+			};
 		}) => Promise<{ job_number: string } | null>;
 	};
 };
 
-// Generates the next J-NNNN for an organization. Must be called inside a
-// transaction: the advisory lock serializes concurrent inserts in the same org
-// so two parallel job creates can't both read the same lastJob and produce a
-// duplicate number. The lock auto-releases on commit/rollback.
+type InvoiceNumberTx = {
+	$executeRaw: (
+		template: TemplateStringsArray,
+		...values: unknown[]
+	) => Promise<number>;
+	invoice: {
+		findFirst: (args: {
+			where: {
+				organization_id: string;
+				invoice_number: { startsWith: string };
+			};
+			orderBy: { created_at?: "asc" | "desc" };
+		}) => Promise<{ invoice_number: string } | null>;
+	};
+};
+
+export async function generateQuoteNumber(
+	tx: QuoteNumberTx,
+	organizationId: string,
+): Promise<string> {
+	await tx.$executeRaw`SELECT pg_advisory_xact_lock(1, hashtext(${organizationId}))`;
+
+	const last = await tx.quote.findFirst({
+		where: {
+			organization_id: organizationId,
+			quote_number: { startsWith: "Q-" },
+		},
+		orderBy: { created_at: "desc" },
+	});
+
+	let next = 1;
+	if (last) {
+		const match = last.quote_number.match(/Q-(\d+)/);
+		if (match) next = parseInt(match[1]) + 1;
+	}
+
+	return `Q-${next.toString().padStart(4, "0")}`;
+}
+
 export async function generateJobNumber(
 	tx: JobNumberTx,
 	organizationId: string,
 ): Promise<string> {
-	await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId}))`;
+	await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, hashtext(${organizationId}))`;
 
 	const lastJob = await tx.job.findFirst({
 		where: {
 			organization_id: organizationId,
 			job_number: { startsWith: "J-" },
 		},
-		orderBy: { job_number: "desc" },
+		orderBy: { created_at: "desc" },
 	});
 
 	let nextNumber = 1;
@@ -54,4 +117,27 @@ export async function generateJobNumber(
 	}
 
 	return `J-${nextNumber.toString().padStart(4, "0")}`;
+}
+
+export async function generateInvoiceNumber(
+	tx: InvoiceNumberTx,
+	organizationId: string,
+): Promise<string> {
+	await tx.$executeRaw`SELECT pg_advisory_xact_lock(3, hashtext(${organizationId}))`;
+
+	const last = await tx.invoice.findFirst({
+		where: {
+			organization_id: organizationId,
+			invoice_number: { startsWith: "INV-" },
+		},
+		orderBy: { created_at: "desc" },
+	});
+
+	let next = 1;
+	if (last) {
+		const match = last.invoice_number.match(/INV-(\d+)/);
+		if (match) next = parseInt(match[1]) + 1;
+	}
+
+	return `INV-${next.toString().padStart(4, "0")}`;
 }

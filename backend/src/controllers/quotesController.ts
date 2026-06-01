@@ -11,7 +11,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import { db } from "../db.js";
+import { db, generateQuoteNumber } from "../db.js";
 import {
 	centsToDollars,
 } from "../services/taxEngine.js";
@@ -43,21 +43,6 @@ async function lockQuoteTaxSnapshot(
 	await lockDocumentTaxSnapshot("quote", quoteId, organizationId, tx, lockedAt);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function generateQuoteNumber(tx: any): Promise<string> {
-	const lastQuote = await tx.quote.findFirst({
-		where: { quote_number: { startsWith: "Q-" } },
-		orderBy: { quote_number: "desc" },
-	});
-
-	let nextNumber = 1;
-	if (lastQuote) {
-		const match = lastQuote.quote_number.match(/Q-(\d+)/);
-		if (match) nextNumber = parseInt(match[1]) + 1;
-	}
-
-	return `Q-${nextNumber.toString().padStart(4, "0")}`;
-}
 
 export const getAllQuotes = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -264,7 +249,7 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 				throw new Error("Description is required for quote");
 			}
 
-			const quoteNumber = await generateQuoteNumber(tx);
+			const quoteNumber = await generateQuoteNumber(tx, organizationId);
 
 			const quoteData: Prisma.quoteCreateInput = {
 				quote_number: quoteNumber,
