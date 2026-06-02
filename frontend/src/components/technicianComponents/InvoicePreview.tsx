@@ -43,7 +43,7 @@ export default function InvoicePreview({
 							return (
 								<div key={item.id ?? idx} className="flex items-center gap-3 px-4 py-2.5">
 									<div className="flex-1 min-w-0">
-										<p className="text-sm text-white truncate" title={item.name}>{item.name}</p>
+										<p className="text-sm text-text-primary truncate" title={item.name}>{item.name}</p>
 										{item.description && (
 											<p className="text-xs text-text-faint truncate" title={item.description}>{item.description}</p>
 										)}
@@ -52,7 +52,7 @@ export default function InvoicePreview({
 										<p className="text-xs text-text-muted tabular-nums">
 											{Number(item.quantity)} × ${Number(item.unit_price).toFixed(2)}
 										</p>
-										<p className="text-sm font-medium text-white tabular-nums">
+										<p className="text-sm font-medium text-text-primary tabular-nums">
 											${lineTotal.toFixed(2)}
 										</p>
 									</div>
@@ -73,7 +73,7 @@ export default function InvoicePreview({
 								<span className="tabular-nums">${taxAmount.toFixed(2)}</span>
 							</div>
 						)}
-						<div className="flex justify-between text-base font-bold text-white pt-1 border-t border-border-subtle">
+						<div className="flex justify-between text-base font-bold text-text-primary pt-1 border-t border-border-subtle">
 							<span>Total</span>
 							<span className="tabular-nums">${total.toFixed(2)}</span>
 						</div>

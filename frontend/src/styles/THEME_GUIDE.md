@@ -88,7 +88,7 @@ const css = `--rdp-accent-color: var(--color-primary);`
 | `--color-primary-bg-dim` | `rgba(59,130,246,0.06)` | Very faint primary background |
 | `--color-primary-border` | `rgba(59,130,246,0.30)` | Primary-tinted border |
 | `--color-primary-text` | `#93c5fd` | Badge/label text on primary tints |
-| `--color-on-primary` | `#ffffff` | Text/icon on filled primary button |
+| `--color-on-primary` | `#ffffff` | Text/icon on any filled action button (primary, confirm, drive, pause) |
 | `--color-primary-disabled` | `#1e40af` | Dimmed primary button background when disabled |
 
 ### Borders
@@ -100,6 +100,12 @@ const css = `--rdp-accent-color: var(--color-primary);`
 | `--color-border-strong` | `#52525b` | Emphasized border |
 | `--color-border-input` | `#505058` | Input field border |
 | `--color-border-card` | `#3a3a3f` | Card inset border (sits between `border-subtle` and `border`) |
+
+### Overlay
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-overlay` | `rgba(9,9,11,0.75)` | Modal/sheet/drawer backdrops |
 
 ### Confirm CTA (green action buttons)
 
@@ -195,8 +201,8 @@ Badge pattern: `bg-orange/20 text-orange-text border-orange/30`
 
 | Token | Value | Usage |
 |---|---|---|
-| `--color-action-drive` | `#0e7490` | "I'm Driving" button fill |
-| `--color-action-drive-hover` | `#0891b2` | Hover state |
+| `--color-action-drive` | `#1d4ed8` | "I'm Driving" / drive-action button fill |
+| `--color-action-drive-hover` | `#2563eb` | Hover state |
 | `--color-action-pause` | `#d97706` | "Pause" button fill |
 | `--color-action-pause-hover` | `#b45309` | Hover state |
 
@@ -240,6 +246,7 @@ Badge pattern: `bg-orange/20 text-orange-text border-orange/30`
 | `--color-card-bg` | `#2a2d38` | Board visit card background |
 | `--color-occurrence-bg` | `#2d2f45` | Occurrence card background |
 | `--color-popup-bg` | `#18181b` | Floating popup background |
+| `--color-occurrence-border` | `rgba(124,58,237,0.33)` | Semi-transparent violet border on occurrence cards |
 
 ### Schedule Text Variants
 
@@ -322,7 +329,8 @@ Badge pattern: `bg-orange/20 text-orange-text border-orange/30`
 
 | Token | Value | Usage |
 |---|---|---|
-| `--color-gradient-tech-teal` | `#2dd4bf` | Technician stats gradient end (teal) |
+| `--color-gradient-tech-teal` | `#2dd4bf` | Technician stats gradient end / stat card accent fill |
+| `--color-gradient-tech-teal-text` | `#5eead4` | Text companion to teal gradient (brighter, readable on dark) |
 | `--color-dispatcher-avatar-to` | `#8b5cf6` | Dispatcher avatar gradient end (violet) |
 
 ---
@@ -375,5 +383,7 @@ Per-org accent color: inject a `<style>` on a wrapper `<div>` overriding `--colo
 - `CARD_SHADOW` / `CARD_SHADOW_HOVERED` in `scheduleTokens.ts` — box-shadow rgba blacks/whites; universal, not themed
 - `OPEN_ENDED_GRADIENT` in `scheduleTokens.ts` — fade-to-black gradient; universal
 - `--anim-primary-80`, `--anim-primary-30`, `--anim-surface-flash` in `index.css` — animation intermediates; not Tailwind tokens (intentionally kept outside `@theme`)
-- `border: "1px solid #7c3aed55"` in `ScheduleBoard.tsx` — semi-transparent violet border with no exact token match; flagged for a future `--color-occurrence-border` token
-- `placeholder-zinc-500` in search inputs — no semantic placeholder token yet; flagged for `--color-placeholder`
+- Placeholder text in search inputs: use `placeholder-text-faint` (zinc-600 = #52525b) or `placeholder-text-muted` (zinc-500 = #71717a) — both auto-generated from `@theme` tokens, no dedicated `--color-placeholder` needed
+- `bg-error/30` in `PartsUsedSection.tsx` — error quantity highlight at 30% opacity; no pre-built token at this value, opacity modifier on hex token is correct per THEME_GUIDE
+- `bg-success/25` in `VisitActionButtons.tsx` — Complete Visit button hover; same rationale
+- `border-warning/25` in `VisitActionButtons.tsx` — warning panel border; same rationale

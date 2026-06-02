@@ -119,7 +119,7 @@ export default function TechVisitCard({
 				<div className="flex items-start justify-between gap-2 mb-0.5">
 					<p
 						className={`flex-1 min-w-0 text-[15px] font-bold leading-snug ${
-							isDone ? "text-text-muted line-through" : "text-white"
+							isDone ? "text-text-muted line-through" : "text-text-primary"
 						}`}
 						title={visit.name ?? "Visit"}
 					>

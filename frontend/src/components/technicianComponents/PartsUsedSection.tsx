@@ -79,7 +79,7 @@ function EditPartsTab({
 						}`}
 					>
 						<div className="flex-1 min-w-0">
-							<p className="text-sm text-white line-clamp-2">{item.name}</p>
+							<p className="text-sm text-text-primary line-clamp-2">{item.name}</p>
 							{item.description && (
 								<p className="text-xs text-text-faint truncate">
 									{item.description}
@@ -97,16 +97,16 @@ function EditPartsTab({
 									disabled={isPending}
 									className={`flex items-center justify-center w-5 h-5 rounded text-xs font-bold border transition-colors disabled:opacity-40 ${
 										isArmed
-											? "border-red-500 bg-red-500/30 text-error-text"
+											? "border-error bg-error/30 text-error-text"
 											: isOne
-												? "border-error/30 bg-red-500/8 text-error-text hover:bg-red-500/15"
+												? "border-error/30 bg-error-bg text-error-text hover:bg-error/15"
 												: "border-border bg-surface text-text-tertiary hover:bg-surface-raised"
 									}`}
 									aria-label={isOne ? "Remove part" : "Decrease quantity"}
 								>
 									{isOne ? "✕" : "−"}
 								</button>
-								<span className="text-sm font-semibold text-white tabular-nums min-w-[18px] text-center">
+								<span className="text-sm font-semibold text-text-primary tabular-nums min-w-[18px] text-center">
 									{qty}
 								</span>
 								<button
@@ -122,7 +122,7 @@ function EditPartsTab({
 								>
 									＋
 								</button>
-								<span className="text-sm text-white tabular-nums">
+								<span className="text-sm text-text-primary tabular-nums">
 									× ${unitPrice.toFixed(2)}
 								</span>
 							</div>
@@ -208,7 +208,7 @@ function StockPartPicker({
 	if (selected) {
 		return (
 			<div className="p-4">
-				<p className="text-sm font-semibold text-white mb-1">
+				<p className="text-sm font-semibold text-text-primary mb-1">
 					{selected.inventory_item.name}
 				</p>
 				<p className="text-xs text-text-muted mb-4">
@@ -225,7 +225,7 @@ function StockPartPicker({
 					value={qty}
 					onChange={(e) => setQty(e.target.value)}
 					autoFocus
-					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-border-strong mb-3 tabular-nums"
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong mb-3 tabular-nums"
 				/>
 				{err && <p className="text-xs text-error-text mb-2">{err}</p>}
 				<div className="flex gap-2">
@@ -238,7 +238,7 @@ function StockPartPicker({
 					<button
 						onClick={handleConfirm}
 						disabled={addParts.isPending}
-						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium disabled:opacity-40"
+						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40"
 					>
 						{addParts.isPending ? "Adding…" : "Add Part"}
 					</button>
@@ -260,7 +260,7 @@ function StockPartPicker({
 					value={search}
 					onChange={(e) => onSearchChange(e.target.value)}
 					autoFocus
-					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong"
+					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
 			<div className="divide-y divide-border-subtle/40 overflow-y-auto max-h-56">
@@ -275,7 +275,7 @@ function StockPartPicker({
 						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface/40 transition-colors"
 					>
 						<div className="min-w-0 flex-1">
-							<p className="text-sm text-white">
+							<p className="text-sm text-text-primary">
 								{item.inventory_item.name}
 							</p>
 							<p className="text-[10px] text-text-muted mt-0.5">
@@ -309,14 +309,14 @@ function StockPartPicker({
 									onClick={() =>
 										onSwitchToEdit(existing.id ?? "")
 									}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-emerald-900/30 text-success-text border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-success-bg text-success-text border border-success-border hover:bg-success/25 transition-colors"
 								>
 									✓ Added
 								</button>
 							) : (
 								<button
 									onClick={() => setSelected(item)}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-blue-900/50 text-primary-text hover:bg-blue-800/60 hover:text-blue-200 transition-colors border border-blue-700/30"
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-primary-bg text-primary-text hover:bg-primary-bg-subtle hover:text-primary-text transition-colors border border-primary-border"
 								>
 									+ Add
 								</button>
@@ -403,7 +403,7 @@ function FreeEntryForm({
 					onChange={(e) => setName(e.target.value)}
 					autoFocus
 					placeholder="e.g. 1/2 inch copper fitting"
-					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong"
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
 			<div className="flex gap-2">
@@ -414,7 +414,7 @@ function FreeEntryForm({
 						min="1"
 						value={qty}
 						onChange={(e) => setQty(e.target.value)}
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-border-strong tabular-nums"
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong tabular-nums"
 					/>
 				</div>
 				<div className="flex-1">
@@ -428,7 +428,7 @@ function FreeEntryForm({
 						value={unitCost}
 						onChange={(e) => setUnitCost(e.target.value)}
 						placeholder="0.00"
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong tabular-nums"
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong tabular-nums"
 					/>
 				</div>
 			</div>
@@ -437,7 +437,7 @@ function FreeEntryForm({
 				<button
 					onClick={handleSubmit}
 					disabled={updateVisit.isPending}
-					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium disabled:opacity-40"
+					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40"
 				>
 					{updateVisit.isPending ? "Adding…" : "Add Part"}
 				</button>
@@ -585,7 +585,7 @@ export default function PartsUsedSection({
 									onClick={() => setMode("edit")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
-											? "bg-surface-raised text-white"
+											? "bg-surface-raised text-on-primary"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
@@ -596,7 +596,7 @@ export default function PartsUsedSection({
 									onClick={() => setMode("stock")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "stock"
-											? "bg-surface-raised text-white"
+											? "bg-surface-raised text-on-primary"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
@@ -610,7 +610,7 @@ export default function PartsUsedSection({
 									}}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "free"
-											? "bg-surface-raised text-white"
+											? "bg-surface-raised text-on-primary"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
@@ -673,7 +673,7 @@ export default function PartsUsedSection({
 										setAdding(false);
 										setStockSearch("");
 									}}
-									className="w-full py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-white text-sm font-bold transition-colors"
+									className="w-full py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary text-sm font-bold transition-colors"
 								>
 									Done
 								</button>
@@ -701,7 +701,7 @@ export default function PartsUsedSection({
 												className="flex items-center justify-between px-4 py-2.5"
 											>
 												<div className="flex-1 min-w-0">
-													<p className="text-sm text-white line-clamp-2">
+													<p className="text-sm text-text-primary line-clamp-2">
 														{item.name}
 													</p>
 													{item.description && (
@@ -711,7 +711,7 @@ export default function PartsUsedSection({
 													)}
 												</div>
 												<div className="text-right shrink-0 ml-4">
-													<p className="text-sm text-white tabular-nums">
+													<p className="text-sm text-text-primary tabular-nums">
 														{qty} × ${unitPrice.toFixed(2)}
 													</p>
 													<p className="text-xs text-text-muted tabular-nums">
@@ -732,7 +732,7 @@ export default function PartsUsedSection({
 							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
 								Running Total
 							</span>
-							<span className="text-base font-bold text-white tabular-nums">
+							<span className="text-base font-bold text-text-primary tabular-nums">
 								${total.toFixed(2)}
 							</span>
 						</div>

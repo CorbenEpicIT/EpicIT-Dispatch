@@ -7,13 +7,14 @@
 	--color-surface-inset:  #09090b;
 
 	/* ── Text ────────────────────────────────────────────────────────────── */
-	--color-text-primary:   #ffffff;
-	--color-text-secondary: #d4d4d8;
-	--color-text-tertiary:  #a1a1aa;
-	--color-text-muted:     #71717a;
-	--color-text-faint:     #52525b;
-	--color-text-inverse:   #18181b;
-	--color-text-link:      #3b82f6;
+	--color-text-primary:    #ffffff;
+	--color-text-secondary:  #d4d4d8;
+	--color-text-tertiary:   #a1a1aa;
+	--color-text-muted:      #71717a;
+	--color-text-faint:      #52525b;
+	--color-text-inverse:    #18181b;
+	--color-text-link:       #3b82f6;
+	--color-text-on-surface: #e4e4e7;
 
 	/* ── Primary (blue) ──────────────────────────────────────────────────── */
 	--color-primary:           #3b82f6;
@@ -25,22 +26,28 @@
 	--color-primary-border:    rgba(59, 130, 246, 0.30);
 	--color-primary-text:      #93c5fd;
 	--color-on-primary:        #ffffff;
+	--color-primary-disabled:  #1e40af;
 
 	/* ── Borders ─────────────────────────────────────────────────────────── */
 	--color-border-subtle: #27272a;
 	--color-border:        #3f3f46;
 	--color-border-strong: #52525b;
+	--color-border-card:   #3a3a3f;
 	--color-border-input:  #505058;
+
+	/* ── Overlay / modal backdrop ─────────────────────────────────────────────── */
+	--color-overlay: rgba(9, 9, 11, 0.75);
 
 	/* ── Confirm CTA (green action buttons) ──────────────────────────────── */
 	--color-confirm:       #16a34a;
 	--color-confirm-hover: #22c55e;
 
 	/* ── Status: success ─────────────────────────────────────────────────── */
-	--color-success:        #10b981;
-	--color-success-text:   #34d399;
-	--color-success-bg:     rgba(16, 185, 129, 0.15);
-	--color-success-border: rgba(16, 185, 129, 0.30);
+	--color-success:             #10b981;
+	--color-success-text:        #34d399;
+	--color-success-bg:          rgba(16, 185, 129, 0.15);
+	--color-success-border:      rgba(16, 185, 129, 0.30);
+	--color-success-bright-text: #4ade80;
 
 	/* ── Status: error ───────────────────────────────────────────────────── */
 	--color-error:          #ef4444;
@@ -77,8 +84,10 @@
 	--color-neutral: #71717a;
 
 	/* ── Status: orange (expired, disputed, high-priority) ──────────────── */
-	--color-orange:      #f97316;
-	--color-orange-text: #fb923c;
+	--color-orange:        #f97316;
+	--color-orange-text:   #fb923c;
+	--color-orange-bg:     rgba(249, 115, 22, 0.15);
+	--color-orange-border: rgba(249, 115, 22, 0.30);
 
 	/* ── Priority ────────────────────────────────────────────────────────── */
 	--color-priority-emergency: #dc2626;
@@ -105,9 +114,10 @@
 	--color-visit-paused-text:    #facc15;
 
 	/* ── Schedule card surfaces ───────────────────────────────────────────── */
-	--color-card-bg:       #2a2d38;
-	--color-occurrence-bg: #2d2f45;
-	--color-popup-bg:      #18181b;
+	--color-card-bg:           #2a2d38;
+	--color-occurrence-bg:     #2d2f45;
+	--color-popup-bg:          #18181b;
+	--color-occurrence-border: rgba(124, 58, 237, 0.33);
 
 	/* ── Schedule text variants ───────────────────────────────────────────── */
 	--color-sched-text-primary:      #f4f4f5;
@@ -138,15 +148,16 @@
 	--color-chart-hole-bg:  #121212;
 
 	/* ── Tech palette — Paul Tol "light" (colorblind-safe, 9 colors) ─────── */
-	--color-tech-1: #77AADD;
-	--color-tech-2: #EE8866;
-	--color-tech-3: #EEDD88;
-	--color-tech-4: #FFAABB;
-	--color-tech-5: #99DDFF;
-	--color-tech-6: #44BB99;
-	--color-tech-7: #BBCC33;
-	--color-tech-8: #AAAA00;
-	--color-tech-9: #DDDDDD;
+	--color-tech-1:          #77AADD;
+	--color-tech-2:          #EE8866;
+	--color-tech-3:          #EEDD88;
+	--color-tech-4:          #FFAABB;
+	--color-tech-5:          #99DDFF;
+	--color-tech-6:          #44BB99;
+	--color-tech-7:          #BBCC33;
+	--color-tech-8:          #AAAA00;
+	--color-tech-9:          #DDDDDD;
+	--color-tech-unassigned: #6b7280;
 
 	/* ── Schedule board tech palette (12 colors) ──────────────────────────── */
 	--color-sched-tech-1:  #3b82f6;
@@ -168,37 +179,17 @@
 	--color-mapbox-border:   #505058;
 
 	/* ── Gradient / special ───────────────────────────────────────────────── */
-	--color-gradient-tech-teal:   #2dd4bf;
-	--color-dispatcher-avatar-to: #8b5cf6;
+	--color-gradient-tech-teal:      #2dd4bf;
+	--color-gradient-tech-teal-text: #5eead4;
+	--color-dispatcher-avatar-to:    #8b5cf6;
 
-	/* ── Supplemental: colors used in components, no existing semantic home ── */
-	/* zinc-200: ScheduleBoard/ScheduleBoardDayColumn card body text — slightly    */
-	/* off-white vs text-primary (#fff) to reduce harshness on tinted surfaces.   */
-	--color-text-on-surface:   #e4e4e7;
-	/* green-400: TechVisitCard "clockedIn" and "completed" text — brighter than  */
-	/* success-text (#34d399 emerald-400) for legibility on dark gradient strips.  */
-	--color-success-bright-text: #4ade80;
-	/* gray-500: fallback for unassigned/unknown technician color slot.            */
-	--color-tech-unassigned:   #6b7280;
-	/* Sits between border-subtle (#27272a) and border (#3f3f46); used on cards   */
-	/* (ClientCard, DispatcherCard, InventoryItemView) for a subtle inset look.   */
-	--color-border-card:       #3a3a3f;
-	/* blue-800; dimmed primary button background when disabled.                  */
-	--color-primary-disabled:  #1e40af;
-	/* follows the warning/success/error group pattern for orange status chips.   */
-	--color-orange-bg:         rgba(249, 115, 22, 0.15);
-	--color-orange-border:     rgba(249, 115, 22, 0.30);
-
-	/* purple-600/700; distinct "recurring plan" action color for the New Recurring Plan
-	   button and the "I've Arrived" lifecycle confirmation button in jobs.ts.         */
+	/* ── Recurring Plan action ───────────────────────────────────────────── */
 	--color-plan:       #9333ea;
 	--color-plan-hover: #7e22ce;
 
-	/* cyan-700/600; technician "I'm Driving" lifecycle action button.                 */
-	--color-action-drive:       #0e7490;
-	--color-action-drive-hover: #0891b2;
-
-	/* amber-600/700; technician "Pause" lifecycle action button.                      */
+	/* ── Lifecycle action buttons (technician) ───────────────────────────── */
+	--color-action-drive:       #1d4ed8;
+	--color-action-drive-hover: #2563eb;
 	--color-action-pause:       #d97706;
 	--color-action-pause-hover: #b45309;
 }

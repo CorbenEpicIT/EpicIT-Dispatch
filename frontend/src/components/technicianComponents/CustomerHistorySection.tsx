@@ -65,7 +65,7 @@ export default function CustomerHistorySection({
 				<div id="customer-history-panel" className="border-t border-border-subtle">
 					{isLoading ? (
 						<div className="flex justify-center py-6">
-							<div className="w-5 h-5 rounded-full border-2 border-border border-t-blue-500 animate-spin" />
+							<div className="w-5 h-5 rounded-full border-2 border-border border-t-primary animate-spin" />
 						</div>
 					) : filtered.length === 0 ? (
 						<p className="px-4 py-5 text-center text-sm text-text-faint">No prior visits</p>
@@ -78,7 +78,7 @@ export default function CustomerHistorySection({
 									<div key={visit.id} className="px-4 py-3">
 										<div className="flex items-start justify-between gap-3">
 											<div className="flex-1 min-w-0">
-												<p className="text-sm font-medium text-white truncate">
+												<p className="text-sm font-medium text-text-primary truncate">
 													{visit.name ?? "Visit"}
 												</p>
 												{techName && (
@@ -94,7 +94,7 @@ export default function CustomerHistorySection({
 												<span
 													className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
 														VisitStatusColors[visit.status as VisitStatus] ??
-														"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+														"bg-neutral/20 text-text-tertiary border-border-strong/30"
 													}`}
 												>
 													{visit.status}

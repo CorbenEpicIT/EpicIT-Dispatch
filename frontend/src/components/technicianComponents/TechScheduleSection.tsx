@@ -87,10 +87,10 @@ export default function TechScheduleSection({ todayVisits, tomorrowVisits, tz = 
 									className={[
 										"rounded-lg p-3 border-l-[3px] cursor-pointer active:opacity-80 hover:brightness-110 transition-[filter]",
 										isActive
-											? "bg-blue-950/40 border border-primary-active border-l-blue-500"
+											? "bg-primary-bg-dim border border-primary-active border-l-primary"
 											: isAnytime
-											? "bg-base border border-border-subtle border-l-zinc-600"
-											: "bg-base border border-border-subtle border-l-blue-500",
+											? "bg-base border border-border-subtle border-l-border-strong"
+											: "bg-base border border-border-subtle border-l-primary",
 									].join(" ")}
 								>
 									<div className="flex justify-between items-start mb-1 gap-2">

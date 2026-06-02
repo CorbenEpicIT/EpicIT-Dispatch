@@ -119,7 +119,7 @@ export default function LoginPage() {
 	};
 
 	return (
-		<div className="flex h-screen items-center justify-center bg-gray-100">
+		<div className="flex min-h-svh items-center justify-center bg-gray-100">
 			{isLoading ? (
 				<div className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4">
 					<div className="h-6 w-48 bg-gray-200 rounded animate-pulse mx-auto" />

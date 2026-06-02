@@ -53,14 +53,14 @@ function SlaBadge({ status }: { status: SlaStatus }) {
 	if (!status) return null;
 	if (status === "overdue") {
 		return (
-			<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-error-text border border-error/20">
+			<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-error/15 text-error-text border border-error/20">
 				<Clock size={10} />
 				OVERDUE
 			</span>
 		);
 	}
 	return (
-		<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-warning-text border border-warning/20">
+		<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-warning/15 text-warning-text border border-warning/20">
 			<Clock size={10} />
 			SOON
 		</span>
@@ -333,7 +333,7 @@ export default function TechnicianVisitsPage() {
 	};
 
 	return (
-		<div className="text-white">
+		<div className="text-text-primary">
 			{/* Header */}
 			<div className="flex flex-col gap-3 mb-4">
 				<h2 className="text-2xl font-semibold">My Visits</h2>
@@ -343,14 +343,14 @@ export default function TechnicianVisitsPage() {
 				>
 					<Search
 						size={18}
-						className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+						className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
 					/>
 					<input
 						type="text"
 						placeholder="Search visits..."
 						value={searchInput}
 						onChange={(e) => setSearchInput(e.target.value)}
-						className="w-full pl-11 pr-3 py-2.5 rounded-md bg-surface border border-border text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+						className="w-full pl-11 pr-3 py-2.5 rounded-md bg-surface border border-border text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
 					/>
 				</form>
 			</div>
@@ -389,7 +389,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { setTab("mine"); setPillSnap(0); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "mine" ? "text-white font-semibold" : "text-text-tertiary"
+							tab === "mine" ? "text-text-primary font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Mine
@@ -399,7 +399,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { setTab("available"); setPillSnap(1); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "available" ? "text-white font-semibold" : "text-text-tertiary"
+							tab === "available" ? "text-text-primary font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Available
@@ -409,7 +409,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { handlePastTab(); setPillSnap(2); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "past" ? "text-white font-semibold" : "text-text-tertiary"
+							tab === "past" ? "text-text-primary font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Past
@@ -428,7 +428,7 @@ export default function TechnicianVisitsPage() {
 							onClick={() => setSortMode("time")}
 							className={`px-3 py-1.5 text-xs font-medium transition-colors ${
 								sortMode === "time"
-									? "bg-surface-raised text-white"
+									? "bg-surface-raised text-text-primary"
 									: "bg-surface text-text-tertiary hover:bg-surface-raised"
 							}`}
 						>
@@ -438,7 +438,7 @@ export default function TechnicianVisitsPage() {
 							onClick={() => setSortMode("distance")}
 							className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors ${
 								sortMode === "distance"
-									? "bg-surface-raised text-white"
+									? "bg-surface-raised text-text-primary"
 									: "bg-surface text-text-tertiary hover:bg-surface-raised"
 							}`}
 						>
@@ -451,7 +451,7 @@ export default function TechnicianVisitsPage() {
 
 			{/* Proximity awareness banner */}
 			{tab === "mine" && nearbyCount > 0 && (
-				<div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20 text-success-text">
+				<div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-success-bg border border-success/20 text-success-text">
 					<Navigation size={13} className="shrink-0" />
 					<span className="text-xs font-medium">
 						{nearbyCount} visit{nearbyCount > 1 ? "s" : ""}{" "}
@@ -461,7 +461,7 @@ export default function TechnicianVisitsPage() {
 			)}
 
 			{acceptError && (
-				<div className="mb-3 px-4 py-3 bg-red-900/40 border border-red-500/40 rounded-lg text-error-text text-sm">
+				<div className="mb-3 px-4 py-3 bg-error/10 border border-error/40 rounded-lg text-error-text text-sm">
 					{acceptError}
 				</div>
 			)}
@@ -509,7 +509,7 @@ export default function TechnicianVisitsPage() {
 											/>
 										</div>
 									)}
-									<h3 className="text-lg font-bold text-white leading-snug">
+									<h3 className="text-lg font-bold text-text-primary leading-snug">
 										{row.visitName}
 									</h3>
 								</div>
@@ -568,8 +568,8 @@ export default function TechnicianVisitsPage() {
 										className={`flex-[3] py-3 min-h-[44px] rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 ${
 											acceptConfirm ===
 											row.id
-												? "bg-confirm-hover text-white animate-pulse"
-												: "bg-confirm hover:bg-confirm text-white"
+												? "bg-confirm-hover text-text-primary animate-pulse"
+												: "bg-confirm hover:bg-confirm text-text-primary"
 										}`}
 									>
 										{acceptMutation.isPending

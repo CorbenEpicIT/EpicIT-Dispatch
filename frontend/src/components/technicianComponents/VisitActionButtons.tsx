@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { Car, MapPin, Clock, Pause, CheckCircle2, Play, AlertTriangle, Info, UserCheck } from "lucide-react";
 import { useTechVisitActions } from "../../hooks/useTechVisitActions";
 import type { JobVisit } from "../../types/jobs";
@@ -81,7 +81,7 @@ export default function VisitActionButtons({
 			<div className="space-y-2">
 				<div className="flex items-center gap-2 px-1 pb-2 border-b border-border-subtle">
 					<Pause size={13} className="text-warning-text shrink-0" />
-					<p className="text-sm font-semibold text-white">
+					<p className="text-sm font-semibold text-text-primary">
 						{isClockOut ? "Wrap up or pause?" : "Why are you pausing?"}
 					</p>
 				</div>
@@ -92,7 +92,7 @@ export default function VisitActionButtons({
 							autoFocus
 							onClick={handleConfirmComplete}
 							disabled={isLoading}
-							className={`w-full py-3 px-2.5 rounded-lg font-medium bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-success-text text-center transition-colors disabled:opacity-40 leading-snug ${isCard ? "text-xs" : "text-sm"}`}
+							className={`w-full py-3 px-2.5 rounded-lg font-medium bg-success-bg hover:bg-success/25 border border-success-border text-success-text text-center transition-colors disabled:opacity-40 leading-snug ${isCard ? "text-xs" : "text-sm"}`}
 						>
 							{isLoading ? "Completing…" : "Complete Visit"}
 						</button>
@@ -138,14 +138,14 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
 					>
 						Staying On Site
 					</button>
 					<button
 						onClick={handleHeadingOut}
 						disabled={isLoading}
-						className={`${btn} bg-blue-700 hover:bg-primary-hover text-white disabled:opacity-40`}
+						className={`${btn} bg-action-drive hover:bg-action-drive-hover text-on-primary disabled:opacity-40`}
 					>
 						{isLoading ? "Updating…" : "Heading Out"}
 					</button>
@@ -161,12 +161,12 @@ export default function VisitActionButtons({
 			.join(", ");
 		return (
 			<div className="space-y-2.5">
-				<div className="rounded-lg bg-warning/10 border border-amber-500/25 px-3.5 py-3 space-y-1">
+				<div className="rounded-lg bg-warning/10 border border-warning/25 px-3.5 py-3 space-y-1">
 					<div className="flex items-center gap-2">
 						<AlertTriangle size={13} className="text-warning-text shrink-0" />
-						<p className="text-sm font-semibold text-amber-300">Other techs on site</p>
+						<p className="text-sm font-semibold text-warning-text">Other techs on site</p>
 					</div>
-					<p className="text-xs text-amber-200/70 leading-relaxed">
+					<p className="text-xs text-text-tertiary leading-relaxed">
 						Pausing clocks out {otherNames}. Their time will be saved.
 					</p>
 				</div>
@@ -175,14 +175,14 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleConfirmPause}
 						disabled={isLoading}
-						className={`${btn} bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-40`}
+						className={`${btn} bg-action-pause hover:bg-action-pause-hover text-on-primary disabled:opacity-40`}
 					>
 						{isLoading ? "Pausing…" : "Pause Anyway"}
 					</button>
@@ -195,12 +195,12 @@ export default function VisitActionButtons({
 		const otherNames = openEntries.filter((e) => e.tech_id !== techId).map((e) => e.tech.name).join(", ");
 		return (
 			<div className="space-y-2.5">
-				<div className="rounded-lg bg-warning/10 border border-amber-500/25 px-3.5 py-3 space-y-1">
+				<div className="rounded-lg bg-warning/10 border border-warning/25 px-3.5 py-3 space-y-1">
 					<div className="flex items-center gap-2">
 						<AlertTriangle size={13} className="text-warning-text shrink-0" />
-						<p className="text-sm font-semibold text-amber-300">Other techs on site</p>
+						<p className="text-sm font-semibold text-warning-text">Other techs on site</p>
 					</div>
-					<p className="text-xs text-amber-200/70 leading-relaxed">
+					<p className="text-xs text-text-tertiary leading-relaxed">
 						{otherNames} still clocked in. Completing will clock them out automatically.
 					</p>
 				</div>
@@ -209,14 +209,14 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleConfirmComplete}
 						disabled={isLoading}
-						className={`${btn} bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-40`}
+						className={`${btn} bg-action-pause hover:bg-action-pause-hover text-on-primary disabled:opacity-40`}
 					>
 						{isLoading ? "Completing…" : "Force Complete"}
 					</button>
@@ -234,14 +234,14 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={handleDeclineComplete}
-						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
 					>
 						Keep Paused
 					</button>
 					<button
 						onClick={handleConfirmComplete}
 						disabled={isLoading}
-						className={`${btn} bg-emerald-700 hover:bg-emerald-600 text-emerald-100 disabled:opacity-40`}
+						className={`${btn} bg-confirm hover:bg-confirm-hover text-on-primary disabled:opacity-40`}
 					>
 						{isLoading ? "Completing…" : "Complete ✓"}
 					</button>
@@ -264,7 +264,7 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-text-primary`}
 					>
 						Dismiss
 					</button>
@@ -284,14 +284,14 @@ export default function VisitActionButtons({
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
-						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-white`}
+						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleConfirmSwitch}
 						disabled={isLoading}
-						className={`${btn} bg-blue-700 hover:bg-primary-hover text-white disabled:opacity-40`}
+						className={`${btn} bg-action-drive hover:bg-action-drive-hover text-on-primary disabled:opacity-40`}
 					>
 						{isLoading ? "Switching…" : "Switch"}
 					</button>
@@ -325,10 +325,10 @@ export default function VisitActionButtons({
 						aria-label={confirmingAction === "drive" ? "Confirm — tap again to begin driving" : "I'm Driving"}
 						className={`${btn} ${
 							driveDisabled
-								? "bg-blue-700 text-white opacity-50 cursor-not-allowed"
+								? "bg-action-drive text-on-primary opacity-50 cursor-not-allowed"
 								: confirmingAction === "drive"
-								? "bg-primary-hover text-white border border-blue-400 motion-safe:animate-pulse"
-								: "bg-blue-700 hover:bg-primary-hover text-white"
+								? "bg-action-drive-hover text-on-primary border border-primary-text motion-safe:animate-pulse"
+								: "bg-action-drive hover:bg-action-drive-hover text-on-primary"
 						}`}
 					>
 						<Car size={iconSize} />
@@ -359,10 +359,10 @@ export default function VisitActionButtons({
 						aria-label={confirmingAction === "arrive" ? "Confirm — tap again to mark arrived" : "I've Arrived"}
 						className={`${btn} ${
 							arriveDisabled
-								? "bg-blue-700 text-white opacity-50 cursor-not-allowed"
+								? "bg-action-drive text-on-primary opacity-50 cursor-not-allowed"
 								: confirmingAction === "arrive"
-								? "bg-primary-hover text-white border border-blue-400 motion-safe:animate-pulse"
-								: "bg-blue-700 hover:bg-primary-hover text-white"
+								? "bg-action-drive-hover text-on-primary border border-primary-text motion-safe:animate-pulse"
+								: "bg-action-drive hover:bg-action-drive-hover text-on-primary"
 						}`}
 					>
 						<MapPin size={iconSize} />
@@ -396,8 +396,8 @@ export default function VisitActionButtons({
 							disabled={isLoading}
 							className={`${btn} ${
 								confirmingAction === "complete"
-									? "bg-emerald-400 text-black motion-safe:animate-pulse"
-									: "bg-emerald-700 hover:bg-emerald-600 text-white"
+									? "bg-confirm-hover text-text-inverse motion-safe:animate-pulse"
+									: "bg-confirm hover:bg-confirm-hover text-on-primary"
 							}`}
 						>
 							{confirmingAction !== "complete" && <CheckCircle2 size={iconSize} />}
@@ -436,8 +436,8 @@ export default function VisitActionButtons({
 						disabled={isLoading && !clockInDisabled}
 						className={`${btn} ${
 							clockInDisabled
-								? "bg-primary-hover text-white opacity-50 cursor-not-allowed"
-								: "bg-primary-hover hover:bg-primary text-white"
+								? "bg-primary-hover text-on-primary opacity-50 cursor-not-allowed"
+								: "bg-primary-hover hover:bg-primary text-on-primary"
 						}`}
 					>
 						<Play size={iconSize} />
@@ -459,7 +459,7 @@ export default function VisitActionButtons({
 					<button
 						onClick={handleAvailable}
 						disabled={isLoading}
-						className={`${btn} bg-confirm hover:bg-confirm-hover text-white`}
+						className={`${btn} bg-confirm hover:bg-confirm-hover text-on-primary`}
 					>
 						<UserCheck size={iconSize} />
 						{isLoading ? "Updating…" : "I'm Available"}

@@ -57,14 +57,14 @@ function NotificationItem({
 		<button
 			onClick={handleClick}
 			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-border-subtle/60 hover:bg-surface/40 transition-colors ${
-				isUnread ? "border-l-2 border-l-blue-500" : ""
+				isUnread ? "border-l-2 border-l-primary" : ""
 			}`}
 		>
 			<NotificationIcon type={notif.type} />
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-1.5">
 					{isUnread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-					<p className={`text-sm leading-snug truncate ${isUnread ? "font-semibold text-white" : "text-text-secondary"}`}>
+					<p className={`text-sm leading-snug truncate ${isUnread ? "font-semibold text-text-primary" : "text-text-secondary"}`}>
 						{notif.title}
 					</p>
 				</div>
@@ -112,7 +112,7 @@ export default function TechnicianNotificationsPage() {
 			{/* Header */}
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
-					<h1 className="text-lg font-semibold text-white">Notifications</h1>
+					<h1 className="text-lg font-semibold text-text-primary">Notifications</h1>
 					{unreadCount > 0 && (
 						<span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-primary-text border border-primary/30 min-w-[20px]">
 							{unreadCount}
@@ -134,7 +134,7 @@ export default function TechnicianNotificationsPage() {
 					<div
 						role="status"
 						aria-label="Loading notifications"
-						className="w-6 h-6 rounded-full border-2 border-border border-t-blue-500 animate-spin"
+						className="w-6 h-6 rounded-full border-2 border-border border-t-primary animate-spin"
 					/>
 				</div>
 			)}
