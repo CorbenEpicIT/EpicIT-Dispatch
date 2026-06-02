@@ -8,6 +8,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { createNotification } from "./notificationsController.js";
+import { getSocket } from "../services/socketService.js";
 import { signImageUrl, toRawUrl } from "../services/wasabiService.js";
 
 type NoteLike = { photos?: { photo_url: string }[] | null } | null | undefined;
@@ -252,6 +253,7 @@ export const insertJobNote = async (
 			}
 		}
 
+		getSocket().emit("job_note:created", { organizationId });
 		return { err: "", item: created };
 	} catch (e) {
 		if (e instanceof ZodError) {

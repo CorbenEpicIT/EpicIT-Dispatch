@@ -521,6 +521,9 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 			});
 		});
 
+		if (created) {
+			getSocket().emit("job_visit:created", { visitId: created.id, organizationId: organization_id });
+		}
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -908,6 +911,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 							}),
 						),
 					);
+					getSocket().emit("job_visit:updated", { visitId: null, organizationId });
 				}
 			}
 		}
@@ -945,6 +949,9 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				"job_visit:status_changed",
 				buildVisitStatusPayload(updated as any, existingVisit.status, true, context),
 			);
+		}
+		if (updated && Object.keys(changes).length > 0) {
+			getSocket().emit("job_visit:updated", { visitId: updated.id, organizationId });
 		}
 		return { err: "", item: updated };
 	} catch (e) {
@@ -1070,6 +1077,7 @@ export const assignTechniciansToVisit = async (
 					actionUrl:    `/technician/visits/${visitId}`,
 				}, organizationId);
 			}
+			getSocket().emit("job_visit:updated", { visitId: updated.id, organizationId });
 		}
 
 		return { err: "", item: updated };
@@ -1816,6 +1824,7 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 			}
 		});
 
+		getSocket().emit("job_visit:deleted", { visitId: id, organizationId });
 		return { err: "", message: "Job visit deleted successfully" };
 	} catch (e) {
 		log.error({ err: e }, "Failed to delete job visit");

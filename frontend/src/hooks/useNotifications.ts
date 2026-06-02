@@ -35,9 +35,35 @@ export const useNotificationsQuery = (
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
 		});
 
+		socket.on("job_visit:updated", () => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		});
+
+		socket.on("job:updated", () => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+		});
+
+		socket.on("job_visit:created", () => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+		});
+
+		socket.on("job_visit:deleted", () => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+		});
+
+		socket.on("job_note:created", () => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+		});
+
 		return () => {
 			socket.off("notification:new");
 			socket.off("job_visit:status_changed");
+			socket.off("job_visit:updated");
+			socket.off("job:updated");
+			socket.off("job_visit:created");
+			socket.off("job_visit:deleted");
+			socket.off("job_note:created");
 			socket.disconnect();
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
