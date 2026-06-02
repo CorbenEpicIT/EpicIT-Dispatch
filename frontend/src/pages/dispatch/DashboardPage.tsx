@@ -324,7 +324,7 @@ export default function DashboardPage() {
 								))}
 							</div>
 
-							{/* Unscheduled â€” full-width, inline count + label */}
+							{/* Unscheduled — full-width, inline count + label */}
 							<div
 								onClick={() => navigate(pipelineItems[4].path)}
 								className={`cursor-pointer group border-t-2 ${pipelineItems[4].topBorder} pt-2.5 mt-4 flex items-baseline gap-3`}
@@ -337,7 +337,7 @@ export default function DashboardPage() {
 								</div>
 							</div>
 
-							{/* Recurring Plans â€” folded in below pipeline */}
+							{/* Recurring Plans — folded in below pipeline */}
 							<div className="mt-4 pt-4 border-t border-border-subtle">
 								<button
 									onClick={(e) => {
@@ -373,7 +373,7 @@ export default function DashboardPage() {
 
 					{/* Right Column */}
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
-						{/* Technicians â€” compact tile grid */}
+						{/* Technicians — compact tile grid */}
 						<Card
 							title="Technicians"
 							headerAction={
@@ -430,7 +430,7 @@ export default function DashboardPage() {
 														) : tech.nextVisit ? (
 															<span className="text-text-muted">{formatNextVisit(tech.nextVisit)}</span>
 														) : (
-															<span className="text-text-faint">â€”</span>
+															<span className="invisible">·</span>
 														)}
 													</div>
 												</div>
