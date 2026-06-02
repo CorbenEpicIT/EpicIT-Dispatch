@@ -225,7 +225,7 @@ router.delete("/:id", requirePermission("manage_technicians"), async (req, res, 
 });
 
 // Get job visits for a technician
-router.get("/:techId/visits", requireAnyPermission("view_technicians", "view_visits"), async (req, res, next) => {
+router.get("/:techId/visits", requirePermissionOrSelf("view_technicians", "techId"), async (req, res, next) => {
     try {
         const techId = req.params.techId as string;
         const orgId = req.user!.organization_id as string;
