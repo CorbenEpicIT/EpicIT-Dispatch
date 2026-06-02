@@ -1,4 +1,4 @@
-﻿import LoadSvg from "../../assets/icons/loading.svg?react";
+import LoadSvg from "../../assets/icons/loading.svg?react";
 import { useRef, useState } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
@@ -138,7 +138,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 
 			{/* Body */}
 			<div className="px-4 sm:px-5 pt-3 sm:pt-4 pb-4 space-y-4">
-				{/* Mode toggle â€” only shown when QB is connected */}
+				{/* Mode toggle ─ only shown when QB is connected */}
 				{qbStatus?.connected && (
 					<div className="flex rounded-md border border-border overflow-hidden text-sm">
 						<button
@@ -166,7 +166,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 					</div>
 				)}
 
-				{/* QB customer select â€” import mode only */}
+				{/* QB customer select ─ import mode only */}
 				{mode === "import" && (
 					<div>
 						<label className={LABEL}>QuickBooks Customer *</label>
@@ -176,7 +176,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 							className={INPUT}
 							disabled={loadingCustomers}
 						>
-							<option value="">--Select a customer--</option>
+							<option value="">─Select a customer─</option>
 							{customers
 							?.filter((c) =>
 								!mappedIds?.includes(c.Id) &&
@@ -198,7 +198,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 								Will create primary contact: &ensp;
 								{selectedCustomer.PrimaryEmailAddr.Address}
 								{selectedCustomer.PrimaryPhone?.FreeFormNumber && (
-									<> Â· {selectedCustomer.PrimaryPhone.FreeFormNumber}</>
+									<> · {selectedCustomer.PrimaryPhone.FreeFormNumber}</>
 								)}
 							</p>
 						)}

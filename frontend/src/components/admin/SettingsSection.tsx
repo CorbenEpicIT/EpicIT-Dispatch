@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useEffect, type ReactNode } from "react";
+import { useRef, useState, useEffect, type ReactNode } from "react";
 import { Upload, Trash2, Building2, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import {
 	useOrgSettings,
@@ -17,7 +17,7 @@ import {
 	useQBDisconnectMutation,
 } from "../../hooks/useQuickbooks";
 
-// â”€â”€ Layout primitive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Layout primitive ─────────────────────────────────────────────────────────
 
 interface SettingRowProps {
 	title: string;
@@ -47,7 +47,7 @@ function SettingRow({ title, description, action, children }: SettingRowProps) {
 	);
 }
 
-// â”€â”€ Organization settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Organization settings ─────────────────────────────────────────────────────
 
 const inputBase =
 	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder-zinc-500 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
@@ -202,7 +202,7 @@ function OrgSettingsSection() {
 									<Upload size={12} />
 								)}
 								{uploadMutation.isPending
-									? "Uploadingâ€¦"
+									? "Uploading…"
 									: "Upload Logo"}
 							</button>
 
@@ -224,7 +224,7 @@ function OrgSettingsSection() {
 										<Trash2 size={12} />
 									)}
 									{deleteMutation.isPending
-										? "Removingâ€¦"
+										? "Removing…"
 										: "Remove"}
 								</button>
 							)}
@@ -237,7 +237,7 @@ function OrgSettingsSection() {
 						)}
 
 						<p className="mt-2 text-xs text-text-muted">
-							JPEG, PNG, or WebP Â· max 5 MB
+							JPEG, PNG, or WebP · max 5 MB
 						</p>
 					</div>
 				</div>
@@ -401,7 +401,7 @@ function OrgSettingsSection() {
 							/>
 						)}
 						{updateMutation.isPending
-							? "Savingâ€¦"
+							? "Saving…"
 							: "Save Changes"}
 					</button>
 
@@ -421,7 +421,7 @@ function OrgSettingsSection() {
 	);
 }
 
-// â”€â”€ Toggle primitive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Toggle primitive ──────────────────────────────────────────────────────────
 
 interface ToggleProps {
 	checked: boolean;
@@ -450,7 +450,7 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 	);
 }
 
-// â”€â”€ QuickBooks settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── QuickBooks settings ───────────────────────────────────────────────────────
 
 function QuickBooksSection() {
 	const { data: qbStatus, isLoading } = useQBStatusQuery();
@@ -495,7 +495,7 @@ function QuickBooksSection() {
 							) : (
 								<XCircle size={12} />
 							)}
-							{disconnectMutation.isPending ? "Disconnectingâ€¦" : "Disconnect"}
+							{disconnectMutation.isPending ? "Disconnecting…" : "Disconnect"}
 						</button>
 					)}
 				</div>
@@ -515,7 +515,7 @@ function QuickBooksSection() {
 							{connectMutation.isPending && (
 								<Loader2 size={12} className="animate-spin" />
 							)}
-							{connectMutation.isPending ? "Redirectingâ€¦" : "Connect to QuickBooks"}
+							{connectMutation.isPending ? "Redirecting…" : "Connect to QuickBooks"}
 						</button>
 					)}
 				</div>
@@ -527,7 +527,7 @@ function QuickBooksSection() {
 	);
 }
 
-// â”€â”€ Settings page shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Settings page shell ───────────────────────────────────────────────────────
 
 export default function SettingsSection() {
 	const [showTaxInactive, setShowTaxInactive] = useState(false);

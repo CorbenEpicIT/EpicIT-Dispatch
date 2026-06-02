@@ -2,7 +2,7 @@
 import type { TaxSnapshot } from "../../services/taxEngine.js";
 import { type Numeric, type OrgPdfProps, toNum, fmt, fmtDate, fmtRatePct } from "./pdfHelpers.js";
 
-// â”€â”€ PDF prop types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── PDF prop types ────────────────────────────────────────────────────────────
 
 interface QuotePdfLineItem {
 	id?: string;
@@ -63,13 +63,13 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 	Cancelled: { bg: "#fee2e2", text: "#991b1b" },
 };
 
-// Sent and Viewed are internal workflow states â€” not meaningful to the quote recipient
+// Sent and Viewed are internal workflow states ─ not meaningful to the quote recipient
 const HIDE_BADGE_STATUSES = new Set(["Sent", "Viewed"]);
 
 const badgeColors = (status: string) =>
 	STATUS_COLORS[status] ?? { bg: "#f3f4f6", text: "#6b7280" };
 
-// â”€â”€ styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
 	page: {
@@ -151,7 +151,7 @@ const s = StyleSheet.create({
 		width: "50%",
 		paddingLeft: 16,
 	},
-	// Section heading â€” used for BILL TO and QUOTE DETAILS titles
+	// Section heading ─ used for BILL TO and QUOTE DETAILS titles
 	sectionHeading: {
 		fontSize: 9,
 		fontFamily: "Helvetica-Bold",
@@ -160,7 +160,7 @@ const s = StyleSheet.create({
 		letterSpacing: 1,
 		marginBottom: 7,
 	},
-	// Small muted label â€” kept for legacy use if needed
+	// Small muted label ─ kept for legacy use if needed
 	sectionLabel: {
 		fontSize: 7,
 		fontFamily: "Helvetica-Bold",
@@ -331,7 +331,7 @@ const s = StyleSheet.create({
 	footerText: { fontSize: 7, color: "#9ca3af" },
 });
 
-// â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── component ────────────────────────────────────────────────────────────────
 
 export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: OrgPdfProps }) {
 	const bc = badgeColors(quote.status);
@@ -358,14 +358,14 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 	return (
 		<Document>
 			<Page size="A4" style={s.page}>
-				{/* â”€â”€ Draft watermark â”€â”€ */}
+				{/* ── Draft watermark ── */}
 				{quote.status === "Draft" && (
 					<View style={s.draftWatermark}>
 						<Text style={s.draftWatermarkText}>DRAFT</Text>
 					</View>
 				)}
 
-				{/* â”€â”€ Header â”€â”€ */}
+				{/* ── Header ── */}
 				<View style={s.header}>
 					<View style={s.companyBlock}>
 						{org.logo_url && (
@@ -385,11 +385,11 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</View>
 				</View>
 
-				{/* â”€â”€ Bill To + Quote Details â”€â”€ */}
+				{/* ── Bill To + Quote Details ── */}
 				<View style={s.infoRow}>
 					<View style={s.infoColLeft}>
 						<Text style={s.sectionHeading}>Bill To</Text>
-						<Text style={s.clientName}>{quote.client?.name ?? "â€”"}</Text>
+						<Text style={s.clientName}>{quote.client?.name ?? "─"}</Text>
 						{quote.client?.address && (
 							<Text style={s.infoText}>{quote.client.address}</Text>
 						)}
@@ -424,7 +424,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</View>
 				</View>
 
-				{/* â”€â”€ Line Items â”€â”€ */}
+				{/* ── Line Items ── */}
 				<View style={s.tableContainer}>
 					<View style={s.tableHead}>
 						<View style={s.colName}>
@@ -490,7 +490,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					))}
 				</View>
 
-				{/* â”€â”€ Totals â”€â”€ */}
+				{/* ── Totals ── */}
 				<View style={s.tableDivider} />
 				<View style={s.totalsWrapper}>
 					<View style={s.totalRow}>
@@ -562,7 +562,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</View>
 				</View>
 
-				{/* â”€â”€ Notes â”€â”€ */}
+				{/* ── Notes ── */}
 				{(quote.notes ?? []).length > 0 && (
 					<>
 						<View style={s.sectionDivider} />
@@ -577,7 +577,7 @@ export function QuotePdfTemplate({ quote, org }: { quote: QuotePdfProps; org: Or
 					</>
 				)}
 
-				{/* â”€â”€ Footer â”€â”€ */}
+				{/* ── Footer ── */}
 				<View style={s.footer} fixed>
 					<Text style={s.footerText}>{org.name}</Text>
 					<Text

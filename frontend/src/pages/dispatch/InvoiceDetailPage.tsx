@@ -1,4 +1,4 @@
-﻿import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
 	Edit2,
@@ -61,10 +61,10 @@ import {
 	useQBInvoiceEmailMutation
 } from "../../hooks/useQuickbooks";
 
-// â”€â”€ Local helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Local helpers ─────────────────────────────────────────────────────────────
 
 const formatDateTime = (val: string | Date | null | undefined): string => {
-	if (!val) return "â€”";
+	if (!val) return "─";
 	return new Date(val).toLocaleString("en-US", {
 		month: "short",
 		day: "numeric",
@@ -145,7 +145,7 @@ function buildLinkedJobGroups(invoice: Invoice): LinkedJobGroup[] {
 	return Array.from(groupMap.values());
 }
 
-// â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function InvoiceDetailPage() {
 	const { invoiceId: invoiceIdParam, id: idParam } = useParams<{
@@ -200,7 +200,7 @@ export default function InvoiceDetailPage() {
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
-	// â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	// ── Handlers ──────────────────────────────────────────────────────────────
 
 	const handleDelete = async () => {
 		if (!DELETE_INVOICE) return;
@@ -295,7 +295,7 @@ export default function InvoiceDetailPage() {
 	};
 
 	// Map group name â†’ individual rates array for line item tax badge + totals section
-	// Must be above early returns â€” useMemo must not be called conditionally
+	// Must be above early returns ─ useMemo must not be called conditionally
 	const groupRatesMap = useMemo(() => {
 		const map = new Map<string, TaxSnapshotRate[]>();
 		for (const group of invoice?.tax_snapshot?.groups ?? []) {
@@ -350,7 +350,7 @@ export default function InvoiceDetailPage() {
 		return [...rateMap.values()];
 	}, [collapsedTaxRates, invoice?.line_items]);
 
-	// â”€â”€ Guards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	// ── Guards ────────────────────────────────────────────────────────────────
 
 	if (isLoading) {
 		return (
@@ -368,7 +368,7 @@ export default function InvoiceDetailPage() {
 		);
 	}
 
-	// â”€â”€ Derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	// ── Derived values ────────────────────────────────────────────────────────
 
 	const overdue = isOverdue(invoice);
 	const editable = isEditable(invoice.status);
@@ -384,7 +384,7 @@ export default function InvoiceDetailPage() {
 
 	const linkedJobGroups = buildLinkedJobGroups(invoice);
 
-	// â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	// ── Render ────────────────────────────────────────────────────────────────
 
 	return (
 		<div className="text-text-primary space-y-6">
@@ -475,7 +475,7 @@ export default function InvoiceDetailPage() {
 							? `Created ${formatDate(invoice.created_at)}`
 							: `Issued ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
 						{invoice.due_date &&
-							` Â· Due ${formatDate(invoice.due_date)}`}
+							` · Due ${formatDate(invoice.due_date)}`}
 					</p>
 				</div>
 
@@ -740,7 +740,7 @@ export default function InvoiceDetailPage() {
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<div className="lg:col-span-2 space-y-6">
 					<Card title="Invoice Details">
-						{/* Date/terms â€” inline flex wrap, each field sizes to content */}
+						{/* Date/terms ─ inline flex wrap, each field sizes to content */}
 						<div className="flex flex-wrap gap-x-6 gap-y-3 mb-6">
 							<div className="min-w-0">
 								<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
@@ -909,7 +909,7 @@ export default function InvoiceDetailPage() {
 										Amount
 									</div>
 								</div>
-								{/* Data rows â€” items-start keeps numeric cols top-aligned when description wraps */}
+								{/* Data rows ─ items-start keeps numeric cols top-aligned when description wraps */}
 								{lineItems.map((item, index) => {
 									const sourceVisitId =
 										item.source_visit_id;
@@ -930,7 +930,7 @@ export default function InvoiceDetailPage() {
 												sourceVisitId
 										);
 										if (iv != null) {
-											sourceLabel = `${iv.visit.job.job_number} Â· Visit ${formatDate(iv.visit.scheduled_start_at)}`;
+											sourceLabel = `${iv.visit.job.job_number} · Visit ${formatDate(iv.visit.scheduled_start_at)}`;
 											isVisitSource = true;
 										}
 									} else if (
@@ -945,7 +945,7 @@ export default function InvoiceDetailPage() {
 												sourceJobId
 										);
 										if (ij != null) {
-											sourceLabel = `${ij.job.job_number} Â· ${ij.job.name}`;
+											sourceLabel = `${ij.job.job_number} · ${ij.job.name}`;
 										}
 									}
 
@@ -957,7 +957,7 @@ export default function InvoiceDetailPage() {
 											}
 											className="border-b border-border-subtle hover:bg-surface/30 transition-colors"
 										>
-											{/* Primary row â€” name + all numeric columns */}
+											{/* Primary row ─ name + all numeric columns */}
 											<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
 												<div className="col-span-5 min-w-0 text-sm">
 													<p className="text-text-primary font-medium break-words">
@@ -1002,7 +1002,7 @@ export default function InvoiceDetailPage() {
 													)}
 												</div>
 											</div>
-											{/* Sub-row â€” only renders when secondary content exists */}
+											{/* Sub-row ─ only renders when secondary content exists */}
 											{((item.description != null && item.description !== "") ||
 												sourceLabel != null ||
 												item.tax_group?.name ||
@@ -1041,7 +1041,7 @@ export default function InvoiceDetailPage() {
 																<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
 																	{item.tax_group.name}
 																	{groupRatesMap.has(item.tax_group.name)
-																		? ` Â· ${groupRatesMap.get(item.tax_group.name)!
+																		? ` · ${groupRatesMap.get(item.tax_group.name)!
 																			.map(r => `${r.name} ${formatRatePercentLabel(r.rate)}`)
 																			.join(" + ")}`
 																		: ""}
@@ -1258,7 +1258,7 @@ export default function InvoiceDetailPage() {
 													null && (
 													<>
 														{" "}
-														Â·{" "}
+														·{" "}
 														{
 															payment
 																.recorded_by_dispatcher
@@ -1270,7 +1270,7 @@ export default function InvoiceDetailPage() {
 													null && (
 													<>
 														{" "}
-														Â·{" "}
+														·{" "}
 														{
 															payment
 																.recorded_by_tech
@@ -1312,7 +1312,7 @@ export default function InvoiceDetailPage() {
 						)}
 					</Card>
 
-					{/* Recurring Plan â€” sidebar link, shown when invoice is plan-generated */}
+					{/* Recurring Plan ─ sidebar link, shown when invoice is plan-generated */}
 					{invoice.recurring_plan != null && (
 						<button
 							onClick={() =>
@@ -1349,7 +1349,7 @@ export default function InvoiceDetailPage() {
 				</div>
 			</div>
 
-			{/* Linked Jobs / Visits â€” grouped by job */}
+			{/* Linked Jobs / Visits ─ grouped by job */}
 			{linkedJobGroups.length > 0 && (
 				<Card title="Linked Jobs &amp; Visits">
 					<div className="flex flex-col gap-3">
@@ -1377,7 +1377,7 @@ export default function InvoiceDetailPage() {
 												{
 													group.jobNumber
 												}{" "}
-												Â·{" "}
+												·{" "}
 												{
 													group.jobName
 												}
@@ -1405,7 +1405,7 @@ export default function InvoiceDetailPage() {
 											size={13}
 											className="text-text-faint flex-shrink-0"
 										/>
-										{group.jobNumber} Â·{" "}
+										{group.jobNumber} ·{" "}
 										{group.jobName}
 									</span>
 								)}
@@ -1590,7 +1590,7 @@ export default function InvoiceDetailPage() {
 									className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								>
 									<option value="">
-										â€” Select method â€”
+										─ Select method ─
 									</option>
 									<option value="cash">
 										Cash

@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	AlertCircle,
@@ -202,7 +202,7 @@ export default function DashboardPage() {
 							<h1 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
 								Dispatch Dashboard
 							</h1>
-							<span className="hidden sm:inline text-text-faint text-sm">Â·</span>
+							<span className="hidden sm:inline text-text-faint text-sm">·</span>
 							<p className="hidden sm:block text-sm text-text-tertiary">
 								{new Date().toLocaleDateString("en-US", {
 									weekday: "long",
