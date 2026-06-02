@@ -1,7 +1,7 @@
 ﻿import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect, useState, useCallback } from "react";
-import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X } from "lucide-react";
+import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X, Gauge } from "lucide-react";
 import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
 import type { TechnicianNotification } from "../types/notifications";
@@ -69,6 +69,15 @@ export default function TechnicianLayout() {
 					</div>
 
 					<div className="flex items-center gap-2">
+						{/* Mileage icon */}
+						<button
+							onClick={() => navigate("/technician/mileage")}
+							className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface transition-colors"
+							title="Weekly Mileage"
+						>
+							<Gauge size={20} className="text-text-tertiary" />
+						</button>
+
 						{/* Truck / vehicle icon */}
 						<button
 							onClick={() => navigate("/technician/vehicle")}

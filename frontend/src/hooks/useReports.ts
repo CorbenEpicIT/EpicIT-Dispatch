@@ -6,6 +6,7 @@ import type {
 	UnscheduledRevenueResponse,
 	QuotePipelineResponse,
 	ArrivalPerformanceResponse,
+	MileageReportVisit,
 } from "../types/reports";
 import * as reportsApi from "../api/reports";
 
@@ -70,5 +71,15 @@ export const useArrivalPerformanceQuery = (
 		queryKey: ["reports", "arrival-performance", startDate, endDate],
 		queryFn: () => reportsApi.getArrivalPerformance(startDate, endDate),
 		enabled: !!startDate && !!endDate,
+	});
+};
+
+export const useMileageReportQuery = (
+	startDate?: string,
+	endDate?: string,
+): UseQueryResult<MileageReportVisit[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "mileage", startDate, endDate],
+		queryFn: () => reportsApi.getMileageReport(startDate, endDate),
 	});
 };

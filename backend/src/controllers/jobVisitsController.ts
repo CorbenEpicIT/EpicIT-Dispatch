@@ -58,6 +58,37 @@ export const buildSecondaryEventPayload = (
 
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
 
+interface MapboxDirectionsResponse {
+	routes: Array<{ distance: number }>;
+	code: string;
+	message?: string;
+}
+
+async function fetchRouteDistanceMiles(
+	techCoords: { lat: number; lon: number } | null | undefined,
+	jobCoords: { lat: number; lon: number } | null | undefined,
+): Promise<number | null> {
+	const token = process.env.MAPBOX_TOKEN;
+	if (!token || !techCoords?.lat || !techCoords?.lon || !jobCoords?.lat || !jobCoords?.lon) {
+		if (!token) console.error("Missing MAPBOX_TOKEN; cannot fetch route distance.");
+		return null;
+	}
+	const coords = `${techCoords.lon},${techCoords.lat};${jobCoords.lon},${jobCoords.lat}`;
+	const url =
+		`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}` +
+		`?overview=false&access_token=${token}`;
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 8_000);
+	try {
+		const resp = await fetch(url, { signal: controller.signal });
+		if (!resp.ok) return null;
+		const data = (await resp.json()) as MapboxDirectionsResponse;
+		if (data.code !== "Ok" || !data.routes.length) return null;
+		return data.routes[0].distance / 1609.34;
+	} catch { return null; }
+	finally { clearTimeout(timeoutId); }
+}
+
 export const buildVisitStatusPayload = (
 	visit: {
 		id: string;
@@ -1153,6 +1184,7 @@ export const applyVisitTransition = async (
 	organizationId: string,
 	context?: UserContext,
 	pauseReason?: string,
+	techCoords?: { lat: number; lon: number } | null,
 ) => {
 	try {
 		const { from, to } = LIFECYCLE_TRANSITIONS[action];
@@ -1516,6 +1548,19 @@ export const applyVisitTransition = async (
 				"job_visit:status_changed",
 				buildVisitStatusPayload(updated, existingVisit.status, true, context),
 			);
+		}
+
+		if (action === "drive" && updated) {
+			const jobCoords = existingVisit.job.coords as { lat?: number; lon?: number; lng?: number } | null;
+			const jobLon = jobCoords?.lon ?? jobCoords?.lng;
+			const miles = await fetchRouteDistanceMiles(
+				techCoords ?? null,
+				jobCoords?.lat && jobLon ? { lat: jobCoords.lat, lon: jobLon } : null,
+			);
+			if (miles !== null) {
+				await sdb.job_visit.update({ where: { id }, data: { estimated_drive_miles: miles } });
+				updated.estimated_drive_miles = miles;
+			}
 		}
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {

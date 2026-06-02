@@ -326,11 +326,11 @@ export const useDeleteJobVisitMutation = (): UseMutationResult<
 // JOB VISIT LIFECYCLE MUTATIONS
 // ============================================
 
-export const useVisitTransitionMutation = (): UseMutationResult<JobVisit, Error, { visitId: string; action: LifecycleAction; pauseReason?: string }> => {
+export const useVisitTransitionMutation = (): UseMutationResult<JobVisit, Error, { visitId: string; action: LifecycleAction; pauseReason?: string; techCoords?: { lat: number; lon: number } }> => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: ({ visitId, action, pauseReason }) => jobApi.transitionJobVisit(visitId, action, pauseReason),
+		mutationFn: ({ visitId, action, pauseReason, techCoords }) => jobApi.transitionJobVisit(visitId, action, pauseReason, techCoords),
 		onSuccess: async (updatedVisit) => {
 			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
 			if (updatedVisit.visit_techs?.length > 0) {

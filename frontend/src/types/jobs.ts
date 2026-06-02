@@ -371,6 +371,7 @@ export interface JobVisit extends PricingBreakdown {
 
 	actual_start_at?: Date | string | null;
 	actual_end_at?: Date | string | null;
+	estimated_drive_miles?: number | null;
 	status: VisitStatus;
 	cancellation_reason?: string | null;
 

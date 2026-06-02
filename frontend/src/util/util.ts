@@ -63,6 +63,54 @@ export const formatTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 		timeZone: tz,
 	});
 };
+/* ── Week / day helpers ──────────────────────────────────────── */
+
+// Returns the Start of the week 
+export function startOfWeek(d: Date): Date {
+	const date = new Date(d);
+	const day = date.getDay(); // 0 = Sun
+	const diff = day === 0 ? -6 : 1 - day;
+	date.setDate(date.getDate() + diff);
+	date.setHours(0, 0, 0, 0);
+	return date;
+}
+
+// Returns a new Date by n amount of calendar days 
+export function addDays(d: Date, n: number): Date {
+	const date = new Date(d);
+	date.setDate(date.getDate() + n);
+	return date;
+}
+
+// Formats a date
+export function formatWeekDay(d: Date, tz = FALLBACK_TIMEZONE): string {
+	return d.toLocaleDateString("en-US", {
+		timeZone: tz,
+		weekday: "long",
+		month: "short",
+		day: "numeric",
+	});
+}
+
+// Formats a week range 
+export function formatWeekRange(weekStart: Date, tz = FALLBACK_TIMEZONE): string {
+	const start = weekStart.toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" });
+	const end = addDays(weekStart, 6).toLocaleDateString("en-US", {
+		timeZone: tz,
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+	return `${start} – ${end}`;
+}
+
+// Returns true if two days are the same.
+export function isSameDay(a: Date, b: Date, tz = FALLBACK_TIMEZONE): boolean {
+	return (
+		a.toLocaleDateString("en-CA", { timeZone: tz }) ===
+		b.toLocaleDateString("en-CA", { timeZone: tz })
+	);
+}
 
 /* ── Inventory Status ────────────────────────────────────────── */
 

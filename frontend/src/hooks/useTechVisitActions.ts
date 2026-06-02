@@ -52,6 +52,21 @@ export interface UseTechVisitActionsReturn {
 
 const CONFIRM_TIMEOUT_MS = 4000;
 
+// Gets the user's current location and returns null if it cannot be retrieved from the user
+function getDeviceCoords(): Promise<{ lat: number; lon: number } | null> {
+	return new Promise((resolve) => {
+		if (typeof navigator === "undefined" || !navigator.geolocation) {
+			resolve(null);
+			return;
+		}
+		navigator.geolocation.getCurrentPosition(
+			(pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+			() => resolve(null),
+			{ timeout: 5_000, maximumAge: 60_000 },
+		);
+	});
+}
+
 export function useTechVisitActions(
 	visit: JobVisit | undefined,
 	techId: string,
@@ -142,7 +157,8 @@ export function useTechVisitActions(
 		setConfirmingAction(null);
 		setClockError(null);
 		try {
-			await transitionMutation.mutateAsync({ visitId, action: "drive" });
+			const techCoords = await getDeviceCoords();
+			await transitionMutation.mutateAsync({ visitId, action: "drive", techCoords: techCoords ?? undefined });
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "";
 			if (msg.includes("CLOCKED_IN")) {
@@ -161,7 +177,8 @@ export function useTechVisitActions(
 			return;
 		}
 		try {
-			await transitionMutation.mutateAsync({ visitId, action: "drive" });
+			const techCoords = await getDeviceCoords();
+			await transitionMutation.mutateAsync({ visitId, action: "drive", techCoords: techCoords ?? undefined });
 			setUiState("idle");
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "";

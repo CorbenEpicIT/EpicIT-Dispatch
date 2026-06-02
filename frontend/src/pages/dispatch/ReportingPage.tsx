@@ -1,4 +1,4 @@
-﻿import { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { AlertCircle } from "lucide-react";
 import {
@@ -8,12 +8,14 @@ import {
 	useUnscheduledRevenueQuery,
 	useQuotePipelineQuery,
 	useArrivalPerformanceQuery,
+	useMileageReportQuery,
 } from "../../hooks/useReports";
 import OverviewSection from "../../components/reports/OverviewSection";
 import RevenueOverviewSection from "../../components/reports/RevenueOverviewSection";
 import RevenueByJobTypeChart from "../../components/reports/RevenueByJobTypeChart";
 import QuotePipeline from "../../components/reports/QuotePipeline";
 import ArrivalPerformanceChart from "../../components/reports/ArrivalPerformanceChart";
+import MileageSummaryCard from "../../components/reports/MileageSummaryCard";
 import DatePicker from "../../components/ui/DatePicker";
 
 export default function ReportingPage() {
@@ -70,6 +72,12 @@ export default function ReportingPage() {
 		isLoading: arrivalLoading,
 		error: arrivalError,
 	} = useArrivalPerformanceQuery(startDateStr, endDateStr);
+
+	const {
+		data: mileageData,
+		isLoading: mileageLoading,
+		error: mileageError,
+	} = useMileageReportQuery(startDateStr, endDateStr);
 
 	return (
 		<div className="min-h-0 bg-canvas text-text-primary w-full">
@@ -170,6 +178,25 @@ export default function ReportingPage() {
 							/>
 						) : null}
 					</div>
+				</div>
+
+				{/* Mileage Section */}
+				<div className="mt-3 sm:mt-4">
+					{mileageError ? (
+						<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
+							<AlertCircle size={16} className="text-error-text" />
+							<p className="text-sm text-error-text">
+								Failed to load mileage data
+							</p>
+						</div>
+					) : mileageLoading ? (
+						<div className="bg-base border border-border-subtle rounded-xl p-4 h-[200px] animate-pulse" />
+					) : mileageData ? (
+						<MileageSummaryCard
+							data={mileageData}
+							rangeLabel={rangeLabel}
+						/>
+					) : null}
 				</div>
 			</div>
 		</div>

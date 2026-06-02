@@ -5,6 +5,7 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import { getArrivalPerformance,
+    getMileageReport,
     getOverviewMetrics,
     getQuotePipeline,
     getRevenueByJobType,
@@ -140,6 +141,20 @@ router.get("/arrival-performance", requirePermission("view_reports"), async (req
 		}
 
 		const data = await getArrivalPerformance(startDate, endDate, orgId);
+		res.json(createSuccessResponse(data));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/mileage", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { startDate, endDate } = req.query as {
+			startDate?: string;
+			endDate?: string;
+		};
+		const data = await getMileageReport(startDate, endDate, orgId);
 		res.json(createSuccessResponse(data));
 	} catch (err) {
 		next(err);

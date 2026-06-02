@@ -497,3 +497,73 @@ export const getQuotePipeline = async (startDate: string, endDate: string, organ
 		viewed: buckets.Viewed,
 	};
 };
+
+// ============================================================================
+// MILEAGE REPORT
+// ============================================================================
+
+export interface MileageReportVisitRow {
+	visitId: string;
+	jobId: string;
+	jobName: string;
+	jobAddress: string;
+	clientName: string;
+	visitDate: string; 
+	miles: number;
+	visitStatus: string;
+	technicianNames: string; // multiple techs can be on one job visit
+}
+
+export const getMileageReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+): Promise<MileageReportVisitRow[]> => {
+	const sdb = getScopedDb(organizationId);
+
+	const dateFilter: { gte?: Date; lte?: Date } = {};
+	if (startDate) {
+		const s = new Date(startDate);
+		s.setUTCHours(0, 0, 0, 0);
+		dateFilter.gte = s;
+	}
+	if (endDate) {
+		const e = new Date(endDate);
+		e.setUTCHours(23, 59, 59, 999);
+		dateFilter.lte = e;
+	}
+
+	const visits = await sdb.job_visit.findMany({
+		where: {
+			estimated_drive_miles: { not: null },
+			job: { organization_id: organizationId },
+			...(Object.keys(dateFilter).length && { scheduled_start_at: dateFilter }),
+		},
+		include: {
+			job: {
+				select: {
+					id: true,
+					name: true,
+					address: true,
+					client: { select: { name: true } },
+				},
+			},
+			visit_techs: {
+				include: { tech: { select: { id: true, name: true } } },
+			},
+		},
+		orderBy: { scheduled_start_at: "desc" },
+	});
+
+	return visits.map((v) => ({
+		visitId: v.id,
+		jobId: v.job.id,
+		jobName: v.job.name,
+		jobAddress: v.job.address,
+		clientName: v.job.client?.name ?? "Unknown Client",
+		visitDate: v.scheduled_start_at.toISOString(),
+		miles: Number(v.estimated_drive_miles ?? 0),
+		visitStatus: v.status,
+		technicianNames: v.visit_techs.map((vt) => vt.tech.name).join(", ") || "Unassigned",
+	}));
+};
