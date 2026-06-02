@@ -567,6 +567,23 @@ export default function JobVisitDetailPage() {
 								</div>
 							)}
 
+							{/* Footer: Drive Mileage */}
+							{visit.estimated_drive_miles != null && visit.estimated_drive_miles > 0 && (
+								<div className="pt-4 border-t border-border">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-1">
+										Drive Distance
+									</h3>
+									<p className="text-white font-medium">
+										{visit.estimated_drive_miles.toFixed(1)} mi
+										{visit.visit_techs && visit.visit_techs.length > 0 && (
+											<span className="text-text-tertiary font-normal ml-2">
+												· {visit.visit_techs.map((vt) => vt.tech.name).join(", ")}
+											</span>
+										)}
+									</p>
+								</div>
+							)}
+
 							{/* Footer: Cancellation Reason — full width */}
 							{visit.cancellation_reason && (
 								<div className="pt-4 border-t border-border">

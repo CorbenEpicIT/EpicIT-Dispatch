@@ -122,6 +122,11 @@ function JobContextSection({
 										<MapPin size={13} />
 										{job.address}
 									</a>
+									{visit?.estimated_drive_miles != null && (
+										<p className="text-xs text-text-muted mt-0.5">
+											{visit.estimated_drive_miles.toFixed(1)} mi from driving
+										</p>
+									)}
 								</div>
 							)}
 							{job.description && (
@@ -312,10 +317,12 @@ function ArrivalBanner({
 	scheduledStart,
 	address,
 	tz,
+	distanceMiles,
 }: {
 	scheduledStart: Date | string;
 	address?: string;
 	tz: string;
+	distanceMiles?: number | null;
 }) {
 	const [countdown, setCountdown] = useState(() => {
 		const diff = new Date(scheduledStart).getTime() - Date.now();
@@ -362,9 +369,16 @@ function ArrivalBanner({
 				</a>
 			)}
 
-			<p className="text-xs text-text-muted">
-				Scheduled: {formatDateTime(scheduledStart, tz)}
-			</p>
+			<div className="flex items-center justify-between">
+				<p className="text-xs text-text-muted">
+					Scheduled: {formatDateTime(scheduledStart, tz)}
+				</p>
+				{distanceMiles != null && (
+					<span className="text-xs text-info-text font-medium tabular-nums">
+						{distanceMiles.toFixed(1)} mi
+					</span>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -528,6 +542,7 @@ export default function TechnicianVisitDetailPage() {
 							scheduledStart={visit.scheduled_start_at}
 							address={job?.address}
 							tz={tz}
+							distanceMiles={visit.estimated_drive_miles}
 						/>
 						<JobContextSection
 							visit={visit}

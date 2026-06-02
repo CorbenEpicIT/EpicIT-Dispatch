@@ -112,7 +112,7 @@ export default function TechniciansPage() {
 		) || {};
 
 	return (
-		<div className="text-white">
+		<div className="text-text-primary">
 			<PageHeader
 				title="Technicians"
 				subtitle={
@@ -129,13 +129,13 @@ export default function TechniciansPage() {
 					<button
 						title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
 						disabled={!MANAGE_TECHNICIANS}
-						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						onClick={() => {
 							if (!MANAGE_TECHNICIANS) return;
 							setIsModalOpen(true);
 						}}
 					>
-						<Plus size={16} className="text-white" />
+						<Plus size={16} />
 						New Technician
 					</button>
 			</PageHeader>

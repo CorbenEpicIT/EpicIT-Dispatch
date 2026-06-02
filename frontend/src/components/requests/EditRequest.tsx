@@ -196,7 +196,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 							onChange={(e) =>
 								updateField("title", e.target.value)
 							}
-							className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+							className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 							disabled={isLoading}
 						/>
 						<UndoButton
@@ -269,7 +269,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 									e.target.value
 								)
 							}
-							className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+							className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 							disabled={isLoading}
 						/>
 						<UndoButtonTop
@@ -374,7 +374,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 														.value
 												)
 											}
-											className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+											className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 											disabled={
 												isLoading
 											}
@@ -418,7 +418,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 															.value
 													)
 												}
-												className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+												className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 												disabled={
 													isLoading
 												}
@@ -471,7 +471,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 														.value
 												)
 											}
-											className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pl-7 pr-10 min-w-0"
+											className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pl-7 pr-10 min-w-0"
 											disabled={
 												isLoading
 											}
@@ -507,7 +507,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 													.checked
 											)
 										}
-										className="w-4 h-4 rounded border-border bg-base text-blue-600 focus:ring-primary focus:ring-2 cursor-pointer"
+										className="w-4 h-4 rounded border-border bg-base text-primary-hover focus:ring-primary focus:ring-2 cursor-pointer"
 										disabled={isLoading}
 									/>
 									<label
@@ -530,7 +530,7 @@ export default function EditRequest({ isModalOpen, setIsModalOpen, request }: Ed
 											disabled={
 												isLoading
 											}
-											className="ml-2 text-text-tertiary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+											className="ml-2 text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 										>
 											<RotateCcw
 												size={

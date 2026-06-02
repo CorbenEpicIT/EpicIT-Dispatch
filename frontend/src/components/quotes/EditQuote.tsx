@@ -397,7 +397,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-border px-2.5 py-1 w-full rounded bg-base text-white text-sm focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1 w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -489,7 +489,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-border px-2.5 py-1 w-full h-14 rounded bg-base text-white text-sm resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1 w-full h-14 rounded bg-base text-text-primary text-sm resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -687,7 +687,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		>
 			<>
 				{submitError && (
-					<div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
 						{submitError}
 					</div>
 				)}

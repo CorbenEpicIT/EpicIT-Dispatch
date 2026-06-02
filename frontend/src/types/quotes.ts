@@ -44,14 +44,14 @@ export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 };
 
 export const QuoteStatusColors: Record<QuoteStatus, string> = {
-	Draft:     "bg-zinc-500/20 text-text-tertiary border-border-strong/30",
+	Draft:     "bg-neutral/20 text-text-tertiary border-border-strong/30",
 	Issued:    "bg-primary/20 text-primary-text border-primary/30",
 	Sent:      "bg-success/20 text-success-text border-success/30",
-	Viewed:    "bg-teal-500/20 text-teal-400 border-teal-500/30",
-	Approved:  "bg-emerald-500/20 text-success-text border-emerald-500/30",
+	Viewed:    "bg-info/20 text-info-text border-info/30",
+	Approved:  "bg-success/20 text-success-text border-success/30",
 	Rejected:  "bg-error/20 text-error-text border-error/30",
 	Revised:   "bg-warning/20 text-warning-text border-warning/30",
-	Expired:   "bg-orange-500/20 text-orange-400 border-orange-500/30",
+	Expired:   "bg-orange/20 text-orange-text border-orange/30",
 	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
 

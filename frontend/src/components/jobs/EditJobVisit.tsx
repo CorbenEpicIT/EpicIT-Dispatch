@@ -517,7 +517,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 										)
 									}
 									disabled={isLoading}
-									className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 								/>
 								<UndoButton
 									show={isDirty("name")}
@@ -547,7 +547,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 										)
 									}
 									disabled={isLoading}
-									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 								/>
 								<UndoButtonTop
 									show={isDirty(
@@ -682,7 +682,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 									</div>
 								)}
 
-								<div className="flex justify-between font-semibold text-white border-t border-border pt-1.5">
+								<div className="flex justify-between font-semibold text-text-primary border-t border-border pt-1.5">
 									<span>Total</span>
 									<span className="tabular-nums">${resolvedTotal.toFixed(2)}</span>
 								</div>
@@ -695,7 +695,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 				return (
 					<div className="space-y-2 lg:space-y-3 min-w-0">
 						<div className="p-3 lg:p-4 bg-surface rounded-lg border border-border">
-							<h3 className="text-base lg:text-lg font-semibold mb-3 lg:mb-4 text-white">
+							<h3 className="text-base lg:text-lg font-semibold mb-3 lg:mb-4 text-text-primary">
 								Assign Technicians
 							</h3>
 							<div className="border border-border rounded-md p-3 max-h-56 overflow-y-auto bg-base">
@@ -722,7 +722,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 														disabled={
 															isLoading
 														}
-														className="w-4 h-4 accent-blue-600"
+														className="w-4 h-4 accent-primary-hover"
 													/>
 													<span className="text-text-primary text-sm lg:text-base flex-1">
 														{
@@ -737,7 +737,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 														className={`text-xs px-2 py-0.5 rounded ${
 															tech.status === "Available"
 																? "bg-success/20 text-success-text"
-																: "bg-zinc-500/20 text-text-tertiary"
+																: "bg-neutral/20 text-text-tertiary"
 														}`}
 													>
 														{

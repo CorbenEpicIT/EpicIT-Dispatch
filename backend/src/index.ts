@@ -55,6 +55,8 @@ import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
 import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
+import quickbooksRouter from "./routes/quickbooks.js";
+import { handleCallback } from "./services/quickbooksService.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -392,6 +394,21 @@ app.post("/refresh-token", async (req, res, next) => {
 
 
 // ================================================================================
+// QUICKBOOKS OAUTH CALLBACK (public — no verifyToken, browser redirect from Intuit)
+// ================================================================================
+app.get("/integrations/quickbooks/callback", async (req, res, next) => {
+	try {
+		const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+		const realmId = req.query.realmId as string;
+		const state = req.query.state as string;
+		await handleCallback(fullUrl, state, realmId);
+		res.redirect(`${process.env.FRONTEND_URL}/dispatch/admin?tab=settings&qb=connected`);
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ================================================================================
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)
 // ================================================================================
 app.use("/organizations", organizationsRouter);
@@ -441,14 +458,6 @@ app.use("/occurrences", verifyToken, occurrencesRouter);
 // ============================================
 app.use("/invoices", verifyToken, invoicesRouter);
 
-
-// ============================================
-// CLIENTS + CONTACTS
-// ============================================
-// since its mounted at / everything will be sent here
-// which can cause performance issues if scaled
-app.use("/", verifyToken, clientsContactsRouter);
-
 // ============================================
 // TECHNICIANS
 // ============================================
@@ -487,6 +496,18 @@ app.use("/vehicles", verifyToken, vehiclesRouter);
 // TAX RATES & GROUPS
 // ============================================
 app.use("/tax", verifyToken, taxRouter);
+
+// ============================================
+// QUICKBOOKS
+// ============================================
+app.use("/integrations/quickbooks", verifyToken, quickbooksRouter);
+
+// ============================================
+// CLIENTS + CONTACTS
+// ============================================
+// since its mounted at / everything will be sent here
+// which can cause performance issues if scaled
+app.use("/", verifyToken, clientsContactsRouter);
 
 // ============================================================
 // ACTIVITY FEED

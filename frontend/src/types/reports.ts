@@ -105,3 +105,19 @@ export interface DateRange {
 	endDate: Date;
 	label: string;
 }
+
+// ============================================================================
+// MILEAGE REPORT
+// ============================================================================
+
+export interface MileageReportVisit {
+	visitId: string;
+	jobId: string;
+	jobName: string;
+	jobAddress: string;
+	clientName: string;
+	visitDate: string;
+	miles: number;
+	visitStatus: string;
+	technicianNames: string;
+}

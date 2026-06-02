@@ -16,10 +16,10 @@ interface FilterChipsProps {
 }
 
 const COLOR_STYLES: Record<ChipColor, { bg: string; border: string; text: string; ring: string }> = {
-	purple: { bg: "bg-purple-600/20", border: "border-reviewing/30", text: "text-purple-300", ring: "ring-purple-400" },
-	blue:   { bg: "bg-primary-hover/20",   border: "border-primary/30",   text: "text-primary-text",   ring: "ring-blue-400" },
-	green:  { bg: "bg-green-600/20",  border: "border-success/30",  text: "text-green-300",  ring: "ring-green-400" },
-	orange: { bg: "bg-orange-600/20", border: "border-orange-500/30", text: "text-orange-300", ring: "ring-orange-400" },
+	purple: { bg: "bg-reviewing-bg",     border: "border-reviewing/30",  text: "text-reviewing-text", ring: "ring-reviewing" },
+	blue:   { bg: "bg-primary-hover/20", border: "border-primary/30",    text: "text-primary-text",   ring: "ring-primary" },
+	green:  { bg: "bg-success-bg",       border: "border-success/30",    text: "text-success-text",   ring: "ring-success" },
+	orange: { bg: "bg-orange-bg",        border: "border-orange-border", text: "text-orange-text",    ring: "ring-orange" },
 };
 
 export default function FilterChips({ filters: rawFilters, resultCount, onClearAll }: FilterChipsProps) {
@@ -41,7 +41,7 @@ export default function FilterChips({ filters: rawFilters, resultCount, onClearA
 								<span className={`text-sm ${text}`}>{chip.label}</span>
 								<button
 									onClick={chip.onRemove}
-									className={`p-1 -m-1 ${text} hover:text-white transition-colors`}
+									className={`p-1 -m-1 ${text} hover:text-text-primary transition-colors`}
 									aria-label={`Remove ${chip.label} filter`}
 								>
 									<X size={14} />

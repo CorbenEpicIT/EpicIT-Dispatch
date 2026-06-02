@@ -1,4 +1,4 @@
-import LoadSvg from "../../assets/icons/loading.svg?react";
+﻿import LoadSvg from "../../assets/icons/loading.svg?react";
 import { useRef, useState } from "react";
 import type { ZodError } from "zod";
 import FullPopup from "../ui/FullPopup";
@@ -53,6 +53,12 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 	};
 
 	const handleCustomerSelect = (id: string) => {
+		if (id === "") {
+			setSelectedQBId("");
+			if (nameRef.current) nameRef.current.value = "";
+			setGeoData(undefined);
+			return;
+		}
 		setSelectedQBId(id);
 		const customer = customers?.find((c) => c.Id === id);
 		if (customer && nameRef.current) {
@@ -118,12 +124,12 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 		<div className="flex flex-col">
 			{/* Header */}
 			<div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-3 border-b border-border flex-shrink-0">
-				<h2 className="text-lg sm:text-xl font-bold text-white whitespace-nowrap">
+				<h2 className="text-lg sm:text-xl font-bold text-text-primary whitespace-nowrap">
 					New Client
 				</h2>
 				<button
 					onClick={() => setIsModalOpen(false)}
-					className="p-1.5 text-text-tertiary hover:text-white hover:bg-surface rounded transition-colors"
+					className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface rounded transition-colors"
 					disabled={isLoading}
 				>
 					<X size={18} />
@@ -132,7 +138,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 
 			{/* Body */}
 			<div className="px-4 sm:px-5 pt-3 sm:pt-4 pb-4 space-y-4">
-				{/* Mode toggle — only shown when QB is connected */}
+				{/* Mode toggle â€” only shown when QB is connected */}
 				{qbStatus?.connected && (
 					<div className="flex rounded-md border border-border overflow-hidden text-sm">
 						<button
@@ -160,7 +166,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 					</div>
 				)}
 
-				{/* QB customer select — import mode only */}
+				{/* QB customer select â€” import mode only */}
 				{mode === "import" && (
 					<div>
 						<label className={LABEL}>QuickBooks Customer *</label>
@@ -170,7 +176,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 							className={INPUT}
 							disabled={loadingCustomers}
 						>
-							<option value="">— Select a customer —</option>
+							<option value="">--Select a customer--</option>
 							{customers
 							?.filter((c) =>
 								!mappedIds?.includes(c.Id) &&
@@ -192,7 +198,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 								Will create primary contact: &ensp;
 								{selectedCustomer.PrimaryEmailAddr.Address}
 								{selectedCustomer.PrimaryPhone?.FreeFormNumber && (
-									<> · {selectedCustomer.PrimaryPhone.FreeFormNumber}</>
+									<> Â· {selectedCustomer.PrimaryPhone.FreeFormNumber}</>
 								)}
 							</p>
 						)}
@@ -247,7 +253,7 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 						</button>
 						<button
 							onClick={invokeCreate}
-							className="inline-flex items-center h-8 px-4 rounded-md bg-confirm hover:bg-confirm-hover text-sm font-semibold text-white transition-colors whitespace-nowrap"
+							className="inline-flex items-center h-8 px-4 rounded-md bg-confirm hover:bg-confirm-hover text-sm font-semibold text-on-primary transition-colors whitespace-nowrap"
 						>
 							{mode === "import" ? "Import Client" : "Create Client"}
 						</button>
@@ -268,3 +274,4 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 };
 
 export default CreateClient;
+

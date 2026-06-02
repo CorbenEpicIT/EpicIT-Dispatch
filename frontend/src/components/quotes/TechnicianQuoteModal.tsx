@@ -31,11 +31,11 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 						) : (
 							<>
 								<p className="text-text-muted text-xs mb-1">Quote #{quote.quote_number}</p>
-								<h2 className="text-white text-lg font-semibold leading-tight break-words">{quote.title}</h2>
+								<h2 className="text-text-primary text-lg font-semibold leading-tight break-words">{quote.title}</h2>
 								<span
 									className={`inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
 										QuoteStatusColors[quote.status] ??
-										"bg-zinc-500/20 text-text-secondary border-border-strong/30"
+										"bg-neutral/20 text-text-secondary border-border-strong/30"
 									}`}
 								>
 									{quote.status}
@@ -45,7 +45,7 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 					</div>
 					<button
 						onClick={onClose}
-						className="shrink-0 p-1.5 rounded-md text-text-tertiary hover:text-white hover:bg-surface transition-colors"
+						className="shrink-0 p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface transition-colors"
 					>
 						<X size={18} />
 					</button>
@@ -110,7 +110,7 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 											</thead>
 											<tbody className="divide-y divide-border/50">
 												{quote.line_items.map((item) => (
-													<tr key={item.id} className="text-white hover:bg-surface/40 transition-colors duration-100">
+													<tr key={item.id} className="text-text-primary hover:bg-surface/40 transition-colors duration-100">
 														<td className="px-3 py-2.5 min-w-0">
 															<p className="font-medium break-words leading-snug">{item.name}</p>
 															{item.description && (
@@ -136,14 +136,14 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 								<div className="divide-y divide-border/50">
 									<div className="flex justify-between px-4 py-2.5 text-sm">
 										<span className="text-text-tertiary">Subtotal</span>
-										<span className="text-white tabular-nums">${fmt(quote.subtotal)}</span>
+										<span className="text-text-primary tabular-nums">${fmt(quote.subtotal)}</span>
 									</div>
 									{Number(quote.tax_amount) > 0 && (
 										<div className="flex justify-between px-4 py-2.5 text-sm">
 											<span className="text-text-tertiary">
 												Tax {quote.tax_rate ? `(${(Number(quote.tax_rate) * 100).toFixed(1)}%)` : ""}
 											</span>
-											<span className="text-white tabular-nums">${fmt(quote.tax_amount)}</span>
+											<span className="text-text-primary tabular-nums">${fmt(quote.tax_amount)}</span>
 										</div>
 									)}
 									{Number(quote.discount_amount) > 0 && (
@@ -153,8 +153,8 @@ export default function TechnicianQuoteModal({ quoteId, onClose }: TechnicianQuo
 										</div>
 									)}
 									<div className="flex justify-between px-4 py-3 bg-surface/60 text-base font-semibold">
-										<span className="text-white">Total</span>
-										<span className="text-white tabular-nums">${fmt(quote.total)}</span>
+										<span className="text-text-primary">Total</span>
+										<span className="text-text-primary tabular-nums">${fmt(quote.total)}</span>
 									</div>
 								</div>
 							</div>

@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect, type ReactNode } from "react";
-import { Upload, Trash2, Building2, Loader2 } from "lucide-react";
+﻿import { useRef, useState, useEffect, type ReactNode } from "react";
+import { Upload, Trash2, Building2, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import {
 	useOrgSettings,
 	useUploadOrgLogo,
@@ -11,8 +11,13 @@ import AddressForm from "../../components/ui/AddressForm";
 import type { GeocodeResult } from "../../types/location";
 import TaxSettingsSection from "./TaxSettingsSection";
 import { usePermission } from "../../hooks/usePermission";
+import {
+	useQBStatusQuery,
+	useQBConnectMutation,
+	useQBDisconnectMutation,
+} from "../../hooks/useQuickbooks";
 
-// ── Layout primitive ─────────────────────────────────────────────────────────
+// â”€â”€ Layout primitive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface SettingRowProps {
 	title: string;
@@ -42,7 +47,7 @@ function SettingRow({ title, description, action, children }: SettingRowProps) {
 	);
 }
 
-// ── Organization settings ─────────────────────────────────────────────────────
+// â”€â”€ Organization settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const inputBase =
 	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder-zinc-500 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
@@ -197,7 +202,7 @@ function OrgSettingsSection() {
 									<Upload size={12} />
 								)}
 								{uploadMutation.isPending
-									? "Uploading…"
+									? "Uploadingâ€¦"
 									: "Upload Logo"}
 							</button>
 
@@ -208,7 +213,7 @@ function OrgSettingsSection() {
 									disabled={
 										deleteMutation.isPending
 									}
-									className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-red-800 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50"
+									className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-error-border hover:bg-error-bg disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{deleteMutation.isPending ? (
 										<Loader2
@@ -219,7 +224,7 @@ function OrgSettingsSection() {
 										<Trash2 size={12} />
 									)}
 									{deleteMutation.isPending
-										? "Removing…"
+										? "Removingâ€¦"
 										: "Remove"}
 								</button>
 							)}
@@ -232,7 +237,7 @@ function OrgSettingsSection() {
 						)}
 
 						<p className="mt-2 text-xs text-text-muted">
-							JPEG, PNG, or WebP · max 5 MB
+							JPEG, PNG, or WebP Â· max 5 MB
 						</p>
 					</div>
 				</div>
@@ -275,7 +280,7 @@ function OrgSettingsSection() {
 											: null
 									);
 								}}
-								className={`${inputBase} ${nameError ? "!border-red-500 focus:!border-red-500 focus:!ring-red-500" : ""}`}
+								className={`${inputBase} ${nameError ? "!border-error focus:!border-error focus:!ring-error" : ""}`}
 							/>
 						)}
 						{nameError && (
@@ -387,7 +392,7 @@ function OrgSettingsSection() {
 					<button
 						type="submit"
 						disabled={updateMutation.isPending || isLoading}
-						className="flex items-center gap-1.5 rounded-md bg-primary-hover px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+						className="flex items-center gap-1.5 rounded-md bg-primary-hover px-4 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{updateMutation.isPending && (
 							<Loader2
@@ -396,7 +401,7 @@ function OrgSettingsSection() {
 							/>
 						)}
 						{updateMutation.isPending
-							? "Saving…"
+							? "Savingâ€¦"
 							: "Save Changes"}
 					</button>
 
@@ -416,7 +421,7 @@ function OrgSettingsSection() {
 	);
 }
 
-// ── Toggle primitive ──────────────────────────────────────────────────────────
+// â”€â”€ Toggle primitive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface ToggleProps {
 	checked: boolean;
@@ -445,7 +450,84 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 	);
 }
 
-// ── Settings page shell ───────────────────────────────────────────────────────
+// â”€â”€ QuickBooks settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function QuickBooksSection() {
+	const { data: qbStatus, isLoading } = useQBStatusQuery();
+	const connectMutation = useQBConnectMutation();
+	const disconnectMutation = useQBDisconnectMutation();
+	const canManage = usePermission("manage_organization");
+	const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
+	const handleDisconnect = async () => {
+		setDisconnectError(null);
+		try {
+			await disconnectMutation.mutateAsync();
+		} catch {
+			setDisconnectError("Failed to disconnect. Please try again.");
+		}
+	};
+
+	return (
+		<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
+			{isLoading ? (
+				<div className="h-8 w-32 animate-pulse rounded-md bg-surface" />
+			) : qbStatus?.connected ? (
+				<div className="flex items-center justify-between gap-4">
+					<div className="flex items-center gap-2">
+						<CheckCircle2 size={15} className="text-success-text flex-shrink-0" />
+						<div>
+							<p className="text-sm font-medium text-text-primary">Connected</p>
+							{qbStatus.realmId && (
+								<p className="text-xs text-text-muted">Realm ID: {qbStatus.realmId}</p>
+							)}
+						</div>
+					</div>
+					{canManage && (
+						<button
+							type="button"
+							onClick={handleDisconnect}
+							disabled={disconnectMutation.isPending}
+							className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-error-border hover:bg-error-bg disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{disconnectMutation.isPending ? (
+								<Loader2 size={12} className="animate-spin" />
+							) : (
+								<XCircle size={12} />
+							)}
+							{disconnectMutation.isPending ? "Disconnectingâ€¦" : "Disconnect"}
+						</button>
+					)}
+				</div>
+			) : (
+				<div className="flex items-center justify-between gap-4">
+					<div className="flex items-center gap-2">
+						<XCircle size={15} className="text-text-muted flex-shrink-0" />
+						<p className="text-sm text-text-muted">Not connected</p>
+					</div>
+					{canManage && (
+						<button
+							type="button"
+							onClick={() => connectMutation.mutate()}
+							disabled={connectMutation.isPending}
+							className="flex items-center gap-1.5 rounded-md bg-primary-hover px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{connectMutation.isPending && (
+								<Loader2 size={12} className="animate-spin" />
+							)}
+							{connectMutation.isPending ? "Redirectingâ€¦" : "Connect to QuickBooks"}
+						</button>
+					)}
+				</div>
+			)}
+			{disconnectError && (
+				<p className="mt-2 text-xs text-error-text">{disconnectError}</p>
+			)}
+		</div>
+	);
+}
+
+// â”€â”€ Settings page shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function SettingsSection() {
 	const [showTaxInactive, setShowTaxInactive] = useState(false);
@@ -475,7 +557,17 @@ export default function SettingsSection() {
 				>
 					<TaxSettingsSection showInactive={showTaxInactive} />
 				</SettingRow>
+
+				<SettingRow
+					title="QuickBooks"
+					description="Sync invoices and customers with QuickBooks Online."
+				>
+					<QuickBooksSection />
+				</SettingRow>
 			</div>
 		</div>
 	);
 }
+
+
+

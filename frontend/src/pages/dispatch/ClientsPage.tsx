@@ -73,15 +73,15 @@ export default function ClientsPage() {
 		});
 
 	return (
-		<div className="text-white">
+		<div className="text-text-primary">
 			<PageHeader title="Clients">
 					<button
 						title={!CREATE_CLIENT ? "You don't have permission to perform this action" : undefined}
-						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						onClick={() => setIsModalOpen(true)}
 						disabled={!CREATE_CLIENT}
 					>
-						<Plus size={16} className="text-white" />
+						<Plus size={16} />
 						New Client
 					</button>
 				<div className="relative" ref={menuRef}>
@@ -92,7 +92,7 @@ export default function ClientsPage() {
 						aria-haspopup="menu"
 						className="flex items-center justify-center p-2.5 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 					>
-						<MoreVertical size={20} className="text-white" />
+						<MoreVertical size={20} className="text-text-secondary" />
 					</button>
 					{showActionsMenu && (
 						<div className="absolute right-0 mt-2 w-56 bg-canvas border border-border-strong rounded-lg shadow-2xl shadow-black/50 z-50">

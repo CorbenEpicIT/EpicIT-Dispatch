@@ -212,7 +212,7 @@ export default function ConvertToJob({
 		<div className="flex flex-col min-h-0 flex-1">
 			{/* Header */}
 			<div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4 border-b border-border-subtle flex-shrink-0">
-				<h2 className="text-lg lg:text-xl font-bold text-white">
+				<h2 className="text-lg lg:text-xl font-bold text-text-primary">
 					Convert to Job
 				</h2>
 			</div>
@@ -221,7 +221,7 @@ export default function ConvertToJob({
 			<div className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 lg:py-5 space-y-3 lg:space-y-4">
 				{/* Error banner */}
 				{errorMessage && (
-					<div className="p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
+					<div className="p-3 bg-error-bg border border-error-border rounded-md text-error-text text-sm">
 						{errorMessage}
 					</div>
 				)}
@@ -235,7 +235,7 @@ export default function ConvertToJob({
 						<input
 							type="text"
 							placeholder="Job Name"
-							className="border border-border px-2.5 py-1.5 lg:py-2 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-9"
+							className="border border-border px-2.5 py-1.5 lg:py-2 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-9"
 							disabled={isLoading}
 							ref={nameRef}
 							defaultValue={quote.title}
@@ -267,7 +267,7 @@ export default function ConvertToJob({
 										"name"
 									)
 								}
-								className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+								className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<RotateCcw size={14} />
 							</button>
@@ -283,7 +283,7 @@ export default function ConvertToJob({
 					<div className="relative">
 						<textarea
 							placeholder="Job Description"
-							className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-9"
+							className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-9"
 							disabled={isLoading}
 							ref={descRef}
 							defaultValue={quote.description}
@@ -316,7 +316,7 @@ export default function ConvertToJob({
 										"description"
 									)
 								}
-								className="absolute right-2.5 top-2 text-text-tertiary hover:text-white transition-colors"
+								className="absolute right-2.5 top-2 text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<RotateCcw size={14} />
 							</button>
@@ -342,7 +342,7 @@ export default function ConvertToJob({
 								type="button"
 								title="Undo"
 								onClick={undoAddressToOriginal}
-								className="absolute right-2.5 top-2 text-text-tertiary hover:text-white transition-colors"
+								className="absolute right-2.5 top-2 text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<RotateCcw size={14} />
 							</button>
@@ -382,7 +382,7 @@ export default function ConvertToJob({
 										false
 									);
 								}}
-								className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+								className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<RotateCcw size={14} />
 							</button>
@@ -391,8 +391,8 @@ export default function ConvertToJob({
 				</div>
 
 				{/* Note */}
-				<div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-md">
-					<p className="text-xs text-amber-200">
+				<div className="p-3 bg-warning-bg border border-warning-border rounded-md">
+					<p className="text-xs text-warning-text">
 						Note: The job will be created in "Unscheduled"
 						status and line items will be copied from the quote.
 						You can create visits and assign technicians after
@@ -406,14 +406,14 @@ export default function ConvertToJob({
 				<button
 					onClick={() => setIsModalOpen(false)}
 					disabled={isLoading}
-					className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-white hover:bg-surface rounded-md border border-border transition-colors disabled:opacity-50"
+					className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface rounded-md border border-border transition-colors disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					onClick={invokeConvert}
 					disabled={isLoading}
-					className="px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+					className="px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-primary-active text-on-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{isLoading ? "Creating..." : "Create Job"}
 				</button>

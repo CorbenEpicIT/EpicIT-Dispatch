@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+﻿import { useParams, useNavigate } from "react-router-dom";
 import {
 	Calendar,
 	DollarSign,
@@ -66,7 +66,7 @@ export default function QuoteDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading quote details...</div>
+				<div className="text-text-primary text-lg">Loading quote details...</div>
 			</div>
 		);
 	}
@@ -74,14 +74,14 @@ export default function QuoteDetailPage() {
 	if (!quote) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Quote not found</div>
+				<div className="text-text-primary text-lg">Quote not found</div>
 			</div>
 		);
 	}
 
 	const getStatusColor = (status: string) =>
 		QuoteStatusColors[status as QuoteStatus] ||
-		"bg-zinc-500/20 text-text-tertiary border-border-strong/30";
+		"bg-neutral/20 text-text-tertiary border-border-strong/30";
 
 	const handleEdit = () => {
 		if (!EDIT_QUOTE) return;
@@ -148,12 +148,12 @@ export default function QuoteDetailPage() {
 	};
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
 					<div className="flex items-center gap-3 mb-1">
-						<h1 className="text-3xl font-bold text-white">
+						<h1 className="text-3xl font-bold text-text-primary">
 							{quote.quote_number}
 						</h1>
 						{!quote.is_active && (
@@ -235,7 +235,7 @@ export default function QuoteDetailPage() {
 												title={!EDIT_QUOTE ? "You don't have permission to perform this action" : undefined}
 												disabled={!EDIT_QUOTE}
 												onClick={handleMarkAsApproved}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-success-text hover:text-emerald-300 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+												className="w-full px-4 py-2 text-left text-sm hover:bg-surface text-success-text hover:text-success-text transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<CheckCircle size={16} />
 												Mark as Approved
@@ -275,7 +275,7 @@ export default function QuoteDetailPage() {
 												}
 												className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
 													deleteConfirm
-														? "bg-red-600 hover:bg-red-700 text-white"
+														? "bg-error hover:bg-error-strong text-on-primary"
 														: "text-error-text hover:bg-surface hover:text-error-text"
 												} disabled:opacity-40 disabled:cursor-not-allowed`}
 											>
@@ -304,7 +304,7 @@ export default function QuoteDetailPage() {
 								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words whitespace-pre-wrap">
+								<p className="text-text-primary break-words whitespace-pre-wrap">
 									{quote.description ||
 										"No description provided"}
 								</p>
@@ -316,7 +316,7 @@ export default function QuoteDetailPage() {
 										<MapPin size={14} />{" "}
 										Address
 									</h3>
-									<p className="text-white break-words">
+									<p className="text-text-primary break-words">
 										{quote.address}
 									</p>
 								</div>
@@ -330,7 +330,7 @@ export default function QuoteDetailPage() {
 										/>{" "}
 										Created
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											quote.created_at
 										).toLocaleDateString(
@@ -353,7 +353,7 @@ export default function QuoteDetailPage() {
 											/>{" "}
 											Valid Until
 										</h3>
-										<p className="text-white">
+										<p className="text-text-primary">
 											{new Date(
 												quote.valid_until
 											).toLocaleDateString(
@@ -374,7 +374,7 @@ export default function QuoteDetailPage() {
 									<DollarSign size={14} />{" "}
 									Quote Total
 								</h3>
-								<p className="text-white font-medium text-2xl">
+								<p className="text-text-primary font-medium text-2xl">
 									{formatCurrency(
 										Number(quote.total)
 									)}
@@ -437,7 +437,7 @@ export default function QuoteDetailPage() {
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{quote.request.title}
 								</h4>
 								<div className="flex items-center gap-2 text-xs text-text-muted mt-2">
@@ -490,7 +490,7 @@ export default function QuoteDetailPage() {
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{quote.job.job_number}
 								</h4>
 								<p className="text-text-tertiary text-xs mb-2">
@@ -560,7 +560,7 @@ export default function QuoteDetailPage() {
 											e.stopPropagation();
 											handleConvertToJob();
 										}}
-										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-primary-active rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Briefcase size={12} />{" "}
 										Convert to Job

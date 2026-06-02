@@ -1,5 +1,6 @@
 import { getScopedDb } from "../lib/context.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { generateInvoiceNumber } from "../db.js";
 import {
 	dollarsToCents,
 	centsToDollars,
@@ -141,32 +142,6 @@ export const invoiceInclude = {
 		select: { id: true, name: true, status: true },
 	},
 } satisfies Prisma.invoiceInclude;
-
-// ============================================================================
-// PRIVATE HELPERS
-// ============================================================================
-
-async function generateInvoiceNumber(
-	tx: Prisma.TransactionClient,
-	organizationId: string,
-): Promise<string> {
-	const last = await tx.invoice.findFirst({
-		where: {
-			organization_id: organizationId,
-			invoice_number: { startsWith: "INV-" },
-		},
-		orderBy: { invoice_number: "desc" },
-	});
-
-	let next = 1;
-	if (last) {
-		const match = last.invoice_number.match(/INV-(\d+)/);
-		if (match) next = parseInt(match[1]) + 1;
-	}
-
-	return `INV-${next.toString().padStart(6, "0")}`;
-}
-
 
 // ============================================================================
 // EXPORTED HELPERS — used by invoicesController

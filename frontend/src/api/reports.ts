@@ -7,6 +7,7 @@ import type {
 	UnscheduledRevenueResponse,
 	QuotePipelineResponse,
 	ArrivalPerformanceResponse,
+	MileageReportVisit,
 } from "../types/reports";
 
 // ============================================================================
@@ -111,5 +112,21 @@ export const getArrivalPerformance = async (
 		throw new Error("Failed to fetch arrival performance");
 	}
 
+	return response.data.data;
+};
+
+export const getMileageReport = async (
+	startDate?: string,
+	endDate?: string,
+): Promise<MileageReportVisit[]> => {
+	const params: Record<string, string> = {};
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+
+	const response = await api.get<ApiResponse<MileageReportVisit[]>>(
+		"/reports/mileage",
+		{ params },
+	);
+	if (!response.data.data) throw new Error("Failed to fetch mileage report");
 	return response.data.data;
 };

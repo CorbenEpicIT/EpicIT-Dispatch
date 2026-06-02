@@ -30,11 +30,11 @@ function buildSlices(data: ArrivalPerformanceResponse): Slice[] {
 	const pct = (n: number) =>
 		data.total > 0 ? Math.round((n / data.total) * 100) : 0;
 
-	return [
-		{ name: "Early", value: data.early, pct: pct(data.early), color: COLORS.Early },
-		{ name: "On-Time", value: data.onTime, pct: pct(data.onTime), color: COLORS["On-Time"] },
-		{ name: "Late", value: data.late, pct: pct(data.late), color: COLORS.Late },
-	];
+	return ([
+		{ name: "Early" as const, value: data.early, pct: pct(data.early), color: COLORS.Early },
+		{ name: "On-Time" as const, value: data.onTime, pct: pct(data.onTime), color: COLORS["On-Time"] },
+		{ name: "Late" as const, value: data.late, pct: pct(data.late), color: COLORS.Late },
+	] satisfies Slice[]).filter(s => s.value > 0);
 }
 
 function CustomTooltip({
@@ -72,49 +72,33 @@ export default function ArrivalPerformanceChart({
 			}
 		>
 			{/* Circle chart */}
-			<div className="relative">
-				<ResponsiveContainer width="100%" aspect={2} minWidth={0}>
-					<PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-						<Pie
-							data={slices}
-							startAngle={180}
-							endAngle={0}
-							cx="50%"
-							cy="85%"
-							outerRadius="100%"
-							innerRadius="65%"
-							dataKey="value"
-							stroke="none"
-							paddingAngle={data.total > 0 ? 2 : 0}
-						>
-							{slices.map((slice) => (
-								<Cell key={slice.name} fill={slice.color} />
-							))}
-						</Pie>
-						<Tooltip
-							content={<CustomTooltip />}
-							cursor={false}
-						/>
-					</PieChart>
-				</ResponsiveContainer>
-
-				{/* On-time rate is shown in the middle of the chart */}
-				<div className="absolute bottom-3 left-0 right-0 flex flex-col items-center pointer-events-none">
-					{data.total > 0 ? (
-						<>
-							<p className="text-3xl font-bold text-white leading-none">
-								{data.onTimeRate}%
-							</p>
-							<p className="text-xs text-text-muted mt-1">on-time rate</p>
-						</>
-					) : (
-						<p className="text-xs text-text-muted">No data</p>
-					)}
-				</div>
-			</div>
+			<ResponsiveContainer width="100%" aspect={2} minWidth={0}>
+				<PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+					<Pie
+						data={slices}
+						startAngle={180}
+						endAngle={0}
+						cx="50%"
+						cy="75%"
+						outerRadius="100%"
+						innerRadius="65%"
+						dataKey="value"
+						stroke="none"
+						paddingAngle={data.total > 0 ? 2 : 0}
+					>
+						{slices.map((slice) => (
+							<Cell key={slice.name} fill={slice.color} />
+						))}
+					</Pie>
+					<Tooltip
+						content={<CustomTooltip />}
+						cursor={false}
+					/>
+				</PieChart>
+			</ResponsiveContainer>
 
 			{/* Information about the metrics for the user */}
-			<div className="grid grid-cols-3 gap-2 mt-5 px-1">
+			<div className="grid grid-cols-3 gap-2 mt-4 px-1">
 				{(
 					[
 						{ label: "Early", value: data.early, color: COLORS.Early, sub: "≥15 min early" },
@@ -133,6 +117,18 @@ export default function ArrivalPerformanceChart({
 						<span className="text-[10px] text-text-faint">{sub}</span>
 					</div>
 				))}
+			</div>
+
+			{/* On-time rate percentage below early,late, on-time */}
+			<div className="flex flex-col items-center mt-4">
+				{data.total > 0 ? (
+					<>
+						<p className="text-3xl font-bold text-white leading-none">{data.onTimeRate}%</p>
+						<p className="text-xs text-text-muted mt-1">on-time rate</p>
+					</>
+				) : (
+					<p className="text-xs text-text-muted">No data</p>
+				)}
 			</div>
 
 			<p className="text-center text-[11px] text-text-faint mt-3">

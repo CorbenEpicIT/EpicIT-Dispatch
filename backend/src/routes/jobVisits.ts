@@ -402,15 +402,21 @@ const LIFECYCLE_ACTIONS = Object.keys(LIFECYCLE_TRANSITIONS) as (keyof typeof LI
 router.post("/:id/transition", requireAnyPermission("edit_jobs", "update_visit_status", "check_in", "check_out"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
-        const { action, pause_reason } = req.body;
+        const { action, pause_reason, tech_coords } = req.body;
         if (!action || !LIFECYCLE_ACTIONS.includes(action)) {
             return res
                 .status(400)
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, `Invalid action. Must be one of: ${LIFECYCLE_ACTIONS.join(", ")}.`));
         }
+        const rawLat = Number(tech_coords?.lat);
+        const rawLon = Number(tech_coords?.lon);
+        const techCoords =
+            Number.isFinite(rawLat) && Number.isFinite(rawLon)
+                ? { lat: rawLat, lon: rawLon }
+                : null;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await applyVisitTransition(id, action, orgId, context, pause_reason);
+        const result = await applyVisitTransition(id, action, orgId, context, pause_reason, techCoords);
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }

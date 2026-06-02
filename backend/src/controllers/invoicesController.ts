@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import { isQBConnected, pushInvoice, pushPayment } from "../services/quickbooksService.js";
+import { isQBConnected, pushInvoice } from "../services/quickbooksService.js";
 import {
 	createInvoiceSchema,
 	updateInvoiceSchema,
@@ -521,13 +521,6 @@ export const insertInvoicePayment = async (
 
 			return payment;
 		});
-
-		// Fire-and-forget QB payment sync
-		isQBConnected(organizationId)
-			.then((connected) =>
-				connected ? pushPayment(invoiceId, organizationId, Number(parsed.amount)) : null,
-			)
-			.catch(() => {});
 
 		await logActivity({
 			event_type: "invoice_payment.created",

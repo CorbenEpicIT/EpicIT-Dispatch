@@ -89,6 +89,7 @@ const css = `--rdp-accent-color: var(--color-primary);`
 | `--color-primary-border` | `rgba(59,130,246,0.30)` | Primary-tinted border |
 | `--color-primary-text` | `#93c5fd` | Badge/label text on primary tints |
 | `--color-on-primary` | `#ffffff` | Text/icon on filled primary button |
+| `--color-primary-disabled` | `#1e40af` | Dimmed primary button background when disabled |
 
 ### Borders
 
@@ -161,6 +162,43 @@ const css = `--rdp-accent-color: var(--color-primary);`
 | `--color-rejected-text` | `#fb7185` | Rejected badge/label text |
 | `--color-rejected-bg` | `rgba(244,63,94,0.20)` | Rejected background tint |
 | `--color-rejected-border` | `rgba(244,63,94,0.30)` | Rejected border |
+
+### Status: Neutral (draft, inactive, low-priority)
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-neutral` | `#71717a` | Base for neutral badge bg/border via opacity modifier |
+
+> No `-bg`, `-text`, or `-border` companions — use `text-text-tertiary` and `border-border-strong/30` directly; `bg-neutral/20` and `border-neutral/30` via Tailwind opacity modifier.
+
+Badge pattern: `bg-neutral/20 text-text-tertiary border-border-strong/30`
+
+### Status: Orange (expired, disputed, high-priority)
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-orange` | `#f97316` | Base for orange badge bg/border via opacity modifier |
+| `--color-orange-text` | `#fb923c` | Orange badge/label text |
+| `--color-orange-bg` | `rgba(249,115,22,0.15)` | Orange background tint |
+| `--color-orange-border` | `rgba(249,115,22,0.30)` | Orange border |
+
+Badge pattern: `bg-orange/20 text-orange-text border-orange/30`
+
+### Recurring Plan action
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-plan` | `#9333ea` | "New Recurring Plan" button fill |
+| `--color-plan-hover` | `#7e22ce` | Hover state for plan button |
+
+### Lifecycle action buttons (technician)
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-action-drive` | `#0e7490` | "I'm Driving" button fill |
+| `--color-action-drive-hover` | `#0891b2` | Hover state |
+| `--color-action-pause` | `#d97706` | "Pause" button fill |
+| `--color-action-pause-hover` | `#b45309` | Hover state |
 
 ### Priority
 

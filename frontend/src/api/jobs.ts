@@ -186,11 +186,11 @@ export const deleteJobVisit = async (id: string): Promise<{ message: string }> =
 // ============================================
 // JOB VISIT LIFECYCLE API
 // ============================================
-
-export const transitionJobVisit = async (visitId: string, action: import("../types/jobs").LifecycleAction, pauseReason?: string): Promise<JobVisit> => {
+export const transitionJobVisit = async (visitId: string,action: import("../types/jobs").LifecycleAction,pauseReason?: string,techCoords?: { lat: number; lon: number },): Promise<JobVisit> => {
 	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/transition`, {
 		action,
 		...(pauseReason ? { pause_reason: pauseReason } : {}),
+		...(techCoords ? { tech_coords: techCoords } : {}),
 	});
 
 	if (!response.data.success) {
