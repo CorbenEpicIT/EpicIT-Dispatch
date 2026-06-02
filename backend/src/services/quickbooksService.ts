@@ -276,32 +276,6 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 	}
 }
 
-export async function pushPayment(
-	invoiceId: string,
-	orgId: string,
-	amount: number,
-): Promise<void> {
-	const sdb = getScopedDb(orgId);
-	const invoice = await sdb.invoice.findFirst({
-		where: { id: invoiceId },
-		include: { client: true },
-	});
-	if (!invoice?.qb_invoice_id) return;
-
-	const customerId = await findOrCreateQBCustomer(orgId, invoice.client.name);
-
-	await qbFetch(orgId, "POST", "/payment", {
-		CustomerRef: { value: customerId },
-		TotalAmt: amount,
-		Line: [
-			{
-				Amount: amount,
-				LinkedTxn: [{ TxnId: invoice.qb_invoice_id, TxnType: "Invoice" }],
-			},
-		],
-	});
-}
-
 export async function disconnectOrg(orgId: string): Promise<void> {
 	const sdb = getScopedDb(orgId);
 	await sdb.organization.update({
