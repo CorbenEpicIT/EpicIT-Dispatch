@@ -98,7 +98,7 @@ function VehicleList({
 								<button
 									onClick={() => onRideAlongRequest(v.id)}
 									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-text-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
 									Select
 								</button>
@@ -106,7 +106,7 @@ function VehicleList({
 								<button
 									onClick={() => onSelect(v.id)}
 									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-text-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
 									Select
 								</button>
@@ -457,7 +457,7 @@ export default function TechnicianVehiclePage() {
 							<button
 								onClick={handleConfirmSwitch}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-text-primary font-medium transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
 							>
 								{setVehicle.isPending ? "Switching…" : "Switch"}
 							</button>
@@ -534,7 +534,7 @@ export default function TechnicianVehiclePage() {
 							<button
 								onClick={handleCheckOut}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg bg-error-strong/80 hover:bg-error-strong text-text-primary font-medium transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg bg-error-strong/80 hover:bg-error-strong text-on-primary font-medium transition-colors disabled:opacity-50"
 							>
 								{setVehicle.isPending ? "Checking out…" : "Check Out"}
 							</button>

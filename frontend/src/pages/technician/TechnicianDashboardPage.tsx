@@ -267,7 +267,7 @@ export default function TechnicianDashboardPage() {
 				<button
 					onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
 					disabled={goAvailableMutation.isPending}
-					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-primary-hover hover:bg-primary text-text-primary font-semibold text-base transition-colors disabled:opacity-50"
+					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-primary-hover hover:bg-primary text-on-primary font-semibold text-base transition-colors disabled:opacity-50"
 				>
 					<LogIn size={18} />
 					{goAvailableMutation.isPending ? "Starting…" : "Start Shift"}
@@ -340,7 +340,7 @@ export default function TechnicianDashboardPage() {
 						<button
 							onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
 							disabled={goAvailableMutation.isPending}
-							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-confirm hover:bg-confirm-hover text-sm text-text-primary font-medium transition-colors disabled:opacity-50"
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-confirm hover:bg-confirm-hover text-sm text-on-primary font-medium transition-colors disabled:opacity-50"
 						>
 							<Coffee size={15} />
 							{goAvailableMutation.isPending ? "Returning…" : "End Break"}

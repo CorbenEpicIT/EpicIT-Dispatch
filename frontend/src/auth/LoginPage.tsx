@@ -142,7 +142,7 @@ export default function LoginPage() {
 									onChange={(e)=>handleOtpChange(index, e.target.value)}
 									onPaste={(e)=>handleOtpPaste(e)}
 									onKeyDown={(e)=>handleOtpKeyDown(e, index)}
-									className="w-10 h-10 border border-input bg-surface-inset rounded text-center text-lg text-primary"
+									className="w-10 h-10 border border-input bg-surface rounded text-center text-lg text-primary"
 									ref={(el) => {inputRefs.current[index] = el;}}
 								>
 
@@ -179,14 +179,14 @@ export default function LoginPage() {
 					placeholder="Name"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					className="w-full border border-input bg-surface-inset rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
+					className="w-full border border-input bg-surface rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 				/>
-				<input 
+				<input
 					type="password"
 					placeholder="Password"
 					value={password}
 					onChange={(e)=>setPassword(e.target.value)}
-					className="w-full border border-input bg-surface-inset rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
+					className="w-full border border-input bg-surface rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 				/>
 				<button
 					type="submit"

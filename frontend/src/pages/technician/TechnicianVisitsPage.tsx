@@ -389,7 +389,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { setTab("mine"); setPillSnap(0); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "mine" ? "text-text-primary font-semibold" : "text-text-tertiary"
+							tab === "mine" ? "text-on-primary font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Mine
@@ -399,7 +399,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { setTab("available"); setPillSnap(1); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "available" ? "text-text-primary font-semibold" : "text-text-tertiary"
+							tab === "available" ? "text-on-primary font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Available
@@ -409,7 +409,7 @@ export default function TechnicianVisitsPage() {
 						type="button"
 						onClick={() => { if (!drag.current.active) { handlePastTab(); setPillSnap(2); } }}
 						className={`relative z-10 flex-1 py-2.5 min-h-[44px] text-sm font-medium transition-colors rounded-lg ${
-							tab === "past" ? "text-text-primary font-semibold" : "text-text-tertiary"
+							tab === "past" ? "text-on-primary font-semibold" : "text-text-tertiary"
 						}`}
 					>
 						Past
@@ -568,8 +568,8 @@ export default function TechnicianVisitsPage() {
 										className={`flex-[3] py-3 min-h-[44px] rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 ${
 											acceptConfirm ===
 											row.id
-												? "bg-confirm-hover text-text-primary animate-pulse"
-												: "bg-confirm hover:bg-confirm text-text-primary"
+												? "bg-confirm-hover text-on-primary animate-pulse"
+												: "bg-confirm hover:bg-confirm-hover text-on-primary"
 										}`}
 									>
 										{acceptMutation.isPending
