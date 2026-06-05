@@ -1,4 +1,4 @@
-﻿import { Settings, Trash2, MapPin } from "lucide-react";
+import { Settings, Trash2, MapPin } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
 import { calculateStockStatus, getStatusLabel, getStatusBadgeClass, getStockStatusTextColor, getStockStatusDotColor } from "../../util/util";
 import ImageCarousel from "./ImageCarousel";
@@ -69,7 +69,7 @@ export default function InventoryItemView({
 									e.stopPropagation();
 									onEditThreshold();
 								}}
-								className="p-1.5 hover:bg-surface text-text-tertiary hover:text-white rounded-md transition-colors"
+								className="p-1.5 hover:bg-surface text-text-tertiary hover:text-text-primary rounded-md transition-colors"
 								title="Edit threshold"
 							>
 								<Settings size={14} />
@@ -208,7 +208,7 @@ export default function InventoryItemView({
 							e.stopPropagation();
 							onEditThreshold();
 						}}
-						className="p-1.5 hover:bg-surface text-text-tertiary hover:text-white rounded-md transition-colors"
+						className="p-1.5 hover:bg-surface text-text-tertiary hover:text-text-primary rounded-md transition-colors"
 						title="Edit threshold"
 					>
 						<Settings size={14} />

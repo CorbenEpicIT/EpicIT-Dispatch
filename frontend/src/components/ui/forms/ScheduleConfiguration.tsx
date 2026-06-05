@@ -1,4 +1,4 @@
-﻿import type { ZodError } from "zod";
+import type { ZodError } from "zod";
 import {
 	RecurringFrequencyValues,
 	WeekdayValues,
@@ -122,7 +122,7 @@ export const ScheduleConfiguration = ({
 	return (
 		<div className="space-y-2 lg:space-y-3 pt-2 min-w-0">
 			<div className="p-2.5 lg:p-3 bg-surface rounded-lg border border-border">
-				<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-white uppercase tracking-wider">
+				<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-text-primary uppercase tracking-wider">
 					Schedule Configuration
 				</h3>
 
@@ -353,7 +353,7 @@ export const ScheduleConfiguration = ({
 											)
 										}
 										disabled={isLoading}
-										className="text-text-tertiary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+										className="text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										<RotateCcw
 											size={12}
@@ -376,8 +376,8 @@ export const ScheduleConfiguration = ({
 											selectedWeekdays.includes(
 												day
 											)
-												? "bg-primary-hover text-white"
-												: "bg-surface-raised text-text-secondary hover:bg-zinc-600"
+												? "bg-primary-hover text-on-primary"
+												: "bg-surface-raised text-text-secondary hover:bg-border-subtle"
 										}`}
 									>
 										{day}

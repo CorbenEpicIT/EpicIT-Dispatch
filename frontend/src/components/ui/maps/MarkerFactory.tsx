@@ -1,4 +1,4 @@
-﻿import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { StaticMarker } from "../../../types/location";
 import { Users, Wrench } from "lucide-react";
 
@@ -16,7 +16,7 @@ const CreateMarker = (m: StaticMarker) => {
 		}
 
 		case "TECHNICIAN": {
-			bgColor = " bg-orange-500 ";
+			bgColor = " [background-color:var(--color-orange)] ";
 			icon = <Wrench className={iconStyles} size={20} />;
 			break;
 		}
@@ -42,14 +42,14 @@ const CreateMarker = (m: StaticMarker) => {
 				</div>
 				{m.statusDotColor && (
 					<div
-						className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950 ${m.statusDotColor}`}
+						className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-canvas ${m.statusDotColor}`}
 					></div>
 				)}
 			</div>
 
 			{m.label && (
 				<div
-					className="mt-1 px-2 py-0.5 rounded-md bg-base/85 border border-border text-white text-xs font-semibold whitespace-nowrap shadow-md"
+					className="mt-1 px-2 py-0.5 rounded-md bg-base border border-border text-text-primary text-xs font-semibold whitespace-nowrap shadow-md"
 					style={{ pointerEvents: "none" }}
 				>
 					{m.label}

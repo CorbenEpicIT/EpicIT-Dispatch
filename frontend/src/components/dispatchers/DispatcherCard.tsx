@@ -103,7 +103,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                         setDropdownOpen(false);
                                         onClick?.();
                                     }}
-                                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                                    className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                                 >
                                     View Details
                                 </button>
@@ -115,7 +115,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                     requestPasswordResetCall(dispatcher.id, dispatcher.role);
                                     alert("Password reset email sent to " + dispatcher.email);
                                 }}
-                                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                                className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                             >
                                 Reset Password
                             </button>
@@ -125,7 +125,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                     setDropdownOpen(false);
                                     onEdit?.(dispatcher);
                                 }}
-                                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                                className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                             >
                                 Update User
                             </button>
@@ -138,7 +138,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                         setDropdownOpen(false);
                                         onAssignRole?.(dispatcher);
                                     }}
-                                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-raised transition-colors"
+                                    className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                                     >
                                         Assign Role
                                     </button>  
@@ -157,7 +157,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                         }
                                         className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
                                         deleteConfirm
-                                            ? "bg-red-600 hover:bg-red-700 text-white"
+                                            ? "bg-error hover:bg-error-strong text-on-primary"
                                             : "text-error-text hover:bg-surface-raised hover:text-error-text"
                                         } disabled:opacity-40 disabled:cursor-not-allowed`}
                                     >
@@ -191,7 +191,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
 
                 {/* Name */}
                 <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+                    <h3 className="text-text-primary font-semibold text-lg truncate">{displayName}</h3>
                 </div>
 
                 {/* Role */}
@@ -230,7 +230,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                         }}
-                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
                     >
                         <MoreHorizontal size={18} />
                         <span className="text-sm font-medium">Options</span>
@@ -258,7 +258,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+                    <h3 className="text-text-primary font-semibold text-lg truncate">{displayName}</h3>
                     <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border">
                             {dispatcher.role.charAt(0).toUpperCase() + dispatcher.role.slice(1)}
@@ -306,7 +306,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                             e.stopPropagation();
                             onClick?.();
                         }}
-                        className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-white text-sm font-medium rounded-md transition-colors"
+                        className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-primary text-sm font-medium rounded-md transition-colors"
                     >
                         View Details
                     </button>
@@ -318,7 +318,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                             }}
-                            className="px-3 py-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+                            className="px-3 py-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
                         >
                             <MoreHorizontal size={18} />
                         </button>

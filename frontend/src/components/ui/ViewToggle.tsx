@@ -15,7 +15,7 @@ export default function ViewToggle({ value, onChange }: ViewToggleProps) {
 				aria-label="Card view"
 				aria-pressed={value === "card"}
 				className={`h-full px-2.5 flex items-center justify-center rounded cursor-pointer transition-colors ${
-					value === "card" ? "bg-primary-hover text-white" : "text-text-tertiary hover:text-white"
+					value === "card" ? "bg-primary-hover text-on-primary" : "text-text-tertiary hover:text-text-primary"
 				}`}
 			>
 				<LayoutGrid size={15} />
@@ -25,7 +25,7 @@ export default function ViewToggle({ value, onChange }: ViewToggleProps) {
 				aria-label="List view"
 				aria-pressed={value === "list"}
 				className={`h-full px-2.5 flex items-center justify-center rounded cursor-pointer transition-colors ${
-					value === "list" ? "bg-primary-hover text-white" : "text-text-tertiary hover:text-white"
+					value === "list" ? "bg-primary-hover text-on-primary" : "text-text-tertiary hover:text-text-primary"
 				}`}
 			>
 				<LayoutList size={15} />

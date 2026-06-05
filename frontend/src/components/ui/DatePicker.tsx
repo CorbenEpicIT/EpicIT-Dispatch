@@ -186,7 +186,7 @@ export default function DatePicker({
 							title="Undo"
 							className="hover:bg-surface rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
-							<RotateCcw className="h-3 w-3 text-text-tertiary hover:text-white" />
+							<RotateCcw className="h-3 w-3 text-text-tertiary hover:text-text-primary" />
 						</span>
 					)}
 
@@ -197,11 +197,11 @@ export default function DatePicker({
 							title="Clear"
 							className="hover:bg-surface rounded p-0.5 transition-colors cursor-pointer inline-flex"
 						>
-							<X className="h-3 w-3 text-text-tertiary hover:text-white" />
+							<X className="h-3 w-3 text-text-tertiary hover:text-text-primary" />
 						</span>
 					)}
 
-					<Calendar className="h-4 w-4 text-white opacity-50" />
+					<Calendar className="h-4 w-4 text-text-muted" />
 				</div>
 			</button>
 

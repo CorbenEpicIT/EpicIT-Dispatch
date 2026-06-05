@@ -20,7 +20,7 @@ import { formatRatePercent } from "../../lib/formatTax";
 // ============================================================================
 
 const inputBase =
-	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder-text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
+	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
 
 const labelBase = "mb-1 block text-xs font-medium text-text-tertiary";
 
@@ -116,7 +116,7 @@ function DeactivateModal({ title, body, warning, isPending, onConfirm, onCancel 
 						type="button"
 						onClick={onConfirm}
 						disabled={isPending}
-						className="flex items-center gap-1.5 rounded-md bg-error px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-error-strong disabled:cursor-not-allowed disabled:opacity-50"
+						className="flex items-center gap-1.5 rounded-md bg-error px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-error-strong disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{isPending && <Loader2 size={12} className="animate-spin" />}
 						{isPending ? "Deactivating…" : "Deactivate"}
@@ -290,7 +290,7 @@ function RateFormModal({ mode, initial, isPending, error, onSubmit, onClose }: R
 						<button
 							type="submit"
 							disabled={isPending}
-							className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+							className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{isPending && <Loader2 size={12} className="animate-spin" />}
 							{isPending ? "Saving…" : mode === "create" ? "Add Rate" : "Save Changes"}
@@ -484,7 +484,7 @@ function GroupFormModal({ mode, initial, activeRates, isPending, error, onSubmit
 						<button
 							type="submit"
 							disabled={isPending}
-							className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+							className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{isPending && <Loader2 size={12} className="animate-spin" />}
 							{isPending ? "Saving…" : mode === "create" ? "Add Group" : "Save Changes"}
@@ -647,7 +647,7 @@ function TaxRatesSection({ showInactive }: TaxRatesSectionProps) {
 				<button
 					type="button"
 					onClick={() => { setMutationError(null); setShowAddModal(true); }}
-					className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
+					className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover"
 				>
 					<Plus size={12} />
 					Add Rate
@@ -850,7 +850,7 @@ function TaxGroupsSection({ showInactive }: TaxGroupsSectionProps) {
 				<button
 					type="button"
 					onClick={() => { setMutationError(null); setShowAddModal(true); }}
-					className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
+					className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover"
 				>
 					<Plus size={12} />
 					Add Group

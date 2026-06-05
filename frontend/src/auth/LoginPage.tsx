@@ -119,17 +119,17 @@ export default function LoginPage() {
 	};
 
 	return (
-		<div className="flex min-h-svh items-center justify-center bg-gray-100">
+		<div className="flex min-h-svh items-center justify-center bg-canvas">
 			{isLoading ? (
-				<div className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4">
-					<div className="h-6 w-48 bg-gray-200 rounded animate-pulse mx-auto" />
-					<div className="h-10 w-full bg-gray-200 rounded animate-pulse" />
-					<div className="h-10 w-full bg-gray-200 rounded animate-pulse" />
+				<div className="bg-surface shadow-md rounded-lg p-8 w-80 space-y-4">
+					<div className="h-6 w-48 bg-surface-raised rounded animate-pulse mx-auto" />
+					<div className="h-10 w-full bg-surface-raised rounded animate-pulse" />
+					<div className="h-10 w-full bg-surface-raised rounded animate-pulse" />
 				</div>
 			) : otpSent ? (
 				<form
 					onSubmit={handleOTPVerification}
-					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4"
+					className="bg-surface shadow-md rounded-lg p-8 w-80 space-y-4"
 				>
 					<h2 className="text-xl font-semibold text-center">OTP Verification</h2>
 						<div className="w-full flex justify-center space-x-1">
@@ -142,7 +142,7 @@ export default function LoginPage() {
 									onChange={(e)=>handleOtpChange(index, e.target.value)}
 									onPaste={(e)=>handleOtpPaste(e)}
 									onKeyDown={(e)=>handleOtpKeyDown(e, index)}
-									className="w-10 h-10 border rounded text-center text-lg"
+									className="w-10 h-10 border border-input bg-surface-inset rounded text-center text-lg text-primary"
 									ref={(el) => {inputRefs.current[index] = el;}}
 								>
 
@@ -151,26 +151,26 @@ export default function LoginPage() {
 						</div>
 					<button
 						type="submit"
-						className="w-full bg-primary-hover text-white py-2 rounded hover:bg-blue-700"
+						className="w-full bg-primary-hover text-on-primary py-2 rounded hover:bg-primary-active"
 					>
 						Verify OTP
 					</button>
-					<p className="text-sm text-gray-500 text-center">
+					<p className="text-sm text-secondary text-center">
 						Didn't receive the code?&ensp;
-						<button className="text-blue-600 hover:underline" onClick={resendOTP}> Resend OTP</button>
+						<button className="text-link hover:underline" onClick={resendOTP}> Resend OTP</button>
 					</p>
-					<p className="text-sm text-gray-500 text-center"> 
+					<p className="text-sm text-secondary text-center">
 						If using test user, enter "000000" as OTP.
 					</p>
 				</form>
 			) : (
 				<form
 					onSubmit={handleLogin}
-					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4"
+					className="bg-surface shadow-md rounded-lg p-8 w-80 space-y-4"
 				>
 				<h2 className="text-xl font-semibold text-center">Service Login</h2>
 				{loginError && (
-					<p className="text-red-500 text-sm text-center">{loginError}</p>
+					<p className="text-error-text text-sm text-center">{loginError}</p>
 				)
 
 				}
@@ -179,24 +179,24 @@ export default function LoginPage() {
 					placeholder="Name"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					className="w-full border rounded px-3 py-2"
+					className="w-full border border-input bg-surface-inset rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 				/>
 				<input 
 					type="password"
 					placeholder="Password"
 					value={password}
 					onChange={(e)=>setPassword(e.target.value)}
-					className="w-full border rounded px-3 py-2"
+					className="w-full border border-input bg-surface-inset rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 				/>
 				<button
 					type="submit"
-					className="w-full bg-primary-hover text-white py-2 rounded hover:bg-blue-700"
+					className="w-full bg-primary-hover text-on-primary py-2 rounded hover:bg-primary-active"
 				>
 					Login
 				</button>
-				<p className="text-sm text-gray-500 text-center">
+				<p className="text-sm text-secondary text-center">
 					New organization?{" "}
-					<Link to="/register" className="text-blue-600 hover:underline">Create account</Link>
+					<Link to="/register" className="text-link hover:underline">Create account</Link>
 				</p>
 			</form>
 		)}

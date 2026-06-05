@@ -193,11 +193,11 @@ export default function AssignTechnicianPage() {
 			case "Scheduled":
 				return "bg-primary-hover/20 text-primary-text border-primary/30";
 			case "InProgress":
-				return "bg-yellow-600/20 text-warning-text border-yellow-500/30";
+				return "bg-warning-bg text-warning-text border-warning-border";
 			case "Completed":
-				return "bg-green-600/20 text-success-text border-success/30";
+				return "bg-success-bg text-success-text border-success-border";
 			case "Cancelled":
-				return "bg-red-600/20 text-error-text border-error/30";
+				return "bg-error-bg text-error-text border-error-border";
 			case "Unscheduled":
 				return "bg-surface-raised text-text-secondary border-border-strong";
 			default:
@@ -223,15 +223,15 @@ export default function AssignTechnicianPage() {
 	const getTechStatusColor = (status: string) => {
 		switch (status) {
 			case "Available":
-				return "bg-green-500";
+				return "bg-success";
 			case "Busy":
-				return "bg-yellow-500";
+				return "bg-warning";
 			case "Break":
 				return "bg-primary";
 			case "Offline":
-				return "bg-zinc-500";
+				return "bg-border";
 			default:
-				return "bg-zinc-500";
+				return "bg-border";
 		}
 	};
 
@@ -246,7 +246,7 @@ export default function AssignTechnicianPage() {
 	if (!technician) {
 		return (
 			<div className="p-6">
-				<div className="text-white">Technician not found</div>
+				<div className="text-text-primary">Technician not found</div>
 			</div>
 		);
 	}
@@ -274,7 +274,7 @@ export default function AssignTechnicianPage() {
 						<div className="relative flex-shrink-0">
 							<div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-0.5">
 								<div className="w-full h-full rounded-2xl bg-base flex items-center justify-center">
-									<span className="text-white text-2xl font-bold">
+									<span className="text-text-primary text-2xl font-bold">
 										{technician.name
 											.charAt(0)
 											.toUpperCase()}
@@ -288,7 +288,7 @@ export default function AssignTechnicianPage() {
 										technician.status
 									)}`}
 								/>
-								<span className="text-xs font-medium text-white">
+								<span className="text-xs font-medium text-text-primary">
 									{technician.status}
 								</span>
 							</div>
@@ -302,7 +302,7 @@ export default function AssignTechnicianPage() {
 										`/dispatch/technicians/${technicianId}`
 									)
 								}
-								className="text-2xl font-bold text-white leading-tight cursor-pointer hover:text-primary-text transition-colors"
+								className="text-2xl font-bold text-text-primary leading-tight cursor-pointer hover:text-primary-text transition-colors"
 							>
 								{technician.name}
 							</h1>
@@ -319,7 +319,7 @@ export default function AssignTechnicianPage() {
 
 						{/* Contact Info */}
 						<div className="flex flex-col gap-2 min-w-[260px]">
-							<div className="flex items-center gap-2 text-sm bg-surface/30 rounded-lg px-3 py-2">
+							<div className="flex items-center gap-2 text-sm bg-surface-raised rounded-lg px-3 py-2">
 								<Mail
 									size={14}
 									className="text-text-muted"
@@ -328,7 +328,7 @@ export default function AssignTechnicianPage() {
 									{technician.email}
 								</span>
 							</div>
-							<div className="flex items-center gap-2 text-sm bg-surface/30 rounded-lg px-3 py-2">
+							<div className="flex items-center gap-2 text-sm bg-surface-raised rounded-lg px-3 py-2">
 								<Phone
 									size={14}
 									className="text-text-muted"
@@ -345,7 +345,7 @@ export default function AssignTechnicianPage() {
 						{/* Stats */}
 						<div className="flex gap-3">
 							<div className="bg-surface/50 border border-border rounded-lg px-4 py-3 text-center min-w-[90px]">
-								<div className="text-2xl font-bold text-white">
+								<div className="text-2xl font-bold text-text-primary">
 									{assignedVisits}
 								</div>
 								<div className="text-xs text-text-tertiary mt-0.5">
@@ -398,7 +398,7 @@ export default function AssignTechnicianPage() {
 									{/* Job Header */}
 									<div className="p-4">
 										<div className="flex items-center gap-2 mb-2">
-											<h3 className="text-lg font-semibold text-white flex-1 truncate">
+											<h3 className="text-lg font-semibold text-text-primary flex-1 truncate">
 												{
 													job.name
 												}
@@ -478,7 +478,7 @@ export default function AssignTechnicianPage() {
 														job.id
 													)
 												}
-												className="flex items-center gap-1 px-2 py-1 bg-surface hover:bg-surface-raised text-white text-xs rounded transition-colors"
+												className="flex items-center gap-1 px-2 py-1 bg-surface hover:bg-surface-raised text-text-primary text-xs rounded transition-colors"
 											>
 												{isExpanded ? (
 													<ChevronUp
@@ -507,7 +507,7 @@ export default function AssignTechnicianPage() {
 														job
 													)
 												}}
-												className="flex items-center gap-1 px-2 py-1 bg-primary-hover hover:enabled:bg-blue-700 text-white text-xs rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+												className="flex items-center gap-1 px-2 py-1 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-xs rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<Plus
 													size={
@@ -646,7 +646,7 @@ export default function AssignTechnicianPage() {
 																			}
 																			className={`border rounded overflow-hidden transition-all ${
 																				isAssigned
-																					? "border-primary/50 bg-blue-900/10"
+																					? "border-primary-border bg-primary-bg-dim"
 																					: "border-border bg-surface"
 																			}`}
 																		>
@@ -660,7 +660,7 @@ export default function AssignTechnicianPage() {
 																								}
 																								className="text-text-tertiary flex-shrink-0"
 																							/>
-																							<span className="text-white text-xs font-medium truncate">
+																							<span className="text-text-primary text-xs font-medium truncate">
 																								{visit.name ||
 																									new Date(
 																										visit.scheduled_start_at
@@ -749,8 +749,8 @@ export default function AssignTechnicianPage() {
 																							}
 																							className={`p-1.5 rounded transition-colors ${
 																								isAssigned
-																									? "bg-primary-hover hover:bg-blue-700 text-white"
-																									: "bg-surface-raised hover:bg-zinc-600 text-text-secondary"
+																									? "bg-primary-hover hover:bg-primary-active text-on-primary"
+																									: "bg-surface-raised hover:bg-surface-raised text-text-secondary"
 																							}`}
 																						>
 																							{isAssigned ? (

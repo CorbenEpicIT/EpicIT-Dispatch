@@ -1,4 +1,4 @@
-﻿import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import TechFilter from "./TechFilter";
 import type { Technician } from "../../../types/technicians";
 
@@ -29,7 +29,7 @@ export default function DashboardCalendarToolbar({
 				onClick={onToggleVisits}
 				className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
 					showVisits
-						? "bg-primary-hover text-white"
+						? "bg-primary-hover text-on-primary"
 						: "bg-surface text-text-tertiary hover:bg-surface-raised"
 				}`}
 			>
@@ -40,7 +40,7 @@ export default function DashboardCalendarToolbar({
 				onClick={onToggleOccurrences}
 				className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
 					showOccurrences
-						? "bg-purple-600 text-white"
+						? "bg-reviewing text-on-primary"
 						: "bg-surface text-text-tertiary hover:bg-surface-raised"
 				}`}
 			>

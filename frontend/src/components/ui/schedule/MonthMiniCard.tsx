@@ -91,6 +91,7 @@ export default function MonthMiniCard({
 				overflow: "hidden",
 				cursor: onDragStart ? "grab" : onClick ? "pointer" : "default",
 				backgroundColor: isOccurrence ? OCCURRENCE_CARD_BG : CARD_BG,
+				border: `1px solid ${isOccurrence ? "var(--color-occurrence-border)" : "var(--color-primary-border)"}`,
 				opacity: isDragging ? 0.4 : isGhost ? 0.5 : 1,
 				userSelect: "none",
 				flexShrink: 0,
@@ -102,7 +103,7 @@ export default function MonthMiniCard({
 			}}
 		>
 			{/* Priority strip — stretches to full card height */}
-			<div style={{ width: 3, flexShrink: 0, backgroundColor: priorityColor }} />
+			<div style={{ width: 5, flexShrink: 0, backgroundColor: priorityColor }} />
 
 			{/*
 			 * Layout:

@@ -1,4 +1,4 @@
-﻿import { formatCurrency } from "../../util/util";
+import { formatCurrency } from "../../util/util";
 import type { UnscheduledRevenueResponse, UnscheduledJobRevenue } from "../../types/reports";
 
 interface UnscheduledRevenueProps {
@@ -14,9 +14,9 @@ interface RevenueLevelConfig {
 }
 
 const REVENUE_LEVELS: RevenueLevelConfig[] = [
-	{ key: "new", label: "New", color: "var(--color-success)", dotClass: "bg-emerald-500", days: "< 7 days" },
-	{ key: "warning", label: "Aging", color: "var(--color-warning)", dotClass: "bg-amber-500", days: "7–30 days" },
-	{ key: "critical", label: "Critical", color: "var(--color-error)", dotClass: "bg-red-500", days: "> 30 days" },
+	{ key: "new", label: "New", color: "var(--color-success)", dotClass: "bg-success", days: "< 7 days" },
+	{ key: "warning", label: "Aging", color: "var(--color-warning)", dotClass: "bg-warning", days: "7–30 days" },
+	{ key: "critical", label: "Critical", color: "var(--color-error)", dotClass: "bg-error", days: "> 30 days" },
 ];
 
 export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
@@ -37,7 +37,7 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 				</span>
 			</div>
 
-			<p className="text-3xl font-bold text-white tracking-tight mb-5">
+			<p className="text-3xl font-bold text-primary tracking-tight mb-5">
 				{formatCurrency(totalRevenue)}
 			</p>
 
@@ -60,7 +60,7 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 				{segments.map((seg) => (
 					<div
 						key={seg.key}
-						className="flex items-center justify-between text-sm px-2 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/5"
+						className="flex items-center justify-between text-sm px-2 py-2 rounded-lg cursor-pointer transition-colors hover:bg-surface-raised"
 					>
 						<div className="flex items-center gap-2.5">
 							<span
@@ -73,8 +73,8 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 								seg.key === "critical" && seg.bucket.revenue > 0
 									? "text-error-text"
 									: seg.key === "critical"
-										? "text-zinc-700"
-										: "text-white"
+										? "text-secondary"
+										: "text-primary"
 							}`}
 						>
 							{formatCurrency(seg.bucket.revenue)}
@@ -89,7 +89,7 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 						<span className={`w-2 h-2 rounded-full shrink-0 ${level.dotClass}`} />
 						<span className="text-[11px] text-text-muted">
 							{level.label}
-							<span className="text-zinc-700 ml-1">{level.days}</span>
+							<span className="text-secondary ml-1">{level.days}</span>
 						</span>
 					</div>
 				))}

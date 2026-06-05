@@ -123,7 +123,7 @@ export default function NoteManager({ requestId }: NoteManagerProps) {
 						if (!EDIT_NOTES) return;
 						setIsAdding(true)
 					}}
-					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Plus size={14} />
 					Add Note

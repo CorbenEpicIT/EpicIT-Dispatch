@@ -1,4 +1,4 @@
-﻿import { useRef } from "react";
+import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Expand } from "lucide-react";
 import Card from "../../components/ui/Card";
@@ -30,10 +30,10 @@ export default function MapPage() {
 					className="h-full"
 					headerAction={
 						<button
-							className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+							className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-primary-active text-on-primary rounded-md text-sm font-medium transition-colors"
 							onClick={() => nav("/map")}
 						>
-							<Expand size={16} className="text-white" />
+							<Expand size={16} className="text-on-primary" />
 							View Fullscreen
 						</button>
 					}

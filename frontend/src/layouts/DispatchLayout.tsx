@@ -63,14 +63,14 @@ export default function DispatchLayout() {
 	const ICON_SIZE = 20;
 
 	return (
-		<div className="flex h-screen bg-canvas text-white">
+		<div className="flex h-screen bg-canvas text-text-primary">
 			{/* SIDEBAR */}
 			<aside
 				onMouseEnter={() => setExpanded(true)}
 				onMouseLeave={() => setExpanded(false)}
 				className={`
-					flex flex-col flex-shrink-0 overflow-hidden
-					border-r border-zinc-900
+					flex flex-col flex-shrink-0 overflow-hidden bg-base
+					border-r border-border
 					transition-all duration-300 ease-in-out
 					${expanded ? "w-40 lg:w-44" : "w-16"}`}
 			>
@@ -184,14 +184,14 @@ export default function DispatchLayout() {
 
 			<div className="flex flex-col flex-1 overflow-hidden">
 				{/* TOP NAV */}
-				<header className="flex justify-between items-center px-6 h-14 bg-canvas border-b border-zinc-900">
+				<header className="flex justify-between items-center px-6 h-14 bg-base border-b border-border">
 					<div className="flex items-center gap-6">
-						<div className="font-semibold text-sm whitespace-nowrap">
+						<div className="font-semibold text-sm whitespace-nowrap text-text-primary">
 							Dispatch Demo
 						</div>
 						<button
 							onClick={handleBack}
-							className="flex items-center gap-2 text-text-tertiary hover:text-white px-3 py-2 rounded-lg hover:bg-surface group"
+							className="flex items-center gap-2 text-text-tertiary hover:text-text-primary px-3 py-2 rounded-lg hover:bg-surface-raised group"
 						>
 							<ArrowLeft
 								size={18}

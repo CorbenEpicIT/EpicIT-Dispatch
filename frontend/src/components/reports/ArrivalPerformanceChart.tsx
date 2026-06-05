@@ -51,7 +51,7 @@ function CustomTooltip({
 	return (
 		<div className="rounded-lg px-3 py-2 bg-base/90 backdrop-blur-md shadow-lg border border-border-subtle">
 			<p className="text-xs text-text-tertiary">{d.name}</p>
-			<p className="text-sm font-semibold text-white">{d.value} visits</p>
+			<p className="text-sm font-semibold text-primary">{d.value} visits</p>
 			<p className="text-xs text-text-tertiary">{d.pct}% of total</p>
 		</div>
 	);
@@ -123,7 +123,7 @@ export default function ArrivalPerformanceChart({
 			<div className="flex flex-col items-center mt-4">
 				{data.total > 0 ? (
 					<>
-						<p className="text-3xl font-bold text-white leading-none">{data.onTimeRate}%</p>
+						<p className="text-3xl font-bold text-primary leading-none">{data.onTimeRate}%</p>
 						<p className="text-xs text-text-muted mt-1">on-time rate</p>
 					</>
 				) : (

@@ -154,7 +154,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 				{showDispatchLink && (
 					<button
 						onClick={() => navigate(`/dispatch/clients/${client_id}`)}
-						className="w-full mt-2 px-4 py-2 bg-surface-raised hover:bg-surface-strong rounded-md text-sm font-medium transition-colors cursor-pointer"
+						className="w-full mt-2 px-4 py-2 border border-border rounded-md text-sm font-medium text-text-secondary hover:border-border-strong hover:text-text-primary hover:bg-surface-raised transition-colors cursor-pointer"
 					>
 						View Full Client Profile
 					</button>

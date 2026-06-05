@@ -486,7 +486,7 @@ const DynamicMap = ({
 				</p>
 				<button
 					onClick={() => setInitKey((k) => k + 1)}
-					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-white text-sm font-medium transition-colors"
+					className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-primary-active rounded-md text-on-primary text-sm font-medium transition-colors"
 				>
 					<RefreshCw size={14} />
 					Reload Map

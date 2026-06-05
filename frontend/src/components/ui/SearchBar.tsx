@@ -71,7 +71,7 @@ function UrlParamSearchBar({ placeholder, paramKey, onValueChange, onSubmit, cla
 				placeholder={placeholder}
 				value={value}
 				onChange={(e) => handleChange(e.target.value)}
-				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary"
+				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 			/>
 		</form>
 	);
@@ -89,7 +89,7 @@ function ControlledSearchBar({ placeholder, value, onChange, className }: Contro
 				placeholder={placeholder}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
-				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary"
+				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 			/>
 		</div>
 	);

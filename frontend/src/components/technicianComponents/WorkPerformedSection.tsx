@@ -60,7 +60,7 @@ function NoteSheet({
 					onChange={(e) => setContent(e.target.value)}
 					placeholder="Describe the work performed…"
 					autoFocus
-					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-text-primary placeholder-text-faint focus:outline-none resize-none min-h-[120px] max-h-[40vh] overflow-y-auto"
+					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-text-primary placeholder:text-faint focus:outline-none resize-none min-h-[120px] max-h-[40vh] overflow-y-auto"
 				/>
 
 				{/* Char count */}

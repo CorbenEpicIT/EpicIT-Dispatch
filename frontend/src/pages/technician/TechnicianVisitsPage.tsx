@@ -350,7 +350,7 @@ export default function TechnicianVisitsPage() {
 						placeholder="Search visits..."
 						value={searchInput}
 						onChange={(e) => setSearchInput(e.target.value)}
-						className="w-full pl-11 pr-3 py-2.5 rounded-md bg-surface border border-border text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+						className="w-full pl-11 pr-3 py-2.5 rounded-md bg-surface border border-border text-sm text-text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 					/>
 				</form>
 			</div>

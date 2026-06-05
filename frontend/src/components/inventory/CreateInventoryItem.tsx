@@ -328,7 +328,7 @@ export default function CreateInventoryItem({
 										e.target.value
 									)
 								}
-								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-surface-inset text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 						</div>
@@ -336,7 +336,7 @@ export default function CreateInventoryItem({
 						<div className="min-w-0">
 							<label className={LABEL}>Tags</label>
 							{allTags.length === 0 ? (
-								<p className="text-xs text-zinc-500 mt-0.5">
+								<p className="text-xs text-muted mt-0.5">
 									No tags yet — create some from the inventory page.
 								</p>
 							) : (
@@ -357,8 +357,8 @@ export default function CreateInventoryItem({
 												disabled={isLoading}
 												className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border transition-colors ${
 													selected
-														? "bg-blue-600/20 border-blue-500 text-blue-300"
-														: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+														? "bg-primary-bg border-primary text-primary-text"
+														: "bg-base border-border text-muted hover:border-border-strong hover:text-secondary"
 												}`}
 											>
 												{tag.label}
@@ -617,7 +617,7 @@ export default function CreateInventoryItem({
 							</div>
 
 							{uploadErrors.length > 0 && (
-								<div className="mt-2 p-3 bg-red-950/50 border border-red-700/60 rounded-lg">
+								<div className="mt-2 p-3 bg-error-bg border border-error-border rounded-lg">
 									<p className="text-xs font-semibold text-error-text mb-1.5 uppercase tracking-wide">
 										{uploadErrors.length} file{uploadErrors.length > 1 ? "s" : ""} rejected
 									</p>
@@ -654,7 +654,7 @@ export default function CreateInventoryItem({
 													i
 												)
 											}
-											className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+											className="absolute top-1 right-1 w-5 h-5 rounded-full bg-error text-on-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
 										>
 											<X
 												size={
@@ -669,35 +669,35 @@ export default function CreateInventoryItem({
 
 						{/* Summary */}
 						<div className="border border-border rounded-lg p-4 space-y-2">
-							<h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-2">
+							<h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider mb-2">
 								Summary
 							</h3>
 							<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
 								<span className="text-text-tertiary">
 									Name
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{name || "—"}
 								</span>
 
 								<span className="text-text-tertiary">
 									SKU
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{sku || "—"}
 								</span>
 
 								<span className="text-text-tertiary">
 									Location
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{location || "—"}
 								</span>
 
 								<span className="text-text-tertiary">
 									Quantity
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{quantity}
 								</span>
 
@@ -706,7 +706,7 @@ export default function CreateInventoryItem({
 										<span className="text-text-tertiary">
 											Unit Price
 										</span>
-										<span className="text-white">
+										<span className="text-text-primary">
 											$
 											{Number(
 												unitPrice
@@ -722,7 +722,7 @@ export default function CreateInventoryItem({
 										<span className="text-text-tertiary">
 											Cost
 										</span>
-										<span className="text-white">
+										<span className="text-text-primary">
 											$
 											{Number(
 												cost
@@ -739,7 +739,7 @@ export default function CreateInventoryItem({
 											Low Stock
 											Alert
 										</span>
-										<span className="text-white">
+										<span className="text-text-primary">
 											{lowStockThreshold ||
 												0}
 										</span>
@@ -749,7 +749,7 @@ export default function CreateInventoryItem({
 								<span className="text-text-tertiary">
 									Images
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{imageUrls.length}
 								</span>
 							</div>

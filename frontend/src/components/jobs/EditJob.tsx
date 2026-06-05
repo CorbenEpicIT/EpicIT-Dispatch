@@ -359,7 +359,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												.value
 										)
 									}
-									className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-white text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -451,7 +451,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 												.value
 										)
 									}
-									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop

@@ -164,7 +164,7 @@ export default function AddNotePhotoModal({
 					onChange={(e) => setContent(e.target.value)}
 					placeholder="Add a note…"
 					autoFocus
-					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-text-primary placeholder-text-faint focus:outline-none resize-none min-h-[96px] max-h-[40vh] overflow-y-auto"
+					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-text-primary placeholder:text-faint focus:outline-none resize-none min-h-[96px] max-h-[40vh] overflow-y-auto"
 				/>
 
 				{/* Photo chips */}

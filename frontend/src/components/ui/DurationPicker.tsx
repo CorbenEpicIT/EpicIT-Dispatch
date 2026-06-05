@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Clock } from "lucide-react";
 
 interface DurationPickerProps {
@@ -244,7 +244,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 						onClick={() => handleSectionClick("hour")}
 						className={`cursor-pointer px-1 rounded font-mono ${
 							focusedSection === "hour"
-								? "bg-primary-hover text-white"
+								? "bg-primary-hover text-on-primary"
 								: "text-text-primary"
 						}`}
 					>
@@ -256,7 +256,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 						onClick={() => handleSectionClick("minute")}
 						className={`cursor-pointer px-1 rounded font-mono ${
 							focusedSection === "minute"
-								? "bg-primary-hover text-white"
+								? "bg-primary-hover text-on-primary"
 								: "text-text-primary"
 						}`}
 					>
@@ -297,7 +297,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 											false
 										)
 									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-surface rounded text-center"
+									className="w-full px-2 py-1.5 text-sm text-secondary hover:bg-surface rounded text-center"
 								>
 									{h
 										.toString()
@@ -323,7 +323,7 @@ export default function DurationPicker({ value, onChange }: DurationPickerProps)
 											true
 										)
 									}
-									className="w-full px-2 py-1.5 text-sm text-gray-200 hover:bg-surface rounded text-center"
+									className="w-full px-2 py-1.5 text-sm text-secondary hover:bg-surface rounded text-center"
 								>
 									{m
 										.toString()

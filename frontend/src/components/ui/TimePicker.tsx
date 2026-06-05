@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
 
@@ -62,7 +62,7 @@ export default function TimePicker({
 	const anchorRef = useRef<HTMLDivElement>(null);
 	const lastAppliedRef = useRef<number | null>(value?.getTime() ?? null);
 
-	// ── Sync from external value changes (draft restore, undo) ────────────
+	// -- Sync from external value changes (draft restore, undo) ------------
 	useEffect(() => {
 		const incoming = value?.getTime() ?? null;
 		if (incoming === lastAppliedRef.current) return;
@@ -75,7 +75,7 @@ export default function TimePicker({
 		}
 	}, [value]);
 
-	// ── Commit: build a Date from current display state and fire onChange ──
+	// -- Commit: build a Date from current display state and fire onChange --
 	// Tolerates incomplete entries — resolves them to nearest valid value.
 	// Always fires so blur/navigation never silently drops a partial edit.
 	const commit = useCallback(
@@ -105,7 +105,7 @@ export default function TimePicker({
 		[value, onChange]
 	);
 
-	// ── Blur: commit when focus leaves the entire component ───────────────
+	// -- Blur: commit when focus leaves the entire component ---------------
 	const handleBlur = useCallback(
 		(e: React.FocusEvent) => {
 			const related = e.relatedTarget as Node | null;
@@ -120,7 +120,7 @@ export default function TimePicker({
 		[focusedSection, hour, minute, period, commit]
 	);
 
-	// ── Portal positioning ─────────────────────────────────────────────────
+	// -- Portal positioning -------------------------------------------------
 	const openPopup = useCallback(() => {
 		if (!anchorRef.current) return;
 		const rect = anchorRef.current.getBoundingClientRect();
@@ -165,14 +165,14 @@ export default function TimePicker({
 		};
 	}, [open]);
 
-	// ── Keyboard handler ──────────────────────────────────────────────────
+	// -- Keyboard handler --------------------------------------------------
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (!containerRef.current?.contains(e.target as HTMLElement)) return;
 			if (!focusedSection) return;
 			const key = e.key;
 
-			// ── Digits ────────────────────────────────────────────────────
+			// -- Digits ----------------------------------------------------
 			if (/^[0-9]$/.test(key)) {
 				e.preventDefault();
 				const n = parseInt(key);
@@ -225,7 +225,7 @@ export default function TimePicker({
 				return;
 			}
 
-			// ── Period keys ────────────────────────────────────────────────
+			// -- Period keys ------------------------------------------------
 			if (focusedSection === "period") {
 				if (key === "a" || key === "A") {
 					e.preventDefault();
@@ -239,7 +239,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Arrow Up/Down: increment/decrement value ───────────────────
+			// -- Arrow Up/Down: increment/decrement value -------------------
 			if (key === "ArrowUp" || key === "ArrowDown") {
 				e.preventDefault();
 				const delta = key === "ArrowUp" ? 1 : -1;
@@ -262,7 +262,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Navigation ─────────────────────────────────────────────────
+			// -- Navigation -------------------------------------------------
 			if (key === "ArrowRight" || key === "Tab" || key === ":" || key === " ") {
 				e.preventDefault();
 				if (focusedSection === "hour") {
@@ -294,7 +294,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Backspace: clear section and step back ─────────────────────
+			// -- Backspace: clear section and step back ---------------------
 			if (key === "Backspace") {
 				e.preventDefault();
 				if (focusedSection === "hour") {
@@ -308,7 +308,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Enter: commit and release focus ───────────────────────────
+			// -- Enter: commit and release focus ---------------------------
 			if (key === "Enter" || key === "Escape") {
 				e.preventDefault();
 				commit(hour, minute, period);
@@ -379,7 +379,7 @@ export default function TimePicker({
 				small ? "px-0.5 text-[10px]" : "px-1 text-sm"
 			} ${
 				focusedSection === sec
-					? "bg-primary-hover text-white"
+					? "bg-primary-hover text-on-primary"
 					: isIncomplete && (label === "--" || label.includes("_"))
 						? "text-text-muted"
 						: "text-text-primary"
@@ -432,7 +432,7 @@ export default function TimePicker({
 											}
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												active
-													? "bg-primary-hover text-white"
+													? "bg-primary-hover text-on-primary"
 													: "text-text-primary hover:bg-surface"
 											}`}
 										>
@@ -474,7 +474,7 @@ export default function TimePicker({
 											}
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												active
-													? "bg-primary-hover text-white"
+													? "bg-primary-hover text-on-primary"
 													: "text-text-primary hover:bg-surface"
 											}`}
 										>
@@ -509,7 +509,7 @@ export default function TimePicker({
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												period ===
 												p
-													? "bg-primary-hover text-white"
+													? "bg-primary-hover text-on-primary"
 													: "text-text-primary hover:bg-surface"
 											}`}
 										>

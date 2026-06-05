@@ -185,14 +185,14 @@ export default function MileageReportPage() {
 		terms.length > 0 || (dateParamKey !== null && dateParamKey !== "all");
 
 	return (
-		<div className="text-white">
+		<div className="text-text-primary">
 			<PageHeader
 				title={isSummaryView ? "Mileage Report" : techParam ?? "Mileage"}
 				subtitle={
 					!isSummaryView ? (
 						<button
 							onClick={handleBackToSummary}
-							className="flex items-center gap-1.5 text-sm text-text-muted hover:text-white transition-colors mt-0.5"
+							className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mt-0.5"
 						>
 							<ArrowLeft size={14} />
 							All Technicians
@@ -220,7 +220,7 @@ export default function MileageReportPage() {
 							<p className="text-xs text-text-muted uppercase tracking-wide font-semibold mb-1">
 								Technicians
 							</p>
-							<p className="text-xl font-bold text-white tabular-nums">
+							<p className="text-xl font-bold text-text-primary tabular-nums">
 								{summaryDisplay.length}
 							</p>
 							<p className="text-xs text-text-muted mt-0.5">with mileage records</p>
@@ -229,7 +229,7 @@ export default function MileageReportPage() {
 							<p className="text-xs text-text-muted uppercase tracking-wide font-semibold mb-1">
 								Avg Miles / Visit
 							</p>
-							<p className="text-xl font-bold text-white tabular-nums">
+							<p className="text-xl font-bold text-text-primary tabular-nums">
 								{summaryVisitCount > 0
 									? (summaryTotalMiles / summaryVisitCount).toFixed(1)
 									: "0.0"}{" "}
@@ -251,7 +251,7 @@ export default function MileageReportPage() {
 							<p className="text-xs text-text-muted uppercase tracking-wide font-semibold mb-1">
 								Visits
 							</p>
-							<p className="text-xl font-bold text-white tabular-nums">
+							<p className="text-xl font-bold text-text-primary tabular-nums">
 								{detailDisplay.length}
 							</p>
 						</div>
@@ -259,7 +259,7 @@ export default function MileageReportPage() {
 							<p className="text-xs text-text-muted uppercase tracking-wide font-semibold mb-1">
 								Avg Miles / Visit
 							</p>
-							<p className="text-xl font-bold text-white tabular-nums">
+							<p className="text-xl font-bold text-text-primary tabular-nums">
 								{detailDisplay.length > 0
 									? (detailTotalMiles / detailDisplay.length).toFixed(1)
 									: "0.0"}{" "}

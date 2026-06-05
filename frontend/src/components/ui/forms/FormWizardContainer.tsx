@@ -81,7 +81,7 @@ export function FormWizardContainer<T extends number>({
 					: "space-y-2"
 			}`}
 		>
-			<h2 className="text-lg sm:text-xl font-bold text-white whitespace-nowrap flex-shrink-0">
+			<h2 className="text-lg sm:text-xl font-bold text-text-primary whitespace-nowrap flex-shrink-0">
 				{title}
 			</h2>
 			{isSourceSearchOpen
@@ -99,7 +99,7 @@ export function FormWizardContainer<T extends number>({
 									className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
 										sourceMode ===
 										"existing"
-											? "bg-surface-raised text-white shadow-sm"
+											? "bg-surface-raised text-text-primary shadow-sm"
 											: "text-text-tertiary hover:text-text-primary"
 									}`}
 								>
@@ -115,7 +115,7 @@ export function FormWizardContainer<T extends number>({
 									className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all ${
 										sourceMode ===
 										"draft"
-											? "bg-surface-raised text-white shadow-sm"
+											? "bg-surface-raised text-text-primary shadow-sm"
 											: "text-text-tertiary hover:text-text-primary"
 									}`}
 								>
@@ -165,16 +165,16 @@ export function FormWizardContainer<T extends number>({
 		"inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-transparent text-sm font-medium text-text-tertiary hover:text-text-primary hover:bg-surface hover:border-border-strong transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0";
 	// Amber — Save Draft enabled
 	const btnAmber =
-		"inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-amber-500/50 bg-warning/10 text-sm font-medium text-warning-text hover:bg-warning/20 hover:border-amber-500/70 hover:text-amber-300 transition-colors whitespace-nowrap flex-shrink-0";
+		"inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-warning-border bg-warning-bg text-sm font-medium text-warning-text hover:bg-warning-bg hover:border-warning-border hover:text-warning-text transition-colors whitespace-nowrap flex-shrink-0";
 	// Muted — Save Draft disabled
 	const btnMuted =
 		"inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border-subtle bg-transparent text-sm font-medium text-text-faint cursor-not-allowed whitespace-nowrap flex-shrink-0";
 	// Primary blue — Next
 	const btnPrimary =
-		"inline-flex items-center gap-1.5 h-8 px-4 rounded-md bg-primary-hover hover:bg-primary disabled:bg-surface-raised disabled:text-text-muted text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0";
+		"inline-flex items-center gap-1.5 h-8 px-4 rounded-md bg-primary-hover hover:bg-primary disabled:bg-surface-raised disabled:text-text-muted text-sm font-semibold text-on-primary transition-colors disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0";
 	// Success — Submit
 	const btnSuccess = (loading: boolean) =>
-		`inline-flex items-center gap-1.5 h-8 px-4 rounded-md text-sm font-semibold text-white transition-colors whitespace-nowrap flex-shrink-0 ${
+		`inline-flex items-center gap-1.5 h-8 px-4 rounded-md text-sm font-semibold text-on-primary transition-colors whitespace-nowrap flex-shrink-0 ${
 			loading ? "bg-confirm cursor-wait" : "bg-confirm hover:bg-confirm-hover"
 		}`;
 

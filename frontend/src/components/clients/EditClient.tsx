@@ -87,12 +87,12 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 		>
 			<div className="bg-base rounded-xl p-6 w-full max-w-md border border-border-subtle max-h-[90vh] overflow-y-auto scrollbar-hide">
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-2xl font-bold text-white">
+					<h2 className="text-2xl font-bold text-text-primary">
 						Edit Client
 					</h2>
 					<button
 						onClick={onClose}
-						className="text-text-tertiary hover:text-white transition-colors"
+						className="text-text-tertiary hover:text-text-primary transition-colors"
 					>
 						<X size={24} />
 					</button>
@@ -130,7 +130,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							name="is_active"
 							checked={formData.is_active}
 							onChange={handleChange}
-							className="w-4 h-4 text-blue-600 bg-surface border-border rounded focus:ring-primary"
+							className="w-4 h-4 accent-primary rounded"
 						/>
 						<label className="ml-2 ">Active Client</label>
 					</div>
@@ -139,7 +139,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 						<button
 							type="submit"
 							disabled={updateClient.isPending}
-							className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+							className="flex-1 px-4 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded-md transition-colors"
 						>
 							{updateClient.isPending
 								? "Saving..."
@@ -152,7 +152,7 @@ export default function EditClientModal({ isOpen, onClose, client }: EditClientM
 							disabled={deleteClient.isPending}
 							className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
 								deleteConfirm
-									? "bg-red-600 hover:bg-red-700 text-white"
+									? "bg-error hover:bg-error-strong text-on-primary"
 									: "bg-surface hover:bg-surface-raised text-text-secondary"
 							} disabled:opacity-50 disabled:cursor-not-allowed`}
 						>

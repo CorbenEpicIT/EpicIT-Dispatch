@@ -502,7 +502,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 												.value
 										)
 									}
-									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -567,7 +567,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 														/>
 														<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
 													</svg>
-													<span className="text-sm font-medium text-white truncate flex-1">
+													<span className="text-sm font-medium text-text-primary truncate flex-1">
 														{
 															sj.job_number
 														}{" "}
@@ -722,7 +722,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Invoice
 								</span>
-								<span className="text-white font-medium">
+								<span className="text-text-primary font-medium">
 									{invoice.invoice_number}
 								</span>
 							</div>
@@ -730,7 +730,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Client
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{invoice.client?.name ??
 										"—"}
 								</span>
@@ -740,7 +740,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Memo
 									</span>
-									<span className="text-white truncate max-w-[60%] text-right">
+									<span className="text-text-primary truncate max-w-[60%] text-right">
 										{getValue("memo")}
 									</span>
 								</div>
@@ -750,7 +750,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Issue Date
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{issueDate.toLocaleDateString(
 											"en-US",
 											{
@@ -767,7 +767,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Due Date
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{dueDate.toLocaleDateString(
 											"en-US",
 											{
@@ -874,7 +874,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		>
 			<>
 				{submitError && (
-					<div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
 						{submitError}
 					</div>
 				)}

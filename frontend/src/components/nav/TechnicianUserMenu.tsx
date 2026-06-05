@@ -41,17 +41,17 @@ export default function TechnicianUserMenu() {
 		<div ref={wrapperRef} className="relative">
 			<button
 				onClick={() => setMenuOpen((o) => !o)}
-				className={`w-9 h-9 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm border-b-[3px] transition-colors ${
-					menuOpen ? "border-primary" : "border-transparent hover:border-zinc-500"
+				className={`w-9 h-9 rounded-lg bg-border-strong flex items-center justify-center text-on-primary font-semibold text-sm border-b-[3px] transition-colors ${
+					menuOpen ? "border-primary" : "border-transparent hover:border-border"
 				}`}
 			>
 				{user?.name.charAt(0).toUpperCase()}
 			</button>
 
 			{menuOpen && (
-				<div className="absolute top-full right-0 mt-2 w-52 bg-surface border border-border-subtle rounded-lg shadow-lg z-50 overflow-hidden">
+				<div className="absolute top-full right-0 mt-2 w-52 bg-surface-raised border border-border-subtle rounded-lg shadow-lg z-50 overflow-hidden">
 					<div className="px-4 py-3 border-b border-border-subtle flex items-start gap-3">
-						<span className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-semibold text-sm">
+						<span className="w-10 h-10 shrink-0 rounded-lg bg-border-strong flex items-center justify-center text-on-primary font-semibold text-sm">
 							{user?.name.charAt(0).toUpperCase()}
 						</span>
 						<div className="min-w-0">
@@ -67,10 +67,10 @@ export default function TechnicianUserMenu() {
 						</div>
 					</div>
 
-                    <div className="my-.25 border-t border-zinc-700" />
+                    <div className="my-.25 border-t border-subtle" />
                     <div className="p-2 flex flex-col">
                         <button
-                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-zinc-600 transition-colors"
+                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface-raised transition-colors"
                             onClick={() => { navigate("/technician/user-settings"); setMenuOpen(false); }}
                         >
                             <UserRoundCog size={16} />
@@ -78,7 +78,7 @@ export default function TechnicianUserMenu() {
                         </button>
                     </div>
 
-					<div className="my-.25 border-t border-zinc-700" />
+					<div className="my-.25 border-t border-subtle" />
 					<div className="p-2">
 						<button
                             onClick={handleLogout}
@@ -92,8 +92,8 @@ export default function TechnicianUserMenu() {
                             className={`w-full flex items-center gap-2 px-3 py-2 text-sm
                         rounded-md transition-colors ${
                                 confirmingLogout
-                                    ? "bg-red-600 text-white motion-safe:animate-pulse"
-                                    : "text-error-text hover:bg-red-950"
+                                    ? "bg-error text-on-primary motion-safe:animate-pulse"
+                                    : "text-error-text hover:bg-error-bg"
                             }`}
                         >
                             <LogOut size={16} />

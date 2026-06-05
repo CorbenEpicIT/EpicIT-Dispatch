@@ -782,7 +782,7 @@ export default function JobDetailPage() {
 									setIsCreateVisitModalOpen(true)
 								}}
 								disabled={!CREATE_JOB}
-								className="flex items-center gap-2 px-4 py-2 bg-primary-hover rounded-md text-sm font-medium transition-colors hover:enabled:bg-primary-active disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-2 px-4 py-2 bg-primary-hover rounded-md text-sm font-medium text-on-primary transition-colors hover:enabled:bg-primary-active disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={16} />
 								Create Visit
@@ -809,7 +809,7 @@ export default function JobDetailPage() {
 									setIsCreateVisitModalOpen(true);
 								}}
 								disabled={!CREATE_JOB}
-								className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={16} />
 								Create First Visit

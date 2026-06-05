@@ -15,9 +15,9 @@ function getStockDotColor(stockItems?: VehicleStockItem[]): "green" | "amber" | 
 }
 
 const STOCK_DOT_CLASSES: Record<"green" | "amber" | "grey", string> = {
-	green: "bg-green-400",
-	amber: "bg-amber-500",
-	grey: "bg-zinc-600",
+	green: "bg-success",
+	amber: "bg-warning",
+	grey: "bg-border",
 };
 
 const STOCK_DOT_TITLES: Record<"green" | "amber" | "grey", string> = {
@@ -89,7 +89,7 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 
 				{/* Stock */}
 				<div className="flex items-center gap-1 flex-shrink-0">
-					<span className={`text-[11px] ${stockColor === "amber" ? "text-amber-600" : "text-text-tertiary"}`}>
+					<span className={`text-[11px] ${stockColor === "amber" ? "text-warning-text" : "text-text-tertiary"}`}>
 						Stock
 					</span>
 					<div
@@ -156,7 +156,7 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 				</div>
 				<div className="flex items-center gap-2 flex-shrink-0">
 					<div className="flex items-center gap-1">
-						<span className={`text-[11px] ${stockColor === "amber" ? "text-amber-600" : "text-text-tertiary"}`}>
+						<span className={`text-[11px] ${stockColor === "amber" ? "text-warning-text" : "text-text-tertiary"}`}>
 							Stock
 						</span>
 						<div

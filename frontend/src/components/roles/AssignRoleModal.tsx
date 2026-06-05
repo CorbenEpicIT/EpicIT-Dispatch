@@ -90,7 +90,7 @@ const AssignRoleModal = ({ isOpen, onClose, userId, userType, userName, currentR
 				<button
 					onClick={handleConfirm}
 					disabled={assignMutation.isPending || rolesLoading}
-					className="px-4 h-[34px] rounded bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-40"
+					className="px-4 h-[34px] rounded bg-primary text-on-primary text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-40"
 				>
 					{assignMutation.isPending ? "Saving..." : "Confirm"}
 				</button>

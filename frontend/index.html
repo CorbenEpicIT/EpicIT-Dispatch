@@ -5,6 +5,14 @@
 		<link rel="icon" type="image/svg+xml" href="/vite.svg" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>frontend</title>
+		<script>
+			try {
+				var t = JSON.parse(localStorage.getItem("theme-preference") || "{}");
+				document.documentElement.dataset.theme = t?.state?.theme === "light" ? "light" : "dark";
+			} catch (e) {
+				document.documentElement.dataset.theme = "dark";
+			}
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

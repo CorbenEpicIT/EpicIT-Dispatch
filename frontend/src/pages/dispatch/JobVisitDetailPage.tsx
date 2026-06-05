@@ -80,7 +80,7 @@ export default function JobVisitDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading visit details...</div>
+				<div className="text-text-primary text-lg">Loading visit details...</div>
 			</div>
 		);
 	}
@@ -88,7 +88,7 @@ export default function JobVisitDetailPage() {
 	if (!visit) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Visit not found</div>
+				<div className="text-text-primary text-lg">Visit not found</div>
 			</div>
 		);
 	}
@@ -253,11 +253,11 @@ export default function JobVisitDetailPage() {
 	const duration = calculateDuration();
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
-					<h1 className="text-3xl font-bold text-white mb-1">
+					<h1 className="text-3xl font-bold text-text-primary mb-1">
 						{visit.name || "Job Visit"}
 					</h1>
 					<div className="flex items-center text-sm text-text-tertiary">
@@ -267,7 +267,7 @@ export default function JobVisitDetailPage() {
 								<span className="mx-2 text-border-strong">·</span>
 								<button
 									onClick={() => navigate(`/dispatch/jobs/${jobId}`)}
-									className="inline-flex items-center gap-1 text-primary-text hover:text-white transition-colors"
+									className="inline-flex items-center gap-1 text-primary-text hover:text-text-primary transition-colors"
 								>
 									<Briefcase size={12} className="opacity-70" />
 									<span>Job #{job.job_number} · {job.name}</span>
@@ -283,7 +283,7 @@ export default function JobVisitDetailPage() {
 							VisitStatusColors[
 								visit.status as VisitStatus
 							] ||
-							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+							"bg-surface-raised text-text-tertiary border-border-strong"
 						}`}
 					>
 						{visit.status}
@@ -464,7 +464,7 @@ export default function JobVisitDetailPage() {
 									<h3 className="text-text-tertiary text-sm mb-1">
 										Description
 									</h3>
-									<p className="text-white break-words">
+									<p className="text-text-primary break-words">
 										{visit.description}
 									</p>
 								</div>
@@ -478,7 +478,7 @@ export default function JobVisitDetailPage() {
 										<h3 className="text-text-tertiary text-sm mb-1">
 											Schedule Constraints
 										</h3>
-										<p className="text-white font-medium">
+										<p className="text-text-primary font-medium">
 											{formatVisitConstraints()}
 										</p>
 									</div>
@@ -487,7 +487,7 @@ export default function JobVisitDetailPage() {
 											<h3 className="text-text-tertiary text-sm mb-1">
 												{duration.label}
 											</h3>
-											<p className="text-white font-medium">
+											<p className="text-text-primary font-medium">
 												{formatDuration(duration.minutes)}
 											</p>
 										</div>
@@ -501,7 +501,7 @@ export default function JobVisitDetailPage() {
 										Scheduled Time
 									</h3>
 									<div className="space-y-1">
-										<p className="text-white">
+										<p className="text-text-primary">
 											{formatDate(visit.scheduled_start_at, tz)}
 										</p>
 										{visit.arrival_constraint === "at" && visit.arrival_time && (
@@ -548,7 +548,7 @@ export default function JobVisitDetailPage() {
 												<p className="text-text-tertiary text-xs mb-0.5">
 													Started
 												</p>
-												<p className="text-white text-sm">
+												<p className="text-text-primary text-sm">
 													{formatDateTime(visit.actual_start_at, tz)}
 												</p>
 											</div>
@@ -558,7 +558,7 @@ export default function JobVisitDetailPage() {
 												<p className="text-text-tertiary text-xs mb-0.5">
 													Ended
 												</p>
-												<p className="text-white text-sm">
+												<p className="text-text-primary text-sm">
 													{formatDateTime(visit.actual_end_at, tz)}
 												</p>
 											</div>
@@ -573,7 +573,7 @@ export default function JobVisitDetailPage() {
 									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-1">
 										Drive Distance
 									</h3>
-									<p className="text-white font-medium">
+									<p className="text-text-primary font-medium">
 										{visit.estimated_drive_miles.toFixed(1)} mi
 										{visit.visit_techs && visit.visit_techs.length > 0 && (
 											<span className="text-text-tertiary font-normal ml-2">
@@ -590,7 +590,7 @@ export default function JobVisitDetailPage() {
 									<h3 className="text-text-tertiary text-sm mb-1">
 										Cancellation Reason
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{visit.cancellation_reason}
 									</p>
 								</div>
@@ -684,8 +684,8 @@ export default function JobVisitDetailPage() {
 							<span
 								className={`inline-flex items-center px-2 py-0.5 rounded font-medium border ${
 									billingStatus === "fully-billed"
-										? "bg-green-500/15 text-success-text border-success/30"
-										: "bg-yellow-500/15 text-warning-text border-yellow-500/30"
+										? "bg-success-bg text-success-text border-success-border"
+										: "bg-warning-bg text-warning-text border-warning-border"
 								}`}
 							>
 								{billingStatus === "fully-billed" ? "Fully Billed" : "Partially Billed"}
@@ -715,13 +715,13 @@ export default function JobVisitDetailPage() {
 									className="bg-surface border border-border rounded-lg p-3 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group w-full"
 								>
 									<div className="flex items-center justify-between gap-6 mb-2">
-										<span className="text-white font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
+										<span className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
 											{invoice.invoice_number}
 										</span>
 										<span
 											className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
 												InvoiceStatusColors[invoice.status as InvoiceStatus] ??
-												"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+												"bg-surface-raised text-text-tertiary border-border-strong"
 											}`}
 										>
 											{InvoiceStatusLabels[invoice.status as InvoiceStatus] ?? invoice.status}
@@ -742,13 +742,13 @@ export default function JobVisitDetailPage() {
 									<div className="flex items-baseline gap-2">
 										{billedAmount !== null ? (
 											<>
-												<span className="text-white font-semibold text-sm tabular-nums">
+												<span className="text-text-primary font-semibold text-sm tabular-nums">
 													{formatCurrency(billedAmount)}
 												</span>
 												<span className="text-xs text-text-muted">billed this visit</span>
 											</>
 										) : (
-											<span className="text-white font-semibold text-sm tabular-nums">
+											<span className="text-text-primary font-semibold text-sm tabular-nums">
 												{formatCurrency(Number(invoice.total))}
 											</span>
 										)}
@@ -798,13 +798,13 @@ export default function JobVisitDetailPage() {
 								onClick={() => navigate(`/dispatch/technicians/${vt.tech_id}`)}
 								className="relative bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg p-3 transition-all cursor-pointer text-left group w-52 flex-shrink-0"
 							>
-								<div className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${vt.tech.status === "Available" ? "bg-green-400" : vt.tech.status === "Busy" ? "bg-red-400" : vt.tech.status === "Offline" ? "bg-zinc-500" : "bg-blue-400"}`} />
+								<div className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${vt.tech.status === "Available" ? "bg-success" : vt.tech.status === "Busy" ? "bg-error" : vt.tech.status === "Offline" ? "bg-border" : "bg-info"}`} />
 								<div className="flex items-center gap-2 mb-2">
 									<div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold">
 										{vt.tech.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
 									</div>
 									<div className="flex-1 min-w-0 pr-3">
-										<h4 className="text-white font-medium text-sm truncate group-hover:text-primary-text transition-colors">{vt.tech.name}</h4>
+										<h4 className="text-text-primary font-medium text-sm truncate group-hover:text-primary-text transition-colors">{vt.tech.name}</h4>
 										<p className="text-text-tertiary text-xs truncate">{vt.tech.title}</p>
 									</div>
 								</div>

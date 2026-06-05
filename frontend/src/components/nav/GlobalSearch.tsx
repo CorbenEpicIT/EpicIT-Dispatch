@@ -56,12 +56,12 @@ const ENTITY_ICONS: Record<EntityType, React.ReactNode> = {
 
 const ENTITY_BADGE_COLORS: Record<EntityType, string> = {
 	Client: "bg-primary/10 text-primary-text border-primary/30",
-	Request: "bg-yellow-500/10 text-warning-text border-yellow-500/30",
-	Quote: "bg-purple-500/10 text-reviewing-text border-reviewing/30",
-	Job: "bg-emerald-500/10 text-success-text border-emerald-500/30",
-	Visit: "bg-cyan-500/10 text-info-text border-cyan-500/30",
-	"Recurring Plan": "bg-orange-500/10 text-orange-400 border-orange-500/30",
-	Technician: "bg-zinc-500/10 text-text-tertiary border-border-strong/30",
+	Request: "bg-warning-bg text-warning-text border-warning-border",
+	Quote: "bg-reviewing-bg text-reviewing-text border-reviewing-border",
+	Job: "bg-success-bg text-success-text border-success-border",
+	Visit: "bg-info-bg text-info-text border-info-border",
+	"Recurring Plan": "bg-orange-bg text-orange-text border-orange-border",
+	Technician: "bg-surface-raised text-text-tertiary border-border-strong",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ export default function GlobalSearch() {
 				onChange={handleInputChange}
 				onFocus={handleFocus}
 				placeholder="Search..."
-				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary"
+				className="w-full pl-9 pr-3 py-2 rounded-md bg-surface border border-border text-sm text-text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 			/>
 			{isLoading && query.trim().length >= 2 && (
 				<Loader2

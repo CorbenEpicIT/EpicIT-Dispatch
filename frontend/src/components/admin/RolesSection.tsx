@@ -76,14 +76,14 @@ const RolesSection = () => {
                     className="flex-1 min-w-[200px]"
                 />
 
-                <div className="h-8 w-px bg-surface-raised hidden sm:block" />
+                <div className="h-8 w-px bg-border hidden sm:block" />
 
                 {/* Tier toggles */}
                 <div className="flex items-center gap-1 bg-surface border border-border rounded-md p-1">
                     <button
                         onClick={() => setShowDispatchers(!showDispatchers)}
                         className={`px-3 py-1 text-xs rounded font-medium cursor-pointer transition-colors ${
-                            showDispatchers ? "bg-primary-hover text-white" : "text-text-tertiary hover:text-white"
+                            showDispatchers ? "bg-primary-hover text-on-primary" : "text-text-tertiary hover:text-text-primary"
                         }`}
                     >
                         Dispatchers
@@ -91,7 +91,7 @@ const RolesSection = () => {
                     <button
                         onClick={() => setShowTechnicians(!showTechnicians)}
                         className={`px-3 py-1 text-xs rounded font-medium cursor-pointer transition-colors ${
-                            showTechnicians ? "bg-primary-hover text-white" : "text-text-tertiary hover:text-white"
+                            showTechnicians ? "bg-primary-hover text-on-primary" : "text-text-tertiary hover:text-text-primary"
                         }`}
                     >
                         Technicians
@@ -104,16 +104,16 @@ const RolesSection = () => {
                     className={`px-3 py-1.5 text-xs rounded-md font-medium border cursor-pointer transition-colors ${
                         defaultOnly
                             ? "bg-primary/15 border-primary/30 text-primary"
-                            : "bg-surface border-border text-text-tertiary hover:text-white"
+                            : "bg-surface border-border text-text-tertiary hover:text-text-primary"
                     }`}
                 >
                     Default only
                 </button>
 
-                <div className="h-8 w-px bg-surface-raised hidden sm:block" />
+                <div className="h-8 w-px bg-border hidden sm:block" />
 
                 <button
-                    className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:bg-primary-active text-on-primary rounded-md text-sm font-medium cursor-pointer transition-colors"
                     onClick={() => setIsRoleModalOpen(true)}
                 >
                     <Plus size={15} />
@@ -141,23 +141,23 @@ const RolesSection = () => {
             {rolesLoading && (
                 <div className="flex flex-col items-center justify-center py-10">
                     <LoadSvg className="w-16 h-16 animate-spin text-primary" />
-                    <p className="mt-4 text-gray-500">Loading roles...</p>
+                    <p className="mt-4 text-secondary">Loading roles...</p>
                 </div>
             )}
 
             {/* Error */}
             {rolesError && (
                 <div className="flex flex-col items-center justify-center py-10">
-                    <ErrSvg className="w-16 h-16 text-red-500" />
-                    <p className="mt-4 text-gray-500">Failed to load roles.</p>
+                    <ErrSvg className="w-16 h-16 text-error-text" />
+                    <p className="mt-4 text-secondary">Failed to load roles.</p>
                 </div>
             )}
 
             {/* Empty */}
             {!rolesLoading && !rolesError && filteredRoles.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-10">
-                    <BoxSvg className="w-16 h-16 text-gray-500" />
-                    <p className="mt-4 text-gray-500">
+                    <BoxSvg className="w-16 h-16 text-secondary" />
+                    <p className="mt-4 text-secondary">
                         {hasActiveFilters ? "No roles match your filters." : "No roles found."}
                     </p>
                 </div>
@@ -175,7 +175,7 @@ const RolesSection = () => {
                             {/* Header */}
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                    <h3 className="text-white font-semibold text-lg truncate">{role.name}</h3>
+                                    <h3 className="text-text-primary font-semibold text-lg truncate">{role.name}</h3>
                                     <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-border text-text-secondary">
                                             {role.base_tier.charAt(0).toUpperCase() + role.base_tier.slice(1)}
@@ -193,7 +193,7 @@ const RolesSection = () => {
                                         setSelectedRole(role);
                                         setIsEditRoleModalOpen(true);
                                     }}
-                                    className="shrink-0 text-xs px-3 py-1.5 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+                                    className="shrink-0 text-xs px-3 py-1.5 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
                                 >
                                     Edit
                                 </button>

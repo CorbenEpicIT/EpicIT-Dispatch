@@ -55,7 +55,7 @@ function CustomTooltip({
 		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
 			<p className="text-xs text-text-tertiary mb-1">{label}</p>
 			{valueEntry && (
-				<p className="text-sm font-semibold text-white">
+				<p className="text-sm font-semibold text-primary">
 					{formatCurrency(valueEntry.value)}
 				</p>
 			)}
@@ -92,7 +92,7 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 			}
 		>
 			{/* Total Revenue for the Open Quotes */}
-			<p className="text-xl font-bold text-white tracking-tight mb-3">
+			<p className="text-xl font-bold text-primary tracking-tight mb-3">
 				{formatCurrency(totalRevenue)}
 			</p>
 

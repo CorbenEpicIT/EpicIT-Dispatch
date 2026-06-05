@@ -172,7 +172,7 @@ export default function RecurringPlanDetailPage() {
 	if (planError) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">
+				<div className="text-text-primary text-lg">
 					Error loading recurring plan: {planError.message}
 				</div>
 			</div>
@@ -182,7 +182,7 @@ export default function RecurringPlanDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading recurring plan...</div>
+				<div className="text-text-primary text-lg">Loading recurring plan...</div>
 			</div>
 		);
 	}
@@ -190,7 +190,7 @@ export default function RecurringPlanDetailPage() {
 	if (!plan) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Recurring plan not found</div>
+				<div className="text-text-primary text-lg">Recurring plan not found</div>
 			</div>
 		);
 	}
@@ -327,7 +327,7 @@ export default function RecurringPlanDetailPage() {
 							className="text-text-tertiary flex-shrink-0"
 						/>
 						<div className="min-w-0">
-							<p className="text-white font-semibold text-sm group-hover:text-primary-text transition-colors">
+							<p className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors">
 								{plan.job_container.job_number}
 							</p>
 							{plan.job_container.name && (
@@ -345,7 +345,7 @@ export default function RecurringPlanDetailPage() {
 								plan.job_container
 									.status as JobStatus
 							] ||
-							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+							"bg-surface-raised text-text-tertiary border-border-strong"
 						}`}
 					>
 						{plan.job_container.status}
@@ -423,7 +423,7 @@ export default function RecurringPlanDetailPage() {
 						>
 							<div className="flex items-start justify-between gap-2 mb-1">
 								<div className="flex-1 min-w-0">
-									<p className="text-white text-xs font-medium truncate">
+									<p className="text-text-primary text-xs font-medium truncate">
 										{new Date(
 											occurrence.occurrence_start_at
 										).toLocaleDateString(
@@ -452,7 +452,7 @@ export default function RecurringPlanDetailPage() {
 										OccurrenceStatusColors[
 											occurrence.status as OccurrenceStatus
 										] ||
-										"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+										"bg-surface-raised text-text-tertiary border-border-strong"
 									}`}
 								>
 									{OccurrenceStatusLabels[
@@ -474,7 +474,7 @@ export default function RecurringPlanDetailPage() {
 										disabled={
 											generateVisitMutation.isPending || !MANAGE_RECURRING_PLANS
 										}
-										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-primary-hover hover:enabled:bg-blue-700 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-primary-hover hover:enabled:bg-primary-active text-on-primary rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Plus size={12} />
 										Create
@@ -493,7 +493,7 @@ export default function RecurringPlanDetailPage() {
 													);
 												}
 											}}
-											className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-surface-raised hover:bg-zinc-600 rounded text-xs font-medium transition-colors"
+											className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-surface-raised hover:bg-surface-raised rounded text-xs font-medium transition-colors"
 										>
 											<ExternalLink
 												size={
@@ -572,7 +572,7 @@ export default function RecurringPlanDetailPage() {
 							>
 								<div className="flex items-start justify-between gap-2 mb-1">
 									<div className="flex-1 min-w-0">
-										<p className="text-white text-xs font-medium truncate">
+										<p className="text-text-primary text-xs font-medium truncate">
 											{visitDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
 											{" · "}
 											{visitDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
@@ -585,7 +585,7 @@ export default function RecurringPlanDetailPage() {
 										<span
 											className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${
 												VisitStatusColors[visitStatus] ||
-												"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+												"bg-surface-raised text-text-tertiary border-border-strong"
 											}`}
 										>
 											{VisitStatusLabels[visitStatus] || visitStatus}
@@ -601,7 +601,7 @@ export default function RecurringPlanDetailPage() {
 												);
 											}
 										}}
-										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-surface-raised hover:bg-zinc-600 rounded text-xs font-medium transition-colors"
+										className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-surface-raised hover:bg-surface-raised rounded text-xs font-medium transition-colors"
 									>
 										<ExternalLink size={12} />
 										View Visit
@@ -616,13 +616,13 @@ export default function RecurringPlanDetailPage() {
 	);
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
 					<div className="flex items-center gap-2 mb-2">
 						<Repeat size={24} className="text-primary-text" />
-						<h1 className="text-3xl font-bold text-white">
+						<h1 className="text-3xl font-bold text-text-primary">
 							{plan.name}
 						</h1>
 					</div>
@@ -637,7 +637,7 @@ export default function RecurringPlanDetailPage() {
 					<span
 						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 							RecurringPlanStatusColors[plan.status] ||
-							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+							"bg-surface-raised text-text-tertiary border-border-strong"
 						}`}
 					>
 						{RecurringPlanStatusLabels[plan.status] ||
@@ -783,7 +783,7 @@ export default function RecurringPlanDetailPage() {
 														disabled={
 															cancelMutation.isPending || !MANAGE_RECURRING_PLANS
 														}
-														className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-red-900/30 transition-colors flex items-center gap-2 text-error-text disabled:opacity-40 disabled:cursor-not-allowed"
+														className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-error-bg transition-colors flex items-center gap-2 text-error-text disabled:opacity-40 disabled:cursor-not-allowed"
 													>
 														<XCircle
 															size={
@@ -813,7 +813,7 @@ export default function RecurringPlanDetailPage() {
 								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{plan.description ||
 										"No description provided"}
 								</p>
@@ -824,7 +824,7 @@ export default function RecurringPlanDetailPage() {
 									<MapPin size={14} />
 									Address
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{plan.address}
 								</p>
 							</div>
@@ -837,7 +837,7 @@ export default function RecurringPlanDetailPage() {
 								{plan.rules &&
 									plan.rules.length > 0 && (
 										<div className="space-y-2">
-											<p className="text-white font-medium">
+											<p className="text-text-primary font-medium">
 												{formatRecurringSchedule(
 													plan
 														.rules[0]
@@ -886,7 +886,7 @@ export default function RecurringPlanDetailPage() {
 										/>
 										Started
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											plan.starts_at
 										).toLocaleDateString(
@@ -906,7 +906,7 @@ export default function RecurringPlanDetailPage() {
 									<h3 className="text-text-tertiary text-sm mb-1">
 										Ends
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											plan.ends_at
 										).toLocaleDateString(
@@ -928,7 +928,7 @@ export default function RecurringPlanDetailPage() {
 									Invoicing
 								</h3>
 								{plan.billing_mode === "none" ? (
-									<p className="text-white text-sm">
+									<p className="text-text-primary text-sm">
 										{BillingModeLabels[plan.billing_mode]}
 									</p>
 								) : (
@@ -936,15 +936,15 @@ export default function RecurringPlanDetailPage() {
 										{/* Row 1 */}
 										<div>
 											<p className="text-text-tertiary text-xs mb-0.5">Billing Mode</p>
-											<p className="text-white text-sm">{BillingModeLabels[plan.billing_mode]}</p>
+											<p className="text-text-primary text-sm">{BillingModeLabels[plan.billing_mode]}</p>
 										</div>
 										<div>
 											<p className="text-text-tertiary text-xs mb-0.5">Trigger</p>
-											<p className="text-white text-sm">{InvoiceTimingLabels[plan.invoice_timing]}</p>
+											<p className="text-text-primary text-sm">{InvoiceTimingLabels[plan.invoice_timing]}</p>
 										</div>
 										<div>
 											<p className="text-text-tertiary text-xs mb-0.5">Auto Invoice</p>
-											<p className="text-white text-sm">{plan.auto_invoice ? "Yes" : "No"}</p>
+											<p className="text-text-primary text-sm">{plan.auto_invoice ? "Yes" : "No"}</p>
 										</div>
 
 										{/* Row 2 */}
@@ -952,7 +952,7 @@ export default function RecurringPlanDetailPage() {
 											<>
 												<div>
 													<p className="text-text-tertiary text-xs mb-0.5">Frequency</p>
-													<p className="text-white text-sm">{InvoiceScheduleFrequencyLabels[plan.invoice_schedule.frequency]}</p>
+													<p className="text-text-primary text-sm">{InvoiceScheduleFrequencyLabels[plan.invoice_schedule.frequency]}</p>
 													{(plan.invoice_schedule.frequency === "weekly" || plan.invoice_schedule.frequency === "biweekly") &&
 														plan.invoice_schedule.day_of_week && (
 														<p className="text-text-tertiary text-xs mt-0.5">{WeekdayLabels[plan.invoice_schedule.day_of_week]}</p>
@@ -964,14 +964,14 @@ export default function RecurringPlanDetailPage() {
 												</div>
 												<div>
 													<p className="text-text-tertiary text-xs mb-0.5">Billing Basis</p>
-													<p className="text-white text-sm">{InvoiceScheduleBillingBasisLabels[plan.invoice_schedule.billing_basis]}</p>
+													<p className="text-text-primary text-sm">{InvoiceScheduleBillingBasisLabels[plan.invoice_schedule.billing_basis]}</p>
 													{plan.invoice_schedule.billing_basis === "fixed_amount" && plan.invoice_schedule.fixed_amount != null && (
 														<p className="text-text-tertiary text-xs mt-0.5">{"$" + Number(plan.invoice_schedule.fixed_amount).toFixed(2)}</p>
 													)}
 												</div>
 												<div>
 													<p className="text-text-tertiary text-xs mb-0.5">Payment Terms</p>
-													<p className="text-white text-sm">{plan.invoice_schedule.payment_terms_days != null ? "Net " + plan.invoice_schedule.payment_terms_days : "—"}</p>
+													<p className="text-text-primary text-sm">{plan.invoice_schedule.payment_terms_days != null ? "Net " + plan.invoice_schedule.payment_terms_days : "—"}</p>
 												</div>
 											</>
 										)}
@@ -1038,10 +1038,10 @@ export default function RecurringPlanDetailPage() {
 											item.id ||
 											index
 										}
-										className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface/30 transition-colors"
+										className="grid grid-cols-12 gap-2 py-3 border-b border-border-subtle hover:bg-surface-raised transition-colors"
 									>
 										<div className="col-span-5 text-sm">
-											<p className="text-white font-medium">
+											<p className="text-text-primary font-medium">
 												{
 													item.name
 												}
@@ -1063,7 +1063,7 @@ export default function RecurringPlanDetailPage() {
 												</span>
 											)}
 										</div>
-										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
+										<div className="col-span-2 text-right text-sm text-text-primary tabular-nums flex items-center justify-end">
 											{Number(
 												item.quantity
 											).toLocaleString(
@@ -1074,14 +1074,14 @@ export default function RecurringPlanDetailPage() {
 												}
 											)}
 										</div>
-										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
+										<div className="col-span-2 text-right text-sm text-text-primary tabular-nums flex items-center justify-end">
 											{formatCurrency(
 												Number(
 													item.unit_price
 												)
 											)}
 										</div>
-										<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
+										<div className="col-span-2 text-right text-sm text-text-primary font-medium tabular-nums flex items-center justify-end">
 											{formatCurrency(
 												Number(
 													item.quantity
@@ -1102,7 +1102,7 @@ export default function RecurringPlanDetailPage() {
 									<span className="text-text-tertiary">
 										Total Items:
 									</span>
-									<span className="text-white font-medium tabular-nums">
+									<span className="text-text-primary font-medium tabular-nums">
 										{lineItems.length}
 									</span>
 								</div>
@@ -1110,7 +1110,7 @@ export default function RecurringPlanDetailPage() {
 									<span className="text-text-tertiary">
 										Billing Mode:
 									</span>
-									<span className="text-white font-medium capitalize">
+									<span className="text-text-primary font-medium capitalize">
 										{plan.billing_mode.replace(
 											"_",
 											" "
@@ -1173,7 +1173,7 @@ export default function RecurringPlanDetailPage() {
 			{isGenerateModalOpen && (
 				<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
 					<div className="bg-base border border-border-subtle rounded-lg p-6 max-w-md w-full mx-4">
-						<h2 className="text-xl font-bold text-white mb-4">
+						<h2 className="text-xl font-bold text-text-primary mb-4">
 							Generate Occurrences
 						</h2>
 						<p className="text-text-tertiary text-sm mb-4">
@@ -1197,7 +1197,7 @@ export default function RecurringPlanDetailPage() {
 										) || 30
 									)
 								}
-								className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-primary"
+								className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
 							/>
 							<p className="text-xs text-text-muted mt-1">
 								Generate occurrences up to{" "}
@@ -1211,7 +1211,7 @@ export default function RecurringPlanDetailPage() {
 										false
 									)
 								}
-								className="flex-1 px-4 py-2 bg-surface-raised hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors"
+								className="flex-1 px-4 py-2 bg-surface-raised hover:bg-surface-raised rounded-md text-sm font-medium transition-colors"
 							>
 								Cancel
 							</button>
@@ -1220,7 +1220,7 @@ export default function RecurringPlanDetailPage() {
 								disabled={
 									generateMutation.isPending
 								}
-								className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+								className="flex-1 px-4 py-2 bg-primary-hover hover:bg-primary-active text-on-primary rounded-md text-sm font-medium transition-colors disabled:opacity-50"
 							>
 								{generateMutation.isPending
 									? "Generating..."

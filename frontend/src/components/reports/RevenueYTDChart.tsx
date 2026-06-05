@@ -52,12 +52,12 @@ function CustomTooltip({
 		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
 			<p className="text-xs text-text-tertiary mb-1">{label}</p>
 			{hasActual && (
-				<p className="text-sm font-semibold text-white">
+				<p className="text-sm font-semibold text-primary">
 					Actuals: {formatCurrency(actual.value!)}
 				</p>
 			)}
 			{!hasActual && forecast?.value != null && (
-				<p className="text-sm font-semibold text-white">
+				<p className="text-sm font-semibold text-primary">
 					Forecast: {formatCurrency(forecast.value)}
 				</p>
 			)}
@@ -106,10 +106,10 @@ export default function RevenueYTDChart({
 	return (
 		<div className="flex flex-col h-full">
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="font-semibold text-white">
+				<h3 className="font-semibold text-primary">
 					Revenue Year to Date
 				</h3>
-				<span className="text-2xl font-bold text-white">
+				<span className="text-2xl font-bold text-primary">
 					{formatCurrency(total)}
 				</span>
 			</div>

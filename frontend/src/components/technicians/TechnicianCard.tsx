@@ -153,7 +153,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                                 disabled={isDeleting}
                                 className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
                                   deleteConfirm
-                                    ? "bg-red-600 hover:bg-red-700 text-white"
+                                    ? "bg-error hover:bg-error-strong text-on-primary"
                                     : "text-error-text hover:bg-surface-raised hover:text-error-text"
                                 } disabled:opacity-40 disabled:cursor-not-allowed`}
                               >

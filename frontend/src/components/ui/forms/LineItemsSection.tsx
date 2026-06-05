@@ -81,7 +81,7 @@ const LineItemsSection = ({
 				}
 			>
 				<div className={`flex items-center justify-between gap-2${stickyHeader ? " pb-2" : ""}`}>
-					<h3 className="text-xs lg:text-sm font-semibold text-white uppercase tracking-wider flex-shrink-0">
+					<h3 className="text-xs lg:text-sm font-semibold text-text-primary uppercase tracking-wider flex-shrink-0">
 						Line Items {required && "*"}
 					</h3>
 					<div className="flex items-center gap-2 min-w-0">
@@ -133,7 +133,7 @@ const LineItemsSection = ({
 						)}
 						<div className="text-xs lg:text-sm text-text-tertiary flex-shrink-0">
 							Subtotal:{" "}
-							<span className="text-white font-semibold">
+							<span className="text-text-primary font-semibold">
 								${subtotal.toFixed(2)}
 							</span>
 						</div>
@@ -172,7 +172,7 @@ const LineItemsSection = ({
 				type="button"
 				onClick={onAdd}
 				disabled={isLoading}
-				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-xs lg:text-sm font-medium text-white transition-colors"
+				className="w-full flex items-center justify-center gap-1 px-3 py-1.5 lg:py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-xs lg:text-sm font-medium text-on-primary transition-colors"
 			>
 				<Plus size={14} />
 				Add Item

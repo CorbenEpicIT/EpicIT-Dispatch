@@ -49,7 +49,7 @@ export default function TechnicianLayout() {
 		<div className="flex h-screen bg-canvas text-text-primary">
 			<div className="flex flex-col flex-1 overflow-hidden">
 				{/* TOP NAV */}
-				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-canvas border-b border-base">
+				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-canvas border-b border-border">
 					<div className="flex items-center gap-3 sm:gap-6">
 						<button
 							onClick={handleBack}
@@ -145,7 +145,7 @@ export default function TechnicianLayout() {
 			</div>
 
 			{/* BOTTOM NAV */}
-			<nav className="flex fixed bottom-0 left-0 right-0 z-50 bg-canvas border-t border-base h-16">
+			<nav className="flex fixed bottom-0 left-0 right-0 z-50 bg-canvas border-t border-border h-16">
 				<NavLink
 					to="/technician"
 					end

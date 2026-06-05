@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleBoardDayColumn, { setSharedDragOffset } from "./ScheduleBoardDayColumn";
@@ -31,7 +31,7 @@ interface ScheduleBoardProps {
 	technicians: Technician[];
 }
 
-/** An occurrence with no specific time requirement — keyed off the arrival_constraint field. */
+/** An occurrence with no specific time requirement – keyed off the arrival_constraint field. */
 function isAnytimeOccurrence(occ: OccurrenceWithPlan): boolean {
 	return occ.arrival_constraint === "anytime";
 }
@@ -80,7 +80,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 	const anytimePopupRef = useRef<HTMLDivElement>(null);
 	const anytimeRef      = useRef<HTMLDivElement>(null);
 
-	// ── Week-view scroll zone state/refs ──────────────────────────────────────
+	// -- Week-view scroll zone state/refs --------------------------------------
 	const [weekScrollZone, setWeekScrollZone]         = useState<"left" | "right" | null>(null);
 	const [weekScrollProgress, setWeekScrollProgress] = useState(0);
 	const [isDraggingWeek, setIsDraggingWeek]         = useState(false);
@@ -177,7 +177,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 	const visitsByDay    = useMemo(() => groupVisitsByDay(timedVisits),   [timedVisits]);
 	const anytimeByDay   = useMemo(() => groupVisitsByDay(anytimeVisits), [anytimeVisits]);
 
-	// All planned occurrences — split into timed (time-grid) and anytime (midnight signal)
+	// All planned occurrences – split into timed (time-grid) and anytime (midnight signal)
 	const allOccs = useMemo(() => extractOccurrences(jobs), [jobs]);
 
 	const timedOccurrencesByDay = useMemo(() =>
@@ -198,13 +198,13 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 		}, {} as Record<string, OccurrenceWithPlan[]>),
 	[allOccs]);
 
-	// Now indicator — raw fractional hour (DAY_START = 0)
+	// Now indicator – raw fractional hour (DAY_START = 0)
 	const nowTop = useMemo(() => {
 		const now = new Date();
 		return (now.getHours() + now.getMinutes() / 60) * SLOT_H;
 	}, []);
 
-	// ── Navigation ────────────────────────────────────────────────────────────
+	// -- Navigation ------------------------------------------------------------
 
 	function prevWeek() {
 		setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; });
@@ -241,12 +241,12 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 		if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, y);
 	}
 
-	// ── Week-view scroll zone helpers ─────────────────────────────────────────
+	// -- Week-view scroll zone helpers -----------------------------------------
 
 	// Keep weekStartRef current so mount-only document handlers have fresh weekStart
 	useEffect(() => { weekStartRef.current = weekStart; }, [weekStart]);
 
-	// Document-level drag tracking (mount only — uses refs, no stale closures)
+	// Document-level drag tracking (mount only – uses refs, no stale closures)
 	useEffect(() => {
 		function onDragStart(e: DragEvent) {
 			const inTimeGrid = weekTimeGridRef.current?.contains(e.target as Node);
@@ -342,7 +342,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 		}
 	}
 
-	// Clears scroll zone when leaving the anytime section — but NOT if the pointer
+	// Clears scroll zone when leaving the anytime section – but NOT if the pointer
 	// moved into the time grid below (so dragging down doesn't flicker the zone).
 	function handleAnytimeSectionDragLeave(e: React.DragEvent<HTMLDivElement>) {
 		const anytimeRect  = anytimeRef.current?.getBoundingClientRect();
@@ -354,7 +354,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 		if (!inAnytime && !inGrid) clearWeekScrollZone();
 	}
 
-	// ── Anytime drag/drop ────────────────────────────────────────────────────
+	// -- Anytime drag/drop ----------------------------------------------------
 
 	function handleAnytimeDragStart(e: React.DragEvent, visit: VisitWithJob) {
 		setSharedDragOffset(0);
@@ -384,7 +384,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 
 	function handleAnytimeOccurrenceDragStart(e: React.DragEvent, occ: OccurrenceWithPlan) {
 		setSharedDragOffset(0);
-		// Same as above — set scroll state explicitly because stopPropagation prevents
+		// Same as above – set scroll state explicitly because stopPropagation prevents
 		// the document-level dragstart listener from running.
 		weekDragOriginRef.current = weekStartRef.current;
 		isDraggingWeekRef.current = true;
@@ -463,7 +463,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 			arrival_window_start: null,
 			arrival_window_end: null,
 		};
-		// Converting from a timed constraint → also reset finish to when_done
+		// Converting from a timed constraint ? also reset finish to when_done
 		if (parsed.arrival_constraint !== "anytime") {
 			data.finish_constraint = "when_done";
 			data.finish_time = null;
@@ -478,7 +478,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 		}
 	}
 
-	// ── Labels ────────────────────────────────────────────────────────────────
+	// -- Labels ----------------------------------------------------------------
 
 	const weekLabel = useMemo(() => {
 		const firstDay = new Date(weekDays[0] + "T12:00:00");
@@ -501,7 +501,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 
 	const totalSlots = DAY_END - DAY_START; // 24
 
-	// ── Anytime popup positioning ─────────────────────────────────────────────
+	// -- Anytime popup positioning ---------------------------------------------
 
 	const ANYTIME_POPUP_W = 224;
 	function getAnytimePopupPos(rect: DOMRect) {
@@ -513,7 +513,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 		return { top, left };
 	}
 
-	// ── Grid column template ──────────────────────────────────────────────────
+	// -- Grid column template --------------------------------------------------
 
 	const gridTemplateColumns = `${GUTTER_W}px repeat(7, minmax(150px, 1fr))`;
 	const gridMinWidth = GUTTER_W + 7 * 150;
@@ -521,7 +521,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 	return (
 		<div className="flex flex-col h-full bg-canvas text-text-primary select-none">
 
-			{/* ── Toolbar ──────────────────────────────────────────────────────── */}
+			{/* -- Toolbar -------------------------------------------------------- */}
 			<div className="flex items-center gap-1.5 px-3 border-b border-border-subtle shrink-0" style={{ height: 44 }}>
 
 				{/* Today */}
@@ -554,9 +554,9 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
+				<div className="w-px h-4 bg-border-subtle mx-1 shrink-0" />
 
-				{/* View mode — segmented */}
+				{/* View mode – segmented */}
 				<div className="flex items-center bg-base border border-border-subtle rounded p-0.5 shrink-0">
 					<button
 						onClick={() => setViewMode("week")}
@@ -577,7 +577,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
+				<div className="w-px h-4 bg-border-subtle mx-1 shrink-0" />
 
 				{/* Layer toggles */}
 				<button
@@ -595,7 +595,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					onClick={() => setShowOccurrences((v) => !v)}
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showOccurrences
-							? "bg-violet-500/10 border-violet-500/25 text-violet-300"
+							? "bg-reviewing-bg border-reviewing-border text-reviewing-text"
 							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
@@ -604,7 +604,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 				</button>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
+				<div className="w-px h-4 bg-border-subtle mx-1 shrink-0" />
 
 				<TechFilter
 					technicians={technicians}
@@ -615,7 +615,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 
 			</div>
 
-			{/* ── Month View ───────────────────────────────────────────────────── */}
+			{/* -- Month View ----------------------------------------------------- */}
 			{viewMode === "month" && (
 				<div className="flex-1 overflow-auto">
 					<MonthGrid
@@ -641,7 +641,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 				</div>
 			)}
 
-			{/* ── Week View ────────────────────────────────────────────────────── */}
+			{/* -- Week View ------------------------------------------------------ */}
 			{viewMode === "week" && (
 				<div ref={scrollRef} className="flex-1 overflow-auto" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
 				<div ref={gridRef} style={{ minWidth: gridMinWidth, position: "relative" }}>
@@ -856,7 +856,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 																		padding: "3px 5px",
 																		borderRadius: 4,
 																		backgroundColor: "var(--color-occurrence-bg)",
-																		border: "1px solid #7c3aed55",
+																		border: "1px solid var(--color-occurrence-border)",
 																		cursor: "grab",
 																		textAlign: "left",
 																		width: "100%",
@@ -971,7 +971,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 															padding: "3px 5px",
 															borderRadius: 4,
 															backgroundColor: "var(--color-occurrence-bg)",
-															border: "1px solid #7c3aed55",
+															border: "1px solid var(--color-occurrence-border)",
 															cursor: "grab",
 															textAlign: "left",
 															width: "100%",
@@ -995,7 +995,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 													</button>
 												))}
 												{totalCount === 0 && (
-													<span style={{ fontSize: 9, color: "var(--color-text-faint)" }}>—</span>
+													<span style={{ fontSize: 9, color: "var(--color-text-faint)" }}>–</span>
 												)}
 											</div>
 										)}
@@ -1017,7 +1017,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 						onDragOver={handleWeekGridDragOver}
 						onDragLeave={handleWeekGridDragLeave}
 					>
-							{/* Time gutter — sticky left */}
+							{/* Time gutter – sticky left */}
 							<div
 								style={{
 									position: "sticky",
@@ -1128,7 +1128,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 
 					</div>
 
-				{/* Left week scroll zone — positioned at gridRef level so it spans the
+				{/* Left week scroll zone – positioned at gridRef level so it spans the
 				    anytime sticky section + time grid (zIndex 25 clears sticky z-index 20) */}
 				<div aria-hidden style={{
 					position: "absolute", left: GUTTER_W, top: 0, bottom: 0, width: SCROLL_ZONE_W,
@@ -1150,7 +1150,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					)}
 					<div style={{ position: "absolute", top: "50%", left: 6, transform: "translateY(-50%)",
 						color: `rgba(147,197,253,${0.4 + (weekScrollZone === "left" ? weekScrollProgress * 0.6 : 0)})`,
-						fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none" }}>‹</div>
+						fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none" }}>–</div>
 				</div>
 
 				{/* Right week scroll zone */}
@@ -1174,7 +1174,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 					)}
 					<div style={{ position: "absolute", top: "50%", right: 6, transform: "translateY(-50%)",
 						color: `rgba(147,197,253,${0.4 + (weekScrollZone === "right" ? weekScrollProgress * 0.6 : 0)})`,
-						fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none" }}>›</div>
+						fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none" }}>–</div>
 				</div>
 			</div>
 		</div>

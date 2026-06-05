@@ -195,7 +195,7 @@ export default function MapPanel({
 										sublabel={`→ ${route.destinationLabel}`}
 										dot={
 											<span
-												className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-950"
+												className="w-3 h-3 rounded-full flex-shrink-0 border border-canvas"
 												style={{
 													backgroundColor:
 														route.color,
@@ -251,7 +251,7 @@ export default function MapPanel({
 										)}
 										dot={
 											<span
-												className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-950"
+												className="w-3 h-3 rounded-full flex-shrink-0 border border-canvas"
 												style={{
 													backgroundColor:
 														route.color,
@@ -340,7 +340,7 @@ export default function MapPanel({
 							Live Updates
 						</span>
 						{unreadCount > 0 && (
-							<span className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white font-bold rounded-full text-[10px] leading-none">
+							<span className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-error text-on-primary font-bold rounded-full text-[10px] leading-none">
 								{unreadCount > 9 ? "9+" : unreadCount}
 							</span>
 						)}

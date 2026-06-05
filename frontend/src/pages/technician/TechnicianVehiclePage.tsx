@@ -613,7 +613,7 @@ export default function TechnicianVehiclePage() {
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									aria-label="Search inventory items"
-									className="w-full bg-surface/60 border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong"
+									className="w-full bg-surface-inset border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 								/>
 								{searchQuery && (
 									<button

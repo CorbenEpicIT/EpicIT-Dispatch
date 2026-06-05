@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
 	Search,
 	Plus,
@@ -19,7 +19,7 @@ import type { VisitLineItem } from "../../types/jobs";
 
 type Mode = "edit" | "stock" | "free";
 
-// ── Edit Parts Tab ─────────────────────────────────────────────────────────────
+// -- Edit Parts Tab -------------------------------------------------------------
 
 function EditPartsTab({
 	lineItems,
@@ -104,7 +104,7 @@ function EditPartsTab({
 									}`}
 									aria-label={isOne ? "Remove part" : "Decrease quantity"}
 								>
-									{isOne ? "✕" : "−"}
+									{isOne ? "?" : "-"}
 								</button>
 								<span className="text-sm font-semibold text-text-primary tabular-nums min-w-[18px] text-center">
 									{qty}
@@ -120,7 +120,7 @@ function EditPartsTab({
 									className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors disabled:opacity-40"
 									aria-label="Increase quantity"
 								>
-									＋
+									+
 								</button>
 								<span className="text-sm text-text-primary tabular-nums">
 									× ${unitPrice.toFixed(2)}
@@ -137,7 +137,7 @@ function EditPartsTab({
 	);
 }
 
-// ── Stock Mode ────────────────────────────────────────────────────────────────
+// -- Stock Mode ----------------------------------------------------------------
 
 function StockPartPicker({
 	stockItems,
@@ -260,7 +260,7 @@ function StockPartPicker({
 					value={search}
 					onChange={(e) => onSearchChange(e.target.value)}
 					autoFocus
-					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong"
+					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
 			<div className="divide-y divide-border-subtle/40 overflow-y-auto max-h-56">
@@ -280,7 +280,7 @@ function StockPartPicker({
 							</p>
 							<p className="text-[10px] text-text-muted mt-0.5">
 								{item.inventory_item.category
-									? `${item.inventory_item.category} · `
+									? `${item.inventory_item.category} — `
 									: ""}
 								<span
 									className={
@@ -311,7 +311,7 @@ function StockPartPicker({
 									}
 									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-success-bg text-success-text border border-success-border hover:bg-success/25 transition-colors"
 								>
-									✓ Added
+									? Added
 								</button>
 							) : (
 								<button
@@ -329,7 +329,7 @@ function StockPartPicker({
 	);
 }
 
-// ── Free Entry Form ───────────────────────────────────────────────────────────
+// -- Free Entry Form -----------------------------------------------------------
 
 function FreeEntryForm({
 	visitId,
@@ -403,7 +403,7 @@ function FreeEntryForm({
 					onChange={(e) => setName(e.target.value)}
 					autoFocus
 					placeholder="e.g. 1/2 inch copper fitting"
-					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong"
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
 			<div className="flex gap-2">
@@ -428,7 +428,7 @@ function FreeEntryForm({
 						value={unitCost}
 						onChange={(e) => setUnitCost(e.target.value)}
 						placeholder="0.00"
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-faint focus:outline-none focus:border-border-strong tabular-nums"
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong tabular-nums"
 					/>
 				</div>
 			</div>
@@ -446,7 +446,7 @@ function FreeEntryForm({
 	);
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// -- Main Component ------------------------------------------------------------
 
 export default function PartsUsedSection({
 	visitId,

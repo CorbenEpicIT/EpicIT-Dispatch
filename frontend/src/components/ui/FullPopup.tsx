@@ -27,7 +27,7 @@ const FullPopup = ({
 		(isModalOpen ? "pointer-events-auto" : "pointer-events-none");
 
 	let insetClass =
-		"scrollbar-hide bg-base rounded-lg shadow-xl max-h-[92vh] min-h-0 text-white flex flex-col ";
+		"scrollbar-hide bg-surface border border-border-card rounded-lg shadow-xl max-h-[92vh] min-h-0 text-text-primary flex flex-col ";
 
 	insetClass += overflowVisible ? "overflow-visible " : "overflow-hidden ";
 

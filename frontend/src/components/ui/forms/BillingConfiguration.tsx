@@ -1,4 +1,4 @@
-﻿import type { ZodError } from "zod";
+import type { ZodError } from "zod";
 import { DollarSign, FileText, Ban, AlertTriangle } from "lucide-react";
 import {
 	WeekdayValues,
@@ -143,7 +143,7 @@ const RadioCard = ({
 		} disabled:opacity-50 disabled:cursor-not-allowed ${extraClass}`}
 	>
 		<div className={`mb-1 ${selected ? "text-primary-text" : "text-text-tertiary"}`}>{icon}</div>
-		<p className={`text-xs font-semibold leading-tight ${selected ? "text-white" : "text-text-secondary"}`}>
+		<p className={`text-xs font-semibold leading-tight ${selected ? "text-primary" : "text-text-secondary"}`}>
 			{title}
 		</p>
 		<p className="text-[10px] text-text-muted mt-0.5 leading-tight">{description}</p>
@@ -176,13 +176,13 @@ const RadioRow = ({
 				className={`mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
 					selected
 						? "border-primary bg-primary"
-						: "border-border-strong group-hover:border-zinc-400"
+						: "border-border-strong group-hover:border-border"
 				}`}
 			>
 				{selected && <span className="w-1 h-1 rounded-full bg-white" />}
 			</span>
 			<div className="min-w-0">
-				<p className={`text-xs font-medium leading-tight ${selected ? "text-white" : "text-text-secondary"}`}>
+				<p className={`text-xs font-medium leading-tight ${selected ? "text-primary" : "text-text-secondary"}`}>
 					{label}
 				</p>
 				<p className="text-[11px] text-text-muted mt-0.5 leading-snug">{description}</p>
@@ -307,7 +307,7 @@ export const BillingConfiguration = ({
 							<>
 								<div className="flex items-center gap-1 mb-2">
 									<DollarSign size={13} className="text-primary-text flex-shrink-0" />
-									<p className="text-xs font-semibold leading-tight text-white">Fixed Amount</p>
+									<p className="text-xs font-semibold leading-tight text-primary">Fixed Amount</p>
 								</div>
 								<div className="relative">
 									<span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary text-xs">
@@ -321,7 +321,7 @@ export const BillingConfiguration = ({
 										onChange={(e) => onChange({ fixedAmount: e.target.value })}
 										disabled={isLoading}
 										placeholder="0.00"
-										className="w-full pl-5 pr-3 py-1.5 bg-canvas border border-border-strong rounded text-white text-xs focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
+										className="w-full pl-5 pr-3 py-1.5 bg-canvas border border-border-strong rounded text-primary text-xs focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
 									/>
 								</div>
 								<ErrorDisplay path="fixed_amount" />
@@ -365,7 +365,7 @@ export const BillingConfiguration = ({
 								{billingBasis === "fixed_amount" && (
 									<div className="flex items-start gap-1.5 rounded bg-warning/10 border border-warning/30 px-2 py-1.5">
 										<AlertTriangle size={12} className="text-warning-text mt-0.5 flex-shrink-0" />
-										<p className="text-[11px] text-amber-300 leading-snug">
+										<p className="text-[11px] text-warning-text leading-snug">
 											This generates a {fixedAmount ? `${fixedAmount}` : "fixed"} invoice every time any visit completes &mdash; multiple visits means multiple invoices.
 											{" "}<strong>Fixed Schedule</strong> is usually more appropriate for a fixed recurring fee.
 										</p>
@@ -407,9 +407,9 @@ export const BillingConfiguration = ({
 												type="button"
 												onClick={() => onChange({ dayOfMonth: Math.max(1, dayOfMonth - 1) })}
 												disabled={isLoading || dayOfMonth <= 1}
-												className="w-5 h-6 flex items-center justify-center rounded border border-border-strong bg-base text-text-tertiary hover:text-white hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed text-xs transition-colors"
+												className="w-5 h-6 flex items-center justify-center rounded border border-border-strong bg-base text-text-tertiary hover:text-text-primary hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed text-xs transition-colors"
 											>
-												−
+												-
 											</button>
 											<div className="flex items-baseline gap-0.5">
 												<input
@@ -422,14 +422,14 @@ export const BillingConfiguration = ({
 														if (!isNaN(v)) onChange({ dayOfMonth: Math.min(28, Math.max(1, v)) });
 													}}
 													disabled={isLoading}
-													className="w-11 py-1 bg-base border border-border rounded text-white text-xs text-center focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
+													className="w-11 py-1 bg-base border border-border rounded text-primary text-xs text-center focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
 												/>
 											</div>
 											<button
 												type="button"
 												onClick={() => onChange({ dayOfMonth: Math.min(28, dayOfMonth + 1) })}
 												disabled={isLoading || dayOfMonth >= 28}
-												className="w-5 h-6 flex items-center justify-center rounded border border-border-strong bg-base text-text-tertiary hover:text-white hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed text-xs transition-colors"
+												className="w-5 h-6 flex items-center justify-center rounded border border-border-strong bg-base text-text-tertiary hover:text-text-primary hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed text-xs transition-colors"
 											>
 												+
 											</button>
@@ -468,7 +468,7 @@ export const BillingConfiguration = ({
 												onChange({ generateDaysBefore: Math.max(0, Number(e.target.value)) })
 											}
 											disabled={isLoading}
-											className="w-12 px-1.5 py-1 bg-base border border-border rounded text-white text-xs text-center focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
+											className="w-12 px-1.5 py-1 bg-base border border-border rounded text-primary text-xs text-center focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
 										/>
 										<span className="text-[11px] text-text-tertiary">days before scheduled date</span>
 									</div>
@@ -521,7 +521,7 @@ export const BillingConfiguration = ({
 											onChange({ paymentTermsDays: Math.max(1, Number(e.target.value)) })
 										}
 										disabled={isLoading}
-										className="w-14 px-1.5 py-1 bg-base border border-border-strong rounded text-white text-xs text-center focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
+										className="w-14 px-1.5 py-1 bg-base border border-border-strong rounded text-primary text-xs text-center focus:outline-none focus:border-primary disabled:opacity-50 tabular-nums"
 									/>
 									<span className="text-[11px] text-text-tertiary">days</span>
 								</div>
@@ -542,7 +542,7 @@ export const BillingConfiguration = ({
 							onChange={(e) => onChange({ memoTemplate: e.target.value })}
 							disabled={isLoading}
 							placeholder={`e.g., "Quarterly HVAC maintenance service"`}
-							className="w-full px-2.5 py-1 bg-base border border-border rounded text-white text-xs placeholder-zinc-600 focus:outline-none focus:border-primary disabled:opacity-50"
+							className="w-full px-2.5 py-1 bg-base border border-border rounded text-primary text-xs placeholder:text-faint focus:outline-none focus:border-primary disabled:opacity-50"
 						/>
 					</div>
 				</>

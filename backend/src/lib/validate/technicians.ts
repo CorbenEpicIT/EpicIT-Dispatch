@@ -38,6 +38,7 @@ export const updateTechnicianSchema = z
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
 		status: technicianStatusEnum.optional(),
+		theme: z.enum(["dark", "light", "system"]).optional(),
 		coords: z.object({ lat: z.number(), lon: z.number() }).optional(),
 		hire_date: z
 			.preprocess(
@@ -67,6 +68,7 @@ export const updateTechnicianSchema = z
 			data.title !== undefined ||
 			data.description !== undefined ||
 			data.status !== undefined ||
+			data.theme !== undefined ||
 			data.coords !== undefined ||
 			data.hire_date !== undefined ||
 			data.last_login !== undefined,

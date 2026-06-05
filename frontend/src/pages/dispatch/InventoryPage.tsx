@@ -336,7 +336,7 @@ export default function InventoryPage() {
 			{deleteConfirmId && (
 				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
 					<div className="bg-base border border-border rounded-xl p-6 max-w-sm w-full mx-4">
-						<h3 className="text-lg font-semibold text-white mb-2">
+						<h3 className="text-lg font-semibold text-text-primary mb-2">
 							Delete Item
 						</h3>
 						<p className="text-sm text-text-tertiary mb-4">
@@ -354,14 +354,14 @@ export default function InventoryPage() {
 									setDeleteConfirmId(null);
 									setDeleteError(null);
 								}}
-								className="px-3 py-1.5 rounded-md border border-border text-sm text-text-tertiary hover:text-white hover:bg-surface transition-colors"
+								className="px-3 py-1.5 rounded-md border border-border text-sm text-text-tertiary hover:text-text-primary hover:bg-surface transition-colors"
 							>
 								Cancel
 							</button>
 							<button
 								onClick={() => handleDelete(deleteConfirmId)}
 								disabled={deleteMutation.isPending || !MANAGE_INVENTORY}
-								className="px-3 py-1.5 rounded-md bg-red-600 hover:enabled:bg-red-500 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								className="px-3 py-1.5 rounded-md bg-error hover:enabled:bg-error-strong text-sm font-medium text-on-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								{deleteMutation.isPending ? "Deleting..." : "Delete"}
 							</button>

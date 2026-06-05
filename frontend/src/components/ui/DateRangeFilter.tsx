@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Calendar, ChevronDown, Check, X } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { useSearchParams } from "react-router-dom";
@@ -182,8 +182,8 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 				aria-haspopup="listbox"
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive
-						? "bg-blue-950 border-primary text-primary-text"
-						: "bg-surface border-border text-text-tertiary hover:text-white"
+						? "bg-primary-bg border-primary text-primary-text"
+						: "bg-surface border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
 				<Calendar size={14} className="shrink-0" />
@@ -220,7 +220,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								onClick={() => handlePresetClick(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 									isOptionHighlighted(option.value)
-										? "bg-blue-950/60 text-primary-text"
+										? "bg-primary-bg text-primary-text"
 										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
@@ -247,7 +247,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								>
 									<div className="min-w-0 flex-1">
 										<p className="text-xs text-text-tertiary mb-0.5">Start time</p>
-										<p className="text-xs text-white">
+										<p className="text-xs text-text-primary">
 											{tempStart ? format(tempStart, "MMM d, yyyy") : "—"}
 										</p>
 									</div>
@@ -266,7 +266,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								>
 									<div className="min-w-0 flex-1">
 										<p className="text-xs text-text-tertiary mb-0.5">End time</p>
-										<p className="text-xs text-white">
+										<p className="text-xs text-text-primary">
 											{tempEnd ? format(tempEnd, "MMM d, yyyy") : "—"}
 										</p>
 									</div>
@@ -278,7 +278,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 								type="button"
 								onClick={handleApply}
 								disabled={!tempStart || !tempEnd}
-								className="w-full h-8 bg-primary-hover hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors text-white cursor-pointer"
+								className="w-full h-8 bg-primary-hover hover:bg-primary-active disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors text-on-primary cursor-pointer"
 							>
 								Apply
 							</button>
