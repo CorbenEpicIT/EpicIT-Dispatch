@@ -119,19 +119,19 @@ export default function LoginPage() {
 	};
 
 	return (
-		<div className="flex min-h-svh items-center justify-center bg-canvas">
+		<div className="flex min-h-svh items-center justify-center bg-slate-100">
 			{isLoading ? (
-				<div className="bg-surface shadow-md rounded-lg p-8 w-80 space-y-4">
-					<div className="h-6 w-48 bg-surface-raised rounded animate-pulse mx-auto" />
-					<div className="h-10 w-full bg-surface-raised rounded animate-pulse" />
-					<div className="h-10 w-full bg-surface-raised rounded animate-pulse" />
+				<div className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-slate-200">
+					<div className="h-6 w-48 bg-slate-200 rounded animate-pulse mx-auto" />
+					<div className="h-10 w-full bg-slate-200 rounded animate-pulse" />
+					<div className="h-10 w-full bg-slate-200 rounded animate-pulse" />
 				</div>
 			) : otpSent ? (
 				<form
 					onSubmit={handleOTPVerification}
-					className="bg-surface shadow-md rounded-lg p-8 w-80 space-y-4"
+					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-slate-200"
 				>
-					<h2 className="text-xl font-semibold text-center">OTP Verification</h2>
+					<h2 className="text-xl font-semibold text-center text-slate-900">OTP Verification</h2>
 						<div className="w-full flex justify-center space-x-1">
 							{otp.map((digit, index) =>(
 								<input
@@ -142,7 +142,7 @@ export default function LoginPage() {
 									onChange={(e)=>handleOtpChange(index, e.target.value)}
 									onPaste={(e)=>handleOtpPaste(e)}
 									onKeyDown={(e)=>handleOtpKeyDown(e, index)}
-									className="w-10 h-10 border border-input bg-surface rounded text-center text-lg text-primary"
+									className="w-10 h-10 border border-slate-300 bg-white rounded text-center text-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
 									ref={(el) => {inputRefs.current[index] = el;}}
 								>
 
@@ -151,26 +151,26 @@ export default function LoginPage() {
 						</div>
 					<button
 						type="submit"
-						className="w-full bg-primary-hover text-on-primary py-2 rounded hover:bg-primary-active"
+						className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
 					>
 						Verify OTP
 					</button>
-					<p className="text-sm text-secondary text-center">
+					<p className="text-sm text-slate-600 text-center">
 						Didn't receive the code?&ensp;
-						<button className="text-link hover:underline" onClick={resendOTP}> Resend OTP</button>
+						<button className="text-blue-600 hover:underline" onClick={resendOTP}> Resend OTP</button>
 					</p>
-					<p className="text-sm text-secondary text-center">
+					<p className="text-sm text-slate-600 text-center">
 						If using test user, enter "000000" as OTP.
 					</p>
 				</form>
 			) : (
 				<form
 					onSubmit={handleLogin}
-					className="bg-surface shadow-md rounded-lg p-8 w-80 space-y-4"
+					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-slate-200"
 				>
-				<h2 className="text-xl font-semibold text-center">Service Login</h2>
+				<h2 className="text-xl font-semibold text-center text-slate-900">Service Login</h2>
 				{loginError && (
-					<p className="text-error-text text-sm text-center">{loginError}</p>
+					<p className="text-red-600 text-sm text-center">{loginError}</p>
 				)
 
 				}
@@ -179,24 +179,24 @@ export default function LoginPage() {
 					placeholder="Name"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					className="w-full border border-input bg-surface rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
+					className="w-full border border-slate-300 bg-white rounded px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
 				/>
 				<input
 					type="password"
 					placeholder="Password"
 					value={password}
 					onChange={(e)=>setPassword(e.target.value)}
-					className="w-full border border-input bg-surface rounded px-3 py-2 text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
+					className="w-full border border-slate-300 bg-white rounded px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
 				/>
 				<button
 					type="submit"
-					className="w-full bg-primary-hover text-on-primary py-2 rounded hover:bg-primary-active"
+					className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
 				>
 					Login
 				</button>
-				<p className="text-sm text-secondary text-center">
+				<p className="text-sm text-slate-600 text-center">
 					New organization?{" "}
-					<Link to="/register" className="text-link hover:underline">Create account</Link>
+					<Link to="/register" className="text-blue-600 hover:underline">Create account</Link>
 				</p>
 			</form>
 		)}

@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { registerOrganization } from "../api/organizations";
 
@@ -70,10 +70,10 @@ export default function RegisterPage() {
 		required = true
 	) => (
 		<div>
-			<label className="block text-xs font-medium text-secondary uppercase tracking-wider mb-1">
+			<label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-1">
 				{label}
 				{!required && (
-					<span className="ml-1 text-muted normal-case">
+					<span className="ml-1 text-slate-400 normal-case">
 						(optional)
 					</span>
 				)}
@@ -87,27 +87,27 @@ export default function RegisterPage() {
 				}}
 				placeholder={placeholder}
 				required={required}
-				className="w-full border border-input bg-surface-inset text-primary placeholder:text-faint rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-border"
+				className="w-full border border-slate-300 bg-slate-50 text-slate-900 placeholder:text-slate-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30"
 			/>
 		</div>
 	);
 
 	return (
-		<div className="min-h-screen bg-canvas flex items-center justify-center px-4">
-			<div className="bg-surface rounded-2xl shadow-md p-10 max-w-md w-full">
+		<div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-4">
+			<div className="bg-white rounded-2xl shadow-md border border-slate-200 p-10 max-w-md w-full">
 				{status === "input" && (
 					<form onSubmit={handleSubmit} className="space-y-4">
 						<div className="text-center mb-2">
-							<h1 className="text-2xl font-semibold text-primary">
+							<h1 className="text-2xl font-semibold text-slate-900">
 								Create your account
 							</h1>
-							<p className="text-secondary text-sm mt-1">
+							<p className="text-slate-600 text-sm mt-1">
 								Set up your organization and admin
 								account.
 							</p>
 						</div>
 
-						<p className="text-xs font-semibold text-muted uppercase tracking-wider pt-2">
+						<p className="text-xs font-semibold text-slate-500 uppercase tracking-wider pt-2">
 							Organization
 						</p>
 						{field(
@@ -142,9 +142,9 @@ export default function RegisterPage() {
 							false
 						)}
 						<div>
-							<label className="block text-xs font-medium text-secondary uppercase tracking-wider mb-1">
+							<label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-1">
 								Timezone
-								<span className="ml-1 text-muted normal-case">
+								<span className="ml-1 text-slate-400 normal-case">
 									(optional)
 								</span>
 							</label>
@@ -155,7 +155,7 @@ export default function RegisterPage() {
 										e.target.value
 									)
 								}
-								className="w-full border border-input bg-surface-inset text-primary rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-border"
+								className="w-full border border-slate-300 bg-slate-50 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30"
 							>
 								<option value="America/New_York">
 									Eastern (ET)
@@ -184,7 +184,7 @@ export default function RegisterPage() {
 							</select>
 						</div>
 
-						<p className="text-xs font-semibold text-muted uppercase tracking-wider pt-2">
+						<p className="text-xs font-semibold text-slate-500 uppercase tracking-wider pt-2">
 							Admin Account
 						</p>
 						{field(
@@ -225,23 +225,23 @@ export default function RegisterPage() {
 						)}
 
 						{errorMessage && (
-							<p className="text-error-text text-sm">
+							<p className="text-red-600 text-sm">
 								{errorMessage}
 							</p>
 						)}
 
 						<button
 							type="submit"
-							className="w-full bg-primary-hover hover:bg-primary-active text-on-primary font-medium py-2 rounded-lg transition mt-2"
+							className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition mt-2"
 						>
 							Create Account
 						</button>
 
-						<p className="text-sm text-secondary text-center">
+						<p className="text-sm text-slate-600 text-center">
 							Already have an account?{" "}
 							<Link
 								to="/login"
-								className="text-link hover:underline"
+								className="text-blue-600 hover:underline"
 							>
 								Sign in
 							</Link>
@@ -251,11 +251,11 @@ export default function RegisterPage() {
 
 				{status === "loading" && (
 					<div className="text-center py-6">
-						<div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-						<h2 className="text-xl font-semibold text-primary">
+						<div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+						<h2 className="text-xl font-semibold text-slate-900">
 							Setting up your account...
 						</h2>
-						<p className="text-secondary mt-2 text-sm">
+						<p className="text-slate-600 mt-2 text-sm">
 							Just a moment.
 						</p>
 					</div>
@@ -263,9 +263,9 @@ export default function RegisterPage() {
 
 				{status === "success" && (
 					<div className="text-center py-6">
-						<div className="w-14 h-14 bg-success-bg rounded-full flex items-center justify-center mx-auto mb-6">
+						<div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
 							<svg
-								className="w-7 h-7 text-success"
+								className="w-7 h-7 text-green-600"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"
@@ -278,18 +278,18 @@ export default function RegisterPage() {
 								/>
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-primary">
+						<h2 className="text-xl font-semibold text-slate-900">
 							Account Created!
 						</h2>
 						{/* Email functionality is temporarily disabled pending Postmark approval. */}
-						<p className="text-secondary mt-2 text-sm">
+						<p className="text-slate-600 mt-2 text-sm">
 							Email verification is temporarily disabled
 							while we await sender approval. You can sign
 							in directly.
 						</p>
 						<button
 							onClick={() => navigate("/login")}
-							className="mt-6 w-full bg-primary-hover hover:bg-primary-active text-on-primary font-medium py-2 rounded-lg transition"
+							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
 						>
 							Go to Login
 						</button>
@@ -298,9 +298,9 @@ export default function RegisterPage() {
 
 				{status === "error" && (
 					<div className="text-center py-6">
-						<div className="w-14 h-14 bg-error-bg rounded-full flex items-center justify-center mx-auto mb-6">
+						<div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
 							<svg
-								className="w-7 h-7 text-error"
+								className="w-7 h-7 text-red-500"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"
@@ -313,10 +313,10 @@ export default function RegisterPage() {
 								/>
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-primary">
+						<h2 className="text-xl font-semibold text-slate-900">
 							Registration Failed
 						</h2>
-						<p className="text-secondary mt-2 text-sm">
+						<p className="text-slate-600 mt-2 text-sm">
 							{errorMessage}
 						</p>
 						<button
@@ -324,7 +324,7 @@ export default function RegisterPage() {
 								setStatus("input");
 								setErrorMessage("");
 							}}
-							className="mt-6 w-full bg-primary-hover hover:bg-primary-active text-on-primary font-medium py-2 rounded-lg transition"
+							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
 						>
 							Try Again
 						</button>
