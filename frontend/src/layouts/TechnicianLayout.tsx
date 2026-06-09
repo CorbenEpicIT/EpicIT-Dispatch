@@ -46,14 +46,14 @@ export default function TechnicianLayout() {
 	};
 
 	return (
-		<div className="flex h-screen bg-canvas text-white">
+		<div className="flex h-screen bg-canvas text-text-primary">
 			<div className="flex flex-col flex-1 overflow-hidden">
 				{/* TOP NAV */}
-				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-canvas border-b border-zinc-900">
+				<header className="flex justify-between items-center px-4 sm:px-6 h-14 bg-canvas border-b border-border">
 					<div className="flex items-center gap-3 sm:gap-6">
 						<button
 							onClick={handleBack}
-							className="flex items-center gap-2 text-text-tertiary hover:text-white px-2 sm:px-3 py-2 rounded-lg hover:bg-surface group"
+							className="flex items-center gap-2 text-text-tertiary hover:text-text-primary px-2 sm:px-3 py-2 rounded-lg hover:bg-surface group"
 						>
 							<ArrowLeft
 								size={18}
@@ -104,7 +104,7 @@ export default function TechnicianLayout() {
 						>
 							<Bell size={20} className="text-text-tertiary" />
 							{unreadCount > 0 && (
-								<span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+								<span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 rounded-full bg-error text-on-primary text-[9px] font-bold leading-none">
 									{unreadCount > 9 ? "9+" : unreadCount}
 								</span>
 							)}
@@ -124,7 +124,7 @@ export default function TechnicianLayout() {
 								setNotifBanner(null);
 							}}
 						>
-							<p className="text-[13px] font-semibold text-white leading-snug truncate">{notifBanner.title}</p>
+							<p className="text-[13px] font-semibold text-text-primary leading-snug truncate">{notifBanner.title}</p>
 							{notifBanner.body && (
 								<p className="text-xs text-text-tertiary leading-snug mt-0.5 line-clamp-2">{notifBanner.body}</p>
 							)}
@@ -145,13 +145,13 @@ export default function TechnicianLayout() {
 			</div>
 
 			{/* BOTTOM NAV */}
-			<nav className="flex fixed bottom-0 left-0 right-0 z-50 bg-canvas border-t border-zinc-900 h-16">
+			<nav className="flex fixed bottom-0 left-0 right-0 z-50 bg-canvas border-t border-border h-16">
 				<NavLink
 					to="/technician"
 					end
 					className={({ isActive }) =>
 						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-							isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
+							isActive ? "text-text-primary" : "text-text-muted hover:text-text-secondary"
 						}`
 					}
 				>
@@ -163,7 +163,7 @@ export default function TechnicianLayout() {
 						to="/technician/visits"
 						className={({ isActive }) =>
 							`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-								isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
+								isActive ? "text-text-primary" : "text-text-muted hover:text-text-secondary"
 							}`
 						}
 					>
@@ -175,7 +175,7 @@ export default function TechnicianLayout() {
 					to="/technician/map"
 					className={({ isActive }) =>
 						`flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors ${
-							isActive ? "text-white" : "text-text-muted hover:text-text-secondary"
+							isActive ? "text-text-primary" : "text-text-muted hover:text-text-secondary"
 						}`
 					}
 				>

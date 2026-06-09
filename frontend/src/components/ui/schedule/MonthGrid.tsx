@@ -591,7 +591,7 @@ export default function MonthGrid({
 	const otherMonthDayNumStyle: React.CSSProperties = {
 		fontSize: 11,
 		fontWeight: 400,
-		color: "var(--color-border)",
+		color: "var(--color-text-muted)",
 		width: 20,
 		height: 20,
 		display: "flex",
@@ -683,7 +683,7 @@ export default function MonthGrid({
 									: isToday
 									? "rgba(59,130,246,0.04)"
 									: isOtherMonth
-									? "rgba(0,0,0,0.12)"
+									? "var(--color-base)"
 									: "transparent",
 								outline: isDragOver ? "2px inset rgba(59,130,246,0.6)" : "none",
 								transition: "background-color 0.1s",

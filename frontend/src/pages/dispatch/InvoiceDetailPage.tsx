@@ -22,6 +22,7 @@ import {
 	Download,
 	Loader2,
 	Mail,
+	X,
 } from "lucide-react";
 import {
 	useInvoiceByIdQuery,
@@ -294,7 +295,7 @@ export default function InvoiceDetailPage() {
 		}
 	};
 
-	// Map group name â†’ individual rates array for line item tax badge + totals section
+	// Map group name -> individual rates array for line item tax badge + totals section
 	// Must be above early returns ─ useMemo must not be called conditionally
 	const groupRatesMap = useMemo(() => {
 		const map = new Map<string, TaxSnapshotRate[]>();
@@ -405,7 +406,7 @@ export default function InvoiceDetailPage() {
 								</span>
 							)}
 							{qbStatus?.connected && invoice.qb_sync_status === "synced" && (
-								<span className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" title="Synced to QuickBooks">
+								<span className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-success-bg text-success-bright-text border border-success-border" title="Synced to QuickBooks">
 									<CheckCircle2 size={11} />
 									QB Synced
 									<button
@@ -496,7 +497,7 @@ export default function InvoiceDetailPage() {
 									if (!EDIT_INVOICE) return;
 									setIsSendModalOpen(true);
 								}}
-								className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Send size={14} />
 								Send
@@ -507,7 +508,7 @@ export default function InvoiceDetailPage() {
 								title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
 								disabled={!EDIT_INVOICE}
 								onClick={openPaymentModal}
-								className="flex items-center gap-2 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-2 px-3 py-1.5 bg-confirm hover:bg-confirm-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<CreditCard size={14} />
 								Record Payment
@@ -1129,7 +1130,7 @@ export default function InvoiceDetailPage() {
 													Discount
 												</span>
 												<span className="text-success-text tabular-nums">
-													âˆ’{" "}
+													{"-"}{" "}
 													{formatCurrency(
 														Number(
 															invoice.discount_amount
@@ -1156,7 +1157,7 @@ export default function InvoiceDetailPage() {
 													Paid
 												</span>
 												<span className="text-success-text tabular-nums">
-													âˆ’{" "}
+													{"-"}{" "}
 													{formatCurrency(
 														amountPaid
 													)}
@@ -1205,7 +1206,7 @@ export default function InvoiceDetailPage() {
 										title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
 										disabled={!EDIT_INVOICE}
 										onClick={openPaymentModal}
-										className="flex items-center gap-1.5 px-3 py-1.5 bg-confirm hover:bg-confirm-hover rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-1.5 px-3 py-1.5 bg-confirm hover:bg-confirm-hover text-white rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Plus size={13} />
 										Record
@@ -1495,9 +1496,9 @@ export default function InvoiceDetailPage() {
 							</div>
 							<button
 								onClick={closePaymentModal}
-								className="text-text-muted hover:text-text-primary transition-colors text-sm"
+								className="text-text-muted hover:text-text-primary transition-colors"
 							>
-								âœ•
+								<X size={16} />
 							</button>
 						</div>
 
@@ -1649,7 +1650,7 @@ export default function InvoiceDetailPage() {
 									!paymentForm.amount ||
 									isRecordingPayment
 								}
-								className="flex-1 px-4 py-2 bg-confirm hover:bg-confirm-hover rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex-1 px-4 py-2 bg-confirm hover:bg-confirm-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								{isRecordingPayment
 									? "Recording..."

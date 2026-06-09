@@ -26,6 +26,7 @@ export const updateDispatcherSchema = z
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
 		role: DispatcherRole.optional(),
+		theme: z.enum(["dark", "light", "system"]).optional(),
 		last_login: z
 			.preprocess(
 				(val) =>
@@ -47,6 +48,7 @@ export const updateDispatcherSchema = z
 			data.title !== undefined ||
 			data.description !== undefined ||
 			data.role !== undefined ||
+			data.theme !== undefined ||
 			data.last_login !== undefined ||
 			data.dashboard_layout !== undefined,
 		{ message: "At least one field must be provided for update" }

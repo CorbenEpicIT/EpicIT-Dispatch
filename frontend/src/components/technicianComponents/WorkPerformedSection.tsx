@@ -39,7 +39,7 @@ function NoteSheet({
 	};
 
 	return (
-		<div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70">
+		<div className="fixed inset-0 z-[60] flex items-end justify-center bg-overlay">
 			<div
 				className={`w-full max-w-lg bg-base rounded-t-2xl border border-border-subtle transition-transform duration-200 ease-out ${
 					visible ? "translate-y-0" : "translate-y-full"
@@ -47,8 +47,8 @@ function NoteSheet({
 			>
 				{/* Header */}
 				<div className="flex items-center justify-between px-4 py-3.5 border-b border-border-subtle">
-					<h3 className="text-sm font-semibold text-white">Add Note</h3>
-					<button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-white p-1 -mr-1 rounded-md hover:bg-surface transition-colors">
+					<h3 className="text-sm font-semibold text-text-primary">Add Note</h3>
+					<button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary p-1 -mr-1 rounded-md hover:bg-surface transition-colors">
 						<X size={16} />
 					</button>
 				</div>
@@ -60,12 +60,12 @@ function NoteSheet({
 					onChange={(e) => setContent(e.target.value)}
 					placeholder="Describe the work performed…"
 					autoFocus
-					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none resize-none min-h-[120px] max-h-[40vh] overflow-y-auto"
+					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-text-primary placeholder:text-faint focus:outline-none resize-none min-h-[120px] max-h-[40vh] overflow-y-auto"
 				/>
 
 				{/* Char count */}
 				<div className="flex justify-end px-4 pb-3">
-					<span className={`text-xs tabular-nums ${content.length > 0 ? "text-text-muted" : "text-zinc-700"}`}>
+					<span className={`text-xs tabular-nums ${content.length > 0 ? "text-text-muted" : "text-text-faint"}`}>
 						{content.length}
 					</span>
 				</div>
@@ -81,7 +81,7 @@ function NoteSheet({
 					<button
 						onClick={handleSubmit}
 						disabled={!content.trim() || createNote.isPending}
-						className="flex-1 py-3 text-sm rounded-xl bg-primary-hover hover:bg-primary text-white font-semibold disabled:opacity-40 transition-colors"
+						className="flex-1 py-3 text-sm rounded-xl bg-primary-hover hover:bg-primary text-on-primary font-semibold disabled:opacity-40 transition-colors"
 					>
 						{createNote.isPending ? "Saving…" : "Save Note"}
 					</button>
@@ -107,11 +107,11 @@ function PhotoLabelSheet({
 }) {
 	const [label, setLabel] = useState<PhotoLabel>("Before");
 	return (
-		<div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
+		<div className="fixed inset-0 z-50 flex items-end justify-center bg-overlay">
 			<div className="w-full max-w-lg bg-base rounded-t-2xl border border-border-subtle p-4">
 				<div className="flex items-center justify-between mb-3">
-					<h3 className="text-sm font-semibold text-white">Photo Type</h3>
-					<button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-white"><X size={18} /></button>
+					<h3 className="text-sm font-semibold text-text-primary">Photo Type</h3>
+					<button onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text-primary"><X size={18} /></button>
 				</div>
 				<p className="text-xs text-text-muted mb-3 truncate">{file.name}</p>
 				<div className="flex gap-2 mb-4">
@@ -121,7 +121,7 @@ function PhotoLabelSheet({
 							onClick={() => setLabel(l)}
 							className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
 								label === l
-									? "bg-primary-hover text-white"
+									? "bg-primary-hover text-on-primary"
 									: "bg-surface text-text-tertiary border border-border hover:bg-surface-raised"
 							}`}
 						>
@@ -135,7 +135,7 @@ function PhotoLabelSheet({
 					</button>
 					<button
 						onClick={() => onConfirm(label)}
-						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium"
+						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium"
 					>
 						Attach Photo
 					</button>
@@ -241,14 +241,14 @@ export default function WorkPerformedSection({
 					<div id="work-performed-panel" className="flex gap-2 px-4 py-3 border-b border-border-subtle">
 						<button
 							onClick={() => setShowNoteSheet(true)}
-							className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:bg-surface-raised hover:text-white transition-colors"
+							className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
 						>
 							<PlusCircle size={14} />
 							Add Note
 						</button>
 						<button
 							onClick={() => photoInputRef.current?.click()}
-							className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:bg-surface-raised hover:text-white transition-colors"
+							className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
 						>
 							<Camera size={14} />
 							Add Photo

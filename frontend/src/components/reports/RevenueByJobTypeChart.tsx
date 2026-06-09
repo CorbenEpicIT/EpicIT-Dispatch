@@ -29,7 +29,7 @@ function CustomTooltip({
 	return (
 		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
 			<p className="text-xs text-text-tertiary">{name}</p>
-			<p className="text-sm font-semibold text-white">
+			<p className="text-sm font-semibold text-primary">
 				{formatCurrency(value)}
 			</p>
 		</div>
@@ -49,7 +49,7 @@ export default function RevenueByJobTypeChart({
 			className="h-full"
 			title="Revenue by Job Type"
 			headerAction={
-				<span className="text-xl font-bold text-white">
+				<span className="text-xl font-bold text-primary">
 					{formatCurrency(total)}
 				</span>
 			}
@@ -61,7 +61,7 @@ export default function RevenueByJobTypeChart({
 						<p className="text-xs uppercase tracking-wider text-text-tertiary">
 							Total
 						</p>
-						<p className="text-xl font-bold text-white">
+						<p className="text-xl font-bold text-primary">
 							{formatCurrency(total)}
 						</p>
 					</div>
@@ -107,7 +107,7 @@ export default function RevenueByJobTypeChart({
 						<span className="text-sm text-text-tertiary">
 							{entry.type}
 						</span>
-						<span className="text-sm font-medium text-white">
+						<span className="text-sm font-medium text-primary">
 							{formatCurrency(entry.revenue)}
 						</span>
 					</div>

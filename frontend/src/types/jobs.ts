@@ -97,28 +97,6 @@ export const VisitStatusColors: Record<VisitStatus, string> = {
 
 export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete" | "delay";
 
-export interface LifecycleTransition {
-	action: LifecycleAction;
-	label: string;
-	confirmLabel: string;
-	needsConfirm: boolean;
-	color: string;
-	confirmColor: string;
-}
-
-export const LIFECYCLE_TRANSITIONS: Partial<Record<VisitStatus, LifecycleTransition[]>> = {
-	Scheduled: [
-		{ action: "drive", label: "I'm Driving", confirmLabel: "Confirm Driving", needsConfirm: true, color: "bg-action-drive hover:bg-action-drive-hover text-on-primary", confirmColor: "bg-action-drive-hover hover:bg-action-drive animate-pulse text-on-primary" },
-	],
-	Driving: [
-		{ action: "arrive", label: "I've Arrived", confirmLabel: "Confirm Arrived", needsConfirm: true, color: "bg-plan hover:bg-plan-hover text-on-primary", confirmColor: "bg-plan-hover hover:bg-plan animate-pulse text-on-primary" },
-	],
-	InProgress: [
-		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-action-pause hover:bg-action-pause-hover text-on-primary", confirmColor: "bg-action-pause hover:bg-action-pause-hover text-on-primary" },
-		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-confirm hover:bg-confirm-hover text-on-primary", confirmColor: "bg-confirm-hover hover:bg-confirm animate-pulse text-on-primary" },
-	],
-};
-
 // Re-export constraint types from recurringPlans for convenience
 export { ArrivalConstraintValues, FinishConstraintValues };
 export type { ArrivalConstraint, FinishConstraint };

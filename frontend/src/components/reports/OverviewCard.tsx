@@ -41,7 +41,7 @@ export default function OverviewCard({
 		>
 			<p className="text-sm text-text-tertiary mb-1">{label}</p>
 			<div className="flex flex-row flex-wrap items-baseline gap-x-2 gap-y-0.5">
-				<p className="text-2xl font-bold text-white whitespace-nowrap">
+				<p className="text-2xl font-bold text-primary whitespace-nowrap">
 					{valueDisplay ?? `${valuePrefix}${value}${valueSuffix}`}
 				</p>
 				<div
@@ -72,10 +72,10 @@ export default function OverviewCard({
 							</div>
 							<div className="border-t border-border pt-2 flex justify-between items-baseline gap-3">
 								<span className="text-xs text-text-secondary leading-tight">{tooltip.currentLabel}</span>
-								<span className="text-xs font-semibold text-white whitespace-nowrap tabular-nums">{tooltip.currentDisplay}</span>
+								<span className="text-xs font-semibold text-primary whitespace-nowrap tabular-nums">{tooltip.currentDisplay}</span>
 							</div>
-							<div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-zinc-700" />
-							<div className="absolute top-full mt-px left-1/2 -translate-x-1/2 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-zinc-800" />
+							<div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-border" />
+							<div className="absolute top-full mt-px left-1/2 -translate-x-1/2 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-surface" />
 						</div>
 					)}
 				</div>

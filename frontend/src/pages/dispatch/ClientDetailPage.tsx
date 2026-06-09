@@ -154,11 +154,11 @@ export default function ClientDetailsPage() {
 			<div className="w-full px-4 sm:px-6 lg:px-8 py-6">
 				<button
 					onClick={() => navigate("/dispatch/clients")}
-					className="text-text-tertiary hover:text-white mb-4 transition-colors"
+					className="text-text-tertiary hover:text-text-primary mb-4 transition-colors"
 				>
 					← Back to Clients
 				</button>
-				<div className="text-white">Client not found</div>
+				<div className="text-text-primary">Client not found</div>
 			</div>
 		);
 	}
@@ -306,7 +306,7 @@ export default function ClientDetailsPage() {
 			</div>
 			<div className="min-w-0">
 				<div className="flex items-center gap-2 mb-1">
-					<span className="text-sm font-medium text-white group-hover:text-primary-text transition-colors truncate">
+					<span className="text-sm font-medium text-text-secondary group-hover:text-primary-text transition-colors truncate">
 						{item.number ? `${item.number} - ` : ""}
 						{item.title}
 					</span>
@@ -395,7 +395,7 @@ export default function ClientDetailsPage() {
 				{/* Header */}
 				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
 					<div className="min-w-0">
-						<h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white truncate">
+						<h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-text-primary truncate">
 							{client.name}
 						</h1>
 					</div>
@@ -413,7 +413,7 @@ export default function ClientDetailsPage() {
 							<button
 								title={!EDIT_CLIENT ? "You don't have permission to perform this action" : undefined}
 								disabled={!EDIT_CLIENT}
-								className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-hover hover:bg-primary-active text-on-primary rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 								onClick={() => {
 									if (!EDIT_CLIENT) return;
 									setIsEditModalOpen(true);
@@ -451,7 +451,7 @@ export default function ClientDetailsPage() {
 											}
 											className={`flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 border-b-2 transition-all whitespace-nowrap ${
 												isActive
-													? "border-primary bg-surface/30 text-white"
+													? "border-primary bg-primary-bg text-text-primary"
 													: "border-transparent hover:bg-surface/20 text-text-muted hover:text-text-secondary"
 											}`}
 										>
@@ -526,7 +526,7 @@ export default function ClientDetailsPage() {
 										onClick={
 											handleViewAll
 										}
-										className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-surface hover:bg-surface-raised text-text-secondary hover:text-white transition-colors text-sm font-medium"
+										className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-surface hover:bg-surface-raised text-text-secondary hover:text-text-primary transition-colors text-sm font-medium"
 									>
 										<span>
 											View all{" "}
@@ -562,7 +562,7 @@ export default function ClientDetailsPage() {
 									<div className="text-[10px] uppercase font-semibold text-text-muted tracking-wide mb-1">
 										Address
 									</div>
-									<div className="text-sm text-white break-words">
+									<div className="text-sm text-text-primary break-words">
 										{client.address}
 									</div>
 								</div>
@@ -571,7 +571,7 @@ export default function ClientDetailsPage() {
 										<div className="text-[10px] uppercase font-semibold text-text-muted tracking-wide mb-1">
 											Created
 										</div>
-										<div className="text-sm text-white">
+										<div className="text-sm text-text-primary">
 											{formatDate(
 												client.created_at
 											)}
@@ -582,7 +582,7 @@ export default function ClientDetailsPage() {
 											Last
 											Activity
 										</div>
-										<div className="text-sm text-white">
+										<div className="text-sm text-text-primary">
 											{new Date(
 												client.last_activity
 											).toLocaleDateString(

@@ -498,7 +498,7 @@ export default function RequestDetailPage() {
 											handleConvertToQuote();
 										}}
 										disabled={!CREATE_QUOTE}
-										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium text-on-primary transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<FileText size={12} />{" "}
 										Convert to Quote
@@ -575,7 +575,7 @@ export default function RequestDetailPage() {
 											handleConvertToJob();
 										}}
 										disabled={!CREATE_JOB}
-										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium text-on-primary transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Briefcase size={12} />{" "}
 										Convert to Job

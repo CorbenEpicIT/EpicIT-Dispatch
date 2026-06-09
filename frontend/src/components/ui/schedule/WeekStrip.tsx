@@ -553,7 +553,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		}}>
 
 			{/* ── Toolbar ──────────────────────────────────────────────────────── */}
-			<div className="flex items-center gap-1.5 px-3 border-b border-border-subtle shrink-0" style={{ height: 44 }}>
+			<div className="flex items-center gap-1.5 px-3 border-b border-border-subtle shrink-0" style={{ height: 44, backgroundColor: "var(--color-base)" }}>
 
 				{/* Today */}
 				<button
@@ -583,7 +583,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 				</div>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
+				<div className="w-px h-4 bg-border mx-1 shrink-0" />
 
 				{/* Visits toggle */}
 				<button
@@ -603,7 +603,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					onClick={() => setShowOccurrences((v) => !v)}
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						showOccurrences
-							? "bg-violet-500/10 border-violet-500/25 text-violet-300"
+							? "bg-reviewing-bg border-reviewing-border text-reviewing-text"
 							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
@@ -612,7 +612,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 				</button>
 
 				{/* Divider */}
-				<div className="w-px h-4 bg-surface mx-1 shrink-0" />
+				<div className="w-px h-4 bg-border mx-1 shrink-0" />
 
 				<TechFilter
 					technicians={technicians}

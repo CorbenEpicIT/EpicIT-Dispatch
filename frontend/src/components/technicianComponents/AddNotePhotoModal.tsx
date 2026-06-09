@@ -119,7 +119,7 @@ export default function AddNotePhotoModal({
 	};
 
 	return (
-		<div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70">
+		<div className="fixed inset-0 z-[60] flex items-end justify-center bg-overlay">
 			<div
 				className={`w-full max-w-lg bg-base rounded-t-2xl border border-border-subtle transition-transform duration-200 ease-out ${
 					visible ? "translate-y-0" : "translate-y-full"
@@ -127,11 +127,11 @@ export default function AddNotePhotoModal({
 			>
 				{/* Header */}
 				<div className="flex items-center justify-between px-4 py-3.5 border-b border-border-subtle">
-					<h2 className="text-sm font-semibold text-white">Add Note / Photo</h2>
+					<h2 className="text-sm font-semibold text-text-primary">Add Note / Photo</h2>
 					<button
 						onClick={onClose}
 						aria-label="Close"
-						className="text-text-muted hover:text-white p-1 -mr-1 rounded-md hover:bg-surface transition-colors"
+						className="text-text-muted hover:text-text-primary p-1 -mr-1 rounded-md hover:bg-surface transition-colors"
 					>
 						<X size={16} />
 					</button>
@@ -146,8 +146,8 @@ export default function AddNotePhotoModal({
 								onClick={() => setSelectedVisitId(v.id)}
 								className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
 									selectedVisitId === v.id
-										? "bg-primary-hover text-white"
-										: "bg-surface border border-border text-text-tertiary hover:text-white"
+										? "bg-primary-hover text-on-primary"
+										: "bg-surface border border-border text-text-tertiary hover:text-text-primary"
 								}`}
 							>
 								{v.name ?? "Visit"}
@@ -164,7 +164,7 @@ export default function AddNotePhotoModal({
 					onChange={(e) => setContent(e.target.value)}
 					placeholder="Add a note…"
 					autoFocus
-					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none resize-none min-h-[96px] max-h-[40vh] overflow-y-auto"
+					className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-text-primary placeholder:text-faint focus:outline-none resize-none min-h-[96px] max-h-[40vh] overflow-y-auto"
 				/>
 
 				{/* Photo chips */}
@@ -176,7 +176,7 @@ export default function AddNotePhotoModal({
 								className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-surface border border-border text-xs text-text-secondary"
 							>
 								<Camera size={11} className="text-text-muted shrink-0" />
-								<span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-hover/20 text-primary-text border border-blue-600/30">
+								<span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-hover/20 text-primary-text border border-primary/30">
 									{p.photo_label}
 								</span>
 								<span className="max-w-[100px] truncate text-text-tertiary">
@@ -238,7 +238,7 @@ export default function AddNotePhotoModal({
 					<button
 						onClick={handleSubmit}
 						disabled={!canSave}
-						className="flex-1 py-3 text-sm rounded-xl bg-primary-hover hover:bg-primary text-white font-semibold disabled:opacity-40 transition-colors"
+						className="flex-1 py-3 text-sm rounded-xl bg-primary-hover hover:bg-primary text-on-primary font-semibold disabled:opacity-40 transition-colors"
 					>
 						{isSaving ? "Saving…" : "Save Note"}
 					</button>
@@ -248,14 +248,14 @@ export default function AddNotePhotoModal({
 			{/* Label picker overlay */}
 			{labelPickerOpen && (
 				<div className="absolute inset-0 flex items-end justify-center">
-					<div className="absolute inset-0 bg-black/40" />
+					<div className="absolute inset-0 bg-overlay" />
 					<div className="relative w-full max-w-lg bg-base rounded-t-2xl border border-border-subtle p-4 pb-8 z-10">
 						<div className="flex items-center justify-between mb-3">
-							<h3 className="text-sm font-semibold text-white">Photo Type</h3>
+							<h3 className="text-sm font-semibold text-text-primary">Photo Type</h3>
 							<button
 								onClick={handleCancelLabel}
 								aria-label="Close"
-								className="text-text-muted hover:text-white"
+								className="text-text-muted hover:text-text-primary"
 							>
 								<X size={18} />
 							</button>
@@ -281,7 +281,7 @@ export default function AddNotePhotoModal({
 											onClick={() => setSelectedLabel(l)}
 											className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
 												selectedLabel === l
-													? "bg-primary-hover text-white"
+													? "bg-primary-hover text-on-primary"
 													: "bg-surface text-text-tertiary border border-border hover:bg-surface-raised"
 											}`}
 										>
@@ -298,7 +298,7 @@ export default function AddNotePhotoModal({
 									</button>
 									<button
 										onClick={handleConfirmLabel}
-										className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium"
+										className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium"
 									>
 										Attach Photo →
 									</button>

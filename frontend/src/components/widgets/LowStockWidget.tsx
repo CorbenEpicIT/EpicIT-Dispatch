@@ -21,7 +21,7 @@ export default function LowStockWidget({ className }: { className?: string }) {
 					<div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center border border-warning/20">
 						<Package size={16} className="text-warning-text" />
 					</div>
-					<h4 className="text-sm font-semibold text-white">Inventory Alerts</h4>
+					<h4 className="text-sm font-semibold text-text-primary">Inventory Alerts</h4>
 				</div>
 				<ChevronRight
 					size={16}
@@ -39,7 +39,7 @@ export default function LowStockWidget({ className }: { className?: string }) {
 					</div>
 				)}
 				{lowStock > 0 && (
-					<div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20">
+					<div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-warning-bg border border-warning-border">
 						<AlertTriangle size={12} className="text-warning-text" />
 						<span className="text-xs font-medium text-warning-text">
 							{lowStock} low stock

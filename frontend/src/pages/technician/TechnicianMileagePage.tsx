@@ -43,7 +43,7 @@ export default function TechnicianMileagePage() {
 			<div>
 				<div className="flex items-center gap-2 mb-0.5">
 					<Gauge size={18} className="text-text-tertiary" />
-					<h1 className="text-lg font-semibold text-white">Mileage</h1>
+					<h1 className="text-lg font-semibold text-text-primary">Mileage</h1>
 				</div>
 				<p className="text-xs text-text-muted">Driving Distance</p>
 			</div>
@@ -52,12 +52,12 @@ export default function TechnicianMileagePage() {
 			<div className="flex items-center justify-between bg-base border border-border-subtle rounded-xl px-4 py-3">
 				<button
 					onClick={() => setWeekOffset((o) => o - 1)}
-					className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-surface text-text-tertiary hover:text-white transition-colors"
+					className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-surface text-text-tertiary hover:text-text-primary transition-colors"
 				>
 					<ChevronLeft size={18} />
 				</button>
 				<div className="text-center">
-					<p className="text-sm font-medium text-white">{formatWeekRange(weekStart, tz)}</p>
+					<p className="text-sm font-medium text-text-primary">{formatWeekRange(weekStart, tz)}</p>
 					{isCurrentWeek && (
 						<p className="text-[10px] text-text-muted mt-0.5">Current week</p>
 					)}
@@ -65,7 +65,7 @@ export default function TechnicianMileagePage() {
 				<button
 					onClick={() => setWeekOffset((o) => o + 1)}
 					disabled={isCurrentWeek}
-					className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-surface text-text-tertiary hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+					className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-surface text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
 				>
 					<ChevronRight size={18} />
 				</button>
@@ -76,7 +76,7 @@ export default function TechnicianMileagePage() {
 				{isLoading ? (
 					<div className="h-10 w-24 bg-surface rounded animate-pulse mx-auto" />
 				) : (
-					<p className="text-5xl font-bold tabular-nums tracking-tight text-white">
+					<p className="text-5xl font-bold tabular-nums tracking-tight text-text-primary">
 						{totalMiles.toFixed(1)}
 					</p>
 				)}
@@ -113,7 +113,7 @@ export default function TechnicianMileagePage() {
 										className="flex items-center justify-between px-4 py-3 gap-3 cursor-pointer hover:bg-surface transition-colors"
 									>
 										<div className="min-w-0">
-											<p className="text-sm font-medium text-white truncate">
+											<p className="text-sm font-medium text-text-primary truncate">
 												{v.job?.name ?? `Visit ${v.id.slice(-6)}`}
 											</p>
 											{v.job?.address && (
@@ -123,7 +123,7 @@ export default function TechnicianMileagePage() {
 												</p>
 											)}
 										</div>
-										<span className="text-sm font-bold tabular-nums text-white shrink-0">
+										<span className="text-sm font-bold tabular-nums text-text-primary shrink-0">
 											{Number(v.estimated_drive_miles).toFixed(1)} mi
 										</span>
 									</div>

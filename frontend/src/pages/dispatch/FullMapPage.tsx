@@ -33,7 +33,7 @@ export default function FullMapPage() {
 
 			<button
 				onClick={() => nav("/dispatch/map")}
-				className="absolute top-4 left-4 z-10 flex items-center justify-center w-9 h-9 bg-base/90 backdrop-blur border border-border rounded-md hover:bg-surface transition-colors"
+				className="absolute top-4 left-4 z-10 flex items-center justify-center w-9 h-9 bg-base/90 backdrop-blur border border-border rounded-md hover:bg-surface text-text-primary transition-colors"
 				title="Back to dashboard map"
 			>
 				<ArrowLeft size={16} />
@@ -41,7 +41,7 @@ export default function FullMapPage() {
 
 			<button
 				onClick={() => setPanelOpen((v) => !v)}
-				className="absolute top-4 right-4 z-10 flex items-center justify-center w-9 h-9 bg-base/90 backdrop-blur border border-border rounded-md hover:bg-surface transition-colors"
+				className="absolute top-4 right-4 z-10 flex items-center justify-center w-9 h-9 bg-base/90 backdrop-blur border border-border rounded-md hover:bg-surface text-text-primary transition-colors"
 				title={panelOpen ? "Hide panel" : "Show panel"}
 			>
 				{panelOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}

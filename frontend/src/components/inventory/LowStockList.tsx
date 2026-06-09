@@ -14,19 +14,19 @@ const STATUS_CONFIG: Record<PanelStatus, {
 }> = {
 	healthy: {
 		Icon: CheckCircle,
-		iconClass: 'text-green-500',
+		iconClass: 'text-success',
 		subtitle: 'All items stocked',
 		badgeCount: () => 0,
 	},
 	warning: {
 		Icon: AlertTriangle,
-		iconClass: 'text-yellow-500',
+		iconClass: 'text-warning-text',
 		subtitle: 'Items below threshold',
 		badgeCount: (low) => low,
 	},
 	critical: {
 		Icon: AlertTriangle,
-		iconClass: 'text-red-500',
+		iconClass: 'text-error-text',
 		subtitle: 'Items out of stock',
 		badgeCount: (_low, out) => out,
 	},
@@ -75,7 +75,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 				{/* Toggle Button */}
 				<button
 					onClick={() => setIsCollapsed(!isCollapsed)}
-					className="absolute -left-3 top-1/2 -translate-y-1/2 bg-surface hover:bg-surface-raised text-text-secondary hover:text-white p-1.5 rounded-full border border-border-strong shadow-lg transition-all z-50"
+					className="absolute -left-3 top-1/2 -translate-y-1/2 bg-surface hover:bg-surface-raised text-text-secondary hover:text-text-primary p-1.5 rounded-full border border-border-strong shadow-lg transition-all z-50"
 					aria-label={isCollapsed ? "Expand panel" : "Collapse panel"}
 				>
 					{isCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
@@ -87,7 +87,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 						{/* Header */}
 						<div className="px-5 pt-5 pb-4 border-b border-border-subtle">
 							<div className="flex items-center justify-between mb-1">
-								<h3 className="text-base font-semibold text-white flex items-center gap-2">
+								<h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
 									<Icon size={18} className={iconClass} />
 									Stock Status
 								</h3>
@@ -99,7 +99,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 										</span>
 									)}
 									{lowButNotOutCount > 0 && (
-										<span className="bg-yellow-500/20 text-warning-text text-xs font-semibold px-2 py-0.5 rounded-full">
+										<span className="bg-warning-bg text-warning-text text-xs font-semibold px-2 py-0.5 rounded-full">
 											{lowButNotOutCount} low
 										</span>
 									)}
@@ -115,7 +115,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 							{lowStockCount === 0 ? (
 								<div className="flex flex-col items-center justify-center h-full text-center px-4">
 									<div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center mb-3">
-										<CheckCircle size={24} className="text-green-500" />
+										<CheckCircle size={24} className="text-success" />
 									</div>
 									<p className="text-text-secondary text-sm font-medium mb-1">
 										All stocked up
@@ -146,7 +146,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 
 														{/* Item details */}
 														<div className="flex-1 min-w-0">
-															<h4 className="text-sm font-medium text-white leading-snug line-clamp-2 mb-1.5">
+															<h4 className="text-sm font-medium text-text-primary leading-snug line-clamp-2 mb-1.5">
 																{item.name}
 															</h4>
 															{item.location && (
@@ -161,7 +161,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 
 														{/* Threshold */}
 														{item.low_stock_threshold !== null && (
-															<div className="text-center min-w-[3rem] text-green-500">
+															<div className="text-center min-w-[3rem] text-success">
 																<span className="text-2xl font-bold leading-none">
 																	{item.low_stock_threshold}
 																</span>
@@ -186,14 +186,14 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 						{panelStatus === 'critical' && lowButNotOutCount > 0 ? (
 							<>
 								<div className="flex flex-col items-center gap-1">
-									<AlertTriangle size={16} className="text-red-500" />
+									<AlertTriangle size={16} className="text-error-text" />
 									<span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-error/20 text-error-text">
 										{outOfStockCount}
 									</span>
 								</div>
 								<div className="flex flex-col items-center gap-1">
-									<AlertTriangle size={16} className="text-yellow-500" />
-									<span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-500/20 text-warning-text">
+									<AlertTriangle size={16} className="text-warning-text" />
+									<span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-warning-bg text-warning-text">
 										{lowButNotOutCount}
 									</span>
 								</div>
@@ -205,7 +205,7 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 									<span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
 										panelStatus === 'critical'
 											? 'bg-error/20 text-error-text'
-											: 'bg-yellow-500/20 text-warning-text'
+											: 'bg-warning-bg text-warning-text'
 									}`}>
 										{badgeCount(lowStockCount, outOfStockCount)}
 									</span>

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Send, X, Mail, FileText, Loader2, AlertCircle } from "lucide-react";
 import FullPopup from "./FullPopup";
 
@@ -63,13 +63,13 @@ export default function SendDocumentModal({
 			<div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
 				<div className="flex items-center gap-2">
 					<Send size={18} className="text-primary-text" />
-					<h2 className="text-base font-semibold text-white">
+					<h2 className="text-base font-semibold text-primary">
 						Send {docLabel} to Client
 					</h2>
 				</div>
 				<button
 					onClick={onClose}
-					className="p-1.5 hover:bg-surface rounded-md transition-colors text-text-tertiary hover:text-white"
+					className="p-1.5 hover:bg-surface rounded-md transition-colors text-text-tertiary hover:text-text-primary"
 				>
 					<X size={16} />
 				</button>
@@ -81,7 +81,7 @@ export default function SendDocumentModal({
 				<div className="flex items-start gap-3 p-3 bg-surface/50 rounded-lg border border-border/50">
 					<FileText size={16} className="text-text-tertiary mt-0.5 flex-shrink-0" />
 					<div>
-						<p className="text-sm font-medium text-white">{docNumber}</p>
+						<p className="text-sm font-medium text-primary">{docNumber}</p>
 						<p className="text-xs text-text-tertiary mt-0.5">
 							{docLabel} for{" "}
 							<span className="text-text-secondary">{clientName}</span>
@@ -110,7 +110,7 @@ export default function SendDocumentModal({
 								setError(null);
 							}}
 							placeholder="recipient@example.com"
-							className="w-full pl-9 pr-3 py-2.5 bg-surface border border-border rounded-md text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+							className="w-full pl-9 pr-3 py-2.5 bg-surface-inset border border-border rounded-md text-sm text-primary placeholder:text-faint focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary-border transition-colors"
 						/>
 					</div>
 					{!contactEmail && (
@@ -135,14 +135,14 @@ export default function SendDocumentModal({
 				<button
 					onClick={onClose}
 					disabled={isSending}
-					className="px-4 py-2 text-sm text-text-secondary hover:text-white hover:bg-surface rounded-md transition-colors disabled:opacity-50"
+					className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface rounded-md transition-colors disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					onClick={handleSend}
 					disabled={isSending || !emailIsValid}
-					className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+					className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary-hover hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed text-on-primary rounded-md transition-colors"
 				>
 					{isSending ? (
 						<Loader2 size={14} className="animate-spin" />

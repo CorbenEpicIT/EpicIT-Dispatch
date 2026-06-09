@@ -258,7 +258,7 @@ export default function TechnicianDashboardPage() {
 		return (
 			<div className="px-4 sm:px-6 pt-5 max-w-lg w-full flex flex-col items-center justify-center min-h-[60vh] gap-6">
 				<div className="text-center">
-					<h1 className="text-2xl font-bold text-white mb-1">
+					<h1 className="text-2xl font-bold text-text-primary mb-1">
 						Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"},{" "}
 						{techProfile.name.split(" ")[0]}
 					</h1>
@@ -267,7 +267,7 @@ export default function TechnicianDashboardPage() {
 				<button
 					onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
 					disabled={goAvailableMutation.isPending}
-					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-primary-hover hover:bg-primary text-white font-semibold text-base transition-colors disabled:opacity-50"
+					className="flex items-center gap-2 px-8 py-4 rounded-xl bg-primary-hover hover:bg-primary text-on-primary font-semibold text-base transition-colors disabled:opacity-50"
 				>
 					<LogIn size={18} />
 					{goAvailableMutation.isPending ? "Starting…" : "Start Shift"}
@@ -290,7 +290,7 @@ export default function TechnicianDashboardPage() {
 					</button>
 					<button
 						onClick={() => setVehicleBannerDismissed(true)}
-						className="text-amber-500/60 hover:text-warning-text"
+						className="text-warning/60 hover:text-warning-text"
 					>
 						<X size={15} />
 					</button>
@@ -300,7 +300,7 @@ export default function TechnicianDashboardPage() {
 			{/* Page header */}
 			<div className="flex items-center justify-between mb-4">
 				<div>
-					<h1 className="text-xl font-bold text-white tracking-tight">
+					<h1 className="text-xl font-bold text-text-primary tracking-tight">
 						My Dashboard
 					</h1>
 					<p className="text-sm text-text-muted mt-0.5">
@@ -329,7 +329,7 @@ export default function TechnicianDashboardPage() {
 			<div className="mb-5 flex flex-col gap-2">
 				<a
 					href="tel:"
-					className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-base border border-border-subtle text-sm text-text-secondary hover:bg-surface hover:text-white transition-colors w-full"
+					className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-base border border-border-subtle text-sm text-text-secondary hover:bg-surface hover:text-text-primary transition-colors w-full"
 				>
 					<Phone size={15} />
 					Call Dispatch
@@ -340,7 +340,7 @@ export default function TechnicianDashboardPage() {
 						<button
 							onClick={() => user?.userId && goAvailableMutation.mutate(user.userId)}
 							disabled={goAvailableMutation.isPending}
-							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-confirm hover:bg-confirm-hover text-sm text-white font-medium transition-colors disabled:opacity-50"
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-confirm hover:bg-confirm-hover text-sm text-on-primary font-medium transition-colors disabled:opacity-50"
 						>
 							<Coffee size={15} />
 							{goAvailableMutation.isPending ? "Returning…" : "End Break"}
@@ -349,7 +349,7 @@ export default function TechnicianDashboardPage() {
 						<button
 							onClick={() => setShowBreakPicker(true)}
 							disabled={goOnBreakMutation.isPending}
-							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-base border border-border-subtle text-sm text-text-secondary hover:bg-surface hover:text-white transition-colors disabled:opacity-50"
+							className="flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg bg-base border border-border-subtle text-sm text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-50"
 						>
 							<Coffee size={15} />
 							Take Break
@@ -372,8 +372,8 @@ export default function TechnicianDashboardPage() {
 							disabled={goOfflineMutation.isPending}
 							className={`flex-1 flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
 								confirmingEndShift
-									? "bg-red-900/40 border border-red-500/50 text-error-text motion-safe:animate-pulse"
-									: "bg-base border border-border-subtle text-text-tertiary hover:bg-surface hover:text-white"
+									? "bg-error/10 border border-error/50 text-error-text motion-safe:animate-pulse"
+									: "bg-base border border-border-subtle text-text-tertiary hover:bg-surface hover:text-text-primary"
 							}`}
 						>
 							<LogOut size={15} />
@@ -386,7 +386,7 @@ export default function TechnicianDashboardPage() {
 			{/* Break reason picker modal */}
 			{showBreakPicker && (
 				<div
-					className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
+					className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-overlay"
 					onClick={() => { setShowBreakPicker(false); setBreakError(null); }}
 				>
 					<div
@@ -396,7 +396,7 @@ export default function TechnicianDashboardPage() {
 						className="w-full max-w-sm mx-4 mb-20 sm:mb-0 bg-base border border-border-subtle rounded-2xl p-5 space-y-3 max-h-[90dvh] overflow-y-auto"
 						onClick={(e) => e.stopPropagation()}
 					>
-						<p id="break-picker-title" className="text-sm font-semibold text-white text-center">Why are you taking a break?</p>
+						<p id="break-picker-title" className="text-sm font-semibold text-text-primary text-center">Why are you taking a break?</p>
 						{breakError && (
 							<p role="alert" className="text-xs text-error-text text-center px-2">{breakError}</p>
 						)}
@@ -477,7 +477,7 @@ export default function TechnicianDashboardPage() {
 									: "visits"}
 							</span>
 							{doneCount > 0 && (
-								<span className="text-[10px] font-semibold text-green-500/80">
+								<span className="text-[10px] font-semibold text-success/80">
 									{doneCount} done
 								</span>
 							)}
@@ -492,7 +492,7 @@ export default function TechnicianDashboardPage() {
 								{/* Overdue bucket */}
 								{overdueVisits.length > 0 && (
 									<div>
-										<p className="text-[10px] font-bold uppercase tracking-widest text-red-500/80 mb-1.5 px-0.5">
+										<p className="text-[10px] font-bold uppercase tracking-widest text-error/80 mb-1.5 px-0.5">
 											Overdue
 										</p>
 										<div className="rounded-xl border border-error/20 bg-base overflow-hidden divide-y divide-border-subtle/80">
@@ -526,7 +526,7 @@ export default function TechnicianDashboardPage() {
 								{/* Up Next bucket */}
 								{upNextVisits.length > 0 && (
 									<div>
-										<p className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80 mb-1.5 px-0.5">
+										<p className="text-[10px] font-bold uppercase tracking-widest text-warning/80 mb-1.5 px-0.5">
 											Up Next
 										</p>
 										<div className="rounded-xl border border-warning/20 bg-base overflow-hidden divide-y divide-border-subtle/80">
@@ -747,8 +747,8 @@ function WrappingUpCard({ onAvailable, isLoading }: { onAvailable: () => void; i
 		>
 			<div className="rounded-[11px] bg-base px-4 py-4 space-y-3">
 				<div className="flex items-center gap-2">
-					<div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-					<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-teal-400">
+					<div className="w-2 h-2 rounded-full bg-gradient-tech-teal animate-pulse" />
+					<span className="text-[10px] font-bold tracking-[0.1em] uppercase text-gradient-tech-teal">
 						Wrapping Up
 					</span>
 				</div>
@@ -758,7 +758,7 @@ function WrappingUpCard({ onAvailable, isLoading }: { onAvailable: () => void; i
 				<button
 					onClick={onAvailable}
 					disabled={isLoading}
-					className="w-full py-2.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-300 text-sm font-medium hover:bg-teal-500/20 transition-colors disabled:opacity-40"
+					className="w-full py-2.5 rounded-lg bg-gradient-tech-teal/10 border border-gradient-tech-teal/20 text-gradient-tech-teal-text text-sm font-medium hover:bg-gradient-tech-teal/20 transition-colors disabled:opacity-40"
 				>
 					I'm Available
 				</button>
@@ -795,25 +795,25 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 			onClick={onClick}
 			className={`flex items-center gap-3 min-h-[52px] cursor-pointer transition-colors duration-150 ${
 				isActive
-					? "bg-blue-950/25 border-l-[3px] border-l-blue-500 pl-[9px] pr-3 py-3"
+					? "bg-primary-bg-dim border-l-[3px] border-l-primary pl-[9px] pr-3 py-3"
 					: isOverdue
-						? "border-l-[3px] border-l-red-500 pl-[9px] pr-3 py-3 hover:bg-surface/40"
+						? "border-l-[3px] border-l-error pl-[9px] pr-3 py-3 hover:bg-surface/40"
 						: isUpNext
-							? "border-l-[3px] border-l-amber-500/50 pl-[9px] pr-3 py-3 hover:bg-surface/40"
+							? "border-l-[3px] border-l-warning/50 pl-[9px] pr-3 py-3 hover:bg-surface/40"
 							: "px-3 py-3 hover:bg-surface/40"
 			}`}
 		>
 			<div
 				className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
 					isDone
-						? "bg-green-500/60"
+						? "bg-visit-completed/60"
 						: isActive
-							? "bg-blue-400"
+							? "bg-visit-driving"
 							: isOverdue
-								? "bg-red-400"
+								? "bg-visit-cancelled"
 								: isUpNext
-									? "bg-amber-400"
-									: "bg-zinc-600"
+									? "bg-visit-onsite"
+									: "bg-visit-scheduled"
 				}`}
 			/>
 			<div className="flex-1 min-w-0">
@@ -832,7 +832,7 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 			</div>
 			<div className="flex-shrink-0 text-right">
 				{isDone ? (
-					<span className="text-[11px] text-green-600/70 font-medium">
+					<span className="text-[11px] text-success/70 font-medium">
 						Done
 					</span>
 				) : isActive ? (

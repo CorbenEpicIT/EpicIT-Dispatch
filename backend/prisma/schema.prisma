@@ -1195,6 +1195,7 @@ model technician {
   last_login  DateTime?
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
+  theme       String            @default("system")
 
   organization_role_id String?
   organization_role    organization_role? @relation("TechnicianRole", fields: [organization_role_id], references: [id])
@@ -1245,6 +1246,7 @@ model dispatcher {
   email_verification_token  String?   @unique
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
+  theme       String   @default("system")
   dashboard_layout Json?
 
   organization_role_id String?

@@ -84,7 +84,7 @@ export default function ReportingPage() {
 			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
 				{/* Header Section */}
 				<div className="flex items-center justify-between mb-5">
-					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+					<h1 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
 						Reports
 					</h1>
 					<div className="flex items-center gap-2">

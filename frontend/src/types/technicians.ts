@@ -127,6 +127,7 @@ export interface Technician {
 	last_edited_job_notes?: unknown[];
 	role_id: string | null;
 	organization_role: { id: string; name: string } | null;
+	theme: "dark" | "light" | "system";
 }
 
 export interface CreateTechnicianInput {
@@ -155,6 +156,7 @@ export interface UpdateTechnicianInput {
 	status?: TechnicianStatus;
 	hire_date?: Date;
 	last_login?: Date;
+	theme?: "dark" | "light" | "system";
 }
 
 // ============================================================================
@@ -193,6 +195,7 @@ export const UpdateTechnicianSchema = z
 		status: z.enum(TechnicianStatusValues).optional(),
 		hire_date: z.coerce.date().optional(),
 		last_login: z.coerce.date().optional(),
+		theme: z.enum(["dark", "light", "system"]).optional(),
 	})
 	.refine(
 		(data) =>
@@ -204,7 +207,8 @@ export const UpdateTechnicianSchema = z
 			data.description !== undefined ||
 			data.status !== undefined ||
 			data.hire_date !== undefined ||
-			data.last_login !== undefined,
+			data.last_login !== undefined ||
+			data.theme !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
 

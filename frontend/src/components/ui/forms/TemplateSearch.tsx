@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Search, X, BookOpen, ChevronRight, Users, Trash2 } from "lucide-react";
 
 export interface TemplateSearchClient {
@@ -83,7 +83,7 @@ function DeleteButton({
 				isDeleting
 					? "text-text-faint cursor-not-allowed"
 					: armed
-						? "text-error-text bg-red-500/15 border border-red-500/40 hover:bg-red-500/25"
+						? "text-error-text bg-error-bg border border-error-border hover:bg-error-bg"
 						: "text-text-muted hover:text-error-text hover:bg-surface-raised border border-transparent"
 			}`}
 		>
@@ -158,7 +158,7 @@ export function TemplateSearch({
 
 	return (
 		<div className="flex flex-col">
-			{/* ── Header ── */}
+			{/* -- Header -- */}
 			<div className="flex-shrink-0 space-y-2 pb-2 border-b border-border-subtle">
 				{/* Row 1: heading */}
 				<div className="flex items-center justify-between">
@@ -169,7 +169,7 @@ export function TemplateSearch({
 								className="text-primary-text"
 							/>
 						</div>
-						<h3 className="text-sm font-semibold text-white">
+						<h3 className="text-sm font-semibold text-primary">
 							{heading}
 						</h3>
 						<span className="text-xs text-text-muted font-normal hidden sm:inline">
@@ -191,7 +191,7 @@ export function TemplateSearch({
 							onChange={(e) => setQuery(e.target.value)}
 							placeholder={placeholder}
 							autoFocus
-							className="w-full h-[34px] pl-8 pr-8 bg-base border border-border rounded text-sm text-white placeholder-zinc-500 focus:border-primary focus:outline-none transition-colors"
+							className="w-full h-[34px] pl-8 pr-8 bg-base border border-border rounded text-sm text-primary placeholder:text-faint focus:border-primary focus:outline-none transition-colors"
 						/>
 						{query && (
 							<button
@@ -244,7 +244,7 @@ export function TemplateSearch({
 											onClick={
 												clearClientFilter
 											}
-											className="flex-shrink-0 text-primary-text hover:text-white transition-colors"
+											className="flex-shrink-0 text-primary-text hover:text-text-primary transition-colors"
 											title="Clear client filter"
 										>
 											<X
@@ -275,7 +275,7 @@ export function TemplateSearch({
 												)
 											}
 											placeholder="Filter by client…"
-											className="w-full h-[34px] pl-8 pr-2 bg-base border border-border rounded text-sm text-white placeholder-zinc-500 focus:border-primary focus:outline-none transition-colors"
+											className="w-full h-[34px] pl-8 pr-2 bg-base border border-border rounded text-sm text-primary placeholder:text-faint focus:border-primary focus:outline-none transition-colors"
 										/>
 										{clientQuery &&
 											filteredClients.length >
@@ -298,7 +298,7 @@ export function TemplateSearch({
 																		""
 																	);
 																}}
-																className="w-full flex items-center px-3 py-2 text-sm text-text-primary hover:bg-surface hover:text-white transition-colors text-left"
+																className="w-full flex items-center px-3 py-2 text-sm text-text-primary hover:bg-surface hover:text-text-primary transition-colors text-left"
 															>
 																{
 																	c.name
@@ -324,7 +324,7 @@ export function TemplateSearch({
 				</div>
 			</div>
 
-			{/* ── Results ── */}
+			{/* -- Results -- */}
 			<div className="overflow-y-auto space-y-1 pt-2 pb-2 max-h-[55vh]">
 				{isLoading ? (
 					<div className="flex items-center justify-center py-10 text-text-muted text-sm">
@@ -362,7 +362,7 @@ export function TemplateSearch({
 								</div>
 								<div className="flex-1 min-w-0">
 									<div className="flex items-center gap-2 mb-0.5">
-										<span className="text-sm font-medium text-white truncate group-hover:text-primary-text transition-colors">
+										<span className="text-sm font-medium text-primary truncate group-hover:text-text-primary-text transition-colors">
 											{r.title}
 										</span>
 										{r.subtitle && (
@@ -406,7 +406,7 @@ export function TemplateSearch({
 								</div>
 								<div className="flex items-center gap-2 flex-shrink-0">
 									{r.value && (
-										<span className="text-sm font-semibold text-white tabular-nums font-mono">
+										<span className="text-sm font-semibold text-primary tabular-nums font-mono">
 											{r.value}
 										</span>
 									)}

@@ -19,7 +19,7 @@ export default function SideNavItem({
 				`
 				group relative flex items-center h-10 rounded-md mx-2
 				transition-colors duration-200
-				${isActive ? "bg-base text-white" : "text-text-tertiary hover:text-white hover:bg-surface"}
+				${isActive ? "bg-primary-bg text-primary-text" : "text-text-tertiary hover:text-text-primary hover:bg-surface-raised"}
 				`
 			}
 		>

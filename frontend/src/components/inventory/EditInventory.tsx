@@ -53,23 +53,23 @@ export default function EditInventory({isOpen,onClose,item,}: EditInventoryProps
 		>
 			<div className="bg-base rounded-xl p-6 w-full max-w-md border border-border-subtle max-h-[90vh] overflow-y-auto scrollbar-hide">
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-2xl font-bold text-white">
+					<h2 className="text-2xl font-bold text-text-primary">
 						Set Low Stock Threshold
 					</h2>
 					<button
 						onClick={onClose}
-						className="text-text-tertiary hover:text-white transition-colors"
+						className="text-text-tertiary hover:text-text-primary transition-colors"
 					>
 						<X size={24} />
 					</button>
 				</div>
 
 				<div className="mb-4">
-					<h3 className="text-lg font-semibold text-white mb-2">
+					<h3 className="text-lg font-semibold text-text-primary mb-2">
 						{item.name}
 					</h3>
 					<p className="text-sm text-text-tertiary">
-						Current Quantity: <span className="text-white font-medium">{item.quantity}</span>
+						Current Quantity: <span className="text-text-primary font-medium">{item.quantity}</span>
 					</p>
 				</div>
 
@@ -92,7 +92,7 @@ export default function EditInventory({isOpen,onClose,item,}: EditInventoryProps
 								)
 							}
 							placeholder="Enter threshold value"
-							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-primary"
+							className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
 						/>
 					</div>
 
@@ -108,14 +108,14 @@ export default function EditInventory({isOpen,onClose,item,}: EditInventoryProps
 						<button
 							type="button"
 							onClick={onClose}
-							className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-white rounded-md transition-colors"
+							className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
 						>
 							Cancel
 						</button>
 						<button
 							type="submit"
 							disabled={updateThreshold.isPending}
-							className="flex-1 px-4 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+							className="flex-1 px-4 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded-md transition-colors"
 						>
 							{updateThreshold.isPending
 								? "Saving..."

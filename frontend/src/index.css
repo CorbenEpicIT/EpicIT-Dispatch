@@ -7,7 +7,8 @@
 	/* Animation-only vars — intentionally mirror primary; not Tailwind tokens */
 	--anim-primary-80: rgba(59, 130, 246, 0.8);
 	--anim-primary-30: rgba(59, 130, 246, 0.3);
-	--anim-surface-flash: rgba(63, 63, 70, 0.4);
+	/* Light default — dark override lives in [data-theme="dark"] in theme.css */
+	--anim-surface-flash: rgba(0, 0, 0, 0.08);
 }
 
 /* Scrollbar */
@@ -63,24 +64,29 @@
 }
 
 /* Chrome on Windows overrides bg and text color on form elements with native
-     Field/FieldText colors. Unlayered rule with explicit hex fixes both properties.
-     Login/Register form elements have no bg-base/bg-surface class — unaffected. */
+     Field/FieldText colors. Unlayered rule with explicit CSS vars beats the UA
+     override while correctly responding to data-theme light/dark switches. */
 textarea.bg-base,
 select.bg-base,
 input.bg-base {
-	background-color: #18181b;
-	color: #ffffff;
+	background-color: var(--color-base);
+	color: var(--color-text-primary);
 }
 textarea.bg-surface,
 select.bg-surface,
 input.bg-surface {
-	background-color: #27272a;
-	color: #ffffff;
+	background-color: var(--color-surface);
+	color: var(--color-text-primary);
 }
-/* Native checkbox (no bg-base class) inside a label also triggers Chrome's form-field
-     color injection on adjacent span children. Adjacent-sibling unlayered rule fixes. */
+textarea.bg-surface-inset,
+select.bg-surface-inset,
+input.bg-surface-inset {
+	background-color: var(--color-surface-inset);
+	color: var(--color-text-primary);
+}
+/* Native checkbox adjacent span — same Chrome injection fix via CSS var. */
 .bg-base label > input + span {
-	color: #d4d4d8;
+	color: var(--color-text-secondary);
 }
 
 /* Remove increment/decrement arrows from all number inputs globally */

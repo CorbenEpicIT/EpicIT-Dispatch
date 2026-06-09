@@ -187,7 +187,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 						value={notes}
 						onChange={(e) => setNotes(e.target.value)}
 						disabled={isLoading}
-						className="border border-border px-2.5 py-1.5 w-full h-16 rounded bg-base text-white text-sm resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+						className="border border-border px-2.5 py-1.5 w-full h-16 rounded bg-base text-primary text-sm resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 					/>
 				</div>
 			</div>

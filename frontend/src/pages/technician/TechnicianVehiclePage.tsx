@@ -63,7 +63,7 @@ function VehicleList({
 		return (
 			<div className="py-10 flex flex-col items-center gap-3">
 				<Truck size={28} className="text-text-faint" />
-				<p className="text-sm font-medium text-white">No vehicles available</p>
+				<p className="text-sm font-medium text-text-primary">No vehicles available</p>
 				<p className="text-xs text-text-muted text-center px-6">
 					Contact your dispatcher to get a vehicle assigned.
 				</p>
@@ -82,11 +82,11 @@ function VehicleList({
 
 				return (
 					<div key={v.id}>
-						<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 ${isCurrent ? "bg-primary/[0.07] border-l-2 border-l-blue-500" : ""}`}>
+						<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 ${isCurrent ? "bg-primary-bg-dim border-l-2 border-l-primary" : ""}`}>
 							<div className="flex-1 min-w-0">
-								<p className="text-sm font-semibold text-white truncate">{v.name}</p>
+								<p className="text-sm font-semibold text-text-primary truncate">{v.name}</p>
 								{subtitle && (
-									<p className={`text-xs mt-0.5 truncate ${isCurrent ? "text-primary-text/60" : "text-text-muted"}`}>{subtitle}</p>
+									<p className={`text-xs mt-0.5 truncate ${isCurrent ? "text-text-muted" : "text-text-muted"}`}>{subtitle}</p>
 								)}
 							</div>
 							<VehicleStatusBadge status={status} />
@@ -98,7 +98,7 @@ function VehicleList({
 								<button
 									onClick={() => onRideAlongRequest(v.id)}
 									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-white transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
 									Select
 								</button>
@@ -106,15 +106,15 @@ function VehicleList({
 								<button
 									onClick={() => onSelect(v.id)}
 									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-white transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
 									Select
 								</button>
 							) : null}
 						</div>
 						{isRideAlongPending && (
-							<div className="px-4 py-3 bg-amber-500/5 border-b border-warning/20 flex items-center justify-between gap-3">
-								<p className="text-xs text-amber-300">
+							<div className="px-4 py-3 bg-warning/5 border-b border-warning/20 flex items-center justify-between gap-3">
+								<p className="text-xs text-warning-text">
 									Ride along with{" "}
 									{(v.current_technicians ?? []).map((t) => t.name).join(", ")}?
 								</p>
@@ -129,7 +129,7 @@ function VehicleList({
 									<button
 										onClick={() => onRideAlongConfirm(v.id)}
 										disabled={isPending}
-										className="text-xs font-medium px-3 py-2.5 rounded-lg bg-warning/20 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+										className="text-xs font-medium px-3 py-2.5 rounded-lg bg-warning/20 text-warning-text hover:bg-warning/30 transition-colors disabled:opacity-50 disabled:pointer-events-none"
 									>
 										Confirm
 									</button>
@@ -169,12 +169,12 @@ function StockItemRow({
 	const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
 	const unit = formatUnit(item.inventory_item.unit);
 
-	const qtyColor = isEmpty ? "text-error-text" : isLow ? "text-warning-text" : "text-white";
+	const qtyColor = isEmpty ? "text-error-text" : isLow ? "text-warning-text" : "text-text-primary";
 
 	return (
 		<div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0">
 			<div className="flex-1 min-w-0">
-				<p className="text-sm text-white truncate" title={item.inventory_item.name}>
+				<p className="text-sm text-text-primary truncate" title={item.inventory_item.name}>
 					{item.inventory_item.name}
 				</p>
 				<div className="flex items-center gap-2 mt-0.5">
@@ -441,7 +441,7 @@ export default function TechnicianVehiclePage() {
 					</div>
 					<div className="px-4 py-5">
 						<p className="text-sm text-text-secondary mb-1">
-							Switch to <span className="text-white font-medium">{pending?.name}</span>?
+							Switch to <span className="text-text-primary font-medium">{pending?.name}</span>?
 						</p>
 						<p className="text-xs text-text-muted mb-4">
 							Parts tracked today stay on record — switching won't remove them.
@@ -457,7 +457,7 @@ export default function TechnicianVehiclePage() {
 							<button
 								onClick={handleConfirmSwitch}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-white font-medium transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
 							>
 								{setVehicle.isPending ? "Switching…" : "Switch"}
 							</button>
@@ -487,7 +487,7 @@ export default function TechnicianVehiclePage() {
 								<Truck size={17} className="text-text-muted" />
 							</div>
 							<div>
-								<p className="text-sm font-medium text-white">No vehicle selected</p>
+								<p className="text-sm font-medium text-text-primary">No vehicle selected</p>
 								<p className="text-xs text-text-muted mt-0.5">Select a vehicle to begin your day</p>
 							</div>
 						</div>
@@ -518,7 +518,7 @@ export default function TechnicianVehiclePage() {
 					/* ── Check-out confirmation ─────────────────────────────────── */
 					<div className="px-4 py-4">
 						<p className="text-sm text-text-secondary mb-1">
-							Check out of <span className="text-white font-medium">{currentVehicle.name}</span>?
+							Check out of <span className="text-text-primary font-medium">{currentVehicle.name}</span>?
 						</p>
 						<p className="text-xs text-text-muted mb-4">
 							Your stock records will remain. You can select a vehicle again tomorrow.
@@ -534,7 +534,7 @@ export default function TechnicianVehiclePage() {
 							<button
 								onClick={handleCheckOut}
 								disabled={setVehicle.isPending}
-								className="flex-1 py-2 text-sm rounded-lg bg-red-600/80 hover:bg-red-600 text-white font-medium transition-colors disabled:opacity-50"
+								className="flex-1 py-2 text-sm rounded-lg bg-error-strong/80 hover:bg-error-strong text-on-primary font-medium transition-colors disabled:opacity-50"
 							>
 								{setVehicle.isPending ? "Checking out…" : "Check Out"}
 							</button>
@@ -545,7 +545,7 @@ export default function TechnicianVehiclePage() {
 					<div className="px-4 py-4">
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0">
-								<p className="font-semibold text-white truncate">{currentVehicle.name}</p>
+								<p className="font-semibold text-text-primary truncate">{currentVehicle.name}</p>
 								{(() => {
 									const cv = currentVehicle;
 									const subtitleParts = [cv.color, cv.type].filter(Boolean).join(" ");
@@ -589,14 +589,14 @@ export default function TechnicianVehiclePage() {
 
 					{/* Out of stock bar */}
 					{outOfStockItems.length > 0 && (
-						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-red-500/5 text-error-text text-xs font-medium">
+						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-error/5 text-error-text text-xs font-medium">
 							<PackageX size={13} aria-hidden="true" />
 							{outOfStockItems.length} item{outOfStockItems.length > 1 ? "s" : ""} out of stock
 						</div>
 					)}
 					{/* Low stock bar */}
 					{lowStockItems.length > 0 && (
-						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-amber-500/5 text-warning-text text-xs font-medium">
+						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-warning/5 text-warning-text text-xs font-medium">
 							<AlertTriangle size={13} aria-hidden="true" />
 							{lowStockItems.length} item{lowStockItems.length > 1 ? "s" : ""} low stock
 						</div>
@@ -613,7 +613,7 @@ export default function TechnicianVehiclePage() {
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									aria-label="Search inventory items"
-									className="w-full bg-surface/60 border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-border-strong"
+									className="w-full bg-surface-inset border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 								/>
 								{searchQuery && (
 									<button
@@ -632,7 +632,7 @@ export default function TechnicianVehiclePage() {
 									title="Filter by category"
 									className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
 										filtersActive
-											? "bg-primary-hover/20 border-blue-600/40 text-primary-text"
+											? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
 											: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
 									}`}
 								>
@@ -645,7 +645,7 @@ export default function TechnicianVehiclePage() {
 								title={sortMode === "name" ? "Sort by category" : "Sort by name"}
 								className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
 									sortMode === "category"
-										? "bg-primary-hover/20 border-blue-600/40 text-primary-text"
+										? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
 										: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
 								}`}
 							>
@@ -664,7 +664,7 @@ export default function TechnicianVehiclePage() {
 											onClick={() => toggleCategory(cat)}
 											className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
 												active
-													? "bg-primary-hover/20 border-blue-600/40 text-primary-text"
+													? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
 													: "bg-surface border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
 											}`}
 										>
@@ -719,17 +719,17 @@ export default function TechnicianVehiclePage() {
 
 			{/* Toasts */}
 			{restockSuccess && (
-				<div role="status" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-surface border border-border rounded-lg px-4 py-2 text-sm text-white shadow-xl whitespace-nowrap">
+				<div role="status" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-surface border border-border rounded-lg px-4 py-2 text-sm text-text-primary shadow-xl whitespace-nowrap">
 					Restock requested for {restockSuccess}
 				</div>
 			)}
 			{restockError && (
-				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-950 border border-red-800 rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
+				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-error-bg border border-error rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
 					{restockError}
 				</div>
 			)}
 			{vehicleError && (
-				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-950 border border-red-800 rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
+				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-error-bg border border-error rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
 					{vehicleError}
 				</div>
 			)}

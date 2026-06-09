@@ -47,15 +47,15 @@ function ElapsedTimer({ startAt }: { startAt: string }) {
 			: `${m}:${String(s).padStart(2, "0")}`;
 
 	return (
-		<div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-500/8 border border-green-500/20">
+		<div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-success-bg border border-success/20">
 			<span className="relative flex h-2 w-2 flex-shrink-0">
-				<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
-				<span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+				<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success-bright-text opacity-60" />
+				<span className="relative inline-flex h-2 w-2 rounded-full bg-visit-completed" />
 			</span>
 			<span className="text-xs text-success-text font-medium uppercase tracking-wide">
 				In Progress
 			</span>
-			<span className="ml-auto text-sm font-bold tabular-nums text-green-300">
+			<span className="ml-auto text-sm font-bold tabular-nums text-success-bright-text">
 				{label}
 			</span>
 		</div>
@@ -103,7 +103,7 @@ function JobContextSection({
 								<p className="text-xs text-text-muted mb-0.5">
 									Job
 								</p>
-								<p className="text-sm font-medium text-white">
+								<p className="text-sm font-medium text-text-primary">
 									#{job.job_number} ·{" "}
 									{job.name}
 								</p>
@@ -193,7 +193,7 @@ function JobContextSection({
 								<p className="text-xs text-text-muted">
 									Quote
 								</p>
-								<p className="text-sm font-medium text-white">
+								<p className="text-sm font-medium text-text-primary">
 									#{job.quote.quote_number} ·{" "}
 									{job.quote.title}
 								</p>
@@ -205,7 +205,7 @@ function JobContextSection({
 											job.quote
 												.status as keyof typeof QuoteStatusColors
 										] ??
-										"bg-zinc-500/20 text-text-secondary border-border-strong/30"
+										"bg-neutral/20 text-text-secondary border-border-strong/30"
 									}`}
 								>
 									{job.quote.status}
@@ -248,7 +248,7 @@ function JobContextSection({
 												primaryContact.phone ??
 												undefined
 											}
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-success/10 border border-green-500/20 text-xs font-semibold text-success-text hover:bg-green-500/15 transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-success/10 border border-success/20 text-xs font-semibold text-success-text hover:bg-success/15 transition-colors"
 										>
 											<Phone
 												size={
@@ -274,7 +274,7 @@ function JobContextSection({
 									{primaryContact.email ? (
 										<a
 											href={`mailto:${primaryContact.email}`}
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-tertiary hover:bg-surface-raised hover:text-white transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-tertiary hover:bg-surface-raised hover:text-text-primary transition-colors"
 										>
 											<Mail
 												size={
@@ -338,11 +338,11 @@ function ArrivalBanner({
 	}, [scheduledStart]);
 
 	return (
-		<div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-4 space-y-3">
+		<div className="rounded-xl border border-info/25 bg-info/5 p-4 space-y-3">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
 					<Car size={16} className="text-info-text" />
-					<span className="text-sm font-semibold text-cyan-300">
+					<span className="text-sm font-semibold text-info-text">
 						En Route
 					</span>
 				</div>
@@ -396,16 +396,16 @@ function DelayedBanner({ scheduledStart, tz }: { scheduledStart: Date | string; 
 				: null;
 
 	return (
-		<div className="rounded-xl border border-orange-500/25 bg-orange-500/5 p-4 space-y-1.5">
+		<div className="rounded-xl border border-orange/25 bg-orange/5 p-4 space-y-1.5">
 			<div className="flex items-center gap-2">
-				<AlertTriangle size={15} className="text-orange-400 shrink-0" />
-				<span className="text-sm font-semibold text-orange-300">Visit Delayed</span>
+				<AlertTriangle size={15} className="text-orange-text shrink-0" />
+				<span className="text-sm font-semibold text-orange-text">Visit Delayed</span>
 			</div>
 			<p className="text-xs text-text-tertiary">
 				Scheduled: {formatDateTime(scheduledStart, tz)}
 			</p>
 			{overdueLabel && (
-				<p className="text-xs text-orange-400/80">{overdueLabel}</p>
+				<p className="text-xs text-orange-text/80">{overdueLabel}</p>
 			)}
 		</div>
 	);
@@ -415,8 +415,8 @@ function DelayedBanner({ scheduledStart, tz }: { scheduledStart: Date | string; 
 
 function PausedBanner() {
 	return (
-		<div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-yellow-500/8 border border-yellow-500/20">
-			<span className="h-2 w-2 rounded-full bg-yellow-400 flex-shrink-0" />
+		<div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-warning-bg border border-warning/20">
+			<span className="h-2 w-2 rounded-full bg-visit-paused-text flex-shrink-0" />
 			<span className="text-xs text-warning-text font-medium uppercase tracking-wide flex-1">
 				Visit Paused
 			</span>
@@ -687,11 +687,11 @@ export default function TechnicianVisitDetailPage() {
 		<div className="max-w-lg mx-auto pb-28">
 			{/* Header */}
 			<div className="mb-5">
-				<h1 className="text-xl font-bold text-white leading-snug">
+				<h1 className="text-xl font-bold text-text-primary leading-snug">
 					<span
 						className={`float-right ml-3 mt-0.5 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
 							VisitStatusColors[status] ??
-							"bg-zinc-500/20 text-text-tertiary border-border-strong/30"
+							"bg-neutral/20 text-text-tertiary border-border-strong/30"
 						}`}
 					>
 						{VisitStatusLabels[status] ?? status}
@@ -718,7 +718,7 @@ export default function TechnicianVisitDetailPage() {
 
 {/* Sticky footer CTA */}
 			{status !== "Completed" && status !== "Cancelled" && (
-				<div className="fixed bottom-16 left-0 right-0 z-40 px-4 pb-3 bg-gradient-to-t from-zinc-950 via-zinc-950/95 to-transparent pt-6">
+				<div className="fixed bottom-16 left-0 right-0 z-40 px-4 pb-3 bg-gradient-to-t from-canvas via-canvas/95 to-transparent pt-6">
 					<div className="max-w-lg mx-auto flex gap-2">
 						<div className="flex-1">
 							<VisitActionButtons
@@ -730,7 +730,7 @@ export default function TechnicianVisitDetailPage() {
 						{dispatchPhone && (
 							<a
 								href={`tel:${dispatchPhone}`}
-								className="flex items-center justify-center w-12 rounded-xl bg-surface border border-border text-text-tertiary hover:text-white transition-colors self-start"
+								className="flex items-center justify-center w-12 rounded-xl bg-surface border border-border text-text-tertiary hover:text-text-primary transition-colors self-start"
 								title="Call Dispatch"
 							>
 								<Phone size={18} />

@@ -3,17 +3,20 @@ import { useAuthStore } from "../../auth/authStore";
 import { useDispatcherByIdQuery } from "../../hooks/useDispatchers";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
 import { useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
-import { Loader2 } from "lucide-react";
+import { Loader2, Monitor, Moon, Sun } from "lucide-react";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
+import { useThemeStore, type LightPalette } from "../../stores/themeStore";
 
 const inputBase =
-	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder-zinc-500 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
+	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
 
 export default function UserSettingsPage() {
 	const { user } = useAuthStore();
 	const isTech = user?.role === "technician";
 	const { data: dispatcher } = useDispatcherByIdQuery(isTech ? null : user?.userId);
 	const { data: technician } = useTechnicianByIdQuery(isTech ? user?.userId : null);
+
+	const { theme, setTheme, lightPalette, setLightPalette } = useThemeStore();
 
 	const [form, setForm] = useState({ phone: "", title: "", description: "" });
 	const [saving, setSaving] = useState(false);
@@ -30,14 +33,26 @@ export default function UserSettingsPage() {
 				title: dispatcher.title ?? "",
 				description: dispatcher.description ?? "",
 			});
-		}else{
+			if (dispatcher.theme && !updateDispatcherMutation.isPending) setTheme(dispatcher.theme);
+		} else {
 			setForm({
 				phone: technician?.phone ?? "",
 				title: technician?.title ?? "",
 				description: technician?.description ?? "",
 			});
+			if (technician?.theme && !updateTechnicianMutation.isPending) setTheme(technician.theme);
 		}
-	}, [dispatcher, technician]);
+	}, [dispatcher, technician, setTheme, updateDispatcherMutation.isPending, updateTechnicianMutation.isPending]);
+
+	const handleThemeChange = (newTheme: "dark" | "light" | "system") => {
+		setTheme(newTheme);
+		if (!user?.userId) return;
+		if (isTech) {
+			updateTechnicianMutation.mutate({ id: user.userId, data: { theme: newTheme } });
+		} else {
+			updateDispatcherMutation.mutate({ id: user.userId, data: { theme: newTheme } });
+		}
+	};
 
 	const handleSave = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -146,7 +161,7 @@ export default function UserSettingsPage() {
 							<button
 								type="submit"
 								disabled={saving}
-								className="flex items-center gap-1.5 rounded-md bg-primary-hover px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+								className="flex items-center gap-1.5 rounded-md bg-primary-hover px-4 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{saving && <Loader2 size={12} className="animate-spin" />}
 								{saving ? "Saving…" : "Save Changes"}
@@ -181,7 +196,73 @@ export default function UserSettingsPage() {
 				<section>
 					<h2 className="text-sm font-semibold text-text-primary mb-3">Preferences</h2>
 					<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
-						<p className="text-sm text-text-muted">Coming soon.</p>
+						<p className="mb-2 text-xs font-medium text-text-tertiary">Theme</p>
+						<div className="inline-flex rounded-md bg-surface-inset p-0.5">
+							<button
+								onClick={() => handleThemeChange("system")}
+								className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+									theme === "system"
+										? "bg-surface text-text-primary shadow-sm"
+										: "text-text-muted hover:text-text-secondary"
+								}`}
+							>
+								<Monitor size={14} />
+								System
+							</button>
+							<button
+								onClick={() => handleThemeChange("dark")}
+								className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+									theme === "dark"
+										? "bg-surface text-text-primary shadow-sm"
+										: "text-text-muted hover:text-text-secondary"
+								}`}
+							>
+								<Moon size={14} />
+								Dark
+							</button>
+							<button
+								onClick={() => handleThemeChange("light")}
+								className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+									theme === "light"
+										? "bg-surface text-text-primary shadow-sm"
+										: "text-text-muted hover:text-text-secondary"
+								}`}
+							>
+								<Sun size={14} />
+								Light
+							</button>
+						</div>
+
+						{theme !== "dark" && (
+							<div className="mt-4">
+								<p className="mb-2 text-xs font-medium text-text-tertiary">Light mode style</p>
+								<div className="inline-flex rounded-md bg-surface-inset p-0.5">
+									{(
+										[
+											{ value: "blue", label: "Blue", swatch: "#dce2ed" },
+											{ value: "warm", label: "Warm", swatch: "#e6dfd5" },
+											{ value: "neutral", label: "Neutral", swatch: "#e0e0e0" },
+										] as { value: LightPalette; label: string; swatch: string }[]
+									).map(({ value, label, swatch }) => (
+										<button
+											key={value}
+											onClick={() => setLightPalette(value)}
+											className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+												lightPalette === value
+													? "bg-surface text-text-primary shadow-sm"
+													: "text-text-muted hover:text-text-secondary"
+											}`}
+										>
+											<span
+												className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0"
+												style={{ backgroundColor: swatch }}
+											/>
+											{label}
+										</button>
+									))}
+								</div>
+							</div>
+						)}
 					</div>
 				</section>
 			</div>

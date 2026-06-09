@@ -1,152 +1,168 @@
 @theme {
 	/* ── Backgrounds / Surfaces ──────────────────────────────────────────── */
-	--color-canvas:         #09090b;
-	--color-base:           #18181b;
-	--color-surface:        #27272a;
-	--color-surface-raised: #3f3f46;
-	--color-surface-inset:  #09090b;
+	/* Zinc Daylight v3: cool blue-gray canvas mirrors dark mode's zinc DNA.
+	   Structure from layer contrast, not border strokes. */
+	--color-canvas:         #edf0f5;   /* cool steel-blue gray — Stripe-tier corporate */
+	--color-base:           #dce2ed;   /* sidebar/secondary bg — distinctly darker than canvas */
+	--color-surface:        #ffffff;   /* pure white — header, cards, panels */
+	--color-surface-raised: #e2e8f2;   /* hover/elevated on white surfaces */
+	--color-surface-inset:  #cdd5e3;   /* clearly recessed wells, inset inputs */
 
 	/* ── Text ────────────────────────────────────────────────────────────── */
-	--color-text-primary:   #ffffff;
-	--color-text-secondary: #d4d4d8;
-	--color-text-tertiary:  #a1a1aa;
-	--color-text-muted:     #71717a;
-	--color-text-faint:     #52525b;
-	--color-text-inverse:   #18181b;
-	--color-text-link:      #3b82f6;
+	/* Slate hierarchy — cool authority, matches dark mode's zinc personality */
+	--color-text-primary:    #0f172a;   /* slate-900 */
+	--color-text-secondary:  #334155;   /* slate-700 */
+	--color-text-tertiary:   #475569;   /* slate-600 */
+	--color-text-muted:      #64748b;   /* slate-500 */
+	--color-text-faint:      #7c8ea6;   /* custom; between slate-400 (#94a3b8) and slate-500 (#64748b) */
+	--color-text-inverse:    #ffffff;
+	--color-text-link:       #2563eb;
+	--color-text-on-surface: #475569;   /* slate-600 */
 
 	/* ── Primary (blue) ──────────────────────────────────────────────────── */
 	--color-primary:           #3b82f6;
 	--color-primary-hover:     #2563eb;
 	--color-primary-active:    #1d4ed8;
-	--color-primary-bg:        rgba(59, 130, 246, 0.20);
-	--color-primary-bg-subtle: rgba(59, 130, 246, 0.10);
-	--color-primary-bg-dim:    rgba(59, 130, 246, 0.06);
-	--color-primary-border:    rgba(59, 130, 246, 0.30);
-	--color-primary-text:      #93c5fd;
+	--color-primary-bg:        rgba(59, 130, 246, 0.10);
+	--color-primary-bg-subtle: rgba(59, 130, 246, 0.06);
+	--color-primary-bg-dim:    rgba(59, 130, 246, 0.03);
+	--color-primary-border:    rgba(59, 130, 246, 0.20);
+	--color-primary-text:      #1d4ed8;
 	--color-on-primary:        #ffffff;
+	--color-primary-disabled:  #1e40af;
 
 	/* ── Borders ─────────────────────────────────────────────────────────── */
-	--color-border-subtle: #27272a;
-	--color-border:        #3f3f46;
-	--color-border-strong: #52525b;
-	--color-border-input:  #505058;
+	/* Present but not loud — clear section definition without cage-like weight */
+	--color-border-subtle: #c5d1e5;   /* section dividers — 1.53:1 on white, faint but present */
+	--color-border:        #8fa6bf;   /* default edge — 2.48:1 on white, clearly visible at 1px */
+	--color-border-strong: #6080a0;   /* emphasized headers — 4.13:1 on white */
+	--color-border-card:   #b5c4db;   /* card inset — 1.76:1, visible not heavy */
+	--color-border-input:  #5e7a98;   /* input — 4.45:1 on white, strong field boundary */
+
+	/* ── Overlay / modal backdrop ─────────────────────────────────────────────── */
+	--color-overlay: rgba(9, 9, 11, 0.60);
 
 	/* ── Confirm CTA (green action buttons) ──────────────────────────────── */
 	--color-confirm:       #16a34a;
-	--color-confirm-hover: #22c55e;
+	--color-confirm-hover: #15803d;
 
 	/* ── Status: success ─────────────────────────────────────────────────── */
-	--color-success:        #10b981;
-	--color-success-text:   #34d399;
-	--color-success-bg:     rgba(16, 185, 129, 0.15);
-	--color-success-border: rgba(16, 185, 129, 0.30);
+	--color-success:             #059669;
+	--color-success-text:        #15803d;
+	--color-success-bg:          rgba(5, 150, 105, 0.10);
+	--color-success-border:      rgba(5, 150, 105, 0.22);
+	--color-success-bright-text: #15803d;
 
 	/* ── Status: error ───────────────────────────────────────────────────── */
 	--color-error:          #ef4444;
 	--color-error-strong:   #dc2626;
-	--color-error-text:     #f87171;
-	--color-error-bg:       rgba(239, 68, 68, 0.15);
-	--color-error-border:   rgba(239, 68, 68, 0.30);
+	--color-error-text:     #b91c1c;
+	--color-error-bg:       rgba(239, 68, 68, 0.10);
+	--color-error-border:   rgba(239, 68, 68, 0.22);
 
 	/* ── Status: warning ─────────────────────────────────────────────────── */
-	--color-warning:        #f59e0b;
-	--color-warning-text:   #fbbf24;
-	--color-warning-bg:     rgba(245, 158, 11, 0.15);
-	--color-warning-border: rgba(245, 158, 11, 0.30);
+	--color-warning:        #d97706;
+	--color-warning-text:   #92400e;
+	--color-warning-bg:     rgba(217, 119, 6, 0.10);
+	--color-warning-border: rgba(217, 119, 6, 0.22);
 
 	/* ── Status: info ────────────────────────────────────────────────────── */
-	--color-info:           #06b6d4;
-	--color-info-text:      #67e8f9;
-	--color-info-bg:        rgba(6, 182, 212, 0.15);
-	--color-info-border:    rgba(6, 182, 212, 0.30);
+	--color-info:           #0891b2;
+	--color-info-text:      #0e7490;
+	--color-info-bg:        rgba(8, 145, 178, 0.10);
+	--color-info-border:    rgba(8, 145, 178, 0.22);
 
 	/* ── Status: reviewing (purple) ──────────────────────────────────────── */
-	--color-reviewing:        #8b5cf6;
-	--color-reviewing-text:   #a78bfa;
-	--color-reviewing-bg:     rgba(139, 92, 246, 0.20);
-	--color-reviewing-border: rgba(139, 92, 246, 0.30);
+	--color-reviewing:        #7c3aed;
+	--color-reviewing-text:   #6d28d9;
+	--color-reviewing-bg:     rgba(124, 58, 237, 0.10);
+	--color-reviewing-border: rgba(124, 58, 237, 0.22);
 
 	/* ── Status: rejected (rose) ─────────────────────────────────────────── */
-	--color-rejected:        #f43f5e;
-	--color-rejected-text:   #fb7185;
-	--color-rejected-bg:     rgba(244, 63, 94, 0.20);
-	--color-rejected-border: rgba(244, 63, 94, 0.30);
+	--color-rejected:        #e11d48;
+	--color-rejected-text:   #be123c;
+	--color-rejected-bg:     rgba(225, 29, 72, 0.10);
+	--color-rejected-border: rgba(225, 29, 72, 0.22);
 
 	/* ── Status: neutral (draft, inactive, low-priority) ────────────────── */
-	--color-neutral: #71717a;
+	--color-neutral: #64748b;   /* slate-500 */
 
 	/* ── Status: orange (expired, disputed, high-priority) ──────────────── */
-	--color-orange:      #f97316;
-	--color-orange-text: #fb923c;
+	--color-orange:        #ea580c;
+	--color-orange-text:   #9a3412;
+	--color-orange-bg:     rgba(234, 88, 12, 0.10);
+	--color-orange-border: rgba(234, 88, 12, 0.22);
 
 	/* ── Priority ────────────────────────────────────────────────────────── */
 	--color-priority-emergency: #dc2626;
 	--color-priority-urgent:    #ea580c;
 	--color-priority-high:      #ef4444;
-	--color-priority-medium:    #f59e0b;
-	--color-priority-low:       #10b981;
+	--color-priority-medium:    #d97706;
+	--color-priority-low:       #059669;
 	--color-priority-default:   #3b82f6;
 
 	/* ── Visit status ────────────────────────────────────────────────────── */
-	--color-visit-scheduled:  #71717a;
-	--color-visit-driving:    #3b82f6;
-	--color-visit-onsite:     #f59e0b;
-	--color-visit-inprogress: #06b6d4;
-	--color-visit-paused:     #f97316;
-	--color-visit-delayed:    #eab308;
-	--color-visit-completed:  #22c55e;
-	--color-visit-cancelled:  #ef4444;
+	--color-visit-scheduled:  #64748b;   /* slate-500 */
+	--color-visit-driving:    #2563eb;
+	--color-visit-onsite:     #d97706;
+	--color-visit-inprogress: #0891b2;
+	--color-visit-paused:     #ea580c;
+	--color-visit-delayed:    #ca8a04;
+	--color-visit-completed:  #16a34a;
+	--color-visit-cancelled:  #dc2626;
 
 	/* ── Visit card text variants ─────────────────────────────────────────── */
-	--color-visit-driving-text:   #60a5fa;
+	/* Light-mode values; dark override block below restores dark-optimized colors */
+	--color-visit-driving-text:   #1d4ed8;   /* blue-700 — readable on white */
 	--color-visit-completed-dark: #166534;
-	--color-visit-delayed-text:   #fb923c;
-	--color-visit-paused-text:    #facc15;
+	--color-visit-delayed-text:   #92400e;   /* amber-800 — readable on white */
+	--color-visit-paused-text:    #9a3412;   /* orange-800 — readable on white */
 
 	/* ── Schedule card surfaces ───────────────────────────────────────────── */
-	--color-card-bg:       #2a2d38;
-	--color-occurrence-bg: #2d2f45;
-	--color-popup-bg:      #18181b;
+	--color-card-bg:           #f4f7fd;
+	--color-occurrence-bg:     #f0eaff;
+	--color-popup-bg:          #ffffff;
+	--color-occurrence-border: rgba(109, 40, 217, 0.25);
 
 	/* ── Schedule text variants ───────────────────────────────────────────── */
-	--color-sched-text-primary:      #f4f4f5;
-	--color-sched-text-secondary:    #d4d4d8;
-	--color-sched-text-muted:        rgba(255, 255, 255, 0.38);
-	--color-sched-text-client:       rgba(255, 255, 255, 0.42);
-	--color-sched-text-time:         rgba(255, 255, 255, 0.58);
-	--color-sched-text-faint:        #52525b;
-	--color-sched-visit-title:       #e2e8f0;
-	--color-sched-occurrence-title:  #c4b5fd;
+	--color-sched-text-primary:      #0f172a;   /* slate-900 */
+	--color-sched-text-secondary:    #475569;   /* slate-600 */
+	--color-sched-text-muted:        rgba(0, 0, 0, 0.54);
+	--color-sched-text-client:       rgba(0, 0, 0, 0.60);
+	--color-sched-text-time:         rgba(0, 0, 0, 0.70);
+	--color-sched-text-faint:        #64748b;   /* slate-500 */
+	--color-sched-visit-title:       #0f172a;
+	--color-sched-occurrence-title:  #6d28d9;
 	--color-sched-occurrence-badge:  #7c3aed;
-	--color-sched-today-bg:          #1e3a5f;
-	--color-sched-status-badge-bg:   rgba(59, 130, 246, 0.15);
-	--color-sched-status-badge-text: #93c5fd;
-	--color-sched-open-ended-dash:   rgba(255, 255, 255, 0.38);
+	--color-sched-today-bg:          #dbeafe;
+	--color-sched-status-badge-bg:   rgba(59, 130, 246, 0.10);
+	--color-sched-status-badge-text: #1d4ed8;
+	--color-sched-open-ended-dash:   rgba(0, 0, 0, 0.22);
 
 	/* ── Calendar (schedule-x) ────────────────────────────────────────────── */
-	--color-cal-month-day: #d4d4d8;
+	--color-cal-month-day: #475569;   /* slate-600 */
 
 	/* ── Chart tokens ─────────────────────────────────────────────────────── */
-	--color-chart-primary:  #3b82f6;
-	--color-chart-success:  #10b981;
-	--color-chart-warning:  #f59e0b;
-	--color-chart-info:     #06b6d4;
-	--color-chart-error:    #ef4444;
-	--color-chart-fallback: #3f3f46;
-	--color-chart-axis:     #a1a1aa;
-	--color-chart-hole-bg:  #121212;
+	--color-chart-primary:  #2563eb;
+	--color-chart-success:  #059669;
+	--color-chart-warning:  #d97706;
+	--color-chart-info:     #0891b2;
+	--color-chart-error:    #dc2626;
+	--color-chart-fallback: #e3e8f0;   /* matches base */
+	--color-chart-axis:     #64748b;   /* slate-500 */
+	--color-chart-hole-bg:  #edf0f5;   /* matches canvas */
 
 	/* ── Tech palette — Paul Tol "light" (colorblind-safe, 9 colors) ─────── */
-	--color-tech-1: #77AADD;
-	--color-tech-2: #EE8866;
-	--color-tech-3: #EEDD88;
-	--color-tech-4: #FFAABB;
-	--color-tech-5: #99DDFF;
-	--color-tech-6: #44BB99;
-	--color-tech-7: #BBCC33;
-	--color-tech-8: #AAAA00;
-	--color-tech-9: #DDDDDD;
+	--color-tech-1:          #77AADD;
+	--color-tech-2:          #EE8866;
+	--color-tech-3:          #EEDD88;
+	--color-tech-4:          #FFAABB;
+	--color-tech-5:          #99DDFF;
+	--color-tech-6:          #44BB99;
+	--color-tech-7:          #BBCC33;
+	--color-tech-8:          #AAAA00;
+	--color-tech-9:          #DDDDDD;
+	--color-tech-unassigned: #64748b;   /* slate-500 */
 
 	/* ── Schedule board tech palette (12 colors) ──────────────────────────── */
 	--color-sched-tech-1:  #3b82f6;
@@ -163,53 +179,168 @@
 	--color-sched-tech-12: #eab308;
 
 	/* ── Mapbox geocoder theme ────────────────────────────────────────────── */
-	--color-mapbox-bg:       #17171a;
-	--color-mapbox-bg-hover: #3f3f46;
-	--color-mapbox-border:   #505058;
+	--color-mapbox-bg:       #ffffff;
+	--color-mapbox-bg-hover: #e2e8f2;   /* matches surface-raised */
+	--color-mapbox-border:   #bec9de;   /* matches border */
 
 	/* ── Gradient / special ───────────────────────────────────────────────── */
-	--color-gradient-tech-teal:   #2dd4bf;
-	--color-dispatcher-avatar-to: #8b5cf6;
+	--color-gradient-tech-teal:      #2dd4bf;
+	--color-gradient-tech-teal-text: #0f766e;   /* teal-700 — dark override restores teal-300 */
+	--color-dispatcher-avatar-to:    #8b5cf6;
 
-	/* ── Supplemental: colors used in components, no existing semantic home ── */
-	/* zinc-200: ScheduleBoard/ScheduleBoardDayColumn card body text — slightly    */
-	/* off-white vs text-primary (#fff) to reduce harshness on tinted surfaces.   */
-	--color-text-on-surface:   #e4e4e7;
-	/* green-400: TechVisitCard "clockedIn" and "completed" text — brighter than  */
-	/* success-text (#34d399 emerald-400) for legibility on dark gradient strips.  */
-	--color-success-bright-text: #4ade80;
-	/* gray-500: fallback for unassigned/unknown technician color slot.            */
-	--color-tech-unassigned:   #6b7280;
-	/* Sits between border-subtle (#27272a) and border (#3f3f46); used on cards   */
-	/* (ClientCard, DispatcherCard, InventoryItemView) for a subtle inset look.   */
-	--color-border-card:       #3a3a3f;
-	/* blue-800; dimmed primary button background when disabled.                  */
-	--color-primary-disabled:  #1e40af;
-	/* follows the warning/success/error group pattern for orange status chips.   */
-	--color-orange-bg:         rgba(249, 115, 22, 0.15);
-	--color-orange-border:     rgba(249, 115, 22, 0.30);
-
-	/* purple-600/700; distinct "recurring plan" action color for the New Recurring Plan
-	   button and the "I've Arrived" lifecycle confirmation button in jobs.ts.         */
+	/* ── Recurring Plan action ───────────────────────────────────────────── */
 	--color-plan:       #9333ea;
 	--color-plan-hover: #7e22ce;
+	--color-plan-text:  #7e22ce;
 
-	/* cyan-700/600; technician "I'm Driving" lifecycle action button.                 */
-	--color-action-drive:       #0e7490;
-	--color-action-drive-hover: #0891b2;
-
-	/* amber-600/700; technician "Pause" lifecycle action button.                      */
+	/* ── Lifecycle action buttons (technician) ───────────────────────────── */
+	--color-action-drive:       #1d4ed8;
+	--color-action-drive-hover: #2563eb;
 	--color-action-pause:       #d97706;
 	--color-action-pause-hover: #b45309;
 }
 
-/*
- * Dark-mode architecture note:
- * The app is currently dark-only. When light mode is added:
- *   1. Keep @theme as-is (light palette defaults — @theme is compile-time only, cannot be nested
- *      inside selectors in Tailwind v4).
- *   2. Add a plain CSS override block for dark mode:
- *        [data-theme="dark"] { --color-base: #18181b; --color-surface: #27272a; ... }
- *   3. Toggle `document.documentElement.dataset.theme` between "light"/"dark".
- *   No component files need to change — only this file.
- */
+/* ── Dark mode overrides ──────────────────────────────────────────────────
+ * Applied when data-theme="dark" on <html>. Overrides the light @theme
+ * defaults above. Toggle: document.documentElement.dataset.theme = "dark"
+ * No component files need to change — only this file.
+ * ─────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+	/* Surfaces */
+	--color-canvas:         #09090b;
+	--color-base:           #18181b;
+	--color-surface:        #27272a;
+	--color-surface-raised: #3f3f46;
+	--color-surface-inset:  #09090b;
+
+	/* Text */
+	--color-text-primary:    #ffffff;
+	--color-text-secondary:  #d4d4d8;
+	--color-text-tertiary:   #a1a1aa;
+	--color-text-muted:      #71717a;
+	--color-text-faint:      #52525b;
+	--color-text-inverse:    #18181b;
+	--color-text-link:       #3b82f6;
+	--color-text-on-surface: #e4e4e7;
+	--color-success-bright-text: #4ade80;
+
+	/* Primary tints (adjusted opacity for dark) */
+	--color-primary-bg:        rgba(59, 130, 246, 0.20);
+	--color-primary-bg-subtle: rgba(59, 130, 246, 0.10);
+	--color-primary-bg-dim:    rgba(59, 130, 246, 0.06);
+	--color-primary-border:    rgba(59, 130, 246, 0.30);
+	--color-primary-text:      #93c5fd;
+
+	/* Overlay */
+	--color-overlay: rgba(9, 9, 11, 0.75);
+
+	/* Borders */
+	--color-border-subtle: #3f3f46;   /* zinc-700 — faint divider, 1 step above surface */
+	--color-border:        #52525b;   /* zinc-600 — clearly visible at 1px, ~2:1 on surface */
+	--color-border-strong: #71717a;   /* zinc-500 — emphasized, ~3.3:1 on surface */
+	--color-border-card:   #48484f;   /* card edge — between subtle and default */
+	--color-border-input:  #717179;   /* input — zinc-500 tier, strong field boundary */
+
+	/* Status badge text */
+	--color-success-text:   #34d399;
+	--color-error-text:     #f87171;
+	--color-warning-text:   #fbbf24;
+	--color-info-text:      #67e8f9;
+	--color-reviewing-text: #a78bfa;
+	--color-rejected-text:  #fb7185;
+	--color-orange-text:    #fb923c;
+
+	/* Schedule card surfaces */
+	--color-card-bg:           #1e2130;
+	--color-occurrence-bg:     #21233d;
+	--color-popup-bg:          #18181b;
+	--color-occurrence-border: rgba(124, 58, 237, 0.33);
+	--color-sched-today-bg:    #1e3a5f;
+
+	/* Schedule text */
+	--color-sched-text-primary:      #f4f4f5;
+	--color-sched-text-secondary:    #d4d4d8;
+	--color-sched-text-muted:        rgba(255, 255, 255, 0.38);
+	--color-sched-text-client:       rgba(255, 255, 255, 0.42);
+	--color-sched-text-time:         rgba(255, 255, 255, 0.58);
+	--color-sched-text-faint:        #52525b;
+	--color-sched-visit-title:       #e2e8f0;
+	--color-sched-occurrence-title:  #c4b5fd;
+	--color-sched-status-badge-bg:   rgba(59, 130, 246, 0.15);
+	--color-sched-status-badge-text: #93c5fd;
+	--color-sched-open-ended-dash:   rgba(255, 255, 255, 0.38);
+
+	/* Calendar */
+	--color-cal-month-day: #d4d4d8;
+
+	/* Charts */
+	--color-chart-fallback: #3f3f46;
+	--color-chart-axis:     #a1a1aa;
+	--color-chart-hole-bg:  #121212;
+
+	/* Mapbox */
+	--color-mapbox-bg:       #17171a;
+	--color-mapbox-bg-hover: #3f3f46;
+	--color-mapbox-border:   #505058;
+
+	/* Confirm (green action buttons) */
+	--color-confirm:       #22c55e;   /* green-500 — brighter on dark surfaces */
+	--color-confirm-hover: #16a34a;   /* green-600 */
+
+	/* Plan text */
+	--color-plan-text: #c084fc;
+
+	/* Visit card text — restore dark-optimized values (light @theme overrides these) */
+	--color-visit-driving-text: #60a5fa;   /* blue-400 — readable on dark cards */
+	--color-visit-delayed-text: #fb923c;   /* orange-400 */
+	--color-visit-paused-text:  #facc15;   /* yellow-400 */
+
+	/* Gradient teal text — restore dark-optimized value */
+	--color-gradient-tech-teal-text: #5eead4;   /* teal-300 — readable on dark */
+
+	/* Animation intermediates (not Tailwind tokens — kept in sync with index.css :root) */
+	--anim-surface-flash: rgba(63, 63, 70, 0.4);
+}
+
+/* ── Warm neutral palette (stone/sand) ───────────────────────────────────
+ * Overrides light-mode surface/border tokens only. Text, primary, and
+ * status colors inherit from the default @theme block unchanged.
+ * Applied via data-palette="warm" on <html> when effective theme is light.
+ * ─────────────────────────────────────────────────────────────────────── */
+[data-palette="warm"] {
+	--color-canvas:         #f4f0eb;
+	--color-base:           #e6dfd5;
+	--color-surface:        #faf8f5;
+	--color-surface-raised: #ede7de;
+	--color-surface-inset:  #ddd5c9;
+	--color-border-subtle:  #cec5b8;
+	--color-border:         #b0a294;
+	--color-border-strong:  #8f7e6d;
+	--color-border-card:    #c4b8a8;
+	--color-border-input:   #8a7a6a;
+	--color-mapbox-bg:      #faf8f5;
+	--color-mapbox-bg-hover:#ede7de;
+	--color-chart-fallback: #e6dfd5;
+	--color-chart-hole-bg:  #f4f0eb;
+}
+
+/* ── True neutral gray palette ───────────────────────────────────────────
+ * Same structure as warm — pure achromatic grays, no color cast.
+ * Applied via data-palette="neutral" on <html> when effective theme is light.
+ * ─────────────────────────────────────────────────────────────────────── */
+[data-palette="neutral"] {
+	--color-canvas:         #f0f0f0;
+	--color-base:           #e0e0e0;
+	--color-surface:        #ffffff;
+	--color-surface-raised: #e8e8e8;
+	--color-surface-inset:  #d0d0d0;
+	--color-border-subtle:  #c0c0c0;
+	--color-border:         #999999;
+	--color-border-strong:  #707070;
+	--color-border-card:    #b8b8b8;
+	--color-border-input:   #888888;
+	--color-mapbox-bg:      #ffffff;
+	--color-mapbox-bg-hover:#e8e8e8;
+	--color-chart-fallback: #e0e0e0;
+	--color-chart-hole-bg:  #f0f0f0;
+}

@@ -194,7 +194,7 @@ const CreateTechnician = ({
 						placeholder="Brief description or notes..."
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-white text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 				</div>

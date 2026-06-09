@@ -123,14 +123,14 @@ function InventoryAutofillInput({
 				onFocus={() => setIsOpen(true)}
 				disabled={isLoading}
 				autoComplete="off"
-				className="border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm lg:text-base pr-8 min-w-0"
+				className="border border-border px-2.5 h-[34px] w-full rounded bg-surface-inset border-input text-primary placeholder:text-faint text-sm lg:text-base pr-8 min-w-0 focus:outline-none focus:ring-1 focus:ring-primary-border"
 			/>
 			{showUndo && (
 				<button
 					type="button"
 					title="Undo"
 					onClick={() => onUndo!(item.id, "name")}
-					className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+					className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 				>
 					<RotateCcw size={14} />
 				</button>
@@ -148,7 +148,7 @@ function InventoryAutofillInput({
 								}}
 								className="w-full px-3 py-2 text-left hover:bg-surface transition-colors"
 							>
-								<div className="text-sm text-white truncate">{invItem.name}</div>
+								<div className="text-sm text-text-primary truncate">{invItem.name}</div>
 								<div className="text-[10px] text-text-muted">
 									{invItem.sku && `${invItem.sku} · `}
 									Qty: {invItem.quantity}
@@ -319,7 +319,7 @@ const LineItemCard = memo(
 										)
 									}
 									disabled={isLoading}
-									className="border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm pr-8 min-w-0"
+									className="border border-border px-2.5 h-[34px] w-full rounded bg-surface-inset border-input text-primary placeholder:text-faint text-sm pr-8 min-w-0 focus:outline-none focus:ring-1 focus:ring-primary-border"
 								/>
 								{showUndo("name") && (
 									<button
@@ -331,7 +331,7 @@ const LineItemCard = memo(
 												"name"
 											)
 										}
-										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 									>
 										<RotateCcw size={14} />
 									</button>
@@ -354,7 +354,7 @@ const LineItemCard = memo(
 								)
 							}
 							disabled={isLoading}
-							className="border border-border px-2.5 h-[34px] w-full rounded bg-base text-white text-sm pr-8 min-w-0"
+							className="border border-border px-2.5 h-[34px] w-full rounded bg-surface-inset border-input text-primary placeholder:text-faint text-sm pr-8 min-w-0 focus:outline-none focus:ring-1 focus:ring-primary-border"
 						/>
 						{showUndo("description") ? (
 							<button
@@ -366,7 +366,7 @@ const LineItemCard = memo(
 										"description"
 									)
 								}
-								className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<RotateCcw size={14} />
 							</button>
@@ -413,7 +413,7 @@ const LineItemCard = memo(
 									type="button"
 									title="Undo"
 									onClick={() => onUndo!(item.id, "item_type")}
-									className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors z-10"
+									className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors z-10"
 								>
 									<RotateCcw size={14} />
 								</button>
@@ -468,7 +468,7 @@ const LineItemCard = memo(
 										)
 									}
 									disabled={isLoading}
-									className="border border-border px-2 h-[34px] w-full rounded bg-base text-white text-sm text-center pr-8 min-w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+									className="border border-border px-2 h-[34px] w-full rounded bg-surface-inset border-input text-primary text-sm text-center pr-8 min-w-0 focus:outline-none focus:ring-1 focus:ring-primary-border [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 								/>
 								{showUndo("quantity") && (
 									<button
@@ -480,7 +480,7 @@ const LineItemCard = memo(
 												"quantity"
 											)
 										}
-										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 									>
 										<RotateCcw
 											size={14}
@@ -521,7 +521,7 @@ const LineItemCard = memo(
 										)
 									}
 									disabled={isLoading}
-									className="border border-border pl-6 pr-2 h-[34px] w-full rounded bg-base text-white text-sm min-w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+									className="border border-border pl-6 pr-2 h-[34px] w-full rounded bg-surface-inset border-input text-primary text-sm min-w-0 focus:outline-none focus:ring-1 focus:ring-primary-border [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 								/>
 								{showUndo("unit_price") && (
 									<button
@@ -533,7 +533,7 @@ const LineItemCard = memo(
 												"unit_price"
 											)
 										}
-										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white transition-colors"
+										className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
 									>
 										<RotateCcw
 											size={12}
@@ -554,7 +554,7 @@ const LineItemCard = memo(
 								Total
 							</label>
 							<div className="h-[34px] flex items-center justify-end px-2.5 rounded border-2 border-primary/40 bg-base">
-								<span className="text-sm font-bold text-white tabular-nums">
+								<span className="text-sm font-bold text-text-primary tabular-nums">
 									${item.total.toFixed(2)}
 								</span>
 							</div>
@@ -576,7 +576,7 @@ const LineItemCard = memo(
 								disabled={isLoading}
 								className={`w-full flex items-center gap-2 px-2.5 h-[34px] rounded border text-sm text-left transition-colors min-w-0 ${
 									sourceLabel
-										? "border-primary/50 bg-primary/5 text-white"
+										? "border-primary/50 bg-primary/5 text-text-primary"
 										: "border-border bg-base text-text-muted hover:border-border-strong"
 								}`}
 							>
@@ -636,7 +636,7 @@ const LineItemCard = memo(
 										role="button"
 										aria-label="Undo attribution"
 										onClick={(e) => { e.stopPropagation(); onUndoSource!(item.id); }}
-										className="flex-shrink-0 text-text-muted hover:text-white transition-colors cursor-pointer"
+										className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
 									>
 										<RotateCcw size={12} />
 									</span>
@@ -696,7 +696,7 @@ const LineItemCard = memo(
 															}
 															className="text-text-tertiary flex-shrink-0"
 														/>
-														<span className="text-xs text-white truncate">
+														<span className="text-xs text-text-primary truncate">
 															{
 																job.job_number
 															}{" "}
@@ -720,7 +720,7 @@ const LineItemCard = memo(
 																	job.id
 																)
 															}
-															className="px-2.5 py-1.5 text-text-tertiary hover:text-white border-l border-border-subtle flex-shrink-0 transition-colors"
+															className="px-2.5 py-1.5 text-text-tertiary hover:text-text-primary border-l border-border-subtle flex-shrink-0 transition-colors"
 														>
 															{isExpanded ? (
 																<ChevronDown

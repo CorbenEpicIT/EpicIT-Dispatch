@@ -180,7 +180,7 @@ const ContactForm = memo(function ContactForm({
 										}
 										className="w-full px-3 py-2.5 text-left hover:bg-surface border-b border-border-subtle last:border-b-0 transition-colors"
 									>
-										<div className="text-sm text-white font-medium">
+										<div className="text-sm text-text-primary font-medium">
 											{
 												contact.name
 											}
@@ -219,7 +219,7 @@ const ContactForm = memo(function ContactForm({
 						onChange={onChange}
 						className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary focus:outline-none ${
 							fieldErrors.name
-								? "border-red-500 focus:border-red-500"
+								? "border-error focus:border-error"
 								: "border-border focus:border-primary"
 						}`}
 					/>
@@ -249,7 +249,7 @@ const ContactForm = memo(function ContactForm({
 								}
 								className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary disabled:opacity-50 focus:outline-none ${
 									fieldErrors.email
-										? "border-red-500 focus:border-red-500"
+										? "border-error focus:border-error"
 										: "border-border focus:border-primary"
 								}`}
 							/>
@@ -272,7 +272,7 @@ const ContactForm = memo(function ContactForm({
 								}
 								className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary disabled:opacity-50 focus:outline-none ${
 									fieldErrors.phone
-										? "border-red-500 focus:border-red-500"
+										? "border-error focus:border-error"
 										: "border-border focus:border-primary"
 								}`}
 							/>
@@ -293,7 +293,7 @@ const ContactForm = memo(function ContactForm({
 							onChange={onChange}
 							className={`w-full px-3 py-2 bg-base border rounded text-sm text-text-primary focus:outline-none ${
 								fieldErrors.relationship
-									? "border-red-500 focus:border-red-500"
+									? "border-error focus:border-error"
 									: "border-border focus:border-primary"
 							}`}
 						/>
@@ -309,7 +309,7 @@ const ContactForm = memo(function ContactForm({
 							<label
 								className={`flex items-center gap-2 px-3 py-2 bg-base border rounded text-xs ${
 									fieldErrors.primary
-										? "border-red-500"
+										? "border-error"
 										: shouldDisablePrimary
 											? "border-border-subtle opacity-50"
 											: "border-border cursor-pointer hover:border-border-strong"
@@ -327,7 +327,7 @@ const ContactForm = memo(function ContactForm({
 									disabled={
 										shouldDisablePrimary
 									}
-									className="w-3.5 h-3.5 rounded bg-surface border-border-strong text-yellow-500 flex-shrink-0"
+									className="w-3.5 h-3.5 rounded bg-surface-inset border-border-strong accent-primary flex-shrink-0"
 								/>
 								<span
 									className={
@@ -349,7 +349,7 @@ const ContactForm = memo(function ContactForm({
 							<label
 								className={`flex items-center gap-2 px-3 py-2 bg-base border rounded text-xs ${
 									fieldErrors.billing
-										? "border-red-500"
+										? "border-error"
 										: shouldDisableBilling
 											? "border-border-subtle opacity-50"
 											: "border-border cursor-pointer hover:border-border-strong"
@@ -367,7 +367,7 @@ const ContactForm = memo(function ContactForm({
 									disabled={
 										shouldDisableBilling
 									}
-									className="w-3.5 h-3.5 rounded bg-surface border-border-strong text-emerald-500 flex-shrink-0"
+									className="w-3.5 h-3.5 rounded bg-surface-inset border-border-strong accent-primary flex-shrink-0"
 								/>
 								<span
 									className={
@@ -391,7 +391,7 @@ const ContactForm = memo(function ContactForm({
 						<button
 							type="button"
 							onClick={onCancel}
-							className="flex-1 py-2 bg-surface-raised hover:bg-zinc-600 text-white rounded text-sm font-medium transition-colors"
+							className="flex-1 py-2 bg-surface-raised hover:bg-surface-raised text-primary rounded text-sm font-medium transition-colors"
 						>
 							Cancel
 						</button>
@@ -402,7 +402,7 @@ const ContactForm = memo(function ContactForm({
 								(formMode === "link" &&
 									!selectedContact)
 							}
-							className="flex-1 py-2 bg-primary-hover hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
+							className="flex-1 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded text-sm font-medium transition-colors"
 						>
 							{isPending ? "Saving..." : submitLabel}
 						</button>
@@ -731,7 +731,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 							disabled={!EDIT_CONTACTS}
 							title={!EDIT_CONTACTS ? "You don't have permission to perform this action" : ""}
 							onClick={openLinkForm}
-							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-surface-raised hover:enabled:bg-zinc-600 rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-surface-raised hover:enabled:bg-surface-raised rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							<LinkIcon size={12} />
 							<span className="hidden sm:inline">
@@ -742,7 +742,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 							disabled={!EDIT_CONTACTS}
 							title={!EDIT_CONTACTS ? "You don't have permission to perform this action" : ""}
 							onClick={openCreateForm}
-							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-primary-hover hover:bg-blue-700 rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+							className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-primary-hover hover:bg-primary-active text-on-primary rounded text-xs font-medium transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							<Plus size={12} />
 							<span className="hidden sm:inline">
@@ -756,16 +756,16 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 			<div className="space-y-2 min-w-0">
 				{/* Add Form - Appears at top when adding new contact */}
 				{formMode && !editingContactId && (
-					<div className="p-4 bg-surface/50 rounded-lg border border-border relative min-w-0">
+					<div className="p-4 bg-surface rounded-lg border border-border relative min-w-0">
 						<div className="flex justify-between items-center mb-3">
-							<h3 className="text-sm font-semibold text-white">
+							<h3 className="text-sm font-semibold text-text-primary">
 								{formMode === "link"
 									? "Link Contact"
 									: "New Contact"}
 							</h3>
 							<button
 								onClick={resetForm}
-								className="text-text-tertiary hover:text-white"
+								className="text-text-tertiary hover:text-text-primary"
 							>
 								<X size={16} />
 							</button>
@@ -817,10 +817,10 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 								return (
 									<div
 										key={contact.id}
-										className="p-4 bg-surface/50 rounded-lg border border-border relative min-w-0 xl:w-full"
+										className="p-4 bg-surface rounded-lg border border-border relative min-w-0 xl:w-full"
 									>
 										<div className="flex justify-between items-center mb-3">
-											<h3 className="text-sm font-semibold text-white">
+											<h3 className="text-sm font-semibold text-text-primary">
 												Edit
 												Contact
 											</h3>
@@ -828,7 +828,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 												onClick={
 													resetForm
 												}
-												className="text-text-tertiary hover:text-white"
+												className="text-text-tertiary hover:text-text-primary"
 											>
 												<X
 													size={
@@ -914,22 +914,22 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 							return (
 								<div
 									key={contact.id}
-									className="flex items-start gap-3 px-4 py-4 bg-surface/30 hover:bg-surface/50 rounded-lg border border-border-subtle/50 hover:border-border transition-all group min-w-0 xl:w-full"
+									className="flex items-start gap-3 px-4 py-4 bg-surface hover:bg-surface-raised rounded-lg border border-border-subtle hover:border-border transition-all group min-w-0 xl:w-full"
 								>
 									<div className="flex-1 min-w-0">
 										<div className="flex items-center gap-2 flex-wrap mb-2">
-											<span className="text-base font-medium text-white truncate">
+											<span className="text-base font-medium text-text-primary truncate">
 												{
 													contact.name
 												}
 											</span>
 											{contactLink.is_primary && (
-												<span className="text-xs bg-yellow-500/20 text-warning-text border border-yellow-500/30 px-2 py-0.5 rounded flex-shrink-0">
+												<span className="text-xs bg-warning-bg text-warning-text border border-warning-border px-2 py-0.5 rounded flex-shrink-0">
 													Primary
 												</span>
 											)}
 											{contactLink.is_billing && (
-												<span className="text-xs bg-emerald-500/20 text-success-text border border-emerald-500/30 px-2 py-0.5 rounded flex-shrink-0">
+												<span className="text-xs bg-success-bg text-success-text border border-success-border px-2 py-0.5 rounded flex-shrink-0">
 													Billing
 												</span>
 											)}
@@ -1021,7 +1021,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 												className={
 													confirmingDeleteId ===
 													contact.id
-														? "fill-red-400"
+														? "fill-error"
 														: ""
 												}
 											/>

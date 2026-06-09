@@ -87,7 +87,7 @@ const Dropdown = ({
 		"-translate-y-1/2",
 		"right-2",
 		"pointer-events-none",
-		"text-white",
+		"text-text-secondary",
 		"transition-opacity",
 		disabled && "opacity-40",
 	]

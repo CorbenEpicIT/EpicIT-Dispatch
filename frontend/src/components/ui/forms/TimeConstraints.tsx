@@ -129,7 +129,7 @@ const TimeConstraints = ({
 
 	return (
 		<div className="p-2.5 lg:p-3 bg-surface rounded-lg border border-border">
-			<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-white uppercase tracking-wider">
+			<h3 className="text-xs lg:text-sm font-semibold mb-2 lg:mb-3 text-text-primary uppercase tracking-wider">
 				Time Constraints
 			</h3>
 

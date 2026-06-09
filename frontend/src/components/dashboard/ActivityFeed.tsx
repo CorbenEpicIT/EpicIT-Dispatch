@@ -23,16 +23,16 @@ const FEED_FILTERS = [
 		key: "technicians",
 		icon: User,
 		label: "Technicians",
-		color: "text-violet-400",
-		bg: "bg-violet-500/10",
+		color: "text-reviewing-text",
+		bg: "bg-reviewing-bg",
 		eventTypes: new Set(["technician.updated"]),
 	},
 	{
 		key: "requests",
 		icon: Phone,
 		label: "Requests",
-		color: "text-orange-400",
-		bg: "bg-orange-500/10",
+		color: "text-orange-text",
+		bg: "bg-orange-bg",
 		eventTypes: new Set(["request.created", "request.updated"]),
 	},
 	{
@@ -60,8 +60,8 @@ const FEED_FILTERS = [
 		key: "recurring",
 		icon: Repeat,
 		label: "Recurring",
-		color: "text-indigo-400",
-		bg: "bg-indigo-500/10",
+		color: "text-plan-text",
+		bg: "bg-plan/10",
 		eventTypes: new Set(["recurring_plan.created", "recurring_occurrence.generated"]),
 	},
 	{
@@ -134,7 +134,7 @@ export default function ActivityFeed() {
 			<div
 				aria-hidden="true"
 				className={`w-1.5 h-1.5 rounded-full ${
-					socketConnected ? "bg-emerald-500" : "bg-amber-500"
+					socketConnected ? "bg-success" : "bg-warning"
 				}`}
 			/>
 			<span className={`text-xs font-medium ${socketConnected ? "text-success-text" : "text-warning-text"}`}>
@@ -172,13 +172,13 @@ export default function ActivityFeed() {
 				<div className="space-y-1">
 					{Array.from({ length: 6 }).map((_, i) => (
 						<div key={i} className="flex items-start gap-3 p-3">
-							<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-surface/70 animate-pulse" />
+							<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-surface-raised animate-pulse" />
 							<div className="flex-1 space-y-2 pt-0.5">
 								<div
-									className="h-3.5 bg-surface/70 rounded animate-pulse"
+									className="h-3.5 bg-surface-raised rounded animate-pulse"
 									style={{ width: `${55 + (i % 4) * 10}%` }}
 								/>
-								<div className="h-2.5 bg-surface/50 rounded animate-pulse w-14" />
+								<div className="h-2.5 bg-surface-raised rounded animate-pulse w-14" />
 							</div>
 						</div>
 					))}
@@ -223,7 +223,7 @@ export default function ActivityFeed() {
 									<div
 										key={log.id}
 										onClick={route ? () => navigate(route) : undefined}
-										className={`flex items-center gap-3 p-3 rounded-lg hover:bg-surface/40 transition-colors group${route ? " cursor-pointer" : ""}`}
+										className={`flex items-center gap-3 p-3 rounded-lg hover:bg-surface-raised transition-colors group${route ? " cursor-pointer" : ""}`}
 										style={
 											isFlashing
 												? { animation: "feedFlash 600ms ease-out forwards" }
@@ -237,7 +237,7 @@ export default function ActivityFeed() {
 										</div>
 										<div className="flex-1 min-w-0">
 											<div className="flex items-start justify-between gap-2">
-												<p className="text-sm text-text-primary group-hover:text-white transition-colors leading-snug truncate">
+												<p className="text-sm text-text-primary transition-colors leading-snug truncate">
 													{entry!.message}
 												</p>
 												<span className="text-xs text-text-faint flex-shrink-0 pt-px">
@@ -257,7 +257,7 @@ export default function ActivityFeed() {
 										{route && (
 											<ChevronRight
 												size={13}
-												className="flex-shrink-0 text-zinc-700 group-hover:text-text-tertiary transition-colors"
+												className="flex-shrink-0 text-secondary group-hover:text-text-tertiary transition-colors"
 											/>
 										)}
 									</div>
@@ -270,7 +270,7 @@ export default function ActivityFeed() {
 						<button
 							onClick={loadMore}
 							disabled={isFetchingMore}
-							className="mt-2 w-full bg-surface hover:bg-surface-raised disabled:opacity-50 disabled:cursor-not-allowed text-sm text-text-tertiary rounded-lg py-2 flex items-center justify-center gap-2 transition-colors"
+							className="mt-2 w-full bg-surface-raised hover:bg-surface-inset disabled:opacity-50 disabled:cursor-not-allowed text-sm text-text-tertiary rounded-lg py-2 flex items-center justify-center gap-2 transition-colors"
 						>
 							{isFetchingMore ? (
 								<>

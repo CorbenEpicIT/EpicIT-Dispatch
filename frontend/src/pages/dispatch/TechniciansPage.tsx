@@ -119,9 +119,9 @@ export default function TechniciansPage() {
 					<div className="flex flex-wrap gap-3 text-xs">
 						<span className="text-success-text">● Available: {statusCounts.Available || 0}</span>
 						<span className="text-reviewing-text">● Working: {statusCounts.Working || 0}</span>
-						<span className="text-sky-400">● En Route: {statusCounts.EnRoute || 0}</span>
+						<span className="text-info-text">● En Route: {statusCounts.EnRoute || 0}</span>
 						<span className="text-warning-text">● On Site: {statusCounts.OnSite || 0}</span>
-						<span className="text-orange-400">● Paused: {statusCounts.Paused || 0}</span>
+						<span className="text-orange-text">● Paused: {statusCounts.Paused || 0}</span>
 						<span className="text-text-tertiary">● Offline: {statusCounts.Offline || 0}</span>
 					</div>
 				}
@@ -267,8 +267,8 @@ export default function TechniciansPage() {
 										className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
 											perPage ===
 											n
-												? "bg-zinc-600 text-white"
-												: "text-text-tertiary hover:text-white"
+												? "bg-border text-text-primary"
+												: "text-text-tertiary hover:text-text-primary"
 										}`}
 									>
 										{n}
@@ -280,8 +280,8 @@ export default function TechniciansPage() {
 									}
 									className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
 										perPage === 0
-											? "bg-zinc-600 text-white"
-											: "text-text-tertiary hover:text-white"
+											? "bg-border text-text-primary"
+											: "text-text-tertiary hover:text-text-primary"
 									}`}
 								>
 									All
@@ -303,7 +303,7 @@ export default function TechniciansPage() {
 										)
 									}
 									disabled={currentPage === 1}
-									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 								>
 									<ChevronLeft size={16} />
 								</button>
@@ -367,8 +367,8 @@ export default function TechniciansPage() {
 												className={`min-w-[36px] px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
 													currentPage ===
 													p
-														? "bg-primary-hover border-blue-600 text-white"
-														: "bg-surface border-border text-text-tertiary hover:text-white"
+														? "bg-primary border-primary text-black font-semibold"
+														: "bg-surface border-border text-text-tertiary hover:text-text-primary"
 												}`}
 											>
 												{p}
@@ -390,7 +390,7 @@ export default function TechniciansPage() {
 										currentPage ===
 										totalPages
 									}
-									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 								>
 									<ChevronRight size={16} />
 								</button>

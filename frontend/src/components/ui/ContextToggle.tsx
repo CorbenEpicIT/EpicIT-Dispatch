@@ -15,7 +15,7 @@ export default function ContextToggle({ value, onChange }: ContextToggleProps) {
 				aria-pressed={value === "jobs"}
 				className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold cursor-pointer transition-colors ${
 					value === "jobs"
-						? "bg-primary-hover text-white"
+						? "bg-primary-hover text-on-primary"
 						: "bg-base text-text-tertiary hover:text-text-primary hover:bg-surface"
 				}`}
 			>
@@ -27,7 +27,7 @@ export default function ContextToggle({ value, onChange }: ContextToggleProps) {
 				aria-pressed={value === "templates"}
 				className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold cursor-pointer transition-colors ${
 					value === "templates"
-						? "bg-purple-600 text-white"
+						? "bg-reviewing text-on-primary"
 						: "bg-base text-text-tertiary hover:text-text-primary hover:bg-surface"
 				}`}
 			>

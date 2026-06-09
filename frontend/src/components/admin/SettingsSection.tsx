@@ -50,7 +50,7 @@ function SettingRow({ title, description, action, children }: SettingRowProps) {
 // ── Organization settings ─────────────────────────────────────────────────────
 
 const inputBase =
-	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder-zinc-500 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
+	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
 
 function OrgSettingsSection() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -436,7 +436,7 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 				className={`relative h-4 w-7 rounded-full border transition-colors ${
 					checked
 						? "border-primary bg-primary"
-						: "border-border bg-surface"
+						: "border-border bg-surface-inset"
 				}`}
 			>
 				<span

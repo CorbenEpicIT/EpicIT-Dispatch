@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
@@ -96,8 +96,8 @@ function DropdownFilter({
 				aria-haspopup="listbox"
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive && !hideAll
-						? "bg-blue-950 border-primary text-primary-text"
-						: "bg-surface border-border text-text-tertiary hover:text-white"
+						? "bg-primary-bg border-primary text-primary-text"
+						: "bg-surface border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
 				<span>
@@ -134,7 +134,7 @@ function DropdownFilter({
 									onClick={() => handleSelect(null)}
 									className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 										!isActive
-											? "bg-blue-950/60 text-primary-text"
+											? "bg-primary-bg text-primary-text"
 											: "text-text-secondary hover:bg-surface/70"
 									}`}
 								>
@@ -152,7 +152,7 @@ function DropdownFilter({
 								onClick={() => handleSelect(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
 									value === option.value
-										? "bg-blue-950/60 text-primary-text"
+										? "bg-primary-bg text-primary-text"
 										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
