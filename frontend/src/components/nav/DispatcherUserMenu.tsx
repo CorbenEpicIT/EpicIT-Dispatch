@@ -2,15 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { queryClient } from "../../main";
-import { LogOut, UserRoundCog, UserRound } from "lucide-react";
+import { LogOut, UserRoundCog, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check } from "lucide-react";
 import { useOrgSettings } from "../../hooks/useOrg";
+import { useThemeStore } from "../../stores/themeStore";
+import { useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 
 export default function DispatcherUserMenu() {
 	const { user, logout } = useAuthStore();
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [themeOpen, setThemeOpen] = useState(false);
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const navigate = useNavigate();
 	const { data: org } = useOrgSettings(); // possibly add org logo to the menu in the future
+	const { theme, setTheme } = useThemeStore();
+	const updateDispatcherMutation = useUpdateDispatcherMutation();
+
+	const handleThemeChange = (value: "system" | "light" | "dark") => {
+		setTheme(value);
+		if (user?.userId) {
+			updateDispatcherMutation.mutate({ id: user.userId, data: { theme: value } });
+		}
+	};
 
 	const handleLogout = () => {
 		logout();
@@ -76,6 +88,33 @@ export default function DispatcherUserMenu() {
                             <UserRoundCog size={16} />
                             User Settings
                         </button>
+                        <button
+                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface-raised transition-colors"
+                            onClick={() => setThemeOpen((o) => !o)}
+                        >
+                            <Palette size={16} />
+                            Theme
+                            <ChevronDown size={13} className={`ml-auto transition-transform duration-200 ${themeOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {themeOpen && (
+                            <div className="flex flex-col pb-0.5">
+                                {([["system", Monitor, "System"], ["light", Sun, "Light"], ["dark", Moon, "Dark"]] as const).map(([value, Icon, label]) => (
+                                    <button
+                                        key={value}
+                                        onClick={() => handleThemeChange(value)}
+                                        className={`w-full flex items-center gap-2 pl-8 pr-3 py-1.5 text-sm rounded-md transition-colors ${
+                                            theme === value
+                                                ? "text-primary"
+                                                : "text-text-muted hover:text-text-primary hover:bg-surface-raised"
+                                        }`}
+                                    >
+                                        <Icon size={14} />
+                                        {label}
+                                        {theme === value && <Check size={12} className="ml-auto" />}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
 					<div className="my-.25 border-t border-subtle" />

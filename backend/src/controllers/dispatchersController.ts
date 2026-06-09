@@ -154,6 +154,7 @@ export const updateDispatcher = async (
             "description",
             "role",
             "last_login",
+            "theme",
         ] as const);
 
         const updated = await sdb.$transaction(async (tx) => {
@@ -161,7 +162,7 @@ export const updateDispatcher = async (
                 where: { id },
                 data: parsed,
                 include: {
-                    // not sure what needs to be included yet
+                    // Nothing needed to be included for now
                 },
             });
 

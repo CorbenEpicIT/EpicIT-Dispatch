@@ -2,15 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { queryClient } from "../../main";
-import { LogOut, UserRoundCog } from "lucide-react";
+import { LogOut, UserRoundCog, Sun, Moon, Monitor, Palette, ChevronDown, Check } from "lucide-react";
 import { useOrgSettings } from "../../hooks/useOrg";
+import { useThemeStore } from "../../stores/themeStore";
+import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
 
 export default function TechnicianUserMenu() {
     const { user, logout } = useAuthStore();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [themeOpen, setThemeOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
     const { data: org } = useOrgSettings();
+    const { theme, setTheme } = useThemeStore();
+    const updateTechnicianMutation = useUpdateTechnicianMutation();
+
+    const handleThemeChange = (value: "system" | "light" | "dark") => {
+        setTheme(value);
+        if (user?.userId) {
+            updateTechnicianMutation.mutate({ id: user.userId, data: { theme: value } });
+        }
+    };
 
     const [confirmingLogout, setConfirmingLogout] = useState(false);
 	const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,6 +88,33 @@ export default function TechnicianUserMenu() {
                             <UserRoundCog size={16} />
                             User Settings
                         </button>
+                        <button
+                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface-raised transition-colors"
+                            onClick={() => setThemeOpen((o) => !o)}
+                        >
+                            <Palette size={16} />
+                            Theme
+                            <ChevronDown size={13} className={`ml-auto transition-transform duration-200 ${themeOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {themeOpen && (
+                            <div className="flex flex-col pb-0.5">
+                                {([["system", Monitor, "System"], ["light", Sun, "Light"], ["dark", Moon, "Dark"]] as const).map(([value, Icon, label]) => (
+                                    <button
+                                        key={value}
+                                        onClick={() => handleThemeChange(value)}
+                                        className={`w-full flex items-center gap-2 pl-8 pr-3 py-1.5 text-sm rounded-md transition-colors ${
+                                            theme === value
+                                                ? "text-primary"
+                                                : "text-text-muted hover:text-text-primary hover:bg-surface-raised"
+                                        }`}
+                                    >
+                                        <Icon size={14} />
+                                        {label}
+                                        {theme === value && <Check size={12} className="ml-auto" />}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
 					<div className="my-.25 border-t border-subtle" />

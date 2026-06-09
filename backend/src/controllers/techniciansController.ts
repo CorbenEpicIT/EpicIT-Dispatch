@@ -203,6 +203,7 @@ export const updateTechnician = async (
 			"coords",
 			"hire_date",
 			"last_login",
+			"theme",
 		] as const);
 
 		const updated = await sdb.$transaction(async (tx) => {
