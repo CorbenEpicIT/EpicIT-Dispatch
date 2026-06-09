@@ -152,7 +152,7 @@ const EditRole = ({ isModalOpen, setIsModalOpen, role, updateRole }: EditRolePro
 
 				{/* Disclaimer */}
 				<p className="text-xs text-text-muted border border-border-subtle bg-surface rounded px-3 py-2">
-					Permission changes can take up to 15 minutes to apply for users currently logged in.
+					Permission changes can take up to 15 minutes to apply to users.
 				</p>
 
 				{/* Permissions — transfer list */}

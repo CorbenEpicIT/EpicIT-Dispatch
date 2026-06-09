@@ -1245,6 +1245,7 @@ model dispatcher {
   email_verification_token  String?   @unique
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
+  dashboard_layout Json?
 
   organization_role_id String?
   organization_role    organization_role? @relation("DispatcherRole", fields: [organization_role_id], references: [id])

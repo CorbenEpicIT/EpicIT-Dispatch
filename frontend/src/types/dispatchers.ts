@@ -1,4 +1,5 @@
 import z from "zod";
+import type { Layout } from "react-grid-layout";
 
 // ============================================================================
 // INTERFACES
@@ -19,6 +20,7 @@ export interface Dispatcher {
   role_id: string | null;
   organization_role: { id: string; name: string } | null;
   permissions: string[];
+  dashboard_layout: Layout | null;
 }
 
 export interface CreateDispatcherInput {
@@ -41,6 +43,7 @@ export interface UpdateDispatcherInput {
   title?: string;
   description?: string;
   role?: string;
+  dashboard_layout?: Layout | null;
 }
  
 export interface ChangeDispatcherPasswordInput {
@@ -74,6 +77,7 @@ export const UpdateDispatcherSchema = z
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
 		last_login: z.coerce.date().optional(),
+		dashboard_layout: z.array(z.any()).nullable().optional(),
 	})
 	.refine(
 		(data) =>
@@ -84,6 +88,7 @@ export const UpdateDispatcherSchema = z
 			data.password !== undefined ||
 			data.title !== undefined ||
 			data.description !== undefined ||
-			data.last_login !== undefined,
+			data.last_login !== undefined ||
+			data.dashboard_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);

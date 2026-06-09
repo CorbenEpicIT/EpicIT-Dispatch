@@ -18,7 +18,7 @@ export default function Card({ title, headerAction, children, className = "" }: 
 					{headerAction && <div>{headerAction}</div>}
 				</div>
 			)}
-			<div className="p-4 flex-1 flex flex-col">{children}</div>
+			<div className="p-4 flex-1 flex flex-col min-h-0">{children}</div>
 		</div>
 	);
 }

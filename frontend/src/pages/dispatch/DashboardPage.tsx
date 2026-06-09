@@ -1,4 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { ResponsiveGridLayout, useContainerWidth } from "react-grid-layout";
+import type { Layout, ResponsiveLayouts } from "react-grid-layout";
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+import './DashboardPage.css';
 import { useNavigate } from "react-router-dom";
 import {
 	AlertCircle,
@@ -8,6 +13,9 @@ import {
 	FileText,
 	Clock,
 	Plus,
+	LayoutDashboard,
+	Lock,
+	Unlock,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import WeekStrip from "../../components/ui/schedule/WeekStrip";
@@ -23,13 +31,26 @@ import CreateRequest from "../../components/requests/CreateRequest";
 import CreateJob from "../../components/jobs/CreateJob";
 import CreateQuote from "../../components/quotes/CreateQuote";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
-import LowStockWidget from "../../components/dashboard/LowStockWidget";
+import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { usePermission } from "../../hooks/usePermission";
+import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
+import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, fitLayout, getActiveCols } from "../../lib/DashboardConfig";
+import AddWidgetModal from "../../components/widgets/AddWidgetModal";
+import OverviewWidget from "../../components/widgets/OverviewWidget";
+import RevenueWidget from "../../components/widgets/RevenueWidget";
+import RevenueByJobTypeWidget from "../../components/widgets/RevenueByJobTypeWidget";
+import QuotePipelineWidget from "../../components/widgets/QuotePipelineWidget";
+import ArrivalPerformanceWidget from "../../components/widgets/ArrivalPerformanceWidget";
+import MileageSummaryWidget from "../../components/widgets/MileageSummaryWidget";
+import MapWidget from "../../components/widgets/MapWidget";
+import QBWidget from "../../components/widgets/QBWidget";
+
 
 export default function DashboardPage() {
 	const navigate = useNavigate();
 	const { user } = useAuthStore();
+	const { data: dispatcher } = useDispatcherByIdQuery(user?.userId);
 	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 
 	const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
@@ -38,6 +59,18 @@ export default function DashboardPage() {
 	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
 	const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
 	const actionMenuRef = useRef<HTMLDivElement>(null);
+	const justDraggedRef = useRef(false); // to prevent click events immediately after dragging
+	
+	const [layouts, setLayouts] = useState<ResponsiveLayouts>(DEFAULT_RESPONSIVE_LAYOUTS);
+	const [isEditMode, setIsEditMode] = useState(false);
+	const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
+
+	// Seed saved layout when dispatcher data loads
+	useEffect(() => {
+		if (dispatcher?.dashboard_layout) {
+			setLayouts(prev => ({ ...prev, lg: dispatcher.dashboard_layout as Layout }));
+		}
+	}, [dispatcher?.dashboard_layout]);
 
 	// permissions
 	const CREATE_REQUEST = usePermission("create_requests");
@@ -57,12 +90,31 @@ export default function DashboardPage() {
 	const { mutateAsync: createRequest } = useCreateRequestMutation();
 	const { mutateAsync: createJob } = useCreateJobMutation();
 	const { mutateAsync: createQuote } = useCreateQuoteMutation();
+	const updateDispatcher = useUpdateDispatcherMutation();
 
 	const { data: jobs = [], error: jobsError } = useAllJobsQuery();
 	const { data: requests = [] } = useAllRequestsQuery();
 	const { data: quotes = [] } = useAllQuotesQuery();
 	const { data: recurringPlans = [] } = useAllRecurringPlansQuery();
 	const { data: allTechnicians = [], error: techsError } = useAllTechniciansQuery();
+
+	const saveDashboardLayout = async (id: string, newLayout: Layout) => {
+		try {
+			await updateDispatcher.mutateAsync({
+				id,
+				data: { dashboard_layout: newLayout },
+			});
+		} catch (error) {
+			console.error("Failed to save dashboard layout:", error);
+		}
+	}
+
+	const handleLayoutSave = (newLayout: Layout) => {
+		setLayouts(prev => ({ ...prev, lg: newLayout }));
+		if (dispatcher?.id) {
+			saveDashboardLayout(dispatcher.id, newLayout);
+		}
+	};
 
 	const technicianStats = useMemo(() => ({
 		total: allTechnicians.length,
@@ -192,102 +244,47 @@ export default function DashboardPage() {
 	const activePlansCount = recurringPlans.filter((p) => p.status === "Active").length;
 	const pausedPlansCount = recurringPlans.filter((p) => p.status === "Paused").length;
 
-	return (
-		<div className="min-h-0 bg-canvas text-text-primary w-full">
-			<div className="w-full px-3 sm:px-5 lg:px-6">
-				{/* Header */}
-				<div className="mb-5 flex items-center justify-between gap-4">
-					<div>
-						<div className="flex items-baseline gap-2">
-							<h1 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
-								Dispatch Dashboard
-							</h1>
-							<span className="hidden sm:inline text-text-faint text-sm">·</span>
-							<p className="hidden sm:block text-sm text-text-tertiary">
-								{new Date().toLocaleDateString("en-US", {
-									weekday: "long",
-									month: "long",
-									day: "numeric",
-									timeZone: tz,
-								})}
-							</p>
-						</div>
-						{/* Situation bar */}
-						<div className="flex items-center gap-2 mt-1.5 flex-wrap">
-							<span className="text-xs text-text-muted">
-								<span className="text-text-secondary font-medium">{technicianStats.online}</span>
-								{" "}of {technicianStats.total} online
-							</span>
-							<span className="w-px h-3 bg-border" />
-							<span className="text-xs text-text-muted">
-								<span className="text-warning-text font-medium">{pipelineCounts.inProgress}</span>
-								{" "}in progress
-							</span>
-							<span className="w-px h-3 bg-border" />
-							<span className="text-xs text-text-muted">
-								<span className="text-orange-text font-medium">{pipelineCounts.unscheduled}</span>
-								{" "}unscheduled
-							</span>
-							<span className="w-px h-3 bg-border" />
-							<span className="text-xs text-text-muted">
-								<span className="text-success-text font-medium">{pipelineCounts.completedToday}</span>
-								{" "}done today
-							</span>
-						</div>
-					</div>
+	const { containerRef, width: rawContainerWidth } = useContainerWidth();
+	// displayWidth and settledWidth are both driven from the same useEffect so
+	// setIsResizing(true) + setDisplayWidth batch into ONE render — guaranteeing
+	// no-transitions is active before RGL ever sees the new width (fixes the
+	// one-frame race that caused occasional glitches with rawContainerWidth).
+	const [displayWidth, setDisplayWidth] = useState(0);
+	const [settledWidth, setSettledWidth] = useState(0);
+	const [isResizing, setIsResizing] = useState(false);
+	useEffect(() => {
+		if (rawContainerWidth <= 0) return;
+		setIsResizing(true);
+		setDisplayWidth(rawContainerWidth);
+		const t = setTimeout(() => {
+			setSettledWidth(rawContainerWidth);
+			setIsResizing(false);
+		}, 400);
+		return () => clearTimeout(t);
+	}, [rawContainerWidth]);
 
-					{/* Split action button */}
-					<div className="relative shrink-0" ref={actionMenuRef}>
-						<div className="flex h-10 rounded-md overflow-hidden">
-							<button
-								title={!CREATE_REQUEST ? "You don't have permission to perform this action" : ""}
-								disabled={!CREATE_REQUEST}
-								onClick={() => setIsCreateRequestModalOpen(true)}
-								className="inline-flex items-center justify-center gap-1.5 px-4 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-							>
-								<Plus size={14} strokeWidth={2.5} className="-mt-px" />
-								New Request
-							</button>
-							
-							<span className={(!CREATE_QUOTE && !CREATE_JOB) ? "w-px bg-primary opacity-40" : "w-px bg-primary"} />
-							<button
-								disabled={!CREATE_QUOTE && !CREATE_JOB}
-								title={!CREATE_QUOTE && !CREATE_JOB ? "You don't have permission to perform other actions" : "Create Quote or Job"}
-								onClick={() => setIsActionMenuOpen((o) => !o)}
-								className="flex items-center px-2.5 bg-primary-hover hover:enabled:bg-primary-active text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-								aria-label="More actions"
-							>
-								<ChevronDown size={14} strokeWidth={2.5} className={`transition-transform duration-150 ${isActionMenuOpen ? "rotate-180" : ""}`} />
-							</button>
-						</div>
+	const activeCols = useMemo(() => {
+		const c = getActiveCols(settledWidth || displayWidth);
+		return { lg: c, md: c, sm: c };
+	}, [settledWidth, displayWidth]);
 
-						{isActionMenuOpen && (
-							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-canvas border border-border-strong rounded-lg shadow-xl z-50 py-1">
-								<button
-									disabled={!CREATE_QUOTE}
-									title={!CREATE_QUOTE ? "You don't have permission to perform this action" : ""}
-									onClick={() => { setIsCreateQuoteModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-reviewing-text hover:enabled:bg-reviewing/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									<FileText size={13} className="text-reviewing-text" />
-									Create Quote
-								</button>
-								<button
-									disabled={!CREATE_JOB}
-									title={!CREATE_JOB ? "You don't have permission to perform this action" : ""}
-									onClick={() => { setIsCreateJobModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-warning-text hover:enabled:bg-warning/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									<Briefcase size={13} className="text-warning-text" />
-									Create Job
-								</button>
-							</div>
-						)}
-					</div>
-				</div>
+	const constrainedLayouts = useMemo(() => {
+		const w = settledWidth || displayWidth;
+		const display = (layouts.lg ?? []).map(item => {
+			const c = resolveConstraints(item.i, w);
+			return {
+				...item,
+				...c,
+				w: Math.min(Math.max(item.w, c.minW ?? 1), c.maxW ?? 12),
+				h: Math.min(Math.max(item.h, c.minH ?? 1), c.maxH ?? 20),
+			};
+		});
+		return { lg: display, md: display, sm: display };
+	}, [layouts.lg, settledWidth, displayWidth]);
 
-				{/* Week Schedule Calendar */}
-				<Card className="mb-5 !p-0">
+	function renderWidget(id: string) {
+		switch (id) {
+			case "week-strip": return <Card className="mb-5 !p-0 h-full">
 					{jobsError ? (
 						<div className="flex items-center justify-center h-full">
 							<div className="flex items-center gap-2 p-4 bg-error/10 border border-error/20 rounded-lg">
@@ -298,14 +295,8 @@ export default function DashboardPage() {
 					) : (
 						<WeekStrip jobs={jobs} technicians={allTechnicians} />
 					)}
-				</Card>
-
-				{/* Main Content Grid */}
-				<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
-					{/* Left Column */}
-					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
-						{/* Operations Pipeline */}
-						<Card title="Operations Pipeline">
+				</Card>;
+			case "pipeline": return <Card title="Operations Pipeline" className="h-full">
 							{/* 2-col stat grid for first 4 items */}
 							<div className="grid grid-cols-2 gap-x-5 gap-y-4">
 								{pipelineItems.slice(0, 4).map((item) => (
@@ -361,20 +352,10 @@ export default function DashboardPage() {
 									</div>
 								</button>
 							</div>
-						</Card>
-
-						<LowStockWidget />
-					</div>
-
-					{/* Center Column */}
-					<div className="min-w-0">
-						<ActivityFeed />
-					</div>
-
-					{/* Right Column */}
-					<div className="flex flex-col gap-4 lg:gap-5 min-w-0">
-						{/* Technicians — compact tile grid */}
-						<Card
+						</Card>;
+			case "activity-feed": return <ActivityFeed />;
+			case "technicians": return <Card
+							className="h-full"
 							title="Technicians"
 							headerAction={
 								<div className="flex items-center gap-2">
@@ -403,12 +384,12 @@ export default function DashboardPage() {
 									<p className="text-sm text-text-tertiary">No technicians online</p>
 								</div>
 							) : (
-								<>
+								<div className="flex-1 overflow-y-auto min-h-0 ">
 									<div
-									className="grid gap-1.5"
-									style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.5rem, 1fr))" }}
-								>
-										{activeTechnicians.slice(0, 9).map((tech) => (
+										className="grid gap-1.5"
+										style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.5rem, 1fr))" }}
+									>
+										{activeTechnicians.map((tech) => (
 											<div
 												key={tech.id}
 												onClick={() => navigate(`/dispatch/technicians/${tech.id}`)}
@@ -437,21 +418,199 @@ export default function DashboardPage() {
 											</div>
 										))}
 									</div>
-									{activeTechnicians.length > 9 && (
-										<div className="mt-3 pt-3 border-t border-border-subtle text-center">
-											<button
-												onClick={() => navigate("/dispatch/technicians")}
-												className="text-xs text-text-tertiary hover:text-text-primary font-medium transition-colors"
-											>
-												+{activeTechnicians.length - 9} more
-											</button>
-										</div>
-									)}
-								</>
-							)}
-						</Card>
-
 								</div>
+							)}
+						</Card>;
+			case "low-stock": 			   return <LowStockWidget className="h-full" />;
+			case "map":  				   return <MapWidget />;
+			case "quickbooks": 			   return <QBWidget />;
+			case "report-overview":        return <OverviewWidget />;
+			case "report-revenue":         return <RevenueWidget />;
+			case "report-revenue-by-type": return <RevenueByJobTypeWidget />;
+			case "report-quote-pipeline":  return <QuotePipelineWidget />;
+			case "report-arrival":         return <ArrivalPerformanceWidget />;
+			case "report-mileage":         return <MileageSummaryWidget />;
+			default: return <div>Unknown widget: {id}</div>;
+		}
+	}
+
+	return (
+		<div className="min-h-0 bg-canvas text-text-primary w-full">
+			<div className="w-full px-3 sm:px-5 lg:px-6" ref={containerRef}>
+				{/* Header */}
+				<div className="mb-5 flex items-center justify-between gap-4">
+					<div>
+						<div className="flex items-baseline gap-2">
+							<h1 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
+								Dispatch Dashboard
+							</h1>
+							<span className="hidden sm:inline text-text-faint text-sm">·</span>
+							<p className="hidden sm:block text-sm text-text-tertiary">
+								{new Date().toLocaleDateString("en-US", {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+									timeZone: tz,
+								})}
+							</p>
+						</div>
+						{/* Situation bar */}
+						<div className="flex items-center gap-2 mt-1.5 flex-wrap">
+							<span className="text-xs text-text-muted">
+								<span className="text-text-secondary font-medium">{technicianStats.online}</span>
+								{" "}of {technicianStats.total} online
+							</span>
+							<span className="w-px h-3 bg-border" />
+							<span className="text-xs text-text-muted">
+								<span className="text-warning-text font-medium">{pipelineCounts.inProgress}</span>
+								{" "}in progress
+							</span>
+							<span className="w-px h-3 bg-border" />
+							<span className="text-xs text-text-muted">
+								<span className="text-orange-text font-medium">{pipelineCounts.unscheduled}</span>
+								{" "}unscheduled
+							</span>
+							<span className="w-px h-3 bg-border" />
+							<span className="text-xs text-text-muted">
+								<span className="text-success-text font-medium">{pipelineCounts.completedToday}</span>
+								{" "}done today
+							</span>
+						</div>
+					</div>
+
+					{/* Dashboard arrange controls */}
+					<div className="flex items-center gap-2 shrink-0">
+						{isEditMode && (
+							<>
+								<button
+									onClick={() => setLayouts(DEFAULT_RESPONSIVE_LAYOUTS)}
+									title="Reset to default layout"
+									className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-error-text hover:border-error/40 hover:bg-error/10 transition-colors"
+								>
+									Reset
+								</button>
+								<button
+									onClick={() => setLayouts(prev => ({ ...prev, lg: fitLayout(prev.lg ?? [], activeCols.lg) }))}
+									title="Distribute widgets evenly across each row"
+									className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+								>
+									Fit
+								</button>
+							</>
+						)}
+						<button
+							onClick={() => setIsAddWidgetModalOpen(true)}
+							title="Add or remove widgets"
+							className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+						>
+							Widgets
+						</button>
+						<button
+							onClick={() => setIsEditMode((e) => !e)}
+							title={isEditMode ? "Lock layout" : "Edit layout"}
+							className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+						>
+							{isEditMode ? <Lock size={14} /> : <LayoutDashboard size={14} />}
+							{isEditMode ? "Lock" : "Edit"}
+						</button>
+					</div>
+
+					{/* Split action button */}
+					<div className="relative shrink-0" ref={actionMenuRef}>
+						<div className="flex h-10 rounded-md overflow-hidden">
+							<button
+								title={!CREATE_REQUEST ? "You don't have permission to perform this action" : ""}
+								disabled={!CREATE_REQUEST}
+								onClick={() => setIsCreateRequestModalOpen(true)}
+								className="inline-flex items-center justify-center gap-1.5 px-4 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={14} strokeWidth={2.5} className="-mt-px" />
+								New Request
+							</button>
+							
+							<span className={(!CREATE_QUOTE && !CREATE_JOB) ? "w-px bg-primary opacity-40" : "w-px bg-primary"} />
+							<button
+								disabled={!CREATE_QUOTE && !CREATE_JOB}
+								title={!CREATE_QUOTE && !CREATE_JOB ? "You don't have permission to perform other actions" : "Create Quote or Job"}
+								onClick={() => setIsActionMenuOpen((o) => !o)}
+								className="flex items-center px-2.5 bg-primary-hover hover:enabled:bg-primary-active text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								aria-label="More actions"
+							>
+								<ChevronDown size={14} strokeWidth={2.5} className={`transition-transform duration-150 ${isActionMenuOpen ? "rotate-180" : ""}`} />
+							</button>
+						</div>
+
+						{isActionMenuOpen && (
+							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-canvas border border-border-strong rounded-lg shadow-xl z-50 py-1">
+								<button
+									disabled={!CREATE_QUOTE}
+									title={!CREATE_QUOTE ? "You don't have permission to perform this action" : ""}
+									onClick={() => { setIsCreateQuoteModalOpen(true); setIsActionMenuOpen(false); }}
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-reviewing-text hover:enabled:bg-reviewing/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									<FileText size={13} className="text-reviewing-text" />
+									Create Quote
+								</button>
+								<button
+									disabled={!CREATE_JOB}
+									title={!CREATE_JOB ? "You don't have permission to perform this action" : ""}
+									onClick={() => { setIsCreateJobModalOpen(true); setIsActionMenuOpen(false); }}
+									className="flex items-center gap-2.5 px-3 py-2 text-sm text-warning-text hover:enabled:bg-warning/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									<Briefcase size={13} className="text-warning-text" />
+									Create Job
+								</button>
+							</div>
+						)}
+					</div>
+				</div>
+
+				{/* Dashboard grid */}
+				<div className={`dashboard-grid ${isEditMode ? "show-grid" : ""} ${isResizing ? "no-transitions" : ""} px-2 py-2`} style={{ '--grid-width': `${displayWidth}px` } as React.CSSProperties}>
+					{displayWidth > 0 && dispatcher && <ResponsiveGridLayout
+						key={`grid-${dispatcher.id}-${dispatcher.dashboard_layout ? 'saved' : 'default'}`}
+						width={displayWidth}
+						layouts={constrainedLayouts}
+						breakpoints={BREAKPOINTS}
+						cols={activeCols}
+						rowHeight={45}
+						margin={[16, 16]}
+						dragConfig={{ enabled: isEditMode, bounded: false, threshold: 3, cancel: "button, a, input, select, textarea" }}
+						resizeConfig={{ enabled: isEditMode, handles: ["se"] }}
+						onDragStart={() => {
+							justDraggedRef.current = false;
+						}}
+						onDrag={() => {
+							justDraggedRef.current = true;
+						}}
+						onDragStop={(layout) => {
+							handleLayoutSave(layout);
+							setTimeout(() => {
+								justDraggedRef.current = false;
+							}, 100);
+						}}
+						onResizeStop={(layout) => {
+							handleLayoutSave(layout);
+						}}
+
+					>
+						{Object.keys(WIDGET_CATALOG).filter(id => layouts.lg?.some(l => l.i === id)).map((id) => (
+							<div key={id} 
+								className={isEditMode ? 
+									"cursor-grab active:cursor-grabbing h-full hover:border hover:border-border-strong hover:border-primary hover:rounded-xl hover:shadow hover:shadow-primary" 
+									: "h-full"}
+								onClickCapture={(e) => {
+									if (justDraggedRef.current) {
+										e.preventDefault();
+										e.stopPropagation();
+										e.nativeEvent.stopImmediatePropagation?.();
+									}
+								}}
+							>
+								{renderWidget(id)}
+							</div>
+						))}
+					</ResponsiveGridLayout>}
 				</div>
 			</div>
 
@@ -491,6 +650,15 @@ export default function DashboardPage() {
 			<CreateRecurringPlan
 				isModalOpen={isCreatePlanModalOpen}
 				setIsModalOpen={setIsCreatePlanModalOpen}
+			/>
+			<AddWidgetModal
+				isOpen={isAddWidgetModalOpen}
+				onClose={() => setIsAddWidgetModalOpen(false)}
+				currentLayout={layouts.lg ?? []}
+				onLayoutChange={(newLayout) => {
+					setLayouts(prev => ({ ...prev, lg: newLayout }));
+					if (dispatcher?.id) saveDashboardLayout(dispatcher.id, newLayout);
+				}}
 			/>
 		</div>
 	);

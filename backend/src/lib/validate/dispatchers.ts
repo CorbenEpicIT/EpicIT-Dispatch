@@ -15,11 +15,7 @@ export const createDispatcherSchema = z.object({
 
 export const updateDispatcherSchema = z
 	.object({
-		organization_id: z
-			.string()
-			.uuid("Valid organization ID is required")
-			.nullable()
-			.optional(),
+		organization_id: z.string().uuid("Valid organization ID is required").optional(),
 		name: z.string().min(1, "Dispatcher name is required").optional(),
 		email: z.string().email("Valid email is required").optional(),
 		phone: z.string().min(1, "Phone number is required").nullable().optional(),
@@ -39,6 +35,7 @@ export const updateDispatcherSchema = z
 				z.date()
 			)
 			.optional(),
+		dashboard_layout: z.any().optional(),
 	})
 	.refine(
 		(data) =>
@@ -50,7 +47,8 @@ export const updateDispatcherSchema = z
 			data.title !== undefined ||
 			data.description !== undefined ||
 			data.role !== undefined ||
-			data.last_login !== undefined,
+			data.last_login !== undefined ||
+			data.dashboard_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
 

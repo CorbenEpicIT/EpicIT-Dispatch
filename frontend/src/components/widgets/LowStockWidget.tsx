@@ -2,7 +2,7 @@
 import { AlertTriangle, ChevronRight, Package } from "lucide-react";
 import { useLowStockInventoryQuery } from "../../hooks/useInventory";
 
-export default function LowStockWidget() {
+export default function LowStockWidget({ className }: { className?: string }) {
 	const navigate = useNavigate();
 	const { data: lowStockItems = [] } = useLowStockInventoryQuery();
 
@@ -14,7 +14,7 @@ export default function LowStockWidget() {
 	return (
 		<div
 			onClick={() => navigate("/dispatch/inventory")}
-			className="group p-4 bg-base border border-border-subtle rounded-xl cursor-pointer hover:border-warning/30 transition-colors"
+			className={`group p-4 bg-base border border-border-subtle rounded-xl cursor-pointer hover:border-warning/30 transition-colors${className ? ` ${className}` : ""}`}
 		>
 			<div className="flex items-center justify-between mb-3">
 				<div className="flex items-center gap-2">
