@@ -79,22 +79,24 @@ export default function TechnicianLayout() {
 						</button>
 
 						{/* Truck / vehicle icon */}
-						<button
-							onClick={() => navigate("/technician/vehicle")}
-							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface transition-colors"
-							title={techProfile?.current_vehicle?.name ?? "No vehicle selected"}
-						>
-							<Truck
-								size={20}
-								className={noVehicle ? "text-warning-text" : "text-text-tertiary"}
-							/>
-							{noVehicle && (
-								<AlertTriangle
-									size={10}
-									className="absolute top-1 right-1 text-warning-text"
+						{usePermission("use_vehicles") && (
+							<button
+								onClick={() => navigate("/technician/vehicles")}
+								className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface transition-colors"
+								title={techProfile?.current_vehicle?.name ?? "No vehicle selected"}
+							>
+								<Truck
+									size={20}
+									className={noVehicle ? "text-warning-text" : "text-text-tertiary"}
 								/>
-							)}
-						</button>
+								{noVehicle && (
+									<AlertTriangle
+										size={10}
+										className="absolute top-1 right-1 text-warning-text"
+									/>
+								)}
+							</button>
+						)}
 
 						{/* Bell / notifications icon */}
 						<button

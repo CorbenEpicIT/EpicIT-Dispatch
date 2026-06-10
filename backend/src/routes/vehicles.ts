@@ -15,7 +15,7 @@ import { requirePermission, requireAnyPermission } from "../lib/requirePermissio
 
 const router = Router();
 
-router.get("/", requireAnyPermission("view_inventory", "manage_technicians", "use_inventory"), async (req, res, next) => {
+router.get("/", requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles"), async (req, res, next) => {
 	try {
 		const orgId = req.user?.organization_id as string ?? undefined;
 		const { status } = req.query as { status?: string };
@@ -26,7 +26,7 @@ router.get("/", requireAnyPermission("view_inventory", "manage_technicians", "us
 	}
 });
 
-router.post("/", requirePermission("manage_technicians"), async (req, res, next) => {
+router.post("/", requirePermission("manage_vehicles"), async (req, res, next) => {
 	try {
 		const context = getUserContext(req);
 		const orgId = req.user?.organization_id as string ?? undefined;
@@ -40,7 +40,7 @@ router.post("/", requirePermission("manage_technicians"), async (req, res, next)
 	}
 });
 
-router.put("/:id", requirePermission("manage_technicians"), async (req, res, next) => {
+router.put("/:id", requirePermission("manage_vehicles"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const context = getUserContext(req);
@@ -56,7 +56,7 @@ router.put("/:id", requirePermission("manage_technicians"), async (req, res, nex
 	}
 });
 
-router.get("/:id/stock", requireAnyPermission("view_inventory", "manage_technicians", "use_inventory"), async (req, res, next) => {
+router.get("/:id/stock", requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const orgId = req.user?.organization_id as string ?? undefined;
@@ -70,7 +70,7 @@ router.get("/:id/stock", requireAnyPermission("view_inventory", "manage_technici
 	}
 });
 
-router.post("/:id/stock", requireAnyPermission("manage_inventory", "manage_technicians"), async (req, res, next) => {
+router.post("/:id/stock", requirePermission("manage_vehicles"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const context = getUserContext(req);
@@ -86,7 +86,7 @@ router.post("/:id/stock", requireAnyPermission("manage_inventory", "manage_techn
 	}
 });
 
-router.put("/:id/stock/:itemId", requireAnyPermission("manage_inventory", "manage_technicians"), async (req, res, next) => {
+router.put("/:id/stock/:itemId", requirePermission("manage_vehicles"), async (req, res, next) => {
 	try {
 		const { id, itemId } = req.params as { id: string; itemId: string };
 		const context = getUserContext(req);
@@ -102,7 +102,7 @@ router.put("/:id/stock/:itemId", requireAnyPermission("manage_inventory", "manag
 	}
 });
 
-router.delete("/:id/stock/:itemId", requireAnyPermission("manage_inventory", "manage_technicians"), async (req, res, next) => {
+router.delete("/:id/stock/:itemId", requireAnyPermission("manage_vehicles", "manage_inventory"), async (req, res, next) => {
 	try {
 		const { id, itemId } = req.params as { id: string; itemId: string };
 		const context = getUserContext(req);

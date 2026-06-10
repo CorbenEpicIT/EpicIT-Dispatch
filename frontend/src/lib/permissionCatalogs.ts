@@ -83,6 +83,13 @@ export const DISPATCHER_CATALOG = [
 			{ id: "manage_taxes", label: "Manage Taxes" },
 		],
 	},
+	{
+		category: "Vehicles",
+		permissions: [
+			{ id: "view_vehicles", label: "View Vehicles" },
+			{ id: "manage_vehicles", label: "Manage Vehicles" },
+		],
+	},
 ] as const;
 
 export const TECHNICIAN_CATALOG = [
@@ -130,6 +137,13 @@ export const TECHNICIAN_CATALOG = [
 		permissions: [
 			{ id: "view_forms", label: "View Forms" },
 			{ id: "submit_forms", label: "Submit Forms" },
+		],
+	},
+	{
+		category: "Vehicles",
+		permissions: [
+			{ id: "view_vehicles", label: "View Vehicles" },
+			{ id: "use_vehicles", label: "Use Vehicles" },
 		],
 	},
 ] as const;

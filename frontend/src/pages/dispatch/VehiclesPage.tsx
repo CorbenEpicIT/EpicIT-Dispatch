@@ -38,7 +38,7 @@ export default function VehiclesPage() {
 	const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
 
 	// Permissions
-	const MANAGE_VEHICLES = usePermission("manage_inventory"); // vechicles are grouped under inventory permissions 
+	const MANAGE_VEHICLES = usePermission("manage_vehicles");
 
 	const filteredVehicles = vehicles?.filter((v) => {
 		if (activeTerms.length === 0) return true;

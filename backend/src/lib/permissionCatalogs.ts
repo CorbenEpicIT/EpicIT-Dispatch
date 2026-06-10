@@ -9,6 +9,7 @@ const DISPATCHER_CATALOG = [
 	{ category: "Recurring Plans", permissions: ["view_recurring_plans", "manage_recurring_plans"] },
 	{ category: "Team", permissions: ["view_technicians", "manage_technicians", "view_dispatchers", "manage_dispatchers"] },
 	{ category: "Administration", permissions: ["view_admin", "manage_roles", "manage_organization", "manage_taxes"] },
+	{ category: "Vehicles", permissions: ["view_vehicles", "manage_vehicles"] },
 ] as const;
 
 const TECHNICIAN_CATALOG = [
@@ -18,6 +19,7 @@ const TECHNICIAN_CATALOG = [
 	{ category: "Inventory", permissions: ["view_inventory", "use_inventory"] },
 	{ category: "Schedule", permissions: ["view_own_schedule", "view_team_schedule"] },
 	{ category: "Forms", permissions: ["view_forms", "submit_forms"] },
+	{ category: "Vehicles", permissions: ["view_vehicles", "use_vehicles"] },
 ] as const;
 
 export const PERMISSION_CATALOGS = {

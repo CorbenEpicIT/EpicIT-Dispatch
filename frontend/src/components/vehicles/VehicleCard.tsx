@@ -47,7 +47,7 @@ export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardPr
 	].filter(Boolean);
 
 	// permissions
-	const EDIT_VEHICLES = usePermission("manage_inventory");
+	const EDIT_VEHICLES = usePermission("manage_vehicles");
 
 	if (viewMode === "list") {
 		return (

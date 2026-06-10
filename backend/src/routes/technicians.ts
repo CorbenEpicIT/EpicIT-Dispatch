@@ -237,7 +237,7 @@ router.get("/:techId/visits", requirePermissionOrSelf("view_technicians", "techI
 });
 
 // permissions could be an issue if use_inventory is removed from tech, not urgent fix 
-router.put("/:id/vehicle", requireAnyPermission("manage_technicians", "use_inventory"), async (req, res, next) => {
+router.put("/:id/vehicle", requireAnyPermission("manage_vehicles", "use_vehicles"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;

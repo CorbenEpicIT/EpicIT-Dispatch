@@ -9,6 +9,7 @@ import AddNotePhotoModal from "../../components/technicianComponents/AddNotePhot
 import type { NotePhoto } from "../../components/technicianComponents/AddNotePhotoModal";
 import type { JobVisit, VisitStatus } from "../../types/jobs";
 import { formatTime, FALLBACK_TIMEZONE } from "../../util/util";
+import { usePermission } from "../../hooks/usePermission";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,8 @@ export default function TechnicianDashboardPage() {
 		});
 	};
 
-	const noVehicle = techProfile && !techProfile.current_vehicle_id;
+	const canUseVehicles = usePermission("use_vehicles");
+	const noVehicle = canUseVehicles && techProfile && !techProfile.current_vehicle_id;
 	const isClockedInAnywhere = useMemo(
 		() => visits.some((v) => v.time_entries?.some((e) => !e.clocked_out_at)),
 		[visits],
@@ -282,7 +284,7 @@ export default function TechnicianDashboardPage() {
 			{noVehicle && !vehicleBannerDismissed && (
 				<div className="flex items-center justify-between gap-2 mb-4 px-3 py-2.5 rounded-lg bg-warning/10 border border-warning/20 text-warning-text">
 					<button
-						onClick={() => navigate("/technician/vehicle")}
+						onClick={() => navigate("/technician/vehicles")}
 						className="flex items-center gap-2 flex-1 text-left text-sm"
 					>
 						<AlertTriangle size={15} className="shrink-0" />

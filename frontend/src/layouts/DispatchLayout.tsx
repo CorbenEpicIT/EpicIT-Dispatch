@@ -8,7 +8,6 @@ import {
 	FileText,
 	Wrench,
 	ChartColumnDecreasing,
-	Settings,
 	Package,
 	Map,
 	ArrowLeft,
@@ -17,13 +16,14 @@ import {
 	ReceiptText,
 	ShieldUser,
 	Truck,
-	UserRoundCog
+	UserRoundCog,
+	Plus
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
 import { usePermission, useAnyPermission } from "../hooks/usePermission";
-import { queryClient } from "../main";
 import DispatcherUserMenu from "../components/nav/DispatcherUserMenu";
+import CreatePanel from "../components/nav/CreatePanel";
 
 export default function DispatchLayout() {
 	const { logout } = useAuthStore();
@@ -31,6 +31,7 @@ export default function DispatchLayout() {
 	const location = useLocation();
 	const navigationCount = useRef(0);
 	const [expanded, setExpanded] = useState(false);
+	const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
 	const { user } = useAuthStore();
 
 	useEffect(() => {
@@ -54,27 +55,35 @@ export default function DispatchLayout() {
 		else navigate("/dispatch");
 	};
 
-	const handleLogout = () => {
-		logout();
-		queryClient.clear();
-		navigate("/login");
-	};
-
 	const ICON_SIZE = 20;
 
 	return (
 		<div className="flex h-screen bg-canvas text-text-primary">
-			{/* SIDEBAR */}
+			{/* SIDEBAR — fixed w-16 in flex layout, inner div overlays on hover (no sibling reflow) */}
 			<aside
-				onMouseEnter={() => setExpanded(true)}
+				onMouseEnter={() => { if (!isCreatePanelOpen) setExpanded(true); }}
 				onMouseLeave={() => setExpanded(false)}
-				className={`
-					flex flex-col flex-shrink-0 overflow-hidden bg-base
-					border-r border-border
-					transition-all duration-300 ease-in-out
-					${expanded ? "w-40 lg:w-44" : "w-16"}`}
+				className="relative w-16 flex-shrink-0 z-40"
 			>
+				<div className={`absolute inset-y-0 left-0 flex flex-col bg-base border-r border-border overflow-hidden transition-[width] duration-200 ease-in-out ${expanded ? "w-40 lg:w-44" : "w-16"}`}>
 				<nav className="flex-1 py-2 space-y-1 overflow-y-auto overflow-x-hidden sidebar-nav">
+					<button
+						onClick={() => { setIsCreatePanelOpen((o) => !o); setExpanded(false); }}
+						className={`group relative flex items-center h-10 rounded-md mx-2 transition-colors duration-200 w-[calc(100%-16px)] hover:cursor-pointer ${
+							isCreatePanelOpen
+								? "bg-primary-bg text-primary-text"
+								: "text-text-tertiary hover:text-text-primary hover:bg-surface-raised"
+						}`}
+					>
+						<div className="w-12 flex items-center justify-center flex-shrink-0">
+							<Plus size={ICON_SIZE} />
+						</div>
+						<div className={`absolute left-12 w-24 flex items-center h-full overflow-hidden transition-[opacity,transform] duration-200 ease-in-out ${
+							expanded ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 pointer-events-none"
+						}`}>
+							<span className="text-sm whitespace-nowrap truncate pr-2">Create</span>
+						</div>
+					</button>
 					<SideNavItem
 						expanded={expanded}
 						to="/dispatch"
@@ -135,7 +144,7 @@ export default function DispatchLayout() {
 							label="Inventory"
 						/>
 					)}
-					{useAnyPermission(["view_inventory", "manage_technicians"]) && (
+					{useAnyPermission(["view_vehicles", "manage_vehicles"]) && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/vehicles"
@@ -180,11 +189,15 @@ export default function DispatchLayout() {
 						/>
 					)}
 				</nav>
+				</div>
 			</aside>
 
 			<div className="flex flex-col flex-1 overflow-hidden">
 				{/* TOP NAV */}
-				<header className="flex justify-between items-center px-6 h-14 bg-base border-b border-border">
+				<header
+					className="flex justify-between items-center px-6 h-14 bg-base border-b border-border"
+					style={{ paddingLeft: expanded ? 120 : 24, transition: "padding-left 200ms ease-in-out" }}
+				>
 					<div className="flex items-center gap-6">
 						<div className="font-semibold text-sm whitespace-nowrap text-text-primary">
 							Dispatch Demo
@@ -216,6 +229,7 @@ export default function DispatchLayout() {
 					</div>
 				</main>
 			</div>
+			<CreatePanel isOpen={isCreatePanelOpen} onClose={() => setIsCreatePanelOpen(false)} />
 		</div>
 	);
 }

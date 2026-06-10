@@ -139,7 +139,7 @@ export default function AppRoutes() {
 				<Route path="invoices/:invoiceId" element={<RequirePermission permission="view_invoices"><InvoiceDetailPage /></RequirePermission>} />
 				<Route path="user-settings" element={<RequireAuth><UserSettingsPage /></RequireAuth>} />
 				<Route path="admin" element={<RequireAnyPermission permissions={["view_admin", "manage_organization", "manage_roles"]}><AdminPage /></RequireAnyPermission>} />
-				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehiclesPage /></RequireAnyPermission>} />
+				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_vehicles", "manage_vehicles"]}><VehiclesPage /></RequireAnyPermission>} />
 			</Route>
 
 			<Route
@@ -163,7 +163,7 @@ export default function AppRoutes() {
 				<Route path="visits" element={<RequirePermission permission="view_visits"><TechnicianVisitsPage /></RequirePermission>} />
 				<Route path="visits/:visitId" element={<RequirePermission permission="view_visits"><TechnicianVisitDetailPage /></RequirePermission>} />
 				<Route path="notifications" element={<TechnicianNotificationsPage />} />
-				<Route path="vehicle" element={<TechnicianVehiclePage />} />
+				<Route path="vehicles" element={<RequirePermission permission="view_vehicles"><TechnicianVehiclePage /></RequirePermission>} />
 				<Route path="map" element={<TechnicianMapPage />} />
 				<Route path="user-settings" element={<UserSettingsPage />} />
 				<Route path="mileage" element={<TechnicianMileagePage />} />
