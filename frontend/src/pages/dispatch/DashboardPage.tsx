@@ -62,8 +62,14 @@ export default function DashboardPage() {
 	const justDraggedRef = useRef(false); // to prevent click events immediately after dragging
 	
 	const [layouts, setLayouts] = useState<ResponsiveLayouts>(DEFAULT_RESPONSIVE_LAYOUTS);
+	const [displayLayouts, setDisplayLayouts] = useState<ResponsiveLayouts>(DEFAULT_RESPONSIVE_LAYOUTS);
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
+
+	// Auto-grow: extra rows added to a widget when its content overflows its cell.
+	// Keyed by widget id; never persisted — purely a render-time fit-to-content pass.
+	const [autoExtra, setAutoExtra] = useState<Record<string, number>>({});
+	const widgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
 	// Seed saved layout when dispatcher data loads
 	useEffect(() => {
@@ -268,19 +274,87 @@ export default function DashboardPage() {
 		return { lg: c, md: c, sm: c };
 	}, [settledWidth, displayWidth]);
 
+	// Sync displayLayouts when layouts changes (drag/resize/reset/fit/widget add)
+	useEffect(() => { setDisplayLayouts(layouts); }, [layouts]);
+
+	// Auto-fit displayLayouts when col count changes — preserves persisted layout
+	const prevColsRef = useRef(activeCols.lg);
+	useEffect(() => {
+		if (prevColsRef.current === activeCols.lg) return;
+		prevColsRef.current = activeCols.lg;
+		setDisplayLayouts(prev => ({
+			...prev,
+			// Returning to full-width: restore the exact saved layout unchanged.
+			// Shrinking: fit-pack into the smaller col count.
+			lg: activeCols.lg === 12 ? (layouts.lg ?? []) : fitLayout(layouts.lg ?? [], activeCols.lg),
+		}));
+	}, [activeCols.lg, layouts.lg]);
+
 	const constrainedLayouts = useMemo(() => {
 		const w = settledWidth || displayWidth;
-		const display = (layouts.lg ?? []).map(item => {
+		const cols = activeCols.lg;
+		const display = (displayLayouts.lg ?? []).map(item => {
 			const c = resolveConstraints(item.i, w);
+			// Cap width constraints to the active column count so a widget's minW
+			// can never exceed the grid width (which would lock it at full-width).
+			const minW = Math.min(c.minW ?? 1, cols);
+			const maxW = Math.min(c.maxW ?? cols, cols);
+			// Base height respects the configured maxH (manual resize is capped),
+			// but auto-grow can push past it so content fully fits. Raise the maxH
+			// handed to RGL to match, otherwise RGL would clamp it back down.
+			const baseH = Math.min(Math.max(item.h, c.minH ?? 1), c.maxH ?? 20);
+			const h = baseH + (autoExtra[item.i] ?? 0);
 			return {
 				...item,
 				...c,
-				w: Math.min(Math.max(item.w, c.minW ?? 1), c.maxW ?? 12),
-				h: Math.min(Math.max(item.h, c.minH ?? 1), c.maxH ?? 20),
+				minW,
+				maxW,
+				maxH: Math.max(c.maxH ?? 20, h),
+				w: Math.min(Math.max(item.w, minW), maxW),
+				h,
 			};
 		});
 		return { lg: display, md: display, sm: display };
-	}, [layouts.lg, settledWidth, displayWidth]);
+	}, [displayLayouts.lg, settledWidth, displayWidth, activeCols.lg, autoExtra]);
+
+	// Reset auto-grown heights when the base layout or available width changes, and
+	// while editing (so manual drag-resizing is never fought by the auto-fit pass).
+	// After a reset the observer below re-measures and re-grows from the base height.
+	useEffect(() => { setAutoExtra({}); }, [layouts.lg, settledWidth, isEditMode]);
+
+	// Measure each widget's content; if it overflows its cell, add enough rows to
+	// fully fit it. Auto-grow is allowed past the configured maxH (constrainedLayouts
+	// raises the RGL cap to match); a safety bound just prevents a runaway loop.
+	useEffect(() => {
+		if (isEditMode || displayWidth <= 0) return;
+		const ROW_PX = 45 + 16; // rowHeight + vertical margin
+		const SAFETY_MAX_EXTRA = 40; // backstop against runaway growth
+
+		const measure = () => {
+			setAutoExtra(prev => {
+				const next = { ...prev };
+				let changed = false;
+				widgetRefs.current.forEach((wrapper, id) => {
+					// Card root -> content body is the scrollable element.
+					const body = wrapper.firstElementChild?.lastElementChild as HTMLElement | undefined;
+					if (!body) return;
+					const overflow = body.scrollHeight - body.clientHeight;
+					const prevExtra = prev[id] ?? 0;
+					const wantExtra = Math.min(prevExtra + Math.ceil(overflow / ROW_PX), SAFETY_MAX_EXTRA);
+					if (overflow > 2 && wantExtra !== prevExtra) {
+						next[id] = wantExtra;
+						changed = true;
+					}
+				});
+				return changed ? next : prev;
+			});
+		};
+
+		const ro = new ResizeObserver(measure);
+		widgetRefs.current.forEach(el => ro.observe(el));
+		measure();
+		return () => ro.disconnect();
+	}, [isEditMode, displayWidth, settledWidth, displayLayouts.lg, autoExtra]);
 
 	function renderWidget(id: string) {
 		switch (id) {
@@ -478,43 +552,6 @@ export default function DashboardPage() {
 						</div>
 					</div>
 
-					{/* Dashboard arrange controls */}
-					<div className="flex items-center gap-2 shrink-0">
-						{isEditMode && (
-							<>
-								<button
-									onClick={() => setLayouts(DEFAULT_RESPONSIVE_LAYOUTS)}
-									title="Reset to default layout"
-									className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-error-text hover:border-error/40 hover:bg-error/10 transition-colors"
-								>
-									Reset
-								</button>
-								<button
-									onClick={() => setLayouts(prev => ({ ...prev, lg: fitLayout(prev.lg ?? [], activeCols.lg) }))}
-									title="Distribute widgets evenly across each row"
-									className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
-								>
-									Fit
-								</button>
-							</>
-						)}
-						<button
-							onClick={() => setIsAddWidgetModalOpen(true)}
-							title="Add or remove widgets"
-							className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
-						>
-							Widgets
-						</button>
-						<button
-							onClick={() => setIsEditMode((e) => !e)}
-							title={isEditMode ? "Lock layout" : "Edit layout"}
-							className="flex items-center gap-1.5 px-3 h-10 rounded-md border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
-						>
-							{isEditMode ? <Lock size={14} /> : <LayoutDashboard size={14} />}
-							{isEditMode ? "Lock" : "Edit"}
-						</button>
-					</div>
-
 					{/* Split action button */}
 					<div className="relative shrink-0" ref={actionMenuRef}>
 						<div className="flex h-10 rounded-md overflow-hidden">
@@ -565,6 +602,48 @@ export default function DashboardPage() {
 					</div>
 				</div>
 
+				{/* Layout controls strip */}
+				<div className="flex items-center justify-end gap-2 mb-3">
+					{isEditMode && (
+						<>
+							<button
+								onClick={() => setLayouts(DEFAULT_RESPONSIVE_LAYOUTS)}
+								title="Reset to default layout"
+								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-error-text hover:border-error/40 hover:bg-error/10 transition-colors"
+							>
+								Reset
+							</button>
+							<button
+								onClick={() => setLayouts(prev => ({ ...prev, lg: fitLayout(prev.lg ?? [], activeCols.lg) }))}
+								title="Distribute widgets evenly across each row"
+								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+							>
+								Fit
+							</button>
+							<span className="w-px h-4 bg-border" />
+						</>
+					)}
+					<button
+						onClick={() => setIsAddWidgetModalOpen(true)}
+						title="Add or remove widgets"
+						className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+					>
+						Widgets
+					</button>
+					<button
+						onClick={() => setIsEditMode((e) => !e)}
+						title={isEditMode ? "Lock layout" : "Edit layout"}
+						className={`flex items-center gap-1.5 px-3 h-8 rounded-md border text-xs font-medium transition-colors ${
+							isEditMode
+								? "border-primary/40 bg-primary/10 text-primary-text hover:bg-primary/15"
+								: "border-border text-text-secondary hover:text-text-primary hover:bg-surface"
+						}`}
+					>
+						{isEditMode ? <Unlock size={13} /> : <LayoutDashboard size={13} />}
+						{isEditMode ? "Done" : "Edit"}
+					</button>
+				</div>
+
 				{/* Dashboard grid */}
 				<div className={`dashboard-grid ${isEditMode ? "show-grid" : ""} ${isResizing ? "no-transitions" : ""} px-2 py-2`} style={{ '--grid-width': `${displayWidth}px` } as React.CSSProperties}>
 					{displayWidth > 0 && dispatcher && <ResponsiveGridLayout
@@ -584,19 +663,31 @@ export default function DashboardPage() {
 							justDraggedRef.current = true;
 						}}
 						onDragStop={(layout) => {
-							handleLayoutSave(layout);
+							if (activeCols.lg === 12) {
+								handleLayoutSave(layout);
+							} else {
+								setDisplayLayouts(prev => ({ ...prev, lg: layout }));
+							}
 							setTimeout(() => {
 								justDraggedRef.current = false;
 							}, 100);
 						}}
 						onResizeStop={(layout) => {
-							handleLayoutSave(layout);
+							if (activeCols.lg === 12) {
+								handleLayoutSave(layout);
+							} else {
+								setDisplayLayouts(prev => ({ ...prev, lg: layout }));
+							}
 						}}
 
 					>
 						{Object.keys(WIDGET_CATALOG).filter(id => layouts.lg?.some(l => l.i === id)).map((id) => (
-							<div key={id} 
-								className={isEditMode ? 
+							<div key={id}
+								ref={(el) => {
+									if (el) widgetRefs.current.set(id, el);
+									else widgetRefs.current.delete(id);
+								}}
+								className={isEditMode ?
 									"cursor-grab active:cursor-grabbing h-full hover:border hover:border-border-strong hover:border-primary hover:rounded-xl hover:shadow hover:shadow-primary" 
 									: "h-full"}
 								onClickCapture={(e) => {

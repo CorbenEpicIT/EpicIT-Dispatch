@@ -312,13 +312,13 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                     </button>
                 )}
                 {MANAGE_DISPATCHER && (
-                    <div className="relative" ref={dropdownRef}>
+                    <div className="relative flex" ref={dropdownRef}>
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                             }}
-                            className="px-3 py-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
+                            className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
                         >
                             <MoreHorizontal size={18} />
                         </button>

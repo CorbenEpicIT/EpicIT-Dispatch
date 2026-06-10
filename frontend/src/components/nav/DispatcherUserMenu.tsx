@@ -52,7 +52,7 @@ export default function DispatcherUserMenu() {
 			</button>
 
 			{menuOpen && (
-				<div className="absolute top-full right-0 mt-2 w-52 bg-surface-raised border border-border-subtle rounded-lg shadow-lg z-50 overflow-hidden">
+				<div className="absolute top-full right-0 mt-2 w-54 bg-surface-raised border border-border-subtle rounded-lg shadow-lg z-50 overflow-hidden">
 					<div className="px-4 py-3 border-b border-border-subtle flex items-start gap-3">
 						<span className="w-10 h-10 shrink-0 rounded-lg bg-border-strong flex items-center justify-center text-on-primary font-semibold text-sm">
 							{user?.name.charAt(0).toUpperCase()}
@@ -72,7 +72,7 @@ export default function DispatcherUserMenu() {
 
                     <div className="my-.25 border-t border-subtle" />
                     <div className="p-2 flex flex-col">
-                        <button className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface-raised transition-colors"
+                        <button className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
                             onClick={() => {
 								navigate("/dispatch/dispatchers/" + user?.userId);
 								setMenuOpen(false);
@@ -82,14 +82,14 @@ export default function DispatcherUserMenu() {
                             View Profile
                         </button>
                         <button
-                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface-raised transition-colors"
+                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
                             onClick={() => { navigate("/dispatch/user-settings"); setMenuOpen(false); }}
                         >
                             <UserRoundCog size={16} />
                             User Settings
                         </button>
                         <button
-                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface-raised transition-colors"
+                            className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
                             onClick={() => setThemeOpen((o) => !o)}
                         >
                             <Palette size={16} />
@@ -104,8 +104,8 @@ export default function DispatcherUserMenu() {
                                         onClick={() => handleThemeChange(value)}
                                         className={`w-full flex items-center gap-2 pl-8 pr-3 py-1.5 text-sm rounded-md transition-colors ${
                                             theme === value
-                                                ? "text-primary"
-                                                : "text-text-muted hover:text-text-primary hover:bg-surface-raised"
+                                                ? "text-primary hover:bg-surface"
+                                                : "text-text-muted hover:text-text-primary hover:bg-surface"
                                         }`}
                                     >
                                         <Icon size={14} />
@@ -121,7 +121,7 @@ export default function DispatcherUserMenu() {
 					<div className="p-2">
 						<button
 							onClick={handleLogout}
-							className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error-text rounded-md hover:bg-error-bg transition-colors"
+							className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error-text rounded-md hover:bg-error-bg hover:text-error transition-colors"
 						>
 							<LogOut size={16} />
 							Logout

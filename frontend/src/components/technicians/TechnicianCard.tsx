@@ -322,7 +322,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                 e.stopPropagation();
                 setDropdownOpen((prev) => !prev);
               }}
-              className="px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+              className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
             >
               <MoreHorizontal size={18} />
             </button>

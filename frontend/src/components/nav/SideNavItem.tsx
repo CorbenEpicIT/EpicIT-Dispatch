@@ -31,9 +31,9 @@ export default function SideNavItem({
 			{/* Label - constrained width to reduce right-side empty space */}
 			<div
 				className={`
-					absolute left-12 flex items-center h-full overflow-hidden
-					transition-all duration-200 ease-in-out
-					${expanded ? "opacity-100 translate-x-0 w-24" : "opacity-0 -translate-x-2 pointer-events-none w-0"}
+					absolute left-12 w-24 flex items-center h-full overflow-hidden
+					transition-[opacity,transform] duration-200 ease-in-out
+					${expanded ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 pointer-events-none"}
 				`}
 			>
 				<span className="text-sm whitespace-nowrap truncate w-full pr-2">

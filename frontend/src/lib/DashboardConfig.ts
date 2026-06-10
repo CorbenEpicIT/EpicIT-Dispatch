@@ -93,34 +93,34 @@ export const WIDGET_CATALOG: Record<string, {
     responsiveConstraints?: ResponsiveConstraints;
     requiredPermission?: string;
 }> = {
-    "week-strip":           {   label: "Week Schedule",          
-                                defaultW: 12, defaultH: 5,  minW: 6, minH: 4, maxH: 5, maxW: 12, 
+    "week-strip":           {   label: "Week Schedule",
+                                defaultW: 12, defaultH: 5,  minW: 6, minH: 4, maxH: 5, maxW: 12,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "pipeline":             {  label: "Operations Pipeline",    
+    "pipeline":             {  label: "Operations Pipeline",
                                 defaultW: 3,  defaultH: 7,  minW: 3, minH: 6, maxH: 7, maxW: 6,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12, maxH: 11 },
                                 ]
                             },
-    "activity-feed":        {   label: "Activity Feed",          
+    "activity-feed":        {   label: "Activity Feed",
                                 defaultW: 5,  defaultH: 11, minW: 3, minH: 4, maxH: 12, maxW: 6,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "technicians":          {   label: "Technicians",            
-                                defaultW: 4,  defaultH: 4,  minW: 3, minH: 3, maxH: 12, maxW: 12, 
+    "technicians":          {   label: "Technicians",
+                                defaultW: 4,  defaultH: 4,  minW: 3, minH: 3, maxH: 12, maxW: 12,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "low-stock":            {   label: "Low Stock",              
-                                defaultW: 3,  defaultH: 4,  minW: 2, minH: 2, maxH: 2, maxW: 6, 
+    "low-stock":            {   label: "Low Stock",
+                                defaultW: 3,  defaultH: 4,  minW: 2, minH: 2, maxH: 2, maxW: 6,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 4, maxW: 12 },
+                                    { atWidth: 800, minW: 2, maxW: 12, maxH: 6 },
                                 ]
                             },
     "quickbooks":           {   label: "QuickBooks",
@@ -130,58 +130,92 @@ export const WIDGET_CATALOG: Record<string, {
     "map":                  {   label: "Live Map",
                                 defaultW: 6,  defaultH: 8,  minW: 4, minH: 5, maxW: 12, maxH: 20,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "report-overview":      {   label: "Overview Stats",         
-                                defaultW: 12, defaultH: 3,  minW: 6, minH: 3, maxH: 3, maxW: 12, 
+    "report-overview":      {   label: "Overview Stats",
+                                defaultW: 12, defaultH: 3,  minW: 6, minH: 3, maxH: 3, maxW: 12,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12, maxH: 5, minH: 4 },
+                                    { atWidth: 800, minW: 4, maxW: 12, maxH: 9, minH: 4 },
                                 ]
                             },
-    "report-revenue":       {   label: "Revenue Overview",       
+    "report-revenue":       {   label: "Revenue Overview",
                                 defaultW: 8,  defaultH: 7,  minW: 8, minH: 7, maxH: 7, maxW: 12,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12, maxH: 12 },
                                 ]
                             },
-    "report-revenue-by-type":{  label: "Revenue by Job Type",    
+    "report-revenue-by-type":{  label: "Revenue by Job Type",
                                 defaultW: 4,  defaultH: 9,  minW: 3, minH: 6, maxH: 13, maxW: 6,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "report-quote-pipeline":{   label: "Quote Pipeline",         
+    "report-quote-pipeline":{   label: "Quote Pipeline",
                                 defaultW: 3,  defaultH: 7,  minW: 3, minH: 7, maxH: 13, maxW: 6,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "report-arrival":       {   label: "Arrival Performance",    
+    "report-arrival":       {   label: "Arrival Performance",
                                 defaultW: 4,  defaultH: 8,  minW: 3, minH: 5, maxH: 10, maxW: 6,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
-    "report-mileage":       {   label: "Mileage Summary",        
+    "report-mileage":       {   label: "Mileage Summary",
                                 defaultW: 4,  defaultH: 4,  minW: 4, minH: 4, maxH: 4, maxW: 12,
                                 responsiveConstraints: [
-                                    { atWidth: 700, minW: 6, maxW: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12, maxH: 8 },
                                 ]
                             },
     
 };
 
-export function addWidget(id: string, currentLayout: Layout): Layout {
+export function addWidget(id: string, currentLayout: Layout, cols = 12): Layout {
     if (currentLayout.find(l => l.i === id)) return currentLayout;
     const def = WIDGET_CATALOG[id];
+    const w = Math.min(def.defaultW, cols);
+    const h = def.defaultH;
     const maxY = Math.max(0, ...currentLayout.map(l => l.y + l.h));
+
+    // Build a set of all occupied cells so we can check free rectangles cheaply
+    const occupied = new Set<string>();
+    for (const item of currentLayout) {
+        for (let iy = item.y; iy < item.y + item.h; iy++)
+            for (let ix = item.x; ix < item.x + item.w; ix++)
+                occupied.add(`${ix},${iy}`);
+    }
+
+    const isFree = (cx: number, cy: number): boolean => {
+        for (let iy = cy; iy < cy + h; iy++)
+            for (let ix = cx; ix < cx + w; ix++)
+                if (occupied.has(`${ix},${iy}`)) return false;
+        return true;
+    };
+
+    // Score = rows of the candidate rect that overlap the existing grid area.
+    // A widget fully inside the current bounds scores h (best). Placing below scores 0 (fallback).
+    // Scan top-to-bottom, left-to-right so the first max-score hit wins on ties.
+    let bestX = 0, bestY = maxY, bestScore = -1;
+    for (let cy = 0; cy <= maxY; cy++) {
+        for (let cx = 0; cx <= cols - w; cx++) {
+            if (!isFree(cx, cy)) continue;
+            const score = Math.min(cy + h, maxY) - cy;
+            if (score > bestScore) {
+                bestScore = score;
+                bestX = cx;
+                bestY = cy;
+            }
+        }
+    }
+
     return [...currentLayout, {
         i: id,
-        x: 0,
-        y: maxY,
-        w: def.defaultW,
-        h: def.defaultH,
+        x: bestX,
+        y: bestY,
+        w,
+        h,
         minW: def.minW,
         minH: def.minH,
     }];

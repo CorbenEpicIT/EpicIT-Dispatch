@@ -2,6 +2,15 @@
     position: relative;
 }
 
+.dashboard-grid .react-grid-item {
+    overflow: hidden;
+}
+
+/* Let a widget's content scroll inside its card instead of spilling past it */
+.dashboard-grid .react-grid-item .widget-scroll {
+    overflow: auto;
+}
+
 .dashboard-grid.no-transitions .react-grid-item {
     transition: none !important;
 }

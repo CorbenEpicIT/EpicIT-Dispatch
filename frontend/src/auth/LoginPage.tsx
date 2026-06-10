@@ -1,8 +1,7 @@
-﻿import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "./authStore";
 import { useRef, useState } from "react";
 import { loginCall, verifyOTPCall } from "../api/authenticate.ts"
-import { reSplitAlphaNumeric } from "@tanstack/react-table";
 
 export default function LoginPage() {
 	const { login } = useAuthStore();
@@ -21,8 +20,6 @@ export default function LoginPage() {
 		try {
 			setIsLoading(true);
 			const result = await loginCall({ email: name, password: password });
-			// If the backend returned a full access token (first login OR OTP
-			// disabled), skip the OTP step and route based on the payload.
 			if (result.token) {
 				const parts = result.token.split(".");
 				if (parts.length === 3) {
@@ -43,7 +40,6 @@ export default function LoginPage() {
 			setOtpSent(true);
 		} catch (error) {
 			setLoginError("Login failed");
-			//console.error("Login failed:", error);
 		} finally {
 			setIsLoading(false);
 		}
@@ -71,46 +67,36 @@ export default function LoginPage() {
 		}
 	};
 
-	// seperate from login so that it doesn't need args
 	const resendOTP = async () => {
 		try {
 			setIsLoading(true);
-			const result = await loginCall({ email: name, password: password });
-			console.log("resend OTP result:",result);
+			await loginCall({ email: name, password: password });
 			setOtpSent(true);
 		} catch (error) {
 			console.error("Resend OTP failed:", error);
-		}finally {
+		} finally {
 			setIsLoading(false);
 		}
-	}
+	};
 
-	// ========================================================
-	// helper functions for otp input
-	// ========================================================
 	const handleOtpChange = (index: number, value: string) => {
-		// checks if its a number, if not returns
 		if (!/^\d*$/.test(value)) return;
-
 		const newOtp = [...otp];
 		newOtp[index] = value;
 		setOtp(newOtp);
-
-		if (value && index < otp.length -1){
+		if (value && index < otp.length - 1) {
 			inputRefs.current[index + 1]?.focus();
 		}
-	}
+	};
 
-	const handleOtpPaste = (e: React.ClipboardEvent) =>{
+	const handleOtpPaste = (e: React.ClipboardEvent) => {
 		e.preventDefault();
 		const pasteData = e.clipboardData.getData("Text").trim();
-
 		if (!/^\d{6}$/.test(pasteData)) return;
-		
 		const newOtp = pasteData.split("");
 		setOtp(newOtp);
 		inputRefs.current[newOtp.length - 1]?.focus();
-	}
+	};
 
 	const handleOtpKeyDown = (e: React.KeyboardEvent, index: number) => {
 		if (e.key === "Backspace" && !otp[index] && index > 0) {
@@ -118,88 +104,83 @@ export default function LoginPage() {
 		}
 	};
 
+	const cardClass = "bg-surface shadow-md rounded-lg p-8 w-80 space-y-4 border border-border-subtle";
+	const inputClass = "w-full border border-border-input bg-surface-inset rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors";
+
 	return (
-		<div className="flex min-h-svh items-center justify-center bg-slate-100">
+		<div className="flex min-h-svh items-center justify-center bg-canvas">
 			{isLoading ? (
-				<div className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-slate-200">
-					<div className="h-6 w-48 bg-slate-200 rounded animate-pulse mx-auto" />
-					<div className="h-10 w-full bg-slate-200 rounded animate-pulse" />
-					<div className="h-10 w-full bg-slate-200 rounded animate-pulse" />
+				<div className={cardClass}>
+					<div className="h-6 w-48 bg-surface-inset rounded animate-pulse mx-auto" />
+					<div className="h-10 w-full bg-surface-inset rounded animate-pulse" />
+					<div className="h-10 w-full bg-surface-inset rounded animate-pulse" />
 				</div>
 			) : otpSent ? (
-				<form
-					onSubmit={handleOTPVerification}
-					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-slate-200"
-				>
-					<h2 className="text-xl font-semibold text-center text-slate-900">OTP Verification</h2>
-						<div className="w-full flex justify-center space-x-1">
-							{otp.map((digit, index) =>(
-								<input
-									key={`otp-${index}`}
-									type="text"
-									maxLength={1}
-									value={digit}
-									onChange={(e)=>handleOtpChange(index, e.target.value)}
-									onPaste={(e)=>handleOtpPaste(e)}
-									onKeyDown={(e)=>handleOtpKeyDown(e, index)}
-									className="w-10 h-10 border border-slate-300 bg-white rounded text-center text-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
-									ref={(el) => {inputRefs.current[index] = el;}}
-								>
-
-								</input>
-							))}
-						</div>
+				<form onSubmit={handleOTPVerification} className={cardClass}>
+					<h2 className="text-xl font-semibold text-center text-text-primary">OTP Verification</h2>
+					<div className="w-full flex justify-center space-x-1">
+						{otp.map((digit, index) => (
+							<input
+								key={`otp-${index}`}
+								type="text"
+								maxLength={1}
+								value={digit}
+								onChange={(e) => handleOtpChange(index, e.target.value)}
+								onPaste={(e) => handleOtpPaste(e)}
+								onKeyDown={(e) => handleOtpKeyDown(e, index)}
+								className="w-10 h-10 border border-border-input bg-surface-inset rounded-md text-center text-lg text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors"
+								ref={(el) => { inputRefs.current[index] = el; }}
+							/>
+						))}
+					</div>
 					<button
 						type="submit"
-						className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+						className="w-full bg-primary text-on-primary py-2 rounded hover:bg-primary-hover transition-colors"
 					>
 						Verify OTP
 					</button>
-					<p className="text-sm text-slate-600 text-center">
+					<p className="text-sm text-text-muted text-center">
 						Didn't receive the code?&ensp;
-						<button className="text-blue-600 hover:underline" onClick={resendOTP}> Resend OTP</button>
+						<button type="button" className="text-text-link hover:underline" onClick={resendOTP}>
+							Resend OTP
+						</button>
 					</p>
-					<p className="text-sm text-slate-600 text-center">
+					<p className="text-sm text-text-muted text-center">
 						If using test user, enter "000000" as OTP.
 					</p>
 				</form>
 			) : (
-				<form
-					onSubmit={handleLogin}
-					className="bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-slate-200"
-				>
-				<h2 className="text-xl font-semibold text-center text-slate-900">Service Login</h2>
-				{loginError && (
-					<p className="text-red-600 text-sm text-center">{loginError}</p>
-				)
-
-				}
-				<input
-					type="text"
-					placeholder="Name"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					className="w-full border border-slate-300 bg-white rounded px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
-				/>
-				<input
-					type="password"
-					placeholder="Password"
-					value={password}
-					onChange={(e)=>setPassword(e.target.value)}
-					className="w-full border border-slate-300 bg-white rounded px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
-				/>
-				<button
-					type="submit"
-					className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-				>
-					Login
-				</button>
-				<p className="text-sm text-slate-600 text-center">
-					New organization?{" "}
-					<Link to="/register" className="text-blue-600 hover:underline">Create account</Link>
-				</p>
-			</form>
-		)}
+				<form onSubmit={handleLogin} className={cardClass}>
+					<h2 className="text-xl font-semibold text-center text-text-primary">Service Login</h2>
+					{loginError && (
+						<p className="text-error-text text-sm text-center">{loginError}</p>
+					)}
+					<input
+						type="text"
+						placeholder="Email"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						className={inputClass}
+					/>
+					<input
+						type="password"
+						placeholder="Password"
+						value={password}
+						onChange={(e) => setPassword(e.target.value)}
+						className={inputClass}
+					/>
+					<button
+						type="submit"
+						className="w-full bg-primary text-on-primary py-2 rounded hover:bg-primary-hover transition-colors"
+					>
+						Login
+					</button>
+					<p className="text-sm text-text-muted text-center">
+						New organization?{" "}
+						<Link to="/register" className="text-text-link hover:underline">Create account</Link>
+					</p>
+				</form>
+			)}
 		</div>
 	);
 }

@@ -53,7 +53,7 @@ export const generateAccessToken = (
 			permissions: permissions ?? null,
 		},
 		JWT_SECRET,
-		{ expiresIn: "24h" },
+		{ expiresIn: "15m" },
 	);
 };
 

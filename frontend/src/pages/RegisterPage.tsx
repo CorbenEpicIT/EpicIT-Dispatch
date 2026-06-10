@@ -25,21 +25,16 @@ export default function RegisterPage() {
 		if (!adminName.trim()) return "Your name is required.";
 		if (password !== confirmPassword) return "Passwords do not match.";
 		if (password.length < 8) return "Password must be at least 8 characters.";
-		if (!/[A-Z]/.test(password))
-			return "Password must contain at least one capital letter.";
+		if (!/[A-Z]/.test(password)) return "Password must contain at least one capital letter.";
 		if (!/[0-9]/.test(password)) return "Password must contain at least one number.";
-		if (!/[^A-Za-z0-9]/.test(password))
-			return "Password must contain at least one special character.";
+		if (!/[^A-Za-z0-9]/.test(password)) return "Password must contain at least one special character.";
 		return null;
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const err = validate();
-		if (err) {
-			setErrorMessage(err);
-			return;
-		}
+		if (err) { setErrorMessage(err); return; }
 
 		setStatus("loading");
 		try {
@@ -61,6 +56,8 @@ export default function RegisterPage() {
 		}
 	};
 
+	const inputClass = "w-full border border-border-input bg-surface-inset text-text-primary placeholder:text-text-muted rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors";
+
 	const field = (
 		label: string,
 		type: string,
@@ -70,226 +67,102 @@ export default function RegisterPage() {
 		required = true
 	) => (
 		<div>
-			<label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-1">
+			<label className="block text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">
 				{label}
-				{!required && (
-					<span className="ml-1 text-slate-400 normal-case">
-						(optional)
-					</span>
-				)}
+				{!required && <span className="ml-1 text-text-muted normal-case">(optional)</span>}
 			</label>
 			<input
 				type={type}
 				value={value}
-				onChange={(e) => {
-					onChange(e.target.value);
-					setErrorMessage("");
-				}}
+				onChange={(e) => { onChange(e.target.value); setErrorMessage(""); }}
 				placeholder={placeholder}
 				required={required}
-				className="w-full border border-slate-300 bg-slate-50 text-slate-900 placeholder:text-slate-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+				className={inputClass}
 			/>
 		</div>
 	);
 
 	return (
-		<div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-4">
-			<div className="bg-white rounded-2xl shadow-md border border-slate-200 p-10 max-w-md w-full">
+		<div className="min-h-screen bg-canvas flex items-center justify-center px-4 py-4">
+			<div className="bg-surface rounded-2xl shadow-md border border-border-subtle p-10 max-w-md w-full">
 				{status === "input" && (
 					<form onSubmit={handleSubmit} className="space-y-4">
 						<div className="text-center mb-2">
-							<h1 className="text-2xl font-semibold text-slate-900">
-								Create your account
-							</h1>
-							<p className="text-slate-600 text-sm mt-1">
-								Set up your organization and admin
-								account.
-							</p>
+							<h1 className="text-2xl font-semibold text-text-primary">Create your account</h1>
+							<p className="text-text-muted text-sm mt-1">Set up your organization and admin account.</p>
 						</div>
 
-						<p className="text-xs font-semibold text-slate-500 uppercase tracking-wider pt-2">
-							Organization
-						</p>
-						{field(
-							"Organization Name",
-							"text",
-							orgName,
-							setOrgName,
-							"e.g. Acme HVAC"
-						)}
-						{field(
-							"Organization Phone",
-							"tel",
-							orgPhone,
-							setOrgPhone,
-							"+1 (555) 000-0000",
-							false
-						)}
-						{field(
-							"Address",
-							"text",
-							orgAddress,
-							setOrgAddress,
-							"123 Main St, Chicago, IL",
-							false
-						)}
-						{field(
-							"Website",
-							"url",
-							orgWebsite,
-							setOrgWebsite,
-							"https://example.com",
-							false
-						)}
+						<p className="text-xs font-semibold text-text-muted uppercase tracking-wider pt-2">Organization</p>
+						{field("Organization Name", "text", orgName, setOrgName, "e.g. Acme HVAC")}
+						{field("Organization Phone", "tel", orgPhone, setOrgPhone, "+1 (555) 000-0000", false)}
+						{field("Address", "text", orgAddress, setOrgAddress, "123 Main St, Chicago, IL", false)}
+						{field("Website", "url", orgWebsite, setOrgWebsite, "https://example.com", false)}
 						<div>
-							<label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-1">
+							<label className="block text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">
 								Timezone
-								<span className="ml-1 text-slate-400 normal-case">
-									(optional)
-								</span>
+								<span className="ml-1 text-text-muted normal-case">(optional)</span>
 							</label>
 							<select
 								value={orgTimezone}
-								onChange={(e) =>
-									setOrgTimezone(
-										e.target.value
-									)
-								}
-								className="w-full border border-slate-300 bg-slate-50 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+								onChange={(e) => setOrgTimezone(e.target.value)}
+								className={inputClass}
 							>
-								<option value="America/New_York">
-									Eastern (ET)
-								</option>
-								<option value="America/Chicago">
-									Central (CT)
-								</option>
-								<option value="America/Denver">
-									Mountain (MT)
-								</option>
-								<option value="America/Los_Angeles">
-									Pacific (PT)
-								</option>
-								<option value="America/Anchorage">
-									Alaska (AKT)
-								</option>
-								<option value="Pacific/Honolulu">
-									Hawaii (HT)
-								</option>
-								<option value="America/Phoenix">
-									Arizona (no DST)
-								</option>
-								<option value="America/Puerto_Rico">
-									Puerto Rico (AST)
-								</option>
+								<option value="America/New_York">Eastern (ET)</option>
+								<option value="America/Chicago">Central (CT)</option>
+								<option value="America/Denver">Mountain (MT)</option>
+								<option value="America/Los_Angeles">Pacific (PT)</option>
+								<option value="America/Anchorage">Alaska (AKT)</option>
+								<option value="Pacific/Honolulu">Hawaii (HT)</option>
+								<option value="America/Phoenix">Arizona (no DST)</option>
+								<option value="America/Puerto_Rico">Puerto Rico (AST)</option>
 							</select>
 						</div>
 
-						<p className="text-xs font-semibold text-slate-500 uppercase tracking-wider pt-2">
-							Admin Account
-						</p>
-						{field(
-							"Your Name",
-							"text",
-							adminName,
-							setAdminName,
-							"Full name"
-						)}
-						{field(
-							"Email",
-							"email",
-							adminEmail,
-							setAdminEmail,
-							"you@company.com"
-						)}
-						{field(
-							"Phone",
-							"tel",
-							adminPhone,
-							setAdminPhone,
-							"+1 (555) 000-0000",
-							false
-						)}
-						{field(
-							"Password",
-							"password",
-							password,
-							setPassword,
-							"Min. 8 characters"
-						)}
-						{field(
-							"Confirm Password",
-							"password",
-							confirmPassword,
-							setConfirmPassword,
-							"Repeat password"
-						)}
+						<p className="text-xs font-semibold text-text-muted uppercase tracking-wider pt-2">Admin Account</p>
+						{field("Your Name", "text", adminName, setAdminName, "Full name")}
+						{field("Email", "email", adminEmail, setAdminEmail, "you@company.com")}
+						{field("Phone", "tel", adminPhone, setAdminPhone, "+1 (555) 000-0000", false)}
+						{field("Password", "password", password, setPassword, "Min. 8 characters")}
+						{field("Confirm Password", "password", confirmPassword, setConfirmPassword, "Repeat password")}
 
-						{errorMessage && (
-							<p className="text-red-600 text-sm">
-								{errorMessage}
-							</p>
-						)}
+						{errorMessage && <p className="text-error-text text-sm">{errorMessage}</p>}
 
 						<button
 							type="submit"
-							className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition mt-2"
+							className="w-full bg-primary hover:bg-primary-hover text-on-primary font-medium py-2 rounded-lg transition-colors mt-2"
 						>
 							Create Account
 						</button>
 
-						<p className="text-sm text-slate-600 text-center">
+						<p className="text-sm text-text-muted text-center">
 							Already have an account?{" "}
-							<Link
-								to="/login"
-								className="text-blue-600 hover:underline"
-							>
-								Sign in
-							</Link>
+							<Link to="/login" className="text-text-link hover:underline">Sign in</Link>
 						</p>
 					</form>
 				)}
 
 				{status === "loading" && (
 					<div className="text-center py-6">
-						<div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-						<h2 className="text-xl font-semibold text-slate-900">
-							Setting up your account...
-						</h2>
-						<p className="text-slate-600 mt-2 text-sm">
-							Just a moment.
-						</p>
+						<div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+						<h2 className="text-xl font-semibold text-text-primary">Setting up your account...</h2>
+						<p className="text-text-muted mt-2 text-sm">Just a moment.</p>
 					</div>
 				)}
 
 				{status === "success" && (
 					<div className="text-center py-6">
-						<div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-							<svg
-								className="w-7 h-7 text-green-600"
-								fill="none"
-								viewBox="0 0 24 24"
-								stroke="currentColor"
-							>
-								<path
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									strokeWidth={2}
-									d="M5 13l4 4L19 7"
-								/>
+						<div className="w-14 h-14 bg-success-bg rounded-full flex items-center justify-center mx-auto mb-6">
+							<svg className="w-7 h-7 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-slate-900">
-							Account Created!
-						</h2>
-						{/* Email functionality is temporarily disabled pending Postmark approval. */}
-						<p className="text-slate-600 mt-2 text-sm">
-							Email verification is temporarily disabled
-							while we await sender approval. You can sign
-							in directly.
+						<h2 className="text-xl font-semibold text-text-primary">Account Created!</h2>
+						<p className="text-text-muted mt-2 text-sm">
+							Email verification is temporarily disabled while we await sender approval. You can sign in directly.
 						</p>
 						<button
 							onClick={() => navigate("/login")}
-							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+							className="mt-6 w-full bg-primary hover:bg-primary-hover text-on-primary font-medium py-2 rounded-lg transition-colors"
 						>
 							Go to Login
 						</button>
@@ -298,33 +171,16 @@ export default function RegisterPage() {
 
 				{status === "error" && (
 					<div className="text-center py-6">
-						<div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-							<svg
-								className="w-7 h-7 text-red-500"
-								fill="none"
-								viewBox="0 0 24 24"
-								stroke="currentColor"
-							>
-								<path
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									strokeWidth={2}
-									d="M6 18L18 6M6 6l12 12"
-								/>
+						<div className="w-14 h-14 bg-error-bg rounded-full flex items-center justify-center mx-auto mb-6">
+							<svg className="w-7 h-7 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-slate-900">
-							Registration Failed
-						</h2>
-						<p className="text-slate-600 mt-2 text-sm">
-							{errorMessage}
-						</p>
+						<h2 className="text-xl font-semibold text-text-primary">Registration Failed</h2>
+						<p className="text-text-muted mt-2 text-sm">{errorMessage}</p>
 						<button
-							onClick={() => {
-								setStatus("input");
-								setErrorMessage("");
-							}}
-							className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition"
+							onClick={() => { setStatus("input"); setErrorMessage(""); }}
+							className="mt-6 w-full bg-primary hover:bg-primary-hover text-on-primary font-medium py-2 rounded-lg transition-colors"
 						>
 							Try Again
 						</button>

@@ -17,7 +17,11 @@ const STATUS_ENTRIES = (
 	<>
 		<option value="Offline">Offline</option>
 		<option value="Available">Available</option>
-		<option value="Busy">Busy</option>
+		<option value="Working">Working</option>
+		<option value="EnRoute">En Route</option>
+		<option value="OnSite">On Site</option>
+		<option value="Paused">Paused</option>
+		<option value="WrappingUp">Wrapping Up</option>
 		<option value="Break">Break</option>
 	</>
 );

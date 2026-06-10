@@ -5,9 +5,10 @@ interface CardProps {
 	headerAction?: ReactNode;
 	children: ReactNode;
 	className?: string;
+	scrollable?: boolean;
 }
 
-export default function Card({ title, headerAction, children, className = "" }: CardProps) {
+export default function Card({ title, headerAction, children, className = "", scrollable = false }: CardProps) {
 	return (
 		<div
 			className={`bg-base border border-border-subtle rounded-xl overflow-hidden flex flex-col ${className}`}
@@ -18,7 +19,7 @@ export default function Card({ title, headerAction, children, className = "" }: 
 					{headerAction && <div>{headerAction}</div>}
 				</div>
 			)}
-			<div className="p-4 flex-1 flex flex-col min-h-0">{children}</div>
+			<div className={`p-4 flex-1 flex flex-col min-h-0${scrollable ? " widget-scroll" : ""}`}>{children}</div>
 		</div>
 	);
 }
