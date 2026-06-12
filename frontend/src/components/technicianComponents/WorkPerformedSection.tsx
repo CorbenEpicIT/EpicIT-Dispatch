@@ -107,7 +107,7 @@ function PhotoLabelSheet({
 }) {
 	const [label, setLabel] = useState<PhotoLabel>("Before");
 	return (
-		<div className="fixed inset-0 z-50 flex items-end justify-center bg-overlay">
+		<div className="fixed inset-0 z-[60] flex items-end justify-center bg-overlay">
 			<div className="w-full max-w-lg bg-base rounded-t-2xl border border-border-subtle p-4">
 				<div className="flex items-center justify-between mb-3">
 					<h3 className="text-sm font-semibold text-text-primary">Photo Type</h3>
