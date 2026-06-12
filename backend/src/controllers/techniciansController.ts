@@ -6,6 +6,7 @@ import type {
 import {
 	createTechnicianSchema,
 	updateTechnicianSchema,
+	changePasswordSchema,
 } from "../lib/validate/technicians.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
@@ -65,6 +66,7 @@ export const getTechnicianById = async (id: string, organizationId: string) => {
 	return await sdb.technician.findFirst({
 		where: { id },
 		include: {
+			organization_role: { select: { id: true, name: true } },
 			visit_techs: {
 				include: {
 					visit: {
@@ -706,4 +708,55 @@ export const returnFromBreak = async (
 		log.error({ err: e }, "returnFromBreak failed");
 		return { err: "Internal server error" };
 	}
+};
+
+export const changeTechnicianPassword = async (
+	id: string, 
+	organization_id: string, 
+	data: unknown, 
+	context?: UserContext
+) => {
+	const parsed = changePasswordSchema.parse(data);
+	const sdb = getScopedDb(organization_id);
+	const technician = await sdb.technician.findFirst({
+		where: { id },
+	});
+
+	if (!technician) {
+		return { err: "Technician not found" };
+	}
+
+	const valid = await bcrypt.compare(parsed.current_password, technician.password);
+	if (!valid) {
+		return { err: "Current password is incorrect" };
+	}
+	const hashedPassword = await bcrypt.hash(parsed.new_password, 10);
+	await sdb.$transaction(async (tx) => {
+		await tx.technician.update({
+			where: { id },
+			data: {
+				password: hashedPassword,
+			},
+		});
+
+		await logActivity({
+			event_type: "dispatcher.password.changed",
+			action: "changed",
+			entity_type: "dispatcher",
+			entity_id: id,
+			organization_id: organization_id,
+			actor_type: context?.techId
+				? "technician"
+				: context?.dispatcherId
+				? "dispatcher"
+				: "system",
+			actor_id: context?.techId || context?.dispatcherId,
+			changes: {
+				password: { old: technician.password, new: hashedPassword },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
+		});
+	});
+	return { message: "Password updated successfully", err: ""};
 };

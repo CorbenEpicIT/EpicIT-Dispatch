@@ -146,8 +146,8 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 							onClick={() => handleModeChange("new")}
 							className={`flex-1 h-8 font-medium transition-colors ${
 								mode === "new"
-									? "bg-surface text-text-primary"
-									: "bg-transparent text-text-tertiary hover:text-text-primary"
+									? "bg-surface-raised text-text-primary"
+									: "bg-transparent text-text-tertiary hover:text-text-secondary"
 							}`}
 						>
 							New Client
@@ -157,8 +157,8 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 							onClick={() => handleModeChange("import")}
 							className={`flex-1 h-8 font-medium transition-colors ${
 								mode === "import"
-									? "bg-surface text-text-primary"
-									: "bg-transparent text-text-tertiary hover:text-text-primary"
+									? "bg-surface-raised text-text-primary"
+									: "bg-transparent text-text-tertiary hover:text-text-secondary"
 							}`}
 						>
 							Import from QuickBooks

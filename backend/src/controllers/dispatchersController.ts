@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from "crypto";
 import {
     createDispatcherSchema,
     updateDispatcherSchema,
+    changePasswordSchema
 } from "../lib/validate/dispatchers.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
@@ -246,4 +247,55 @@ export const deleteDispatcher = async (id: string, organization_id: string, cont
         log.error({ err: error }, "Error deleting dispatcher");
         return { err: "Internal server error" };
     }
+};
+
+export const changeDispatcherPassword = async (
+    id: string, 
+    organization_id: string, 
+    data: unknown, 
+    context?: UserContext
+) => {
+    const parsed = changePasswordSchema.parse(data);
+    const sdb = getScopedDb(organization_id);
+    const dispatcher = await sdb.dispatcher.findFirst({
+        where: { id },
+    });
+
+    if (!dispatcher) {
+        return { err: "Dispatcher not found" };
+    }
+
+    const valid = await bcrypt.compare(parsed.current_password, dispatcher.password);
+    if (!valid) {
+        return { err: "Current password is incorrect" };
+    }
+    const hashedPassword = await bcrypt.hash(parsed.new_password, 10);
+    await sdb.$transaction(async (tx) => {
+        await tx.dispatcher.update({
+            where: { id },
+            data: {
+                password: hashedPassword,
+            },
+        });
+
+        await logActivity({
+            event_type: "dispatcher.password.changed",
+            action: "changed",
+            entity_type: "dispatcher",
+            entity_id: id,
+            organization_id: organization_id,
+            actor_type: context?.techId
+                ? "technician"
+                : context?.dispatcherId
+                ? "dispatcher"
+                : "system",
+            actor_id: context?.techId || context?.dispatcherId,
+            changes: {
+                password: { old: dispatcher.password, new: hashedPassword },
+            },
+            ip_address: context?.ipAddress,
+            user_agent: context?.userAgent,
+        });
+    });
+    return { message: "Password updated successfully", err: ""};
 };

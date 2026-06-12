@@ -176,9 +176,9 @@ export default function DispatchLayout() {
 					)}
 					<SideNavItem
 						expanded={expanded}
-						to="/dispatch/user-settings"
+						to="/dispatch/profile"
 						icon={<UserRoundCog size={ICON_SIZE} />}
-						label="Settings"
+						label="My Profile"
 					/>
 					{(user?.role === "admin" || useAnyPermission(["view_admin", "manage_organization", "manage_roles"])) && (
 						<SideNavItem

@@ -36,7 +36,7 @@ import VehiclesPage from "./pages/dispatch/VehiclesPage";
 import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
-import UserSettingsPage from "./pages/dispatch/UserSettingsPage";
+import MyProfilePage from "./pages/MyProfilePage";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
@@ -137,7 +137,7 @@ export default function AppRoutes() {
 				/>
 				<Route path="invoices" element={<RequirePermission permission="view_invoices"><InvoicesPage /></RequirePermission>} />
 				<Route path="invoices/:invoiceId" element={<RequirePermission permission="view_invoices"><InvoiceDetailPage /></RequirePermission>} />
-				<Route path="user-settings" element={<RequireAuth><UserSettingsPage /></RequireAuth>} />
+				<Route path="profile" element={<RequireAuth><MyProfilePage /></RequireAuth>} />
 				<Route path="admin" element={<RequireAnyPermission permissions={["view_admin", "manage_organization", "manage_roles"]}><AdminPage /></RequireAnyPermission>} />
 				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_vehicles", "manage_vehicles"]}><VehiclesPage /></RequireAnyPermission>} />
 			</Route>
@@ -165,7 +165,7 @@ export default function AppRoutes() {
 				<Route path="notifications" element={<TechnicianNotificationsPage />} />
 				<Route path="vehicles" element={<RequirePermission permission="view_vehicles"><TechnicianVehiclePage /></RequirePermission>} />
 				<Route path="map" element={<TechnicianMapPage />} />
-				<Route path="user-settings" element={<UserSettingsPage />} />
+				<Route path="profile" element={<MyProfilePage />} />
 				<Route path="mileage" element={<TechnicianMileagePage />} />
 			</Route>
 

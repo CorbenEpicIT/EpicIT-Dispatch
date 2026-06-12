@@ -10,6 +10,7 @@ import {
     goOffline,
     goOnBreak,
     returnFromBreak,
+    changeTechnicianPassword
 } from "../controllers/techniciansController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
 import {
@@ -194,6 +195,38 @@ router.post("/:id/reset-password", requirePermission("manage_technicians"), asyn
                 );
         }
 
+        res.json(createSuccessResponse(null));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post("/:id/change-password", async (req, res, next) => {
+    try {
+        if (req.user?.uid !== req.params.id) {
+            return res
+                .status(403)
+                .json(
+                    createErrorResponse(
+                        ErrorCodes.FORBIDDEN,
+                        "You are not the owner of this technician",
+                    ),
+                );
+        }
+        const id = req.params.id as string;
+        const orgId = req.user.organization_id as string;
+        const data = req.body;
+        const result = await changeTechnicianPassword(id, orgId, data, getUserContext(req));
+        if (result.err) {
+            return res
+                .status(400)
+                .json(
+                    createErrorResponse(
+                        ErrorCodes.VALIDATION_ERROR,
+                        result.err,
+                    ),
+                );
+        }
         res.json(createSuccessResponse(null));
     } catch (err) {
         next(err);

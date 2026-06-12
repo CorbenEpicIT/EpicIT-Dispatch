@@ -75,5 +75,11 @@ export const updateTechnicianSchema = z
 		{ message: "At least one field must be provided for update" }
 	);
 
+export const changePasswordSchema = z.object({
+	current_password: z.string().min(1, "Current password is required"),
+	new_password: z.string().min(8, "New password must be at least 8 characters"),
+});
+
 export type CreateTechnicianInput = z.infer<typeof createTechnicianSchema>;
 export type UpdateTechnicianInput = z.infer<typeof updateTechnicianSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

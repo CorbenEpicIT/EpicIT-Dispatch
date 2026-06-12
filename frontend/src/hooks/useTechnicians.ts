@@ -76,6 +76,25 @@ export const useUpdateTechnicianMutation = (): UseMutationResult<
 	});
 };
 
+export const useChangeTechnicianPasswordMutation = (): UseMutationResult<
+	Technician,
+	Error,
+	{ id: string; data: { current_password: string; new_password: string } }
+> => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({ id, data }: { id: string; data: { current_password: string; new_password: string } }) =>
+			technicianApi.changeTechnicianPassword(id, data),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+		onError: (error: Error) => {
+			console.error(`Failed to change technician password:`, error.message);
+		},
+	});
+};
+
 export const useDeleteTechnicianMutation = (): UseMutationResult<
 	{ message: string; id: string },
 	Error,

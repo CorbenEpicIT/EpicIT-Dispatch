@@ -100,3 +100,16 @@ export const markDone = async (technicianId: string): Promise<Technician> => {
 	}
 	return response.data.data!;
 };
+
+export const changeTechnicianPassword = async (id: string, data: { current_password: string; new_password: string }): Promise<Technician> => {
+	try {
+		const response = await api.post<ApiResponse<Technician>>(`/technicians/${id}/change-password`, data);
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to change password');
+		}
+		return response.data.data!;
+	} catch (err: any) {
+		const message = err.response?.data?.error?.message || err.message || 'Failed to change password';
+		throw new Error(message);
+	}
+};

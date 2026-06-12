@@ -10,7 +10,8 @@ import {
     getDispatcherById,
     insertDispatcher,
     updateDispatcher,
-    deleteDispatcher
+    deleteDispatcher,
+    changeDispatcherPassword
 } from "../controllers/dispatchersController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
 import { requirePermission, requirePermissionOrSelf } from '../lib/requirePermissions.js';
@@ -109,7 +110,7 @@ router.put("/:id", requirePermissionOrSelf("manage_dispatchers"), async (req, re
     }
 });
 
-router.post("/:id/reset-password", requirePermission("manage_dispatchers"), async (req, res, next) => {
+router.post("/:id/reset-password", requirePermissionOrSelf("manage_dispatchers"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
@@ -137,6 +138,38 @@ router.post("/:id/reset-password", requirePermission("manage_dispatchers"), asyn
                 );
         }
 
+        res.json(createSuccessResponse(null));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post("/:id/change-password", async (req, res, next) => {
+    try {
+        if (req.user?.uid !== req.params.id) {
+            return res
+                .status(403)
+                .json(
+                    createErrorResponse(
+                        ErrorCodes.FORBIDDEN,
+                        "You are not the owner of this dispatcher",
+                    ),
+                );
+        }
+        const id = req.params.id as string;
+        const orgId = req.user.organization_id as string;
+        const data = req.body;
+        const result = await changeDispatcherPassword(id, orgId, data, getUserContext(req));
+        if (result.err) {
+            return res
+                .status(400)
+                .json(
+                    createErrorResponse(
+                        ErrorCodes.VALIDATION_ERROR,
+                        result.err,
+                    ),
+                );
+        }
         res.json(createSuccessResponse(null));
     } catch (err) {
         next(err);

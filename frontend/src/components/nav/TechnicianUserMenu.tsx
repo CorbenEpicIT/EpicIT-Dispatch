@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { queryClient } from "../../main";
-import { LogOut, UserRoundCog, Sun, Moon, Monitor, Palette, ChevronDown, Check } from "lucide-react";
+import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check } from "lucide-react";
 import { useOrgSettings } from "../../hooks/useOrg";
 import { useThemeStore } from "../../stores/themeStore";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
@@ -83,10 +83,10 @@ export default function TechnicianUserMenu() {
                     <div className="p-2 flex flex-col">
                         <button
                             className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
-                            onClick={() => { navigate("/technician/user-settings"); setMenuOpen(false); }}
+                            onClick={() => { navigate("/technician/profile"); setMenuOpen(false); }}
                         >
-                            <UserRoundCog size={16} />
-                            User Settings
+                            <UserRound size={16} />
+                            My Profile
                         </button>
                         <button
                             className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
