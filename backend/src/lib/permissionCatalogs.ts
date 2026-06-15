@@ -17,6 +17,7 @@ const TECHNICIAN_CATALOG = [
 	{ category: "Job Visits", permissions: ["view_visits", "check_in", "check_out", "update_visit_status", "add_visit_notes"] },
 	{ category: "Clients", permissions: ["view_clients"] },
 	{ category: "Inventory", permissions: ["view_inventory", "use_inventory"] },
+	{ category: "Vehicle Stock", permissions: ["stock_own_vehicle", "complete_own_eod"] },
 	{ category: "Schedule", permissions: ["view_own_schedule", "view_team_schedule"] },
 	{ category: "Forms", permissions: ["view_forms", "submit_forms"] },
 	{ category: "Vehicles", permissions: ["view_vehicles", "use_vehicles"] },

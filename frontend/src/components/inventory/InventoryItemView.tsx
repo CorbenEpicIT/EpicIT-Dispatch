@@ -104,7 +104,7 @@ export default function InventoryItemView({
 						{item.category && (
 							<span className="text-xs text-text-muted">{item.category}</span>
 						)}
-						{item.unit && (
+						{item.unit && item.unit.toLowerCase() !== "each" && (
 							<span className="text-xs text-text-muted">{item.unit}</span>
 						)}
 						{item.sku && (
@@ -182,7 +182,7 @@ export default function InventoryItemView({
 				</div>
 				<div>
 					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Unit</h2>
-					<p className="text-text-secondary text-sm mt-0.5">{item.unit || "-"}</p>
+					<p className="text-text-secondary text-sm mt-0.5">{(item.unit && item.unit.toLowerCase() !== "each") ? item.unit : "-"}</p>
 				</div>
 				{item.description && (
 					<div className="col-span-2">

@@ -33,6 +33,7 @@ interface ScheduleBoardCardProps {
 	left: number;
 	width: number;
 	zIndex: number;
+	stockWarning?: "low" | "out";
 	onClick: (e: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => void;
 	onMouseEnter: () => void;
 	onMouseLeave: (e: React.MouseEvent) => void;
@@ -66,6 +67,7 @@ export default function ScheduleBoardCard({
 	left,
 	width,
 	zIndex,
+	stockWarning,
 	onClick,
 	onMouseEnter,
 	onMouseLeave,
@@ -279,6 +281,22 @@ export default function ScheduleBoardCard({
 							pointerEvents: "none",
 						}} />
 					</>
+				)}
+
+				{/* Stock warning badge */}
+				{stockWarning && (
+					<div style={{
+						position: "absolute",
+						top: 3,
+						right: 3,
+						width: 9,
+						height: 9,
+						borderRadius: "50%",
+						backgroundColor: stockWarning === "out" ? "var(--color-error)" : "var(--color-warning)",
+						boxShadow: `0 0 0 1.5px ${CARD_BG}`,
+						pointerEvents: "none",
+						zIndex: 1,
+					}} />
 				)}
 			</div>
 		</div>

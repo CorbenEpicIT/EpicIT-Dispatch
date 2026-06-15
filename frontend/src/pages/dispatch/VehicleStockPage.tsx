@@ -1,0 +1,803 @@
+import { useState, useRef, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Trash2, Search, X, History } from "lucide-react";
+import {
+	useVehicleStockQuery,
+	useUpdateVehicleStockItemMutation,
+	useDeleteVehicleStockItemMutation,
+	useAddVehicleStockItemMutation,
+	useVehiclesQuery,
+} from "../../hooks/useVehicles";
+import {
+	useVehicleUsageTodayQuery,
+	useVehicleStockAdjustmentHistoryQuery,
+	useRestockRequestsQuery,
+	useFulfillRestockRequestMutation,
+	useDismissRestockRequestMutation,
+} from "../../hooks/useVehicleStock";
+import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
+import EditVehicle from "../../components/vehicles/EditVehicle";
+import EodWorkflow from "../../components/vehicles/EodWorkflow";
+import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
+import LoadSvg from "../../assets/icons/loading.svg?react";
+import type { VehicleStockItem, VehicleStockAdjustment, RestockRequest } from "../../types/vehicles";
+import { ADJUSTMENT_TYPE_LABELS } from "../../types/vehicles";
+
+type Tab = "stock" | "usage" | "eod" | "requests";
+
+const STOCK_GRID = "grid-cols-[1fr_84px_84px_84px_84px_116px_36px]";
+
+function VehicleIcon({ hasOut, hasLow }: { hasOut: boolean; hasLow: boolean }) {
+	const stroke = hasOut ? "var(--color-error)" : hasLow ? "var(--color-warning)" : "var(--color-success)";
+	const bg = hasOut ? "bg-error/10" : hasLow ? "bg-warning/10" : "bg-success/10";
+	return (
+		<div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
+			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+				<rect x="1" y="3" width="15" height="13" rx="2"/>
+				<path d="M16 8h4l3 5v3h-7V8z"/>
+				<circle cx="5.5" cy="18.5" r="2.5"/>
+				<circle cx="18.5" cy="18.5" r="2.5"/>
+			</svg>
+		</div>
+	);
+}
+
+/** On-hand level relative to standard (or 2×min when no standard set). */
+function LevelGauge({ item }: { item: VehicleStockItem }) {
+	const onHand = Number(item.qty_on_hand);
+	const min = Number(item.qty_min);
+	const standard = item.qty_standard !== null ? Number(item.qty_standard) : null;
+
+	const isOut = onHand === 0 && min > 0;
+	const isLow = !isOut && onHand < min;
+
+	const target = standard !== null && standard > 0 ? standard : min > 0 ? min * 2 : 0;
+	const pct = target > 0 ? Math.min(onHand / target, 1) * 100 : onHand > 0 ? 100 : 0;
+
+	const barColor = isOut ? "bg-error" : isLow ? "bg-warning" : "bg-success/80";
+	const textColor = isOut ? "text-error-text" : isLow ? "text-warning-text" : "text-success";
+	const label = isOut ? "Out" : isLow ? "Low" : "OK";
+
+	return (
+		<div className="flex items-center justify-center gap-2">
+			<div className="w-10 h-1 rounded-full bg-surface-inset overflow-hidden flex-shrink-0">
+				<div
+					className={`h-full ${barColor} transition-all duration-200`}
+					style={{ width: `${pct}%` }}
+				/>
+			</div>
+			<span className={`text-xs font-semibold w-7 text-left ${textColor}`}>{label}</span>
+		</div>
+	);
+}
+
+function StockRow({ item, onUpdateStandard, onUpdateMin, onDelete }: {
+	item: VehicleStockItem;
+	onUpdateStandard: (qty: number | null) => void;
+	onUpdateMin: (qty: number) => void;
+	onDelete: () => void;
+}) {
+	const navigate = useNavigate();
+	const [editingStandard, setEditingStandard] = useState(false);
+	const [stdVal, setStdVal] = useState(item.qty_standard !== null ? String(item.qty_standard) : "");
+	const [editingMin, setEditingMin] = useState(false);
+	const [minVal, setMinVal] = useState(String(item.qty_min));
+	const [confirmDelete, setConfirmDelete] = useState(false);
+	const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => () => { if (deleteTimer.current) clearTimeout(deleteTimer.current); }, []);
+
+	const handleDeleteClick = () => {
+		if (confirmDelete) {
+			if (deleteTimer.current) clearTimeout(deleteTimer.current);
+			setConfirmDelete(false);
+			onDelete();
+		} else {
+			setConfirmDelete(true);
+			deleteTimer.current = setTimeout(() => setConfirmDelete(false), 3000);
+		}
+	};
+
+	const onHand = Number(item.qty_on_hand);
+	const min = Number(item.qty_min);
+	const isOut = onHand === 0 && min > 0;
+	const isLow = !isOut && onHand < min;
+
+	const inputBorder = isOut ? "border-error" : isLow ? "border-warning" : "border-border-input";
+	const inputText   = isOut ? "text-error-text font-bold" : isLow ? "text-warning-text font-bold" : "text-text-primary font-semibold";
+	const rowBg       = isOut ? "bg-error/10" : isLow ? "bg-warning/10" : "";
+
+	const commitStandard = () => {
+		if (!editingStandard) return;
+		setEditingStandard(false);
+		const trimmed = stdVal.trim();
+		if (trimmed === "") {
+			onUpdateStandard(null);
+		} else {
+			const n = Number(trimmed);
+			if (!isNaN(n) && n >= 0) onUpdateStandard(n);
+			else setStdVal(item.qty_standard !== null ? String(item.qty_standard) : "");
+		}
+	};
+
+	const commitMin = () => {
+		if (!editingMin) return;
+		setEditingMin(false);
+		const n = Number(minVal.trim());
+		if (!isNaN(n) && n >= 0) onUpdateMin(n);
+		else setMinVal(String(item.qty_min));
+	};
+
+	return (
+		<div className={`grid ${STOCK_GRID} items-center px-5 py-2.5 border-b border-border/20 ${rowBg} hover:bg-surface-raised/40 transition-colors`}>
+			<div>
+				<button
+					onClick={() => navigate(`/dispatch/inventory?highlight=${item.inventory_item_id}`)}
+					className="text-sm font-medium text-text-primary hover:text-primary hover:underline transition-colors text-left"
+				>
+					{item.inventory_item.name}
+				</button>
+				<div className="text-xs text-text-muted">
+					{item.inventory_item.category ?? ""}
+					{(item.inventory_item.unit && item.inventory_item.unit.toLowerCase() !== "each") ? ` · ${item.inventory_item.unit}` : ""}
+				</div>
+			</div>
+			<div className="flex justify-center">
+				<span className={`text-sm tabular-nums ${
+					Number(item.inventory_item.quantity) === 0
+						? "text-error-text font-semibold"
+						: item.inventory_item.low_stock_threshold !== null &&
+						  Number(item.inventory_item.quantity) <= Number(item.inventory_item.low_stock_threshold)
+						? "text-warning-text"
+						: "text-text-muted"
+				}`}>
+					{Number(item.inventory_item.quantity)}
+				</span>
+			</div>
+			<div className="flex justify-center">
+				{editingStandard ? (
+					<input
+						autoFocus
+						className="w-14 text-center text-sm rounded border border-primary text-text-primary font-semibold bg-surface px-1 py-0.5 outline-none"
+						value={stdVal}
+						onChange={(e) => setStdVal(e.target.value)}
+						onBlur={commitStandard}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") commitStandard();
+							if (e.key === "Escape") {
+								setStdVal(item.qty_standard !== null ? String(item.qty_standard) : "");
+								setEditingStandard(false);
+							}
+						}}
+					/>
+				) : item.qty_standard !== null ? (
+					<button
+						onClick={() => { setStdVal(String(item.qty_standard)); setEditingStandard(true); }}
+						className="w-14 text-center text-sm rounded border border-border-input text-text-muted bg-surface px-1 py-0.5 hover:bg-surface-raised transition-colors"
+					>
+						{Number(item.qty_standard)}
+					</button>
+				) : (
+					<button
+						onClick={() => { setStdVal(""); setEditingStandard(true); }}
+						className="w-14 text-center text-sm rounded border border-dashed border-border/40 text-text-faint bg-transparent px-1 py-0.5 hover:border-border hover:text-text-muted transition-colors"
+					>
+						—
+					</button>
+				)}
+			</div>
+			<div className="flex justify-center">
+				<span className={`w-14 text-center text-sm rounded border ${inputBorder} ${inputText} bg-surface px-1 py-0.5`}>
+					{onHand}
+				</span>
+			</div>
+			<div className="flex justify-center">
+				{editingMin ? (
+					<input
+						autoFocus
+						className="w-14 text-center text-sm rounded border border-primary text-text-primary font-semibold bg-surface px-1 py-0.5 outline-none"
+						value={minVal}
+						onChange={(e) => setMinVal(e.target.value)}
+						onBlur={commitMin}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") commitMin();
+							if (e.key === "Escape") { setMinVal(String(item.qty_min)); setEditingMin(false); }
+						}}
+					/>
+				) : (
+					<button
+						onClick={() => { setMinVal(String(item.qty_min)); setEditingMin(true); }}
+						className="w-14 text-center text-sm rounded border border-border-input text-text-muted bg-surface px-1 py-0.5 hover:bg-surface-raised transition-colors"
+					>
+						{min}
+					</button>
+				)}
+			</div>
+			<LevelGauge item={item} />
+			<div className="flex justify-center">
+				{confirmDelete ? (
+					<button
+						onClick={handleDeleteClick}
+						className="text-[10px] font-bold text-error-text bg-error/15 hover:bg-error/25 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap"
+					>
+						Confirm?
+					</button>
+				) : (
+					<button onClick={handleDeleteClick} className="text-text-faint hover:text-error-text transition-colors">
+						<Trash2 size={14} />
+					</button>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function AddStockItemRow({ vehicleId, existingIds, onDone }: {
+	vehicleId: string;
+	existingIds: Set<string>;
+	onDone: () => void;
+}) {
+	const [search, setSearch] = useState("");
+	const addMutation = useAddVehicleStockItemMutation();
+	const { data: allInventory = [] } = useAllInventoryQuery();
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => { inputRef.current?.focus(); }, []);
+
+	const results = allInventory.filter((item) => {
+		if (existingIds.has(item.id)) return false;
+		if (!search.trim()) return true;
+		return item.name.toLowerCase().includes(search.toLowerCase());
+	}).slice(0, 12);
+
+	const handleSelect = async (inventoryItemId: string) => {
+		await addMutation.mutateAsync({ vehicleId, data: { inventory_item_id: inventoryItemId, qty_on_hand: 0, qty_min: 1 } });
+		onDone();
+	};
+
+	return (
+		<div className="px-5 py-3 border-t border-border">
+			<div className="relative">
+				<div className="flex items-center gap-2 border border-primary rounded-md px-3 py-1.5 bg-base">
+					<Search size={13} className="text-text-muted flex-shrink-0" />
+					<input
+						ref={inputRef}
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						onKeyDown={(e) => { if (e.key === "Escape") onDone(); }}
+						placeholder="Search inventory…"
+						className="flex-1 text-sm bg-transparent text-text-primary placeholder:text-faint outline-none"
+					/>
+					<button onClick={onDone} className="text-text-faint hover:text-text-secondary transition-colors">
+						<X size={13} />
+					</button>
+				</div>
+				{results.length > 0 && (
+					<div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
+						{results.map((item) => (
+							<button
+								key={item.id}
+								onClick={() => handleSelect(item.id)}
+								disabled={addMutation.isPending}
+								className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-surface-raised transition-colors disabled:opacity-50"
+							>
+								<span className="text-sm text-text-primary">{item.name}</span>
+								<span className="text-xs text-text-muted">{item.category ?? ""}{(item.unit && item.unit.toLowerCase() !== "each") ? ` · ${item.unit}` : ""}</span>
+							</button>
+						))}
+					</div>
+				)}
+				{search.trim() && results.length === 0 && (
+					<div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded-md shadow-lg z-20 px-3 py-2">
+						<span className="text-xs text-text-muted">No matching inventory items</span>
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+
+function AdjustmentHistoryView({ vehicleId, stockItems, onBack }: {
+	vehicleId: string;
+	stockItems: VehicleStockItem[];
+	onBack: () => void;
+}) {
+	const { data: adjustments = [], isLoading } = useVehicleStockAdjustmentHistoryQuery(vehicleId, true);
+
+	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
+
+	return (
+		<div className="px-5 py-4">
+			<div className="flex items-center justify-between mb-4">
+				<button
+					onClick={onBack}
+					className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors"
+				>
+					← Back to Stock
+				</button>
+				<span className="text-xs text-text-muted">{adjustments.length} adjustment{adjustments.length !== 1 ? "s" : ""} (last 50)</span>
+			</div>
+			{adjustments.length === 0 ? (
+				<p className="text-sm text-text-muted text-center py-8">No stock adjustments recorded yet.</p>
+			) : (
+				<div className="space-y-3">
+					{adjustments.map((adj: VehicleStockAdjustment) => {
+						const hasWarehouseImpact = adj.type === "warehouse_exchange";
+						return (
+							<div key={adj.id} className="bg-surface rounded-lg border border-border overflow-hidden">
+								<div className="px-4 py-2.5 border-b border-border-subtle flex items-center justify-between">
+									<div className="flex items-center gap-2">
+										<span className="text-sm font-semibold text-text-primary">
+											{ADJUSTMENT_TYPE_LABELS[adj.type]}
+										</span>
+										{hasWarehouseImpact && (
+											<span className="text-[10px] font-semibold text-text-muted bg-surface-raised border border-border px-1.5 py-0.5 rounded">
+												Warehouse ±
+											</span>
+										)}
+									</div>
+									<div className="text-right">
+										<span className="text-xs text-text-muted">
+											{new Date(adj.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
+											{" · "}
+											{new Date(adj.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+											{" · "}{adj.created_by?.name ?? adj.created_by_tech?.name ?? "—"}
+										</span>
+									</div>
+								</div>
+								{adj.lines.length > 0 ? (
+									<div className="divide-y divide-border-subtle">
+										{adj.lines.map((line) => {
+											const stockItem = stockItems.find((s) => s.id === line.stock_item_id);
+											const delta = line.qty_after - line.qty_before;
+											return (
+												<div key={line.id} className="flex items-center justify-between px-4 py-2">
+													<span className="text-sm text-text-primary">
+														{stockItem?.inventory_item.name ?? line.stock_item_id}
+													</span>
+													<div className="flex items-center gap-3">
+														<span className="text-xs text-text-muted tabular-nums">{line.qty_before} → {line.qty_after}</span>
+														<span className={`text-sm font-semibold tabular-nums ${delta > 0 ? "text-success" : delta < 0 ? "text-error-text" : "text-text-muted"}`}>
+															{delta > 0 ? "+" : ""}{delta}
+														</span>
+													</div>
+												</div>
+											);
+										})}
+									</div>
+								) : (
+									<p className="px-4 py-2 text-xs text-text-muted">No items changed.</p>
+								)}
+								{adj.note && (
+									<div className="px-4 py-2 border-t border-border-subtle">
+										<span className="text-xs text-text-muted italic">{adj.note}</span>
+									</div>
+								)}
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function SectionHeader({ label, count, tone }: { label: string; count: number; tone: "warning" | "muted" }) {
+	return (
+		<div className={`flex items-center gap-2 px-5 pt-3 pb-1 ${tone === "warning" ? "text-warning-text" : "text-text-faint"}`}>
+			<span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
+			<span className="text-[10px] font-semibold tabular-nums">{count}</span>
+			<div className={`flex-1 h-px ${tone === "warning" ? "bg-warning/20" : "bg-border/30"}`} />
+		</div>
+	);
+}
+
+function StockTab({ vehicleId, stockItems, isLoading }: {
+	vehicleId: string;
+	stockItems: VehicleStockItem[];
+	isLoading: boolean;
+}) {
+	const [addOpen, setAddOpen] = useState(false);
+	const [adjustOpen, setAdjustOpen] = useState(false);
+	const [showHistory, setShowHistory] = useState(false);
+	const updateMutation = useUpdateVehicleStockItemMutation();
+	const deleteMutation = useDeleteVehicleStockItemMutation();
+
+	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
+
+	if (showHistory) {
+		return <AdjustmentHistoryView vehicleId={vehicleId} stockItems={stockItems} onBack={() => setShowHistory(false)} />;
+	}
+
+	const health = (i: VehicleStockItem) =>
+		Number(i.qty_on_hand) === 0 && Number(i.qty_min) > 0 ? 0 :
+		Number(i.qty_on_hand) < Number(i.qty_min) ? 1 : 2;
+
+	const sorted = [...stockItems].sort((a, b) => health(a) - health(b));
+	const needsAttention = sorted.filter((i) => health(i) < 2);
+	const stocked = sorted.filter((i) => health(i) === 2);
+
+	const existingIds = new Set(stockItems.map((i) => i.inventory_item_id));
+	const unconfiguredCount = stockItems.filter((i) => i.qty_standard === null && Number(i.qty_min) === 0).length;
+
+	const renderRow = (item: VehicleStockItem) => (
+		<StockRow
+			key={item.id}
+			item={item}
+			onUpdateStandard={(qty_standard) => updateMutation.mutate({ vehicleId, itemId: item.id, data: { qty_standard } })}
+			onUpdateMin={(qty_min) => updateMutation.mutate({ vehicleId, itemId: item.id, data: { qty_min } })}
+			onDelete={() => deleteMutation.mutate({ vehicleId, itemId: item.id })}
+		/>
+	);
+
+	return (
+		<div>
+			{unconfiguredCount > 0 && (
+				<div className="mx-5 mt-3 px-3 py-2 bg-warning-bg border border-warning-border rounded-md flex items-center justify-between">
+					<span className="text-xs text-warning-text">
+						<span className="font-semibold">{unconfiguredCount} item{unconfiguredCount !== 1 ? "s" : ""}</span> have no standard or min qty — invisible to EOD and conflict alerts.
+					</span>
+					<span className="text-[10px] text-warning-text/70">Click Standard / Min cells to configure</span>
+				</div>
+			)}
+			<div className="flex items-center justify-end gap-2 px-5 py-2 border-b border-border/10 mt-2">
+				<button
+					onClick={() => setShowHistory(true)}
+					className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
+				>
+					<History size={12} />
+					Adjustment History
+				</button>
+				<button
+					onClick={() => setAdjustOpen(true)}
+					className="px-3 py-1.5 text-xs font-semibold bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
+				>
+					Adjust Stock
+				</button>
+			</div>
+			{sorted.length > 0 && (
+				<div className={`grid ${STOCK_GRID} px-5 py-2 border-b border-border/30 sticky top-0 bg-canvas z-10`}>
+					{["Item", "Warehouse", "Standard", "On Hand", "Min", "Level", ""].map((h) => (
+						<div key={h} className="text-[10px] font-semibold text-text-muted uppercase tracking-wider text-center first:text-left">{h}</div>
+					))}
+				</div>
+			)}
+			{sorted.length === 0 && !addOpen && (
+				<div className="flex flex-col items-center justify-center py-14 text-center">
+					<p className="text-sm font-medium text-text-secondary">No stock tracked on this vehicle</p>
+					<p className="text-xs text-text-muted mt-1 max-w-72">
+						Add inventory items to track on-hand quantities, get low-stock alerts, and enable end-of-day restocking.
+					</p>
+				</div>
+			)}
+			{needsAttention.length > 0 && (
+				<>
+					<SectionHeader label="Needs attention" count={needsAttention.length} tone="warning" />
+					{needsAttention.map(renderRow)}
+				</>
+			)}
+			{needsAttention.length > 0 && stocked.length > 0 && (
+				<SectionHeader label="Stocked" count={stocked.length} tone="muted" />
+			)}
+			{(needsAttention.length > 0 ? stocked : sorted).map(renderRow)}
+			{addOpen ? (
+				<AddStockItemRow vehicleId={vehicleId} existingIds={existingIds} onDone={() => setAddOpen(false)} />
+			) : (
+				<div className="px-5 py-3 border-t border-border">
+					<button
+						onClick={() => setAddOpen(true)}
+						className="w-full border border-dashed border-border rounded-md py-2 text-xs text-text-muted hover:text-text-secondary hover:border-border-strong transition-colors"
+					>
+						+ Search inventory to add item…
+					</button>
+				</div>
+			)}
+			{adjustOpen && (
+				<AdjustStockModal
+					vehicleId={vehicleId}
+					stockItems={sorted}
+					onClose={() => setAdjustOpen(false)}
+				/>
+			)}
+		</div>
+	);
+}
+
+function RequestRow({ request }: { request: RestockRequest }) {
+	const fulfillMutation = useFulfillRestockRequestMutation();
+	const dismissMutation = useDismissRestockRequestMutation();
+	const warehouseQty = Number(request.stock_item.inventory_item.quantity);
+	const defaultQty = request.qty_requested !== null ? Math.ceil(Number(request.qty_requested)) : 1;
+	const [qty, setQty] = useState(String(defaultQty));
+	const [error, setError] = useState<string | null>(null);
+
+	const handleFulfill = () => {
+		const n = Number(qty);
+		if (!Number.isInteger(n) || n <= 0) {
+			setError("Enter a whole number greater than 0");
+			return;
+		}
+		setError(null);
+		fulfillMutation.mutate(
+			{ requestId: request.id, qty: n },
+			{
+				onError: (e) => {
+					setError(
+						e.message === "insufficient_warehouse_stock"
+							? `Not enough warehouse stock (${warehouseQty} available)`
+							: e.message,
+					);
+				},
+			},
+		);
+	};
+
+	const age = (() => {
+		const ms = Date.now() - new Date(request.created_at).getTime();
+		const hours = Math.floor(ms / 3_600_000);
+		if (hours < 1) return "just now";
+		if (hours < 24) return `${hours}h ago`;
+		return `${Math.floor(hours / 24)}d ago`;
+	})();
+
+	return (
+		<div className="bg-surface rounded-lg border border-border px-4 py-3">
+			<div className="flex items-center justify-between gap-3">
+				<div className="min-w-0">
+					<div className="text-sm font-semibold text-text-primary truncate">
+						{request.stock_item.inventory_item.name}
+					</div>
+					<div className="text-xs text-text-muted mt-0.5">
+						{request.technician?.name ?? "Unknown tech"} · {age}
+						{request.qty_requested !== null && ` · requested ${Number(request.qty_requested)}`}
+						{` · warehouse has ${warehouseQty}`}
+					</div>
+					{request.note && (
+						<div className="text-xs text-text-muted italic mt-1">“{request.note}”</div>
+					)}
+				</div>
+				<div className="flex items-center gap-2 flex-shrink-0">
+					<input
+						value={qty}
+						onChange={(e) => setQty(e.target.value)}
+						className="w-14 text-center text-sm rounded border border-border-input text-text-primary bg-surface px-1 py-1 outline-none focus:border-primary"
+						aria-label="Quantity to fulfill"
+					/>
+					<button
+						onClick={handleFulfill}
+						disabled={fulfillMutation.isPending}
+						className="px-3 py-1.5 text-xs font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
+					>
+						{fulfillMutation.isPending ? "Fulfilling…" : "Fulfill"}
+					</button>
+					<button
+						onClick={() => dismissMutation.mutate(request.id)}
+						disabled={dismissMutation.isPending}
+						className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
+					>
+						Dismiss
+					</button>
+				</div>
+			</div>
+			{error && <p className="text-xs text-error-text mt-2">{error}</p>}
+		</div>
+	);
+}
+
+function RequestsTab({ vehicleId }: { vehicleId: string }) {
+	const { data: requests = [], isLoading } = useRestockRequestsQuery("pending", vehicleId);
+
+	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
+
+	if (requests.length === 0) {
+		return (
+			<div className="flex flex-col items-center justify-center py-16 text-text-muted">
+				<p className="text-sm font-medium">No pending restock requests</p>
+				<p className="text-xs mt-1">Requests from technicians on this vehicle will appear here</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="px-5 py-4 space-y-3">
+			{requests.map((r) => (
+				<RequestRow key={r.id} request={r} />
+			))}
+		</div>
+	);
+}
+
+function UsageTodayTab({ vehicleId }: { vehicleId: string }) {
+	const { data: groups = [], isLoading } = useVehicleUsageTodayQuery(vehicleId);
+
+	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
+
+	if (groups.length === 0) {
+		return (
+			<div className="flex flex-col items-center justify-center py-16 text-text-muted">
+				<p className="text-sm font-medium">No usage recorded today</p>
+				<p className="text-xs mt-1">Items used during visits will appear here</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="px-5 py-4 space-y-4">
+			{groups.map((group) => (
+				<div key={group.visitId} className="bg-surface rounded-lg border border-border overflow-hidden">
+					<div className="px-4 py-2.5 border-b border-border-subtle flex items-center justify-between">
+						<span className="text-sm font-semibold text-text-primary">{group.visitName}</span>
+						{group.scheduledAt && (
+							<span className="text-xs text-text-muted">
+								{new Date(group.scheduledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+							</span>
+						)}
+					</div>
+					<div className="divide-y divide-border-subtle">
+						{group.items.map((item) => (
+							<div key={`${group.visitId}-${item.itemName}`} className="flex items-center justify-between px-4 py-2">
+								<span className="text-sm text-text-primary">{item.itemName}</span>
+								<span className="text-sm font-semibold text-text-secondary">−{item.qtyUsed}</span>
+							</div>
+						))}
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+export default function VehicleStockPage() {
+	const { id } = useParams<{ id: string }>();
+	const navigate = useNavigate();
+	const [activeTab, setActiveTab] = useState<Tab>("stock");
+	const [isEditOpen, setIsEditOpen] = useState(false);
+	const [fillOpen, setFillOpen] = useState(false);
+
+	const { data: vehicles } = useVehiclesQuery();
+	const vehicle = vehicles?.find((v) => v.id === id);
+	const activeVehicles = vehicles?.filter((v) => v.status === "active") ?? [];
+
+	const { data: stockItems = [], isLoading: stockLoading } = useVehicleStockQuery(id!);
+	const { data: pendingRequests = [] } = useRestockRequestsQuery("pending", id);
+
+	if (!id) return null;
+
+	const techNames = vehicle?.current_technicians?.map((t) => t.name).join(", ") ?? "";
+	const vehicleSubtitle = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ")
+		+ (vehicle?.license_plate ? ` · ${vehicle.license_plate}` : "")
+		+ (techNames ? ` · ${techNames}` : "");
+
+	const outCount = stockItems.filter((i) => Number(i.qty_on_hand) === 0 && Number(i.qty_min) > 0).length;
+	const lowCount = stockItems.filter((i) => {
+		const onHand = Number(i.qty_on_hand);
+		const min = Number(i.qty_min);
+		return !(onHand === 0 && min > 0) && onHand < min;
+	}).length;
+	const hasAnyOut = outCount > 0;
+	const hasAnyLow = !hasAnyOut && lowCount > 0;
+
+	const TAB_LABELS: Record<Tab, string> = {
+		stock:    "Stock",
+		usage:    "Usage Today",
+		eod:      "End of Day",
+		requests: "Requests",
+	};
+
+	return (
+		<div className="flex flex-col h-full text-text-primary">
+			{/* Vehicle header */}
+			<div className="px-5 pt-4 border-b border-border">
+				<div className="flex items-start justify-between pb-3">
+					<div className="flex items-center gap-3">
+						<VehicleIcon hasOut={hasAnyOut} hasLow={hasAnyLow} />
+						<div>
+							<div className="flex items-center gap-2">
+								<span className="text-lg font-bold text-text-primary">{vehicle?.name ?? "Vehicle"}</span>
+								{vehicle?.status === "active" && (
+									<span className="text-[10px] font-bold bg-success/15 text-success px-2 py-0.5 rounded">ACTIVE</span>
+								)}
+								{outCount > 0 && (
+									<span className="text-[10px] font-bold bg-error/15 text-error-text px-2 py-0.5 rounded">
+										{outCount} OUT
+									</span>
+								)}
+								{lowCount > 0 && (
+									<span className="text-[10px] font-bold bg-warning/15 text-warning-text px-2 py-0.5 rounded">
+										{lowCount} LOW
+									</span>
+								)}
+							</div>
+							<div className="text-xs text-text-muted mt-1">{vehicleSubtitle}</div>
+						</div>
+					</div>
+					<div className="flex items-center gap-2">
+						{activeVehicles.length > 1 && (
+							<select
+								value={id}
+								onChange={(e) => navigate(`/dispatch/vehicles/${e.target.value}/stock`)}
+								className="text-xs bg-surface border border-border rounded-md px-2 py-1.5 text-text-secondary outline-none focus:border-primary cursor-pointer"
+							>
+								{activeVehicles.map((v) => (
+									<option key={v.id} value={v.id}>{v.name}</option>
+								))}
+							</select>
+						)}
+						<button
+							onClick={() => setIsEditOpen(true)}
+							className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+						>
+							Edit Vehicle
+						</button>
+						<button
+							onClick={() => setFillOpen(true)}
+							className="px-3 py-1.5 text-xs font-semibold bg-primary hover:bg-primary-hover text-on-primary rounded-md transition-colors"
+						>
+							↑ Fill to Standard
+						</button>
+					</div>
+				</div>
+				{/* Tabs */}
+				<div className="flex gap-0 -mb-px">
+					{(["stock", "usage", "eod", "requests"] as Tab[]).map((tab) => (
+						<button
+							key={tab}
+							onClick={() => setActiveTab(tab)}
+							className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+								activeTab === tab
+									? "border-primary text-text-primary"
+									: "border-transparent text-text-muted hover:text-text-secondary"
+							}`}
+						>
+							{TAB_LABELS[tab]}
+							{tab === "stock" && stockItems.length > 0 && (
+								<span className={`text-[10px] font-semibold px-1.5 py-px rounded-full ${
+									activeTab === tab ? "bg-primary-bg text-primary-text" : "bg-surface-raised text-text-muted"
+								}`}>
+									{stockItems.length}
+								</span>
+							)}
+							{tab === "requests" && pendingRequests.length > 0 && (
+								<span className={`text-[10px] font-semibold px-1.5 py-px rounded-full ${
+									activeTab === tab ? "bg-primary-bg text-primary-text" : "bg-warning/15 text-warning-text"
+								}`}>
+									{pendingRequests.length}
+								</span>
+							)}
+						</button>
+					))}
+				</div>
+			</div>
+
+			{/* Tab content */}
+			<div className="flex-1 overflow-auto min-h-0">
+				{activeTab === "stock"    && <StockTab vehicleId={id} stockItems={stockItems} isLoading={stockLoading} />}
+				{activeTab === "usage"    && <UsageTodayTab vehicleId={id} />}
+				{activeTab === "eod"      && <EodWorkflow vehicleId={id} stockItems={stockItems} />}
+				{activeTab === "requests" && <RequestsTab vehicleId={id} />}
+			</div>
+
+			{vehicle && (
+				<EditVehicle
+					isOpen={isEditOpen}
+					onClose={() => setIsEditOpen(false)}
+					vehicle={vehicle}
+				/>
+			)}
+
+			{fillOpen && (
+				<>
+					<div className="fixed inset-0 z-40 bg-overlay" onClick={() => setFillOpen(false)} />
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						<div className="bg-base border border-border rounded-xl w-full max-w-lg max-h-[80vh] overflow-auto">
+							<div className="px-4 pt-4 pb-1 text-sm font-semibold text-text-primary border-b border-border">Fill to Standard</div>
+							<FillToStandardPreview vehicleId={id!} onClose={() => setFillOpen(false)} />
+						</div>
+					</div>
+				</>
+			)}
+		</div>
+	);
+}

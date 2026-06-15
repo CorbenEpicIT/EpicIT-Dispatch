@@ -33,6 +33,7 @@ import InvoicesPage from "./pages/dispatch/InvoicesPage";
 import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
 import AdminPage from "./pages/dispatch/AdminPage";
 import VehiclesPage from "./pages/dispatch/VehiclesPage";
+import VehicleStockPage from "./pages/dispatch/VehicleStockPage";
 import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -139,7 +140,8 @@ export default function AppRoutes() {
 				<Route path="invoices/:invoiceId" element={<RequirePermission permission="view_invoices"><InvoiceDetailPage /></RequirePermission>} />
 				<Route path="profile" element={<RequireAuth><MyProfilePage /></RequireAuth>} />
 				<Route path="admin" element={<RequireAnyPermission permissions={["view_admin", "manage_organization", "manage_roles"]}><AdminPage /></RequireAnyPermission>} />
-				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_vehicles", "manage_vehicles"]}><VehiclesPage /></RequireAnyPermission>} />
+				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehiclesPage /></RequireAnyPermission>} />
+				<Route path="vehicles/:id/stock" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehicleStockPage /></RequireAnyPermission>} />
 			</Route>
 
 			<Route

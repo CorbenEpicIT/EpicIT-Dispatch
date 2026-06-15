@@ -8,7 +8,9 @@ import type {
 	AddVehicleStockItemInput,
 	UpdateVehicleStockItemInput,
 	AddPartsUsedInput,
+	SupplierPartUsedInput,
 	RestockRequestInput,
+	VehicleReadiness,
 } from "../types/vehicles";
 import type { VisitLineItem } from "../types/jobs";
 import * as vehiclesApi from "../api/vehicles";
@@ -106,6 +108,20 @@ export const useAddPartsUsedMutation = () => {
 			queryClient.invalidateQueries({ queryKey: ["jobVisits", visitId] });
 			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 			queryClient.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] });
+			queryClient.invalidateQueries({ queryKey: ["vehicles", "stock-conflicts"] });
+		},
+	});
+};
+
+export const useAddSupplierPartUsedMutation = (visitId: string, vehicleId: string | null) => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (input: SupplierPartUsedInput) => vehiclesApi.addSupplierPartUsed(visitId, input),
+		onSuccess: async () => {
+			await Promise.all([
+				qc.invalidateQueries({ queryKey: ["job-visits", visitId] }),
+				...(vehicleId ? [qc.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] })] : []),
+			]);
 		},
 	});
 };
@@ -118,6 +134,45 @@ export const useSetTechnicianVehicleMutation = () => {
 		mutationFn: ({ technicianId, vehicleId }) => vehiclesApi.setTechnicianVehicle(technicianId, vehicleId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+// ── Readiness queries & mutations ─────────────────────────────────────────────
+
+export const useVehicleReadinessQuery = (vehicleId: string | undefined, date?: string) =>
+	useQuery({
+		queryKey: ["vehicle-readiness", vehicleId, date],
+		queryFn: () => vehiclesApi.getVehicleReadiness(vehicleId!, date),
+		enabled: !!vehicleId,
+		staleTime: 30_000,
+	});
+
+export const useConfirmReadinessMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			vehicleId,
+			body,
+		}: {
+			vehicleId: string;
+			body: { date: string; notes?: string };
+		}) => vehiclesApi.confirmVehicleReadiness(vehicleId, body),
+		onSuccess: (data: VehicleReadiness, { vehicleId, body }) => {
+			qc.setQueryData(["vehicle-readiness", vehicleId, body.date], data);
+			qc.invalidateQueries({ queryKey: ["fleet-readiness", body.date] });
+		},
+	});
+};
+
+export const useRevokeReadinessMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ vehicleId, date }: { vehicleId: string; date: string }) =>
+			vehiclesApi.revokeVehicleReadiness(vehicleId, date),
+		onSuccess: (data: VehicleReadiness, { vehicleId, date }) => {
+			qc.setQueryData(["vehicle-readiness", vehicleId, date], data);
+			qc.invalidateQueries({ queryKey: ["fleet-readiness", date] });
 		},
 	});
 };

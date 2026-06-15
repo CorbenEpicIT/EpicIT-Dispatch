@@ -40,6 +40,28 @@ vi.mock("../../services/emailService.js", () => ({
 	sendEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
+// vi.mock factories are hoisted before imports. Use vi.hoisted so refs are
+// available inside the factory AND in the test body (same identity = instanceof works).
+const { mockRecordMovements, MockInsufficientStockError } = vi.hoisted(() => {
+	class MockInsufficientStockError extends Error {
+		available: Record<string, number>;
+		constructor(available: Record<string, number>) {
+			super("Insufficient warehouse stock");
+			this.name = "InsufficientStockError";
+			this.available = available;
+		}
+	}
+	return {
+		mockRecordMovements: vi.fn().mockResolvedValue({ lowStockItemIds: [] }),
+		MockInsufficientStockError,
+	};
+});
+
+vi.mock("../../services/stockMovements.js", () => ({
+	recordMovements: mockRecordMovements,
+	InsufficientStockError: MockInsufficientStockError,
+}));
+
 const mockDb = vi.mocked(db);
 const mockSendEmail = vi.mocked(sendEmail);
 
@@ -86,6 +108,7 @@ function setupTransaction() {
 describe("inventoryController", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [] });
 	});
 
 	// ---------------------------------------------------------------------------
@@ -130,9 +153,13 @@ describe("inventoryController", () => {
 		it("queries only active items", async () => {
 			mockDb.inventory_item.findMany.mockResolvedValue([]);
 			await getAllInventory();
-			expect(mockDb.inventory_item.findMany).toHaveBeenCalledWith(
-				expect.objectContaining({ where: { is_active: true } }),
-			);
+			expect(mockDb.inventory_item.findMany.mock.calls[0][0].where).toMatchObject({ is_active: true });
+		});
+
+		it("excludes provisional items from the catalog list", async () => {
+			mockDb.inventory_item.findMany.mockResolvedValue([]);
+			await getAllInventory("org-1");
+			expect(mockDb.inventory_item.findMany.mock.calls[0][0].where).toMatchObject({ provisional: false });
 		});
 
 		it.each([
@@ -201,12 +228,30 @@ describe("inventoryController", () => {
 			expect(result.item).toBeUndefined();
 		});
 
-		it("defaults quantity to 0 when not provided", async () => {
+		it("creates item with quantity 0 and delegates qty to recordMovements", async () => {
 			const tx = setupTransaction();
-			tx.inventory_item.create.mockResolvedValue(makeItem({ quantity: 0 }));
+			tx.inventory_item.create.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
 
-			const result = await createInventoryItem({ name: "Widget", location: "Shelf A" });
-			expect(result.item?.quantity).toBe(0);
+			const result = await createInventoryItem({ name: "Widget", location: "Shelf A", quantity: 10 });
+
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ quantity: 0 }) }),
+			);
+			expect(mockRecordMovements).toHaveBeenCalledWith(
+				expect.anything(), undefined, expect.anything(),
+				expect.arrayContaining([
+					expect.objectContaining({ qty: 10, reason: "receive" }),
+				]),
+			);
+			expect(result.item?.quantity).toBe(10);
+		});
+
+		it("defaults quantity to 0 and does not call recordMovements when no qty", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
+
+			await createInventoryItem({ name: "Widget", location: "Shelf A" });
+			expect(mockRecordMovements).not.toHaveBeenCalled();
 		});
 	});
 
@@ -231,10 +276,13 @@ describe("inventoryController", () => {
 			expect(result.item).toHaveProperty("stock_status");
 		});
 
-		it("returns validation error for negative quantity", async () => {
+		it("silently ignores quantity field (not in schema — use adjustInventoryStock)", async () => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
-			const result = await updateInventoryItem("item-1", { quantity: -5 });
-			expect(result.err).toMatch(/Validation failed/);
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem({ name: "Widget" }));
+			// quantity is stripped by Zod; should not cause a validation error
+			const result = await updateInventoryItem("item-1", { quantity: -5, name: "Widget" } as never);
+			expect(result.err).toBe("");
 		});
 	});
 
@@ -275,8 +323,9 @@ describe("inventoryController", () => {
 			);
 		});
 
-		it("prevents stock going below zero", async () => {
+		it("prevents stock going below zero (InsufficientStockError from recordMovements)", async () => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ quantity: 3 }));
+			mockRecordMovements.mockRejectedValueOnce(new MockInsufficientStockError({ "item-1": 3 }));
 			expect((await adjustInventoryStock("item-1", { delta: -5 })).err).toBe(
 				"Stock cannot go below zero",
 			);
@@ -288,21 +337,53 @@ describe("inventoryController", () => {
 		])("correctly applies %s delta", async (_, initial, delta, expected) => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ quantity: initial }));
 			const tx = setupTransaction();
-			tx.inventory_item.update.mockResolvedValue(makeItem({ quantity: expected }));
+			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: expected }));
 
 			const result = await adjustInventoryStock("item-1", { delta });
 			expect(result.err).toBe("");
 			expect(result.item?.quantity).toBe(expected);
 		});
 
+		it("calls recordMovements with receive movement on positive delta", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ quantity: 10 }));
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+			await adjustInventoryStock("item-1", { delta: 5 });
+
+			expect(mockRecordMovements).toHaveBeenCalledWith(
+				expect.anything(), undefined, expect.anything(),
+				expect.arrayContaining([
+					expect.objectContaining({ qty: 5, reason: "receive", from_location_type: "external", to_location_type: "warehouse" }),
+				]),
+			);
+		});
+
+		it("calls recordMovements with loss movement on negative delta", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ quantity: 10 }));
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 7 }));
+
+			await adjustInventoryStock("item-1", { delta: -3 });
+
+			expect(mockRecordMovements).toHaveBeenCalledWith(
+				expect.anything(), undefined, expect.anything(),
+				expect.arrayContaining([
+					expect.objectContaining({ qty: 3, reason: "loss", from_location_type: "warehouse", to_location_type: "adjustment" }),
+				]),
+			);
+		});
+
 		it("triggers low stock alert when quantity first crosses below threshold", async () => {
-			// quantity goes from 6 → 4, crossing threshold of 5
+			// existing quantity (6) > threshold (5), so alert fires on first cross
 			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ quantity: 6, low_stock_threshold: 5 }),
 			);
+			mockRecordMovements.mockResolvedValueOnce({ lowStockItemIds: ["item-1"] });
 			const tx = setupTransaction();
-			tx.inventory_item.update.mockResolvedValue(
+			tx.inventory_item.findUnique.mockResolvedValue(
 				makeItem({
+					id: "item-1",
 					quantity: 4,
 					low_stock_threshold: 5,
 					alert_emails_enabled: true,
@@ -320,18 +401,14 @@ describe("inventoryController", () => {
 		});
 
 		it("does not re-trigger alert when quantity was already below threshold", async () => {
-			// existing quantity (3) already below threshold (5)
+			// existing quantity (3) already below threshold (5) → hysteresis blocks alert
 			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ quantity: 3, low_stock_threshold: 5 }),
 			);
+			mockRecordMovements.mockResolvedValueOnce({ lowStockItemIds: ["item-1"] });
 			const tx = setupTransaction();
-			tx.inventory_item.update.mockResolvedValue(
-				makeItem({
-					quantity: 2,
-					low_stock_threshold: 5,
-					alert_emails_enabled: true,
-					alert_email: "ops@example.com",
-				}),
+			tx.inventory_item.findUnique.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 2, low_stock_threshold: 5, alert_emails_enabled: true, alert_email: "ops@example.com" }),
 			);
 
 			await adjustInventoryStock("item-1", { delta: -1 });
@@ -344,137 +421,95 @@ describe("inventoryController", () => {
 	// deductInventoryForVisit
 	// ---------------------------------------------------------------------------
 	describe("deductInventoryForVisit", () => {
-		type LineItem = { visit_id: string; inventory_item_id: string; quantity: number };
-		type InventoryMap = Record<string, ReturnType<typeof makeItem>>;
+		type LineItem = { id: string; visit_id: string; inventory_item_id: string; quantity: number };
 
-		function makeTx(lineItems: LineItem[], inventory: InventoryMap) {
+		function makeTx(lineItems: LineItem[]) {
 			return {
 				job_visit_line_item: {
 					findMany: vi.fn().mockResolvedValue(lineItems),
-				},
-				inventory_item: {
-					findUnique: vi
-						.fn()
-						.mockImplementation(({ where: { id } }: { where: { id: string } }) =>
-							Promise.resolve(inventory[id] ?? null),
-						),
-					update: vi
-						.fn()
-						.mockImplementation(
-							({
-								where: { id },
-								data,
-							}: {
-								where: { id: string };
-								data: { quantity: number };
-							}) => Promise.resolve({ ...inventory[id], ...data }),
-						),
+					updateMany: vi.fn().mockResolvedValue({ count: lineItems.length }),
 				},
 			};
 		}
 
-		it("deducts the correct quantity for each line item in the visit", async () => {
-			const lineItems: LineItem[] = [
-				{ visit_id: "v1", inventory_item_id: "item-1", quantity: 3 },
-				{ visit_id: "v1", inventory_item_id: "item-2", quantity: 2 },
-			];
-			const inventory: InventoryMap = {
-				"item-1": makeItem({ id: "item-1", quantity: 10 }),
-				"item-2": makeItem({ id: "item-2", quantity: 5 }),
-			};
-			const tx = makeTx(lineItems, inventory);
+		it("emits one batched direct_consumption movement set with allowNegative", async () => {
+			const tx = makeTx([
+				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 3 },
+				{ id: "li-2", visit_id: "v1", inventory_item_id: "item-2", quantity: 2 },
+			]);
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await deductInventoryForVisit("v1", tx as any);
+			await deductInventoryForVisit("v1", tx as any, "org-1");
 
-			expect(tx.inventory_item.update).toHaveBeenCalledWith(
-				expect.objectContaining({ where: { id: "item-1" }, data: { quantity: 7 } }),
-			);
-			expect(tx.inventory_item.update).toHaveBeenCalledWith(
-				expect.objectContaining({ where: { id: "item-2" }, data: { quantity: 3 } }),
-			);
+			expect(mockRecordMovements).toHaveBeenCalledOnce();
+			const [, orgId, , movements, opts] = mockRecordMovements.mock.calls[0];
+			expect(orgId).toBe("org-1");
+			expect(opts).toEqual({ allowNegative: true });
+			expect(movements).toEqual([
+				expect.objectContaining({
+					inventory_item_id: "item-1",
+					qty: 3,
+					from_location_type: "warehouse",
+					to_location_type: "consumed",
+					reason: "direct_consumption",
+					visit_id: "v1",
+					visit_line_item_id: "li-1",
+				}),
+				expect.objectContaining({
+					inventory_item_id: "item-2",
+					qty: 2,
+					visit_line_item_id: "li-2",
+				}),
+			]);
 		});
 
-		it("clamps quantity to 0 when deduction exceeds available stock", async () => {
-			const tx = makeTx(
-				[{ visit_id: "v1", inventory_item_id: "item-1", quantity: 20 }],
-				{ "item-1": makeItem({ id: "item-1", quantity: 5 }) },
-			);
+		it("retains the fulfillment-status filter (skips used, matches NULL)", async () => {
+			const tx = makeTx([]);
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await deductInventoryForVisit("v1", tx as any);
+			await deductInventoryForVisit("v1", tx as any, "org-1");
 
-			expect(tx.inventory_item.update).toHaveBeenCalledWith(
-				expect.objectContaining({ data: { quantity: 0 } }),
-			);
+			expect(tx.job_visit_line_item.findMany).toHaveBeenCalledWith({
+				where: {
+					visit_id: "v1",
+					inventory_item_id: { not: null },
+					OR: [{ fulfillment_status: null }, { fulfillment_status: { not: "used" } }],
+				},
+			});
 		});
 
-		it("skips line items whose inventory record is missing", async () => {
-			const tx = makeTx(
-				[{ visit_id: "v1", inventory_item_id: "ghost", quantity: 5 }],
-				{},
-			);
+		it("ceils fractional billed quantities (warehouse is integer)", async () => {
+			const tx = makeTx([
+				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 2.3 },
+			]);
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await deductInventoryForVisit("v1", tx as any);
+			await deductInventoryForVisit("v1", tx as any, "org-1");
 
-			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+			const movements = mockRecordMovements.mock.calls[0][3];
+			expect(movements[0].qty).toBe(3);
 		});
 
 		it("does nothing when the visit has no linked line items", async () => {
-			const tx = makeTx([], {});
+			const tx = makeTx([]);
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await deductInventoryForVisit("v1", tx as any);
+			const result = await deductInventoryForVisit("v1", tx as any, "org-1");
 
-			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+			expect(mockRecordMovements).not.toHaveBeenCalled();
+			expect(result).toEqual({ lowStockItemIds: [] });
 		});
 
-		it("triggers low stock alert when quantity first crosses below threshold", async () => {
-			// quantity drops from 7 → 4, crossing threshold of 5
-			const item = makeItem({
-				id: "item-1",
-				quantity: 7,
-				low_stock_threshold: 5,
-				alert_emails_enabled: true,
-				alert_email: "ops@example.com",
-			});
-			const tx = makeTx(
-				[{ visit_id: "v1", inventory_item_id: "item-1", quantity: 3 }],
-				{ "item-1": item },
-			);
+		it("propagates lowStockItemIds from recordMovements", async () => {
+			mockRecordMovements.mockResolvedValueOnce({ lowStockItemIds: ["item-1"] });
+			const tx = makeTx([
+				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 1 },
+			]);
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await deductInventoryForVisit("v1", tx as any);
-			// Fire-and-forget alert — flush microtask queue
-			await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			const result = await deductInventoryForVisit("v1", tx as any, "org-1");
 
-			expect(mockSendEmail).toHaveBeenCalledWith(
-				"ops@example.com",
-				"low-stock-alert",
-				expect.objectContaining({ current_quantity: 4, threshold: 5 }),
-			);
-		});
-
-		it("does not send alert when quantity was already below threshold", async () => {
-			// quantity (3) already below threshold (5) before deduction
-			const item = makeItem({
-				id: "item-1",
-				quantity: 3,
-				low_stock_threshold: 5,
-				alert_emails_enabled: true,
-				alert_email: "ops@example.com",
-			});
-			const tx = makeTx(
-				[{ visit_id: "v1", inventory_item_id: "item-1", quantity: 1 }],
-				{ "item-1": item },
-			);
-
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await deductInventoryForVisit("v1", tx as any);
-			await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-			expect(mockSendEmail).not.toHaveBeenCalled();
+			expect(result.lowStockItemIds).toEqual(["item-1"]);
 		});
 	});
 
@@ -581,12 +616,17 @@ describe("inventoryController", () => {
 			}]);
 			await importInventoryFromFile(buf, "org-1");
 
+			// quantity starts at 0; recordMovements handles the initial stock
 			expect(tx.inventory_item.create).toHaveBeenCalledWith(
 				expect.objectContaining({
 					data: expect.objectContaining({
-						quantity: 50, unit_price: 12.99, cost: 8.0, low_stock_threshold: 10,
+						quantity: 0, unit_price: 12.99, cost: 8.0, low_stock_threshold: 10,
 					}),
 				}),
+			);
+			expect(mockRecordMovements).toHaveBeenCalledWith(
+				expect.anything(), expect.anything(), expect.anything(),
+				expect.arrayContaining([expect.objectContaining({ qty: 50, reason: "receive" })]),
 			);
 		});
 

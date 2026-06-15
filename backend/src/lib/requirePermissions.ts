@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { ErrorCodes, createErrorResponse } from "../types/responses.js";
+import { db } from "../db.js";
 
 /*
  * Available permission strings for use with requirePermission()
@@ -35,6 +36,8 @@ import { ErrorCodes, createErrorResponse } from "../types/responses.js";
  *     view_clients
  *   Inventory
  *     view_inventory      · use_inventory
+ *   Vehicle Stock
+ *     stock_own_vehicle   · complete_own_eod
  *   Schedule
  *     view_own_schedule   · view_team_schedule
  *   Forms
@@ -59,6 +62,54 @@ export const requireAnyPermission = (...permissions: string[]) => (req: Request,
     }
     next();
 };
+
+/**
+ * Vehicle-scoped permission gate for vehicle stock routes.
+ *
+ * Pass order: admin → inventory/fleet managers → technician holding
+ * `techPermission` whose CURRENT vehicle matches the :id route param.
+ * Technicians can never act on a vehicle they are not checked into.
+ */
+export const requireVehiclePermission =
+	(techPermission: string, vehicleParam = "id") =>
+	async (req: Request, res: Response, next: NextFunction) => {
+		if (req.user?.role === "admin") return next();
+		const perms: string[] = (req.user?.permissions as string[]) || [];
+		if (perms.includes("manage_inventory") || perms.includes("manage_technicians")) {
+			return next();
+		}
+
+		if (req.user?.role === "technician" && perms.includes(techPermission)) {
+			try {
+				const tech = await db.technician.findFirst({
+					where: {
+						id: req.user.uid as string,
+						organization_id: req.user.organization_id as string,
+					},
+					select: { current_vehicle_id: true },
+				});
+				if (tech?.current_vehicle_id && tech.current_vehicle_id === req.params[vehicleParam]) {
+					return next();
+				}
+				return res
+					.status(403)
+					.json(
+						createErrorResponse(
+							ErrorCodes.INVALID_CREDENTIALS,
+							"You can only manage stock on your current vehicle",
+						),
+					);
+			} catch {
+				return res
+					.status(403)
+					.json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+			}
+		}
+
+		return res
+			.status(403)
+			.json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+	};
 
 export const requirePermissionOrSelf = (permission: string, idParam = "id") => (req: Request, res: Response, next: NextFunction) => {
     if (req.user?.role === "admin") return next();

@@ -16,6 +16,11 @@ import {
     importInventoryFromFile,
     exportLowStockToXlsx,
     getInventoryImportTemplate,
+    getInventoryMovements,
+    listProvisionalItems,
+    approveProvisionalItem,
+    mergeProvisionalItem,
+    rejectProvisionalItem,
 } from '../controllers/inventoryController.js';
 import {
     getOrgTags,
@@ -86,6 +91,67 @@ router.post("/", requirePermission("manage_inventory"), async (req, res, next) =
     } catch (err) {
         next(err);
     }
+});
+
+// ── Provisional item management ───────────────────────────────────────────────
+// NOTE: /provisional must be registered BEFORE any /:id routes to avoid param collision.
+
+router.get("/provisional", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const result = await listProvisionalItems(orgId);
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.items));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/approve", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await approveProvisionalItem(req.params.id, orgId, context);
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/merge", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await mergeProvisionalItem(req.params.id, req.body, orgId, context);
+		if (result.err) {
+			const status = result.err.includes("Validation") ? 400 : 404;
+			return res
+				.status(status)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+		}
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/reject", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await rejectProvisionalItem(req.params.id, orgId, context);
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
 });
 
 router.patch("/:id", requirePermission("manage_inventory"), async (req, res, next) => {
@@ -357,6 +423,25 @@ router.delete("/tags/:tagId", requirePermission("manage_inventory"), async (req,
         }
 
         res.json(createSuccessResponse({ message: "Tag deleted" }));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const { cursor, limit } = req.query as { cursor?: string; limit?: string };
+        const result = await getInventoryMovements(
+            req.params.id,
+            orgId,
+            cursor,
+            limit ? parseInt(limit, 10) : 25,
+        );
+        if (result.err) {
+            return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+        }
+        res.json(createSuccessResponse({ movements: result.movements, nextCursor: result.nextCursor }));
     } catch (err) {
         next(err);
     }

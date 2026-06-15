@@ -29,6 +29,9 @@ const orgSelect = {
 	email: true,
 	website: true,
 	tax_rate: true,
+	// UX default only — which restock workflow the UI leads with.
+	// Never read by any backend guard (capability is permission-driven).
+	restock_mode: true,
 } as const;
 
 async function withSignedLogo<T extends { logo_url: string | null }>(
@@ -91,6 +94,7 @@ router.patch("/", requirePermission("manage_organization"), async (req, res, nex
 			coords: coordsSchema,
 			email: z.string().email().nullable().optional(),
 			website: z.string().max(100).nullable().optional(),
+			restock_mode: z.enum(["tech_self_serve", "dispatch_prepared"]).optional(),
 		});
 		const parsed = schema.safeParse(req.body);
 		if (!parsed.success)

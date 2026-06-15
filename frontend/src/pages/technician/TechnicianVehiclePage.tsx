@@ -1,9 +1,16 @@
 ﻿import { useState, useMemo, useEffect, useRef } from "react";
-import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, ArrowUpDown } from "lucide-react";
+import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, ArrowUpDown, ClipboardCheck } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
+import { usePermission } from "../../hooks/usePermission";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
 import { useVehiclesQuery, useVehicleStockQuery, useSetTechnicianVehicleMutation, useRestockRequestMutation } from "../../hooks/useVehicles";
-import type { Vehicle, VehicleStockItem } from "../../types/vehicles";
+import { useVehicleStockConflictsQuery, useBulkRestockMutation } from "../../hooks/useVehicleStock";
+import RestockStatusList from "../../components/technicianComponents/RestockStatusList";
+import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
+import { useOrgSettings } from "../../hooks/useOrg";
+import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
+import EodWorkflow from "../../components/vehicles/EodWorkflow";
+import type { Vehicle, VehicleStockItem, VehicleStockConflict, BulkRestockInput } from "../../types/vehicles";
 
 // ── Vehicle Status ────────────────────────────────────────────────────────────
 
@@ -161,9 +168,15 @@ function formatUnit(unit: string | undefined): string {
 function StockItemRow({
 	item,
 	onRestock,
+	batchMode = false,
+	batchQty,
+	onBatchQtyChange,
 }: {
 	item: VehicleStockItem;
 	onRestock: (item: VehicleStockItem) => void;
+	batchMode?: boolean;
+	batchQty?: number;
+	onBatchQtyChange?: (id: string, qty: number) => void;
 }) {
 	const isEmpty = Number(item.qty_on_hand) === 0;
 	const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
@@ -171,20 +184,39 @@ function StockItemRow({
 
 	const qtyColor = isEmpty ? "text-error-text" : isLow ? "text-warning-text" : "text-text-primary";
 
+	const warehouseQty = Number(item.inventory_item.quantity);
+	const warehouseColor =
+		warehouseQty === 0
+			? "text-error-text"
+			: item.inventory_item.low_stock_threshold != null &&
+			  warehouseQty <= Number(item.inventory_item.low_stock_threshold)
+			? "text-warning-text"
+			: "text-text-faint";
+
+	const isRestockCandidate = isEmpty || isLow;
+	const isSelected = batchMode && isRestockCandidate && batchQty !== undefined && batchQty > 0;
+
 	return (
-		<div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0">
+		<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0 transition-colors ${
+			isSelected ? "bg-primary-hover/5" : ""
+		}`}>
 			<div className="flex-1 min-w-0">
 				<p className="text-sm text-text-primary truncate" title={item.inventory_item.name}>
 					{item.inventory_item.name}
 				</p>
-				<div className="flex items-center gap-2 mt-0.5">
+				<div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
 					{item.inventory_item.category && (
-						<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-tertiary rounded">
-							{item.inventory_item.category}
-						</span>
+						<>
+							<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-tertiary rounded">
+								{item.inventory_item.category}
+							</span>
+							<span className="text-[10px] text-border-subtle">·</span>
+						</>
 					)}
-					<span className="text-[10px] text-text-faint">
-						Min: {Number(item.qty_min)} {unit}
+					<span className="text-[10px] text-text-faint">Min {Number(item.qty_min)} {unit}</span>
+					<span className="text-[10px] text-border-subtle">·</span>
+					<span className={`text-[10px] tabular-nums ${warehouseColor}`}>
+						Stock {warehouseQty}
 					</span>
 				</div>
 			</div>
@@ -194,7 +226,29 @@ function StockItemRow({
 				</p>
 				<p className="text-[10px] text-text-faint">{unit}</p>
 			</div>
-			{(isEmpty || isLow) && (
+			{batchMode && isRestockCandidate && onBatchQtyChange ? (
+				<div className="flex items-center gap-1 shrink-0">
+					<button
+						onClick={() => onBatchQtyChange(item.id, Math.max(0, (batchQty ?? 0) - 1))}
+						aria-label="Decrease quantity"
+						className="w-7 h-7 rounded border border-border text-text-secondary text-sm font-semibold hover:bg-surface transition-colors leading-none"
+					>
+						−
+					</button>
+					<span className={`w-6 text-center text-sm font-bold tabular-nums ${
+						(batchQty ?? 0) > 0 ? "text-primary-text" : "text-text-faint"
+					}`}>
+						{batchQty ?? 0}
+					</span>
+					<button
+						onClick={() => onBatchQtyChange(item.id, (batchQty ?? 0) + 1)}
+						aria-label="Increase quantity"
+						className="w-7 h-7 rounded border border-border text-text-secondary text-sm font-semibold hover:bg-surface transition-colors leading-none"
+					>
+						+
+					</button>
+				</div>
+			) : !batchMode && (isEmpty || isLow) ? (
 				<button
 					onClick={() => onRestock(item)}
 					title="Request restock"
@@ -203,7 +257,7 @@ function StockItemRow({
 				>
 					<RotateCcw size={14} />
 				</button>
-			)}
+			) : null}
 		</div>
 	);
 }
@@ -231,6 +285,45 @@ function VehicleCardSkeleton() {
 	);
 }
 
+// ── Stock Conflict Warning ────────────────────────────────────────────────────
+
+function StockConflictWarning({ conflicts }: { conflicts: VehicleStockConflict[] }) {
+	return (
+		<div className="rounded-xl border border-error overflow-hidden">
+			<div className="px-4 py-2.5 bg-error/10 border-b border-error/30 flex items-center gap-2">
+				<AlertTriangle size={14} className="text-error-text shrink-0" />
+				<span className="text-sm font-semibold text-error-text">Stock issue for today's visits</span>
+			</div>
+			<div className="divide-y divide-border-subtle">
+				{conflicts.map((conflict, i) => {
+					const time = new Date(conflict.scheduledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+					return (
+						<div key={i} className="px-4 py-3">
+							<div className="flex items-center gap-2 mb-2">
+								<span className="text-sm font-semibold text-text-primary">{conflict.visitName}</span>
+								<span className="text-xs text-text-muted">{time}</span>
+							</div>
+							<div className="space-y-1">
+								{conflict.conflicts.map((item) => (
+									<div key={item.inventoryItemId} className="flex items-center justify-between bg-base rounded px-3 py-1.5">
+										<span className="text-xs text-text-primary">{item.itemName}</span>
+										<div className="flex items-center gap-2">
+											<span className="text-xs text-text-muted">Need <span className="text-text-primary font-semibold">{item.qtyNeeded}</span></span>
+											<span className={`text-xs font-bold ${item.qtyOnHand === 0 ? "text-error-text" : "text-warning-text"}`}>
+												Have {item.qtyOnHand}
+											</span>
+										</div>
+									</div>
+								))}
+							</div>
+						</div>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function TechnicianVehiclePage() {
@@ -239,10 +332,26 @@ export default function TechnicianVehiclePage() {
 	const { data: vehicles = [], isLoading: vehiclesLoading } = useVehiclesQuery();
 	const currentVehicleId = techProfile?.current_vehicle_id ?? null;
 	const { data: stockItems = [] } = useVehicleStockQuery(currentVehicleId);
+	const { data: stockConflicts = [] } = useVehicleStockConflictsQuery();
+	const myConflicts = stockConflicts.filter((c) => c.vehicleId === currentVehicleId);
 	const setVehicle = useSetTechnicianVehicleMutation();
 	const restockMutation = useRestockRequestMutation();
+	const bulk = useBulkRestockMutation(currentVehicleId ?? "");
+
+	const canStock = usePermission("stock_own_vehicle");
+	const canEod = usePermission("complete_own_eod");
+	// UX emphasis only — capability comes from permissions, never from the mode
+	const { data: orgSettings } = useOrgSettings();
+	const selfServeEmphasis = orgSettings?.restock_mode !== "dispatch_prepared";
 
 	const [showVehicleList, setShowVehicleList] = useState(false);
+	const [adjustOpen, setAdjustOpen] = useState(false);
+	const [eodOpen, setEodOpen] = useState(false);
+	const [fillOpen, setFillOpen] = useState(false);
+	const [showStockActions, setShowStockActions] = useState(false);
+	const [restockTarget, setRestockTarget] = useState<VehicleStockItem | null>(null);
+	const [restockQty, setRestockQty] = useState(1);
+	const [restockNote, setRestockNote] = useState("");
 	const [showCheckOutConfirm, setShowCheckOutConfirm] = useState(false);
 	const [switchPendingId, setSwitchPendingId] = useState<string | null>(null);
 	const [rideAlongPendingId, setRideAlongPendingId] = useState<string | null>(null);
@@ -253,6 +362,8 @@ export default function TechnicianVehiclePage() {
 	const [showFilter, setShowFilter] = useState(false);
 	const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 	const [sortMode, setSortMode] = useState<"name" | "category">("name");
+	const [batchMode, setBatchMode] = useState(false);
+	const [batchSel, setBatchSel] = useState<Record<string, number>>({});
 
 	const restockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const vehicleErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -342,10 +453,27 @@ export default function TechnicianVehiclePage() {
 		setShowCheckOutConfirm(false);
 	};
 
+	// Opens the qty/note sheet — default qty fills the gap to standard when set
 	const handleRestock = (item: VehicleStockItem) => {
 		if (!currentVehicleId) return;
+		const gap =
+			item.qty_standard !== null
+				? Math.max(Math.ceil(Number(item.qty_standard) - Number(item.qty_on_hand)), 1)
+				: 1;
+		setRestockTarget(item);
+		setRestockQty(gap);
+		setRestockNote("");
+	};
+
+	const submitRestock = () => {
+		if (!currentVehicleId || !restockTarget) return;
+		const item = restockTarget;
 		restockMutation.mutate(
-			{ vehicleId: currentVehicleId, itemId: item.id, data: {} },
+			{
+				vehicleId: currentVehicleId,
+				itemId: item.id,
+				data: { qty_requested: restockQty, note: restockNote.trim() || null },
+			},
 			{
 				onSuccess: () => {
 					if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
@@ -361,6 +489,29 @@ export default function TechnicianVehiclePage() {
 				},
 			},
 		);
+		setRestockTarget(null);
+	};
+
+	const submitBatch = async () => {
+		const items = Object.entries(batchSel)
+			.filter(([, q]) => q > 0)
+			.map(([stock_item_id, qty_requested]) => ({ stock_item_id, qty_requested }));
+		if (items.length === 0) return;
+		const input: BulkRestockInput = { items };
+		try {
+			await bulk.mutateAsync(input);
+			if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
+			setRestockError(null);
+			setRestockSuccess(`${items.length} item${items.length > 1 ? "s" : ""}`);
+			restockTimerRef.current = setTimeout(() => setRestockSuccess(null), 3000);
+			setBatchMode(false);
+			setBatchSel({});
+		} catch {
+			if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
+			setRestockSuccess(null);
+			setRestockError("Failed to send restock request. Please try again.");
+			restockTimerRef.current = setTimeout(() => setRestockError(null), 4000);
+		}
 	};
 
 	const toggleCategory = (cat: string) => {
@@ -369,7 +520,7 @@ export default function TechnicianVehiclePage() {
 		);
 	};
 
-	const { filteredItems, outOfStockItems, lowStockItems, sortedItems } = useMemo(() => {
+	const { outOfStockItems, lowStockItems, sortedItems } = useMemo(() => {
 		const q = searchQuery.toLowerCase();
 		const filtered = stockItems.filter((item) => {
 			const matchesSearch =
@@ -579,13 +730,74 @@ export default function TechnicianVehiclePage() {
 				)}
 			</div>
 
+			{/* ── Visit stock conflicts ────────────────────────────────────────── */}
+			{myConflicts.length > 0 && !showVehicleList && !showCheckOutConfirm && (
+				<StockConflictWarning conflicts={myConflicts} />
+			)}
+
 			{/* ── Inventory ─────────────────────────────────────────────────────── */}
 			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
 				<div className="rounded-xl border border-border-subtle overflow-hidden">
 					<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
 						<Package size={15} className="text-text-muted" />
-						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Inventory</span>
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">Inventory</span>
+						{(outOfStockItems.length > 0 || lowStockItems.length > 0) && (
+							<button
+								onClick={() => {
+									if (batchMode) {
+										setBatchMode(false);
+										setBatchSel({});
+									} else {
+										// Pre-populate batchSel with default qtys for all low/out items
+										const defaults: Record<string, number> = {};
+										const needsRestock = [...outOfStockItems, ...lowStockItems];
+										for (const item of needsRestock) {
+											const gap =
+												item.qty_standard !== null
+													? Math.max(Math.ceil(Number(item.qty_standard) - Number(item.qty_on_hand)), 1)
+													: 1;
+											defaults[item.id] = gap;
+										}
+										setBatchSel(defaults);
+										setBatchMode(true);
+									}
+								}}
+								className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+									batchMode
+										? "bg-surface border-border text-text-secondary hover:text-error-text hover:border-error"
+										: "bg-primary-hover/10 border-primary-hover/30 text-primary-text hover:bg-primary-hover/20"
+								}`}
+							>
+								{batchMode ? "Cancel" : "Request restock"}
+							</button>
+						)}
 					</div>
+
+					{/* Self-serve stocking actions (org/role permitted). In dispatch-prepared
+					    orgs the actions sit behind a disclosure — emphasis only, never blocked. */}
+					{canStock && (selfServeEmphasis || showStockActions ? (
+						<div className="flex items-center gap-2 px-4 py-2.5 border-b border-border-subtle">
+							<button
+								onClick={() => setFillOpen(true)}
+								className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors"
+							>
+								↑ Fill to Standard
+							</button>
+							<button
+								onClick={() => setAdjustOpen(true)}
+								className="flex-1 py-2 text-xs font-semibold rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+							>
+								Adjust Stock
+							</button>
+						</div>
+					) : (
+						<button
+							onClick={() => setShowStockActions(true)}
+							className="w-full px-4 py-2 border-b border-border-subtle text-left text-xs text-text-muted hover:text-text-secondary transition-colors"
+						>
+							Self-stocking actions…
+						</button>
+					))}
 
 					{/* Out of stock bar */}
 					{outOfStockItems.length > 0 && (
@@ -702,7 +914,16 @@ export default function TechnicianVehiclePage() {
 								<div key={group.label}>
 									<CategoryHeader label={group.label} />
 									{group.items.map((item) => (
-										<StockItemRow key={item.id} item={item} onRestock={handleRestock} />
+										<StockItemRow
+											key={item.id}
+											item={item}
+											onRestock={handleRestock}
+											batchMode={batchMode}
+											batchQty={batchSel[item.id]}
+											onBatchQtyChange={(id, qty) =>
+												setBatchSel((prev) => ({ ...prev, [id]: qty }))
+											}
+										/>
 									))}
 								</div>
 							))}
@@ -710,10 +931,146 @@ export default function TechnicianVehiclePage() {
 					) : (
 						<div className="max-h-[50vh] overflow-y-auto">
 							{sortedItems.map((item) => (
-								<StockItemRow key={item.id} item={item} onRestock={handleRestock} />
+								<StockItemRow
+									key={item.id}
+									item={item}
+									onRestock={handleRestock}
+									batchMode={batchMode}
+									batchQty={batchSel[item.id]}
+									onBatchQtyChange={(id, qty) =>
+										setBatchSel((prev) => ({ ...prev, [id]: qty }))
+									}
+								/>
 							))}
 						</div>
 					)}
+				</div>
+			)}
+
+			{/* ── End of day (optional — never gates anything) ─────────────────── */}
+			{canEod && currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
+				<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<button
+						onClick={() => setEodOpen((v) => !v)}
+						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+					>
+						<ClipboardCheck size={15} className="text-text-muted" />
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+							End of Day
+						</span>
+						<span className="text-xs text-text-muted">{eodOpen ? "Hide" : "Open"}</span>
+					</button>
+					{eodOpen && (
+						<div className="border-t border-border-subtle">
+							<EodWorkflow vehicleId={currentVehicleId} stockItems={stockItems} />
+						</div>
+					)}
+				</div>
+			)}
+
+			{/* ── Restock status list ──────────────────────────────────────────── */}
+			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
+				<RestockStatusList vehicleId={currentVehicleId} />
+			)}
+
+			{/* Stock adjust modal (self-serve) */}
+			{adjustOpen && currentVehicleId && (
+				<AdjustStockModal
+					vehicleId={currentVehicleId}
+					stockItems={stockItems}
+					onClose={() => setAdjustOpen(false)}
+				/>
+			)}
+
+			{/* Restock request sheet — qty + optional note */}
+			{restockTarget && (
+				<>
+					<div className="fixed inset-0 z-40 bg-overlay" onClick={() => setRestockTarget(null)} />
+					<div className="fixed bottom-0 left-0 right-0 z-50 bg-base border-t border-border rounded-t-2xl px-4 pt-4 pb-6 max-w-lg mx-auto">
+						<p className="text-sm font-semibold text-text-primary mb-0.5">
+							Request restock — {restockTarget.inventory_item.name}
+						</p>
+						<p className="text-xs text-text-muted mb-4">
+							On hand {Number(restockTarget.qty_on_hand)}
+							{restockTarget.qty_standard !== null && ` · standard ${Number(restockTarget.qty_standard)}`}
+							{` · warehouse ${Number(restockTarget.inventory_item.quantity)}`}
+						</p>
+						<div className="flex items-center justify-center gap-4 mb-4">
+							<button
+								onClick={() => setRestockQty((q) => Math.max(1, q - 1))}
+								className="w-11 h-11 rounded-lg border border-border text-text-secondary text-lg font-semibold hover:bg-surface transition-colors"
+								aria-label="Decrease quantity"
+							>
+								−
+							</button>
+							<span className="w-12 text-center text-xl font-bold text-text-primary tabular-nums">
+								{restockQty}
+							</span>
+							<button
+								onClick={() => setRestockQty((q) => q + 1)}
+								className="w-11 h-11 rounded-lg border border-border text-text-secondary text-lg font-semibold hover:bg-surface transition-colors"
+								aria-label="Increase quantity"
+							>
+								+
+							</button>
+						</div>
+						<input
+							value={restockNote}
+							onChange={(e) => setRestockNote(e.target.value)}
+							placeholder="Note (optional)"
+							maxLength={500}
+							className="w-full mb-4 bg-surface-inset border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
+						/>
+						<div className="flex gap-2">
+							<button
+								onClick={() => setRestockTarget(null)}
+								className="flex-1 py-2.5 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+							>
+								Cancel
+							</button>
+							<button
+								onClick={submitRestock}
+								disabled={restockMutation.isPending}
+								className="flex-1 py-2.5 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
+							>
+								{restockMutation.isPending ? "Sending…" : "Request"}
+							</button>
+						</div>
+					</div>
+				</>
+			)}
+
+			{/* Fill to Standard modal */}
+			{fillOpen && currentVehicleId && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setFillOpen(false)}>
+					<div className="bg-canvas border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col mx-4" onClick={(e) => e.stopPropagation()}>
+						<div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
+							<span className="text-sm font-bold text-text-primary">Fill to Standard</span>
+							<button onClick={() => setFillOpen(false)} className="text-text-faint hover:text-text-secondary transition-colors">
+								<X size={16} />
+							</button>
+						</div>
+						<div className="overflow-y-auto flex-1">
+							<FillToStandardPreview vehicleId={currentVehicleId} onClose={() => setFillOpen(false)} />
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Batch restock footer */}
+			{batchMode && Object.values(batchSel).some((q) => q > 0) && (
+				<div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-3 bg-base/95 border-t border-border backdrop-blur-sm max-w-lg mx-auto">
+					<button
+						onClick={submitBatch}
+						disabled={bulk.isPending}
+						className="w-full py-3 text-sm font-semibold rounded-xl bg-primary-hover hover:bg-primary text-on-primary transition-colors disabled:opacity-50"
+					>
+						{bulk.isPending
+							? "Requesting…"
+							: `Request ${Object.values(batchSel).filter((q) => q > 0).length} item${
+								Object.values(batchSel).filter((q) => q > 0).length > 1 ? "s" : ""
+							}`}
+					</button>
 				</div>
 			)}
 

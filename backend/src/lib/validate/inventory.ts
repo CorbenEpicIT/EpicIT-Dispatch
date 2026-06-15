@@ -26,7 +26,7 @@ export const updateInventoryItemSchema = z.object({
 	name: z.string().min(1).max(255).optional(),
 	description: z.string().max(5000).optional(),
 	location: z.string().min(1).max(255).optional(),
-	quantity: z.number().int().min(0).optional(),
+	// quantity intentionally omitted — stock changes go through adjustInventoryStock → recordMovements
 	unit_price: z.number().min(0).nullable().optional(),
 	cost: z.number().min(0).nullable().optional(),
 	sku: z.string().max(100).nullable().optional(),

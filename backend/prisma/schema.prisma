@@ -49,6 +49,47 @@ enum line_item_source {
   field_addition  //tech
 }
 
+enum vehicle_adjustment_type {
+  warehouse_exchange
+  field_loss
+  transfer
+  audit
+  supplier_purchase
+}
+
+enum stock_location_type {
+  warehouse
+  vehicle
+  consumed   // parts used on a visit (virtual sink)
+  adjustment // loss / audit corrections (virtual sink/source)
+  external   // receiving / initial backfill (virtual source)
+}
+
+enum stock_movement_reason {
+  receive
+  restock
+  return_to_warehouse
+  parts_used
+  direct_consumption
+  loss
+  audit_correction
+  transfer
+  reversal
+  initial
+  supplier_purchase
+}
+
+enum restock_mode {
+  tech_self_serve
+  dispatch_prepared
+}
+
+enum line_item_fulfillment {
+  planned // dispatch-attached, not yet reconciled
+  used    // consumed (stock movement written)
+  voided  // tech marked not used: billing zeroed, qty_planned kept for variance
+}
+
 enum visit_status {
   Scheduled
   Driving
@@ -226,6 +267,7 @@ model organization {
   website   String?
   tax_rate            Decimal @default(0) @db.Decimal(5, 4)
   wrapping_up_minutes Int     @default(15)
+  restock_mode        restock_mode @default(tech_self_serve)
 
   logo_key String?
 
@@ -243,6 +285,8 @@ model organization {
   inventory_tags        inventory_tag[]
   vehicles              vehicle[]
   logs                  log[]
+  vehicle_readiness     vehicle_readiness[]
+  stock_movements       stock_movement[]
 
   requests              request[]
   quotes                quote[]
@@ -614,8 +658,6 @@ model job {
   actual_total    Decimal? @db.Decimal(10, 2)
   tax_snapshot    Json?
 
-  deduct_inventory_on String @default("job_completion") // "job_completion" | "visit_completion"
-
   visits       job_visit[]
   notes        job_note[]
   line_items   job_line_item[]
@@ -703,6 +745,7 @@ model job_visit {
   time_entries           visit_tech_time_entry[]
   invoice_visits         invoice_visit[]
   vehicle_stock_usages   vehicle_stock_usage[]
+  stock_movements        stock_movement[]
 
   @@index([job_id])
   @@index([status])
@@ -729,6 +772,12 @@ model job_visit_line_item {
   inventory_item_id String?
   inventory_item    inventory_item? @relation(fields: [inventory_item_id], references: [id])
 
+  // Plan + reconcile lifecycle (only set when inventory_item_id is set)
+  fulfillment_status    line_item_fulfillment?
+  qty_planned           Decimal?  @db.Decimal(10, 2)
+  reconciled_at         DateTime?
+  reconciled_by_tech_id String?
+
   tax_group_id    String?
   tax_group       tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
   taxable         Boolean    @default(true)
@@ -737,10 +786,12 @@ model job_visit_line_item {
   sort_order Int @default(0)
   created_at DateTime @default(now())
   time_entry visit_tech_time_entry?
+  stock_movements stock_movement[]
 
   @@index([visit_id])
   @@index([sort_order])
   @@index([inventory_item_id])
+  @@index([visit_id, fulfillment_status])
 }
 
 model job_visit_technician {
@@ -966,10 +1017,14 @@ model recurring_plan_line_item {
   tax_group         tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
   taxable           Boolean    @default(true)
 
+  inventory_item_id String?
+  inventory_item    inventory_item? @relation("RecurringPlanLineItemInventory", fields: [inventory_item_id], references: [id], onDelete: SetNull)
+
   created_at        DateTime       @default(now())
 
   @@index([recurring_plan_id])
   @@index([sort_order])
+  @@index([inventory_item_id])
 }
 
 model recurring_plan_note {
@@ -1038,6 +1093,12 @@ model inventory_item {
   sku        String?  @unique
   is_active  Boolean  @default(true)
   low_stock_threshold Int?
+  provisional         Boolean   @default(false)
+  created_by_tech_id  String?
+  created_by_tech     technician? @relation("TechProvisionalItems", fields: [created_by_tech_id], references: [id], onDelete: SetNull)
+  approved_at         DateTime?
+  approved_by_id      String?
+  approved_by         dispatcher? @relation("DispatcherApprovedItems", fields: [approved_by_id], references: [id], onDelete: SetNull)
   image_keys          String[] @default([])
 
   image_urls           String[]  @default([])
@@ -1052,12 +1113,15 @@ model inventory_item {
 
   visit_line_items job_visit_line_item[]
   vehicle_stocks   vehicle_stock_item[]
+  recurring_plan_line_items recurring_plan_line_item[] @relation("RecurringPlanLineItemInventory")
   tags             inventory_tag[]
+  stock_movements  stock_movement[]
 
   @@index([sku])
   @@index([is_active])
   @@index([organization_id])
   @@index([created_at])
+  @@index([provisional])
 }
 
 model inventory_tag {
@@ -1098,6 +1162,11 @@ model vehicle {
 
   stock_items         vehicle_stock_item[]
   current_technicians technician[]         @relation("CurrentVehicle")
+  eod_records         vehicle_eod_record[] @relation("VehicleEodRecords")
+  adjustments         vehicle_stock_adjustment[] @relation("VehicleAdjustments")
+  readiness_records   vehicle_readiness[]
+  movements_from      stock_movement[]     @relation("MovementFromVehicle")
+  movements_to        stock_movement[]     @relation("MovementToVehicle")
 
   @@index([organization_id])
   @@index([status])
@@ -1111,11 +1180,14 @@ model vehicle_stock_item {
   inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id])
   qty_on_hand       Decimal        @default(0) @db.Decimal(10, 2)
   qty_min           Decimal        @default(0) @db.Decimal(10, 2)
+  qty_standard      Decimal?       @db.Decimal(10, 2)
   updated_at        DateTime       @updatedAt
   created_at        DateTime       @default(now())
 
   usage_records     vehicle_stock_usage[]
   restock_requests  vehicle_restock_request[]
+  eod_lines         vehicle_eod_restock_line[] @relation("StockItemEodLines")
+  adjustment_lines  vehicle_stock_adjustment_line[] @relation("StockItemAdjustmentLines")
 
   @@unique([vehicle_id, inventory_item_id])
   @@index([vehicle_id])
@@ -1138,6 +1210,81 @@ model vehicle_stock_usage {
   @@index([technician_id])
 }
 
+model vehicle_eod_record {
+  id              String     @id @default(uuid())
+  organization_id String
+  vehicle_id      String
+  vehicle         vehicle    @relation("VehicleEodRecords", fields: [vehicle_id], references: [id], onDelete: Cascade)
+  completed_at    DateTime
+  // UTC calendar day of completion — backs the one-EOD-per-vehicle-per-day constraint
+  day             DateTime   @db.Date
+  // Exactly one of completed_by_id / completed_by_tech_id is set (app-level invariant)
+  completed_by_id String?
+  completed_by    dispatcher? @relation("DispatcherEodRecords", fields: [completed_by_id], references: [id])
+  completed_by_tech_id String?
+  completed_by_tech    technician? @relation("TechnicianEodRecords", fields: [completed_by_tech_id], references: [id])
+  notes           String?
+  created_at      DateTime   @default(now())
+
+  restock_lines   vehicle_eod_restock_line[]
+  stock_movements stock_movement[]
+
+  @@unique([vehicle_id, day])
+  @@index([vehicle_id])
+  @@index([organization_id])
+  @@index([completed_at])
+}
+
+model vehicle_eod_restock_line {
+  id             String             @id @default(uuid())
+  eod_record_id  String
+  eod_record     vehicle_eod_record @relation(fields: [eod_record_id], references: [id], onDelete: Cascade)
+  stock_item_id  String
+  stock_item     vehicle_stock_item @relation("StockItemEodLines", fields: [stock_item_id], references: [id])
+  qty_restocked  Decimal            @default(0) @db.Decimal(10, 2)
+  qty_shortfall  Decimal            @default(0) @db.Decimal(10, 2)
+  created_at     DateTime           @default(now())
+
+  @@index([eod_record_id])
+  @@index([stock_item_id])
+}
+
+model vehicle_stock_adjustment {
+  id              String                  @id @default(uuid())
+  organization_id String
+  vehicle_id      String
+  vehicle         vehicle                 @relation("VehicleAdjustments", fields: [vehicle_id], references: [id], onDelete: Cascade)
+  type            vehicle_adjustment_type
+  note            String?
+  // Exactly one of created_by_id / created_by_tech_id is set (app-level invariant)
+  created_by_id   String?
+  created_by      dispatcher?             @relation("DispatcherAdjustments", fields: [created_by_id], references: [id])
+  created_by_tech_id String?
+  created_by_tech    technician?          @relation("TechnicianAdjustments", fields: [created_by_tech_id], references: [id])
+  created_at      DateTime               @default(now())
+
+  lines vehicle_stock_adjustment_line[]
+  stock_movements stock_movement[]
+
+  @@index([vehicle_id])
+  @@index([organization_id])
+  @@index([created_at])
+}
+
+model vehicle_stock_adjustment_line {
+  id               String                  @id @default(uuid())
+  adjustment_id    String
+  adjustment       vehicle_stock_adjustment @relation(fields: [adjustment_id], references: [id], onDelete: Cascade)
+  stock_item_id    String
+  stock_item       vehicle_stock_item      @relation("StockItemAdjustmentLines", fields: [stock_item_id], references: [id])
+  qty_before       Decimal                 @db.Decimal(10, 2)
+  qty_after        Decimal                 @db.Decimal(10, 2)
+  inventory_impact Decimal                 @default(0) @db.Decimal(10, 2)
+
+  @@index([adjustment_id])
+  @@index([stock_item_id])
+}
+
 model vehicle_restock_request {
   id            String             @id @default(uuid())
   stock_item_id String
@@ -1148,10 +1295,66 @@ model vehicle_restock_request {
   status        String             @default("pending") // "pending" | "fulfilled" | "dismissed"
   created_at    DateTime           @default(now())
   fulfilled_at  DateTime?
+  received_at   DateTime?
+  qty_received  Int?
+  discrepant    Boolean            @default(false)
+  dismissed_reason String?         // "dispatch" | "superseded_by_fill" | "superseded_by_eod"
+
+  stock_movements stock_movement[]
 
   @@index([stock_item_id])
   @@index([technician_id])
   @@index([status])
+}
+
+// ============================================================================
+// STOCK MOVEMENT LEDGER
+// Source of truth for all inventory changes. Cached quantities
+// (inventory_item.quantity, vehicle_stock_item.qty_on_hand) are derived and
+// updated only by services/stockMovements.recordMovements() in the same tx.
+// ============================================================================
+
+model stock_movement {
+  id                String       @id @default(uuid())
+  organization_id   String
+  organization      organization @relation(fields: [organization_id], references: [id])
+  inventory_item_id String
+  inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id])
+  qty               Decimal      @db.Decimal(10, 2) // strictly positive; direction is from→to
+
+  from_location_type stock_location_type
+  from_vehicle_id    String?
+  from_vehicle       vehicle? @relation("MovementFromVehicle", fields: [from_vehicle_id], references: [id])
+  to_location_type   stock_location_type
+  to_vehicle_id      String?
+  to_vehicle         vehicle? @relation("MovementToVehicle", fields: [to_vehicle_id], references: [id])
+
+  reason     stock_movement_reason
+  note       String? @db.Text
+  actor_type String  // "technician" | "dispatcher" | "system"
+  actor_id   String?
+
+  visit_id           String?
+  visit              job_visit? @relation(fields: [visit_id], references: [id])
+  visit_line_item_id String?
+  visit_line_item    job_visit_line_item? @relation(fields: [visit_line_item_id], references: [id])
+  eod_record_id      String?
+  eod_record         vehicle_eod_record? @relation(fields: [eod_record_id], references: [id])
+  adjustment_id      String?
+  adjustment         vehicle_stock_adjustment? @relation(fields: [adjustment_id], references: [id])
+  restock_request_id String?
+  restock_request    vehicle_restock_request? @relation(fields: [restock_request_id], references: [id])
+
+  created_at DateTime @default(now())
+
+  @@index([organization_id, inventory_item_id, created_at])
+  @@index([organization_id, created_at])
+  @@index([from_vehicle_id, created_at])
+  @@index([to_vehicle_id, created_at])
+  @@index([visit_id])
+  @@index([eod_record_id])
+  @@index([adjustment_id])
+  @@index([restock_request_id])
 }
 
 // ============================================================================
@@ -1206,6 +1409,8 @@ model technician {
   visit_techs    job_visit_technician[]
   time_entries   visit_tech_time_entry[]
   notifications  technician_notification[]
+  eod_records       vehicle_eod_record[]       @relation("TechnicianEodRecords")
+  stock_adjustments vehicle_stock_adjustment[] @relation("TechnicianAdjustments")
 
   created_client_notes      client_note[]  @relation("ClientNoteCreator")
   last_edited_client_notes  client_note[]  @relation("ClientNoteEditor")
@@ -1224,6 +1429,7 @@ model technician {
 
   shifts       technician_shift[]
   shift_breaks technician_shift_break[]
+  provisional_items   inventory_item[] @relation("TechProvisionalItems")
 
   @@index([email])
   @@index([status])
@@ -1273,8 +1479,32 @@ model dispatcher {
   created_invoice_notes        invoice_note[]    @relation("InvoiceNoteCreator")
   last_edited_invoice_notes    invoice_note[]    @relation("InvoiceNoteEditor")
 
+  eod_records     vehicle_eod_record[] @relation("DispatcherEodRecords")
+  stock_adjustments vehicle_stock_adjustment[] @relation("DispatcherAdjustments")
+  readiness_confirmations vehicle_readiness[] @relation("DispatcherReadinessConfirmations")
+  approved_items      inventory_item[] @relation("DispatcherApprovedItems")
+
   @@index([email])
   @@index([organization_id])
+}
+
+model vehicle_readiness {
+  id              String       @id @default(uuid())
+  vehicle_id      String
+  vehicle         vehicle      @relation(fields: [vehicle_id], references: [id], onDelete: Cascade)
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  date            DateTime     @db.Date
+  confirmed_by_id String
+  confirmed_by    dispatcher   @relation("DispatcherReadinessConfirmations", fields: [confirmed_by_id], references: [id])
+  confirmed_at    DateTime     @default(now())
+  notes           String?      @db.Text
+  created_at      DateTime     @default(now())
+
+  @@unique([vehicle_id, date])
+  @@index([vehicle_id])
+  @@index([organization_id])
+  @@index([date])
 }
 
 // ============================================================================
