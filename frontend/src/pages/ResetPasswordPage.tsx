@@ -38,17 +38,17 @@ export default function ResetPasswordPage() {
 		}
 	};
 
-	const inputClass = "w-full border border-border-input bg-surface-inset text-text-primary placeholder:text-text-muted rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors";
-	const labelClass = "block text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1";
+	const inputClass = "w-full border border-zinc-300 bg-zinc-50 text-zinc-900 placeholder:text-zinc-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors";
+	const labelClass = "block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1";
 
 	return (
-		<div className="min-h-screen bg-canvas flex items-center justify-center">
-			<div className="bg-surface rounded-lg shadow-md border border-border-subtle p-8 w-80 text-center">
+		<div className="min-h-screen bg-gray-50 flex items-center justify-center">
+			<div className="bg-white rounded-lg shadow-md border border-zinc-200 p-8 w-80 text-center">
 
 				{status === "input" && (
 					<form onSubmit={handleSubmit} className="text-left">
-						<h2 className="text-xl font-semibold text-text-primary mb-2 text-center">Reset Password</h2>
-						<p className="text-text-muted text-sm mb-6 text-center">Enter your new password below.</p>
+						<h2 className="text-xl font-semibold text-zinc-900 mb-2 text-center">Reset Password</h2>
+						<p className="text-zinc-500 text-sm mb-6 text-center">Enter your new password below.</p>
 
 						<div className="mb-4">
 							<label className={labelClass}>New Password</label>
@@ -74,7 +74,7 @@ export default function ResetPasswordPage() {
 							/>
 						</div>
 
-						{errorMessage && <p className="text-error-text text-sm mb-4">{errorMessage}</p>}
+						{errorMessage && <p className="text-red-600 text-sm mb-4">{errorMessage}</p>}
 
 						<button
 							type="submit"
@@ -88,32 +88,32 @@ export default function ResetPasswordPage() {
 				{status === "loading" && (
 					<>
 						<div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-						<h2 className="text-xl font-semibold text-text-primary">Resetting password...</h2>
-						<p className="text-text-muted mt-2 text-sm">Please wait a moment.</p>
+						<h2 className="text-xl font-semibold text-zinc-900">Resetting password...</h2>
+						<p className="text-zinc-500 mt-2 text-sm">Please wait a moment.</p>
 					</>
 				)}
 
 				{status === "success" && (
 					<>
-						<div className="w-14 h-14 bg-success-bg rounded-full flex items-center justify-center mx-auto mb-6">
-							<svg className="w-7 h-7 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+							<svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-text-primary">Password Reset!</h2>
-						<p className="text-text-muted mt-2 text-sm">Redirecting you to login in 3 seconds...</p>
+						<h2 className="text-xl font-semibold text-zinc-900">Password Reset!</h2>
+						<p className="text-zinc-500 mt-2 text-sm">Redirecting you to login in 3 seconds...</p>
 					</>
 				)}
 
 				{status === "error" && (
 					<>
-						<div className="w-14 h-14 bg-error-bg rounded-full flex items-center justify-center mx-auto mb-6">
-							<svg className="w-7 h-7 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+							<svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 							</svg>
 						</div>
-						<h2 className="text-xl font-semibold text-text-primary">Reset Failed</h2>
-						<p className="text-text-muted mt-2 text-sm">This link is invalid or has expired.</p>
+						<h2 className="text-xl font-semibold text-zinc-900">Reset Failed</h2>
+						<p className="text-zinc-500 mt-2 text-sm">This link is invalid or has expired.</p>
 						<button
 							onClick={() => navigate("/login")}
 							className="mt-6 w-full bg-primary hover:bg-primary-hover text-on-primary font-medium py-2 rounded-lg transition-colors"
