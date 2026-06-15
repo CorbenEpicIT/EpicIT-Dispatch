@@ -1,6 +1,7 @@
 import {api} from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type { QBCustomerLite } from "../types/clients"
+import type { QBItemLite, MappedQBItem, ImportQBItemResult } from "../types/quickbooks";
  
 export const getQBStatus = async (): Promise<{ connected: boolean; realmId?: string }> => {
     const response = await api.get<ApiResponse<{ connected: boolean; realmId?: string }>>(`/integrations/quickbooks/status`);
@@ -44,5 +45,33 @@ export const getQBCustomers = async (): Promise<QBCustomerLite[]> => {
 export const getQBMappedCustomers = async (): Promise<string[]> => {
     const response = await api.get<ApiResponse<string[]>>("integrations/quickbooks/mapped-customers");
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to get mapped QB customers");
+    return response.data.data!;
+}
+
+export const getQBItems = async (): Promise<QBItemLite[]> => {
+    const response = await api.get<ApiResponse<QBItemLite[]>>("integrations/quickbooks/items");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB items");
+    return response.data.data!;
+}
+
+export const getQBMappedItems = async (): Promise<MappedQBItem[]> => {
+    const response = await api.get<ApiResponse<MappedQBItem[]>>("integrations/quickbooks/mapped-items");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get mapped QB items");
+    return response.data.data!;
+}
+
+export const linkQBItem = async (inventory_item_id: string, qb_item_id:string) => {
+    const response = await api.post<ApiResponse<{linked: boolean}>>(`integrations/quickbooks/items/link`, {inventory_item_id, qb_item_id});
+}
+
+export const importQBItem = async (qb_item_id: string): Promise<ImportQBItemResult> => {
+    const response = await api.post<ApiResponse<ImportQBItemResult>>(`integrations/quickbooks/items/import`, { qb_item_id });
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to import QB item");
+    return response.data.data!;
+}
+
+export const pushQBItem = async (itemId: string) => {
+    const response = await api.post<ApiResponse<{pushed: boolean}>>(`integrations/quickbooks/items/${itemId}/push`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to push QB item");
     return response.data.data!;
 }

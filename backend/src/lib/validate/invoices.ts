@@ -33,6 +33,8 @@ const invoiceLineItemInputSchema = baseLineItemSchema.extend({
 	// Soft traceability — informational only
 	source_job_id: z.string().uuid().optional().nullable(),
 	source_visit_id: z.string().uuid().optional().nullable(),
+	// Inventory linkage — drives QB ItemRef resolution on sync
+	inventory_item_id: z.string().uuid().optional().nullable(),
 });
 
 // ============================================================================

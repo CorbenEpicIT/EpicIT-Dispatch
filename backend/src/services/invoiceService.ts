@@ -43,6 +43,7 @@ export interface CreateInvoicePayload {
 		sort_order?: number;
 		source_job_id?: string | null;
 		source_visit_id?: string | null;
+		inventory_item_id?: string | null;
 		tax_group_id?: string | null;
 		taxable?: boolean;
 	}>;
@@ -433,6 +434,7 @@ export async function createInvoiceRecord(
 					sort_order: item.sort_order ?? idx,
 					source_job_id: item.source_job_id ?? null,
 					source_visit_id: item.source_visit_id ?? null,
+					inventory_item_id: item.inventory_item_id ?? null,
 					tax_group_id: item.tax_group_id ?? null,
 					taxable: item.taxable !== undefined ? item.taxable : true,
 				})),

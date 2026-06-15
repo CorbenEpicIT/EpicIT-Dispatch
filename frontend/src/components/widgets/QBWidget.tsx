@@ -60,7 +60,7 @@ export default function QBWidget() {
 
 			{/* Settings link */}
 			<button
-				onClick={() => navigate("/dispatch/admin?tab=settings")}
+				onClick={() => navigate("/dispatch/admin?tab=quickbooks")}
 				className="shrink-0 text-xs text-text-faint hover:text-text-muted transition-colors"
 				title="QB settings"
 			>

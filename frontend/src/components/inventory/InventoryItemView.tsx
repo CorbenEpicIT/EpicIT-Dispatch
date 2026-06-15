@@ -10,8 +10,15 @@ interface InventoryItemViewProps {
 	viewMode?: "card" | "list";
 	onDelete?: () => void;
 	isHighlighted?: boolean;
+	qbConnected?: boolean;
+	isLinkedToQB?: boolean;
+  	onLinkQB?: () => void;
 }
 
+/*
+	- Card + list views: when qbConnected, show badge — isLinkedToQB → green
+    "QB Linked", else "Not linked" + small "Link" btn calling onLinkQB (stopPropagation).
+*/
 export default function InventoryItemView({
 	item,
 	onEditThreshold,
@@ -19,6 +26,9 @@ export default function InventoryItemView({
 	viewMode = "card",
 	onDelete,
 	isHighlighted = false,
+	qbConnected,
+	isLinkedToQB,
+	onLinkQB
 }: InventoryItemViewProps) {
 	const stockStatus = item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 	const threshold = item.low_stock_threshold;

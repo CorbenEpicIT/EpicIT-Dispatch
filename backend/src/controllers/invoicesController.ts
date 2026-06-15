@@ -252,6 +252,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 								sort_order: item.sort_order ?? 0,
 								source_job_id: item.source_job_id ?? null,
 								source_visit_id: item.source_visit_id ?? null,
+								inventory_item_id: item.inventory_item_id ?? null,
 								...(item.tax_group_id !== undefined && {
 									tax_group_id: item.tax_group_id,
 								}),
@@ -276,6 +277,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 								sort_order: item.sort_order ?? 0,
 								source_job_id: item.source_job_id ?? null,
 								source_visit_id: item.source_visit_id ?? null,
+								inventory_item_id: item.inventory_item_id ?? null,
 								tax_group_id: item.tax_group_id ?? null,
 								taxable: item.taxable !== undefined ? item.taxable : true,
 							},

@@ -49,7 +49,7 @@ export async function handleCallback(
 	});
 }
 
-async function getValidToken(orgId: string): Promise<{ accessToken: string; realmId: string }> {
+export async function getValidToken(orgId: string): Promise<{ accessToken: string; realmId: string }> {
 	const sdb = getScopedDb(orgId);
 	const org = await sdb.organization.findUnique({
 		where: { id: orgId },
@@ -105,7 +105,7 @@ async function getValidToken(orgId: string): Promise<{ accessToken: string; real
 	return { accessToken: org.qb_access_token, realmId: org.qb_realm_id };
 }
 
-async function qbFetch(
+export async function qbFetch(
 	orgId: string,
 	method: string,
 	path: string,
@@ -194,7 +194,20 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 	const invoice = await sdb.invoice.findFirst({
 		where: { id: invoiceId },
 		include: {
-			line_items: true,
+			line_items: {
+				include: { 
+					inventory_item: { 
+						include: { 
+							external_mappings: { 
+								where: { 
+									provider: "quickbooks"
+								}, 
+								take: 1 
+							} 
+						} 
+					} 
+				} 
+			},
 			client: {
 				include: {
 					contacts: {
@@ -225,16 +238,19 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 		}).catch(() => {});
 	}
 
-	const lines = invoice.line_items.map((item) => ({
-		Amount: Number(item.total),
-		DetailType: "SalesItemLineDetail",
-		Description: item.description ?? item.name,
-		SalesItemLineDetail: {
-			Qty: Number(item.quantity),
-			UnitPrice: Number(item.unit_price),
-			ItemRef: { value: "1", name: "Services" },
-		},
-	}));
+	const lines = invoice.line_items.map((item) => {
+		const mapping = item.inventory_item?.external_mappings?.[0];
+		return {
+			Amount: Number(item.total),
+			DetailType: "SalesItemLineDetail",
+			Description: item.description ?? item.name,
+			SalesItemLineDetail: {
+				Qty: Number(item.quantity),
+				UnitPrice: Number(item.unit_price),
+				ItemRef: mapping ? { value: mapping.external_id } : { value: "1", name: "Services" },
+			},
+		};
+	});
 
 	if (invoice.qb_invoice_id) {
 		const existing = (await qbFetch(

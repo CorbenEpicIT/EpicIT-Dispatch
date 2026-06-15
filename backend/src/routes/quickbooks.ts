@@ -10,6 +10,14 @@ import {
 	sendInvoiceEmail,
 	findAllQBCustomers
 } from "../services/quickbooksService.js";
+import {
+	getQBItems,
+	getMappedQBItems,
+	linkQBItem,
+	pushItem,
+	importQBItem
+} from "../services/qb/qbItems.js";
+import { linkQBItemSchema, importQBItemSchema } from "../lib/validate/quickbooks.js"
 import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
 
@@ -110,6 +118,77 @@ router.get("/customers", async (req, res, next) => {
 		return res.json(createSuccessResponse(response));
 	} catch (e) {
 		next(e);
+	}
+});
+
+router.get("/items", requirePermission("view_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const response = await getQBItems(orgId);
+
+		return res.json(createSuccessResponse(response));
+	} catch (e) {
+		next(e);
+	}
+});
+
+router.get("/mapped-items", requirePermission("view_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const response = await getMappedQBItems(orgId);
+
+		return res.json(createSuccessResponse(response));
+	} catch (e) {
+		next(e);
+	}
+});
+
+router.post("/items/link", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const parsed = linkQBItemSchema.safeParse(req.body);
+		if (!parsed.success){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.issues[0].message)
+			);
+		}
+		const { inventory_item_id, qb_item_id } = parsed.data;
+		await linkQBItem(orgId, inventory_item_id, qb_item_id);
+		res.json(createSuccessResponse({ linked: true }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// will add later
+//router.post("/items/unlink", requirePermission("manage_inventory"), async (req, res, next) => {
+
+router.post("/items/import", requirePermission("manage_inventory"), async (req, res, next) => {
+	try{
+		const orgId = req.user!.organization_id as string;
+		const parsed = importQBItemSchema.safeParse(req.body);
+		if (!parsed.success){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.issues[0].message)
+			);
+		}
+		const { qb_item_id } = parsed.data;
+		const result = await importQBItem(orgId, qb_item_id);
+		
+		res.json(createSuccessResponse(result));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/items/:id/push", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const itemId = req.params.id as string;
+		await pushItem(orgId, itemId);
+		res.json(createSuccessResponse({ pushed: true }));
+	} catch (err) {
+		next(err);
 	}
 });
 
