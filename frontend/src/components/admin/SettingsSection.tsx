@@ -589,31 +589,38 @@ function QuickBooksSection() {
 export default function SettingsSection() {
 	const [showTaxInactive, setShowTaxInactive] = useState(false);
 
+	const MANAGE_ORG = usePermission("manage_organization");
+	const MANAGE_TAX = usePermission("manage_taxes");
+
 	return (
 		<div className="max-w-6xl">
 			<div className="grid grid-cols-1 gap-x-8 lg:grid-cols-2 lg:items-start">
-				<SettingRow
-					title="Organization"
-					description="Profile, branding, and contact information."
-				>
-					<OrgSettingsSection />
-				</SettingRow>
+				{MANAGE_ORG && (
+					<SettingRow
+						title="Organization"
+						description="Profile, branding, and contact information."
+					>
+						<OrgSettingsSection />
+					</SettingRow>
 
-				<SettingRow
-					title="Tax"
-					description="Rates and groups applied to quotes and invoices."
-					action={
-						<Toggle
-							checked={showTaxInactive}
-							onChange={() =>
-								setShowTaxInactive((v) => !v)
-							}
-							label="Show inactive"
-						/>
-					}
-				>
-					<TaxSettingsSection showInactive={showTaxInactive} />
-				</SettingRow>
+				)}
+				{MANAGE_TAX && (
+					<SettingRow
+						title="Tax"
+						description="Rates and groups applied to quotes and invoices."
+						action={
+							<Toggle
+								checked={showTaxInactive}
+								onChange={() =>
+									setShowTaxInactive((v) => !v)
+								}
+								label="Show inactive"
+							/>
+						}
+					>
+						<TaxSettingsSection showInactive={showTaxInactive} />
+					</SettingRow>
+				)}
 
 				<SettingRow
 					title="QuickBooks"

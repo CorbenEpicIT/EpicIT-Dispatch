@@ -271,11 +271,17 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 			setName(source.name);
 			setDescription(source.description);
+			setClientId(source.client_id ?? "");
 			setPriority(source.priority as Priority);
-			if (source.address && source.coords) {
-				setGeoData({ address: source.address, coords: source.coords });
-			} else if (source.address) {
-				setGeoData({ address: source.address, coords: { lat: 0, lon: 0 } });
+			const lat = source.coords?.lat;
+			const lon = source.coords?.lon;
+			if (
+				source.address &&
+				Number.isFinite(lat) &&
+				Number.isFinite(lon) &&
+				(lat !== 0 || lon !== 0)
+			) {
+				setGeoData({ address: source.address, coords: { lat, lon } });
 			}
 
 			if (source.line_items?.length) {
