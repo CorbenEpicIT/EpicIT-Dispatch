@@ -104,20 +104,20 @@ export default function LoginPage() {
 		}
 	};
 
-	const cardClass = "bg-surface shadow-md rounded-lg p-8 w-80 space-y-4 border border-border-subtle";
-	const inputClass = "w-full border border-border-input bg-surface-inset rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors";
+	const cardClass = "bg-white shadow-md rounded-lg p-8 w-80 space-y-4 border border-zinc-200";
+	const inputClass = "w-full border border-zinc-300 bg-zinc-50 rounded-md px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors";
 
 	return (
-		<div className="flex min-h-svh items-center justify-center bg-canvas">
+		<div className="flex min-h-svh items-center justify-center bg-gray-50">
 			{isLoading ? (
 				<div className={cardClass}>
-					<div className="h-6 w-48 bg-surface-inset rounded animate-pulse mx-auto" />
-					<div className="h-10 w-full bg-surface-inset rounded animate-pulse" />
-					<div className="h-10 w-full bg-surface-inset rounded animate-pulse" />
+					<div className="h-6 w-48 bg-zinc-100 rounded animate-pulse mx-auto" />
+					<div className="h-10 w-full bg-zinc-100 rounded animate-pulse" />
+					<div className="h-10 w-full bg-zinc-100 rounded animate-pulse" />
 				</div>
 			) : otpSent ? (
 				<form onSubmit={handleOTPVerification} className={cardClass}>
-					<h2 className="text-xl font-semibold text-center text-text-primary">OTP Verification</h2>
+					<h2 className="text-xl font-semibold text-center text-zinc-900">OTP Verification</h2>
 					<div className="w-full flex justify-center space-x-1">
 						{otp.map((digit, index) => (
 							<input
@@ -128,7 +128,7 @@ export default function LoginPage() {
 								onChange={(e) => handleOtpChange(index, e.target.value)}
 								onPaste={(e) => handleOtpPaste(e)}
 								onKeyDown={(e) => handleOtpKeyDown(e, index)}
-								className="w-10 h-10 border border-border-input bg-surface-inset rounded-md text-center text-lg text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors"
+								className="w-10 h-10 border border-zinc-300 bg-zinc-50 rounded-md text-center text-lg text-zinc-900 focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
 								ref={(el) => { inputRefs.current[index] = el; }}
 							/>
 						))}
@@ -139,21 +139,21 @@ export default function LoginPage() {
 					>
 						Verify OTP
 					</button>
-					<p className="text-sm text-text-muted text-center">
+					<p className="text-sm text-zinc-500 text-center">
 						Didn't receive the code?&ensp;
-						<button type="button" className="text-text-link hover:underline" onClick={resendOTP}>
+						<button type="button" className="text-blue-600 hover:underline" onClick={resendOTP}>
 							Resend OTP
 						</button>
 					</p>
-					<p className="text-sm text-text-muted text-center">
+					<p className="text-sm text-zinc-500 text-center">
 						If using test user, enter "000000" as OTP.
 					</p>
 				</form>
 			) : (
 				<form onSubmit={handleLogin} className={cardClass}>
-					<h2 className="text-xl font-semibold text-center text-text-primary">Service Login</h2>
+					<h2 className="text-xl font-semibold text-center text-zinc-900">Service Login</h2>
 					{loginError && (
-						<p className="text-error-text text-sm text-center">{loginError}</p>
+						<p className="text-red-600 text-sm text-center">{loginError}</p>
 					)}
 					<input
 						type="text"
@@ -175,9 +175,9 @@ export default function LoginPage() {
 					>
 						Login
 					</button>
-					<p className="text-sm text-text-muted text-center">
+					<p className="text-sm text-zinc-500 text-center">
 						New organization?{" "}
-						<Link to="/register" className="text-text-link hover:underline">Create account</Link>
+						<Link to="/register" className="text-blue-600 hover:underline">Create account</Link>
 					</p>
 				</form>
 			)}

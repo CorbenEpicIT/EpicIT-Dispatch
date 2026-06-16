@@ -21,7 +21,8 @@ import {
     getRecentStatusEvents,
 } from '../controllers/jobVisitsController.js';
 import { clockInVisit, clockOutVisit } from "../controllers/visitTimeEntriesController.js";
-import { addPartsUsed } from "../controllers/vehiclesController.js";
+import { addPartsUsed, addSupplierPartUsed } from "../controllers/vehiclesController.js";
+import { db } from "../db.js";
 
 
 const router = Router();
@@ -393,6 +394,31 @@ router.post("/:id/parts-used", requireAnyPermission("edit_jobs", "use_inventory"
     } catch (err) {
         next(err);
     }
+});
+
+router.post("/:id/parts-used/supplier", requirePermission("use_inventory"), async (req, res, next) => {
+    try {
+        const visitId = req.params.id as string;
+        const orgId = req.user?.organization_id as string;
+        const context = getUserContext(req);
+        // Resolve the caller's current vehicle
+        const tech = await db.technician.findFirst({
+            where: { id: req.user?.uid as string, organization_id: orgId },
+            select: { current_vehicle_id: true },
+        });
+        if (!tech?.current_vehicle_id) {
+            return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No current vehicle"));
+        }
+        const result = await addSupplierPartUsed(tech.current_vehicle_id, visitId, req.body, orgId, context);
+        if (result.err) {
+            if (result.err.includes("not assigned") || result.err.includes("Only technicians")) {
+                return res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, result.err));
+            }
+            const status = result.err.includes("not found") ? 404 : 400;
+            return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+        res.status(201).json(createSuccessResponse(result.item));
+    } catch (err) { next(err); }
 });
 
 // ── Visit lifecycle routes ────────────────────────────────────────────────────

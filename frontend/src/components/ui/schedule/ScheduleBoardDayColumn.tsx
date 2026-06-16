@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleBoardCard, { type AssignedTech } from "./ScheduleBoardCard";
@@ -25,6 +25,7 @@ import type { UpdateJobVisitInput } from "../../../types/jobs";
 import type { Technician } from "../../../types/technicians";
 import type { OccurrenceWithPlan, VisitWithJob } from "./dashboardCalendarUtils";
 import type { RescheduleOccurrenceInput, VisitGenerationResult } from "../../../types/recurringPlans";
+import { useVehicleStockConflictsQuery } from "../../../hooks/useVehicleStock";
 
 // Shared across all column instances — only one drag is ever active at a time.
 let sharedDragOffsetY = 0;
@@ -159,6 +160,18 @@ export default function ScheduleBoardDayColumn({
 	const popupRef           = useRef<HTMLDivElement>(null);
 	const occurrencePopupRef = useRef<HTMLDivElement>(null);
 	const dragOffsetY        = useRef(0);
+
+	const { data: stockConflicts = [] } = useVehicleStockConflictsQuery();
+	const conflictsByVisitId = useMemo(() => {
+		const map = new Map<string, "out" | "low">();
+		for (const c of stockConflicts) {
+			const existing = map.get(c.visitId);
+			if (!existing || (existing === "low" && c.severity === "out")) {
+				map.set(c.visitId, c.severity);
+			}
+		}
+		return map;
+	}, [stockConflicts]);
 
 	const totalSlots  = DAY_END - DAY_START;
 	const columnHeight = totalSlots * SLOT_H;
@@ -364,7 +377,7 @@ export default function ScheduleBoardDayColumn({
 		const raw = e.dataTransfer.getData("text/plain");
 		if (!raw) return;
 
-		const parsed = JSON.parse(raw) as {
+		let parsed: {
 			type?: string;
 			visitId?: string;
 			occurrenceId?: string;
@@ -380,6 +393,11 @@ export default function ScheduleBoardDayColumn({
 			isRecurring?: boolean;
 			entityName?: string;
 		};
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			return;
+		}
 
 		const rect = columnRef.current.getBoundingClientRect();
 		const y = e.clientY - rect.top - sharedDragOffsetY;
@@ -751,6 +769,7 @@ export default function ScheduleBoardDayColumn({
 							left={left}
 							width={width}
 							zIndex={zIndex}
+							stockWarning={conflictsByVisitId.get(visit.id)}
 							onClick={(e) => {
 								setClickedOccurrenceId(null);
 								setClickedOccurrenceRect(null);

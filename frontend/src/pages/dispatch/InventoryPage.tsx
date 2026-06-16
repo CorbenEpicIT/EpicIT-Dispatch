@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, FileSpreadsheet, Settings2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Trash2, FileSpreadsheet, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import InventoryItemView from "../../components/inventory/InventoryItemView";
 import LowStockList from "../../components/inventory/LowStockList";
 import EditInventory from "../../components/inventory/EditInventory";
@@ -8,10 +9,12 @@ import InventoryImportExport from "../../components/inventory/InventoryImportExp
 import TagPicker from "../../components/inventory/TagPicker";
 import TagManagerModal from "../../components/inventory/TagManagerModal";
 import FilterChips, { type FilterChip } from "../../components/ui/FilterChips";
+import PendingPartsQueue from "../../components/inventory/PendingPartsQueue";
 import {
 	useAllInventoryQuery,
 	useDeleteInventoryItemMutation,
 	useInventoryTagsQuery,
+	useProvisionalItemsQuery,
 } from "../../hooks/useInventory";
 import type { InventoryItem, InventorySortOption } from "../../types/inventory";
 import LoadSvg from "../../assets/icons/loading.svg?react";
@@ -21,6 +24,11 @@ import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
+import { 
+	useQBStatusQuery,
+	useQBMappedItemsQuery,
+} from "../../hooks/useQuickbooks";
+import LinkQBItemModal from "../../components/quickbooks/LinkQBItemModal";
 
 const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 	{ value: "name", label: "Name A-Z" },
@@ -31,6 +39,7 @@ const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 ];
 
 export default function InventoryPage() {
+	const [searchParams, setSearchParams] = useSearchParams();
 	const [sort, setSort] = useState<InventorySortOption>("name");
 	const [search, setSearch] = useState("");
 	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -45,11 +54,18 @@ export default function InventoryPage() {
 	const [highlightedItemIds, setHighlightedItemIds] = useState<Set<string>>(new Set());
 	const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+	const qbConnected = !!useQBStatusQuery().data?.connected;
+	const [linkItem, setLinkItem] = useState<InventoryItem | null>(null);
+	
+	const [isPendingOpen, setIsPendingOpen] = useState(false);
 
 	//permissions
 	const MANAGE_INVENTORY = usePermission("manage_inventory");
 
 	const { data: inventoryItems = [], isLoading, error } = useAllInventoryQuery(sort);
+	const { data: provisionalItems = [] } = useProvisionalItemsQuery();
+
+	const { data: mappedItems = [] } = useQBMappedItemsQuery(qbConnected);
 
 	const { data: allTags = [] } = useInventoryTagsQuery();
 
@@ -76,6 +92,10 @@ export default function InventoryPage() {
 
 		return items;
 	}, [inventoryItems, search, selectedTagIds]);
+
+	const mappedIds = useMemo(() => {
+		return new Set(mappedItems.map((item) => item.inventory_item_id));
+	}, [mappedItems]);
 
 	const activeTagChips: FilterChip[] = selectedTagIds.flatMap((id) => {
 		const tag = allTags.find((t) => t.id === id);
@@ -128,6 +148,14 @@ export default function InventoryPage() {
 		},
 		[filteredItems, scrollAndHighlight]
 	);
+
+	useEffect(() => {
+		const highlightId = searchParams.get("highlight");
+		if (!highlightId) return;
+		setSearchParams((p) => { p.delete("highlight"); return p; }, { replace: true });
+		handleLowStockClick(highlightId);
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);  // run once on mount only
 
 	const handleDelete = async (id: string) => {
 		try {
@@ -217,7 +245,12 @@ export default function InventoryPage() {
 							/>
 						</div>
 					}
-					right={<ViewToggle value={viewMode} onChange={setViewMode} />}
+					right={
+						<ViewToggle
+							value={viewMode}
+							onChange={setViewMode}
+						/>
+					}
 				/>
 
 				<FilterChips
@@ -228,6 +261,35 @@ export default function InventoryPage() {
 						setSelectedTagIds([]);
 					}}
 				/>
+
+				{/* Pending Parts section — manage_inventory only */}
+				{MANAGE_INVENTORY && (
+					<div className="mb-4 rounded-xl border border-border bg-base overflow-hidden">
+						<button
+							onClick={() => setIsPendingOpen((o) => !o)}
+							className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-text-primary hover:bg-surface transition-colors"
+						>
+							<div className="flex items-center gap-2">
+								<span>Pending Parts</span>
+								{provisionalItems.length > 0 && (
+									<span className="inline-flex items-center justify-center h-5 min-w-5 rounded-full bg-primary text-on-primary text-xs font-bold px-1.5">
+										{provisionalItems.length}
+									</span>
+								)}
+							</div>
+							{isPendingOpen ? (
+								<ChevronUp size={16} className="text-text-muted" />
+							) : (
+								<ChevronDown size={16} className="text-text-muted" />
+							)}
+						</button>
+						{isPendingOpen && (
+							<div className="border-t border-border px-4 pb-4 pt-3">
+								<PendingPartsQueue />
+							</div>
+						)}
+					</div>
+				)}
 
 				<div className="flex-1 overflow-auto min-h-0">
 					<div
@@ -267,6 +329,9 @@ export default function InventoryPage() {
 											item.id
 										)
 									}}
+									onLinkQB={MANAGE_INVENTORY ? () => setLinkItem(item) : undefined}
+									isLinkedToQB={mappedIds.has(item.id)}
+									qbConnected={qbConnected}
 								/>
 								{/* Delete overlay — card mode only; list mode uses inline actions */}
 								{(viewMode === "card" && !MANAGE_INVENTORY) && (
@@ -331,6 +396,15 @@ export default function InventoryPage() {
 				}}
 				existingItem={editingItem}
 			/>
+
+			{/* Link to QuickBooks Modal */}
+			{linkItem && (
+				<LinkQBItemModal
+					item={linkItem}
+					isOpen={!!linkItem}
+					onClose={() => setLinkItem(null)}
+				/>
+			)}
 
 			{/* Delete Confirmation */}
 			{deleteConfirmId && (

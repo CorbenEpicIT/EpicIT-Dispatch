@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import type { PrismaClient } from "../../generated/prisma/client.js";
+import { db } from "../db.js";
 import {
 	updateThresholdSchema,
 	createInventoryItemSchema,
@@ -10,7 +10,8 @@ import {
 } from "../lib/validate/inventory.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
-import { sendEmail } from "../services/emailService.js";
+import { sendLowStockAlert } from "../services/lowStockAlerts.js";
+import { recordMovements, InsufficientStockError, type ActorInfo } from "../services/stockMovements.js";
 
 type StockStatus = "sufficient" | "low" | "out_of_stock" | null;
 
@@ -23,7 +24,6 @@ interface InventoryRecord {
 	alert_email: string | null;
 }
 
-type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 function getStockStatus(quantity: number, threshold: number | null): StockStatus {
 	if (threshold === null) return null;
@@ -42,6 +42,13 @@ function getActorInfo(context?: UserContext) {
 		actor_id: context?.techId || context?.dispatcherId,
 		ip_address: context?.ipAddress,
 		user_agent: context?.userAgent,
+	};
+}
+
+function toActorInfo(context?: UserContext): ActorInfo {
+	return {
+		actor_type: context?.techId ? "technician" : context?.dispatcherId ? "dispatcher" : "system",
+		actor_id: context?.techId || context?.dispatcherId,
 	};
 }
 
@@ -78,7 +85,7 @@ export const getAllInventory = async (organizationId: string, sort?: string) => 
 
 	const sdb = getScopedDb(organizationId);
 	const items = await sdb.inventory_item.findMany({
-		where: { is_active: true },
+		where: { is_active: true, provisional: false },
 		orderBy,
 		include: {
 			_count: { select: { visit_line_items: true } },
@@ -119,7 +126,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 					name: parsed.name,
 					description: parsed.description,
 					location: parsed.location,
-					quantity: parsed.quantity,
+					quantity: 0, // recordMovements sets the initial qty below
 					unit_price: parsed.unit_price ?? null,
 					cost: parsed.cost ?? null,
 					sku: parsed.sku ?? null,
@@ -131,6 +138,18 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 				include: { tags: true },
 			});
 
+			if (parsed.quantity > 0) {
+				await recordMovements(tx, organizationId, toActorInfo(context), [
+					{
+						inventory_item_id: created.id,
+						qty: parsed.quantity,
+						from_location_type: "external",
+						to_location_type: "warehouse",
+						reason: "receive",
+					},
+				]);
+			}
+
 			await logActivity({
 				event_type: "inventory_item.created",
 				action: "created",
@@ -140,12 +159,14 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 				...getActorInfo(context),
 				changes: {
 					name: { old: null, new: created.name },
-					quantity: { old: null, new: created.quantity },
+					quantity: { old: null, new: parsed.quantity },
 					location: { old: null, new: created.location },
 				},
 			});
 
-			return created;
+			// quantity was set to 0 at create; recordMovements incremented it to parsed.quantity.
+			// Return with the known final quantity to avoid an extra round-trip.
+			return { ...created, quantity: parsed.quantity };
 		});
 
 		return { err: "", item: withStockStatus(item) };
@@ -282,16 +303,25 @@ export const adjustInventoryStock = async (
 			return { err: "Inventory item not found" };
 		}
 
-		const newQuantity = existing.quantity + parsed.delta;
-		if (newQuantity < 0) {
-			return { err: "Stock cannot go below zero" };
-		}
+		const qty = Math.abs(parsed.delta);
+		const isReceive = parsed.delta > 0;
+		const actor = toActorInfo(context);
+
+		let lowStockItemIds: string[] = [];
 
 		const updated = await sdb.$transaction(async (tx) => {
-			const item = await tx.inventory_item.update({
-				where: { id: itemId },
-				data: { quantity: newQuantity },
-			});
+			const result = await recordMovements(tx, organizationId, actor, [
+				{
+					inventory_item_id: itemId,
+					qty,
+					from_location_type: isReceive ? "external" : "warehouse",
+					to_location_type: isReceive ? "warehouse" : "adjustment",
+					reason: isReceive ? "receive" : "loss",
+				},
+			]);
+			lowStockItemIds = result.lowStockItemIds;
+
+			const item = await tx.inventory_item.findUnique({ where: { id: itemId } });
 
 			await logActivity({
 				event_type: "inventory_item.stock_adjusted",
@@ -301,24 +331,27 @@ export const adjustInventoryStock = async (
 				organization_id: organizationId,
 				...getActorInfo(context),
 				changes: {
-					quantity: { old: existing.quantity, new: newQuantity },
+					quantity: { old: existing.quantity, new: item?.quantity },
 					delta: { old: null, new: parsed.delta },
 				},
 			});
 
-			return item;
+			return item!;
 		});
 
+		// Only alert when quantity first crosses below threshold, not on every deduction
 		if (
-			updated.low_stock_threshold !== null &&
-			updated.quantity <= updated.low_stock_threshold &&
+			lowStockItemIds.includes(itemId) &&
 			existing.quantity > (existing.low_stock_threshold ?? 0)
 		) {
-			await triggerLowStockAlert(updated as InventoryRecord);
+			sendLowStockAlert(updated as InventoryRecord).catch(() => {});
 		}
 
 		return { err: "", item: withStockStatus(updated) };
 	} catch (e) {
+		if (e instanceof InsufficientStockError) {
+			return { err: "Stock cannot go below zero" };
+		}
 		console.error("Adjust inventory stock error:", e);
 		if (e instanceof ZodError) {
 			return {
@@ -333,67 +366,64 @@ export const deductInventoryForVisit = async (
 	visitId: string,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	tx: any,
+	organizationId: string,
 	context?: UserContext,
-) => {
+): Promise<{ lowStockItemIds: string[] }> => {
+	// Lines already consumed from vehicle stock (fulfillment_status "used") are
+	// skipped — their warehouse impact happened at restock. NULL must be matched
+	// explicitly: Prisma `not` excludes NULL rows (SQL semantics).
 	const lineItems = await tx.job_visit_line_item.findMany({
 		where: {
 			visit_id: visitId,
 			inventory_item_id: { not: null },
+			OR: [{ fulfillment_status: null }, { fulfillment_status: { not: "used" } }],
+		},
+	});
+	if (lineItems.length === 0) return { lowStockItemIds: [] };
+
+	// Billed quantities can be fractional; warehouse is Int — consume at least
+	// what was billed (ceil). allowNegative: completion must never block; a
+	// truthful negative surfaces the discrepancy instead of hiding it.
+	const movements = (lineItems as { id: string; inventory_item_id: string; quantity: unknown }[])
+		.map((li) => ({
+			inventory_item_id: li.inventory_item_id,
+			qty: Math.ceil(Number(li.quantity)),
+			from_location_type: "warehouse" as const,
+			to_location_type: "consumed" as const,
+			reason: "direct_consumption" as const,
+			visit_id: visitId,
+			visit_line_item_id: li.id,
+		}))
+		.filter((m) => m.qty > 0);
+
+	const { lowStockItemIds } = await recordMovements(
+		tx,
+		organizationId,
+		toActorInfo(context),
+		movements,
+		{ allowNegative: true },
+	);
+
+	await tx.job_visit_line_item.updateMany({
+		where: { id: { in: lineItems.map((li: { id: string }) => li.id) } },
+		data: { fulfillment_status: "used" },
+	});
+
+	await logActivity({
+		event_type: "inventory_item.stock_adjusted",
+		action: "updated",
+		entity_type: "job_visit",
+		entity_id: visitId,
+		organization_id: organizationId,
+		...getActorInfo(context),
+		changes: {
+			lines_consumed: { old: null, new: movements.length },
+			reason: { old: null, new: `Inventory consumed at completion of visit ${visitId}` },
 		},
 	});
 
-	for (const li of lineItems) {
-		const item = await tx.inventory_item.findUnique({
-			where: { id: li.inventory_item_id! },
-		});
-		if (!item) continue;
-
-		const delta = -Number(li.quantity);
-		const newQty = Math.max(0, item.quantity + delta);
-
-		await tx.inventory_item.update({
-			where: { id: item.id },
-			data: { quantity: newQty },
-		});
-
-		await logActivity({
-			event_type: "inventory_item.stock_adjusted",
-			action: "updated",
-			entity_type: "inventory_item",
-			entity_id: item.id,
-			...getActorInfo(context),
-			changes: {
-				quantity: { old: item.quantity, new: newQty },
-				reason: { old: null, new: `Deducted from visit ${visitId}` },
-			},
-		});
-
-		if (
-			item.low_stock_threshold !== null &&
-			newQty <= item.low_stock_threshold &&
-			item.quantity > item.low_stock_threshold
-		) {
-			triggerLowStockAlert({ ...item, quantity: newQty } as InventoryRecord).catch(
-				() => {},
-			);
-		}
-	}
+	return { lowStockItemIds };
 };
-
-async function triggerLowStockAlert(item: InventoryRecord) {
-	if (!item.alert_emails_enabled || !item.alert_email) return;
-
-	try {
-		await sendEmail(item.alert_email, "low-stock-alert", {
-			item_name: item.name,
-			current_quantity: item.quantity,
-			threshold: item.low_stock_threshold,
-			inventory_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/dispatch/inventory`,
-		});
-	} catch (e) {
-		console.error("Failed to send low stock alert email:", e);
-	}
-}
 
 export const updateInventoryThreshold = async (
 	itemId: string,
@@ -561,7 +591,200 @@ export const exportLowStockToXlsx = async (orgId: string): Promise<Buffer> => {
 	return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 };
 
+// ── Movement history ──────────────────────────────────────────────────────────
+
+const MOVEMENT_INCLUDE = {
+	from_vehicle: { select: { id: true, name: true } },
+	to_vehicle: { select: { id: true, name: true } },
+} as const;
+
+export const getInventoryMovements = async (
+	itemId: string,
+	organizationId: string,
+	cursor?: string,
+	limit = 25,
+) => {
+	const sdb = getScopedDb(organizationId);
+
+	const existing = await sdb.inventory_item.findFirst({ where: { id: itemId } });
+	if (!existing) return { err: "Inventory item not found" as const };
+
+	const take = Math.min(Math.max(Number.isFinite(limit) ? Math.floor(limit) : 25, 1), 100);
+
+	const movements = await sdb.stock_movement.findMany({
+		where: { inventory_item_id: itemId },
+		include: MOVEMENT_INCLUDE,
+		orderBy: [{ created_at: "desc" }, { id: "desc" }],
+		take: take + 1,
+		...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+	});
+
+	const hasNext = movements.length > take;
+	const page = hasNext ? movements.slice(0, take) : movements;
+	const nextCursor = hasNext ? page[page.length - 1].id : null;
+
+	return { err: "", movements: page, nextCursor };
+};
+
 // ── Import template ───────────────────────────────────────────────────────────
+
+// ── Provisional items ─────────────────────────────────────────────────────────
+
+export async function listProvisionalItems(orgId: string): Promise<{ err?: string; items?: object[] }> {
+	try {
+		const items = await db.inventory_item.findMany({
+			where: { organization_id: orgId, provisional: true },
+			include: {
+				created_by_tech: { select: { id: true, name: true } },
+				vehicle_stocks: {
+					select: { qty_on_hand: true, vehicle: { select: { id: true, name: true } } },
+				},
+			},
+			orderBy: { created_at: "desc" },
+			take: 200,
+		});
+		return { items };
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to list provisional items");
+		return { err: "Failed to list provisional items" };
+	}
+}
+
+export async function approveProvisionalItem(
+	itemId: string,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; item?: object }> {
+	try {
+		const claimed = await db.inventory_item.updateMany({
+			where: { id: itemId, organization_id: orgId, provisional: true },
+			data: { provisional: false, approved_at: new Date(), approved_by_id: context?.dispatcherId ?? null },
+		});
+		if (claimed.count === 0) return { err: "Provisional item not found" };
+		const item = await db.inventory_item.findFirst({ where: { id: itemId } });
+		await logActivity({
+			event_type: "inventory_item.approved",
+			action: "updated",
+			entity_type: "inventory_item",
+			entity_id: itemId,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: { provisional: { old: true, new: false } },
+		});
+		return { item: item! };
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to approve provisional item");
+		return { err: "Failed to approve provisional item" };
+	}
+}
+
+export async function rejectProvisionalItem(
+	itemId: string,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string }> {
+	try {
+		const claimed = await db.inventory_item.updateMany({
+			where: { id: itemId, organization_id: orgId, provisional: true },
+			data: { provisional: false, is_active: false, approved_at: new Date(), approved_by_id: context?.dispatcherId ?? null },
+		});
+		if (claimed.count === 0) return { err: "Provisional item not found" };
+		await logActivity({
+			event_type: "inventory_item.rejected",
+			action: "updated",
+			entity_type: "inventory_item",
+			entity_id: itemId,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: { is_active: { old: true, new: false }, provisional: { old: true, new: false } },
+		});
+		return {};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to reject provisional item");
+		return { err: "Failed to reject provisional item" };
+	}
+}
+
+const mergeSchema = z.object({ target_inventory_item_id: z.string().uuid() });
+
+export async function mergeProvisionalItem(
+	itemId: string,
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string }> {
+	try {
+		const parsed = mergeSchema.parse(data);
+		if (parsed.target_inventory_item_id === itemId) return { err: "Target must be a different item" };
+		await db.$transaction(async (tx) => {
+			const prov = await tx.inventory_item.findFirst({
+				where: { id: itemId, organization_id: orgId, provisional: true },
+			});
+			if (!prov) throw new Error("Provisional item not found");
+
+			const target = await tx.inventory_item.findFirst({
+				where: { id: parsed.target_inventory_item_id, organization_id: orgId, provisional: false },
+			});
+			if (!target) throw new Error("Target item not found");
+
+			const provStocks = await tx.vehicle_stock_item.findMany({ where: { inventory_item_id: itemId } });
+			for (const ps of provStocks) {
+				const existing = await tx.vehicle_stock_item.findFirst({
+					where: { vehicle_id: ps.vehicle_id, inventory_item_id: target.id },
+				});
+				if (existing) {
+					await tx.vehicle_stock_item.update({
+						where: { id: existing.id },
+						data: { qty_on_hand: { increment: ps.qty_on_hand } },
+					});
+					await tx.vehicle_stock_usage.updateMany({
+						where: { stock_item_id: ps.id },
+						data: { stock_item_id: existing.id },
+					});
+					await tx.vehicle_restock_request.updateMany({
+						where: { stock_item_id: ps.id },
+						data: { stock_item_id: existing.id },
+					});
+					await tx.vehicle_stock_item.delete({ where: { id: ps.id } });
+				} else {
+					await tx.vehicle_stock_item.update({
+						where: { id: ps.id },
+						data: { inventory_item_id: target.id },
+					});
+				}
+			}
+			await tx.stock_movement.updateMany({
+				where: { inventory_item_id: itemId },
+				data: { inventory_item_id: target.id },
+			});
+			await tx.job_visit_line_item.updateMany({
+				where: { inventory_item_id: itemId },
+				data: { inventory_item_id: target.id },
+			});
+			await tx.inventory_item.delete({ where: { id: itemId } });
+		});
+		await logActivity({
+			event_type: "inventory_item.merged",
+			action: "deleted",
+			entity_type: "inventory_item",
+			entity_id: itemId,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: { merged_into: { old: null, new: parsed.target_inventory_item_id } },
+		});
+		return {};
+	} catch (e: unknown) {
+		if (e instanceof ZodError)
+			return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (
+			e instanceof Error &&
+			(e.message.includes("not found") || e.message.includes("Target"))
+		)
+			return { err: e.message };
+		log.error({ err: e }, "Failed to merge provisional item");
+		return { err: "Failed to merge provisional item" };
+	}
+}
 
 export const getInventoryImportTemplate = (): Buffer => {
 	const headers = [

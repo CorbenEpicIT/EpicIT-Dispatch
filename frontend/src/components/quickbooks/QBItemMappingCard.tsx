@@ -6,8 +6,11 @@ import {
     useUnlinkQBItemMutation,
 } from "../../hooks/useQuickbooks";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
+import { usePermission } from "../../hooks/usePermission";
 import type { InventoryItem } from "../../types/inventory";
 import LinkQBItemModal from "./LinkQBItemModal";
+
+const NO_PERMISSION_TITLE = "You don't have permission to perform this action";
 
 export default function QBItemMappingCard() {
     const { data: mappedItems } = useQBMappedItemsQuery();
@@ -15,6 +18,9 @@ export default function QBItemMappingCard() {
     const { data: inventoryItems } = useAllInventoryQuery();
     const push = usePushQBItemMutation();
     const unlink = useUnlinkQBItemMutation();
+
+    // permissions
+    const MANAGE_INVENTORY = usePermission("manage_inventory");
     const [linkItem, setLinkItem] = useState<InventoryItem | null>(null);
 
     // inventory_item_id -> linked QB external_id
@@ -42,6 +48,7 @@ export default function QBItemMappingCard() {
                         <tr className="border-b border-border-subtle">
                             <th className="px-5 py-2.5 text-left text-xs font-medium text-text-muted">Inventory Item</th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-text-muted">QuickBooks Item</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-text-muted">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -58,41 +65,57 @@ export default function QBItemMappingCard() {
                                             {item.name}
                                             {item.sku && <span className="ml-2 text-xs text-text-muted">{item.sku}</span>}
                                         </td>
-                                        <td className="px-3 py-3">
-                                            {linked ? (
+                                        {linked ? (
+                                        <>
+                                            <td className="px-3 py-3">
                                                 <div className="flex items-center gap-2">
                                                     <span className="inline-flex items-center rounded-full bg-success-bg px-2.5 py-1 text-xs font-medium text-success-text">
                                                         Linked: {qbNameById.get(externalId!) ?? `#${externalId}`}
                                                     </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => unlink.mutate({ inventory_item_id: item.id })}
-                                                        disabled={unlink.isPending}
-                                                        className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-border-strong hover:bg-surface-raised hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        Unlink
-                                                    </button>
                                                 </div>
-                                            ) : (
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => unlink.mutate({ inventory_item_id: item.id })}
+                                                    disabled={!MANAGE_INVENTORY || unlink.isPending}
+                                                    title={!MANAGE_INVENTORY ? NO_PERMISSION_TITLE : undefined}
+                                                    className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-border-strong hover:bg-surface-raised hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    Unlink
+                                                </button>
+                                            </td>
+                                        </>
+                                        ) : (
+                                        <>
+                                            <td className="px-3 py-3">
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => setLinkItem(item)}
-                                                        className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface-raised"
+                                                        disabled={!MANAGE_INVENTORY}
+                                                        title={!MANAGE_INVENTORY ? NO_PERMISSION_TITLE : undefined}
+                                                        className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         Link
                                                     </button>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <div className="flex items-center gap-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => push.mutate({ itemId: item.id })}
-                                                        disabled={push.isPending}
+                                                        disabled={!MANAGE_INVENTORY || push.isPending}
+                                                        title={!MANAGE_INVENTORY ? NO_PERMISSION_TITLE : undefined}
                                                         className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         Push to QB
                                                     </button>
                                                 </div>
-                                            )}
-                                        </td>
+                                            </td>
+                                        </>
+                                        )}
                                     </tr>
                                 );
                             })

@@ -11,6 +11,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
+import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
 import { createNotification } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
 import { buildRecurringPlanInvoicePayload } from "../services/invoiceGenerator.js";
@@ -570,6 +571,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			"actual_end_at",
 			"status",
 		] as const);
+		let deductLowStockIds: string[] = [];
 		const updated = await sdb.$transaction(async (tx) => {
 			// ── Scalar field update ───────────────────────────────────────
 			const visit = await tx.job_visit.update({
@@ -715,24 +717,11 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 					});
 				}
 
-				const deductOn = existingVisit.job.deduct_inventory_on;
-				if (
-					parsed.status === "Completed" &&
-					existingVisit.status !== "Completed" &&
-					deductOn === "visit_completion"
-				) {
-					await deductInventoryForVisit(id, tx, context);
-				}
-
-				// Inventory deduction on job completion (all visits done)
-				if (
-					newJobStatus === "Completed" &&
-					existingVisit.job.status !== "Completed" &&
-					deductOn === "job_completion"
-				) {
-					for (const v of allVisits) {
-						await deductInventoryForVisit(v.id, tx, context);
-					}
+				// Inventory consumption is event-driven: it fires once per visit on
+				// its Completed transition (ledger model — see services/stockMovements).
+				if (parsed.status === "Completed" && existingVisit.status !== "Completed") {
+					const deductResult = await deductInventoryForVisit(id, tx, organizationId, context);
+					deductLowStockIds = deductResult.lowStockItemIds;
 				}
 
 				// ── Actual total rollup ────────────────────────────────────────────────────────────────────
@@ -802,6 +791,8 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				},
 			});
 		});
+
+		fireLowStockAlerts(deductLowStockIds, organizationId).catch(() => {});
 
 		// ── on_visit_completion: auto-invoice (post-commit, non-blocking) ──
 		if (
@@ -1292,6 +1283,7 @@ export const applyVisitTransition = async (
 			if (!existingVisit.actual_start_at) timestampData.actual_start_at = now;
 		}
 
+		let deductLowStockIds: string[] = [];
 		await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
@@ -1348,15 +1340,10 @@ export const applyVisitTransition = async (
 				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
 			}
 
-			// ── Inventory deduction ───────────────────────────────────
-			const deductOn = existingVisit.job.deduct_inventory_on;
-			if (action === "complete" && existingVisit.status !== "Completed" && deductOn === "visit_completion") {
-				await deductInventoryForVisit(id, tx, context);
-			}
-			if (newJobStatus === "Completed" && existingVisit.job.status !== "Completed" && deductOn === "job_completion") {
-				for (const v of allVisits) {
-					await deductInventoryForVisit(v.id, tx, context);
-				}
+			// ── Inventory consumption (once, on this visit's Completed transition) ──
+			if (action === "complete" && existingVisit.status !== "Completed") {
+				const deductResult = await deductInventoryForVisit(id, tx, organizationId, context);
+				deductLowStockIds = deductResult.lowStockItemIds;
 			}
 
 			// ── Auto-close open time entries on pause or complete ─────────────
@@ -1540,6 +1527,8 @@ export const applyVisitTransition = async (
 			});
 
 		});
+
+		fireLowStockAlerts(deductLowStockIds, organizationId).catch(() => {});
 
 		const updated = await sdb.job_visit.findFirst({
 			where: { id },

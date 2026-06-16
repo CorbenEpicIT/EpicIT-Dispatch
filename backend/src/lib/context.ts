@@ -49,6 +49,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"invoice_note",
 	"log",
 	"vehicle",
+	"stock_movement",
 	"tax_rate",
 	"tax_group",
 	"organization_role",

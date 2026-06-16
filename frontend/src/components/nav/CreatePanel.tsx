@@ -65,6 +65,13 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 		return () => document.removeEventListener("keydown", handler);
 	}, [isOpen, onClose]);
 
+	useEffect(() => {
+		if (!isOpen) return;
+		const prev = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		return () => { document.body.style.overflow = prev; };
+	}, [isOpen]);
+
 	const openModal = (key: ActiveModal) => {
 		onClose();
 		setActiveModal(key);

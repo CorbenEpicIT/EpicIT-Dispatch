@@ -90,6 +90,7 @@ function OrgSettingsSection() {
 				coords: org.coords ?? null,
 				email: org.email ?? "",
 				website: org.website ?? "",
+				restock_mode: org.restock_mode,
 			});
 			setLogoImgError(false);
 		}
@@ -151,6 +152,7 @@ function OrgSettingsSection() {
 				coords: form.coords || null,
 				email: form.email || null,
 				website: form.website || null,
+				...(form.restock_mode ? { restock_mode: form.restock_mode } : {}),
 			});
 			setSaveSuccess(true);
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -389,6 +391,61 @@ function OrgSettingsSection() {
 					</div>
 				</div>
 
+				{/* Restock workflow emphasis — UX default only, never a capability gate */}
+				<div className="mt-5">
+					<span className="mb-1 block text-xs font-medium text-text-tertiary">
+						Vehicle Restock Workflow
+					</span>
+					<p className="mb-2 text-xs text-text-muted">
+						Changes which workflow the app emphasizes — it never restricts what
+						roles are allowed to do (set that in Roles).
+					</p>
+					<div className="space-y-2">
+						{(
+							[
+								{
+									value: "tech_self_serve" as const,
+									label: "Technician self-serve",
+									description: "Techs restock their own vehicles from the warehouse",
+								},
+								{
+									value: "dispatch_prepared" as const,
+									label: "Dispatch prepared",
+									description: "Techs request restocks; dispatch fulfills from the warehouse",
+								},
+							]
+						).map((opt) => (
+							<label
+								key={opt.value}
+								className={`flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
+									form.restock_mode === opt.value
+										? "border-primary bg-primary-bg-subtle"
+										: "border-border-subtle hover:bg-surface"
+								}`}
+							>
+								<input
+									type="radio"
+									name="restock-mode"
+									value={opt.value}
+									checked={form.restock_mode === opt.value}
+									onChange={() =>
+										setForm((prev) => ({ ...prev, restock_mode: opt.value }))
+									}
+									className="mt-0.5 accent-(--color-primary)"
+								/>
+								<span>
+									<span className="block text-xs font-medium text-text-primary">
+										{opt.label}
+									</span>
+									<span className="block text-xs text-text-muted">
+										{opt.description}
+									</span>
+								</span>
+							</label>
+						))}
+					</div>
+				</div>
+
 				<div className="mt-5 flex items-center gap-3">
 					<button
 						type="submit"
@@ -456,31 +513,38 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 export default function SettingsSection() {
 	const [showTaxInactive, setShowTaxInactive] = useState(false);
 
+	const MANAGE_ORG = usePermission("manage_organization");
+	const MANAGE_TAX = usePermission("manage_taxes");
+
 	return (
 		<div className="max-w-6xl">
 			<div className="grid grid-cols-1 gap-x-8 lg:grid-cols-2 lg:items-start">
-				<SettingRow
-					title="Organization"
-					description="Profile, branding, and contact information."
-				>
-					<OrgSettingsSection />
-				</SettingRow>
+				{MANAGE_ORG && (
+					<SettingRow
+						title="Organization"
+						description="Profile, branding, and contact information."
+					>
+						<OrgSettingsSection />
+					</SettingRow>
 
-				<SettingRow
-					title="Tax"
-					description="Rates and groups applied to quotes and invoices."
-					action={
-						<Toggle
-							checked={showTaxInactive}
-							onChange={() =>
-								setShowTaxInactive((v) => !v)
-							}
-							label="Show inactive"
-						/>
-					}
-				>
-					<TaxSettingsSection showInactive={showTaxInactive} />
-				</SettingRow>
+				)}
+				{MANAGE_TAX && (
+					<SettingRow
+						title="Tax"
+						description="Rates and groups applied to quotes and invoices."
+						action={
+							<Toggle
+								checked={showTaxInactive}
+								onChange={() =>
+									setShowTaxInactive((v) => !v)
+								}
+								label="Show inactive"
+							/>
+						}
+					>
+						<TaxSettingsSection showInactive={showTaxInactive} />
+					</SettingRow>
+				)}
 
 				<SettingRow
 					title="QuickBooks"

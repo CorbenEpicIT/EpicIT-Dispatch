@@ -19,6 +19,7 @@ import {
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import type { ImportQBItemResult } from "../types/quickbooks";
 
 type QBInvoiceEmailVars = {
   invoiceId: string;
@@ -160,7 +161,7 @@ export const useLinkQBItemMutation = () => {
 
 export const useImportQBItemMutation = () => {
     const queryClient = useQueryClient();
-    return useMutation<unknown, Error, { qb_item_id: string }>({
+    return useMutation<ImportQBItemResult, Error, { qb_item_id: string }>({
         mutationFn: ({ qb_item_id }) => importQBItem(qb_item_id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });

@@ -1,183 +1,156 @@
-﻿import { User, Pencil } from "lucide-react";
-import type { Vehicle, VehicleStockItem } from "../../types/vehicles";
+import { useNavigate } from "react-router-dom";
+import type { Vehicle, StockHealthStatus, VehicleReadiness, ReadinessState } from "../../types/vehicles";
 import { usePermission } from "../../hooks/usePermission";
+import { getStockCounts, getStockHealth } from "./stockHealth";
 
-interface VehicleCardProps {
-	vehicle: Vehicle;
-	onEdit: (vehicle: Vehicle) => void;
-	viewMode: "card" | "list";
-}
-
-function getStockDotColor(stockItems?: VehicleStockItem[]): "green" | "amber" | "grey" {
-	if (!stockItems || stockItems.length === 0) return "grey";
-	const hasLow = stockItems.some((item) => item.qty_on_hand < item.qty_min);
-	return hasLow ? "amber" : "green";
-}
-
-const STOCK_DOT_CLASSES: Record<"green" | "amber" | "grey", string> = {
-	green: "bg-success",
-	amber: "bg-warning",
-	grey: "bg-border",
+const HEALTH_CONFIG: Record<StockHealthStatus, {
+	borderColor: string;
+	rowBg: string;
+}> = {
+	ok:  { borderColor: "border-l-success", rowBg: "" },
+	low: { borderColor: "border-l-warning", rowBg: "bg-warning/5" },
+	out: { borderColor: "border-l-error",   rowBg: "bg-error/5" },
 };
 
-const STOCK_DOT_TITLES: Record<"green" | "amber" | "grey", string> = {
-	green: "Stock OK",
-	amber: "Needs restock",
-	grey: "No stock configured",
-};
-
-function abbrevName(name: string): string {
-	const parts = name.trim().split(/\s+/).filter(Boolean);
-	if (parts.length === 0) return "—";
-	const first = `${parts[0][0]}.`;
-	return parts.length > 1 ? `${first} ${parts[parts.length - 1]}` : parts[0];
+function TruckIcon({ health }: { health: StockHealthStatus }) {
+	const stroke =
+		health === "out" ? "var(--color-error)" :
+		health === "low" ? "var(--color-warning)" :
+		"var(--color-success)";
+	return (
+		<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+			<rect x="1" y="3" width="15" height="13" rx="2" />
+			<path d="M16 8h4l3 5v3h-7V8z" />
+			<circle cx="5.5" cy="18.5" r="2.5" />
+			<circle cx="18.5" cy="18.5" r="2.5" />
+		</svg>
+	);
 }
 
-export default function VehicleCard({ vehicle, onEdit, viewMode }: VehicleCardProps) {
-	const stockColor = getStockDotColor(vehicle.stock_items);
-	const isInactive = vehicle.status === "inactive";
+/** Proportional composition bar: out (red) / low (amber) / ok (green) item counts. */
+function StockCompositionBar({ out, low, ok }: { out: number; low: number; ok: number }) {
+	return (
+		<div className="flex h-1.5 w-20 rounded-full overflow-hidden bg-surface-inset flex-shrink-0">
+			{out > 0 && <div className="bg-error h-full" style={{ flexGrow: out, flexBasis: 0 }} />}
+			{low > 0 && <div className="bg-warning h-full" style={{ flexGrow: low, flexBasis: 0 }} />}
+			{ok > 0 && <div className="bg-success/70 h-full" style={{ flexGrow: ok, flexBasis: 0 }} />}
+		</div>
+	);
+}
 
-	const techs = vehicle.current_technicians ?? [];
-	const visibleTechs = techs.slice(0, 3);
-	const overflowCount = techs.length - visibleTechs.length;
+export default function VehicleCard({ vehicle, onEdit, readiness, onReadinessClick }: { vehicle: Vehicle; onEdit: (v: Vehicle) => void; readiness?: VehicleReadiness; onReadinessClick?: () => void }) {
+	const navigate = useNavigate();
+	const canEdit = usePermission("manage_inventory");
+	const counts = getStockCounts(vehicle);
+	const health = getStockHealth(vehicle);
 
-	const vehicleDescParts = [
-		vehicle.type,
-		[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" "),
-	].filter(Boolean);
+	const READINESS_CONFIG: Partial<Record<ReadinessState, { label: string; className: string }>> = {
+		unknown:      { label: "Unknown",  className: "text-text-muted border-border bg-surface-raised" },
+		auto_ready:   { label: "Ready",    className: "text-success border-success/40 bg-success/10" },
+		needs_action: { label: "",         className: "text-warning border-warning/40 bg-warning/10" },
+		confirmed:    { label: "Ready ✓",  className: "text-success border-success/40 bg-success/10" },
+	};
+	const cfg = HEALTH_CONFIG[health];
+	const techNames = vehicle.current_technicians ?? [];
+	const techLabel = techNames.length === 0
+		? undefined
+		: techNames.length === 1
+			? techNames[0].name
+			: `${techNames[0].name} +${techNames.length - 1}`;
 
-	// permissions
-	const EDIT_VEHICLES = usePermission("manage_vehicles");
-
-	if (viewMode === "list") {
-		return (
-			<div
-				className={`w-full bg-base rounded-lg border border-border-subtle px-4 py-2.5 flex items-center gap-4 motion-safe:transition-colors duration-150 ${
-					isInactive ? "opacity-60" : "hover:border-border-strong"
-				}`}
-			>
-				{/* Name */}
-				<div className="flex-1 min-w-0">
-					<span className="text-sm font-semibold text-text-primary truncate block">{vehicle.name}</span>
-				</div>
-
-				{/* Details + plate */}
-				<div className="hidden sm:block flex-1 min-w-0">
-					<div className="text-xs text-text-tertiary line-clamp-2">
-						{vehicleDescParts.length > 0 && vehicleDescParts.join(" · ") + " · "}
-						<span className="font-mono">{vehicle.license_plate ?? "—"}</span>
-					</div>
-				</div>
-
-				{/* Status */}
-				<span className={`text-xs font-medium flex-shrink-0 ${isInactive ? "text-text-tertiary" : "text-success-text"}`}>
-					{vehicle.status === "active" ? "Active" : "Inactive"}
-				</span>
-
-				{/* Tech assignment */}
-				<div className="flex items-center gap-1.5 flex-shrink-0">
-					<User size={12} className="text-text-muted flex-shrink-0" />
-					{visibleTechs.length === 0 ? (
-						<span className="text-xs text-text-muted italic">No technicians</span>
-					) : (
-						<span className="text-xs text-text-tertiary">
-							{visibleTechs.map((t) => abbrevName(t.name)).join(" · ")}
-							{overflowCount > 0 ? ` +${overflowCount}` : ""}
-						</span>
-					)}
-				</div>
-
-				{/* Stock */}
-				<div className="flex items-center gap-1 flex-shrink-0">
-					<span className={`text-[11px] ${stockColor === "amber" ? "text-warning-text" : "text-text-tertiary"}`}>
-						Stock
-					</span>
-					<div
-						className={`w-1.5 h-1.5 rounded-full ${STOCK_DOT_CLASSES[stockColor]}`}
-						title={STOCK_DOT_TITLES[stockColor]}
-					/>
-				</div>
-
-				{/* Edit */}
-				<button
-					disabled={!EDIT_VEHICLES}
-					title={!EDIT_VEHICLES ? "You don't have permission to perform this action" : ""}
-					onClick={(e) => { 
-						if (!EDIT_VEHICLES) return;
-						e.stopPropagation(); 
-						onEdit(vehicle); 
-					}}
-					className="w-7 h-7 flex items-center justify-center bg-surface hover:enabled:bg-surface-raised border border-border rounded transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900 disabled:opacity-40 disabled:cursor-not-allowed"
-					aria-label={`Edit ${vehicle.name}`}
-				>
-					<Pencil size={13} className="text-text-tertiary" />
-				</button>
-			</div>
-		);
-	}
+	const stockLabel =
+		counts.total === 0 ? null :
+		counts.out > 0 && counts.low > 0 ? `${counts.out} out · ${counts.low} low` :
+		counts.out > 0 ? `${counts.out} out` :
+		counts.low > 0 ? `${counts.low} low` :
+		"All good";
 
 	return (
 		<div
-			className={`bg-base border border-border-subtle rounded-lg p-3 motion-safe:transition-colors duration-150 ${
-				isInactive ? "opacity-60" : "hover:border-border-strong"
-			}`}
+			className={`grid grid-cols-[1fr_150px_176px_110px_168px] items-center gap-3 px-5 py-3 border-b border-border/40 border-l-[3px] cursor-pointer ${cfg.borderColor} ${cfg.rowBg} hover:bg-surface-raised/70 transition-colors`}
+			onClick={() => navigate(`/dispatch/vehicles/${vehicle.id}/stock`)}
 		>
-			{/* Row 1: name + status */}
-			<div className="flex items-start justify-between gap-2 mb-1.5">
-				<span className="text-sm font-semibold text-text-primary truncate">{vehicle.name}</span>
-				<span className={`text-xs font-medium flex-shrink-0 mt-px ${isInactive ? "text-text-tertiary" : "text-success-text"}`}>
-					{vehicle.status === "active" ? "Active" : "Inactive"}
-				</span>
-			</div>
-
-			{/* Row 2: sub-line — type · year make model · PLATE */}
-			<div className="text-xs text-text-tertiary mb-2.5 truncate">
-				{vehicleDescParts.length > 0 && vehicleDescParts.join(" · ") + " · "}
-				<span className="font-mono">{vehicle.license_plate ?? "—"}</span>
-			</div>
-
-			{/* Divider */}
-			<div className="h-px bg-surface mb-2.5" />
-
-			{/* Row 3: tech assignment + stock indicator + edit */}
-			<div className="flex items-center justify-between gap-2">
-				<div className="flex items-center gap-1.5 min-w-0">
-					<User size={12} className="text-text-muted flex-shrink-0" />
-					{visibleTechs.length === 0 ? (
-						<span className="text-xs text-text-muted italic">No technicians</span>
-					) : (
-						<span className="text-xs text-text-tertiary truncate">
-							{visibleTechs
-								.map((t) => abbrevName(t.name))
-								.join(" · ")}
-							{overflowCount > 0 ? ` +${overflowCount}` : ""}
-						</span>
-					)}
+			{/* Identity */}
+			<div className="flex items-center gap-3 min-w-0">
+				<div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${health === "ok" ? "bg-success/10" : health === "low" ? "bg-warning/10" : "bg-error/10"}`}>
+					<TruckIcon health={health} />
 				</div>
-				<div className="flex items-center gap-2 flex-shrink-0">
-					<div className="flex items-center gap-1">
-						<span className={`text-[11px] ${stockColor === "amber" ? "text-warning-text" : "text-text-tertiary"}`}>
-							Stock
-						</span>
-						<div
-							className={`w-1.5 h-1.5 rounded-full ${STOCK_DOT_CLASSES[stockColor]}`}
-							title={STOCK_DOT_TITLES[stockColor]}
-						/>
+				<div className="min-w-0">
+					<div className="text-sm font-semibold text-text-primary flex items-center gap-2">
+						<span className="truncate">{vehicle.name}</span>
+						{vehicle.status === "inactive" && (
+							<span className="text-[10px] font-semibold bg-surface text-text-muted border border-border px-1.5 py-0.5 rounded flex-shrink-0">INACTIVE</span>
+						)}
 					</div>
-					<button
-						disabled={!EDIT_VEHICLES}
-						title={!EDIT_VEHICLES ? "You don't have permission to perform this action" : ""}
-						onClick={(e) => { 
-							if (!EDIT_VEHICLES) return; 
-							e.stopPropagation(); 
-							onEdit(vehicle); 
-						}}
-						className="w-7 h-7 flex items-center justify-center bg-surface hover:enabled:bg-surface-raised border border-border rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900 disabled:opacity-40 disabled:cursor-not-allowed"
-						aria-label={`Edit ${vehicle.name}`}
-					>
-						<Pencil size={13} className="text-text-tertiary" />
-					</button>
+					<div className="text-xs text-text-muted mt-0.5 truncate">
+						{[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ")}
+						{vehicle.license_plate && ` · ${vehicle.license_plate}`}
+					</div>
 				</div>
+			</div>
+
+			{/* Technician */}
+			<div className="min-w-0">
+				{techLabel
+					? <span className="text-sm text-text-secondary truncate block">{techLabel}</span>
+					: <span className="text-sm text-text-faint italic">No tech</span>
+				}
+			</div>
+
+			{/* Stock composition */}
+			<div className="flex items-center gap-2.5">
+				{counts.total === 0 ? (
+					<span className="text-xs text-text-faint">No items tracked</span>
+				) : (
+					<>
+						<StockCompositionBar out={counts.out} low={counts.low} ok={counts.ok} />
+						<span className={`text-xs font-semibold whitespace-nowrap ${
+							health === "out" ? "text-error-text" : health === "low" ? "text-warning-text" : "text-success"
+						}`}>
+							{stockLabel}
+						</span>
+					</>
+				)}
+			</div>
+
+			{/* Readiness */}
+			<div className="text-xs text-text-muted">
+				{readiness && readiness.state !== "not_applicable" && (() => {
+					const config = READINESS_CONFIG[readiness.state];
+					if (!config) return null;
+					const gapCount = readiness.gaps.filter((g) => g.gap > 0).length;
+					const label =
+						readiness.state === "needs_action"
+							? `${gapCount} gap${gapCount !== 1 ? "s" : ""}`
+							: config.label;
+					return (
+						<button
+							onClick={(e) => { e.stopPropagation(); onReadinessClick?.(); }}
+							className={`text-xs font-semibold px-2 py-0.5 rounded border transition-opacity hover:opacity-80 ${config.className}`}
+						>
+							{label}
+						</button>
+					);
+				})()}
+				{(!readiness || readiness.state === "not_applicable") && "—"}
+			</div>
+
+			{/* Actions */}
+			<div className="flex items-center justify-end gap-2">
+				<button
+					onClick={(e) => { e.stopPropagation(); if (canEdit) onEdit(vehicle); }}
+					disabled={!canEdit}
+					title={!canEdit ? "You don't have permission to perform this action" : ""}
+					className="px-3 py-1 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+				>
+					Edit
+				</button>
+				<button
+					onClick={(e) => { e.stopPropagation(); navigate(`/dispatch/vehicles/${vehicle.id}/stock`); }}
+					className="px-3 py-1 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+				>
+					Manage Stock
+				</button>
 			</div>
 		</div>
 	);

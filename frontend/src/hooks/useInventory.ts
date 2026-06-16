@@ -12,9 +12,11 @@ import type {
 	InventorySortOption,
 	CreateInventoryItemInput,
 	UpdateInventoryItemInput,
+	ProvisionalItem,
 } from "../types/inventory";
 
 import * as inventoryApi from "../api/inventory";
+import * as orgApi from "../api/org";
 
 // ============================================================================
 // INVENTORY QUERIES
@@ -188,6 +190,50 @@ export const useSetItemTagsMutation = (): UseMutationResult<
 		mutationFn: ({ itemId, tagIds }) => inventoryApi.setItemTags(itemId, tagIds),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+		},
+	});
+};
+
+// ============================================================================
+// PROVISIONAL ITEM QUERIES + MUTATIONS
+// ============================================================================
+
+export const useProvisionalItemsQuery = () =>
+	useQuery<ProvisionalItem[]>({
+		queryKey: ["inventory", "provisional"],
+		queryFn: () => orgApi.getProvisionalItems(),
+		staleTime: 30_000,
+	});
+
+export const useApproveItemMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (itemId: string) => orgApi.approveItem(itemId),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
+			await qc.invalidateQueries({ queryKey: ["inventory"] });
+		},
+	});
+};
+
+export const useMergeItemMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ itemId, targetId }: { itemId: string; targetId: string }) =>
+			orgApi.mergeItem(itemId, targetId),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
+			await qc.invalidateQueries({ queryKey: ["inventory"] });
+		},
+	});
+};
+
+export const useRejectItemMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (itemId: string) => orgApi.rejectItem(itemId),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
 		},
 	});
 };

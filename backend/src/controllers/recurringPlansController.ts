@@ -1797,6 +1797,7 @@ export const generateVisitFromOccurrence = async (
 								source: "recurring_plan",
 								item_type: item.item_type,
 								sort_order: idx,
+								inventory_item_id: item.inventory_item_id ?? null,
 							})),
 						},
 					},

@@ -126,6 +126,13 @@ export const TECHNICIAN_CATALOG = [
 		],
 	},
 	{
+		category: "Vehicle Stock",
+		permissions: [
+			{ id: "stock_own_vehicle", label: "Stock Own Vehicle" },
+			{ id: "complete_own_eod", label: "Complete End-of-Day" },
+		],
+	},
+	{
 		category: "Schedule",
 		permissions: [
 			{ id: "view_own_schedule", label: "View Own Schedule" },

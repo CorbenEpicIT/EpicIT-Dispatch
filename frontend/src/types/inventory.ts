@@ -67,3 +67,18 @@ export interface UpdateInventoryItemInput {
 	alert_emails_enabled?: boolean;
 	alert_email?: string | null;
 }
+
+export interface ProvisionalItem {
+	id: string;
+	name: string;
+	cost: number | null;
+	unit_price: number | null;
+	unit: string | null;
+	provisional: boolean;
+	created_at: string;
+	created_by_tech: { id: string; name: string } | null;
+	vehicle_stocks: Array<{
+		qty_on_hand: number;
+		vehicle: { id: string; name: string };
+	}>;
+}

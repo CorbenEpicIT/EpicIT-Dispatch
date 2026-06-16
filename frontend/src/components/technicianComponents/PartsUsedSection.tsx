@@ -9,15 +9,15 @@ import {
 	ChevronUp,
 	AlertTriangle,
 } from "lucide-react";
-import { useVehicleStockQuery, useAddPartsUsedMutation } from "../../hooks/useVehicles";
+import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation } from "../../hooks/useVehicles";
 import { useUpdateJobVisitMutation } from "../../hooks/useJobs";
 
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
 import { useAuthStore } from "../../auth/authStore";
-import type { VehicleStockItem } from "../../types/vehicles";
+import type { VehicleStockItem, SupplierPartUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 
-type Mode = "edit" | "stock" | "free";
+type Mode = "edit" | "stock" | "supplier";
 
 // -- Edit Parts Tab -------------------------------------------------------------
 
@@ -329,18 +329,20 @@ function StockPartPicker({
 	);
 }
 
-// -- Free Entry Form -----------------------------------------------------------
+// -- Supplier Part Form --------------------------------------------------------
 
-function FreeEntryForm({
+function SupplierPartForm({
 	visitId,
-	lineItems,
+	vehicleId,
+	technicianId,
 	onClose,
 }: {
 	visitId: string;
-	lineItems: VisitLineItem[];
+	vehicleId: string | null;
+	technicianId: string;
 	onClose: () => void;
 }) {
-	const updateVisit = useUpdateJobVisitMutation();
+	const mutation = useAddSupplierPartUsedMutation(visitId, vehicleId);
 	const [name, setName] = useState("");
 	const [qty, setQty] = useState("1");
 	const [unitCost, setUnitCost] = useState("");
@@ -349,97 +351,47 @@ function FreeEntryForm({
 	const handleSubmit = async () => {
 		const parsedQty = Number(qty);
 		const parsedCost = Number(unitCost);
-		if (!name.trim()) {
-			setErr("Part name required.");
-			return;
-		}
-		if (!parsedQty || parsedQty <= 0) {
-			setErr("Enter a valid quantity.");
-			return;
-		}
+		if (!name.trim()) { setErr("Part name required."); return; }
+		if (!parsedQty || parsedQty <= 0) { setErr("Enter a valid quantity."); return; }
 		setErr(null);
-
-		await updateVisit.mutateAsync({
-			id: visitId,
-			data: {
-				line_items: [
-					...lineItems.map((li) => ({
-						id: li.id,
-						name: li.name,
-						description: li.description ?? null,
-						quantity: Number(li.quantity),
-						unit_price: Number(li.unit_price),
-						total: parseFloat(
-							(
-								Number(li.quantity) * Number(li.unit_price)
-							).toFixed(2)
-						),
-						item_type: li.item_type ?? null,
-						source: li.source,
-					})),
-					{
-						name: name.trim(),
-						quantity: parsedQty,
-						unit_price: parsedCost || 0,
-						total: parseFloat(
-							(parsedQty * (parsedCost || 0)).toFixed(2)
-						),
-					},
-				],
-			},
-		});
-		onClose();
+		try {
+			await mutation.mutateAsync({
+				technician_id: technicianId,
+				qty_used: parsedQty,
+				new_item: { name: name.trim(), cost: parsedCost || 0 },
+			} satisfies SupplierPartUsedInput);
+			onClose();
+		} catch (e: unknown) {
+			setErr(e instanceof Error ? e.message : "Failed to add part");
+		}
 	};
 
 	return (
 		<div className="p-4 space-y-3">
 			<div>
-				<label className="text-xs text-text-tertiary mb-1 block">
-					Part / Material Name
-				</label>
-				<input
-					type="text"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					autoFocus
+				<label className="text-xs text-text-tertiary mb-1 block">Part / Material Name</label>
+				<input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus
 					placeholder="e.g. 1/2 inch copper fitting"
-					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
-				/>
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong" />
 			</div>
 			<div className="flex gap-2">
 				<div className="flex-1">
 					<label className="text-xs text-text-tertiary mb-1 block">Qty</label>
-					<input
-						type="number"
-						min="1"
-						value={qty}
-						onChange={(e) => setQty(e.target.value)}
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong tabular-nums"
-					/>
+					<input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)}
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong tabular-nums" />
 				</div>
 				<div className="flex-1">
-					<label className="text-xs text-text-tertiary mb-1 block">
-						Unit Cost ($)
-					</label>
-					<input
-						type="number"
-						min="0"
-						step="0.01"
-						value={unitCost}
-						onChange={(e) => setUnitCost(e.target.value)}
+					<label className="text-xs text-text-tertiary mb-1 block">Unit Cost ($)</label>
+					<input type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)}
 						placeholder="0.00"
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong tabular-nums"
-					/>
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong tabular-nums" />
 				</div>
 			</div>
 			{err && <p className="text-xs text-error-text">{err}</p>}
 			<div className="pt-1">
-				<button
-					onClick={handleSubmit}
-					disabled={updateVisit.isPending}
-					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40"
-				>
-					{updateVisit.isPending ? "Adding…" : "Add Part"}
+				<button onClick={handleSubmit} disabled={mutation.isPending}
+					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40">
+					{mutation.isPending ? "Adding…" : "Add Part"}
 				</button>
 			</div>
 		</div>
@@ -605,17 +557,17 @@ export default function PartsUsedSection({
 								</button>
 								<button
 									onClick={() => {
-										setMode("free");
+										setMode("supplier");
 										setStockSearch("");
 									}}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
-										mode === "free"
+										mode === "supplier"
 											? "bg-surface-raised text-on-primary"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
 									<Wrench size={12} />
-									Free Entry
+									Supplier part
 								</button>
 							</div>
 
@@ -648,17 +600,18 @@ export default function PartsUsedSection({
 									<p className="text-sm text-text-muted">
 										No vehicle stock available.{" "}
 										<button
-											onClick={() => setMode("free")}
+											onClick={() => setMode("supplier")}
 											className="text-primary-text hover:underline"
 										>
-											Use free entry
+											Use supplier part
 										</button>
 									</p>
 								</div>
 							) : (
-								<FreeEntryForm
+								<SupplierPartForm
 									visitId={visitId}
-									lineItems={lineItems}
+									vehicleId={vehicleId}
+									technicianId={user?.userId ?? ""}
 									onClose={() => {
 										setAdding(false);
 										setStockSearch("");
