@@ -1,14 +1,15 @@
 import {api} from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type { QBCustomerLite } from "../types/clients"
+import type { QBItemLite, MappedQBItem, ImportQBItemResult, QBTaxCodeLite } from "../types/quickbooks";
  
 export const getQBStatus = async (): Promise<{ connected: boolean; realmId?: string }> => {
-    const response = await api.get<ApiResponse<{ connected: boolean; realmId?: string }>>(`/integrations/quickbooks/status`);
+    const response = await api.get<ApiResponse<{ connected: boolean; realmId?: string }>>(`/integrations/quickbooks/connection`);
     return response.data.data || { connected: false };
 };
 
 export const getQBConnectUrl = async (): Promise<string> => {
-    const response = await api.get<ApiResponse<{ url: string }>>(`/integrations/quickbooks/connect`);
+    const response = await api.get<ApiResponse<{ url: string }>>(`/integrations/quickbooks/connection/auth-url`);
     if (!response.data.success || !response.data.data) {
         throw new Error(response.data.error?.message || "Failed to get QuickBooks connect URL");
     }
@@ -16,7 +17,7 @@ export const getQBConnectUrl = async (): Promise<string> => {
 };
 
 export const disconnectQB = async (): Promise<void> => {
-    const response = await api.delete<ApiResponse<null>>(`/integrations/quickbooks/disconnect`);
+    const response = await api.delete<ApiResponse<null>>(`/integrations/quickbooks/connection`);
     if (!response.data.success) {
         throw new Error(response.data.error?.message || "Failed to disconnect QuickBooks");
     }
@@ -42,7 +43,65 @@ export const getQBCustomers = async (): Promise<QBCustomerLite[]> => {
 }
 
 export const getQBMappedCustomers = async (): Promise<string[]> => {
-    const response = await api.get<ApiResponse<string[]>>("integrations/quickbooks/mapped-customers");
+    const response = await api.get<ApiResponse<string[]>>("integrations/quickbooks/customers/mappings");
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to get mapped QB customers");
+    return response.data.data!;
+}
+
+export const getQBItems = async (): Promise<QBItemLite[]> => {
+    const response = await api.get<ApiResponse<QBItemLite[]>>("integrations/quickbooks/items");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB items");
+    return response.data.data!;
+}
+
+export const getQBMappedItems = async (): Promise<MappedQBItem[]> => {
+    const response = await api.get<ApiResponse<MappedQBItem[]>>("integrations/quickbooks/items/mappings");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get mapped QB items");
+    return response.data.data!;
+}
+
+export const linkQBItem = async (inventory_item_id: string, qb_item_id:string) => {
+    const response = await api.post<ApiResponse<{linked: boolean}>>(`integrations/quickbooks/item-mappings`, {inventory_item_id, qb_item_id});
+}
+
+export const unlinkQBItem = async (inventory_item_id: string) => {
+    const response = await api.delete<ApiResponse<{linked: boolean}>>(`integrations/quickbooks/item-mappings/${inventory_item_id}`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to unlink QB item");
+    return response.data.data!;
+}
+
+export const importQBItem = async (qb_item_id: string): Promise<ImportQBItemResult> => {
+    const response = await api.post<ApiResponse<ImportQBItemResult>>(`integrations/quickbooks/items/${qb_item_id}/import`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to import QB item");
+    return response.data.data!;
+}
+
+export const pushQBItem = async (itemId: string) => {
+    const response = await api.post<ApiResponse<{pushed: boolean}>>(`integrations/quickbooks/items/${itemId}/push`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to push QB item");
+    return response.data.data!;
+}
+
+export const getQBTaxCodes = async (): Promise<QBTaxCodeLite[]> => {
+    const response = await api.get<ApiResponse<QBTaxCodeLite[]>>("integrations/quickbooks/tax-codes");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB tax codes");
+    return response.data.data!;
+}
+
+export const getQBTaxPrefs = async (): Promise<{ automatedSalesTax: boolean }> => {
+    const response = await api.get<ApiResponse<{ automatedSalesTax: boolean }>>("integrations/quickbooks/tax-preferences");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB tax preferences");
+    return response.data.data!;
+}
+
+export const linkTaxCode = async (tax_group_id: string, qb_tax_code_id: string) => {
+    const response = await api.put<ApiResponse<{linked: boolean}>>(`integrations/quickbooks/tax-groups/${tax_group_id}/qb-tax-code`, {qb_tax_code_id});
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to link QB tax code");
+    return response.data.data!;
+}
+
+export const unlinkTaxCode = async (tax_group_id: string) => {
+    const response = await api.delete<ApiResponse<{unlinked: boolean}>>(`integrations/quickbooks/tax-groups/${tax_group_id}/qb-tax-code`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to unlink QB tax code");
     return response.data.data!;
 }

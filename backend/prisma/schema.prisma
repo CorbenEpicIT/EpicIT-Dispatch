@@ -1116,12 +1116,25 @@ model inventory_item {
   recurring_plan_line_items recurring_plan_line_item[] @relation("RecurringPlanLineItemInventory")
   tags             inventory_tag[]
   stock_movements  stock_movement[]
+  external_mappings item_external_mapping[]
+  invoice_line_items invoice_line_item[]
 
   @@index([sku])
   @@index([is_active])
   @@index([organization_id])
   @@index([created_at])
-  @@index([provisional])
+}
+
+model item_external_mapping {
+  id                String @id @default(uuid())
+  inventory_item_id String
+  provider          String
+  external_id       String
+  inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, external_id])
+  @@unique([provider, inventory_item_id])
+  @@index([inventory_item_id])
 }
 
 model inventory_tag {
@@ -1691,7 +1704,10 @@ model invoice_line_item {
   tax_group       tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
   taxable         Boolean    @default(true)
   tax_amount      Decimal?   @db.Decimal(10, 2)
-
+  inventory_item_id String?
+  inventory_item  inventory_item? @relation(fields: [inventory_item_id], references: [id], onDelete: SetNull)
+  
+  @@index([inventory_item_id])
   @@index([invoice_id])
   @@index([sort_order])
 }
@@ -1822,6 +1838,7 @@ model tax_group {
 	is_active       Boolean      @default(true)
 	created_at      DateTime     @default(now())
 	updated_at      DateTime     @updatedAt
+  qb_tax_code_id  String?
 
 	rates                     tax_group_rate[]
 	invoice_line_items        invoice_line_item[]

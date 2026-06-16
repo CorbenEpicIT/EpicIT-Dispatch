@@ -10,24 +10,27 @@ import {
 	sendInvoiceEmail,
 	findAllQBCustomers
 } from "../services/quickbooksService.js";
+import {
+	getQBItems,
+	getMappedQBItems,
+	linkQBItem,
+	unlinkQBItem,
+	pushItem,
+	importQBItem
+} from "../services/qb/qbItems.js";
+import {
+	getQBTaxCodes,
+	getQBTaxPrefs,
+	linkTaxCode
+} from "../services/qb/qbTax.js"
+import { linkQBItemSchema } from "../lib/validate/quickbooks.js"
 import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
 
 const router = Router();
 
-// Returns OAuth URL; frontend opens this to start the QB connect flow
-router.get("/connect", requirePermission("manage_organization"), (req, res, next) => {
-	try {
-		const orgId = req.user!.organization_id!;
-		const url = getAuthUrl(orgId);
-		res.json(createSuccessResponse({ url }));
-	} catch (err) {
-		next(err);
-	}
-});
-
-// Returns whether QB is connected for this org
-router.get("/status", async (req, res, next) => {
+// Connection status for this org (the QB "connection" resource)
+router.get("/connection", async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id!;
 		const status = await getQBStatus(orgId);
@@ -37,8 +40,19 @@ router.get("/status", async (req, res, next) => {
 	}
 });
 
+// OAuth URL the frontend opens to begin the connect flow
+router.get("/connection/auth-url", requirePermission("manage_organization"), (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id!;
+		const url = getAuthUrl(orgId);
+		res.json(createSuccessResponse({ url }));
+	} catch (err) {
+		next(err);
+	}
+});
+
 // Clears QB tokens — org must reconnect to sync again
-router.delete("/disconnect", requirePermission("manage_organization"), async (req, res, next) => {
+router.delete("/connection", requirePermission("manage_organization"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id!;
 		await disconnectOrg(orgId);
@@ -82,7 +96,7 @@ router.post("/invoices/:id/email", async (req, res, next) =>{
 });
 
 // Returns QB customer IDs already imported into this org
-router.get("/mapped-customers", async (req, res, next) => {
+router.get("/customers/mappings", async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const sdb = getScopedDb(orgId);
@@ -110,6 +124,133 @@ router.get("/customers", async (req, res, next) => {
 		return res.json(createSuccessResponse(response));
 	} catch (e) {
 		next(e);
+	}
+});
+
+router.get("/items", requirePermission("view_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const response = await getQBItems(orgId);
+
+		return res.json(createSuccessResponse(response));
+	} catch (e) {
+		next(e);
+	}
+});
+
+router.get("/items/mappings", requirePermission("view_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const response = await getMappedQBItems(orgId);
+
+		return res.json(createSuccessResponse(response));
+	} catch (e) {
+		next(e);
+	}
+});
+
+// Create an item mapping (link an existing inventory item to a QB item)
+router.post("/item-mappings", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const parsed = linkQBItemSchema.safeParse(req.body);
+		if (!parsed.success){
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.issues[0].message)
+			);
+		}
+		const { inventory_item_id, qb_item_id } = parsed.data;
+		await linkQBItem(orgId, inventory_item_id, qb_item_id);
+		res.status(201).json(createSuccessResponse({ linked: true }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Remove an item mapping (unlink an inventory item from its QB item)
+router.delete("/item-mappings/:inventoryItemId", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const inventoryItemId = req.params.inventoryItemId as string;
+		await unlinkQBItem(orgId, inventoryItemId);
+		res.json(createSuccessResponse({ linked: false }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Import a QB item (:id) into this org's inventory
+router.post("/items/:id/import", requirePermission("manage_inventory"), async (req, res, next) => {
+	try{
+		const orgId = req.user!.organization_id as string;
+		const qbItemId = req.params.id as string;
+		const result = await importQBItem(orgId, qbItemId);
+
+		res.status(201).json(createSuccessResponse(result));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/items/:id/push", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const itemId = req.params.id as string;
+		await pushItem(orgId, itemId);
+		res.json(createSuccessResponse({ pushed: true }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/tax-codes", requirePermission("manage_taxes"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const taxCodes = await getQBTaxCodes(orgId);
+		res.json(createSuccessResponse(taxCodes));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Whether this QB company uses Automated Sales Tax (mappings are advisory if so)
+router.get("/tax-preferences", requirePermission("manage_taxes"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const prefs = await getQBTaxPrefs(orgId);
+		res.json(createSuccessResponse(prefs));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Link a tax group to a QB tax code (the mapping lives on tax_group.qb_tax_code_id)
+router.put("/tax-groups/:id/qb-tax-code", requirePermission("manage_taxes"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const taxGroupId = req.params.id as string;
+		const qbTaxCodeId = req.body?.qb_tax_code_id;
+		if (typeof qbTaxCodeId !== "string" || !qbTaxCodeId.trim()) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.VALIDATION_ERROR, "qb_tax_code_id is required")
+			);
+		}
+		await linkTaxCode(orgId, taxGroupId, qbTaxCodeId);
+		res.json(createSuccessResponse({ linked: true }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Unlink the tax group from its QB tax code
+router.delete("/tax-groups/:id/qb-tax-code", requirePermission("manage_taxes"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const taxGroupId = req.params.id as string;
+		await linkTaxCode(orgId, taxGroupId, null);
+		res.json(createSuccessResponse({ linked: false }));
+	} catch (err) {
+		next(err);
 	}
 });
 

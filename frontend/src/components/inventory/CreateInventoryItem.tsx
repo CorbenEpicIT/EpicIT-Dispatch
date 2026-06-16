@@ -9,6 +9,12 @@ import {
 	useInventoryTagsQuery,
 	useSetItemTagsMutation,
 } from "../../hooks/useInventory";
+import {
+	useQBStatusQuery,
+	useQBItemsQuery,
+	useQBMappedItemsQuery,
+	useImportQBItemMutation,
+} from "../../hooks/useQuickbooks";
 import type {
 	InventoryItem,
 	CreateInventoryItemInput,
@@ -44,6 +50,9 @@ export default function CreateInventoryItem({
 }: CreateInventoryItemProps) {
 	const isEdit = !!existingItem;
 
+	const [mode, setMode] = useState<"new" | "import">("new");
+	const [selectedQBId, setSelectedQBId] = useState("");
+
 	const [name, setName] = useState("");
 	const [sku, setSku] = useState("");
 	const [description, setDescription] = useState("");
@@ -67,7 +76,20 @@ export default function CreateInventoryItem({
 	const updateMutation = useUpdateInventoryItemMutation();
 	const uploadMutation = useUploadInventoryImageMutation();
 	const setTagsMutation = useSetItemTagsMutation();
+	const importMutation = useImportQBItemMutation();
 	const { data: allTags = [] } = useInventoryTagsQuery();
+
+	// QuickBooks import — create mode only, when connected
+	const qbConnected = !!useQBStatusQuery().data?.connected;
+	const qbImportAvailable = qbConnected && !isEdit;
+	const { data: qbItems = [] } = useQBItemsQuery(qbImportAvailable && isOpen);
+	const { data: mappedItems = [] } = useQBMappedItemsQuery(qbImportAvailable && isOpen);
+
+	// QB items not yet linked to any inventory item
+	const availableQBItems = useMemo(() => {
+		const mappedExternalIds = new Set(mappedItems.map((m) => m.external_id));
+		return qbItems.filter((q) => !mappedExternalIds.has(q.Id));
+	}, [qbItems, mappedItems]);
 
 	const {
 		currentStep,
@@ -106,6 +128,8 @@ export default function CreateInventoryItem({
 
 	const resetForm = useCallback(() => {
 		resetWizard();
+		setMode("new");
+		setSelectedQBId("");
 		setName("");
 		setSku("");
 		setDescription("");
@@ -127,9 +151,43 @@ export default function CreateInventoryItem({
 		if (!isOpen) resetForm();
 	}, [isOpen, resetForm]);
 
+	const handleModeChange = useCallback((next: "new" | "import") => {
+		setMode(next);
+		setSelectedQBId("");
+		setName("");
+		setSku("");
+		setDescription("");
+		setQuantity(0);
+		setUnitPrice("");
+		setCost("");
+	}, []);
+
+	const handleQBItemSelect = useCallback(
+		(id: string) => {
+			setSelectedQBId(id);
+			const q = qbItems.find((item) => item.Id === id);
+			if (!q) {
+				setName("");
+				setSku("");
+				setDescription("");
+				setQuantity(0);
+				setUnitPrice("");
+				setCost("");
+				return;
+			}
+			setName(q.Name);
+			setSku(q.Sku ?? "");
+			setDescription(q.Description ?? "");
+			setQuantity(q.QtyOnHand ?? 0);
+			setUnitPrice(q.UnitPrice != null ? String(q.UnitPrice) : "");
+			setCost(q.PurchaseCost != null ? String(q.PurchaseCost) : "");
+		},
+		[qbItems],
+	);
+
 	const validateStep1 = useCallback(
-		() => !!(name.trim() && location.trim()),
-		[name, location]
+		() => !!(name.trim() && location.trim() && (mode === "new" || selectedQBId)),
+		[name, location, mode, selectedQBId]
 	);
 
 	const validateStep2 = useCallback(() => {
@@ -231,6 +289,31 @@ export default function CreateInventoryItem({
 				};
 				await updateMutation.mutateAsync({ itemId: existingItem.id, data });
 				await setTagsMutation.mutateAsync({ itemId: existingItem.id, tagIds: selectedTagIds });
+			} else if (mode === "import") {
+				// Create the item + QB mapping from the QB item, then apply any edits
+				const result = await importMutation.mutateAsync({ qb_item_id: selectedQBId });
+				const created = result.item;
+				const data: UpdateInventoryItemInput = {
+					name: name.trim(),
+					sku: sku.trim() || null,
+					description: description.trim(),
+					location: location.trim(),
+					quantity,
+					unit_price: unitPrice ? Number(unitPrice) : null,
+					cost: cost ? Number(cost) : null,
+					low_stock_threshold: lowStockEnabled
+						? Number(lowStockThreshold) || 0
+						: null,
+					image_urls: imageUrls,
+					alert_emails_enabled: alertEmailsEnabled,
+					alert_email: alertEmailsEnabled
+						? alertEmail.trim() || null
+						: null,
+				};
+				await updateMutation.mutateAsync({ itemId: created.id, data });
+				if (selectedTagIds.length > 0) {
+					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
+				}
 			} else {
 				const data: CreateInventoryItemInput = {
 					name: name.trim(),
@@ -267,6 +350,61 @@ export default function CreateInventoryItem({
 			case 1:
 				return (
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						{/* QB import toggle ─ create mode + connected only */}
+						{qbImportAvailable && (
+							<div className="flex rounded-md border border-border overflow-hidden text-sm">
+								<button
+									type="button"
+									onClick={() => handleModeChange("new")}
+									disabled={isLoading}
+									className={`flex-1 h-8 font-medium transition-colors ${
+										mode === "new"
+											? "bg-surface-raised text-text-primary"
+											: "bg-transparent text-text-tertiary hover:text-text-secondary"
+									}`}
+								>
+									New Item
+								</button>
+								<button
+									type="button"
+									onClick={() => handleModeChange("import")}
+									disabled={isLoading}
+									className={`flex-1 h-8 font-medium transition-colors ${
+										mode === "import"
+											? "bg-surface-raised text-text-primary"
+											: "bg-transparent text-text-tertiary hover:text-text-secondary"
+									}`}
+								>
+									Import from QuickBooks
+								</button>
+							</div>
+						)}
+
+						{/* QB item select ─ import mode only */}
+						{mode === "import" && (
+							<div className="min-w-0">
+								<label className={LABEL}>QuickBooks Item *</label>
+								<select
+									value={selectedQBId}
+									onChange={(e) => handleQBItemSelect(e.target.value)}
+									className={INPUT}
+									disabled={isLoading}
+								>
+									<option value="">─ Select a QuickBooks item ─</option>
+									{availableQBItems.map((q) => (
+										<option key={q.Id} value={q.Id}>
+											{q.Name}
+											{q.Sku ? ` (${q.Sku})` : ""}
+											{q.UnitPrice != null ? ` — $${q.UnitPrice}` : ""}
+										</option>
+									))}
+								</select>
+								<p className="mt-1 text-xs text-text-tertiary">
+									Fields auto-fill from QuickBooks — edit them before saving, and set a location.
+								</p>
+							</div>
+						)}
+
 						<div className="min-w-0">
 							<label className={LABEL}>Name *</label>
 							<input
@@ -762,6 +900,12 @@ export default function CreateInventoryItem({
 		}
 	}, [
 		currentStep,
+		mode,
+		selectedQBId,
+		qbImportAvailable,
+		availableQBItems,
+		handleModeChange,
+		handleQBItemSelect,
 		name,
 		sku,
 		description,
@@ -799,7 +943,7 @@ export default function CreateInventoryItem({
 			onBack={goBack}
 			onSubmit={handleSubmit}
 			canGoNext={canGoNext}
-			submitLabel={isEdit ? "Save Changes" : "Create Item"}
+			submitLabel={isEdit ? "Save Changes" : mode === "import" ? "Import Item" : "Create Item"}
 		>
 			{stepContent}
 		</FormWizardContainer>

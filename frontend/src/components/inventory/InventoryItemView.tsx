@@ -10,6 +10,9 @@ interface InventoryItemViewProps {
 	viewMode?: "card" | "list";
 	onDelete?: () => void;
 	isHighlighted?: boolean;
+	qbConnected?: boolean;
+	isLinkedToQB?: boolean;
+  	onLinkQB?: () => void;
 }
 
 export default function InventoryItemView({
@@ -19,6 +22,9 @@ export default function InventoryItemView({
 	viewMode = "card",
 	onDelete,
 	isHighlighted = false,
+	qbConnected,
+	isLinkedToQB,
+	onLinkQB
 }: InventoryItemViewProps) {
 	const stockStatus = item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 	const threshold = item.low_stock_threshold;
@@ -60,6 +66,26 @@ export default function InventoryItemView({
 						</div>
 						<div className="text-[9px] text-text-muted uppercase tracking-wide mt-0.5">min</div>
 					</div>
+
+					{qbConnected && (
+						<div className="w-20 flex justify-center shrink-0">
+							{isLinkedToQB ? (
+								<span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success-bg text-success-text">
+									QB Linked
+								</span>
+							) : onLinkQB ? (
+								<button
+									onClick={(e) => {
+										e.stopPropagation();
+										onLinkQB();
+									}}
+									className="opacity-0 group-hover:opacity-100 transition-opacity rounded-md border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-text-primary hover:border-border-strong hover:bg-surface-raised"
+								>
+									Link
+								</button>
+							) : null}
+						</div>
+					)}
 
 					{/* Actions — opacity-0 until group hover */}
 					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -201,6 +227,22 @@ export default function InventoryItemView({
 					<span className="text-xs text-text-tertiary">
 						{threshold !== null ? `Alert: ${threshold}` : "No alert set"}
 					</span>
+					{qbConnected &&
+						(isLinkedToQB ? (
+							<span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-success-bg text-success-text">
+								QB Linked
+							</span>
+						) : onLinkQB ? (
+							<button
+								onClick={(e) => {
+									e.stopPropagation();
+									onLinkQB();
+								}}
+								className="opacity-0 group-hover:opacity-100 transition-opacity rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-primary hover:border-border-strong hover:bg-surface-raised"
+							>
+								Link
+							</button>
+						) : null)}
 				</div>
 				{onEditThreshold && (
 					<button

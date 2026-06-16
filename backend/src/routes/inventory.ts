@@ -113,7 +113,8 @@ router.post("/:id/approve", requirePermission("manage_inventory"), async (req, r
 	try {
 		const context = getUserContext(req);
 		const orgId = req.user!.organization_id as string;
-		const result = await approveProvisionalItem(req.params.id, orgId, context);
+        const id = req.params.id as string;
+		const result = await approveProvisionalItem(id, orgId, context);
 		if (result.err) {
 			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
 		}
@@ -127,7 +128,8 @@ router.post("/:id/merge", requirePermission("manage_inventory"), async (req, res
 	try {
 		const context = getUserContext(req);
 		const orgId = req.user!.organization_id as string;
-		const result = await mergeProvisionalItem(req.params.id, req.body, orgId, context);
+        const id = req.params.id as string;
+		const result = await mergeProvisionalItem(id, req.body, orgId, context);
 		if (result.err) {
 			const status = result.err.includes("Validation") ? 400 : 404;
 			return res
@@ -144,7 +146,8 @@ router.post("/:id/reject", requirePermission("manage_inventory"), async (req, re
 	try {
 		const context = getUserContext(req);
 		const orgId = req.user!.organization_id as string;
-		const result = await rejectProvisionalItem(req.params.id, orgId, context);
+        const id = req.params.id as string;
+		const result = await rejectProvisionalItem(id, orgId, context);
 		if (result.err) {
 			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
 		}
@@ -431,9 +434,10 @@ router.delete("/tags/:tagId", requirePermission("manage_inventory"), async (req,
 router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
         const { cursor, limit } = req.query as { cursor?: string; limit?: string };
         const result = await getInventoryMovements(
-            req.params.id,
+            id,
             orgId,
             cursor,
             limit ? parseInt(limit, 10) : 25,

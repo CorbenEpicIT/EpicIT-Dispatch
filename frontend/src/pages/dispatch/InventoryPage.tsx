@@ -24,6 +24,11 @@ import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
+import { 
+	useQBStatusQuery,
+	useQBMappedItemsQuery,
+} from "../../hooks/useQuickbooks";
+import LinkQBItemModal from "../../components/quickbooks/LinkQBItemModal";
 
 const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 	{ value: "name", label: "Name A-Z" },
@@ -49,7 +54,9 @@ export default function InventoryPage() {
 	const [highlightedItemIds, setHighlightedItemIds] = useState<Set<string>>(new Set());
 	const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
+	const qbConnected = !!useQBStatusQuery().data?.connected;
+	const [linkItem, setLinkItem] = useState<InventoryItem | null>(null);
+	
 	const [isPendingOpen, setIsPendingOpen] = useState(false);
 
 	//permissions
@@ -57,6 +64,8 @@ export default function InventoryPage() {
 
 	const { data: inventoryItems = [], isLoading, error } = useAllInventoryQuery(sort);
 	const { data: provisionalItems = [] } = useProvisionalItemsQuery();
+
+	const { data: mappedItems = [] } = useQBMappedItemsQuery(qbConnected);
 
 	const { data: allTags = [] } = useInventoryTagsQuery();
 
@@ -83,6 +92,10 @@ export default function InventoryPage() {
 
 		return items;
 	}, [inventoryItems, search, selectedTagIds]);
+
+	const mappedIds = useMemo(() => {
+		return new Set(mappedItems.map((item) => item.inventory_item_id));
+	}, [mappedItems]);
 
 	const activeTagChips: FilterChip[] = selectedTagIds.flatMap((id) => {
 		const tag = allTags.find((t) => t.id === id);
@@ -316,6 +329,9 @@ export default function InventoryPage() {
 											item.id
 										)
 									}}
+									onLinkQB={MANAGE_INVENTORY ? () => setLinkItem(item) : undefined}
+									isLinkedToQB={mappedIds.has(item.id)}
+									qbConnected={qbConnected}
 								/>
 								{/* Delete overlay — card mode only; list mode uses inline actions */}
 								{(viewMode === "card" && !MANAGE_INVENTORY) && (
@@ -380,6 +396,15 @@ export default function InventoryPage() {
 				}}
 				existingItem={editingItem}
 			/>
+
+			{/* Link to QuickBooks Modal */}
+			{linkItem && (
+				<LinkQBItemModal
+					item={linkItem}
+					isOpen={!!linkItem}
+					onClose={() => setLinkItem(null)}
+				/>
+			)}
 
 			{/* Delete Confirmation */}
 			{deleteConfirmId && (

@@ -446,7 +446,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const { id } = req.params;
+			const id = req.params.id as string;
 			const dateStr =
 				typeof req.query.date === "string"
 					? req.query.date
@@ -466,7 +466,7 @@ router.post(
 	requireAnyPermission("manage_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const { id } = req.params;
+			const id = req.params.id as string;
 			const orgId = req.user?.organization_id as string ?? undefined;
 			const dispatcherId = req.user?.uid ?? "";
 			const result = await confirmReadiness(id, orgId, dispatcherId, req.body);
@@ -489,7 +489,7 @@ router.delete(
 	requireAnyPermission("manage_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const { id, date } = req.params;
+			const { id, date } = req.params as { id: string; date: string };
 			const orgId = req.user?.organization_id as string ?? undefined;
 			const result = await revokeReadiness(id, orgId, date);
 			if (result.err) return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
@@ -593,9 +593,10 @@ router.get("/:id/restock-requests", requireAnyPermission("use_inventory", "manag
 router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_technicians"), async (req, res, next) => {
 	try {
 		const orgId = req.user?.organization_id as string ?? undefined;
+		const id = req.params.id as string;
 		const { cursor, limit } = req.query as { cursor?: string; limit?: string };
 		const result = await getVehicleMovements(
-			req.params.id,
+			id,
 			orgId,
 			cursor,
 			limit ? parseInt(limit, 10) : 25,

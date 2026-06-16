@@ -71,3 +71,22 @@ export const createErrorResponse = (
 		timestamp: new Date().toISOString(),
 	},
 });
+
+// Error carrying an HTTP status + error code. The global errorHandler reads
+// `statusCode` and `code` off the thrown error, so `throw httpError(...)`
+// surfaces the right status instead of a blanket 500.
+export interface HttpError extends Error {
+	statusCode: number;
+	code: ErrorCode | string;
+}
+
+export const httpError = (
+	statusCode: number,
+	code: ErrorCode | string,
+	message: string,
+): HttpError => {
+	const err = new Error(message) as HttpError;
+	err.statusCode = statusCode;
+	err.code = code;
+	return err;
+};
