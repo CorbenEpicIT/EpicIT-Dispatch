@@ -28,6 +28,7 @@ export interface TaxGroup {
 	combined_rate: number; // backend-computed: sum of rates[].tax_rate.rate
 	created_at: string;
 	updated_at: string;
+	qb_tax_code_id?: string | null;
 }
 
 export interface TaxSnapshotRate {

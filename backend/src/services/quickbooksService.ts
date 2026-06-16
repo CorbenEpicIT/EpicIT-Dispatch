@@ -1,6 +1,7 @@
 import OAuthClient from "intuit-oauth";
 import { getScopedDb } from "../lib/context.js";
 import { db } from "../db.js";
+import { httpError, ErrorCodes } from "../types/responses.js";
 
 const QB_ENV = (process.env.QB_ENVIRONMENT ?? "sandbox") as "sandbox" | "production";
 const QB_BASE =
@@ -62,7 +63,7 @@ export async function getValidToken(orgId: string): Promise<{ accessToken: strin
 	});
 
 	if (!org?.qb_access_token || !org.qb_realm_id) {
-		throw new Error("QuickBooks not connected for this organization");
+		throw httpError(400, ErrorCodes.VALIDATION_ERROR, "QuickBooks not connected for this organization");
 	}
 
 	// Refresh if token expires within 5 minutes
@@ -205,7 +206,10 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 								take: 1 
 							} 
 						} 
-					} 
+					},
+					tax_group: {
+						select: { qb_tax_code_id: true }
+					}
 				} 
 			},
 			client: {
@@ -248,7 +252,9 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 				Qty: Number(item.quantity),
 				UnitPrice: Number(item.unit_price),
 				ItemRef: mapping ? { value: mapping.external_id } : { value: "1", name: "Services" },
+				TaxCodeRef: { value: item.taxable === false ? "NON" : (item.tax_group?.qb_tax_code_id ?? "TAX") }
 			},
+			
 		};
 	});
 

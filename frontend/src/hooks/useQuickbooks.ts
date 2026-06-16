@@ -9,8 +9,13 @@ import {
     getQBItems,
     getQBMappedItems,
     linkQBItem,
+    unlinkQBItem,
     importQBItem,
     pushQBItem,
+    getQBTaxCodes,
+    getQBTaxPrefs,
+    unlinkTaxCode,
+    linkTaxCode,
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -82,6 +87,24 @@ export const useQBMappedItemsQuery = (enabled = true) => {
     });
 };
 
+export const useQBTaxCodesQuery = (enabled = true) => {
+    return useQuery({
+        queryKey: ["qbTaxCodes"],
+        queryFn: getQBTaxCodes,
+        enabled,
+        retry: false,
+    });
+};
+
+export const useQBTaxPrefsQuery = (enabled = true) => {
+    return useQuery({
+        queryKey: ["qbTaxPrefs"],
+        queryFn: getQBTaxPrefs,
+        enabled,
+        retry: false,
+    });
+};
+
 export const useQBConnectMutation = () => {
     return useMutation({
         mutationFn: async () => {
@@ -129,7 +152,8 @@ export const useLinkQBItemMutation = () => {
     return useMutation<unknown, Error, { inventory_item_id: string; qb_item_id: string }>({
         mutationFn: ({ inventory_item_id, qb_item_id }) => linkQBItem(inventory_item_id, qb_item_id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["qbMappedItems", "allInventory"] });
+            queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
+            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
         },
     });
 };
@@ -139,7 +163,8 @@ export const useImportQBItemMutation = () => {
     return useMutation<unknown, Error, { qb_item_id: string }>({
         mutationFn: ({ qb_item_id }) => importQBItem(qb_item_id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["qbMappedItems", "allInventory"] });
+            queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
+            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
         },
     });
 };
@@ -149,7 +174,39 @@ export const usePushQBItemMutation = () => {
     return useMutation<unknown, Error, { itemId: string }>({
         mutationFn: ({itemId}) => pushQBItem(itemId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["qbMappedItems", "allInventory"] });
+            queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
+            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+        },
+    });
+};
+
+export const useUnlinkQBItemMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<unknown, Error, { inventory_item_id: string }>({
+        mutationFn: ({ inventory_item_id }) => unlinkQBItem(inventory_item_id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
+            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+        },
+    });
+};
+
+export const useLinkTaxCodeMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<unknown, Error, { tax_group_id: string; qb_tax_code_id: string }>({
+        mutationFn: ({ tax_group_id, qb_tax_code_id }) => linkTaxCode(tax_group_id, qb_tax_code_id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["tax-groups"] });
+        },
+    });
+};
+
+export const useUnlinkTaxCodeMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<unknown, Error, { tax_group_id: string }>({
+        mutationFn: ({ tax_group_id }) => unlinkTaxCode(tax_group_id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["tax-groups"] });
         },
     });
 };

@@ -21,3 +21,10 @@ export interface ImportQBItemResult{
     item: InventoryItem;
     warning?: string;
 }
+
+export interface QBTaxCodeLite {
+    id: string;
+    name: string;
+    rates: { id: string; name: string; rate: number }[];
+    totalRate: number;
+}

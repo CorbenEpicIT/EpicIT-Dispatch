@@ -1609,6 +1609,7 @@ model tax_group {
 	is_active       Boolean      @default(true)
 	created_at      DateTime     @default(now())
 	updated_at      DateTime     @updatedAt
+  qb_tax_code_id  String?
 
 	rates                     tax_group_rate[]
 	invoice_line_items        invoice_line_item[]

@@ -1,9 +1,8 @@
-import { qbFetch, getValidToken } from "../quickbooksService.js";
+import { qbFetch } from "../quickbooksService.js";
+import { qbQueryAll } from "./qbQuery.js";
 import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
-
-const QB_ENV = (process.env.QB_ENVIRONMENT ?? "sandbox") as "sandbox" | "production";
-const QB_BASE = QB_ENV === "production" ? "https://quickbooks.api.intuit.com" : "https://sandbox-quickbooks.api.intuit.com";
+import { httpError, ErrorCodes } from "../../types/responses.js";
 
 export interface QBItem {
     Id: string;
@@ -16,36 +15,6 @@ export interface QBItem {
     QtyOnHand?: number;
     Active?: boolean;
 }
-
-async function qbQueryAll<T>(orgId: string, entity: string, where?: string): Promise<T[]> {
-    const { accessToken, realmId } = await getValidToken(orgId);
-    const results: T[] = [];
-    let start = 1;
-    const pageSize = 1000;
-    
-    for (;;) {
-        const sql = `SELECT * FROM ${entity}${where? ` WHERE ${where}` : ""} STARTPOSITION ${start} MAXRESULTS ${pageSize}`;
-        const url = `${QB_BASE}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=75`;
-        const res = await fetch(url, {
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Accept": "application/json"
-            }
-        });
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`QB query ${entity} -> ${res.status}: ${text}`);
-        }
-        const data = (await res.json()) as any; 
-        const page = (data?.QueryResponse?.[entity] ?? []) as T[];
-        results.push(...page);
-        if (page.length < pageSize) {
-            break;
-        }
-        start += pageSize;
-    }
-    return results;
-};
 
 export async function getQBItems(orgId: string) {
     return  qbQueryAll<QBItem>(orgId, "Item", "Active = true");
@@ -103,7 +72,7 @@ export async function importQBItem(orgId: string, qbItemId: string) {
         }
     });
     if (existing) {
-        throw new Error("This QuickBooks item has already been imported.");
+        throw httpError(409, ErrorCodes.CONFLICT, "This QuickBooks item has already been imported.");
     }
 
     const createItem = (sku: string | null) =>
@@ -148,9 +117,9 @@ export async function linkQBItem(orgId: string, inventoryItemId: string, qbItemI
         where: { id: inventoryItemId }
     });
     if (!item) {
-        throw new Error("Inventory item not found");
+        throw httpError(404, ErrorCodes.NOT_FOUND, "Inventory item not found");
     }
-    
+
     try {
         await sdb.item_external_mapping.create({
             data: {
@@ -161,9 +130,24 @@ export async function linkQBItem(orgId: string, inventoryItemId: string, qbItemI
         });
     } catch (error: any) {
         if (error?.code === "P2002") {
-            throw new Error("This item or QuickBooks item has already been linked.");
+            throw httpError(409, ErrorCodes.CONFLICT, "This item or QuickBooks item has already been linked.");
         }
         throw error;
+    }
+};
+
+// Remove the QB mapping for an inventory item. Org-scoped via the parent
+// inventory_item; throws 404 if no mapping exists for this org's item.
+export async function unlinkQBItem(orgId: string, inventoryItemId: string): Promise<void> {
+    const { count } = await db.item_external_mapping.deleteMany({
+        where: {
+            provider: "quickbooks",
+            inventory_item_id: inventoryItemId,
+            inventory_item: { organization_id: orgId },
+        },
+    });
+    if (count === 0) {
+        throw httpError(404, ErrorCodes.NOT_FOUND, "Item mapping not found");
     }
 };
 
@@ -173,7 +157,7 @@ export async function pushItem(orgId: string, inventoryItemId: string): Promise<
         where: { id: inventoryItemId }
     });
     if (!item) {
-        throw new Error("Inventory item not found");
+        throw httpError(404, ErrorCodes.NOT_FOUND, "Inventory item not found");
     }
 
     const existing = await db.item_external_mapping.findUnique({
