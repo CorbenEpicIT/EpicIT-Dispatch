@@ -4,7 +4,7 @@ import { db } from "../db.js";
 import { httpError, ErrorCodes } from "../types/responses.js";
 
 const QB_ENV = (process.env.QB_ENVIRONMENT ?? "sandbox") as "sandbox" | "production";
-const QB_BASE =
+export const QB_BASE =
 	QB_ENV === "production"
 		? "https://quickbooks.api.intuit.com"
 		: "https://sandbox-quickbooks.api.intuit.com";
@@ -134,39 +134,6 @@ export async function qbFetch(
 	return res.json();
 }
 
-async function findOrCreateQBCustomer(orgId: string, displayName: string): Promise<string> {
-	const { accessToken, realmId } = await getValidToken(orgId);
-	const escaped = displayName.replace(/'/g, "\\'");
-	const qs = encodeURIComponent(`SELECT * FROM Customer WHERE DisplayName = '${escaped}'`);
-	const url = `${QB_BASE}/v3/company/${realmId}/query?query=${qs}&minorversion=75`;
-
-	const res = await fetch(url, {
-		headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-	});
-	const data = (await res.json());
-	const existing = data?.QueryResponse?.Customer;
-	if (existing?.length) return existing[0].Id as string;
-
-	const created = (await qbFetch(orgId, "POST", "/customer", {
-		DisplayName: displayName,
-	})) as any;
-	return created.Customer.Id as string;
-}
-
-export async function findAllQBCustomers(orgId: string): Promise<any> {
-	const { accessToken, realmId } = await getValidToken(orgId);
-	const qs = encodeURIComponent(`SELECT * FROM Customer`);
-	const url = `${QB_BASE}/v3/company/${realmId}/query?query=${qs}&minorversion=75`;
-
-	const res = await fetch(url, {
-		headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-	});
-	const data = (await res.json());
-	const customers = data?.QueryResponse?.Customer;
-
-	return customers;
-}
-
 export async function isQBConnected(orgId: string): Promise<boolean> {
 	const sdb = getScopedDb(orgId);
 	const org = await sdb.organization.findUnique({
@@ -190,114 +157,6 @@ export async function getQBStatus(
 	};
 }
 
-export async function pushInvoice(invoiceId: string, orgId: string): Promise<void> {
-	const sdb = getScopedDb(orgId);
-	const invoice = await sdb.invoice.findFirst({
-		where: { id: invoiceId },
-		include: {
-			line_items: {
-				include: { 
-					inventory_item: { 
-						include: { 
-							external_mappings: { 
-								where: { 
-									provider: "quickbooks"
-								}, 
-								take: 1 
-							} 
-						} 
-					},
-					tax_group: {
-						select: { qb_tax_code_id: true }
-					}
-				} 
-			},
-			client: {
-				include: {
-					contacts: {
-						where: { is_primary: true },
-						include: { contact: { select: { email: true } } },
-						take: 1,
-					},
-					client_external_mapping: {
-						where: { provider: "quickbooks" },
-						take: 1,
-					},
-				},
-			},
-		},
-	});
-	if (!invoice) throw new Error("Invoice not found");
-
-	const primaryEmail = invoice.client.contacts?.[0]?.contact?.email ?? null;
-	const existingQBId = invoice.client.client_external_mapping?.[0]?.external_id ?? null;
-	const customerId = existingQBId ?? (await findOrCreateQBCustomer(orgId, invoice.client.name));
-
-	// Cache the QB customer ID so this client is excluded from the import dropdown
-	if (!existingQBId) {
-		await sdb.client_external_mapping.upsert({
-			where: { provider_external_id: { provider: "quickbooks", external_id: customerId } },
-			create: { client_id: invoice.client_id, provider: "quickbooks", external_id: customerId },
-			update: {},
-		}).catch(() => {});
-	}
-
-	const lines = invoice.line_items.map((item) => {
-		const mapping = item.inventory_item?.external_mappings?.[0];
-		return {
-			Amount: Number(item.total),
-			DetailType: "SalesItemLineDetail",
-			Description: item.description ?? item.name,
-			SalesItemLineDetail: {
-				Qty: Number(item.quantity),
-				UnitPrice: Number(item.unit_price),
-				ItemRef: mapping ? { value: mapping.external_id } : { value: "1", name: "Services" },
-				TaxCodeRef: { value: item.taxable === false ? "NON" : (item.tax_group?.qb_tax_code_id ?? "TAX") }
-			},
-			
-		};
-	});
-
-	if (invoice.qb_invoice_id) {
-		const existing = (await qbFetch(
-			orgId,
-			"GET",
-			`/invoice/${invoice.qb_invoice_id}`,
-		)) as any;
-
-		await qbFetch(orgId, "POST", "/invoice", {
-			sparse: true,
-			Id: invoice.qb_invoice_id,
-			SyncToken: existing.Invoice.SyncToken,
-			CustomerRef: { value: customerId },
-			Line: lines,
-			...(invoice.due_date && { DueDate: invoice.due_date.toISOString().split("T")[0] }),
-			...(primaryEmail && { BillEmail: { Address: primaryEmail } }),
-		});
-
-		await sdb.invoice.update({
-			where: { id: invoiceId },
-			data: { qb_sync_status: "synced" },
-		});
-	} else {
-		const created = (await qbFetch(orgId, "POST", "/invoice", {
-			CustomerRef: { value: customerId },
-			Line: lines,
-			DocNumber: invoice.invoice_number,
-			...(invoice.due_date && { DueDate: invoice.due_date.toISOString().split("T")[0] }),
-			...(primaryEmail && { BillEmail: { Address: primaryEmail } }),
-		})) as any;
-
-		await sdb.invoice.update({
-			where: { id: invoiceId },
-			data: {
-				qb_invoice_id: created.Invoice.Id,
-				qb_sync_status: "synced",
-			},
-		});
-	}
-}
-
 export async function disconnectOrg(orgId: string): Promise<void> {
 	const sdb = getScopedDb(orgId);
 	await sdb.organization.update({
@@ -312,31 +171,3 @@ export async function disconnectOrg(orgId: string): Promise<void> {
 }
 
 
-export async function sendInvoiceEmail(invoiceId: string, orgId: string, sendTo: string): Promise<void>{
-	const invoice = await db.invoice.findFirst({
-		where: { id: invoiceId, organization_id: orgId },
-		select: { qb_invoice_id: true },
-	});
-	if (!invoice) throw new Error("Invoice not found");
-	if (!invoice.qb_invoice_id){
-		await pushInvoice(invoiceId, orgId);
-		const refresh = await db.invoice.findFirst({
-			where: { id: invoiceId, organization_id: orgId },
-			select: { qb_invoice_id: true },
-		});
-		if (!refresh?.qb_invoice_id) throw new Error("QB sync failed");
-		invoice.qb_invoice_id = refresh.qb_invoice_id;
-	}
-
-	// Set BillEmail and EmailStatus: "NeedToSend" in one sparse update.
-	// QB processes this as a send request and sets EmailStatus to "EmailSent".
-	// (The /invoice/{id}/send endpoint has a known NullPointerException bug in sandbox.)
-	const existing = (await qbFetch(orgId, "GET", `/invoice/${invoice.qb_invoice_id}`)) as any;
-	await qbFetch(orgId, "POST", "/invoice", {
-		sparse: true,
-		Id: invoice.qb_invoice_id,
-		SyncToken: existing.Invoice.SyncToken,
-		BillEmail: { Address: sendTo },
-		EmailStatus: "NeedToSend",
-	});
-}

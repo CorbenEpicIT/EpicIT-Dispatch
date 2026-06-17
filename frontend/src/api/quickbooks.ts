@@ -1,7 +1,7 @@
 import {api} from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type { QBCustomerLite } from "../types/clients"
-import type { QBItemLite, MappedQBItem, ImportQBItemResult, QBTaxCodeLite } from "../types/quickbooks";
+import type { QBItemLite, MappedQBItem, ImportQBItemResult, QBTaxCodeLite, QBImportableInvoice, QBInvoiceImportResult, QBInvoicePrefill } from "../types/quickbooks";
  
 export const getQBStatus = async (): Promise<{ connected: boolean; realmId?: string }> => {
     const response = await api.get<ApiResponse<{ connected: boolean; realmId?: string }>>(`/integrations/quickbooks/connection`);
@@ -103,5 +103,23 @@ export const linkTaxCode = async (tax_group_id: string, qb_tax_code_id: string) 
 export const unlinkTaxCode = async (tax_group_id: string) => {
     const response = await api.delete<ApiResponse<{unlinked: boolean}>>(`integrations/quickbooks/tax-groups/${tax_group_id}/qb-tax-code`);
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to unlink QB tax code");
+    return response.data.data!;
+}
+
+export const getImportableQBInvoices = async (clientId?: string): Promise<QBImportableInvoice[]> => {
+    const response = await api.get<ApiResponse<QBImportableInvoice[]>>("integrations/quickbooks/invoices/importable", { params: { clientId } });
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get importable QB invoices");
+    return response.data.data!;
+}
+
+export const getQBInvoicePrefill = async (qbInvoiceId: string): Promise<QBInvoicePrefill> => {
+    const response = await api.get<ApiResponse<QBInvoicePrefill>>(`integrations/quickbooks/invoices/${qbInvoiceId}/prefill`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB invoice detail");
+    return response.data.data!;
+}
+
+export const importQBInvoices = async (qbInvoiceIds: string[]): Promise<QBInvoiceImportResult> => {
+    const response = await api.post<ApiResponse<QBInvoiceImportResult>>("integrations/quickbooks/invoices/import", { qbInvoiceIds });
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to import QB invoices");
     return response.data.data!;
 }

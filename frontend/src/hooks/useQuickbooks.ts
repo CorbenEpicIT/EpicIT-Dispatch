@@ -16,6 +16,10 @@ import {
     getQBTaxPrefs,
     unlinkTaxCode,
     linkTaxCode,
+    getImportableQBInvoices,
+    getQBInvoicePrefill,
+    importQBInvoices,
+
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -102,6 +106,24 @@ export const useQBTaxPrefsQuery = (enabled = true) => {
         queryKey: ["qbTaxPrefs"],
         queryFn: getQBTaxPrefs,
         enabled,
+        retry: false,
+    });
+};
+
+export const useImportableQBInvoicesQuery = (enabled = true, customerId?: string) => {
+    return useQuery({
+        queryKey: ["importableQBInvoices", customerId],
+        queryFn: () => getImportableQBInvoices(customerId),
+        enabled,
+        retry: false,
+    });
+};
+
+export const useQBInvoicePrefillQuery = (qbInvoiceId?: string | null) => {
+    return useQuery({
+        queryKey: ["qbInvoicePrefill", qbInvoiceId],
+        queryFn: () => getQBInvoicePrefill(qbInvoiceId!),
+        enabled: !!qbInvoiceId,
         retry: false,
     });
 };
@@ -208,6 +230,16 @@ export const useUnlinkTaxCodeMutation = () => {
         mutationFn: ({ tax_group_id }) => unlinkTaxCode(tax_group_id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["tax-groups"] });
+        },
+    });
+};
+
+export const useImportQBInvoicesMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<unknown, Error, { qb_invoice_ids: string[] }>({
+        mutationFn: ({ qb_invoice_ids }) => importQBInvoices(qb_invoice_ids),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["importableQBInvoices"] });
         },
     });
 };

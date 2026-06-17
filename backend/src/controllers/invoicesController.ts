@@ -1,7 +1,8 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import { isQBConnected, pushInvoice } from "../services/quickbooksService.js";
+import { isQBConnected } from "../services/quickbooksService.js";
+import { pushInvoice, voidQBInvoice } from "../services/qb/qbInvoices.js"
 import {
 	createInvoiceSchema,
 	updateInvoiceSchema,
@@ -207,6 +208,17 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 			"void_reason",
 		] as const);
 
+		// Did anything that QuickBooks mirrors change? Drives both the
+		// qb_sync_status write below and whether we fire a re-push.
+		const qbRelevantChanged =
+			parsed.line_items !== undefined ||
+			"status" in changes ||
+			"due_date" in changes ||
+			"memo" in changes ||
+			"discount_type" in changes ||
+			"discount_value" in changes ||
+			"total" in changes;
+
 		const isLocked =
 			existing.tax_snapshot != null &&
 			(existing.tax_snapshot as { locked_at?: string }).locked_at !== "draft";
@@ -374,13 +386,11 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 							parsed.total - Number(existing.amount_paid),
 						),
 					}),
-					...(parsed.qb_sync_status !== undefined ? 
-					{
-						qb_sync_status: parsed.qb_sync_status
-					} : 
-					{
-						qb_sync_status: "not_synced"
-					}),
+					...(parsed.qb_sync_status !== undefined
+						? { qb_sync_status: parsed.qb_sync_status }
+						: qbRelevantChanged
+							? { qb_sync_status: "not_synced" }
+							: {}),
 				},
 				include: invoiceInclude,
 			});
@@ -397,6 +407,28 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 
 			return invoice;
 		});
+
+		// QB sync — fire only when a QB-mirrored field changed. pushInvoice
+		// chooses create-vs-update internally, so an edit also retries an
+		// invoice whose initial sync failed (no qb_invoice_id yet).
+		if (qbRelevantChanged) {
+			isQBConnected(organizationId)
+				.then((connected) => {
+					if (!connected) return null;
+					if (parsed.status === "Void") {
+						// Nothing to void in QB if it was never synced.
+						return existing.qb_invoice_id
+							? voidQBInvoice(organizationId, existing.qb_invoice_id)
+							: null;
+					}
+					return pushInvoice(updated.id, organizationId);
+				})
+				.catch(() => {
+					db.invoice
+						.update({ where: { id }, data: { qb_sync_status: "failed" } })
+						.catch(() => {});
+				});
+		}
 
 		if (Object.keys(changes).length > 0) {
 			await logActivity({

@@ -12,10 +12,12 @@ import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import FinancialSummary from "../ui/forms/FinancialSummary";
+import { TemplateSearch, type TemplateSearchResult, type TemplateSearchClient } from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useTaxGroups, useDefaultTaxGroup } from "../../hooks/useTaxGroups";
+import { useQBStatusQuery, useImportQBInvoicesMutation, useImportableQBInvoicesQuery, useQBInvoicePrefillQuery } from "../../hooks/useQuickbooks";
 import { X, Briefcase, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 
 type Step = 1 | 2 | 3;
@@ -69,6 +71,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	const [dueDate, setDueDate] = useState<Date | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isDirty, setIsDirty] = useState(false);
+	const [qbSearchOpen, setQbSearchOpen] = useState(false);
+	const [selectedQBInvoice, setSelectedQBInvoice] = useState<string | null>(null);
 	// Tracks whether a source picker or other inner input was recently focused,
 	// so the next row click doesn't accidentally toggle selection.
 	const billingInputFocusedRef = useRef(false);
@@ -101,6 +105,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	const { mutateAsync: checkOverlap } = useOverlapCheckMutation();
 	const { data: taxGroups = [] } = useTaxGroups();
 	const { data: defaultTaxGroup } = useDefaultTaxGroup();
+	const qbConnected = !!useQBStatusQuery().data?.connected;
+	const { mutateAsync: importQBInvoices } = useImportQBInvoicesMutation();
+	const {
+		data: importableQBInvoices = [],
+		isFetching: qbInvoicesLoading,
+	} = useImportableQBInvoicesQuery(qbConnected && qbSearchOpen, clientId);
+	const { data: qbPrefill, isFetching: qbPrefillLoading } =
+		useQBInvoicePrefillQuery(selectedQBInvoice);
+	// Guards the prefill effect so editing the seeded form doesn't re-seed.
+	const appliedPrefillRef = useRef<string | null>(null);
 	const clientExempt = useMemo(
 		() => clients?.find((c) => c.id === clientId)?.is_tax_exempt ?? false,
 		[clients, clientId]
@@ -264,6 +278,30 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		}
 	}, [paymentTermsDays]);
 
+	// ── Auto-fill from a selected QuickBooks invoice ────────────────────────
+	// Seeds line items + memo + due date once per selected invoice. Client stays
+	// as the user picked it (org-wide list lets you assign to any client).
+	useEffect(() => {
+		if (!qbPrefill) return;
+		if (appliedPrefillRef.current === qbPrefill.qbInvoiceId) return;
+		appliedPrefillRef.current = qbPrefill.qbInvoiceId;
+
+		seedLineItems(
+			qbPrefill.lineItems.map((li) => ({
+				name: li.name,
+				description: li.description ?? "",
+				quantity: li.quantity,
+				unit_price: li.unit_price,
+				item_type: "",
+			})),
+		);
+		setMemo(qbPrefill.memo ?? "");
+		setDueDate(qbPrefill.dueDate ? new Date(qbPrefill.dueDate) : null);
+		// If the QB customer maps to a local client, adopt it (like draft import).
+		if (qbPrefill.clientId) setClientId(qbPrefill.clientId);
+		markDirty();
+	}, [qbPrefill, seedLineItems, markDirty]);
+
 	// ── Reset ──────────────────────────────────────────────────────────────
 	const resetForm = useCallback(() => {
 		resetWizard();
@@ -276,6 +314,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		setExpandedJobs(new Set());
 		setVisitBillings(new Map());
 		setImportedSources(new Set());
+		setQbSearchOpen(false);
+		setSelectedQBInvoice(null);
+		appliedPrefillRef.current = null;
 		resetLineItems();
 		resetFinancials();
 		setIsDirty(false);
@@ -407,6 +448,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		},
 		[clientJobs, markDirty]
 	);
+
+	// Pick a QB invoice from the search overlay → close search, prefill effect seeds the form
+	const handleSelectQBInvoice = useCallback((qbInvoiceId: string) => {
+		setSelectedQBInvoice(qbInvoiceId);
+		setQbSearchOpen(false);
+	}, []);
 
 	// ── Import all (jobs + visits) ────────────────────────────────────────
 	const handleImportAll = useCallback(async () => {
@@ -733,12 +780,87 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		return `${nums.slice(0, max).join(", ")} +${nums.length - max} more`;
 	};
 
+	// ── QB invoice import: search-overlay data ──────────────────────────────
+	const qbInvoiceResults = useMemo<TemplateSearchResult[]>(
+		() =>
+			importableQBInvoices.map((inv) => ({
+				id: inv.Id,
+				title: inv.customerName || `Invoice ${inv.DocNumber ?? inv.Id}`,
+				subtitle: inv.DocNumber ? `#${inv.DocNumber}` : undefined,
+				detail: `${inv.lineCount} line item${inv.lineCount === 1 ? "" : "s"}`,
+				value: formatCurrency(inv.TotalAmt),
+				createdAt: inv.TxnDate ?? undefined,
+				clientId: inv.customerId ?? undefined,
+				clientName: inv.customerName ?? undefined,
+				badge: inv.alreadyImported ? "Imported" : undefined,
+				badgeColor: inv.alreadyImported
+					? "bg-success-bg text-success-text border-success-border"
+					: undefined,
+			})),
+		[importableQBInvoices]
+	);
+
+	// QB customers present in the results — powers the "filter by customer" control
+	const qbInvoiceClients = useMemo<TemplateSearchClient[]>(() => {
+		const map = new Map<string, string>();
+		importableQBInvoices.forEach((inv) => {
+			if (inv.customerId && inv.customerName) map.set(inv.customerId, inv.customerName);
+		});
+		return [...map].map(([id, name]) => ({ id, name }));
+	}, [importableQBInvoices]);
+
+	// Label for the chip shown once an invoice has been imported
+	const selectedQBLabel = useMemo(() => {
+		if (!selectedQBInvoice) return null;
+		const inv = importableQBInvoices.find((i) => i.Id === selectedQBInvoice);
+		if (inv?.DocNumber) return `#${inv.DocNumber}`;
+		if (qbPrefill?.docNumber) return `#${qbPrefill.docNumber}`;
+		return "selected invoice";
+	}, [selectedQBInvoice, importableQBInvoices, qbPrefill]);
+
 	// ── Step content ──────────────────────────────────────────────────────
 	const stepContent = useMemo(() => {
+		// QuickBooks invoice import — full-height searchable card list (same UX as
+		// the "Use Draft / Existing" search in CreateJob).
+		if (qbSearchOpen) {
+			return (
+				<TemplateSearch
+					heading="Import from QuickBooks"
+					placeholder="Search by invoice #, customer…"
+					results={qbInvoiceResults}
+					clients={qbInvoiceClients}
+					isLoading={qbInvoicesLoading}
+					onSelect={handleSelectQBInvoice}
+					onClose={() => setQbSearchOpen(false)}
+				/>
+			);
+		}
+
 		switch (currentStep) {
 			case 1:
 				return (
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						{/* Imported-from-QuickBooks chip */}
+						{selectedQBInvoice && (
+							<div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+								<span className="text-primary-text font-medium">
+									{qbPrefillLoading
+										? "Loading invoice details…"
+										: `Imported from QuickBooks: ${selectedQBLabel}`}
+								</span>
+								{qbConnected && (
+									<button
+										type="button"
+										onClick={() => setQbSearchOpen(true)}
+										disabled={isLoading}
+										className="ml-auto text-xs font-medium text-primary-text underline hover:text-text-primary disabled:opacity-40"
+									>
+										Change
+									</button>
+								)}
+							</div>
+						)}
+
 						{/* Client */}
 						<div className="min-w-0">
 							<label className={LABEL}>
@@ -1495,6 +1617,15 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		importSources,
 		handleImportAll,
 		submitError,
+		qbConnected,
+		qbSearchOpen,
+		qbInvoiceResults,
+		qbInvoiceClients,
+		qbInvoicesLoading,
+		handleSelectQBInvoice,
+		selectedQBInvoice,
+		selectedQBLabel,
+		qbPrefillLoading,
 	]);
 
 	return (
@@ -1562,14 +1693,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 			onSubmit={invokeCreate}
 			canGoNext={canGoNext && !isCheckingOverlap}
 			submitLabel="Create Invoice"
-			isSourceSearchOpen={false}
+			isSourceSearchOpen={qbSearchOpen}
 			sourceMode="existing"
 			onSourceModeChange={() => {}}
+			hideSourceToggle={true}
 			draftCount={0}
-			onStartFromExisting={() => {}}
-			hideStartFromExisting={true}
-			fullHeightContent={false}
-			onCloseSourceSearch={() => {}}
+			onStartFromExisting={() => setQbSearchOpen(true)}
+			startFromExistingLabel="Import from QuickBooks"
+			hideStartFromExisting={!qbConnected}
+			fullHeightContent={qbSearchOpen}
+			onCloseSourceSearch={() => setQbSearchOpen(false)}
 			canSaveDraft={false}
 			isSavingDraft={false}
 		>

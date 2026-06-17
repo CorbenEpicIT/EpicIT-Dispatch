@@ -5,11 +5,13 @@ import {
 	getAuthUrl,
 	handleCallback,
 	disconnectOrg,
-	pushInvoice,
 	getQBStatus,
-	sendInvoiceEmail,
-	findAllQBCustomers
 } from "../services/quickbooksService.js";
+import { 
+	pushInvoice,
+	sendInvoiceEmail,
+} from "../services/qb/qbInvoices.js"
+import { findAllQBCustomers } from "../services/qb/qbCustomers.js"
 import {
 	getQBItems,
 	getMappedQBItems,
@@ -23,6 +25,11 @@ import {
 	getQBTaxPrefs,
 	linkTaxCode
 } from "../services/qb/qbTax.js"
+import {
+	getImportableQBInvoices,
+	getQBInvoicePrefill,
+	importQBInvoices
+} from "../services/qb/qbInvoices.js"
 import { linkQBItemSchema } from "../lib/validate/quickbooks.js"
 import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
@@ -249,6 +256,48 @@ router.delete("/tax-groups/:id/qb-tax-code", requirePermission("manage_taxes"), 
 		const taxGroupId = req.params.id as string;
 		await linkTaxCode(orgId, taxGroupId, null);
 		res.json(createSuccessResponse({ linked: false }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// List QB invoices available to import (lite). ?customerId= scopes to one
+// QB customer (CreateClient flow); omit for the org-wide admin list.
+router.get("/invoices/importable", requirePermission("create_invoices"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
+		const result = await getImportableQBInvoices(orgId, clientId);
+		res.json(createSuccessResponse(result));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Full detail of one QB invoice, mapped to the create-invoice form shape
+// (line items, dates, memo). Used to auto-fill the form on selection.
+router.get("/invoices/:id/prefill", requirePermission("create_invoices"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const result = await getQBInvoicePrefill(orgId, req.params.id as string);
+		res.json(createSuccessResponse(result));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Import only the selected QB invoices as local Drafts
+router.post("/invoices/import", requirePermission("create_invoices"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const ids = req.body?.qb_invoice_ids;
+		if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+			return res.status(400).json(
+				createErrorResponse(ErrorCodes.VALIDATION_ERROR, "qb_invoice_ids must be an array of strings"),
+			);
+		}
+		const result = await importQBInvoices(orgId, ids);
+		res.status(201).json(createSuccessResponse(result));
 	} catch (err) {
 		next(err);
 	}

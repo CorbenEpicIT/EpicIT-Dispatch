@@ -27,6 +27,7 @@ interface FormWizardContainerProps<T extends number> {
 	startFromExistingLabel?: string;
 	hideStartFromExisting?: boolean;
 	draftsOnly?: boolean; // when true, hides the Existing tab — shows "Drafts" label only
+	hideSourceToggle?: boolean; // when true, no Existing/Drafts toggle while search is open (single-source search)
 	isSourceSearchOpen?: boolean;
 	onSourceModeChange?: (mode: SourceMode) => void;
 	sourceMode?: SourceMode;
@@ -57,6 +58,7 @@ export function FormWizardContainer<T extends number>({
 	startFromExistingLabel = "Start from Draft or Existing",
 	hideStartFromExisting = false,
 	draftsOnly = false,
+	hideSourceToggle = false,
 	fullHeightContent = false,
 	isSourceSearchOpen = false,
 	onSourceModeChange,
@@ -86,7 +88,7 @@ export function FormWizardContainer<T extends number>({
 			</h2>
 			{isSourceSearchOpen
 				? // When source search is open: only show toggle if both modes are available
-					!draftsOnly && (
+					!draftsOnly && !hideSourceToggle && (
 						<div className="flex-1 flex justify-center sm:max-w-[60%]">
 							<div className="flex items-center bg-surface rounded-lg p-1 border border-border">
 								<button
