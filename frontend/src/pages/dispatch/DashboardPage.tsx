@@ -38,7 +38,8 @@ import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks
 import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, fitLayout, getActiveCols } from "../../lib/DashboardConfig";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import OverviewWidget from "../../components/widgets/OverviewWidget";
-import RevenueWidget from "../../components/widgets/RevenueWidget";
+import RevenueYTDWidget from "../../components/widgets/RevenueYTDWidget";
+import UnscheduledRevenueWidget from "../../components/widgets/UnscheduledRevenueWidget";
 import RevenueByJobTypeWidget from "../../components/widgets/RevenueByJobTypeWidget";
 import QuotePipelineWidget from "../../components/widgets/QuotePipelineWidget";
 import ArrivalPerformanceWidget from "../../components/widgets/ArrivalPerformanceWidget";
@@ -499,7 +500,8 @@ export default function DashboardPage() {
 			case "map":  				   return <MapWidget />;
 			case "quickbooks": 			   return <QBWidget />;
 			case "report-overview":        return <OverviewWidget />;
-			case "report-revenue":         return <RevenueWidget />;
+			case "report-revenue-ytd":     return <RevenueYTDWidget />;
+			case "report-unscheduled-revenue": return <UnscheduledRevenueWidget />;
 			case "report-revenue-by-type": return <RevenueByJobTypeWidget />;
 			case "report-quote-pipeline":  return <QuotePipelineWidget />;
 			case "report-arrival":         return <ArrivalPerformanceWidget />;

@@ -14,11 +14,13 @@ import {
 
 interface DateRangeFilterUrlProps {
 	paramKey: string;
+	presets?: DateRangeOption[];
 }
 
 interface DateRangeFilterControlledProps {
 	value: DateRangeValue;
 	onChange: (value: DateRangeValue) => void;
+	presets?: DateRangeOption[];
 }
 
 type DateRangeFilterProps = DateRangeFilterUrlProps | DateRangeFilterControlledProps;
@@ -39,7 +41,7 @@ export default function DateRangeFilter(props: DateRangeFilterProps) {
 	return <DateRangeDropdown {...props} />;
 }
 
-function UrlDateRangeFilter({ paramKey }: DateRangeFilterUrlProps) {
+function UrlDateRangeFilter({ paramKey, presets }: DateRangeFilterUrlProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const value = parseDateRangeFromParams(searchParams, paramKey);
 
@@ -47,10 +49,13 @@ function UrlDateRangeFilter({ paramKey }: DateRangeFilterUrlProps) {
 		setSearchParams((prev) => serializeDateRange(newValue, paramKey, prev));
 	};
 
-	return <DateRangeDropdown value={value} onChange={handleChange} />;
+	return <DateRangeDropdown value={value} onChange={handleChange} presets={presets} />;
 }
 
-function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) {
+function DateRangeDropdown({ value, onChange, presets }: DateRangeFilterControlledProps) {
+	const presetOptions = presets
+		? PRESET_OPTIONS.filter((o) => presets.includes(o.value))
+		: PRESET_OPTIONS;
 	const [open, setOpen] = useState(false);
 	const [openAbove, setOpenAbove] = useState(false);
 	const [editingField, setEditingField] = useState<"start" | "end" | null>(null);
@@ -211,7 +216,7 @@ function DateRangeDropdown({ value, onChange }: DateRangeFilterControlledProps) 
 					} ${tempOption === "custom" ? "w-72" : "w-44"}`}
 				>
 					<div className="py-1 px-1">
-						{PRESET_OPTIONS.map((option) => (
+						{presetOptions.map((option) => (
 							<button
 								type="button"
 								key={option.value}

@@ -72,33 +72,35 @@ export default function ArrivalPerformanceChart({
 			}
 		>
 			{/* Circle chart */}
-			<ResponsiveContainer width="100%" aspect={2} minWidth={0}>
-				<PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-					<Pie
-						data={slices}
-						startAngle={180}
-						endAngle={0}
-						cx="50%"
-						cy="75%"
-						outerRadius="100%"
-						innerRadius="65%"
-						dataKey="value"
-						stroke="none"
-						paddingAngle={data.total > 0 ? 2 : 0}
-					>
-						{slices.map((slice) => (
-							<Cell key={slice.name} fill={slice.color} />
-						))}
-					</Pie>
-					<Tooltip
-						content={<CustomTooltip />}
-						cursor={false}
-					/>
-				</PieChart>
-			</ResponsiveContainer>
+			<div className="flex-1 min-h-0">
+				<ResponsiveContainer width="100%" height="100%" minWidth={0}>
+					<PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+						<Pie
+							data={slices}
+							startAngle={180}
+							endAngle={0}
+							cx="50%"
+							cy="75%"
+							outerRadius="100%"
+							innerRadius="65%"
+							dataKey="value"
+							stroke="none"
+							paddingAngle={data.total > 0 ? 2 : 0}
+						>
+							{slices.map((slice) => (
+								<Cell key={slice.name} fill={slice.color} />
+							))}
+						</Pie>
+						<Tooltip
+							content={<CustomTooltip />}
+							cursor={false}
+						/>
+					</PieChart>
+				</ResponsiveContainer>
+			</div>
 
 			{/* Information about the metrics for the user */}
-			<div className="grid grid-cols-3 gap-2 mt-4 px-1">
+			<div className="grid grid-cols-3 gap-2 mt-3 px-1 shrink-0">
 				{(
 					[
 						{ label: "Early", value: data.early, color: COLORS.Early, sub: "≥15 min early" },
@@ -120,10 +122,10 @@ export default function ArrivalPerformanceChart({
 			</div>
 
 			{/* On-time rate percentage below early,late, on-time */}
-			<div className="flex flex-col items-center mt-4">
+			<div className="flex flex-col items-center mt-3 shrink-0">
 				{data.total > 0 ? (
 					<>
-						<p className="text-3xl font-bold text-primary leading-none">{data.onTimeRate}%</p>
+						<p className="text-2xl font-bold text-primary leading-none">{data.onTimeRate}%</p>
 						<p className="text-xs text-text-muted mt-1">on-time rate</p>
 					</>
 				) : (
@@ -131,7 +133,7 @@ export default function ArrivalPerformanceChart({
 				)}
 			</div>
 
-			<p className="text-center text-[11px] text-text-faint mt-3">
+			<p className="text-center text-[11px] text-text-faint mt-2 shrink-0">
 				{data.total} visits with recorded arrival
 			</p>
 		</Card>

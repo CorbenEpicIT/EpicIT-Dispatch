@@ -1,3 +1,4 @@
+import Card from "../ui/Card";
 import { formatCurrency } from "../../util/util";
 import type { UnscheduledRevenueResponse, UnscheduledJobRevenue } from "../../types/reports";
 
@@ -29,14 +30,15 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 	});
 
 	return (
-		<div className="flex flex-col h-full">
-			<div className="flex items-center justify-between mb-1">
-				<p className="text-sm text-text-tertiary font-medium">Unscheduled Job Revenue</p>
+		<Card
+			className="h-full"
+			title="Unscheduled Job Revenue"
+			headerAction={
 				<span className="text-[11px] font-medium text-text-tertiary bg-surface px-2 py-0.5 rounded-full">
 					{jobCount} {jobCount === 1 ? "Job" : "Jobs"}
 				</span>
-			</div>
-
+			}
+		>
 			<p className="text-3xl font-bold text-primary tracking-tight mb-5">
 				{formatCurrency(totalRevenue)}
 			</p>
@@ -60,13 +62,16 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 				{segments.map((seg) => (
 					<div
 						key={seg.key}
-						className="flex items-center justify-between text-sm px-2 py-2 rounded-lg cursor-pointer transition-colors hover:bg-surface-raised"
+						className="group flex items-center justify-between text-sm px-2 py-2 rounded-lg cursor-pointer transition-colors hover:bg-surface-raised"
 					>
 						<div className="flex items-center gap-2.5">
 							<span
 								className={`w-2 h-2 rounded-full shrink-0 ${seg.dotClass}`}
 							/>
 							<span className="text-text-tertiary">{seg.label}</span>
+							<span className="text-[11px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+								{seg.days}
+							</span>
 						</div>
 						<span
 							className={`font-medium ${
@@ -82,18 +87,6 @@ export default function UnscheduledRevenue({ data }: UnscheduledRevenueProps) {
 					</div>
 				))}
 			</div>
-
-			<div className="flex items-center justify-center gap-4 mt-auto pt-4 border-t border-border-subtle">
-				{REVENUE_LEVELS.map((level) => (
-					<div key={level.key} className="flex items-center gap-1.5">
-						<span className={`w-2 h-2 rounded-full shrink-0 ${level.dotClass}`} />
-						<span className="text-[11px] text-text-muted">
-							{level.label}
-							<span className="text-secondary ml-1">{level.days}</span>
-						</span>
-					</div>
-				))}
-			</div>
-		</div>
+		</Card>
 	);
 }

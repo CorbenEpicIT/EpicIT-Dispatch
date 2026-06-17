@@ -92,13 +92,13 @@ export default function QuotePipeline({ data }: QuotePipelineProps) {
 			}
 		>
 			{/* Total Revenue for the Open Quotes */}
-			<p className="text-xl font-bold text-primary tracking-tight mb-3">
+			<p className="text-xl font-bold text-primary tracking-tight mb-3 shrink-0">
 				{formatCurrency(totalRevenue)}
 			</p>
 
 			{/* Open Quote Pipepline Chart */}
-			<div className="min-h-[200px]">
-				<ResponsiveContainer width="100%" aspect={1} minWidth={0}>
+			<div className="flex-1 min-h-0">
+				<ResponsiveContainer width="100%" height="100%" minWidth={0}>
 				<ComposedChart
 					data={chartData}
 					margin={{ top: 8, right: 8, bottom: 0, left: 0 }}

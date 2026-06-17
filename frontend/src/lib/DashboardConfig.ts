@@ -139,10 +139,16 @@ export const WIDGET_CATALOG: Record<string, {
                                     { atWidth: 800, minW: 4, maxW: 12, maxH: 9, minH: 4 },
                                 ]
                             },
-    "report-revenue":       {   label: "Revenue Overview",
-                                defaultW: 8,  defaultH: 7,  minW: 8, minH: 7, maxH: 7, maxW: 12,
+    "report-revenue-ytd":   {   label: "Revenue YTD",
+                                defaultW: 6,  defaultH: 7,  minW: 4, minH: 5, maxH: 12, maxW: 12,
                                 responsiveConstraints: [
-                                    { atWidth: 800, minW: 4, maxW: 12, maxH: 12 },
+                                    { atWidth: 800, minW: 4, maxW: 12 },
+                                ]
+                            },
+    "report-unscheduled-revenue":{ label: "Unscheduled Revenue",
+                                defaultW: 3,  defaultH: 7,  minW: 3, minH: 5, maxH: 12, maxW: 6,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-revenue-by-type":{  label: "Revenue by Job Type",
@@ -158,7 +164,7 @@ export const WIDGET_CATALOG: Record<string, {
                                 ]
                             },
     "report-arrival":       {   label: "Arrival Performance",
-                                defaultW: 4,  defaultH: 8,  minW: 3, minH: 5, maxH: 10, maxW: 6,
+                                defaultW: 4,  defaultH: 8,  minW: 3, minH: 6, maxH: 10, maxW: 6,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]

@@ -8,6 +8,7 @@ import {
 	Legend,
 	ResponsiveContainer,
 } from "recharts";
+import Card from "../ui/Card";
 import { formatCurrency } from "../../util/util";
 import type { RevenueMonthData } from "../../types/reports";
 
@@ -104,15 +105,15 @@ export default function RevenueYTDChart({
 	}, [data, year]);
 
 	return (
-		<div className="flex flex-col h-full">
-			<div className="flex items-center justify-between mb-4">
-				<h3 className="font-semibold text-primary">
-					Revenue Year to Date
-				</h3>
+		<Card
+			className="h-full"
+			title="Revenue Year to Date"
+			headerAction={
 				<span className="text-2xl font-bold text-primary">
 					{formatCurrency(total)}
 				</span>
-			</div>
+			}
+		>
 			<div className="flex-1 min-h-0">
 				<ResponsiveContainer width="100%" height="100%">
 					<AreaChart
@@ -173,6 +174,6 @@ export default function RevenueYTDChart({
 					</AreaChart>
 				</ResponsiveContainer>
 			</div>
-		</div>
+		</Card>
 	);
 }
