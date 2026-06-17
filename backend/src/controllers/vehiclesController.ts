@@ -4,7 +4,7 @@ import { log } from "../services/appLogger.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { db } from "../db.js";
 import { getScopedDb, UserContext } from "../lib/context.js";
-import { utcDayRange } from "../lib/dayRange.js";
+import { utcDayRange, localDateString } from "../lib/dayRange.js";
 import {
 	recordMovements,
 	lockInventoryRows,
@@ -13,6 +13,7 @@ import {
 	type MovementInput,
 } from "../services/stockMovements.js";
 import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
+import { getSocket } from "../services/socketService.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
 
 export type ReadinessState = "not_applicable" | "unknown" | "auto_ready" | "needs_action" | "confirmed";
@@ -33,6 +34,7 @@ export type ReadinessResult = {
 	confirmed?: {
 		id: string;
 		confirmed_by: string;
+		confirmed_by_type: "dispatcher" | "technician" | "eod_auto";
 		confirmed_at: string;
 		notes: string | null;
 	};
@@ -78,6 +80,7 @@ const addStockItemSchema = z.object({
 	inventory_item_id: z.string().uuid(),
 	qty_on_hand:       z.number().min(0).default(0),
 	qty_min:           z.number().min(0).default(0),
+	qty_standard:      z.number().min(0).nullable().optional(),
 });
 
 const updateStockItemSchema = z.object({
@@ -333,6 +336,7 @@ export const addVehicleStockItem = async (vehicleId: string, data: unknown, orga
 					inventory_item_id: parsed.inventory_item_id,
 					qty_on_hand:       0,
 					qty_min:           parsed.qty_min,
+					...(parsed.qty_standard != null && { qty_standard: parsed.qty_standard }),
 				},
 			});
 
@@ -451,7 +455,26 @@ export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, 
 		});
 		if (!existing) return { err: "Stock item not found" };
 
-		await sdb.vehicle_stock_item.delete({ where: { id: itemId } });
+		await sdb.$transaction(async (tx) => {
+			// Zero out remaining on-hand qty before deletion so the ledger stays
+			// consistent — deleted rows leave no trace without this movement.
+			const qty = Number(existing.qty_on_hand);
+			if (qty > 0) {
+				await recordMovements(tx, organizationId, toActor(context), [
+					{
+						inventory_item_id:  existing.inventory_item_id,
+						qty,
+						from_location_type: "vehicle",
+						from_vehicle_id:    vehicleId,
+						to_location_type:   "adjustment",
+						reason:             "audit_correction",
+						note:               "Stock item removed from vehicle",
+					},
+				]);
+			}
+			await tx.vehicle_stock_item.delete({ where: { id: itemId } });
+		});
+
 		await logActivity({
 			event_type: "vehicle_stock.deleted",
 			action: "deleted",
@@ -462,6 +485,9 @@ export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, 
 		});
 		return { err: "" };
 	} catch (e: unknown) {
+		if (e instanceof InsufficientStockError) {
+			return { err: "Stock quantity mismatch — run an audit adjustment before removing this item" };
+		}
 		log.error({ err: e }, "Failed to delete vehicle stock item");
 		return { err: "Failed to delete stock item" };
 	}
@@ -495,6 +521,7 @@ export const createRestockRequest = async (
 
 		const request = await db.vehicle_restock_request.create({
 			data: {
+				organization_id: organizationId,
 				stock_item_id:  itemId,
 				technician_id:  technicianId,
 				qty_requested:  parsed.qty_requested ?? null,
@@ -518,6 +545,9 @@ export const createRestockRequest = async (
 		return { err: "", item: request };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+			return { err: "Restock already requested for this item" };
+		}
 		log.error({ err: e }, "Failed to create restock request");
 		return { err: "Failed to create restock request" };
 	}
@@ -575,6 +605,7 @@ export async function createRestockRequestsBulk(
 
 			const skipped: { stock_item_id: string; reason: string }[] = [];
 			const toCreate: {
+				organization_id: string;
 				stock_item_id: string;
 				technician_id: string;
 				qty_requested: number | null;
@@ -588,6 +619,7 @@ export async function createRestockRequestsBulk(
 					skipped.push({ stock_item_id: item.stock_item_id, reason: "not_found" });
 				} else {
 					toCreate.push({
+						organization_id: orgId,
 						stock_item_id: item.stock_item_id,
 						technician_id: technicianId,
 						qty_requested: item.qty_requested ?? null,
@@ -618,6 +650,9 @@ export async function createRestockRequestsBulk(
 		return { err: "", created: result.created, skipped: result.skipped };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+			return { err: "Restock already requested for one or more items" };
+		}
 		log.error({ err: e }, "Failed to create restock requests");
 		return { err: "Failed to create restock requests" };
 	}
@@ -662,14 +697,17 @@ export async function listRestockRequests(
 	orgId: string,
 	status?: string,
 	vehicleId?: string,
+	discrepant?: boolean,
 ): Promise<{ err?: string; requests?: object[] }> {
 	try {
 		const requests = await db.vehicle_restock_request.findMany({
 			where: {
+				organization_id: orgId,
 				...(status ? { status } : {}),
-				stock_item: {
-					vehicle: { organization_id: orgId, ...(vehicleId ? { id: vehicleId } : {}) },
-				},
+				...(discrepant !== undefined ? { discrepant } : {}),
+				...(vehicleId
+					? { stock_item: { vehicle_id: vehicleId } }
+					: {}),
 			},
 			include: {
 				stock_item: {
@@ -1110,6 +1148,47 @@ export async function dismissRestockRequest(
 	}
 }
 
+// G9: Dispatcher acknowledges a receipt discrepancy (clears the flag)
+export async function acknowledgeDiscrepancy(
+	requestId: string,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; request?: object }> {
+	try {
+		const claimed = await db.vehicle_restock_request.updateMany({
+			where: {
+				id: requestId,
+				organization_id: orgId,
+				discrepant: true,
+			},
+			data: { discrepant: false },
+		});
+		if (claimed.count === 0) {
+			const existing = await db.vehicle_restock_request.findFirst({
+				where: restockRequestScope(orgId, { id: requestId }),
+			});
+			if (!existing) return { err: "Restock request not found" };
+			return { err: "No unacknowledged discrepancy on this request" };
+		}
+		const updated = await db.vehicle_restock_request.findFirst({
+			where: { id: requestId },
+		});
+		await logActivity({
+			event_type: "vehicle_restock.discrepancy_acknowledged",
+			action: "updated",
+			entity_type: "vehicle_restock_request",
+			entity_id: requestId,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: { discrepant: { old: true, new: false } },
+		});
+		return { request: updated! };
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to acknowledge discrepancy");
+		return { err: "Failed to acknowledge discrepancy" };
+	}
+}
+
 // ── Technician vehicle assignment ─────────────────────────────────────────────
 
 export const setTechnicianVehicle = async (technicianId: string, vehicleId: string | null, organizationId: string) => {
@@ -1445,8 +1524,12 @@ export async function completeEod(
 		const parsed = completeEodSchema.parse(data);
 		const sdb = getScopedDb(orgId);
 
-		const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
+		const [vehicle, org] = await Promise.all([
+			sdb.vehicle.findFirst({ where: { id: vehicleId } }),
+			sdb.organization.findFirst({ where: { id: orgId }, select: { timezone: true, name: true } }),
+		]);
 		if (!vehicle) return { err: "Vehicle not found" };
+		const orgTz = org?.timezone ?? "UTC";
 
 		const actorId = context?.dispatcherId ?? context?.techId;
 		if (!actorId) return { err: "Actor context required" };
@@ -1468,7 +1551,7 @@ export async function completeEod(
 					vehicle_id:           vehicleId,
 					organization_id:      orgId,
 					completed_at:         new Date(),
-					day:                  utcDayRange().start,
+					day:                  utcDayRange(new Date(), 1, orgTz).start,
 					completed_by_id:      context?.dispatcherId ?? null,
 					completed_by_tech_id: context?.dispatcherId ? null : (context?.techId ?? null),
 					notes:                parsed.notes ?? null,
@@ -1543,15 +1626,50 @@ export async function completeEod(
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
 
+		// G6: alert dispatchers when any item couldn't be fully restocked
+		const shortfallLines = (record as unknown as { restock_lines: { qty_shortfall: number; stock_item_id: string }[] }).restock_lines.filter(
+			(l) => l.qty_shortfall > 0,
+		);
+		if (shortfallLines.length > 0) {
+			getSocket().emit("vehicle:eod_shortfall", {
+				organizationId: orgId,
+				vehicleId,
+				vehicleName: vehicle.name,
+				date: localDateString(new Date(), orgTz),
+				shortfalls: shortfallLines.map((l) => ({
+					stock_item_id: l.stock_item_id,
+					qty_shortfall: l.qty_shortfall,
+				})),
+			});
+		}
+
+		// G10: zero-shortfall EOD auto-confirms readiness for tomorrow
+		if (shortfallLines.length === 0 && context?.techId) {
+			const tomorrowDateStr = localDateString(new Date(), orgTz, 1);
+			const tomorrowDate = new Date(tomorrowDateStr + "T00:00:00.000Z");
+			await sdb.vehicle_readiness.upsert({
+				where: { vehicle_id_date: { vehicle_id: vehicleId, date: tomorrowDate } },
+				create: {
+					vehicle_id:           vehicleId,
+					organization_id:      orgId,
+					date:                 tomorrowDate,
+					confirmed_by_id:      null,
+					confirmed_by_tech_id: context.techId,
+					eod_record_id:        (record as unknown as { id: string }).id,
+				},
+				update: {}, // Don't overwrite an explicit dispatcher confirmation
+			});
+		}
+
 		await logActivity({
 			event_type: "vehicle_eod.completed",
 			action: "created",
 			entity_type: "vehicle_eod_record",
-			entity_id: record.id,
+			entity_id: (record as unknown as { id: string }).id,
 			organization_id: orgId,
 			...getActorInfo(context),
 			changes: {
-				restock_line_count: { old: null, new: record.restock_lines.length },
+				restock_line_count: { old: null, new: (record as unknown as { restock_lines: unknown[] }).restock_lines.length },
 			},
 		});
 
@@ -1574,10 +1692,14 @@ export async function getEodToday(
 ): Promise<{ err?: string; record?: object | null }> {
 	const sdb = getScopedDb(orgId);
 
-	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
+	const [vehicle, org] = await Promise.all([
+		sdb.vehicle.findFirst({ where: { id: vehicleId } }),
+		sdb.organization.findFirst({ where: { id: orgId }, select: { timezone: true } }),
+	]);
 	if (!vehicle) return { err: "Vehicle not found" };
+	const orgTz = org?.timezone ?? "UTC";
 
-	const { start: startUTC, end: endUTC } = utcDayRange();
+	const { start: startUTC, end: endUTC } = utcDayRange(new Date(), 1, orgTz);
 
 	const record = await sdb.vehicle_eod_record.findFirst({
 		where: { vehicle_id: vehicleId, completed_at: { gte: startUTC, lt: endUTC } },
@@ -1967,24 +2089,42 @@ export async function getUsageToday(
 ): Promise<{ err?: string; data?: UsageTodayGroup[] }> {
 	const sdb = getScopedDb(orgId);
 
-	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
+	const [vehicle, org] = await Promise.all([
+		sdb.vehicle.findFirst({ where: { id: vehicleId } }),
+		sdb.organization.findFirst({ where: { id: orgId }, select: { timezone: true } }),
+	]);
 	if (!vehicle) return { err: "Vehicle not found" };
+	const orgTz = org?.timezone ?? "UTC";
 
-	const { start: startOfToday, end: endOfToday } = utcDayRange();
+	const { start: startOfToday, end: endOfToday } = utcDayRange(new Date(), 1, orgTz);
 
-	// Usage now answers from the ledger: actual consumption only — vehicle
-	// parts-used plus warehouse direct-consumption at completion for this
-	// vehicle's techs. Planned-but-unconsumed lines no longer appear.
+	// For direct_consumption movements, join through vehicle_stock_usage to find
+	// which techs used stock from this vehicle today — a historical anchor that
+	// survives mid-day vehicle reassignments (unlike querying current_vehicle_id).
+	const vehicleUsageTechIds = (
+		await db.vehicle_stock_usage.findMany({
+			where: {
+				stock_item: { vehicle_id: vehicleId },
+				created_at: { gte: startOfToday, lt: endOfToday },
+			},
+			select: { technician_id: true },
+			distinct: ["technician_id"],
+		})
+	).map((u) => u.technician_id);
+
 	const movements = await db.stock_movement.findMany({
 		where: {
 			organization_id: orgId,
 			created_at: { gte: startOfToday, lt: endOfToday },
 			OR: [
 				{ from_vehicle_id: vehicleId, reason: "parts_used" },
-				{
-					reason: "direct_consumption",
-					visit: { visit_techs: { some: { tech: { current_vehicle_id: vehicleId } } } },
-				},
+				...(vehicleUsageTechIds.length > 0
+					? [{
+							reason: "direct_consumption" as const,
+							actor_type: "technician" as const,
+							actor_id: { in: vehicleUsageTechIds },
+						}]
+					: []),
 			],
 		},
 		include: {
@@ -2081,7 +2221,10 @@ async function computeReadinessForVehicles(
 	const [records, techs] = await Promise.all([
 		db.vehicle_readiness.findMany({
 			where: { vehicle_id: { in: vehicleIds }, date: targetDate },
-			include: { confirmed_by: { select: { name: true } } },
+			include: {
+				confirmed_by:      { select: { name: true } },
+				confirmed_by_tech: { select: { name: true } },
+			},
 		}),
 		db.technician.findMany({
 			where: { current_vehicle_id: { in: vehicleIds }, organization_id: orgId },
@@ -2156,13 +2299,22 @@ async function computeReadinessForVehicles(
 		const onHand = stockByVehicle.get(vehicleId) ?? new Map<string, number>();
 
 		if (record) {
+			const confirmedByType = record.confirmed_by_id
+				? "dispatcher"
+				: record.eod_record_id
+					? "eod_auto"
+					: "technician";
 			results.set(vehicleId, {
 				state: "confirmed",
 				date: dateStr,
 				gaps: computeGapsFromLineItems(lineItems, onHand),
 				confirmed: {
 					id: record.id,
-					confirmed_by: record.confirmed_by.name,
+					confirmed_by:
+						record.confirmed_by?.name ??
+						record.confirmed_by_tech?.name ??
+						"System",
+					confirmed_by_type: confirmedByType,
 					confirmed_at: record.confirmed_at.toISOString(),
 					notes: record.notes,
 				},

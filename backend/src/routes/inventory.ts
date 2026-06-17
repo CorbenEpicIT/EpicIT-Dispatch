@@ -113,8 +113,7 @@ router.post("/:id/approve", requirePermission("manage_inventory"), async (req, r
 	try {
 		const context = getUserContext(req);
 		const orgId = req.user!.organization_id as string;
-        const id = req.params.id as string;
-		const result = await approveProvisionalItem(id, orgId, context);
+		const result = await approveProvisionalItem(req.params.id, orgId, req.body ?? {}, context);
 		if (result.err) {
 			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
 		}

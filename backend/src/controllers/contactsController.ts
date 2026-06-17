@@ -307,7 +307,7 @@ export const deleteContact = async (
 	try {
 		const sdb = getScopedDb(organizationId);
 		const existing = await sdb.contact.findFirst({
-			where: { id: contactId },
+			where: { id: contactId, organization_id: organizationId },
 			include: {
 				client_contacts: true,
 			},

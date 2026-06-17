@@ -506,6 +506,15 @@ export const insertInvoicePayment = async (
 			return { err: "Cannot record payment on a void invoice" };
 		}
 
+		const existingPaymentsAgg = await sdb.invoice_payment.aggregate({
+			where: { invoice_id: invoiceId },
+			_sum: { amount: true },
+		});
+		const alreadyPaid = Number(existingPaymentsAgg._sum.amount ?? 0);
+		if (alreadyPaid + parsed.amount > Number(invoice.total)) {
+			return { err: "Payment would exceed invoice total" };
+		}
+
 		const created = await sdb.$transaction(async (tx) => {
 			const payment = await tx.invoice_payment.create({
 				data: {

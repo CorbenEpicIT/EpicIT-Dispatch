@@ -556,6 +556,24 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			return { err: "Job visit not found" };
 		}
 
+		// G22: verify all supplied tax_group_ids belong to this org before mutating
+		if (parsed.line_items && parsed.line_items.length > 0) {
+			const incomingTaxGroupIds = [
+				...new Set(parsed.line_items.map((li) => li.tax_group_id).filter(Boolean) as string[]),
+			];
+			if (incomingTaxGroupIds.length > 0) {
+				const validGroups = await sdb.tax_group.findMany({
+					where: { id: { in: incomingTaxGroupIds }, organization_id: organizationId },
+					select: { id: true },
+				});
+				const validIds = new Set(validGroups.map((g) => g.id));
+				const foreign = incomingTaxGroupIds.find((id) => !validIds.has(id));
+				if (foreign) {
+					return { err: `Tax group not found: ${foreign}` };
+				}
+			}
+		}
+
 		const changes = buildChanges(existingVisit, parsed, [
 			"name",
 			"description",
@@ -702,7 +720,9 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				});
 
 				let newJobStatus = existingVisit.job.status;
-				if (allVisits.every((v) => v.status === "Completed")) {
+				if (allVisits.every((v) => v.status === "Cancelled")) {
+					newJobStatus = "Cancelled";
+				} else if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
 					newJobStatus = "Completed";
 				} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
 					newJobStatus = "InProgress";
@@ -725,9 +745,12 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				}
 
 				// ── Actual total rollup ────────────────────────────────────────────────────────────────────
-				// v1: only fires on first Completed transition. If a visit is later un-completed, actual_total
-				// is NOT decremented — it remains at the last computed value until the next completion fires.
-				if (parsed.status === "Completed" && existingVisit.status !== "Completed") {
+				// allVisits was queried AFTER the visit update, so statuses are current.
+				// Fires on any Completed ↔ non-Completed transition in either direction.
+				if (
+					(parsed.status === "Completed" && existingVisit.status !== "Completed") ||
+					(existingVisit.status === "Completed" && parsed.status !== "Completed")
+				) {
 					const actualTotal = allVisits
 						.filter((v) => v.status === "Completed")
 						.reduce((sum, v) => sum + Number(v.total), 0);
@@ -1101,6 +1124,21 @@ export const acceptJobVisit = async (
 
 		if (!tech) {
 			return { err: "Technician not found" };
+		}
+
+		const alreadyAssigned = await sdb.job_visit_technician.findFirst({
+			where: { visit_id: visitId, tech_id: techId },
+		});
+		if (alreadyAssigned) {
+			const visit = await sdb.job_visit.findFirst({
+				where: { id: visitId },
+				include: {
+					job: { include: { client: true } },
+					visit_techs: { include: { tech: true } },
+					notes: true,
+				},
+			});
+			return { err: "", item: visit ?? undefined };
 		}
 
 		await sdb.$transaction(async (tx) => {
@@ -1591,7 +1629,9 @@ export const cancelJobVisit = async (
 
 			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
 			let newJobStatus = existingVisit.job.status;
-			if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
+			if (allVisits.every((v) => v.status === "Cancelled")) {
+				newJobStatus = "Cancelled";
+			} else if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
 				newJobStatus = "Completed";
 			} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
 				newJobStatus = "InProgress";

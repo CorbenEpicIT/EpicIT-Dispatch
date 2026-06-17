@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Trash2, Search, X, History } from "lucide-react";
+import { Trash2, Search, X, History, AlertTriangle } from "lucide-react";
 import {
 	useVehicleStockQuery,
 	useUpdateVehicleStockItemMutation,
@@ -14,6 +14,7 @@ import {
 	useRestockRequestsQuery,
 	useFulfillRestockRequestMutation,
 	useDismissRestockRequestMutation,
+	useAcknowledgeDiscrepancyMutation,
 } from "../../hooks/useVehicleStock";
 import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
@@ -239,6 +240,8 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 	onDone: () => void;
 }) {
 	const [search, setSearch] = useState("");
+	const [qtyMin, setQtyMin] = useState("1");
+	const [qtyStandard, setQtyStandard] = useState("");
 	const addMutation = useAddVehicleStockItemMutation();
 	const { data: allInventory = [] } = useAllInventoryQuery();
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -252,12 +255,45 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 	}).slice(0, 12);
 
 	const handleSelect = async (inventoryItemId: string) => {
-		await addMutation.mutateAsync({ vehicleId, data: { inventory_item_id: inventoryItemId, qty_on_hand: 0, qty_min: 1 } });
+		const min = parseFloat(qtyMin);
+		const std = qtyStandard.trim() !== "" ? parseFloat(qtyStandard) : null;
+		await addMutation.mutateAsync({
+			vehicleId,
+			data: {
+				inventory_item_id: inventoryItemId,
+				qty_on_hand: 0,
+				qty_min: !isNaN(min) && min >= 0 ? min : 1,
+				qty_standard: std !== null && !isNaN(std) && std >= 0 ? std : null,
+			},
+		});
 		onDone();
 	};
 
 	return (
 		<div className="px-5 py-3 border-t border-border">
+			<div className="flex items-center gap-2 mb-2">
+				<div className="flex items-center gap-1">
+					<label className="text-[10px] text-text-muted whitespace-nowrap">Min qty</label>
+					<input
+						type="number"
+						min={0}
+						value={qtyMin}
+						onChange={(e) => setQtyMin(e.target.value)}
+						className="w-14 text-xs bg-surface border border-border-input rounded px-1.5 py-1 text-text-primary outline-none focus:border-primary"
+					/>
+				</div>
+				<div className="flex items-center gap-1">
+					<label className="text-[10px] text-text-muted whitespace-nowrap">Standard qty</label>
+					<input
+						type="number"
+						min={0}
+						value={qtyStandard}
+						onChange={(e) => setQtyStandard(e.target.value)}
+						placeholder="—"
+						className="w-14 text-xs bg-surface border border-border-input rounded px-1.5 py-1 text-text-primary outline-none focus:border-primary placeholder:text-text-faint"
+					/>
+				</div>
+			</div>
 			<div className="relative">
 				<div className="flex items-center gap-2 border border-primary rounded-md px-3 py-1.5 bg-base">
 					<Search size={13} className="text-text-muted flex-shrink-0" />
@@ -586,25 +622,98 @@ function RequestRow({ request }: { request: RestockRequest }) {
 	);
 }
 
-function RequestsTab({ vehicleId }: { vehicleId: string }) {
-	const { data: requests = [], isLoading } = useRestockRequestsQuery("pending", vehicleId);
-
-	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
-
-	if (requests.length === 0) {
-		return (
-			<div className="flex flex-col items-center justify-center py-16 text-text-muted">
-				<p className="text-sm font-medium">No pending restock requests</p>
-				<p className="text-xs mt-1">Requests from technicians on this vehicle will appear here</p>
+function DiscrepancyRow({ request }: { request: RestockRequest }) {
+	const acknowledgeMutation = useAcknowledgeDiscrepancyMutation();
+	const fulfilled = Number(request.qty_fulfilled ?? 0);
+	const received = Number(request.qty_received ?? 0);
+	const delta = received - fulfilled;
+	return (
+		<div className="bg-surface rounded-lg border border-warning-border px-4 py-3">
+			<div className="flex items-start justify-between gap-3">
+				<div className="min-w-0">
+					<div className="text-sm font-semibold text-text-primary truncate">
+						{request.stock_item.inventory_item.name}
+					</div>
+					<div className="text-xs text-text-muted mt-0.5">
+						{request.technician?.name ?? "Unknown tech"}
+					</div>
+					<div className="mt-1.5 flex items-center gap-3 text-xs">
+						<span className="text-text-muted">Sent: <span className="text-text-primary font-medium">{fulfilled}</span></span>
+						<span className="text-text-muted">Received: <span className="text-text-primary font-medium">{received}</span></span>
+						<span className={`font-semibold ${delta < 0 ? "text-error-text" : "text-success"}`}>
+							{delta >= 0 ? "+" : ""}{delta}
+						</span>
+					</div>
+				</div>
+				<button
+					onClick={() => acknowledgeMutation.mutate(request.id)}
+					disabled={acknowledgeMutation.isPending}
+					className="text-xs font-semibold px-2.5 py-1.5 rounded bg-surface-hover border border-border text-text-secondary hover:bg-border-subtle disabled:opacity-50 flex-shrink-0"
+				>
+					Acknowledge
+				</button>
 			</div>
-		);
-	}
+		</div>
+	);
+}
+
+function RequestsTab({ vehicleId }: { vehicleId: string }) {
+	const [showDiscrepancies, setShowDiscrepancies] = useState(false);
+	const { data: requests = [], isLoading } = useRestockRequestsQuery("pending", vehicleId);
+	const { data: discrepantRequests = [], isLoading: discrepantLoading } = useRestockRequestsQuery(undefined, vehicleId, true);
+
+	const loading = isLoading || discrepantLoading;
+	if (loading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
 
 	return (
-		<div className="px-5 py-4 space-y-3">
-			{requests.map((r) => (
-				<RequestRow key={r.id} request={r} />
-			))}
+		<div>
+			<div className="px-5 pt-4 pb-2 flex items-center gap-3">
+				<button
+					onClick={() => setShowDiscrepancies(false)}
+					className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${!showDiscrepancies ? "bg-primary/15 text-primary" : "text-text-muted hover:text-text-secondary"}`}
+				>
+					Pending
+					{requests.length > 0 && (
+						<span className="ml-1.5 bg-primary/20 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">{requests.length}</span>
+					)}
+				</button>
+				<button
+					onClick={() => setShowDiscrepancies(true)}
+					className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${showDiscrepancies ? "bg-warning/15 text-warning-text" : "text-text-muted hover:text-text-secondary"}`}
+				>
+					<AlertTriangle size={11} />
+					Discrepancies
+					{discrepantRequests.length > 0 && (
+						<span className="bg-warning/20 text-warning-text text-[10px] font-bold px-1.5 py-0.5 rounded-full">{discrepantRequests.length}</span>
+					)}
+				</button>
+			</div>
+
+			{!showDiscrepancies && (
+				requests.length === 0 ? (
+					<div className="flex flex-col items-center justify-center py-12 text-text-muted">
+						<p className="text-sm font-medium">No pending restock requests</p>
+						<p className="text-xs mt-1">Requests from technicians on this vehicle will appear here</p>
+					</div>
+				) : (
+					<div className="px-5 pb-4 space-y-3">
+						{requests.map((r) => <RequestRow key={r.id} request={r} />)}
+					</div>
+				)
+			)}
+
+			{showDiscrepancies && (
+				discrepantRequests.length === 0 ? (
+					<div className="flex flex-col items-center justify-center py-12 text-text-muted">
+						<p className="text-sm font-medium">No discrepancies</p>
+						<p className="text-xs mt-1">Receipts where qty_received ≠ qty_sent appear here</p>
+					</div>
+				) : (
+					<div className="px-5 pb-4 space-y-3">
+						{discrepantRequests.map((r) => <DiscrepancyRow key={r.id} request={r} />)}
+					</div>
+				)
+			)}
 		</div>
 	);
 }

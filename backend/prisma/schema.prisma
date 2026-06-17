@@ -1239,8 +1239,9 @@ model vehicle_eod_record {
   notes           String?
   created_at      DateTime   @default(now())
 
-  restock_lines   vehicle_eod_restock_line[]
-  stock_movements stock_movement[]
+  restock_lines    vehicle_eod_restock_line[]
+  stock_movements  stock_movement[]
+  readiness_record vehicle_readiness? @relation("EodReadiness")
 
   @@unique([vehicle_id, day])
   @@index([vehicle_id])
@@ -1299,22 +1300,26 @@ model vehicle_stock_adjustment_line {
 }
 
 model vehicle_restock_request {
-  id            String             @id @default(uuid())
-  stock_item_id String
-  stock_item    vehicle_stock_item @relation(fields: [stock_item_id], references: [id])
-  technician_id String
-  qty_requested Decimal?           @db.Decimal(10, 2)
-  note          String?
-  status        String             @default("pending") // "pending" | "fulfilled" | "dismissed"
-  created_at    DateTime           @default(now())
-  fulfilled_at  DateTime?
-  received_at   DateTime?
-  qty_received  Int?
-  discrepant    Boolean            @default(false)
-  dismissed_reason String?         // "dispatch" | "superseded_by_fill" | "superseded_by_eod"
+  id              String             @id @default(uuid())
+  organization_id String
+  stock_item_id   String
+  stock_item      vehicle_stock_item @relation(fields: [stock_item_id], references: [id])
+  technician_id   String
+  qty_requested   Decimal?           @db.Decimal(10, 2)
+  note            String?
+  status          String             @default("pending") // "pending" | "fulfilled" | "dismissed"
+  created_at      DateTime           @default(now())
+  fulfilled_at    DateTime?
+  received_at     DateTime?
+  qty_received    Int?
+  discrepant      Boolean            @default(false)
+  dismissed_reason String?           // "dispatch" | "superseded_by_fill" | "superseded_by_eod"
 
   stock_movements stock_movement[]
 
+  // Partial unique index enforced in SQL migration (Prisma does not support WHERE clause):
+  // CREATE UNIQUE INDEX vrr_one_pending_per_item ON vehicle_restock_request (stock_item_id) WHERE status = 'pending'
+  @@index([organization_id])
   @@index([stock_item_id])
   @@index([technician_id])
   @@index([status])
@@ -1422,8 +1427,9 @@ model technician {
   visit_techs    job_visit_technician[]
   time_entries   visit_tech_time_entry[]
   notifications  technician_notification[]
-  eod_records       vehicle_eod_record[]       @relation("TechnicianEodRecords")
-  stock_adjustments vehicle_stock_adjustment[] @relation("TechnicianAdjustments")
+  eod_records            vehicle_eod_record[]       @relation("TechnicianEodRecords")
+  stock_adjustments      vehicle_stock_adjustment[] @relation("TechnicianAdjustments")
+  readiness_confirmations vehicle_readiness[]       @relation("TechReadinessConfirmations")
 
   created_client_notes      client_note[]  @relation("ClientNoteCreator")
   last_edited_client_notes  client_note[]  @relation("ClientNoteEditor")
@@ -1494,7 +1500,7 @@ model dispatcher {
 
   eod_records     vehicle_eod_record[] @relation("DispatcherEodRecords")
   stock_adjustments vehicle_stock_adjustment[] @relation("DispatcherAdjustments")
-  readiness_confirmations vehicle_readiness[] @relation("DispatcherReadinessConfirmations")
+  readiness_confirmations  vehicle_readiness[] @relation("DispatcherReadinessConfirmations")
   approved_items      inventory_item[] @relation("DispatcherApprovedItems")
 
   @@index([email])
@@ -1508,8 +1514,13 @@ model vehicle_readiness {
   organization_id String
   organization    organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   date            DateTime     @db.Date
-  confirmed_by_id String
-  confirmed_by    dispatcher   @relation("DispatcherReadinessConfirmations", fields: [confirmed_by_id], references: [id])
+  // Exactly one of confirmed_by_id or confirmed_by_tech_id is set (enforced by DB CHECK constraint)
+  confirmed_by_id      String?
+  confirmed_by         dispatcher?  @relation("DispatcherReadinessConfirmations", fields: [confirmed_by_id], references: [id])
+  confirmed_by_tech_id String?
+  confirmed_by_tech    technician?  @relation("TechReadinessConfirmations", fields: [confirmed_by_tech_id], references: [id])
+  eod_record_id        String?              @unique
+  eod_record           vehicle_eod_record? @relation("EodReadiness", fields: [eod_record_id], references: [id])
   confirmed_at    DateTime     @default(now())
   notes           String?      @db.Text
   created_at      DateTime     @default(now())

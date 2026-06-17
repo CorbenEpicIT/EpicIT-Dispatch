@@ -208,7 +208,8 @@ export const useProvisionalItemsQuery = () =>
 export const useApproveItemMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (itemId: string) => orgApi.approveItem(itemId),
+		mutationFn: ({ itemId, initial_warehouse_qty }: { itemId: string; initial_warehouse_qty?: number }) =>
+			orgApi.approveItem(itemId, initial_warehouse_qty !== undefined ? { initial_warehouse_qty } : undefined),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
 			await qc.invalidateQueries({ queryKey: ["inventory"] });
