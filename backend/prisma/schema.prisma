@@ -1090,7 +1090,7 @@ model inventory_item {
 
   unit_price Decimal? @db.Decimal(10, 2)
   cost       Decimal? @db.Decimal(10, 2)
-  sku        String?  @unique
+  sku        String?
   is_active  Boolean  @default(true)
   low_stock_threshold Int?
   provisional         Boolean   @default(false)
@@ -1119,6 +1119,7 @@ model inventory_item {
   external_mappings item_external_mapping[]
   invoice_line_items invoice_line_item[]
 
+  @@unique([organization_id, sku])
   @@index([sku])
   @@index([is_active])
   @@index([organization_id])

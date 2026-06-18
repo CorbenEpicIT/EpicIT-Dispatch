@@ -46,6 +46,14 @@
 	--color-confirm:       #16a34a;
 	--color-confirm-hover: #15803d;
 
+	/* ── Payment CTA (amber action buttons — Record Payment) ─────────────── */
+	--color-payment:       #f59e0b;
+	--color-payment-hover: #d97706;
+
+	/* ── QuickBooks brand (sync action buttons) ──────────────────────────── */
+	--color-quickbooks:       #2ca01c;
+	--color-quickbooks-hover: #268a18;
+
 	/* ── Status: success ─────────────────────────────────────────────────── */
 	--color-success:             #059669;
 	--color-success-text:        #15803d;
@@ -286,6 +294,14 @@
 	/* Confirm (green action buttons) */
 	--color-confirm:       #22c55e;   /* green-500 — brighter on dark surfaces */
 	--color-confirm-hover: #16a34a;   /* green-600 */
+
+	/* Payment (amber action buttons) — slightly muted on dark surfaces */
+	--color-payment:       #f59e0b;   /* amber-500 */
+	--color-payment-hover: #d97706;   /* amber-600 */
+
+	/* QuickBooks brand (sync action) — brighter on dark surfaces */
+	--color-quickbooks:       #3cb82b;
+	--color-quickbooks-hover: #2ca01c;
 
 	/* Plan text */
 	--color-plan-text: #c084fc;

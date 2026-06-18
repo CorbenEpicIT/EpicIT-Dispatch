@@ -75,9 +75,9 @@ export async function importQBItem(orgId: string, qbItemId: string) {
         throw httpError(409, ErrorCodes.CONFLICT, "This QuickBooks item has already been imported.");
     }
 
-    const createItem = (sku: string | null) =>
-        db.$transaction(async (tx) =>{
-            const item = await tx.inventory_item.create({
+    try {
+        const item = await db.$transaction(async (tx) => {
+            const created = await tx.inventory_item.create({
                 data: {
                     organization_id: orgId,
                     name: qbItem.Name,
@@ -86,26 +86,29 @@ export async function importQBItem(orgId: string, qbItemId: string) {
                     quantity: qbItem.QtyOnHand ?? 0,
                     unit_price: qbItem.UnitPrice ?? null,
                     cost: qbItem.PurchaseCost ?? null,
-                    sku
+                    sku: qbItem.Sku ?? null,
                 },
             });
             await tx.item_external_mapping.create({
                 data: {
-                    inventory_item_id: item.id,
+                    inventory_item_id: created.id,
                     external_id: qbItemId,
                     provider: "quickbooks"
                 }
             });
-            return item;
+            return created;
         });
-    try {
-        const item = await createItem(qbItem.Sku ?? null);
         return { item };
     } catch (error: any) {
-        // sku is globally unique, another org may already have this sku
-        if (error?.code === "P2002" && qbItem.Sku) {
-            const item = await createItem(null);
-            return { item, warning: `Sku "${qbItem.Sku}" is already in use. Importing item without Sku.` };
+        // sku is unique per org — a P2002 means this org already has the QB
+        // item's sku. Fail with a clear conflict instead of silently importing
+        // without it (the user can resolve the existing item / sku, then retry).
+        if (error?.code === "P2002") {
+            throw httpError(
+                409,
+                ErrorCodes.CONFLICT,
+                `An item with SKU "${qbItem.Sku}" already exists in this organization.`,
+            );
         }
         throw error;
     }

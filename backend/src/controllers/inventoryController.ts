@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { z, ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { db } from "../db.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import {
 	updateThresholdSchema,
 	createInventoryItemSchema,
@@ -115,6 +116,23 @@ export const getLowStockInventory = async (organizationId: string) => {
 		});
 };
 
+// sku is globally unique — a P2002 on inventory_item means another item
+// (possibly in another org) already holds the sku. Surface a clear 4xx, not 500.
+// `sku` is the ONLY unique constraint on inventory_item, so any P2002 on this
+// model is a sku conflict. The @prisma/adapter-pg driver populates neither
+// meta.target nor the field name in the message for transaction-scoped P2002s,
+// so match on meta.modelName (with target/message kept as extra signals).
+const isSkuConflict = (e: unknown): boolean => {
+	if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
+		return false;
+	}
+	if (e.meta?.modelName === "inventory_item") return true;
+	const target = e.meta?.target;
+	if (Array.isArray(target) && target.includes("sku")) return true;
+	if (typeof target === "string" && target.includes("sku")) return true;
+	return e.message.includes("sku");
+};
+
 export const createInventoryItem = async (data: unknown, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createInventoryItemSchema.parse(data);
@@ -171,12 +189,16 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 
 		return { err: "", item: withStockStatus(item) };
 	} catch (e) {
-		console.error("Create inventory item error:", e);
+		// Expected validation outcomes — not internal errors, don't log a stack trace.
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
+		if (isSkuConflict(e)) {
+			return { err: "SKU already in use" };
+		}
+		console.error("Create inventory item error:", e);
 		return { err: "Internal server error" };
 	}
 };
@@ -237,12 +259,16 @@ export const updateInventoryItem = async (
 
 		return { err: "", item: withStockStatus(updated) };
 	} catch (e) {
-		console.error("Update inventory item error:", e);
+		// Expected validation outcomes — not internal errors, don't log a stack trace.
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
+		if (isSkuConflict(e)) {
+			return { err: "SKU already in use" };
+		}
+		console.error("Update inventory item error:", e);
 		return { err: "Internal server error" };
 	}
 };
@@ -262,6 +288,11 @@ export const deleteInventoryItem = async (itemId: string, organizationId: string
 			await tx.inventory_item.update({
 				where: { id: itemId },
 				data: { is_active: false },
+			});
+
+			// Soft delete skips cascade; clean up QB mappings manually.
+			await tx.item_external_mapping.deleteMany({
+				where: { inventory_item_id: itemId },
 			});
 
 			await logActivity({

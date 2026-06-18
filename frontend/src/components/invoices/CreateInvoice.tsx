@@ -17,7 +17,7 @@ import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useTaxGroups, useDefaultTaxGroup } from "../../hooks/useTaxGroups";
-import { useQBStatusQuery, useImportQBInvoicesMutation, useImportableQBInvoicesQuery, useQBInvoicePrefillQuery } from "../../hooks/useQuickbooks";
+import { useQBStatusQuery, useImportableQBInvoicesQuery, useQBInvoicePrefillQuery } from "../../hooks/useQuickbooks";
 import { X, Briefcase, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 
 type Step = 1 | 2 | 3;
@@ -106,7 +106,6 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	const { data: taxGroups = [] } = useTaxGroups();
 	const { data: defaultTaxGroup } = useDefaultTaxGroup();
 	const qbConnected = !!useQBStatusQuery().data?.connected;
-	const { mutateAsync: importQBInvoices } = useImportQBInvoicesMutation();
 	const {
 		data: importableQBInvoices = [],
 		isFetching: qbInvoicesLoading,
@@ -792,6 +791,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 				createdAt: inv.TxnDate ?? undefined,
 				clientId: inv.customerId ?? undefined,
 				clientName: inv.customerName ?? undefined,
+				// Informational only — a local invoice already exists for this QB
+				// invoice. Still selectable: prefill is non-destructive (it only
+				// pre-fills the form; saving creates a fresh, unlinked draft), so
+				// re-importing to base a new draft on it is a valid use.
 				badge: inv.alreadyImported ? "Imported" : undefined,
 				badgeColor: inv.alreadyImported
 					? "bg-success-bg text-success-text border-success-border"
@@ -848,16 +851,34 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 										? "Loading invoice details…"
 										: `Imported from QuickBooks: ${selectedQBLabel}`}
 								</span>
-								{qbConnected && (
+								<div className="ml-auto flex items-center gap-3">
+									{qbConnected && (
+										<button
+											type="button"
+											onClick={() => setQbSearchOpen(true)}
+											disabled={isLoading}
+											className="text-xs font-medium text-primary-text underline hover:text-text-primary disabled:opacity-40"
+										>
+											Change
+										</button>
+									)}
 									<button
 										type="button"
-										onClick={() => setQbSearchOpen(true)}
+										onClick={() => {
+											// Detach the QB import and clear what it prefilled.
+											setSelectedQBInvoice(null);
+											appliedPrefillRef.current = null;
+											resetLineItems();
+											setMemo("");
+											setDueDate(null);
+											markDirty();
+										}}
 										disabled={isLoading}
-										className="ml-auto text-xs font-medium text-primary-text underline hover:text-text-primary disabled:opacity-40"
+										className="text-xs font-medium text-text-tertiary underline hover:text-text-primary disabled:opacity-40"
 									>
-										Change
+										Clear
 									</button>
-								)}
+								</div>
 							</div>
 						)}
 

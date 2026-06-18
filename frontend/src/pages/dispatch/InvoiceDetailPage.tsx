@@ -22,6 +22,7 @@ import {
 	Download,
 	Loader2,
 	Mail,
+	RefreshCw,
 	X,
 } from "lucide-react";
 import {
@@ -385,83 +386,86 @@ export default function InvoiceDetailPage() {
 
 	const linkedJobGroups = buildLinkedJobGroups(invoice);
 
+	// ── QuickBooks sync state (shared by header badge + toolbar action + menu) ──
+	const qbConnected = !!qbStatus?.connected;
+	const qbSynced = invoice.qb_sync_status === "synced";
+	const qbFailed = invoice.qb_sync_status === "failed";
+	const qbHasRemote = !!invoice.qb_invoice_id;
+
+	// First push CREATES the QB invoice; later pushes UPDATE it. The label says
+	// exactly which, so "Sync" never reads as two-way.
+	const qbActionLabel = qbFailed
+		? "Retry sync"
+		: qbHasRemote
+			? "Update in QuickBooks"
+			: "Sync to QuickBooks";
+	const qbActionTitle = qbHasRemote
+		? `Sync your latest changes to QuickBooks invoice #${invoice.qb_invoice_id}`
+		: "Create this invoice in QuickBooks Online (one-way sync — nothing is pulled back)";
+	// Hidden once synced — nothing to push when in sync.
+	const qbShowAction = qbConnected && !qbSynced;
+	const qbCanSendVia = qbConnected && (qbSynced || qbHasRemote);
+
+	// Compact, non-wrapping status badge for the header (detail lives in the title).
+	const qbBadge = qbSynced
+		? {
+				cls: "bg-success-bg text-success-bright-text border-success-border",
+				Icon: CheckCircle2,
+				text: "In QuickBooks",
+				title: `Synced to QuickBooks invoice #${invoice.qb_invoice_id}`,
+			}
+		: qbFailed
+			? {
+					cls: "bg-error/20 text-error-text border-error/30",
+					Icon: AlertCircle,
+					text: "Sync failed",
+					title: "QuickBooks sync failed — use Retry sync",
+				}
+			: qbHasRemote
+				? {
+						cls: "bg-warning-bg text-warning-text border-warning-border",
+						Icon: Clock,
+						text: "Changes pending",
+						title: `Edited since last sync — sync to update QuickBooks #${invoice.qb_invoice_id}`,
+					}
+				: {
+						cls: "bg-neutral/20 text-text-tertiary border-border-strong/30",
+						Icon: Clock,
+						text: "Not in QuickBooks",
+						title: "This invoice has not been pushed to QuickBooks yet",
+					};
+	const QbBadgeIcon = qbBadge.Icon;
+
 	// ── Render ────────────────────────────────────────────────────────────────
 
 	return (
 		<div className="text-text-primary space-y-6">
 			{/* Header */}
-			<div className="grid grid-cols-2 gap-4 mb-6 items-start">
-				<div>
-					{/* Invoice number + memo on the same line when space allows,
-					    wrapping memo beneath on narrow viewports */}
-					<div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
-						<div className="flex items-center gap-3 flex-shrink-0">
-							<h1 className="text-3xl font-bold text-text-primary">
-								{invoice.invoice_number}
-							</h1>
-							{overdue && (
-								<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error-text border border-error/30">
-									<AlertTriangle size={11} />
-									Overdue
-								</span>
-							)}
-							{qbStatus?.connected && invoice.qb_sync_status === "synced" && (
-								<span className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-success-bg text-success-bright-text border border-success-border" title="Synced to QuickBooks">
-									<CheckCircle2 size={11} />
-									QB Synced
-									<button
-										onClick={() => sendEmailMutation.mutate({
-											invoiceId: invoice.id,
-											sendTo: primaryEmail ?? "",
-										})}
-										disabled={sendEmailMutation.isPending || !primaryEmail}
-										className="ml-1 underline hover:no-underline disabled:opacity-50 flex items-center gap-1"
-									>
-										{sendEmailMutation.isPending ? <Loader2 size={11}/> : <Mail size={11}/>}
-										Send via QuickBooks
-									</button>
-								</span>
-							)}
-							{qbStatus?.connected && invoice.qb_sync_status === "failed" && (
-								<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error-text border border-error/30">
-									<AlertCircle size={11} />
-									QB Sync Failed
-									<button
-										onClick={() => syncToQB(invoiceId!)}
-										disabled={isSyncingQB}
-										className="ml-1 underline hover:no-underline disabled:opacity-50"
-										title="Retry sync"
-									>
-										{isSyncingQB ? "Retrying..." : "Retry"}
-									</button>
-								</span>
-							)}
-							{qbStatus?.connected && invoice.qb_sync_status === "not_synced" && (
-								<span className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-neutral/20 text-text-tertiary border border-border-strong/30">
-									<Clock size={11} />
-									QB Pending
-									<button
-										onClick={() => syncToQB(invoiceId!)}
-										disabled={isSyncingQB}
-										className="ml-1 underline hover:no-underline disabled:opacity-50"
-										title="Sync to QuickBooks"
-									>
-										{isSyncingQB ? "Syncing..." : "Sync"}
-									</button>
-									<button
-										onClick={() => sendEmailMutation.mutate({
-											invoiceId: invoice.id,
-											sendTo: primaryEmail ?? "",
-										})}
-										disabled={sendEmailMutation.isPending || !primaryEmail}
-										className="ml-1 underline hover:no-underline disabled:opacity-50 flex items-center gap-1"
-									>
-										{sendEmailMutation.isPending ? <Loader2 size={14}/> : <Mail size={14}/>}
-										Send via QuickBooks
-									</button>
-								</span>
-							)}
-						</div>
+			<div className="flex items-start justify-between gap-4 mb-6">
+				<div className="min-w-0 flex-1">
+					{/* Invoice number, status badges, and memo share one row,
+					    vertically centered so the memo lines up with the badges
+					    (not the tall invoice-number baseline). Memo wraps below on
+					    narrow viewports. */}
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1 min-w-0">
+						<h1 className="text-3xl font-bold text-text-primary">
+							{invoice.invoice_number}
+						</h1>
+						{overdue && (
+							<span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error-text border border-error/30">
+								<AlertTriangle size={11} />
+								Overdue
+							</span>
+						)}
+						{qbConnected && (
+							<span
+								className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${qbBadge.cls}`}
+								title={qbBadge.title}
+							>
+								<QbBadgeIcon size={11} />
+								{qbBadge.text}
+							</span>
+						)}
 						{invoice.memo && (
 							<p
 								className="text-text-secondary text-sm break-words min-w-0 line-clamp-2"
@@ -480,7 +484,7 @@ export default function InvoiceDetailPage() {
 					</p>
 				</div>
 
-				<div className="justify-self-end flex items-center gap-3">
+				<div className="flex items-center justify-end gap-3 flex-wrap flex-shrink-0">
 					<span
 						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 							InvoiceStatusColors[invoice.status]
@@ -508,10 +512,22 @@ export default function InvoiceDetailPage() {
 								title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
 								disabled={!EDIT_INVOICE}
 								onClick={openPaymentModal}
-								className="flex items-center gap-2 px-3 py-1.5 bg-confirm hover:bg-confirm-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex items-center gap-2 px-3 py-1.5 bg-payment hover:bg-payment-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<CreditCard size={14} />
 								Record Payment
+							</button>
+					)}
+
+					{qbShowAction && (
+							<button
+								onClick={() => syncToQB(invoiceId!)}
+								disabled={isSyncingQB}
+								title={qbActionTitle}
+								className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-quickbooks hover:enabled:bg-quickbooks-hover text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<RefreshCw size={14} className={isSyncingQB ? "animate-spin" : undefined} />
+								{isSyncingQB ? "Syncing…" : qbActionLabel}
 							</button>
 					)}
 
@@ -579,6 +595,23 @@ export default function InvoiceDetailPage() {
 											? "Generating..."
 											: "Download PDF"}
 									</button>
+									{qbCanSendVia && (
+										<button
+											onClick={() => {
+												sendEmailMutation.mutate({
+													invoiceId: invoice.id,
+													sendTo: primaryEmail ?? "",
+												});
+												setIsOptionsMenuOpen(false);
+											}}
+											disabled={sendEmailMutation.isPending || !primaryEmail}
+											title={primaryEmail ? `Email this invoice to ${primaryEmail} via QuickBooks` : "No primary contact email on file"}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											{sendEmailMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+											Send via QuickBooks
+										</button>
+									)}
 									{invoice.status === "Draft" && (
 											<button
 												title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
@@ -1206,7 +1239,7 @@ export default function InvoiceDetailPage() {
 										title={!EDIT_INVOICE ? "You don't have permission to perform this action" : undefined}
 										disabled={!EDIT_INVOICE}
 										onClick={openPaymentModal}
-										className="flex items-center gap-1.5 px-3 py-1.5 bg-confirm hover:bg-confirm-hover text-white rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+										className="flex items-center gap-1.5 px-3 py-1.5 bg-payment hover:bg-payment-hover text-white rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Plus size={13} />
 										Record
@@ -1650,7 +1683,7 @@ export default function InvoiceDetailPage() {
 									!paymentForm.amount ||
 									isRecordingPayment
 								}
-								className="flex-1 px-4 py-2 bg-confirm hover:bg-confirm-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								className="flex-1 px-4 py-2 bg-payment hover:bg-payment-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								{isRecordingPayment
 									? "Recording..."

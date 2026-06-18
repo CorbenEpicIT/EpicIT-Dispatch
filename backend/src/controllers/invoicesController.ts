@@ -308,7 +308,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 			// Recompute when discount changes without a line_items replacement
 			const discountChanged =
 				parsed.discount_type !== undefined || parsed.discount_value !== undefined;
-			if (discountChanged && parsed.line_items === undefined && existing.tax_snapshot == null) {
+			if (discountChanged && parsed.line_items === undefined && !isLocked) {
 				await tx.invoice.update({
 					where: { id },
 					data: {
