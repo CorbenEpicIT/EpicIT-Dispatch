@@ -62,8 +62,8 @@ export const getProvisionalItems = async (): Promise<ProvisionalItem[]> => {
 	return response.data.data || [];
 };
 
-export const approveItem = async (itemId: string): Promise<void> => {
-	await api.post(`/inventory/${itemId}/approve`);
+export const approveItem = async (itemId: string, body?: { initial_warehouse_qty?: number }): Promise<void> => {
+	await api.post(`/inventory/${itemId}/approve`, body ?? {});
 };
 
 export const mergeItem = async (itemId: string, targetInventoryItemId: string): Promise<void> => {

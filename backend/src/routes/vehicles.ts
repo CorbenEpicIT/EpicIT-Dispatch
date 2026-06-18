@@ -18,6 +18,7 @@ import {
 	confirmRestockReceipts,
 	markRestockReceived,
 	dismissRestockRequest,
+	acknowledgeDiscrepancy,
 	getFillPlan,
 	applyFill,
 	getUsageToday,
@@ -107,8 +108,9 @@ router.get(
 	async (req, res, next) => {
 		try {
 			const orgId = req.user?.organization_id as string;
-			const { status, vehicleId } = req.query as { status?: string; vehicleId?: string };
-			const result = await listRestockRequests(orgId, status, vehicleId);
+			const { status, vehicleId, discrepant } = req.query as { status?: string; vehicleId?: string; discrepant?: string };
+			const discrepantBool = discrepant === "true" ? true : discrepant === "false" ? false : undefined;
+			const result = await listRestockRequests(orgId, status, vehicleId, discrepantBool);
 			if (result.err) {
 				return res.status(500).json(createErrorResponse(ErrorCodes.SERVER_ERROR, result.err));
 			}
@@ -224,6 +226,28 @@ router.post(
 				}
 				if (result.err.includes("already")) {
 					return res.status(409).json(createErrorResponse(ErrorCodes.CONFLICT, result.err));
+				}
+				return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+			}
+			res.json(createSuccessResponse(result.request));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+router.post(
+	"/restock-requests/:requestId/acknowledge-discrepancy",
+	requireAnyPermission("manage_inventory", "manage_technicians"),
+	async (req, res, next) => {
+		try {
+			const requestId = req.params.requestId as string;
+			const orgId = req.user?.organization_id as string;
+			const context = getUserContext(req);
+			const result = await acknowledgeDiscrepancy(requestId, orgId, context);
+			if (result.err) {
+				if (result.err.includes("not found")) {
+					return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
 				}
 				return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 			}

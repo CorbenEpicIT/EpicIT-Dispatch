@@ -10,6 +10,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { assertValidRequestTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 
 export const getAllRequests = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -255,6 +256,17 @@ export const updateRequest = async (req: Request, organizationId: string, contex
 			return {
 				err: "Cannot modify request that has been converted to a job",
 			};
+		}
+
+		if (parsed.status && parsed.status !== existing.status) {
+			try {
+				assertValidRequestTransition(existing.status, parsed.status);
+			} catch (e) {
+				if (e instanceof InvalidTransitionError) {
+					return { err: e.message };
+				}
+				throw e;
+			}
 		}
 
 		const changes = buildChanges(existing, parsed, [

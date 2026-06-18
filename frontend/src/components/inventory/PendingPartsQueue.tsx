@@ -14,6 +14,7 @@ export default function PendingPartsQueue() {
 	const merge = useMergeItemMutation();
 	const reject = useRejectItemMutation();
 
+	const [approving, setApproving] = useState<string | null>(null);
 	const [merging, setMerging] = useState<string | null>(null);
 	const [mergeTarget, setMergeTarget] = useState("");
 
@@ -26,6 +27,14 @@ export default function PendingPartsQueue() {
 			</div>
 		);
 	}
+
+	const handleApprove = async (item: ProvisionalItem, initialQty: number) => {
+		await approve.mutateAsync({
+			itemId: item.id,
+			initial_warehouse_qty: initialQty > 0 ? initialQty : undefined,
+		});
+		setApproving(null);
+	};
 
 	const handleMerge = async (item: ProvisionalItem) => {
 		if (!mergeTarget) return;
@@ -59,15 +68,15 @@ export default function PendingPartsQueue() {
 						</div>
 						<div className="flex items-center gap-2 shrink-0">
 							<button
-								onClick={() => approve.mutate(item.id)}
-								disabled={approve.isPending}
-								className="text-xs font-semibold px-2.5 py-1.5 rounded bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-50"
+								onClick={() => { setApproving(item.id); setMerging(null); }}
+								className="text-xs font-semibold px-2.5 py-1.5 rounded bg-primary/15 text-primary hover:bg-primary/25"
 							>
 								Approve
 							</button>
 							<button
 								onClick={() => {
 									setMerging(item.id);
+									setApproving(null);
 									setMergeTarget("");
 								}}
 								className="text-xs font-semibold px-2.5 py-1.5 rounded bg-surface-hover text-text-secondary hover:bg-border-subtle"
@@ -83,6 +92,14 @@ export default function PendingPartsQueue() {
 							</button>
 						</div>
 					</div>
+
+					{approving === item.id && (
+						<ApprovePicker
+							onConfirm={(qty) => handleApprove(item, qty)}
+							onCancel={() => setApproving(null)}
+							isPending={approve.isPending}
+						/>
+					)}
 
 					{merging === item.id && (
 						<MergePicker
@@ -100,6 +117,40 @@ export default function PendingPartsQueue() {
 					)}
 				</div>
 			))}
+		</div>
+	);
+}
+
+function ApprovePicker({
+	onConfirm,
+	onCancel,
+	isPending,
+}: {
+	onConfirm: (initialQty: number) => void;
+	onCancel: () => void;
+	isPending: boolean;
+}) {
+	const [qty, setQty] = useState("0");
+	return (
+		<div className="mt-3 pt-3 border-t border-border-subtle flex flex-col gap-2">
+			<div className="text-xs text-text-muted">Initial warehouse quantity after approval:</div>
+			<input
+				type="number"
+				min={0}
+				value={qty}
+				onChange={(e) => setQty(e.target.value)}
+				className="w-24 text-sm rounded border border-border-input bg-base px-2 py-1.5 text-text-primary outline-none focus:border-primary"
+			/>
+			<div className="flex gap-2">
+				<button
+					onClick={() => onConfirm(Math.max(0, parseInt(qty, 10) || 0))}
+					disabled={isPending}
+					className="text-xs font-semibold px-2.5 py-1.5 rounded bg-primary text-on-primary disabled:opacity-50"
+				>
+					Confirm Approval
+				</button>
+				<button onClick={onCancel} className="text-xs text-text-muted">Cancel</button>
+			</div>
 		</div>
 	);
 }

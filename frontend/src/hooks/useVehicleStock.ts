@@ -77,10 +77,10 @@ export const useAdjustStockMutation = (vehicleId: string) => {
 	});
 };
 
-export const useRestockRequestsQuery = (status?: string, vehicleId?: string) =>
+export const useRestockRequestsQuery = (status?: string, vehicleId?: string, discrepant?: boolean) =>
 	useQuery<RestockRequest[]>({
-		queryKey: ["restock-requests", { status, vehicleId }],
-		queryFn: () => vehicleApi.getRestockRequests(status, vehicleId),
+		queryKey: ["restock-requests", { status, vehicleId, discrepant }],
+		queryFn: () => vehicleApi.getRestockRequests(status, vehicleId, discrepant),
 		staleTime: 30_000,
 	});
 
@@ -104,6 +104,16 @@ export const useDismissRestockRequestMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (requestId: string) => vehicleApi.dismissRestockRequest(requestId),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: ["restock-requests"] });
+		},
+	});
+};
+
+export const useAcknowledgeDiscrepancyMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (requestId: string) => vehicleApi.acknowledgeDiscrepancy(requestId),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: ["restock-requests"] });
 		},

@@ -93,10 +93,12 @@ export const createRestockRequest = async (vehicleId: string, itemId: string, in
 export const getRestockRequests = async (
 	status?: string,
 	vehicleId?: string,
+	discrepant?: boolean,
 ): Promise<RestockRequest[]> => {
 	const params: Record<string, string> = {};
 	if (status) params.status = status;
 	if (vehicleId) params.vehicleId = vehicleId;
+	if (discrepant) params.discrepant = "true";
 	const response = await api.get<ApiResponse<RestockRequest[]>>("/vehicles/restock-requests", { params });
 	return response.data.data || [];
 };
@@ -145,6 +147,13 @@ export const confirmRestockReceipts = async (
 		`/vehicles/${vehicleId}/restock-requests/confirm-receipt`, input);
 	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to confirm receipt");
 	return response.data.data!;
+};
+
+export const acknowledgeDiscrepancy = async (requestId: string): Promise<void> => {
+	const response = await api.post<ApiResponse<unknown>>(
+		`/vehicles/restock-requests/${requestId}/acknowledge-discrepancy`,
+	);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to acknowledge discrepancy");
 };
 
 // ── Technician vehicle assignment ─────────────────────────────────────────────

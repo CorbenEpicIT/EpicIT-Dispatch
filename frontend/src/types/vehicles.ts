@@ -71,6 +71,7 @@ export interface AddVehicleStockItemInput {
 	inventory_item_id: string;
 	qty_on_hand?: number;
 	qty_min?: number;
+	qty_standard?: number | null;
 }
 
 export interface UpdateVehicleStockItemInput {
@@ -261,6 +262,7 @@ export type VehicleReadiness = {
 	confirmed?: {
 		id: string;
 		confirmed_by: string;
+		confirmed_by_type: "dispatcher" | "technician" | "eod_auto";
 		confirmed_at: string;
 		notes: string | null;
 	};

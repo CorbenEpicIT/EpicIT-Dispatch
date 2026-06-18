@@ -681,18 +681,44 @@ export async function listProvisionalItems(orgId: string): Promise<{ err?: strin
 	}
 }
 
+const approveProvisionalSchema = z.object({
+	initial_warehouse_qty: z.number().int().min(0).optional(),
+});
+
 export async function approveProvisionalItem(
 	itemId: string,
 	orgId: string,
+	data: unknown,
 	context?: UserContext,
 ): Promise<{ err?: string; item?: object }> {
 	try {
-		const claimed = await db.inventory_item.updateMany({
-			where: { id: itemId, organization_id: orgId, provisional: true },
-			data: { provisional: false, approved_at: new Date(), approved_by_id: context?.dispatcherId ?? null },
+		const parsed = approveProvisionalSchema.parse(data ?? {});
+		const item = await db.$transaction(async (tx) => {
+			const claimed = await tx.inventory_item.updateMany({
+				where: { id: itemId, organization_id: orgId, provisional: true },
+				data: { provisional: false, approved_at: new Date(), approved_by_id: context?.dispatcherId ?? null },
+			});
+			if (claimed.count === 0) throw new Error("Provisional item not found");
+
+			if (parsed.initial_warehouse_qty && parsed.initial_warehouse_qty > 0) {
+				await recordMovements(
+					tx,
+					orgId,
+					{ actor_type: context?.dispatcherId ? "dispatcher" : "system", actor_id: context?.dispatcherId },
+					[{
+						inventory_item_id:  itemId,
+						qty:                parsed.initial_warehouse_qty,
+						from_location_type: "external",
+						to_location_type:   "warehouse",
+						reason:             "receive",
+						note:               "Initial warehouse stock set at approval",
+					}],
+				);
+			}
+
+			return tx.inventory_item.findFirst({ where: { id: itemId } });
 		});
-		if (claimed.count === 0) return { err: "Provisional item not found" };
-		const item = await db.inventory_item.findFirst({ where: { id: itemId } });
+
 		await logActivity({
 			event_type: "inventory_item.approved",
 			action: "updated",
@@ -700,10 +726,15 @@ export async function approveProvisionalItem(
 			entity_id: itemId,
 			organization_id: orgId,
 			...getActorInfo(context),
-			changes: { provisional: { old: true, new: false } },
+			changes: {
+				provisional: { old: true, new: false },
+				...(parsed.initial_warehouse_qty ? { initial_warehouse_qty: { old: 0, new: parsed.initial_warehouse_qty } } : {}),
+			},
 		});
 		return { item: item! };
 	} catch (e: unknown) {
+		if (e instanceof Error && e.message === "Provisional item not found") return { err: e.message };
+		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
 		log.error({ err: e }, "Failed to approve provisional item");
 		return { err: "Failed to approve provisional item" };
 	}

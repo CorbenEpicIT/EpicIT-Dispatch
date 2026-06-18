@@ -17,26 +17,51 @@ import {
 	ShieldUser,
 	Truck,
 	UserRoundCog,
-	Plus
+	Plus,
+	X,
+	AlertTriangle,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
 import { usePermission, useAnyPermission } from "../hooks/usePermission";
 import DispatcherUserMenu from "../components/nav/DispatcherUserMenu";
 import CreatePanel from "../components/nav/CreatePanel";
+import { socket } from "../lib/socket";
+
+interface EodShortfallEvent {
+	vehicle_name: string;
+	date: string;
+	shortfalls: { name: string; qty_shortfall: number }[];
+}
+
+interface ShortfallToast extends EodShortfallEvent {
+	id: number;
+}
 
 export default function DispatchLayout() {
 	const { logout } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const navigationCount = useRef(0);
+	const toastIdRef = useRef(0);
 	const [expanded, setExpanded] = useState(false);
 	const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
+	const [shortfallToasts, setShortfallToasts] = useState<ShortfallToast[]>([]);
 	const { user } = useAuthStore();
 
 	useEffect(() => {
 		navigationCount.current++;
 	}, [location.pathname]);
+
+	useEffect(() => {
+		const handler = (event: EodShortfallEvent) => {
+			const id = ++toastIdRef.current;
+			setShortfallToasts((prev) => [...prev, { ...event, id }]);
+			setTimeout(() => setShortfallToasts((prev) => prev.filter((t) => t.id !== id)), 12000);
+		};
+		socket.on("vehicle:eod_shortfall", handler);
+		return () => { socket.off("vehicle:eod_shortfall", handler); };
+	}, []);
 	const handleBack = () => {
 		const path = location.pathname;
 		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -230,6 +255,39 @@ export default function DispatchLayout() {
 				</main>
 			</div>
 			<CreatePanel isOpen={isCreatePanelOpen} onClose={() => setIsCreatePanelOpen(false)} />
+
+			{/* EOD shortfall toasts */}
+			{shortfallToasts.length > 0 && (
+				<div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
+					{shortfallToasts.map((toast) => (
+						<div
+							key={toast.id}
+							className="bg-surface border border-warning-border rounded-lg shadow-lg px-4 py-3 flex gap-3"
+						>
+							<AlertTriangle size={16} className="text-warning-text flex-shrink-0 mt-0.5" />
+							<div className="flex-1 min-w-0">
+								<div className="text-sm font-semibold text-text-primary">
+									EOD shortfall — {toast.vehicle_name}
+								</div>
+								<div className="text-xs text-text-muted mt-0.5">{toast.date}</div>
+								<ul className="mt-1 space-y-0.5">
+									{toast.shortfalls.map((s, i) => (
+										<li key={i} className="text-xs text-warning-text">
+											{s.name}: -{s.qty_shortfall}
+										</li>
+									))}
+								</ul>
+							</div>
+							<button
+								onClick={() => setShortfallToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+								className="text-text-faint hover:text-text-secondary flex-shrink-0"
+							>
+								<X size={14} />
+							</button>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }

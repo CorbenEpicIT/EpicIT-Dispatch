@@ -97,15 +97,25 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 
 				{/* Confirmation record */}
 				{readiness.confirmed && (
-					<div className="text-xs text-text-muted border border-success/30 rounded px-3 py-2 bg-success/5">
-						<span className="font-medium text-success">Confirmed</span> by{" "}
-						{readiness.confirmed.confirmed_by} at{" "}
-						{new Date(readiness.confirmed.confirmed_at).toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
+					<div className="text-xs text-text-muted border border-success/30 rounded px-3 py-2 bg-success/5 space-y-1">
+						<div className="flex items-center gap-2">
+							<span className="font-medium text-success">Confirmed</span>
+							{readiness.confirmed.confirmed_by_type === "eod_auto" && (
+								<span className="text-[10px] font-semibold bg-primary/15 text-primary px-1.5 py-0.5 rounded">EOD auto-confirmed</span>
+							)}
+							{readiness.confirmed.confirmed_by_type === "technician" && (
+								<span className="text-[10px] font-semibold bg-surface-raised text-text-secondary px-1.5 py-0.5 rounded">Tech confirmed</span>
+							)}
+						</div>
+						<div>
+							by {readiness.confirmed.confirmed_by} at{" "}
+							{new Date(readiness.confirmed.confirmed_at).toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</div>
 						{readiness.confirmed.notes && (
-							<div className="mt-1 italic">"{readiness.confirmed.notes}"</div>
+							<div className="italic">"{readiness.confirmed.notes}"</div>
 						)}
 					</div>
 				)}
