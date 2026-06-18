@@ -31,10 +31,6 @@ export const updateTechnicianSchema = z
 		name: z.string().min(1, "Technician name is required").optional(),
 		email: z.string().email("Valid email is required").optional(),
 		phone: z.string().min(1, "Phone number is required").optional(),
-		password: z
-			.string()
-			.min(8, "Password must be at least 8 characters")
-			.optional(),
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
 		status: technicianStatusEnum.optional(),
@@ -64,7 +60,6 @@ export const updateTechnicianSchema = z
 			data.name !== undefined ||
 			data.email !== undefined ||
 			data.phone !== undefined ||
-			data.password !== undefined ||
 			data.title !== undefined ||
 			data.description !== undefined ||
 			data.status !== undefined ||

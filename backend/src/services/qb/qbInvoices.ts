@@ -42,6 +42,27 @@ export interface QBImportableInvoice {
 	alreadyImported: boolean;
 }
 
+export interface QBInvoicePrefill {
+	qbInvoiceId: string;
+	docNumber: string | null;
+	txnDate: string | null;
+	dueDate: string | null;
+	memo: string | null;
+	customerId: string | null;
+	customerName: string | null;
+	clientId: string | null;
+	alreadyImported: boolean;
+	lineItems: Array<{
+		name: string;
+		description: string | null;
+		quantity: number;
+		unit_price: number;
+		inventory_item_id: string | null;
+	}>;
+}
+
+const inFlightPushes = new Map<string, Promise<void>>();
+
 const createOneImportedInvoice = async (
 	orgId: string,
 	clientId: string,
@@ -171,25 +192,6 @@ export const getImportableQBInvoices = async (
 		alreadyImported: seen.has(i.Id),
 	}));
 };
-
-export interface QBInvoicePrefill {
-	qbInvoiceId: string;
-	docNumber: string | null;
-	txnDate: string | null;
-	dueDate: string | null;
-	memo: string | null;
-	customerId: string | null;
-	customerName: string | null;
-	clientId: string | null;
-	alreadyImported: boolean;
-	lineItems: Array<{
-		name: string;
-		description: string | null;
-		quantity: number;
-		unit_price: number;
-		inventory_item_id: string | null;
-	}>;
-}
 
 // Full detail of a single QB invoice, mapped to the create-invoice form shape.
 // Used to auto-fill the form when a user picks an invoice in the import dropdown.
@@ -323,6 +325,20 @@ export const importQBInvoices = async (orgId: string, qbInvoiceIds: string[]) =>
 };
 
 export async function pushInvoice(invoiceId: string, orgId: string): Promise<void> {
+	const prior = inFlightPushes.get(invoiceId) ?? Promise.resolve();
+	const run = prior.catch(() => {}).then(() => doPushInvoice(invoiceId, orgId));
+	inFlightPushes.set(
+		invoiceId,
+		run.finally(() => {
+			if (inFlightPushes.get(invoiceId) === run) {
+				inFlightPushes.delete(invoiceId);
+			}
+		})
+	);
+	return run;
+};
+
+async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 	const sdb = getScopedDb(orgId);
 	const invoice = await sdb.invoice.findFirst({
 		where: { id: invoiceId },
@@ -399,16 +415,22 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 		});
 	}
 
-	if (invoice.qb_invoice_id) {
-		const existing = (await qbFetch(
-			orgId,
-			"GET",
-			`/invoice/${invoice.qb_invoice_id}`,
-		)) as any;
+	
+	let qbInvoiceId: string | null = invoice.qb_invoice_id ?? null;
+	if (!qbInvoiceId) {
+		const existingByDoc = await qbQueryAll<{ Id: string }>(
+				orgId,
+				"Invoice",
+				`DocNumber = '${invoice.invoice_number}'`,
+		);
+		if (existingByDoc.length > 0) qbInvoiceId = existingByDoc[0].Id;
+	}
 
+	if (qbInvoiceId) {
+		const existing = (await qbFetch(orgId, "GET", `/invoice/${qbInvoiceId}`)) as any;
 		await qbFetch(orgId, "POST", "/invoice", {
 			sparse: true,
-			Id: invoice.qb_invoice_id,
+			Id: qbInvoiceId,
 			SyncToken: existing.Invoice.SyncToken,
 			CustomerRef: { value: customerId },
 			Line: lines,
@@ -416,10 +438,10 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 			...(invoice.memo && { CustomerMemo: { value: invoice.memo } }),
 			...(primaryEmail && { BillEmail: { Address: primaryEmail } }),
 		});
-
 		await sdb.invoice.update({
 			where: { id: invoiceId },
-			data: { qb_sync_status: "synced" },
+			// persist the id in case we resolved it via the Doc
+			data: { qb_invoice_id: qbInvoiceId, qb_sync_status: "synced" },
 		});
 	} else {
 		const created = (await qbFetch(orgId, "POST", "/invoice", {
@@ -485,4 +507,4 @@ export async function sendInvoiceEmail(invoiceId: string, orgId: string, sendTo:
 		BillEmail: { Address: sendTo },
 		EmailStatus: "NeedToSend",
 	});
-}
+};
