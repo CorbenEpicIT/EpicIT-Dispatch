@@ -167,6 +167,15 @@ export const getStockStatusDotColor = (status: StockStatus): string => {
 	}
 };
 
+export const getStockRingColor = (status: StockStatus): string => {
+	switch (status) {
+		case 'out_of_stock': return '#ef4444';
+		case 'low':          return '#eab308';
+		case 'sufficient':   return '#22c55e';
+		default:             return '#3f3f46';
+	}
+};
+
 /* ────────────────────────────────────────────────────────────── */
 
 // Admin is basically dispatcher with extra permissions
