@@ -25,6 +25,8 @@ import {
 	lockInvoiceTaxSnapshot,
 	invoiceInclude,
 } from "../services/invoiceService.js";
+import { logExternalSync } from "../services/qb/qbSyncLog.js";
+import { pushPaymentToQB, deleteQBPayment } from "../services/qb/qbPayments.js"
 
 // ============================================================================
 // INVOICE CRUD
@@ -587,6 +589,17 @@ export const insertInvoicePayment = async (
 			user_agent: context?.userAgent,
 		});
 
+		isQBConnected(organizationId)
+		.then((connected) => (connected ? pushPaymentToQB(created.id, organizationId) : null))
+		.catch((e) => logExternalSync({
+			provider: "quickbooks",
+			external_id: created.id,
+			entity_type: "payment",
+			action: "push_failed",
+			payload: { message: String(e) },
+			organization_id: organizationId
+		}));
+
 		return { err: "", item: created };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -643,6 +656,22 @@ export const deleteInvoicePayment = async (
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,
 		});
+
+		// Mirror to QB only if this payment was actually synced. Capture the QB id
+		// before the row is gone and pass it directly (the row is already deleted).
+		const qbPaymentId = existing.qb_payment_id;
+		if (qbPaymentId) {
+			isQBConnected(organizationId)
+			.then((connected) => (connected ? deleteQBPayment(qbPaymentId, organizationId) : null))
+			.catch((e) => logExternalSync({
+				provider: "quickbooks",
+				external_id: qbPaymentId,
+				entity_type: "payment",
+				action: "delete_failed",
+				payload: { message: String(e) },
+				organization_id: organizationId
+			}));
+		}
 
 		return { err: "", item: { id: paymentId } };
 	} catch (e) {

@@ -1607,13 +1607,17 @@ model log {
 }
 
 model external_sync_log {
-  id            String   @id @default(uuid())
-  provider      String
-  entity_type   String   // "customer", "invoice"
-  external_id   String
-  action        String   // "upsert", "delete"
-  payload       Json
-  created_at    DateTime @default(now())
+  id              String   @id @default(uuid())
+  provider        String
+  entity_type     String   // "customer", "invoice"
+  external_id     String
+  action          String   // "upsert", "delete"
+  payload         Json
+  created_at      DateTime @default(now())
+  organization_id String?
+
+  @@index([organization_id, created_at])
+  @@index([provider, external_id])
 }
 
 // ============================================================================
@@ -1761,6 +1765,7 @@ model invoice_payment {
   recorded_by_tech_id       String?
   recorded_by_tech          technician? @relation(fields: [recorded_by_tech_id], references: [id], onDelete: SetNull)
   created_at                DateTime    @default(now())
+  qb_payment_id             String?     @unique
 
   @@index([invoice_id])
   @@index([paid_at])
