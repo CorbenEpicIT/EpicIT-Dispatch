@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, ArrowRight, RotateCw } from "lucide-react";
 import TimePicker from "../TimePicker";
 import type { OccurrenceWithPlan } from "./dashboardCalendarUtils";
@@ -195,7 +196,7 @@ export default function OccurrenceReschedulePopup({
 		};
 	}
 
-	return (
+	return createPortal(
 		<>
 			{/* Backdrop */}
 			<div
@@ -838,6 +839,7 @@ export default function OccurrenceReschedulePopup({
 					</div>
 				</div>
 			</div>
-		</>
+		</>,
+		document.body,
 	);
 }

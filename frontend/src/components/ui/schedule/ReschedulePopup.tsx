@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, ArrowRight, RotateCcw, RotateCw } from "lucide-react";
 import TimePicker from "../TimePicker";
 import type { UpdateJobVisitInput } from "../../../types/jobs";
@@ -249,7 +250,7 @@ export default function ReschedulePopup({
 		onSave(data);
 	}
 
-	return (
+	return createPortal(
 		<>
 			{/* Backdrop */}
 			<div
@@ -561,6 +562,7 @@ export default function ReschedulePopup({
 					</button>
 				</div>
 			</div>
-		</>
+		</>,
+		document.body,
 	);
 }
