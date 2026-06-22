@@ -152,6 +152,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 					image_urls: parsed.image_urls,
 					alert_emails_enabled: parsed.alert_emails_enabled,
 					alert_email: parsed.alert_email ?? null,
+					alt_ids: parsed.alt_ids.map((s) => s.trim()).filter(Boolean),
 				},
 				include: { tags: true },
 			});
@@ -233,12 +234,18 @@ export const updateInventoryItem = async (
 			"image_urls",
 			"alert_emails_enabled",
 			"alert_email",
+			"alt_ids",
 		] as const);
 
 		const updated = await sdb.$transaction(async (tx) => {
 			const item = await tx.inventory_item.update({
 				where: { id: itemId },
-				data: parsed,
+				data: {
+					...parsed,
+					...(parsed.alt_ids !== undefined && {
+						alt_ids: parsed.alt_ids.map((s) => s.trim()).filter(Boolean),
+					}),
+				},
 				include: { tags: true },
 			});
 

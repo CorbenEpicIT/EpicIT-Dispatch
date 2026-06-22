@@ -78,6 +78,7 @@ function makeItem(overrides: Record<string, unknown> = {}) {
 		is_active: true,
 		low_stock_threshold: null as number | null,
 		image_urls: [] as string[],
+		alt_ids: [] as string[],
 		alert_emails_enabled: false,
 		alert_email: null as string | null,
 		organization_id: null,
@@ -252,6 +253,69 @@ describe("inventoryController", () => {
 
 			await createInventoryItem({ name: "Widget", location: "Shelf A" });
 			expect(mockRecordMovements).not.toHaveBeenCalled();
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// createInventoryItem — alt_ids
+	// ---------------------------------------------------------------------------
+	describe("createInventoryItem — alt_ids", () => {
+		it("strips whitespace-only entries from alt_ids on create", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ alt_ids: ["MFR-001"] }));
+
+			await createInventoryItem({
+				name: "Widget",
+				location: "Shelf A",
+				alt_ids: ["MFR-001", "  ", ""],
+			});
+
+			expect(tx.inventory_item.create.mock.calls[0][0].data.alt_ids).toEqual(["MFR-001"]);
+		});
+
+		it("defaults alt_ids to [] when not provided on create", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			await createInventoryItem({ name: "Widget", location: "Shelf A" });
+
+			expect(tx.inventory_item.create.mock.calls[0][0].data.alt_ids).toEqual([]);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// updateInventoryItem — alt_ids
+	// ---------------------------------------------------------------------------
+	describe("updateInventoryItem — alt_ids", () => {
+		it("strips whitespace-only entries from alt_ids on update", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem({ alt_ids: ["ABC"] }));
+
+			await updateInventoryItem("item-1", { alt_ids: ["ABC", "  ", ""] }, "org-1");
+
+			expect(tx.inventory_item.update.mock.calls[0][0].data.alt_ids).toEqual(["ABC"]);
+		});
+
+		it("omits alt_ids from update data when not provided", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem());
+
+			await updateInventoryItem("item-1", { name: "New Name" }, "org-1");
+
+			const updateData = tx.inventory_item.update.mock.calls[0][0].data;
+			expect(updateData.alt_ids).toBeUndefined();
+		});
+
+		it("clears alt_ids when explicitly set to empty array on update", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ alt_ids: ["OLD-123"] }));
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem({ alt_ids: [] }));
+
+			await updateInventoryItem("item-1", { alt_ids: [] }, "org-1");
+
+			expect(tx.inventory_item.update.mock.calls[0][0].data.alt_ids).toEqual([]);
 		});
 	});
 

@@ -80,7 +80,8 @@ export default function InventoryPage() {
 				(item) =>
 					item.name.toLowerCase().includes(q) ||
 					(item.sku && item.sku.toLowerCase().includes(q)) ||
-					item.location.toLowerCase().includes(q),
+					item.location.toLowerCase().includes(q) ||
+					(item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false),
 			);
 		}
 
@@ -296,7 +297,7 @@ export default function InventoryPage() {
 						className={
 							viewMode === "card"
 								? "grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3"
-								: "grid grid-cols-1 min-[820px]:grid-cols-2 gap-2"
+								: "flex flex-col gap-2"
 						}
 					>
 						{filteredItems.map((item) => (

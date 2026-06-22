@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Trash2 } from "lucide-react";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { TemplateSearch, type TemplateSearchResult } from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -66,6 +66,7 @@ export default function CreateInventoryItem({
 	const [alertEmailsEnabled, setAlertEmailsEnabled] = useState(false);
 	const [alertEmail, setAlertEmail] = useState("");
 	const [imageUrls, setImageUrls] = useState<string[]>([]);
+	const [altIds, setAltIds] = useState<string[]>([]);
 	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 	const [isUploading, setIsUploading] = useState(false);
 	const [uploadErrors, setUploadErrors] = useState<{ name: string; reason: string }[]>([]);
@@ -146,6 +147,7 @@ export default function CreateInventoryItem({
 			setAlertEmail(existingItem.alert_email || "");
 			setImageUrls(existingItem.image_urls ?? []);
 			setSelectedTagIds(existingItem.tags?.map((t) => t.id) ?? []);
+			setAltIds(existingItem.alt_ids ?? []);
 		}
 	}, [isOpen, existingItem]);
 
@@ -165,6 +167,7 @@ export default function CreateInventoryItem({
 		setAlertEmailsEnabled(false);
 		setAlertEmail("");
 		setImageUrls([]);
+		setAltIds([]);
 		setSelectedTagIds([]);
 		setUploadErrors([]);
 		setIsLoading(false);
@@ -277,6 +280,8 @@ export default function CreateInventoryItem({
 		setIsLoading(true);
 		setSubmitError(null);
 
+		const strippedAltIds = altIds.map((s) => s.trim()).filter(Boolean);
+
 		try {
 			if (isEdit && existingItem) {
 				const data: UpdateInventoryItemInput = {
@@ -295,6 +300,7 @@ export default function CreateInventoryItem({
 					alert_email: alertEmailsEnabled
 						? alertEmail.trim() || null
 						: null,
+					alt_ids: strippedAltIds,
 				};
 				await updateMutation.mutateAsync({ itemId: existingItem.id, data });
 				await setTagsMutation.mutateAsync({ itemId: existingItem.id, tagIds: selectedTagIds });
@@ -318,6 +324,7 @@ export default function CreateInventoryItem({
 					alert_email: alertEmailsEnabled
 						? alertEmail.trim() || null
 						: null,
+					alt_ids: strippedAltIds,
 				};
 				// importQBItem already set the sku from QB (or nulled it if globally
 				// taken). Only re-send sku if the user actually changed it in the form
@@ -348,6 +355,7 @@ export default function CreateInventoryItem({
 					alert_email: alertEmailsEnabled
 						? alertEmail.trim() || null
 						: null,
+					alt_ids: strippedAltIds,
 				};
 				const created = await createMutation.mutateAsync(data);
 				if (selectedTagIds.length > 0) {
@@ -461,6 +469,51 @@ export default function CreateInventoryItem({
 									disabled={isLoading}
 								/>
 							</div>
+						</div>
+
+						<div className="min-w-0">
+							<label className={LABEL}>Alternate IDs</label>
+							{altIds.length > 0 && (
+								<div className="grid grid-cols-2 gap-2 lg:gap-3 mb-1.5 min-w-0">
+									{altIds.map((id, i) => (
+										<div key={i} className="flex items-center gap-1 min-w-0">
+											<input
+												type="text"
+												value={id}
+												onChange={(e) =>
+													setAltIds(
+														altIds.map((v, j) =>
+															j === i ? e.target.value : v
+														)
+													)
+												}
+												className={INPUT}
+												disabled={isLoading}
+												placeholder="e.g. MFR-12345"
+											/>
+											<button
+												type="button"
+												onClick={() =>
+													setAltIds(altIds.filter((_, j) => j !== i))
+												}
+												disabled={isLoading}
+												aria-label="Remove"
+												className="h-[34px] w-[34px] shrink-0 flex items-center justify-center rounded border border-border text-text-muted hover:text-error hover:border-error transition-colors"
+											>
+												<Trash2 size={14} />
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+							<button
+								type="button"
+								onClick={() => setAltIds([...altIds, ""])}
+								disabled={isLoading}
+								className="text-xs text-primary hover:underline"
+							>
+								+ Add ID
+							</button>
 						</div>
 
 						<div className="min-w-0">
@@ -902,6 +955,15 @@ export default function CreateInventoryItem({
 								<span className="text-text-primary">
 									{imageUrls.length}
 								</span>
+
+								<span className="text-text-tertiary">
+									Alternate IDs
+								</span>
+								<span className="text-text-primary">
+									{altIds.filter((s) => s.trim()).length > 0
+										? String(altIds.filter((s) => s.trim()).length)
+										: "—"}
+								</span>
 							</div>
 						</div>
 					</div>
@@ -940,6 +1002,7 @@ export default function CreateInventoryItem({
 		handleDrop,
 		handleUploadImages,
 		handleRemoveImage,
+		altIds,
 	]);
 
 	return (

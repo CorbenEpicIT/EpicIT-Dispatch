@@ -94,7 +94,8 @@ function InventoryAutofillInput({
 						i.is_active &&
 						(item.name.trim() === "" ||
 							i.name.toLowerCase().includes(item.name.toLowerCase()) ||
-							(i.sku && i.sku.toLowerCase().includes(item.name.toLowerCase()))),
+							(i.sku && i.sku.toLowerCase().includes(item.name.toLowerCase())) ||
+							(i.alt_ids?.some((id) => id.toLowerCase().includes(item.name.toLowerCase())) ?? false)),
 				)
 				.slice(0, 8),
 		[inventoryItems, item.name],

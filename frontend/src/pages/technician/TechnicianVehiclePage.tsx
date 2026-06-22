@@ -191,7 +191,7 @@ function StockItemRow({
 			: item.inventory_item.low_stock_threshold != null &&
 			  warehouseQty <= Number(item.inventory_item.low_stock_threshold)
 			? "text-warning-text"
-			: "text-text-faint";
+			: "text-text-muted";
 
 	const isRestockCandidate = isEmpty || isLow;
 	const isSelected = batchMode && isRestockCandidate && batchQty !== undefined && batchQty > 0;
@@ -207,24 +207,32 @@ function StockItemRow({
 				<div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
 					{item.inventory_item.category && (
 						<>
-							<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-tertiary rounded">
+							<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-secondary rounded">
 								{item.inventory_item.category}
 							</span>
-							<span className="text-[10px] text-border-subtle">·</span>
+							<span className="text-[10px] text-text-faint">·</span>
 						</>
 					)}
-					<span className="text-[10px] text-text-faint">Min {Number(item.qty_min)} {unit}</span>
-					<span className="text-[10px] text-border-subtle">·</span>
+					<span className="text-[10px] text-text-muted">Min {Number(item.qty_min)} {unit}</span>
+					<span className="text-[10px] text-text-faint">·</span>
 					<span className={`text-[10px] tabular-nums ${warehouseColor}`}>
 						Stock {warehouseQty}
 					</span>
+					{item.inventory_item.alt_ids && item.inventory_item.alt_ids.length > 0 && (
+						<>
+							<span className="text-[10px] text-text-faint">·</span>
+							<span className="text-[10px] text-text-muted">
+								{item.inventory_item.alt_ids.join(" · ")}
+							</span>
+						</>
+					)}
 				</div>
 			</div>
 			<div className="text-right shrink-0">
 				<p className={`text-base font-semibold tabular-nums ${qtyColor}`}>
 					{Number(item.qty_on_hand)}
 				</p>
-				<p className="text-[10px] text-text-faint">{unit}</p>
+				<p className="text-[10px] text-text-muted">{unit}</p>
 			</div>
 			{batchMode && isRestockCandidate && onBatchQtyChange ? (
 				<div className="flex items-center gap-1 shrink-0">
@@ -526,7 +534,8 @@ export default function TechnicianVehiclePage() {
 			const matchesSearch =
 				!q ||
 				item.inventory_item.name.toLowerCase().includes(q) ||
-				(item.inventory_item.category?.toLowerCase().includes(q) ?? false);
+				(item.inventory_item.category?.toLowerCase().includes(q) ?? false) ||
+				(item.inventory_item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false);
 			const matchesCategory =
 				selectedCategories.length === 0 ||
 				selectedCategories.includes(item.inventory_item.category ?? "");

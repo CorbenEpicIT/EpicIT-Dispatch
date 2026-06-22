@@ -251,7 +251,10 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 	const results = allInventory.filter((item) => {
 		if (existingIds.has(item.id)) return false;
 		if (!search.trim()) return true;
-		return item.name.toLowerCase().includes(search.toLowerCase());
+		return (
+			item.name.toLowerCase().includes(search.toLowerCase()) ||
+			item.alt_ids?.some((id) => id.toLowerCase().includes(search.toLowerCase()))
+		);
 	}).slice(0, 12);
 
 	const handleSelect = async (inventoryItemId: string) => {

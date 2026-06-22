@@ -171,7 +171,8 @@ function StockPartPicker({
 		return stockItems.filter(
 			(i) =>
 				i.inventory_item.name.toLowerCase().includes(q) ||
-				(i.inventory_item.category?.toLowerCase().includes(q) ?? false)
+				(i.inventory_item.category?.toLowerCase().includes(q) ?? false) ||
+				(i.inventory_item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false)
 		);
 	}, [stockItems, search]);
 
@@ -300,6 +301,11 @@ function StockPartPicker({
 										/>
 									)}
 								</span>
+								{item.inventory_item.alt_ids && item.inventory_item.alt_ids.length > 0 && (
+									<span>
+										{" · "}{item.inventory_item.alt_ids.join(" · ")}
+									</span>
+								)}
 							</p>
 						</div>
 						{(() => {
