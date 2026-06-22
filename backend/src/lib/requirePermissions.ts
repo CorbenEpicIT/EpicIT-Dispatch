@@ -120,3 +120,13 @@ export const requirePermissionOrSelf = (permission: string, idParam = "id") => (
     }
     next();
 };
+
+export const requireAnyPermissionOrSelf = (permissions: string[], idParam = "id") => (req: Request, res: Response, next: NextFunction) => {
+    if (req.user?.role === "admin") return next();
+    if (req.user?.uid === req.params[idParam]) return next();
+    const perms: string[] = (req.user?.permissions as string[]) || [];
+    if (!permissions.some((p) => perms.includes(p))) {
+        return res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+    }
+    next();
+};
