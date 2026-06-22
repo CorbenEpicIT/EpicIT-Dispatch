@@ -10,6 +10,7 @@ const refreshClient = axios.create({
 	baseURL: BASE_URL,
 	withCredentials: true,
 });
+const AUTH_PATHS = ["/login", "/refresh-token", "/otp-verify", "/reset-password", "/register"];
 let isRefreshing = false;
 let failedQueue: { resolve: (token: string) => void; reject: (error?: any) => void }[] = [];
 const processQueue = (error: any, token: string | null = null) => {
@@ -33,7 +34,8 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use((response) => response, async (error) => {
 	const originalRequest = error.config;
-	if (error.response?.status !== 401 || originalRequest._retry) {
+	const url = originalRequest?.url ?? "";
+	if (error.response?.status !== 401 || originalRequest._retry || AUTH_PATHS.some((path) => url.includes(path))) {
 		return Promise.reject(error);
 	}
 	if (isRefreshing) {
