@@ -168,26 +168,27 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		return () => ro.disconnect();
 	}, []);
 
-	// Close visit popup on outside click
+	// Close visit popup on outside click.
+	// Changed to "click" event listener since mousedown was messing with toggle feature that was added
 	useEffect(() => {
 		if (!clickedVisit) return;
 		function handle(e: MouseEvent) {
 			if (popupRef.current && !popupRef.current.contains(e.target as Node))
 				setClickedVisit(null);
 		}
-		document.addEventListener("mousedown", handle);
-		return () => document.removeEventListener("mousedown", handle);
+		document.addEventListener("click", handle);
+		return () => document.removeEventListener("click", handle);
 	}, [clickedVisit]);
 
-	// Close occurrence popup on outside click
+	// Close occurrence popup on outside click (see note above on "click" vs "mousedown")
 	useEffect(() => {
 		if (!clickedOccurrence) return;
 		function handle(e: MouseEvent) {
 			if (occurrencePopupRef.current && !occurrencePopupRef.current.contains(e.target as Node))
 				setClickedOccurrence(null);
 		}
-		document.addEventListener("mousedown", handle);
-		return () => document.removeEventListener("mousedown", handle);
+		document.addEventListener("click", handle);
+		return () => document.removeEventListener("click", handle);
 	}, [clickedOccurrence]);
 
 	const { mutateAsync: updateVisit } = useUpdateJobVisitMutation();

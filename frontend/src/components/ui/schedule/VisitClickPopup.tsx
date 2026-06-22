@@ -3,6 +3,7 @@ import { Clock } from "lucide-react";
 import type { VisitWithJob } from "./dashboardCalendarUtils";
 import type { Technician } from "../../../types/technicians";
 import { visitStartLabel, visitEndLabel } from "./scheduleBoardUtils";
+import { createPortal } from "react-dom"
 
 interface VisitClickPopupProps {
 	visit: VisitWithJob;
@@ -39,7 +40,7 @@ export default function VisitClickPopup({
 			? `${timeStart} – ${visitEndLabel(visit)}`
 			: `${timeStart} · finish when done`;
 
-	return (
+	return createPortal(
 		<div
 			ref={ref}
 			style={{
@@ -268,6 +269,7 @@ export default function VisitClickPopup({
 					</button>
 				)}
 			</div>
-		</div>
+		</div>,
+		document.body,
 	);
 }
