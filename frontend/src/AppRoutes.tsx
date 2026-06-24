@@ -21,7 +21,10 @@ import TechniciansPage from "./pages/dispatch/TechniciansPage";
 import TechnicianDetailsPage from "./pages/dispatch/TechnicianDetailPage";
 import MapPage from "./pages/dispatch/MapPage";
 import ReportingPage from "./pages/dispatch/ReportingPage";
+import KPIPage from "./pages/dispatch/KPIPage";
 import MileageReportPage from "./pages/dispatch/MileageReportPage";
+import TimesheetsReportPage from "./pages/dispatch/TimesheetsReportPage";
+import ReorderForecastPage from "./pages/dispatch/ReorderForecastPage";
 import QuotesPage from "./pages/dispatch/QuotesPage";
 import QuoteDetailPage from "./pages/dispatch/QuoteDetailPage";
 import AssignTechnicianPage from "./pages/dispatch/AssignTechnicianPage";
@@ -127,7 +130,10 @@ export default function AppRoutes() {
 				/>
 				<Route path="map" element={<MapPage />} />
 				<Route path="reporting" element={<RequirePermission permission="view_reports"><ReportingPage /></RequirePermission>} />
+				<Route path="kpi" element={<RequirePermission permission="view_reports"><KPIPage /></RequirePermission>} />
 				<Route path="mileage" element={<MileageReportPage />} />
+				<Route path="timesheets" element={<RequirePermission permission="view_reports"><TimesheetsReportPage /></RequirePermission>} />
+				<Route path="inventory/reorder-forecast" element={<RequirePermission permission="view_reports"><ReorderForecastPage /></RequirePermission>} />
 				<Route path="inventory" element={<RequirePermission permission="view_inventory"><InventoryPage /></RequirePermission>} />
 				<Route path="quotes" element={<RequirePermission permission="view_quotes"><QuotesPage /></RequirePermission>} />
 				<Route path="quotes/:quoteId" element={<RequirePermission permission="view_quotes"><QuoteDetailPage /></RequirePermission>} />

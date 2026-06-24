@@ -157,6 +157,12 @@ export const WIDGET_CATALOG: Record<string, {
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
+    "report-leads-by-source":{  label: "Leads by Source",
+                                defaultW: 4,  defaultH: 9,  minW: 3, minH: 6, maxH: 13, maxW: 6,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
+                                ]
+                            },
     "report-quote-pipeline":{   label: "Quote Pipeline",
                                 defaultW: 3,  defaultH: 7,  minW: 3, minH: 7, maxH: 13, maxW: 6,
                                 responsiveConstraints: [
@@ -175,7 +181,13 @@ export const WIDGET_CATALOG: Record<string, {
                                     { atWidth: 800, minW: 4, maxW: 12, maxH: 8 },
                                 ]
                             },
-    
+    "report-aged-receivables-bar":{ label: "Aged Receivables (Bars)",
+                                defaultW: 4,  defaultH: 7,  minW: 3, minH: 6, maxH: 12, maxW: 6,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
+                                ]
+                            },
+
 };
 
 export function addWidget(id: string, currentLayout: Layout, cols = 12): Layout {

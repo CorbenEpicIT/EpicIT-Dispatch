@@ -4,10 +4,14 @@ import type {
 	OverviewResponse,
 	RevenueYTDResponse,
 	RevenueByJobTypeResponse,
+	LeadsBySourceResponse,
 	UnscheduledRevenueResponse,
 	QuotePipelineResponse,
 	ArrivalPerformanceResponse,
 	MileageReportVisit,
+	TimesheetReportEntry,
+	ReorderForecastRow,
+	AgedReceivablesResponse,
 } from "../types/reports";
 
 // ============================================================================
@@ -63,6 +67,24 @@ export const getRevenueByJobType = async (
 
 	if (!response.data.data) {
 		throw new Error("Failed to fetch revenue by job type");
+	}
+
+	return response.data.data;
+};
+
+export const getLeadsBySource = async (
+	startDate: string,
+	endDate: string,
+): Promise<LeadsBySourceResponse> => {
+	const params: Record<string, string> = { startDate, endDate };
+
+	const response = await api.get<ApiResponse<LeadsBySourceResponse>>(
+		"/reports/leads-by-source",
+		{ params },
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch leads by source");
 	}
 
 	return response.data.data;
@@ -128,5 +150,45 @@ export const getMileageReport = async (
 		{ params },
 	);
 	if (!response.data.data) throw new Error("Failed to fetch mileage report");
+	return response.data.data;
+};
+
+export const getTimesheetsReport = async (
+	startDate?: string,
+	endDate?: string,
+): Promise<TimesheetReportEntry[]> => {
+	const params: Record<string, string> = {};
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+
+	const response = await api.get<ApiResponse<TimesheetReportEntry[]>>(
+		"/reports/timesheets",
+		{ params },
+	);
+	if (!response.data.data) throw new Error("Failed to fetch timesheets report");
+	return response.data.data;
+};
+
+export const getReorderForecast = async (): Promise<ReorderForecastRow[]> => {
+	const response = await api.get<ApiResponse<ReorderForecastRow[]>>(
+		"/reports/inventory/reorder-forecast",
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch reorder forecast");
+	}
+
+	return response.data.data;
+};
+
+export const getAgedReceivables = async (): Promise<AgedReceivablesResponse> => {
+	const response = await api.get<ApiResponse<AgedReceivablesResponse>>(
+		"/reports/receivables/aging",
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch aged receivables");
+	}
+
 	return response.data.data;
 };

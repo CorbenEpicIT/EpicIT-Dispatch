@@ -194,8 +194,16 @@ export default function DispatchLayout() {
 					{usePermission("view_reports") && (
 						<SideNavItem
 							expanded={expanded}
-							to="/dispatch/reporting"
+							to="/dispatch/kpi"
 							icon={<ChartColumnDecreasing size={ICON_SIZE} />}
+							label="KPIs"
+						/>
+					)}
+					{usePermission("view_reports") && (
+						<SideNavItem
+							expanded={expanded}
+							to="/dispatch/reporting"
+							icon={<FileText size={ICON_SIZE} />}
 							label="Reporting"
 						/>
 					)}

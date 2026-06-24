@@ -62,7 +62,7 @@ export default function OverviewCard({
 						{isPositive ? "+" : ""}
 						{changePercent}%
 					</span>
-					<span className="text-xs text-text-muted">vs prev</span>
+					<span className="text-xs text-text-muted">vs prev month</span>
 
 					{tooltip && showTooltip && (
 						<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-64 bg-surface border border-border rounded-lg shadow-xl p-3 pointer-events-none">

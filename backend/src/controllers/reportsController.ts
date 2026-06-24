@@ -352,6 +352,51 @@ export const getRevenueByJobType = async (
 };
 
 // ============================================================================
+// LEADS BY SOURCE
+// ============================================================================
+
+export const getLeadsBySource = async (
+	startDate: string,
+	endDate: string,
+	organizationId: string,
+) => {
+	const start = new Date(startDate);
+	start.setUTCHours(0, 0, 0, 0);
+	const end = new Date(endDate);
+	end.setUTCHours(23, 59, 59, 999);
+	const sdb = getScopedDb(organizationId);
+
+	// Count of requests/leads grouped by the source
+	const rows = await sdb.$queryRaw<{ source: string; count: number }[]>`
+		SELECT
+			LOWER(TRIM(source)) AS source,
+			COUNT(*)::int AS count
+		FROM request
+		WHERE organization_id = ${organizationId}
+			AND created_at >= ${start}
+			AND created_at <= ${end}
+			AND source IS NOT NULL
+			AND TRIM(source) <> ''
+		GROUP BY LOWER(TRIM(source))
+		ORDER BY count DESC
+	`;
+
+	const toTitleCase = (s: string) =>
+		s
+			.split(/\s+/)
+			.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+			.join(" ");
+
+	let total = 0;
+	const data = rows.map((row) => {
+		total += row.count;
+		return { source: toTitleCase(row.source), count: row.count };
+	});
+
+	return { data, total };
+};
+
+// ============================================================================
 // UNSCHEDULED REVENUE
 // ============================================================================
 
@@ -566,4 +611,191 @@ export const getMileageReport = async (
 		visitStatus: v.status,
 		technicianNames: v.visit_techs.map((vt) => vt.tech.name).join(", ") || "Unassigned",
 	}));
+};
+
+// ============================================================================
+// TIMESHEETS REPORT
+// ============================================================================
+
+export interface TimesheetReportRow {
+	shiftId: string;
+	technicianId: string;
+	technicianName: string;
+	startedAt: string;
+	endedAt: string;
+	grossHours: number;
+	breakHours: number;
+	payableHours: number;
+}
+
+export const getTimesheetReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+): Promise<TimesheetReportRow[]> => {
+	const sdb = getScopedDb(organizationId);
+
+	const dateFilter: { gte?: Date; lte?: Date } = {};
+	if (startDate) {
+		const s = new Date(startDate);
+		s.setUTCHours(0, 0, 0, 0);
+		dateFilter.gte = s;
+	}
+	if (endDate) {
+		const e = new Date(endDate);
+		e.setUTCHours(23, 59, 59, 999);
+		dateFilter.lte = e;
+	}
+
+	const shifts = await sdb.technician_shift.findMany({
+		where: {
+			org_id: organizationId,
+			ended_at: { not: null },
+			payable_hours: { not: null },
+			...(Object.keys(dateFilter).length && { started_at: dateFilter }),
+		},
+		include: {
+			tech: { select: { id: true, name: true } },
+		},
+		orderBy: { started_at: "desc" },
+	});
+
+	return shifts.map((s) => ({
+		shiftId: s.id,
+		technicianId: s.tech.id,
+		technicianName: s.tech.name,
+		startedAt: s.started_at.toISOString(),
+		endedAt: s.ended_at!.toISOString(),
+		grossHours: Number(s.gross_hours ?? 0),
+		breakHours: Number(s.break_hours ?? 0),
+		payableHours: Number(s.payable_hours),
+	}));
+};
+
+// ============================================================================
+// INVENTORY REORDER FORECAST
+// ============================================================================
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+//Forecast of the last 90 days of inventory usage
+export const getInventoryReorderForecast = async (
+	organizationId: string,
+	opts: { lookbackDays: number },
+) => {
+	const { lookbackDays } = opts;
+	const sdb = getScopedDb(organizationId);
+	const cutoff = new Date(Date.now() - lookbackDays * DAY_MS);
+
+	const rows = await sdb.$queryRaw<
+		{
+			itemId: string;
+			itemName: string;
+			sku: string | null;
+			category: string | null;
+			unit: string;
+			warehouseQty: number;
+			qtyConsumed: number | null;
+		}[]
+	>`
+		SELECT
+			ii.id AS "itemId",
+			ii.name AS "itemName",
+			ii.sku AS "sku",
+			ii.category AS "category",
+			ii.unit AS "unit",
+			ii.quantity::float AS "warehouseQty",
+			COALESCE((
+				SELECT SUM(sm.qty)
+				FROM stock_movement sm
+				WHERE sm.inventory_item_id = ii.id
+					AND sm.organization_id = ${organizationId}
+					AND sm.reason IN ('parts_used', 'direct_consumption')
+					AND sm.created_at >= ${cutoff}
+			), 0)::float                                AS "qtyConsumed"
+		FROM inventory_item ii
+		WHERE ii.organization_id = ${organizationId}
+			AND ii.is_active = true
+	`;
+
+	const now = Date.now();
+
+	const built = rows.map((r) => {
+		const currentQuantity = r.warehouseQty;
+		const qtyConsumed = Number(r.qtyConsumed ?? 0);
+		const avgDailyUsage = lookbackDays > 0 ? qtyConsumed / lookbackDays : 0;
+		const hasUsage = avgDailyUsage > 0;
+
+		const daysOfStock = hasUsage ? currentQuantity / avgDailyUsage : null;
+		const projectedStockoutDate =
+			daysOfStock === null ? null : new Date(now + daysOfStock * DAY_MS).toISOString();
+
+		return {
+			itemId: r.itemId,
+			itemName: r.itemName,
+			sku: r.sku ?? null,
+			category: r.category ?? null,
+			unit: r.unit,
+			currentQuantity,
+			qtyConsumed,
+			avgDailyUsage,
+			daysOfStock,
+			projectedStockoutDate,
+		};
+	});
+
+	// Soonest projected stockout first with items with no recent last
+	built.sort((a, b) => {
+		const aT = a.projectedStockoutDate ? new Date(a.projectedStockoutDate).getTime() : Infinity;
+		const bT = b.projectedStockoutDate ? new Date(b.projectedStockoutDate).getTime() : Infinity;
+		return aT - bT;
+	});
+
+	return built;
+};
+
+// ============================================================================
+// AGED RECEIVABLES
+// ============================================================================
+
+// Outstanding invoice balances bucketed by how far past due
+export const getAgedReceivables = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+
+	const rows = await sdb.$queryRaw<
+		{ bucket: string; count: number; amount: number | null }[]
+	>`
+		SELECT
+			CASE
+				WHEN COALESCE(due_date, created_at) > NOW() - INTERVAL '31 days' THEN '0-30'
+				WHEN COALESCE(due_date, created_at) > NOW() - INTERVAL '61 days' THEN '31-60'
+				WHEN COALESCE(due_date, created_at) > NOW() - INTERVAL '91 days' THEN '61-90'
+				ELSE '90+'
+			END AS bucket,
+			COUNT(*)::int          AS count,
+			SUM(balance_due)::float AS amount
+		FROM invoice
+		WHERE organization_id = ${organizationId}
+			AND status NOT IN ('Draft', 'Paid', 'Void')
+			AND balance_due > 0
+			AND COALESCE(due_date, created_at) <= NOW()
+		GROUP BY bucket
+	`;
+
+	const BUCKETS = ["0-30", "31-60", "61-90", "90+"] as const;
+	const byBucket = new Map(rows.map((r) => [r.bucket, r]));
+
+	const data = BUCKETS.map((bucket) => {
+		const row = byBucket.get(bucket);
+		return {
+			bucket,
+			amount: Math.round(Number(row?.amount ?? 0) * 100) / 100,
+			count: row?.count ?? 0,
+		};
+	});
+
+	return {
+		data,
+		totalOutstanding: data.reduce((sum, d) => sum + d.amount, 0),
+	};
 };

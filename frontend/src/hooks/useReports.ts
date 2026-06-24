@@ -3,10 +3,14 @@ import type {
 	OverviewResponse,
 	RevenueYTDResponse,
 	RevenueByJobTypeResponse,
+	LeadsBySourceResponse,
 	UnscheduledRevenueResponse,
 	QuotePipelineResponse,
 	ArrivalPerformanceResponse,
 	MileageReportVisit,
+	TimesheetReportEntry,
+	ReorderForecastRow,
+	AgedReceivablesResponse,
 } from "../types/reports";
 import * as reportsApi from "../api/reports";
 
@@ -41,6 +45,17 @@ export const useRevenueByJobTypeQuery = (
 	return useQuery({
 		queryKey: ["reports", "revenue-by-job-type", startDate, endDate],
 		queryFn: () => reportsApi.getRevenueByJobType(startDate, endDate),
+		enabled: !!startDate && !!endDate,
+	});
+};
+
+export const useLeadsBySourceQuery = (
+	startDate: string,
+	endDate: string,
+): UseQueryResult<LeadsBySourceResponse, Error> => {
+	return useQuery({
+		queryKey: ["reports", "leads-by-source", startDate, endDate],
+		queryFn: () => reportsApi.getLeadsBySource(startDate, endDate),
 		enabled: !!startDate && !!endDate,
 	});
 };
@@ -81,5 +96,29 @@ export const useMileageReportQuery = (
 	return useQuery({
 		queryKey: ["reports", "mileage", startDate, endDate],
 		queryFn: () => reportsApi.getMileageReport(startDate, endDate),
+	});
+};
+
+export const useTimesheetsReportQuery = (
+	startDate?: string,
+	endDate?: string,
+): UseQueryResult<TimesheetReportEntry[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "timesheets", startDate, endDate],
+		queryFn: () => reportsApi.getTimesheetsReport(startDate, endDate),
+	});
+};
+
+export const useReorderForecastQuery = (): UseQueryResult<ReorderForecastRow[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "reorder-forecast"],
+		queryFn: () => reportsApi.getReorderForecast(),
+	});
+};
+
+export const useAgedReceivablesQuery = (): UseQueryResult<AgedReceivablesResponse, Error> => {
+	return useQuery({
+		queryKey: ["reports", "aged-receivables"],
+		queryFn: () => reportsApi.getAgedReceivables(),
 	});
 };

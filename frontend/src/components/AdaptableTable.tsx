@@ -16,6 +16,8 @@ interface AdaptableTableProps {
 		header: string;
 		cell: (row: Record<string, unknown>) => React.ReactNode;
 	};
+	// Per-column visibility keyed by column id and missing keys default to visible
+	columnVisibility?: Record<string, boolean>;
 }
 
 const PADDING = "p-3";
@@ -33,6 +35,7 @@ const AdaptableTable = ({
 	errListener,
 	onRowClick,
 	actionColumn,
+	columnVisibility,
 }: AdaptableTableProps) => {
 	const columns = React.useMemo(() => {
 		if (data.length == 0) return [];
@@ -63,6 +66,7 @@ const AdaptableTable = ({
 		data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
+		...(columnVisibility ? { state: { columnVisibility } } : {}),
 	});
 
 	if (!borderColor) borderColor = " border-border-subtle ";

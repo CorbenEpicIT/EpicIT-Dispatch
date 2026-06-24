@@ -41,9 +41,11 @@ import OverviewWidget from "../../components/widgets/OverviewWidget";
 import RevenueYTDWidget from "../../components/widgets/RevenueYTDWidget";
 import UnscheduledRevenueWidget from "../../components/widgets/UnscheduledRevenueWidget";
 import RevenueByJobTypeWidget from "../../components/widgets/RevenueByJobTypeWidget";
+import LeadsBySourceWidget from "../../components/widgets/LeadsBySourceWidget";
 import QuotePipelineWidget from "../../components/widgets/QuotePipelineWidget";
 import ArrivalPerformanceWidget from "../../components/widgets/ArrivalPerformanceWidget";
 import MileageSummaryWidget from "../../components/widgets/MileageSummaryWidget";
+import AgedReceivablesColumnWidget from "../../components/widgets/AgedReceivablesColumnWidget";
 import MapWidget from "../../components/widgets/MapWidget";
 import QBWidget from "../../components/widgets/QBWidget";
 
@@ -503,9 +505,11 @@ export default function DashboardPage() {
 			case "report-revenue-ytd":     return <RevenueYTDWidget />;
 			case "report-unscheduled-revenue": return <UnscheduledRevenueWidget />;
 			case "report-revenue-by-type": return <RevenueByJobTypeWidget />;
+			case "report-leads-by-source": return <LeadsBySourceWidget />;
 			case "report-quote-pipeline":  return <QuotePipelineWidget />;
 			case "report-arrival":         return <ArrivalPerformanceWidget />;
 			case "report-mileage":         return <MileageSummaryWidget />;
+			case "report-aged-receivables-bar": return <AgedReceivablesColumnWidget />;
 			default: return <div>Unknown widget: {id}</div>;
 		}
 	}

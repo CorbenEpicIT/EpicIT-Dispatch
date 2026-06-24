@@ -4,12 +4,16 @@ import {
     createSuccessResponse,
     createErrorResponse,
 } from "../types/responses.js";
-import { getArrivalPerformance,
+import { getAgedReceivables,
+    getArrivalPerformance,
+    getInventoryReorderForecast,
+    getLeadsBySource,
     getMileageReport,
     getOverviewMetrics,
     getQuotePipeline,
     getRevenueByJobType,
     getRevenueYTD,
+    getTimesheetReport,
     getUnscheduledRevenue
 } from '../controllers/reportsController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
@@ -85,6 +89,32 @@ router.get("/revenue-by-job-type", requirePermission("view_reports"), async (req
 	}
 });
 
+router.get("/leads-by-source", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { startDate, endDate } = req.query as {
+			startDate: string;
+			endDate: string;
+		};
+
+		if (!startDate || !endDate) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						"startDate and endDate are required",
+					),
+				);
+		}
+
+		const leadsBySource = await getLeadsBySource(startDate, endDate, orgId);
+		res.json(createSuccessResponse(leadsBySource));
+	} catch (err) {
+		next(err);
+	}
+});
+
 router.get("/unscheduled-revenue", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -155,6 +185,46 @@ router.get("/mileage", requirePermission("view_reports"), async (req, res, next)
 			endDate?: string;
 		};
 		const data = await getMileageReport(startDate, endDate, orgId);
+		res.json(createSuccessResponse(data));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/timesheets", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { startDate, endDate } = req.query as {
+			startDate?: string;
+			endDate?: string;
+		};
+		const data = await getTimesheetReport(startDate, endDate, orgId);
+		res.json(createSuccessResponse(data));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/inventory/reorder-forecast", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { lookbackDays } = req.query as { lookbackDays?: string };
+
+		// Parse with a safe default; require >= 1 day to avoid div-by-zero.
+		const n = lookbackDays != null ? Number(lookbackDays) : NaN;
+		const data = await getInventoryReorderForecast(orgId, {
+			lookbackDays: Number.isFinite(n) && n > 0 ? n : 90,
+		});
+		res.json(createSuccessResponse(data));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/receivables/aging", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const data = await getAgedReceivables(orgId);
 		res.json(createSuccessResponse(data));
 	} catch (err) {
 		next(err);
