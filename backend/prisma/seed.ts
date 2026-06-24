@@ -4,6 +4,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import bcryptjs from "bcryptjs";
 import { getAllPermissions } from "../src/lib/permissionCatalogs.js";
+import { recordMovements } from "../src/services/stockMovements.js";
+import {
+	calculateDocumentTax,
+	centsToDollars,
+	type TaxGroupConfig,
+	type LineItemTaxInput,
+} from "../src/services/taxEngine.js";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -63,8 +70,64 @@ async function main() {
 			coords:   { lat: 44.7441, lon: -91.2396 },
 			email:    "info@epicitautomations.com",
 			website:  "epicitautomations.com",
+			restock_mode: "tech_self_serve",
 		},
 	});
+
+	// ============================================================================
+	// Tax System — rates + group (sum to 0.0825 so existing totals stay consistent)
+	// ============================================================================
+
+	const [taxStateRate, taxCountyRate] = await Promise.all([
+		db.tax_rate.create({
+			data: {
+				organization_id: org.id,
+				name: "WI State Sales Tax",
+				rate: 0.0625,
+				jurisdiction: "State",
+				description: "Wisconsin state sales & use tax.",
+				is_default: false,
+				is_active: true,
+			},
+		}),
+		db.tax_rate.create({
+			data: {
+				organization_id: org.id,
+				name: "La Crosse County / City",
+				rate: 0.02,
+				jurisdiction: "County",
+				description: "Combined county and city sales tax.",
+				is_default: false,
+				is_active: true,
+			},
+		}),
+	]);
+
+	const taxGroup = await db.tax_group.create({
+		data: {
+			organization_id: org.id,
+			name: "WI Standard",
+			description: "Standard Wisconsin sales tax (state + county/city).",
+			is_default: true,
+			is_active: true,
+			rates: {
+				create: [
+					{ tax_rate_id: taxStateRate.id, sort_order: 0 },
+					{ tax_rate_id: taxCountyRate.id, sort_order: 1 },
+				],
+			},
+		},
+	});
+
+	// In-memory config for the centralized tax engine (mirrors taxEngine.TaxGroupConfig)
+	const taxGroupConfig: TaxGroupConfig = {
+		id: taxGroup.id,
+		name: taxGroup.name,
+		rates: [
+			{ id: taxStateRate.id, name: taxStateRate.name, rate: 0.0625, jurisdiction: "State" },
+			{ id: taxCountyRate.id, name: taxCountyRate.name, rate: 0.02, jurisdiction: "County" },
+		],
+	};
 
 	// ============================================================================
 	// Organization Roles
@@ -201,12 +264,20 @@ async function main() {
 	// Inventory — created early so visits can reference inventory_item_id
 	// ============================================================================
 
+	// NOTE: All inventory starts at quantity 0. Warehouse on-hand is established
+	// exclusively through recordMovements() ("receive") later in this seed, so the
+	// stock_movement ledger and the cached quantity columns always reconcile.
 	const [
 		invRefrigerant,
 		invFilter,
 		invCapacitor,
 		invThermostat,
 		invContactor,
+		invBlower,
+		invIgniter,
+		invFlameSensor,
+		invCondPump,
+		invLineSet,
 	] = await Promise.all([
 		db.inventory_item.create({
 			data: {
@@ -215,10 +286,11 @@ async function main() {
 				description:
 					"Standard residential/light commercial refrigerant.",
 				location: "Warehouse — Shelf A1",
-				quantity: 8,
+				quantity: 0,
 				unit_price: 60.0,
 				cost: 38.0,
 				sku: "REF-410A-25",
+				alt_ids: ["R410A-25LB", "NU-410A"],
 				low_stock_threshold: 3,
 				category: "Refrigerants",
 				unit: "cylinder",
@@ -231,10 +303,11 @@ async function main() {
 				description:
 					"Standard replacement filter for residential split systems.",
 				location: "Warehouse — Shelf B3",
-				quantity: 48,
+				quantity: 0,
 				unit_price: 8.5,
 				cost: 3.25,
 				sku: "FILT-16251-M8",
+				alt_ids: ["16x25x1-M8", "AF-1625-8"],
 				low_stock_threshold: 12,
 				category: "Filters",
 				unit: "each",
@@ -247,10 +320,11 @@ async function main() {
 				description:
 					"Dual run capacitor for condenser fan and compressor.",
 				location: "Parts Room — Bin C7",
-				quantity: 15,
+				quantity: 0,
 				unit_price: 22.0,
 				cost: 8.5,
 				sku: "CAP-45-5-440",
+				alt_ids: ["97F9895", "TRCFD455"],
 				low_stock_threshold: 5,
 				category: "Electrical",
 				unit: "each",
@@ -263,10 +337,11 @@ async function main() {
 				description:
 					"7-day programmable thermostat, universal compatibility.",
 				location: "Parts Room — Bin D2",
-				quantity: 6,
+				quantity: 0,
 				unit_price: 65.0,
 				cost: 32.0,
 				sku: "TSTAT-T6PRO",
+				alt_ids: ["TH6220WF2006", "T6-PRO"],
 				low_stock_threshold: 2,
 				category: "Controls",
 				unit: "each",
@@ -279,13 +354,99 @@ async function main() {
 				description:
 					"Replacement contactor for condenser units up to 5 tons.",
 				location: "Parts Room — Bin C8",
-				quantity: 2,
+				quantity: 0,
 				unit_price: 28.0,
 				cost: 11.0,
 				sku: "CONT-2P-40A",
+				alt_ids: ["42-25101-01", "C240B"],
 				low_stock_threshold: 4,
 				category: "Electrical",
 				unit: "each",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Blower Motor 1/2 HP 115V",
+				description:
+					"Direct-drive PSC blower motor, 1075 RPM, 4-speed.",
+				location: "Warehouse — Shelf A4",
+				quantity: 0,
+				unit_price: 185.0,
+				cost: 96.0,
+				sku: "MOT-BLW-12HP",
+				alt_ids: ["FM-BL-0500", "5KCP39"],
+				low_stock_threshold: 2,
+				category: "Motors",
+				unit: "each",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Hot Surface Igniter (Universal)",
+				description:
+					"Universal silicon nitride hot surface igniter with mounting kit.",
+				location: "Parts Room — Bin D5",
+				quantity: 0,
+				unit_price: 42.0,
+				cost: 18.5,
+				sku: "IGN-HSI-UNIV",
+				alt_ids: ["IG1100", "271N"],
+				low_stock_threshold: 3,
+				category: "Controls",
+				unit: "each",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Flame Sensor (Universal Rod)",
+				description:
+					"Universal flame sensor rod for gas furnace ignition systems.",
+				location: "Parts Room — Bin D6",
+				quantity: 0,
+				unit_price: 14.0,
+				cost: 4.75,
+				sku: "SEN-FLAME-U",
+				alt_ids: ["LH680534", "FS-UNIV"],
+				low_stock_threshold: 4,
+				category: "Controls",
+				unit: "each",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Condensate Pump 120V",
+				description:
+					"Automatic condensate removal pump, 1/30 HP, 20 ft lift.",
+				location: "Warehouse — Shelf B6",
+				quantity: 0,
+				unit_price: 78.0,
+				cost: 41.0,
+				sku: "PMP-COND-120",
+				alt_ids: ["VCMA-20ULS", "CP-2000"],
+				low_stock_threshold: 2,
+				category: "Plumbing",
+				unit: "each",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Copper Line Set 3/8 x 3/4",
+				description:
+					"Insulated copper refrigerant line set, sold by the foot.",
+				location: "Warehouse — Rack C1",
+				quantity: 0,
+				unit_price: 6.5,
+				cost: 3.1,
+				sku: "LINE-38-34",
+				alt_ids: ["LS-3834", "CU-LINESET"],
+				low_stock_threshold: 20,
+				category: "Refrigerants",
+				unit: "ft",
 			},
 		}),
 	]);
@@ -364,6 +525,7 @@ async function main() {
 				address: "2842 Main St, La Crosse, WI 54601",
 				coords: { lat: 43.8124, lng: -91.2568 },
 				is_tax_exempt: false,
+				tax_group_id: taxGroup.id,
 			},
 		}),
 		db.client.create({
@@ -373,6 +535,7 @@ async function main() {
 				address: "401 Main St, La Crosse, WI 54601",
 				coords: { lat: 43.8129, lng: -91.2559 },
 				is_tax_exempt: false,
+				tax_group_id: taxGroup.id,
 			},
 		}),
 		db.client.create({
@@ -2688,14 +2851,15 @@ async function main() {
 	});
 
 	// ============================================================================
-	// Vehicles + Stock
+	// Vehicles
+	// Names are tech-independent identifiers (techs switch vehicles freely);
+	// assignment is a reassignable many-to-one pointer (technician.current_vehicle_id).
 	// ============================================================================
 
-	// Van 1 — John Smith's primary truck (well-stocked, one item low)
-	const van1 = await db.vehicle.create({
+	const van12 = await db.vehicle.create({
 		data: {
 			organization_id: org.id,
-			name: "Van 1 — Smith",
+			name: "Van 12",
 			type: "Van",
 			license_plate: "WIS-4421",
 			year: 2021,
@@ -2703,15 +2867,14 @@ async function main() {
 			model: "Transit 250",
 			status: "active",
 			color: "Pearl White",
-			notes: "Primary service van. Roof rack with ladder.",
+			notes: "Primary service van. Roof rack with ladder. Currently crewed by John Smith; Kevin Park rode along this week after his usual van went in for service.",
 		},
 	});
 
-	// Van 2 — Marcus Lee's van (lightly stocked, refrigerant low)
-	const van2 = await db.vehicle.create({
+	const van8 = await db.vehicle.create({
 		data: {
 			organization_id: org.id,
-			name: "Van 2 — Lee",
+			name: "Van 8",
 			type: "Van",
 			license_plate: "WIS-8834",
 			year: 2019,
@@ -2719,15 +2882,14 @@ async function main() {
 			model: "Express 2500",
 			status: "active",
 			color: "Fleet Blue",
-			notes: "Secondary van. Check tire pressure weekly.",
+			notes: "Currently crewed by Maria Rodriguez. Check tire pressure weekly.",
 		},
 	});
 
-	// Truck 3 — spare / fully stocked (not assigned to any tech)
-	const truck3 = await db.vehicle.create({
+	const truck4 = await db.vehicle.create({
 		data: {
 			organization_id: org.id,
-			name: "Truck 3 — Spare",
+			name: "Truck 4",
 			type: "Truck",
 			license_plate: "WIS-1109",
 			year: 2020,
@@ -2735,37 +2897,585 @@ async function main() {
 			model: "ProMaster 2500",
 			status: "active",
 			color: "Silver",
-			notes: "Spare vehicle. Fully stocked. Available for overflow.",
+			notes: "Spare vehicle — unassigned. Fully stocked for overflow and swaps.",
 		},
 	});
 
-	// Stock Van 1: filters (healthy), capacitors (healthy), contactor (low), thermostat (healthy)
-	await db.vehicle_stock_item.createMany({
+	// Assign current vehicles (techs switch freely; Truck 4 left as an unassigned spare).
+	// John Smith and Kevin Park are both on Van 12 right now — vehicles are not 1:1 with techs.
+	await Promise.all([
+		db.technician.update({ where: { id: tech1.id }, data: { current_vehicle_id: van12.id } }),
+		db.technician.update({ where: { id: tech2.id }, data: { current_vehicle_id: van8.id } }),
+		db.technician.update({ where: { id: tech3.id }, data: { current_vehicle_id: van12.id } }),
+	]);
+
+	// ------------------------------------------------------------------------
+	// Pre-create vehicle stock rows (qty_on_hand 0; on-hand is filled by the
+	// ledger below). qty_min / qty_standard are set here so recordMovements'
+	// upsert path doesn't reset them to 0.
+	// ------------------------------------------------------------------------
+	const stockManifest: {
+		v: { id: string };
+		i: { id: string };
+		qty_min: number;
+		qty_standard: number;
+	}[] = [
+		// Van 12 (John Smith + Kevin Park)
+		{ v: van12, i: invFilter,      qty_min: 4,  qty_standard: 8 },
+		{ v: van12, i: invCapacitor,   qty_min: 3,  qty_standard: 6 },
+		{ v: van12, i: invContactor,   qty_min: 2,  qty_standard: 3 },
+		{ v: van12, i: invThermostat,  qty_min: 2,  qty_standard: 3 },
+		{ v: van12, i: invIgniter,     qty_min: 2,  qty_standard: 3 },
+		{ v: van12, i: invFlameSensor, qty_min: 3,  qty_standard: 4 },
+		// Van 8 (Maria Rodriguez)
+		{ v: van8,  i: invRefrigerant, qty_min: 2,  qty_standard: 2 },
+		{ v: van8,  i: invFilter,      qty_min: 4,  qty_standard: 10 },
+		{ v: van8,  i: invCapacitor,   qty_min: 3,  qty_standard: 4 },
+		{ v: van8,  i: invCondPump,    qty_min: 1,  qty_standard: 2 },
+		// Truck 4 (spare — fully loaded)
+		{ v: truck4, i: invRefrigerant, qty_min: 2,  qty_standard: 4 },
+		{ v: truck4, i: invFilter,      qty_min: 8,  qty_standard: 24 },
+		{ v: truck4, i: invCapacitor,   qty_min: 4,  qty_standard: 10 },
+		{ v: truck4, i: invThermostat,  qty_min: 2,  qty_standard: 4 },
+		{ v: truck4, i: invContactor,   qty_min: 2,  qty_standard: 5 },
+		{ v: truck4, i: invBlower,      qty_min: 1,  qty_standard: 1 },
+		{ v: truck4, i: invIgniter,     qty_min: 2,  qty_standard: 3 },
+		{ v: truck4, i: invFlameSensor, qty_min: 2,  qty_standard: 4 },
+		{ v: truck4, i: invCondPump,    qty_min: 1,  qty_standard: 2 },
+		{ v: truck4, i: invLineSet,     qty_min: 20, qty_standard: 50 },
+	];
+
+	const stockMap = new Map<string, { id: string }>();
+	for (const m of stockManifest) {
+		const row = await db.vehicle_stock_item.create({
+			data: {
+				vehicle_id: m.v.id,
+				inventory_item_id: m.i.id,
+				qty_on_hand: 0,
+				qty_min: m.qty_min,
+				qty_standard: m.qty_standard,
+			},
+		});
+		stockMap.set(`${m.v.id}::${m.i.id}`, row);
+	}
+	const vs = (v: { id: string }, i: { id: string }) =>
+		stockMap.get(`${v.id}::${i.id}`)!;
+
+	// ============================================================================
+	// Stock Ledger — every quantity change flows through recordMovements so the
+	// stock_movement ledger and cached on-hand columns always reconcile.
+	// ============================================================================
+
+	const sysActor = { actor_type: "system" as const };
+	const dispActor = { actor_type: "dispatcher" as const, actor_id: dispatcher.id };
+	const techActor = (id: string) => ({ actor_type: "technician" as const, actor_id: id });
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const move = (actor: any, movements: any[], opts: any = {}) =>
+		db.$transaction((tx) => recordMovements(tx, org.id, actor, movements, opts));
+
+	// (a) Initial receive — external → warehouse. Sized to cover all downstream
+	//     outflow while leaving refrigerant + contactor at/below threshold.
+	await move(sysActor, [
+		{ inventory_item_id: invRefrigerant.id, qty: 9,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invFilter.id,      qty: 78,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invCapacitor.id,   qty: 32,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invThermostat.id,  qty: 15,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invContactor.id,   qty: 9,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invBlower.id,      qty: 5,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invIgniter.id,     qty: 12,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invFlameSensor.id, qty: 18,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invCondPump.id,    qty: 6,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invLineSet.id,     qty: 150, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+	]);
+
+	// (b) Base restock — warehouse → each vehicle.
+	await move(dispActor, [
+		// Van 12
+		{ inventory_item_id: invFilter.id,      qty: 8, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
+		{ inventory_item_id: invCapacitor.id,   qty: 6, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
+		{ inventory_item_id: invContactor.id,   qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
+		{ inventory_item_id: invThermostat.id,  qty: 3, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
+		{ inventory_item_id: invIgniter.id,     qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
+		{ inventory_item_id: invFlameSensor.id, qty: 4, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
+		// Van 8
+		{ inventory_item_id: invRefrigerant.id, qty: 1,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
+		{ inventory_item_id: invFilter.id,      qty: 10, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
+		{ inventory_item_id: invCapacitor.id,   qty: 2,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
+		{ inventory_item_id: invCondPump.id,    qty: 1,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
+		// Truck 4 (spare — fully loaded)
+		{ inventory_item_id: invRefrigerant.id, qty: 4,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invFilter.id,      qty: 24, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invCapacitor.id,   qty: 10, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invThermostat.id,  qty: 4,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invContactor.id,   qty: 5,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invBlower.id,      qty: 1,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invIgniter.id,     qty: 3,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invFlameSensor.id, qty: 4,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invCondPump.id,    qty: 2,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+		{ inventory_item_id: invLineSet.id,     qty: 50, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
+	]);
+
+	// (c) Historical parts_used — vehicle → consumed, tied to completed visits.
+	const v1CapLine = await db.job_visit_line_item.findFirst({
+		where: { visit_id: visit1.id, inventory_item_id: invCapacitor.id },
+		select: { id: true },
+	});
+	const rv1FilterLine = await db.job_visit_line_item.findFirst({
+		where: { visit_id: recurringVisit1.id, inventory_item_id: invFilter.id },
+		select: { id: true },
+	});
+
+	// visit1: Maria (Van 8) installed 1 capacitor
+	await move(techActor(tech2.id), [
+		{ inventory_item_id: invCapacitor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van8.id, to_location_type: "consumed", reason: "parts_used", visit_id: visit1.id, visit_line_item_id: v1CapLine?.id ?? undefined, note: "Dual run capacitor installed on AC repair." },
+	]);
+	await db.vehicle_stock_usage.create({
+		data: {
+			stock_item_id: vs(van8, invCapacitor).id,
+			visit_id: visit1.id,
+			technician_id: tech2.id,
+			qty_used: 1,
+			visit_line_item_id: v1CapLine?.id ?? null,
+		},
+	});
+
+	// recurringVisit1: John (Van 12) used 4 filters on the Williams PM
+	await move(techActor(tech1.id), [
+		{ inventory_item_id: invFilter.id, qty: 4, from_location_type: "vehicle", from_vehicle_id: van12.id, to_location_type: "consumed", reason: "parts_used", visit_id: recurringVisit1.id, visit_line_item_id: rv1FilterLine?.id ?? undefined, note: "Filter replacement across 4 units." },
+	]);
+	await db.vehicle_stock_usage.create({
+		data: {
+			stock_item_id: vs(van12, invFilter).id,
+			visit_id: recurringVisit1.id,
+			technician_id: tech1.id,
+			qty_used: 4,
+			visit_line_item_id: rv1FilterLine?.id ?? null,
+		},
+	});
+
+	// (d) Direct consumption — warehouse → consumed (dispatch-allocated part).
+	await move(dispActor, [
+		{ inventory_item_id: invIgniter.id, qty: 1, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption", note: "Igniter pulled from warehouse for counter sale / shop use." },
+	]);
+
+	// (e) Transfer — Truck 4 → Van 8 (top up Maria's capacitors from the spare).
+	await move(dispActor, [
+		{ inventory_item_id: invCapacitor.id, qty: 2, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "transfer", note: "Capacitors moved from spare truck to Van 8." },
+	]);
+
+	// (f) Loss — damaged refrigerant cylinder on Van 8, recorded against a field_loss adjustment.
+	const lossAdjustment = await db.vehicle_stock_adjustment.create({
+		data: {
+			organization_id: org.id,
+			vehicle_id: van8.id,
+			type: "field_loss",
+			note: "Refrigerant cylinder valve damaged in transit — discarded.",
+			created_by_tech_id: tech2.id,
+		},
+	});
+	await move(techActor(tech2.id), [
+		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van8.id, to_location_type: "adjustment", reason: "loss", adjustment_id: lossAdjustment.id, note: "Damaged R-410A cylinder." },
+	]);
+	await db.vehicle_stock_adjustment_line.create({
+		data: {
+			adjustment_id: lossAdjustment.id,
+			stock_item_id: vs(van8, invRefrigerant).id,
+			qty_before: 1,
+			qty_after: 0,
+			inventory_impact: -1,
+		},
+	});
+
+	// (g) Supplier purchase — Maria/John bought flame sensors at a local supply house (external → Van 12).
+	await move(techActor(tech1.id), [
+		{ inventory_item_id: invFlameSensor.id, qty: 2, from_location_type: "external", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "supplier_purchase", note: "Field purchase — 2 flame sensors from Ferguson." },
+	]);
+
+	// ============================================================================
+	// Restock Requests — all four lifecycle states (each on a distinct stock item)
+	// ============================================================================
+
+	// pending — John flags low igniters on Van 12
+	await db.vehicle_restock_request.create({
+		data: {
+			organization_id: org.id,
+			stock_item_id: vs(van12, invIgniter).id,
+			technician_id: tech1.id,
+			qty_requested: 2,
+			note: "Down to a couple igniters — please top up.",
+			status: "pending",
+		},
+	});
+
+	// dismissed — Maria's condensate pump request, declined by dispatch
+	await db.vehicle_restock_request.create({
+		data: {
+			organization_id: org.id,
+			stock_item_id: vs(van8, invCondPump).id,
+			technician_id: tech2.id,
+			qty_requested: 1,
+			note: "Would like a spare condensate pump.",
+			status: "dismissed",
+			dismissed_reason: "dispatch",
+		},
+	});
+
+	// fulfilled — Maria's capacitor request, fulfilled with a linked restock movement
+	const fulfilledReq = await db.vehicle_restock_request.create({
+		data: {
+			organization_id: org.id,
+			stock_item_id: vs(van8, invCapacitor).id,
+			technician_id: tech2.id,
+			qty_requested: 2,
+			note: "Restock capacitors after the AC repair.",
+			status: "fulfilled",
+			fulfilled_at: daysFromNow(-1),
+		},
+	});
+	await move(dispActor, [
+		{ inventory_item_id: invCapacitor.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", restock_request_id: fulfilledReq.id, note: "Fulfilled restock request." },
+	]);
+
+	// discrepant — John's thermostat request: fulfilled with 2, only 1 arrived on the truck
+	const discrepantReq = await db.vehicle_restock_request.create({
+		data: {
+			organization_id: org.id,
+			stock_item_id: vs(van12, invThermostat).id,
+			technician_id: tech1.id,
+			qty_requested: 2,
+			note: "Need two thermostats for upcoming installs.",
+			status: "fulfilled",
+			fulfilled_at: daysFromNow(-1),
+			received_at: daysFromNow(-1),
+			qty_received: 1,
+			discrepant: true,
+		},
+	});
+	await move(dispActor, [
+		{ inventory_item_id: invThermostat.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", restock_request_id: discrepantReq.id, note: "Fulfilled — 2 thermostats sent." },
+	]);
+	await move(techActor(tech1.id), [
+		{ inventory_item_id: invThermostat.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van12.id, to_location_type: "adjustment", reason: "audit_correction", restock_request_id: discrepantReq.id, note: "Receipt discrepancy — only 1 of 2 thermostats found on truck." },
+	]);
+
+	// ============================================================================
+	// End-of-Day records + readiness
+	// ============================================================================
+
+	// EOD #1 — Van 12, John, yesterday. Contactor restock fell short (warehouse low).
+	const eod1 = await db.vehicle_eod_record.create({
+		data: {
+			organization_id: org.id,
+			vehicle_id: van12.id,
+			completed_at: yesterday,
+			day: yesterday,
+			completed_by_tech_id: tech1.id,
+			notes: "Restocked filters from warehouse. Contactors short — flagged for reorder.",
+		},
+	});
+	await move(techActor(tech1.id), [
+		{ inventory_item_id: invFilter.id,    qty: 4, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", eod_record_id: eod1.id, note: "EOD restock." },
+		{ inventory_item_id: invContactor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", eod_record_id: eod1.id, note: "EOD restock (partial — warehouse low)." },
+	]);
+	await db.vehicle_eod_restock_line.createMany({
 		data: [
-			{ vehicle_id: van1.id, inventory_item_id: invFilter.id,     qty_on_hand: 8,  qty_min: 4 },
-			{ vehicle_id: van1.id, inventory_item_id: invCapacitor.id,  qty_on_hand: 6,  qty_min: 3 },
-			{ vehicle_id: van1.id, inventory_item_id: invContactor.id,  qty_on_hand: 1,  qty_min: 2 }, // LOW
-			{ vehicle_id: van1.id, inventory_item_id: invThermostat.id, qty_on_hand: 3,  qty_min: 2 },
+			{ eod_record_id: eod1.id, stock_item_id: vs(van12, invFilter).id,    qty_restocked: 4, qty_shortfall: 0 },
+			{ eod_record_id: eod1.id, stock_item_id: vs(van12, invContactor).id, qty_restocked: 1, qty_shortfall: 2 },
 		],
 	});
 
-	// Stock Van 2: refrigerant (low), filters (healthy), capacitors (low)
-	await db.vehicle_stock_item.createMany({
+	// EOD #2 — Van 8, Maria, today. Zero shortfall → auto-confirms readiness for tomorrow.
+	const eod2 = await db.vehicle_eod_record.create({
+		data: {
+			organization_id: org.id,
+			vehicle_id: van8.id,
+			completed_at: today,
+			day: today,
+			completed_by_tech_id: tech2.id,
+			notes: "Full restock from warehouse. Ready for tomorrow.",
+		},
+	});
+	await move(techActor(tech2.id), [
+		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", eod_record_id: eod2.id, note: "EOD restock." },
+		{ inventory_item_id: invFilter.id,      qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", eod_record_id: eod2.id, note: "EOD restock." },
+	]);
+	await db.vehicle_eod_restock_line.createMany({
 		data: [
-			{ vehicle_id: van2.id, inventory_item_id: invRefrigerant.id, qty_on_hand: 1,  qty_min: 2 }, // LOW
-			{ vehicle_id: van2.id, inventory_item_id: invFilter.id,      qty_on_hand: 10, qty_min: 4 },
-			{ vehicle_id: van2.id, inventory_item_id: invCapacitor.id,   qty_on_hand: 2,  qty_min: 3 }, // LOW
+			{ eod_record_id: eod2.id, stock_item_id: vs(van8, invRefrigerant).id, qty_restocked: 1, qty_shortfall: 0 },
+			{ eod_record_id: eod2.id, stock_item_id: vs(van8, invFilter).id,      qty_restocked: 2, qty_shortfall: 0 },
+		],
+	});
+	await db.vehicle_readiness.create({
+		data: {
+			vehicle_id: van8.id,
+			organization_id: org.id,
+			date: today,
+			confirmed_by_tech_id: tech2.id,
+			eod_record_id: eod2.id,
+			notes: "Auto-confirmed at EOD — zero shortfalls.",
+		},
+	});
+
+	// ============================================================================
+	// Stock Adjustment — audit correction (cycle count found Van 12 short 1 igniter)
+	// ============================================================================
+	const auditAdjustment = await db.vehicle_stock_adjustment.create({
+		data: {
+			organization_id: org.id,
+			vehicle_id: van12.id,
+			type: "audit",
+			note: "Cycle count: 1 igniter unaccounted for on Van 12.",
+			created_by_id: dispatcher.id,
+		},
+	});
+	await move(dispActor, [
+		{ inventory_item_id: invIgniter.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van12.id, to_location_type: "adjustment", reason: "audit_correction", adjustment_id: auditAdjustment.id, note: "Audit write-down." },
+	]);
+	await db.vehicle_stock_adjustment_line.create({
+		data: {
+			adjustment_id: auditAdjustment.id,
+			stock_item_id: vs(van12, invIgniter).id,
+			qty_before: 2,
+			qty_after: 1,
+			inventory_impact: -1,
+		},
+	});
+
+	// ============================================================================
+	// Shifts + Time Entries
+	// ============================================================================
+	const [shift1, shift2] = await Promise.all([
+		db.technician_shift.create({
+			data: {
+				tech_id: tech1.id,
+				org_id: org.id,
+				started_at: dateAt(yesterday, 7),
+				ended_at: dateAt(yesterday, 16, 30),
+				gross_hours: 9.5,
+				break_hours: 0.5,
+				payable_hours: 9.0,
+			},
+		}),
+		db.technician_shift.create({
+			data: {
+				tech_id: tech2.id,
+				org_id: org.id,
+				started_at: dateAt(yesterday, 8),
+				ended_at: dateAt(yesterday, 16),
+				gross_hours: 8.0,
+				break_hours: 0.5,
+				payable_hours: 7.5,
+			},
+		}),
+	]);
+	await db.technician_shift_break.createMany({
+		data: [
+			{ shift_id: shift1.id, tech_id: tech1.id, reason: "Lunch", is_paid: false, pre_break_status: "Working", started_at: dateAt(yesterday, 12), ended_at: dateAt(yesterday, 12, 30), duration_hrs: 0.5 },
+			{ shift_id: shift2.id, tech_id: tech2.id, reason: "Lunch", is_paid: false, pre_break_status: "Working", started_at: dateAt(yesterday, 12, 30), ended_at: dateAt(yesterday, 13), duration_hrs: 0.5 },
+		],
+	});
+	await db.visit_tech_time_entry.createMany({
+		data: [
+			{ visit_id: visit1.id, tech_id: tech2.id, clocked_in_at: dateAt(yesterday, 9, 15), clocked_out_at: dateAt(yesterday, 11, 30), hours_worked: 2.25 },
+			{ visit_id: recurringVisit1.id, tech_id: tech1.id, clocked_in_at: dateAt(occurrencePastStart, 8, 5), clocked_out_at: dateAt(occurrencePastStart, 11, 50), hours_worked: 3.75 },
 		],
 	});
 
-	// Stock Truck 3: fully loaded across all 5 inventory items
-	await db.vehicle_stock_item.createMany({
+	// ============================================================================
+	// Technician Notifications (John Smith)
+	// ============================================================================
+	await db.technician_notification.createMany({
 		data: [
-			{ vehicle_id: truck3.id, inventory_item_id: invRefrigerant.id, qty_on_hand: 4,  qty_min: 2 },
-			{ vehicle_id: truck3.id, inventory_item_id: invFilter.id,      qty_on_hand: 24, qty_min: 8 },
-			{ vehicle_id: truck3.id, inventory_item_id: invCapacitor.id,   qty_on_hand: 10, qty_min: 4 },
-			{ vehicle_id: truck3.id, inventory_item_id: invThermostat.id,  qty_on_hand: 4,  qty_min: 2 },
-			{ vehicle_id: truck3.id, inventory_item_id: invContactor.id,   qty_on_hand: 5,  qty_min: 2 },
+			{ technician_id: tech1.id, type: "visit_assigned", title: "New visit assigned", body: "You've been assigned to Filter Replacement — Anderson Bldg A today at 8:00 AM.", action_url: `/tech/jobs/${job3.id}`, created_at: minsAgo(45) },
+			{ technician_id: tech1.id, type: "visit_changed", title: "Visit time updated", body: "Follow-Up AC Check — Johnson Residence moved to the 11:00–12:00 window.", action_url: `/tech/jobs/${job1.id}`, read_at: minsAgo(20), created_at: hrsAgo(3) },
+			{ technician_id: tech1.id, type: "dispatch_message", title: "Message from dispatch", body: "Heads up — Kevin is riding with you on Van 12 this week. Coordinate the morning route.", created_at: hrsAgo(20) },
+		],
+	});
+
+	// ============================================================================
+	// Inventory Tags
+	// ============================================================================
+	await Promise.all([
+		db.inventory_tag.create({
+			data: {
+				organization_id: org.id,
+				label: "Fast-moving",
+				items: { connect: [{ id: invFilter.id }, { id: invCapacitor.id }] },
+			},
+		}),
+		db.inventory_tag.create({
+			data: {
+				organization_id: org.id,
+				label: "Electrical",
+				items: { connect: [{ id: invCapacitor.id }, { id: invContactor.id }] },
+			},
+		}),
+		db.inventory_tag.create({
+			data: {
+				organization_id: org.id,
+				label: "Refrigerant",
+				items: { connect: [{ id: invRefrigerant.id }, { id: invLineSet.id }] },
+			},
+		}),
+		db.inventory_tag.create({
+			data: {
+				organization_id: org.id,
+				label: "Controls",
+				items: { connect: [{ id: invThermostat.id }, { id: invIgniter.id }, { id: invFlameSensor.id }] },
+			},
+		}),
+	]);
+
+	// ============================================================================
+	// Tax post-pass — wire tax_group_id + taxable onto line items and recompute
+	// tax_amount / totals / tax_snapshot via the centralized tax engine. Exempt
+	// clients (Anderson) get taxable=false and a client_exempt snapshot.
+	// ============================================================================
+	const exemptClientIds = new Set<string>([client4.id]);
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const taxOf = (lis: { id: string; total: any }[], exempt: boolean, dType: any, dValue: any, lockedAt?: Date) => {
+		const inputs: LineItemTaxInput[] = lis.map((li) => ({
+			id: li.id,
+			total_cents: Math.round(Number(li.total) * 100),
+			taxable: !exempt,
+			tax_group: exempt ? null : taxGroupConfig,
+		}));
+		return calculateDocumentTax(
+			{ line_items: inputs, discount_type: dType ?? null, discount_value: dValue != null ? Number(dValue) : null },
+			exempt,
+			lockedAt,
+		);
+	};
+
+	// Quotes
+	for (const q of await db.quote.findMany({
+		select: { id: true, client_id: true, discount_type: true, discount_value: true, approved_at: true, sent_at: true },
+	})) {
+		const lis = await db.quote_line_item.findMany({ where: { quote_id: q.id }, select: { id: true, total: true } });
+		if (lis.length === 0) continue;
+		const exempt = exemptClientIds.has(q.client_id);
+		const out = taxOf(lis, exempt, q.discount_type, q.discount_value, q.approved_at ?? q.sent_at ?? undefined);
+		for (const li of lis) {
+			await db.quote_line_item.update({
+				where: { id: li.id },
+				data: { taxable: !exempt, tax_group_id: exempt ? null : taxGroup.id, tax_amount: centsToDollars(out.line_item_tax_amounts[li.id] ?? 0) },
+			});
+		}
+		await db.quote.update({
+			where: { id: q.id },
+			data: {
+				subtotal: centsToDollars(out.subtotal_cents),
+				discount_amount: centsToDollars(out.discount_cents),
+				tax_rate: out.effective_rate,
+				tax_amount: centsToDollars(out.total_tax_cents),
+				total: centsToDollars(out.total_cents),
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				tax_snapshot: out.snapshot as any,
+			},
+		});
+	}
+
+	// Jobs (skip recurring containers / cancelled jobs with no line items)
+	for (const j of await db.job.findMany({
+		select: { id: true, client_id: true, discount_type: true, discount_value: true, actual_total: true, completed_at: true },
+	})) {
+		const lis = await db.job_line_item.findMany({ where: { job_id: j.id }, select: { id: true, total: true } });
+		if (lis.length === 0) continue;
+		const exempt = exemptClientIds.has(j.client_id);
+		const out = taxOf(lis, exempt, j.discount_type, j.discount_value, j.completed_at ?? undefined);
+		for (const li of lis) {
+			await db.job_line_item.update({
+				where: { id: li.id },
+				data: { taxable: !exempt, tax_group_id: exempt ? null : taxGroup.id, tax_amount: centsToDollars(out.line_item_tax_amounts[li.id] ?? 0) },
+			});
+		}
+		await db.job.update({
+			where: { id: j.id },
+			data: {
+				subtotal: centsToDollars(out.subtotal_cents),
+				discount_amount: centsToDollars(out.discount_cents),
+				tax_rate: out.effective_rate,
+				tax_amount: centsToDollars(out.total_tax_cents),
+				...(j.actual_total != null
+					? { actual_total: centsToDollars(out.total_cents) }
+					: { estimated_total: centsToDollars(out.total_cents) }),
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				tax_snapshot: out.snapshot as any,
+			},
+		});
+	}
+
+	// Job visits (client exemption resolved via the parent job)
+	for (const v of await db.job_visit.findMany({
+		select: { id: true, discount_type: true, discount_value: true, actual_end_at: true, job: { select: { client_id: true } } },
+	})) {
+		const lis = await db.job_visit_line_item.findMany({ where: { visit_id: v.id }, select: { id: true, total: true } });
+		if (lis.length === 0) continue;
+		const exempt = exemptClientIds.has(v.job.client_id);
+		const out = taxOf(lis, exempt, v.discount_type, v.discount_value, v.actual_end_at ?? undefined);
+		for (const li of lis) {
+			await db.job_visit_line_item.update({
+				where: { id: li.id },
+				data: { taxable: !exempt, tax_group_id: exempt ? null : taxGroup.id, tax_amount: centsToDollars(out.line_item_tax_amounts[li.id] ?? 0) },
+			});
+		}
+		await db.job_visit.update({
+			where: { id: v.id },
+			data: {
+				subtotal: centsToDollars(out.subtotal_cents),
+				discount_amount: centsToDollars(out.discount_cents),
+				tax_rate: out.effective_rate,
+				tax_amount: centsToDollars(out.total_tax_cents),
+				total: centsToDollars(out.total_cents),
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				tax_snapshot: out.snapshot as any,
+			},
+		});
+	}
+
+	// Invoices (recompute totals; clamp amount_paid so paid/partial states stay valid)
+	for (const inv of await db.invoice.findMany({
+		select: { id: true, client_id: true, discount_type: true, discount_value: true, amount_paid: true, issued_at: true, sent_at: true },
+	})) {
+		const lis = await db.invoice_line_item.findMany({ where: { invoice_id: inv.id }, select: { id: true, total: true } });
+		if (lis.length === 0) continue;
+		const exempt = exemptClientIds.has(inv.client_id);
+		const out = taxOf(lis, exempt, inv.discount_type, inv.discount_value, inv.sent_at ?? inv.issued_at ?? undefined);
+		for (const li of lis) {
+			await db.invoice_line_item.update({
+				where: { id: li.id },
+				data: { taxable: !exempt, tax_group_id: exempt ? null : taxGroup.id, tax_amount: centsToDollars(out.line_item_tax_amounts[li.id] ?? 0) },
+			});
+		}
+		const total = centsToDollars(out.total_cents);
+		const amountPaid = Math.min(Number(inv.amount_paid), total);
+		await db.invoice.update({
+			where: { id: inv.id },
+			data: {
+				subtotal: centsToDollars(out.subtotal_cents),
+				discount_amount: centsToDollars(out.discount_cents),
+				tax_rate: out.effective_rate,
+				tax_amount: centsToDollars(out.total_tax_cents),
+				total,
+				amount_paid: amountPaid,
+				balance_due: centsToDollars(Math.round((total - amountPaid) * 100)),
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				tax_snapshot: out.snapshot as any,
+			},
+		});
+	}
+
+	// ============================================================================
+	// Activity Logs — stock / vehicle / inventory feed entries
+	// ============================================================================
+	await db.log.createMany({
+		data: [
+			{ organization_id: org.id, event_type: "inventory.created", action: "created", entity_type: "inventory_item", entity_id: invBlower.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { name: { old: null, new: "Blower Motor 1/2 HP 115V" } }, timestamp: hrsAgo(30) },
+			{ organization_id: org.id, event_type: "vehicle.eod_completed", action: "updated", entity_type: "vehicle", entity_id: van12.id, actor_type: "technician", actor_id: tech1.id, actor_name: tech1.name, changes: { eod: { old: null, new: "completed" } }, timestamp: hrsAgo(16) },
+			{ organization_id: org.id, event_type: "stock.restock_fulfilled", action: "updated", entity_type: "vehicle", entity_id: van8.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { capacitors: { old: 1, new: 3 } }, timestamp: hrsAgo(22) },
+			{ organization_id: org.id, event_type: "vehicle.readiness_confirmed", action: "updated", entity_type: "vehicle", entity_id: van8.id, actor_type: "technician", actor_id: tech2.id, actor_name: tech2.name, changes: { ready: { old: false, new: true } }, timestamp: hrsAgo(15) },
 		],
 	});
 
@@ -2803,10 +3513,18 @@ async function main() {
 	);
 	console.log(`  Payments:          2  full (check) + partial (ACH)`);
 	console.log(`  Form Drafts:       3  quote, job_visit, invoice`);
-	console.log(`  Inventory:         5 items (2 below low-stock threshold)`);
-	console.log(`  Vehicles:          3  (Van 1/2 active w/ stock, Truck 3 spare fully loaded)`);
+	console.log(`  Tax:               2 rates → 1 group "WI Standard" (org default)`);
+	console.log(`  Inventory:         10 items w/ alt_ids (refrigerant + contactor below threshold)`);
+	console.log(`  Vehicles:          3  (Van 12 → Smith+Park, Van 8 → Rodriguez, Truck 4 spare)`);
+	console.log(`  Stock Ledger:      receive/restock/parts_used/transfer/loss/supplier_purchase/EOD`);
+	console.log(`  Restock Requests:  4  pending, fulfilled, dismissed, discrepant`);
+	console.log(`  EOD Records:       2  (Van 12 w/ shortfall, Van 8 → readiness confirmed)`);
+	console.log(`  Adjustments:       2  field_loss + audit`);
+	console.log(`  Shifts:            2  (+ lunch breaks, visit time entries)`);
+	console.log(`  Notifications:     3  (John Smith)`);
+	console.log(`  Inventory Tags:    4  Fast-moving, Electrical, Refrigerant, Controls`);
 	console.log(
-		`  Activity Logs:     37 entries covering all feed event types`,
+		`  Activity Logs:     41 entries covering all feed event types`,
 	);
 }
 

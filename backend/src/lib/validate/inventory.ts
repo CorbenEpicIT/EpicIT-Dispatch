@@ -18,6 +18,7 @@ export const createInventoryItemSchema = z.object({
 	image_urls: z.array(z.string().url()).default([]),
 	alert_emails_enabled: z.boolean().default(false),
 	alert_email: z.string().email().nullable().optional(),
+	alt_ids: z.array(z.string()).default([]),
 });
 
 export type CreateInventoryItemInput = z.infer<typeof createInventoryItemSchema>;
@@ -34,6 +35,7 @@ export const updateInventoryItemSchema = z.object({
 	image_urls: z.array(z.string().url()).optional(),
 	alert_emails_enabled: z.boolean().optional(),
 	alert_email: z.string().email().nullable().optional(),
+	alt_ids: z.array(z.string()).optional(),
 });
 
 export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>;

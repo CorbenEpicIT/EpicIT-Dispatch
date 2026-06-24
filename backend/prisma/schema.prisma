@@ -1100,6 +1100,7 @@ model inventory_item {
   approved_by_id      String?
   approved_by         dispatcher? @relation("DispatcherApprovedItems", fields: [approved_by_id], references: [id], onDelete: SetNull)
   image_keys          String[] @default([])
+  alt_ids             String[] @default([])
 
   image_urls           String[]  @default([])
   alert_emails_enabled Boolean   @default(false)

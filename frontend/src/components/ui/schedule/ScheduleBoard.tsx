@@ -1103,7 +1103,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 														right: 0,
 														height: 2,
 														backgroundColor: "var(--color-error)",
-														zIndex: 40,
+														zIndex: 3,
 														pointerEvents: "none",
 													}}
 												/>
@@ -1116,7 +1116,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 														height: 10,
 														borderRadius: "50%",
 														backgroundColor: "var(--color-error)",
-														zIndex: 41,
+														zIndex: 3,
 														pointerEvents: "none",
 													}}
 												/>

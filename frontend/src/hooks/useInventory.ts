@@ -54,6 +54,7 @@ export const useUpdateItemThresholdMutation = (): UseMutationResult<
 			inventoryApi.updateItemThreshold(itemId, threshold),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
 		},
 		onError: (error: Error) => {
 			console.error("Failed to update inventory threshold:", error);
@@ -89,6 +90,7 @@ export const useUpdateInventoryItemMutation = (): UseMutationResult<
 			inventoryApi.updateInventoryItem(itemId, data),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
 		},
 	});
 };
@@ -120,6 +122,7 @@ export const useAdjustStockMutation = (): UseMutationResult<
 			inventoryApi.adjustStock(itemId, delta),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
 		},
 	});
 };

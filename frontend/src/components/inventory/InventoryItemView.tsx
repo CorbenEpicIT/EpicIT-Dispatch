@@ -1,6 +1,12 @@
-import { Settings, Trash2, MapPin } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Settings, Trash2, MoreHorizontal } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
-import { calculateStockStatus, getStatusLabel, getStatusBadgeClass, getStockStatusTextColor, getStockStatusDotColor } from "../../util/util";
+import {
+	calculateStockStatus,
+	getStatusLabel,
+	getStatusBadgeClass,
+	getStockRingColor,
+} from "../../util/util";
 import ImageCarousel from "./ImageCarousel";
 
 interface InventoryItemViewProps {
@@ -29,124 +35,184 @@ export default function InventoryItemView({
 	const stockStatus = item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 	const threshold = item.low_stock_threshold;
 
+	const [menuOpen, setMenuOpen] = useState(false);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!menuOpen) return;
+		const handler = (e: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				setMenuOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [menuOpen]);
+
 	if (viewMode === "list") {
-		const dotColor = getStockStatusDotColor(stockStatus);
+		const ringColor = getStockRingColor(stockStatus);
+		const CIRC = 100.53; // 2π × r(16)
+		const fillRatio =
+			stockStatus === "out_of_stock" || stockStatus === "sufficient"
+				? 1
+				: stockStatus === "low" && threshold !== null
+				? Math.min(item.quantity / threshold, 1)
+				: 1;
+		const dashOffset = CIRC * (1 - fillRatio);
 
 		return (
 			<div
-				className={`overflow-hidden relative cursor-pointer group w-full h-full bg-base rounded-lg border border-border-subtle hover:border-border-strong transition-colors py-[10px] pr-[14px] pl-[32px] ${isHighlighted ? "animate-card-highlight" : ""}`}
+				className={`flex items-center gap-3 w-full bg-base rounded-lg border border-border-subtle hover:bg-surface hover:border-border-strong transition-colors duration-150 cursor-pointer px-3.5 py-2 group ${
+					isHighlighted ? "animate-card-highlight" : ""
+				}`}
 				onClick={onClick}
 			>
-				{/* Status dot — absolute top-left */}
-				<div
-					className={`absolute left-[14px] top-[14px] w-2 h-2 rounded-full ${dotColor}`}
-				/>
+				{/* Thumbnail — 44×44 */}
+				<div className="w-[44px] h-[44px] shrink-0 rounded-md overflow-hidden">
+					<ImageCarousel
+						images={item.image_urls ?? []}
+						compact
+						className="!h-[44px]"
+					/>
+				</div>
 
-				{/* Stats group — float:right, MUST be first in DOM before text nodes */}
-				<div
-					className="float-right flex items-center gap-1.5 ml-3.5 mb-0.5"
-					onClick={(e) => e.stopPropagation()}
-				>
-					<div className="w-px h-7 bg-surface mx-0.5" />
-
-					{/* Qty */}
-					<div className="w-9 text-center">
-						<div
-							className={`text-base font-bold leading-none ${getStockStatusTextColor(stockStatus)}`}
-						>
-							{item.quantity}
-						</div>
-						<div className="text-[9px] text-text-muted uppercase tracking-wide mt-0.5">qty</div>
-					</div>
-
-					{/* Min */}
-					<div className="w-9 text-center">
-						<div className="text-sm text-text-tertiary leading-none">
-							{threshold !== null ? threshold : "—"}
-						</div>
-						<div className="text-[9px] text-text-muted uppercase tracking-wide mt-0.5">min</div>
-					</div>
-
-					{qbConnected && (
-						<div className="w-20 flex justify-center shrink-0">
-							{isLinkedToQB ? (
-								<span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success-bg text-success-text">
-									QB Linked
+				{/* Content: name row + description */}
+				<div className="flex-1 min-w-0 flex flex-col gap-0.5">
+					{/* Row 1: name · tags · field pills */}
+					<div className="flex items-center gap-2.5 min-w-0">
+						<span className="text-[13px] font-semibold text-text-primary truncate min-w-0">
+							{item.name}
+						</span>
+						{item.tags && item.tags.slice(0, 2).map((tag) => (
+							<span
+								key={tag.id}
+								className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-text-tertiary shrink-0"
+							>
+								{tag.label}
+							</span>
+						))}
+						{[
+							item.location ? { label: "LOC", value: item.location } : null,
+							item.unit_price !== null ? { label: "PRICE", value: `$${Number(item.unit_price).toFixed(2)}` } : null,
+							item.cost !== null ? { label: "COST", value: `$${Number(item.cost).toFixed(2)}` } : null,
+							(item.unit && item.unit.toLowerCase() !== "each") ? { label: "UNIT", value: item.unit } : null,
+							item.sku ? { label: "SKU", value: item.sku } : null,
+							...(item.alt_ids?.slice(0, 2).map((id) => ({ label: "ID", value: id })) ?? []),
+						]
+							.filter((p): p is { label: string; value: string } => p !== null)
+							.map((pill, i) => (
+								<span key={pill.label} className="flex items-center gap-2.5 shrink-0">
+									{(i > 0 || (item.tags && item.tags.length > 0)) && (
+										<span className="text-text-faint text-[10px]">·</span>
+									)}
+									<span className="text-[11px] text-text-muted">
+										<span className="text-[10px] text-text-faint uppercase tracking-wide mr-0.5">{pill.label}</span>
+										{pill.value}
+									</span>
 								</span>
-							) : onLinkQB ? (
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										onLinkQB();
-									}}
-									className="opacity-0 group-hover:opacity-100 transition-opacity rounded-md border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-text-primary hover:border-border-strong hover:bg-surface-raised"
-								>
-									Link
-								</button>
-							) : null}
+							))}
+					</div>
+					{/* Row 2: description */}
+					{item.description && (
+						<div className="text-[11px] text-text-muted truncate">
+							{item.description}
 						</div>
 					)}
+				</div>
 
-					{/* Actions — opacity-0 until group hover */}
-					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-						{onEditThreshold && (
-							<button
-								onClick={(e) => {
-									e.stopPropagation();
-									onEditThreshold();
-								}}
-								className="p-1.5 hover:bg-surface text-text-tertiary hover:text-text-primary rounded-md transition-colors"
-								title="Edit threshold"
+				{/* Divider */}
+				<div className="w-px self-stretch bg-border-subtle mx-1 shrink-0" />
+
+				{/* Right panel */}
+				<div
+					className="flex items-center gap-2 shrink-0"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{/* Stock ring — 40×40 */}
+					<div className="relative w-[40px] h-[40px] shrink-0">
+						<svg width="40" height="40" viewBox="0 0 40 40">
+							<circle cx="20" cy="20" r="16" fill="none" stroke="#27272a" strokeWidth="3.5" />
+							<circle
+								cx="20" cy="20" r="16" fill="none"
+								stroke={ringColor}
+								strokeWidth="3.5"
+								strokeDasharray={CIRC}
+								strokeDashoffset={dashOffset}
+								strokeLinecap="round"
+								transform="rotate(-90 20 20)"
+							/>
+						</svg>
+						<div className="absolute inset-0 flex items-center justify-center">
+							<span className="text-[13px] font-bold text-text-primary leading-none">
+								{item.quantity}
+							</span>
+						</div>
+					</div>
+
+					{/* Status badge — fixed width so divider aligns across all rows */}
+					<div className="w-[82px] flex justify-center shrink-0">
+						{stockStatus !== null && (
+							<span
+								className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getStatusBadgeClass(stockStatus)}`}
 							>
-								<Settings size={14} />
-							</button>
+								<span className="w-1.5 h-1.5 rounded-full bg-current" />
+								{getStatusLabel(stockStatus)}
+							</span>
 						)}
-						{onDelete && (
-							<button
-								onClick={(e) => {
-									e.stopPropagation();
-									onDelete();
-								}}
-								className="p-1.5 hover:bg-surface text-text-muted hover:text-error-text rounded-md transition-colors"
-								title="Delete item"
-							>
-								<Trash2 size={14} />
-							</button>
+					</div>
+
+					{/* Divider */}
+					<div className="w-px self-stretch bg-border-subtle mx-0.5 shrink-0" />
+
+					{/* Kebab */}
+					<div className="relative" ref={menuRef}>
+						<button
+							type="button"
+							onClick={() => setMenuOpen((o) => !o)}
+							className="w-[28px] h-[28px] rounded-md border border-border flex items-center justify-center text-text-muted hover:bg-surface hover:text-text-primary transition-colors"
+						>
+							<MoreHorizontal size={13} />
+						</button>
+						{menuOpen && (
+							<div className="absolute right-0 top-full mt-1 w-44 bg-base border border-border rounded-lg shadow-lg z-50 py-1">
+								{onEditThreshold && (
+									<button
+										type="button"
+										onClick={() => { setMenuOpen(false); onEditThreshold(); }}
+										className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
+									>
+										<Settings size={13} />
+										Alert Settings
+									</button>
+								)}
+								{qbConnected && isLinkedToQB && (
+									<div className="px-3 py-1.5 text-xs text-success-text flex items-center gap-2">
+										QB Linked
+									</div>
+								)}
+								{qbConnected && !isLinkedToQB && onLinkQB && (
+									<button
+										type="button"
+										onClick={() => { setMenuOpen(false); onLinkQB?.(); }}
+										className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
+									>
+										Link to QuickBooks
+									</button>
+								)}
+								{onDelete && (
+									<button
+										type="button"
+										onClick={() => { setMenuOpen(false); onDelete(); }}
+										className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-error-text hover:bg-surface transition-colors"
+									>
+										<Trash2 size={13} />
+										Delete
+									</button>
+								)}
+							</div>
 						)}
 					</div>
 				</div>
-
-				{/* Text nodes — plain block flow, NO flex/grid wrapper */}
-				<div className="text-sm font-semibold text-text-primary leading-snug">
-					{item.name}
-				</div>
-				{item.description && (
-					<div className="text-xs text-text-muted mt-0.5 leading-snug">
-						{item.description}
-					</div>
-				)}
-				{(item.category || item.unit || item.sku || item.unit_price !== null) && (
-					<div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-						{item.category && (
-							<span className="text-xs text-text-muted">{item.category}</span>
-						)}
-						{item.unit && item.unit.toLowerCase() !== "each" && (
-							<span className="text-xs text-text-muted">{item.unit}</span>
-						)}
-						{item.sku && (
-							<span className="text-xs text-text-muted">{item.sku}</span>
-						)}
-						{item.unit_price !== null && (
-							<span className="text-xs text-text-muted">${Number(item.unit_price).toFixed(2)}</span>
-						)}
-					</div>
-				)}
-				{item.location && (
-					<div className="flex items-start gap-1 mt-1">
-						<MapPin size={10} className="text-text-muted mt-px shrink-0" />
-						<span className="text-[11px] text-text-muted leading-snug">{item.location}</span>
-					</div>
-				)}
 			</div>
 		);
 	}
@@ -173,46 +239,52 @@ export default function InventoryItemView({
 			<hr className="my-2 text-text-faint" />
 			<div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1">
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Location</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Location</h2>
 					<p className="text-text-secondary text-sm mt-0.5">{item.location ?? "—"}</p>
 				</div>
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">SKU</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">SKU</h2>
 					<p className="text-text-secondary text-sm mt-0.5">{item.sku ?? "—"}</p>
 				</div>
+				{item.alt_ids && item.alt_ids.length > 0 && (
+					<div className="col-span-2">
+						<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Alt IDs</h2>
+						<p className="text-text-secondary text-sm mt-0.5">{item.alt_ids.join(", ")}</p>
+					</div>
+				)}
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Unit Price</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Unit Price</h2>
 					<p className="text-text-secondary text-sm mt-0.5">
 						{item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : "—"}
 					</p>
 				</div>
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Cost</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Cost</h2>
 					<p className="text-text-secondary text-sm mt-0.5">
 						{item.cost != null ? `$${Number(item.cost).toFixed(2)}` : "—"}
 					</p>
 				</div>
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Quantity</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Quantity</h2>
 					<p className="text-text-secondary text-sm mt-0.5">{item.quantity}</p>
 				</div>
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Last Updated</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Last Updated</h2>
 					<p className="text-text-secondary text-sm mt-0.5">
 						{new Date(item.updated_at).toLocaleDateString()}
 					</p>
 				</div>
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Category</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Category</h2>
 					<p className="text-text-secondary text-sm mt-0.5">{item.category ?? "-"}</p>
 				</div>
 				<div>
-					<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Unit</h2>
+					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Unit</h2>
 					<p className="text-text-secondary text-sm mt-0.5">{(item.unit && item.unit.toLowerCase() !== "each") ? item.unit : "-"}</p>
 				</div>
 				{item.description && (
 					<div className="col-span-2">
-						<h2 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Description</h2>
+						<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Description</h2>
 						<p className="text-text-secondary text-sm mt-0.5">{item.description}</p>
 					</div>
 				)}

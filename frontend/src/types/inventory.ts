@@ -20,6 +20,7 @@ export interface InventoryItem {
 	is_active: boolean;
 	low_stock_threshold: number | null;
 	image_urls: string[];
+	alt_ids?: string[];
 	alert_emails_enabled: boolean;
 	alert_email: string | null;
 	category: string | null;
@@ -50,6 +51,7 @@ export interface CreateInventoryItemInput {
 	sku?: string | null;
 	low_stock_threshold?: number | null;
 	image_urls: string[];
+	alt_ids?: string[];
 	alert_emails_enabled: boolean;
 	alert_email?: string | null;
 }
@@ -64,6 +66,7 @@ export interface UpdateInventoryItemInput {
 	sku?: string | null;
 	low_stock_threshold?: number | null;
 	image_urls?: string[];
+	alt_ids?: string[];
 	alert_emails_enabled?: boolean;
 	alert_email?: string | null;
 }
