@@ -6,6 +6,7 @@ import {
 	handleCallback,
 	disconnectOrg,
 	getQBStatus,
+	getOrgRealmId,
 } from "../services/quickbooksService.js";
 import { 
 	pushInvoice,
@@ -107,10 +108,12 @@ router.get("/customers/mappings", async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
 		const sdb = getScopedDb(orgId);
+		const accountId = await getOrgRealmId(orgId);
 		const mappings = await sdb.client_external_mapping.findMany({
 			where: {
 				provider: "quickbooks",
 				client: { organization_id: orgId },
+				account_id: accountId,
 			},
 			select: { external_id: true },
 		});

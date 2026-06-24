@@ -232,4 +232,11 @@ export async function disconnectOrg(orgId: string): Promise<void> {
 	});
 }
 
-
+export async function getOrgRealmId(orgId: string): Promise<string> {
+	const sdb = getScopedDb(orgId);
+	const org = await sdb.organization.findUnique({
+		where: {id: orgId},
+		select: {qb_realm_id: true}
+	});
+	return org?.qb_realm_id ?? "";
+}

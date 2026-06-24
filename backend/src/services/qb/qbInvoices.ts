@@ -2,7 +2,7 @@ import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { qbQueryAll } from "./qbQuery.js";
-import { qbFetch } from "../quickbooksService.js";
+import { qbFetch, getOrgRealmId } from "../quickbooksService.js";
 import { findOrCreateQBCustomer } from "./qbCustomers.js";
 import { httpError } from "../../types/responses.js";
 
@@ -75,7 +75,7 @@ const createOneImportedInvoice = async (
 	);
 	const subtotal = lines.reduce((s, l) => s + Number(l.Amount ?? 0), 0);
 	const total = Number(qbInvoice.TotalAmt ?? subtotal);
-
+	const accountId = await getOrgRealmId(orgId);
 	for (let attempt = 0; attempt < 5; attempt++) {
 		// First try the bare QB number; on collision append -2, -3, …
 		const invoice_number = attempt === 0 ? base : `${base}-${attempt + 1}`;
@@ -100,6 +100,7 @@ const createOneImportedInvoice = async (
 						total,
 						amount_paid: 0,
 						balance_due: total,
+						account_id: accountId,
 					},
 				});
 
@@ -152,12 +153,9 @@ export const getImportableQBInvoices = async (
 	clientId?: string,
 ): Promise<QBImportableInvoice[]> => {
 	const sdb = getScopedDb(orgId);
-
-	// The caller passes our EpicIT client id, not the QB customer id. If the
-	// client is linked to a QB customer, scope to that customer (QB's CustomerRef
-	// is numeric — querying with our UUID makes QB 400 with a QueryParserError).
-	// If the client isn't linked, fall back to the org-wide list so the user can
-	// still import and assign invoices to the selected client.
+	const accountId = await getOrgRealmId(orgId);
+	// Map our EpicIT client id to its linked QB customer (numeric CustomerRef — a raw UUID 400s); 
+	// if unlinked, fall back to the org-wide invoice list.
 	let where: string | undefined;
 	if (clientId) {
 		const mapping = await sdb.client_external_mapping.findFirst({
@@ -165,6 +163,7 @@ export const getImportableQBInvoices = async (
 				provider: "quickbooks",
 				client_id: clientId,
 				client: { organization_id: orgId },
+				account_id: accountId
 			},
 			select: { external_id: true },
 		});
@@ -175,7 +174,7 @@ export const getImportableQBInvoices = async (
 
 	const qbIds = invoices.map((i) => i.Id);
 	const existing = await sdb.invoice.findMany({
-		where: { qb_invoice_id: { in: qbIds } },
+		where: { qb_invoice_id: { in: qbIds }, account_id: accountId },
 		select: { qb_invoice_id: true },
 	});
 	const seen = new Set(existing.map((i) => i.qb_invoice_id));
@@ -200,6 +199,7 @@ export const getQBInvoicePrefill = async (
 	qbInvoiceId: string,
 ): Promise<QBInvoicePrefill> => {
 	const sdb = getScopedDb(orgId);
+	const accountId = await getOrgRealmId(orgId);
 	const invoices = await qbQueryAll<QBImportInvoice>(orgId, "Invoice", `Id = '${qbInvoiceId}'`);
 	const qb = invoices[0];
 	if (!qb) throw httpError(404, "NOT_FOUND", "QuickBooks invoice not found");
@@ -213,6 +213,7 @@ export const getQBInvoicePrefill = async (
 			where: {
 				provider: "quickbooks",
 				external_id: qb.CustomerRef.value,
+				account_id: accountId,
 				client: { organization_id: orgId },
 			},
 			select: { client_id: true },
@@ -229,6 +230,7 @@ export const getQBInvoicePrefill = async (
 				where: {
 					provider: "quickbooks",
 					external_id: { in: itemRefIds },
+					account_id: accountId,
 					inventory_item: { organization_id: orgId },
 				},
 				select: { external_id: true, inventory_item_id: true },
@@ -237,7 +239,7 @@ export const getQBInvoicePrefill = async (
 	const itemMap = new Map(itemMaps.map((m) => [m.external_id, m.inventory_item_id]));
 
 	const alreadyImported = !!(await sdb.invoice.findFirst({
-		where: { qb_invoice_id: qb.Id },
+		where: { qb_invoice_id: qb.Id, account_id: accountId },
 		select: { id: true },
 	}));
 
@@ -272,20 +274,20 @@ export const importQBInvoices = async (orgId: string, qbInvoiceIds: string[]) =>
 	let skipped = 0;
 	const errors: string[] = [];
 	if (qbInvoiceIds.length === 0) return { imported, skipped, errors };
-
+	const accountId = await getOrgRealmId(orgId);
 	const sdb = getScopedDb(orgId);
 	const idList = qbInvoiceIds.map((id) => `'${id}'`).join(",");
 	const invoices = await qbQueryAll<QBImportInvoice>(orgId, "Invoice", `Id IN (${idList})`);
 
 	const existing = await sdb.invoice.findMany({
-		where: { qb_invoice_id: { in: qbInvoiceIds } },
+		where: { qb_invoice_id: { in: qbInvoiceIds }, account_id: accountId },
 		select: { qb_invoice_id: true },
 	});
 	const seen = new Set(existing.map((i) => i.qb_invoice_id));
 
 	const custRefs = [...new Set(invoices.map((i) => i.CustomerRef?.value).filter(Boolean) as string[])];
 	const clientMaps = await sdb.client_external_mapping.findMany({
-		where: { provider: "quickbooks", external_id: { in: custRefs }, client: { organization_id: orgId } },
+		where: { provider: "quickbooks", external_id: { in: custRefs }, account_id: accountId, client: { organization_id: orgId } },
 		select: { external_id: true, client_id: true },
 	});
 	const clientMap = new Map(clientMaps.map((m) => [m.external_id, m.client_id]));
@@ -298,7 +300,12 @@ export const importQBInvoices = async (orgId: string, qbInvoiceIds: string[]) =>
 			.filter(Boolean) as string[],
 	)];
 	const itemMaps = await sdb.item_external_mapping.findMany({
-		where: { provider: "quickbooks", external_id: { in: itemRefIds }, inventory_item: { organization_id: orgId } },
+		where: { 
+			provider: "quickbooks", 
+			external_id: { in: itemRefIds }, 
+			inventory_item: { organization_id: orgId },
+			account_id: accountId,
+		},
 		select: { external_id: true, inventory_item_id: true },
 	});
 	const itemMap = new Map(itemMaps.map((m) => [m.external_id, m.inventory_item_id]));
@@ -340,6 +347,7 @@ export async function pushInvoice(invoiceId: string, orgId: string): Promise<voi
 
 async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 	const sdb = getScopedDb(orgId);
+	const accountId = await getOrgRealmId(orgId);
 	const invoice = await sdb.invoice.findFirst({
 		where: { id: invoiceId },
 		include: {
@@ -349,9 +357,10 @@ async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 						include: { 
 							external_mappings: { 
 								where: { 
-									provider: "quickbooks"
+									provider: "quickbooks",
+									account_id: accountId
 								}, 
-								take: 1 
+								take: 1,
 							} 
 						} 
 					},
@@ -368,7 +377,7 @@ async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 						take: 1,
 					},
 					client_external_mapping: {
-						where: { provider: "quickbooks" },
+						where: { provider: "quickbooks", account_id: accountId },
 						take: 1,
 					},
 				},
@@ -384,8 +393,8 @@ async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 	// Cache the QB customer ID so this client is excluded from the import dropdown
 	if (!existingQBId) {
 		await sdb.client_external_mapping.upsert({
-			where: { provider_external_id: { provider: "quickbooks", external_id: customerId } },
-			create: { client_id: invoice.client_id, provider: "quickbooks", external_id: customerId },
+			where: { provider_account_id_external_id: { provider: "quickbooks", account_id: accountId, external_id: customerId } },
+			create: { client_id: invoice.client_id, provider: "quickbooks", external_id: customerId, account_id: accountId },
 			update: {},
 		}).catch(() => {});
 	}
@@ -416,7 +425,10 @@ async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 	}
 
 	
-	let qbInvoiceId: string | null = invoice.qb_invoice_id ?? null;
+	// Only reuse the stored QB id if it belongs to the currently-connected company.
+	// A stale-company id is ignored → DocNumber lookup / create-new in the current company.
+	let qbInvoiceId: string | null =
+		(invoice.qb_invoice_id && invoice.account_id === accountId) ? invoice.qb_invoice_id : null;
 	if (!qbInvoiceId) {
 		const existingByDoc = await qbQueryAll<{ Id: string }>(
 				orgId,
@@ -440,8 +452,8 @@ async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 		});
 		await sdb.invoice.update({
 			where: { id: invoiceId },
-			// persist the id in case we resolved it via the Doc
-			data: { qb_invoice_id: qbInvoiceId, qb_sync_status: "synced" },
+			// persist the id + the company it belongs to (in case we resolved it via the Doc)
+			data: { qb_invoice_id: qbInvoiceId, account_id: accountId, qb_sync_status: "synced" },
 		});
 	} else {
 		const created = (await qbFetch(orgId, "POST", "/invoice", {
@@ -457,6 +469,7 @@ async function doPushInvoice(invoiceId: string, orgId: string): Promise<void> {
 			where: { id: invoiceId },
 			data: {
 				qb_invoice_id: created.Invoice.Id,
+				account_id: accountId,
 				qb_sync_status: "synced",
 			},
 		});
@@ -473,8 +486,9 @@ export async function voidQBInvoice(orgId: string, qbInvoiceId: string): Promise
 
 	// Reflect the void locally. updateMany is org-scoped via getScopedDb.
 	const sdb = getScopedDb(orgId);
+	const accountId = await getOrgRealmId(orgId);
 	await sdb.invoice.updateMany({
-		where: { qb_invoice_id: qbInvoiceId },
+		where: { qb_invoice_id: qbInvoiceId, account_id: accountId },
 		data: { qb_sync_status: "synced" },
 	});
 }

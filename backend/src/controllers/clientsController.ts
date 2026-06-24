@@ -7,6 +7,7 @@ import {
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { insertContact } from "./contactsController.js"
+import { getOrgRealmId } from "../services/quickbooksService.js";
 
 const buildClientInclude = () => ({
 	jobs: {
@@ -103,6 +104,10 @@ export const insertClient = async (
 	try {
 		const parsed = createClientSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
+		// Scope the QB customer mapping to the org's current realm 
+		const accountId = parsed.qb_customer_id
+			? await getOrgRealmId(organizationId)
+			: "";
 		const created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.create({
 				data: {
@@ -121,6 +126,7 @@ export const insertClient = async (
 					data: {
 						client_id: client.id,
 						provider: "quickbooks",
+						account_id: accountId,
 						external_id: parsed.qb_customer_id,
 					},
 				});

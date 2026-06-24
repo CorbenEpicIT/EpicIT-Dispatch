@@ -388,12 +388,12 @@ export default function InvoiceDetailPage() {
 
 	// ── QuickBooks sync state (shared by header badge + toolbar action + menu) ──
 	const qbConnected = !!qbStatus?.connected;
-	const qbSynced = invoice.qb_sync_status === "synced";
-	const qbFailed = invoice.qb_sync_status === "failed";
-	const qbHasRemote = !!invoice.qb_invoice_id;
+	const qbInThisRealm =
+		qbConnected && !!invoice.account_id && invoice.account_id === qbStatus?.realmId;
+	const qbSynced = qbInThisRealm && invoice.qb_sync_status === "synced";
+	const qbFailed = qbInThisRealm && invoice.qb_sync_status === "failed";
+	const qbHasRemote = qbInThisRealm && !!invoice.qb_invoice_id;
 
-	// First push CREATES the QB invoice; later pushes UPDATE it. The label says
-	// exactly which, so "Sync" never reads as two-way.
 	const qbActionLabel = qbFailed
 		? "Retry sync"
 		: qbHasRemote
@@ -402,11 +402,9 @@ export default function InvoiceDetailPage() {
 	const qbActionTitle = qbHasRemote
 		? `Sync your latest changes to QuickBooks invoice #${invoice.qb_invoice_id}`
 		: "Create this invoice in QuickBooks Online (one-way sync — nothing is pulled back)";
-	// Hidden once synced — nothing to push when in sync.
 	const qbShowAction = qbConnected && !qbSynced;
 	const qbCanSendVia = qbConnected && (qbSynced || qbHasRemote);
 
-	// Compact, non-wrapping status badge for the header (detail lives in the title).
 	const qbBadge = qbSynced
 		? {
 				cls: "bg-success-bg text-success-bright-text border-success-border",
@@ -444,9 +442,8 @@ export default function InvoiceDetailPage() {
 			<div className="flex items-start justify-between gap-4 mb-6">
 				<div className="min-w-0 flex-1">
 					{/* Invoice number, status badges, and memo share one row,
-					    vertically centered so the memo lines up with the badges
-					    (not the tall invoice-number baseline). Memo wraps below on
-					    narrow viewports. */}
+					    vertically centered so the memo lines up with the badges. 
+						Memo wraps below on narrow viewports. */}
 					<div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1 min-w-0">
 						<h1 className="text-3xl font-bold text-text-primary">
 							{invoice.invoice_number}

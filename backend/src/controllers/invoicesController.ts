@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import { isQBConnected } from "../services/quickbooksService.js";
+import { isQBConnected, getOrgRealmId } from "../services/quickbooksService.js";
 import { pushInvoice, voidQBInvoice } from "../services/qb/qbInvoices.js"
 import {
 	createInvoiceSchema,
@@ -410,9 +410,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 			return invoice;
 		});
 
-		// QB sync — fire only when a QB-mirrored field changed. pushInvoice
-		// chooses create-vs-update internally, so an edit also retries an
-		// invoice whose initial sync failed (no qb_invoice_id yet).
+		// QB sync — fire only when a QB-mirrored field changed
 		if (qbRelevantChanged) {
 			isQBConnected(organizationId)
 				.then((connected) => {
@@ -657,10 +655,11 @@ export const deleteInvoicePayment = async (
 			user_agent: context?.userAgent,
 		});
 
-		// Mirror to QB only if this payment was actually synced. Capture the QB id
-		// before the row is gone and pass it directly (the row is already deleted).
+		// Mirror to QB only if this payment was actually synced
+		// Skip if the payment belongs to a different QB account
 		const qbPaymentId = existing.qb_payment_id;
-		if (qbPaymentId) {
+		const currentRealmId = await getOrgRealmId(organizationId);
+		if (qbPaymentId && existing.account_id === currentRealmId) {
 			isQBConnected(organizationId)
 			.then((connected) => (connected ? deleteQBPayment(qbPaymentId, organizationId) : null))
 			.catch((e) => logExternalSync({

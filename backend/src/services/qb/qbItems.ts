@@ -1,4 +1,4 @@
-import { qbFetch } from "../quickbooksService.js";
+import { getOrgRealmId, qbFetch } from "../quickbooksService.js";
 import { qbQueryAll } from "./qbQuery.js";
 import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
@@ -46,10 +46,12 @@ async function findOrCreateQBItem(orgId: string, name: string, unitPrice?: numbe
 };
 
 export async function getMappedQBItems(orgId: string): Promise<{ inventory_item_id: string; external_id: string }[]> {
+    const accountId = await getOrgRealmId(orgId);
     const mappings = await db.item_external_mapping.findMany({
-        where: { 
+        where: {
             provider: "quickbooks",
-            inventory_item : { organization_id: orgId }
+            inventory_item : { organization_id: orgId },
+            account_id: accountId
         },
         select: {
             inventory_item_id: true,
@@ -62,13 +64,13 @@ export async function getMappedQBItems(orgId: string): Promise<{ inventory_item_
 export async function importQBItem(orgId: string, qbItemId: string) {
     const data = (await qbFetch(orgId, "GET", `/item/${qbItemId}`)) as any;
     const qbItem = data.Item as QBItem;
-
-    const existing = await db.item_external_mapping.findUnique({
+    const accountId = await getOrgRealmId(orgId);
+    const existing = await db.item_external_mapping.findFirst({
         where: {
-            provider_external_id: {
-                provider: "quickbooks",
-                external_id: qbItemId
-            }
+            provider: "quickbooks",
+            external_id: qbItemId,
+            account_id: accountId,
+            inventory_item: { organization_id: orgId },
         }
     });
     if (existing) {
@@ -93,7 +95,8 @@ export async function importQBItem(orgId: string, qbItemId: string) {
                 data: {
                     inventory_item_id: created.id,
                     external_id: qbItemId,
-                    provider: "quickbooks"
+                    provider: "quickbooks",
+                    account_id: accountId 
                 }
             });
             return created;
@@ -123,12 +126,14 @@ export async function linkQBItem(orgId: string, inventoryItemId: string, qbItemI
         throw httpError(404, ErrorCodes.NOT_FOUND, "Inventory item not found");
     }
 
+    const accountId = await getOrgRealmId(orgId);
     try {
         await sdb.item_external_mapping.create({
             data: {
                 inventory_item_id: inventoryItemId,
                 external_id: qbItemId,
-                provider: "quickbooks"
+                provider: "quickbooks",
+                account_id: accountId
             }
         });
     } catch (error: any) {
@@ -142,10 +147,12 @@ export async function linkQBItem(orgId: string, inventoryItemId: string, qbItemI
 // Remove the QB mapping for an inventory item. Org-scoped via the parent
 // inventory_item; throws 404 if no mapping exists for this org's item.
 export async function unlinkQBItem(orgId: string, inventoryItemId: string): Promise<void> {
+    const accountId = await getOrgRealmId(orgId);
     const { count } = await db.item_external_mapping.deleteMany({
         where: {
             provider: "quickbooks",
             inventory_item_id: inventoryItemId,
+            account_id: accountId,
             inventory_item: { organization_id: orgId },
         },
     });
@@ -163,12 +170,13 @@ export async function pushItem(orgId: string, inventoryItemId: string): Promise<
         throw httpError(404, ErrorCodes.NOT_FOUND, "Inventory item not found");
     }
 
-    const existing = await db.item_external_mapping.findUnique({
+    const accountId = await getOrgRealmId(orgId);
+    const existing = await db.item_external_mapping.findFirst({
         where: {
-            provider_inventory_item_id: {
-                provider: "quickbooks",
-                inventory_item_id: inventoryItemId
-            }
+            provider: "quickbooks",
+            inventory_item_id: inventoryItemId,
+            account_id: accountId,
+            inventory_item: { organization_id: orgId },
         }
     });
     if (existing) return existing.external_id;
@@ -178,7 +186,8 @@ export async function pushItem(orgId: string, inventoryItemId: string): Promise<
         data: {
             inventory_item_id: inventoryItemId,
             external_id: qbItemId,
-            provider: "quickbooks"
+            provider: "quickbooks",
+            account_id: accountId
         }
     });
     return qbItemId;

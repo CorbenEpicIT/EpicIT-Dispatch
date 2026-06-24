@@ -1,5 +1,5 @@
 import { getScopedDb } from "../../lib/context.js";
-import { qbFetch } from "../quickbooksService.js";
+import { qbFetch, getOrgRealmId } from "../quickbooksService.js";
 import { httpError, ErrorCodes } from "../../types/responses.js";
 import { pushInvoice } from "./qbInvoices.js"
 import { logExternalSync } from "./qbSyncLog.js"
@@ -68,17 +68,17 @@ export async function pushPaymentToQB(paymentId: string, organizationId: string)
 
 async function doPushPaymentToQB(paymentId: string, organizationId: string) {
     const sdb = getScopedDb(organizationId);
-
+    const accountId = await getOrgRealmId(organizationId);
     let payment = await sdb.invoice_payment.findFirst({
         where: { id: paymentId },
-        include: { 
+        include: {
             invoice: {
-                include: { 
+                include: {
                     client: {
-                        include: { client_external_mapping: true }
+                        include: { client_external_mapping: { where: { provider: "quickbooks", account_id: accountId } } }
                     }
                 }
-            } 
+            }
         },
     });
 
@@ -92,10 +92,10 @@ async function doPushPaymentToQB(paymentId: string, organizationId: string) {
     if (!payment.invoice) {
         throw httpError(400, ErrorCodes.BAD_REQUEST, "Invoice not found");
     }
-    if (!payment.invoice.qb_invoice_id) {
+    if (!payment.invoice.qb_invoice_id || payment.invoice.account_id !== accountId) {
         await pushInvoice(payment.invoice.id, organizationId);
         const updatedPayment = await sdb.invoice_payment.findFirst({
-            where: { id: paymentId },
+            where: { id: paymentId, account_id: accountId },
             include: { 
                 invoice: {
                     include: { 
@@ -141,7 +141,7 @@ async function doPushPaymentToQB(paymentId: string, organizationId: string) {
 
     await sdb.invoice_payment.update({
         where: { id: paymentId },
-        data: { qb_payment_id: result.Payment.Id }
+        data: { qb_payment_id: result.Payment.Id, account_id: accountId }
     });
 
     await logExternalSync({
