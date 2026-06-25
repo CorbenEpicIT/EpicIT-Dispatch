@@ -35,7 +35,7 @@ import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { usePermission } from "../../hooks/usePermission";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
-import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, fitLayout, getActiveCols } from "../../lib/DashboardConfig";
+import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, getActiveCols, fitDashboard, randomizeLayout } from "../../lib/DashboardConfig";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import OverviewWidget from "../../components/widgets/OverviewWidget";
 import RevenueYTDWidget from "../../components/widgets/RevenueYTDWidget";
@@ -254,10 +254,7 @@ export default function DashboardPage() {
 	const pausedPlansCount = recurringPlans.filter((p) => p.status === "Paused").length;
 
 	const { containerRef, width: rawContainerWidth } = useContainerWidth();
-	// displayWidth and settledWidth are both driven from the same useEffect so
-	// setIsResizing(true) + setDisplayWidth batch into ONE render — guaranteeing
-	// no-transitions is active before RGL ever sees the new width (fixes the
-	// one-frame race that caused occasional glitches with rawContainerWidth).
+	
 	const [displayWidth, setDisplayWidth] = useState(0);
 	const [settledWidth, setSettledWidth] = useState(0);
 	const [isResizing, setIsResizing] = useState(false);
@@ -280,16 +277,14 @@ export default function DashboardPage() {
 	// Sync displayLayouts when layouts changes (drag/resize/reset/fit/widget add)
 	useEffect(() => { setDisplayLayouts(layouts); }, [layouts]);
 
-	// Auto-fit displayLayouts when col count changes — preserves persisted layout
+	// Auto-fit displayLayouts when col count changes
 	const prevColsRef = useRef(activeCols.lg);
 	useEffect(() => {
 		if (prevColsRef.current === activeCols.lg) return;
 		prevColsRef.current = activeCols.lg;
 		setDisplayLayouts(prev => ({
 			...prev,
-			// Returning to full-width: restore the exact saved layout unchanged.
-			// Shrinking: fit-pack into the smaller col count.
-			lg: activeCols.lg === 12 ? (layouts.lg ?? []) : fitLayout(layouts.lg ?? [], activeCols.lg),
+			lg: activeCols.lg === 12 ? (layouts.lg ?? []) : fitDashboard(layouts.lg ?? [], activeCols.lg),
 		}));
 	}, [activeCols.lg, layouts.lg]);
 
@@ -298,13 +293,10 @@ export default function DashboardPage() {
 		const cols = activeCols.lg;
 		const display = (displayLayouts.lg ?? []).map(item => {
 			const c = resolveConstraints(item.i, w);
-			// Cap width constraints to the active column count so a widget's minW
-			// can never exceed the grid width (which would lock it at full-width).
+			
 			const minW = Math.min(c.minW ?? 1, cols);
 			const maxW = Math.min(c.maxW ?? cols, cols);
-			// Base height respects the configured maxH (manual resize is capped),
-			// but auto-grow can push past it so content fully fits. Raise the maxH
-			// handed to RGL to match, otherwise RGL would clamp it back down.
+			
 			const baseH = Math.min(Math.max(item.h, c.minH ?? 1), c.maxH ?? 20);
 			const h = baseH + (autoExtra[item.i] ?? 0);
 			return {
@@ -320,25 +312,18 @@ export default function DashboardPage() {
 		return { lg: display, md: display, sm: display };
 	}, [displayLayouts.lg, settledWidth, displayWidth, activeCols.lg, autoExtra]);
 
-	// Reset auto-grown heights when the base layout or available width changes, and
-	// while editing (so manual drag-resizing is never fought by the auto-fit pass).
-	// After a reset the observer below re-measures and re-grows from the base height.
 	useEffect(() => { setAutoExtra({}); }, [layouts.lg, settledWidth, isEditMode]);
 
-	// Measure each widget's content; if it overflows its cell, add enough rows to
-	// fully fit it. Auto-grow is allowed past the configured maxH (constrainedLayouts
-	// raises the RGL cap to match); a safety bound just prevents a runaway loop.
 	useEffect(() => {
 		if (isEditMode || displayWidth <= 0) return;
-		const ROW_PX = 45 + 16; // rowHeight + vertical margin
-		const SAFETY_MAX_EXTRA = 40; // backstop against runaway growth
+		const ROW_PX = 45 + 16; 
+		const SAFETY_MAX_EXTRA = 40; 
 
 		const measure = () => {
 			setAutoExtra(prev => {
 				const next = { ...prev };
 				let changed = false;
 				widgetRefs.current.forEach((wrapper, id) => {
-					// Card root -> content body is the scrollable element.
 					const body = wrapper.firstElementChild?.lastElementChild as HTMLElement | undefined;
 					if (!body) return;
 					const overflow = body.scrollHeight - body.clientHeight;
@@ -620,11 +605,18 @@ export default function DashboardPage() {
 								Reset
 							</button>
 							<button
-								onClick={() => setLayouts(prev => ({ ...prev, lg: fitLayout(prev.lg ?? [], activeCols.lg) }))}
+								onClick={() => setLayouts(prev => ({ ...prev, lg: fitDashboard(prev.lg ?? [], activeCols.lg) }))}
 								title="Distribute widgets evenly across each row"
 								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
 							>
 								Fit
+							</button>
+							<button
+								onClick={() => setLayouts(prev => ({ ...prev, lg: randomizeLayout(prev.lg ?? []) }))}
+								title="Scramble widgets into a messy layout (for testing Fit)"
+								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+							>
+								Randomize
 							</button>
 							<span className="w-px h-4 bg-border" />
 						</>

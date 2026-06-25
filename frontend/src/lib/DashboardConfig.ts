@@ -10,21 +10,14 @@ export function getActiveCols(containerWidth: number): number {
     return 12;
 }
 
-// rowHeight=45, margin=16 → pixelH = h*45 + (h-1)*16
 export const DEFAULT_LAYOUT: Layout = [
-    // Full-width week calendar — h=5 → 289px ≈ 290px
     { i: "week-strip",    x: 0, y: 0,  w: 12, h: 5  },
-
-    // Left column (3/12) — pipeline h=6→350px, low-stock h=2→106px
     { i: "pipeline",      x: 0, y: 5,  w: 3,  h: 6  },
     { i: "low-stock",     x: 0, y: 11, w: 3,  h: 2  },
-
-    // Center column (5/12) — activity feed h=12→716px
     { i: "activity-feed", x: 3, y: 5,  w: 5,  h: 12 },
-
-    // Right column (4/12) — technicians
     { i: "technicians",   x: 8, y: 5,  w: 4,  h: 3  },
 ];
+
 
 // 8-col two-column layout
 const DEFAULT_MD_LAYOUT: Layout = [
@@ -112,7 +105,7 @@ export const WIDGET_CATALOG: Record<string, {
                                 ]
                             },
     "technicians":          {   label: "Technicians",
-                                defaultW: 4,  defaultH: 4,  minW: 3, minH: 3, maxH: 12, maxW: 12,
+                                defaultW: 4,  defaultH: 4,  minW: 3, minH: 3, maxH: 6, maxW: 6,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
@@ -182,7 +175,7 @@ export const WIDGET_CATALOG: Record<string, {
                                 ]
                             },
     "report-aged-receivables-bar":{ label: "Aged Receivables (Bars)",
-                                defaultW: 4,  defaultH: 7,  minW: 3, minH: 6, maxH: 12, maxW: 6,
+                                defaultW: 4,  defaultH: 7,  minW: 3, minH: 6, maxH: 6, maxW: 6,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
@@ -243,105 +236,249 @@ export function removeWidget(id: string, currentLayout: Layout): Layout {
     return currentLayout.filter(l => l.i !== id);
 }
 
-// Greedy bin-packs widgets into rows (using minW as the space requirement),
-// then fills each row to exactly 12 columns proportionally.
-export function fitLayout(currentLayout: Layout, cols = 12): Layout {
-    if (!currentLayout.length) return currentLayout;
-
-    const catalogMin = (item: LayoutItem) =>
-        WIDGET_CATALOG[item.i]?.minW ?? item.minW ?? 3;
-
-    const binScore = (bin: { items: LayoutItem[]; usedMin: number }) =>
-        Math.max(...bin.items.map(it => it.h));
-
-    // Best Fit Decreasing: sort large widgets first, then pick tightest-fitting bin
-    const sorted = [...currentLayout].sort((a, b) => {
-        const diff = catalogMin(b) - catalogMin(a);
-        return diff !== 0 ? diff : a.y - b.y;
+// for testing fit 
+export function randomizeLayout(currentLayout: Layout, cols = COLS.lg): Layout {
+    const rnd = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
+    const items = [...currentLayout];
+    for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+    }
+    let y = 0;
+    return items.map(item => {
+        const cat = WIDGET_CATALOG[item.i];
+        const maxW = Math.min(cat?.maxW ?? cols, cols);
+        const minW = Math.min(cat?.minW ?? 2, maxW);
+        const maxH = cat?.maxH ?? 8;
+        const minH = Math.min(cat?.minH ?? 2, maxH);
+        const w = rnd(minW, maxW);
+        const h = rnd(minH, maxH);
+        const placed = { ...item, x: rnd(0, cols - w), y, w, h };
+        y += h + rnd(0, 2);
+        return placed;
     });
+}
 
-    const bins: { items: LayoutItem[]; usedMin: number }[] = [];
-    for (const item of sorted) {
-        const need = catalogMin(item);
-        let bestIdx = -1;
-        let bestScore = Infinity;
-        bins.forEach((b, i) => {
-            const remaining = cols - b.usedMin - need;
-            if (remaining < 0) return;
-            // Primary: tightest column fit. Secondary: height closest to item (minimize row height growth)
-            const heightPenalty = Math.abs(binScore(b) - item.h) / Math.max(binScore(b), item.h, 1);
-            const score = remaining + heightPenalty * cols * 0.4;
-            if (score < bestScore) { bestIdx = i; bestScore = score; }
-        });
-        if (bestIdx >= 0) {
-            bins[bestIdx].items.push(item);
-            bins[bestIdx].usedMin += need;
-        } else {
-            bins.push({ items: [item], usedMin: need });
+interface Move{
+    widget: LayoutItem,
+    x: number,
+    y: number,
+    direction: "right" | "left" | "up" | "down" | "reposition" | "expand-left" | "expand-up",
+    newW: number,
+    newH: number
+}
+
+function canResize(layout: Layout, widget: LayoutItem, x: number, y: number, w: number, h: number, cols: number): boolean {
+    if (x < 0 || y < 0 || x + w > cols) return false;
+    for (const other of layout) {
+        if (other.i === widget.i) continue;
+        if (other.x < x + w && other.x + other.w > x && other.y < y + h && other.y + other.h > y) {
+            return false;
         }
     }
 
-    // Swap pass: try exchanging items between bins to reduce total row height
-    let improved = true;
-    let passes = 0;
-    while (improved && passes++ < 4) {
-        improved = false;
-        for (let i = 0; i < bins.length - 1; i++) {
-            for (let j = i + 1; j < bins.length; j++) {
-                for (let ii = 0; ii < bins[i].items.length; ii++) {
-                    for (let jj = 0; jj < bins[j].items.length; jj++) {
-                        const a = bins[i].items[ii], b = bins[j].items[jj];
-                        const na = catalogMin(a), nb = catalogMin(b);
-                        const newUsedI = bins[i].usedMin - na + nb;
-                        const newUsedJ = bins[j].usedMin - nb + na;
-                        if (newUsedI > cols || newUsedJ > cols) continue;
-                        // Score = total max-height of both rows (lower is better)
-                        const curH = Math.max(...bins[i].items.map(it => it.h))
-                                   + Math.max(...bins[j].items.map(it => it.h));
-                        const tmpI = bins[i].items.map((it, k) => k === ii ? b : it);
-                        const tmpJ = bins[j].items.map((it, k) => k === jj ? a : it);
-                        const newH = Math.max(...tmpI.map(it => it.h))
-                                   + Math.max(...tmpJ.map(it => it.h));
-                        if (newH < curH) {
-                            bins[i].items[ii] = b; bins[j].items[jj] = a;
-                            bins[i].usedMin = newUsedI; bins[j].usedMin = newUsedJ;
-                            improved = true;
-                        }
-                    }
-                }
+    return true;
+}
+
+function growRightMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const maxW = Math.min(WIDGET_CATALOG[widget.i]?.maxW ?? widget.w, cols);
+
+    for(let newW = widget.w + 1; newW <= maxW; newW++) {
+        if (canResize(layout, widget, widget.x, widget.y, newW, widget.h, cols)) {
+            moves.push({ widget, x: widget.x, y: widget.y, direction: "right", newW, newH: widget.h });
+        }
+    }
+
+    return moves;
+}
+function growLeftMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const minW = WIDGET_CATALOG[widget.i]?.minW ?? widget.w;
+
+    for(let newW = widget.w - 1; newW >= minW; newW--) {
+        if (canResize(layout, widget, widget.x, widget.y, newW, widget.h, cols)) {
+            moves.push({ widget, x: widget.x, y: widget.y, direction: "left", newW, newH: widget.h });
+        }
+    }
+
+    return moves;
+}
+function growUpMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const minH = WIDGET_CATALOG[widget.i]?.minH ?? widget.h;
+
+    for(let newH = widget.h - 1; newH >= minH; newH--) {
+        if (canResize(layout, widget, widget.x, widget.y, widget.w, newH, cols)) {
+            moves.push({ widget, x: widget.x, y: widget.y, direction: "up", newW: widget.w, newH });
+        }
+    }
+
+    return moves;
+}
+function growDownMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const maxH = WIDGET_CATALOG[widget.i]?.maxH ?? widget.h;
+
+    for(let newH = widget.h + 1; newH <= maxH; newH++) {
+        if (canResize(layout, widget, widget.x, widget.y, widget.w, newH, cols)) {
+            moves.push({ widget, x: widget.x, y: widget.y, direction: "down", newW: widget.w, newH });
+        }
+    }
+
+    return moves;
+}
+
+function expandLeftMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const maxW = Math.min(WIDGET_CATALOG[widget.i]?.maxW ?? widget.w, cols);
+    for (let k = 1; widget.x - k >= 0 && widget.w + k <= maxW; k++) {
+        const x = widget.x - k, newW = widget.w + k;
+        if (canResize(layout, widget, x, widget.y, newW, widget.h, cols)) {
+            moves.push({ widget, x, y: widget.y, direction: "expand-left", newW, newH: widget.h });
+        }
+    }
+    return moves;
+}
+function expandUpMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const maxH = WIDGET_CATALOG[widget.i]?.maxH ?? widget.h;
+    for (let k = 1; widget.y - k >= 0 && widget.h + k <= maxH; k++) {
+        const y = widget.y - k, newH = widget.h + k;
+        if (canResize(layout, widget, widget.x, y, widget.w, newH, cols)) {
+            moves.push({ widget, x: widget.x, y, direction: "expand-up", newW: widget.w, newH });
+        }
+    }
+    return moves;
+}
+
+function repositionMoves(layout: Layout, widget: LayoutItem, cols: number): Move[] {
+    const moves = [] as Move[];
+    const boundingHeight = Math.max(0, ...layout.map(w => w.y + w.h));
+    for (let y = 0; y <= boundingHeight - widget.h; y++) {
+        for (let x = 0; x <= cols - widget.w; x++) {
+            if (x === widget.x && y === widget.y) continue;
+            if (canResize(layout, widget, x, y, widget.w, widget.h, cols)) {
+                moves.push({ widget, x, y, direction: "reposition", newW: widget.w, newH: widget.h });
             }
         }
     }
+    return moves;
+}
 
-    // Restore visual order
-    bins.forEach(bin => bin.items.sort((a, b) => a.y - b.y));
-    bins.sort((a, b) => Math.min(...a.items.map(i => i.y)) - Math.min(...b.items.map(i => i.y)));
+function gernerateMoves(layout: Layout, cols: number) : Move[] {
+    const moves = [] as Move[];
 
-    let y = 0;
-    const result: LayoutItem[] = [];
-
-    for (const bin of bins) {
-        const rowH    = Math.max(...bin.items.map(w => w.h));
-        const mins    = bin.items.map(catalogMin);
-        const totalMin = mins.reduce((s, w) => s + w, 0);
-        const extra   = Math.max(0, cols - totalMin);
-        const totalW  = bin.items.reduce((sum, item) => sum + item.w, 0);
-
-        const widths = mins.map((m, i) => m + Math.floor((bin.items[i].w / totalW) * extra));
-        let rem = cols - widths.reduce((s, w) => s + w, 0);
-        const fracs = bin.items
-            .map((item, i) => ({ i, frac: (item.w / totalW) * extra - (widths[i] - mins[i]) }))
-            .sort((a, b) => b.frac - a.frac);
-        fracs.slice(0, rem).forEach(f => widths[f.i]++);
-
-        let x = 0;
-        bin.items.forEach((item, i) => {
-            const maxH = WIDGET_CATALOG[item.i]?.maxH ?? rowH;
-            result.push({ ...item, x, y, w: widths[i], h: Math.min(rowH, maxH) });
-            x += widths[i];
-        });
-        y += rowH;
+    for (const widget of layout) {
+        moves.push(...growRightMoves(layout, widget, cols));
+        moves.push(...growLeftMoves(layout, widget, cols));
+        moves.push(...growDownMoves(layout, widget, cols));
+        moves.push(...growUpMoves(layout, widget, cols));
+        moves.push(...expandLeftMoves(layout, widget, cols));
+        moves.push(...expandUpMoves(layout, widget, cols));
+        moves.push(...repositionMoves(layout, widget, cols));
     }
 
-    return result;
+    return moves;
+}
+
+function canMoveUp(layout: Layout, widget: LayoutItem): boolean {
+    if (widget.y <= 0) return false;
+    const targetY = widget.y - 1;
+    return !layout.some(other => other.i !== widget.i && other.x < widget.x + widget.w && other.x + other.w > widget.x && other.y < targetY + widget.h && other.y + other.h > targetY);
+}
+
+
+function compactLayout(layout: Layout): Layout {
+    layout = layout.map(widget => ({ ...widget }));
+    let moved = true;
+    while (moved) {
+        moved = false;
+        layout = [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
+        for (const widget of layout) {
+            while (widget.y > 0 && canMoveUp(layout, widget)) { widget.y--; moved = true; }
+        }
+    }
+    return layout;
+}
+
+function evaluate(layout: Layout, cols: number): number {
+    let occupiedArea = 0;
+    layout.forEach(widget => occupiedArea += widget.w * widget.h);
+    const boundingHeight = Math.max(...layout.map(widget => widget.y + widget.h));
+    const emptyArea = cols * boundingHeight - occupiedArea;
+
+    // Primary goal: fewest holes 
+    // Tiebreaker: prefer the shortest 
+    return -(emptyArea * 100000 + boundingHeight);
+}
+
+function applyMove(layout: Layout, move: Move): Layout {
+    return layout.map(widget => widget.i === move.widget.i ? { ...widget, x: move.x, y: move.y, w: move.newW, h: move.newH } : widget);
+}
+
+function layoutSignature(layout: Layout): string {
+    return [...layout]
+        .sort((a, b) => (a.i < b.i ? -1 : 1))
+        .map(w => `${w.i}:${w.x},${w.y},${w.w},${w.h}`)
+        .join("|");
+}
+
+function placeWithoutOverlap(layout: Layout, cols: number): Layout {
+    const placed: LayoutItem[] = [];
+    const fits = (x: number, y: number, w: number, h: number) =>
+        x + w <= cols &&
+        !placed.some(o => o.x < x + w && o.x + o.w > x && o.y < y + h && o.y + o.h > y);
+    const ordered = [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
+    for (const widget of ordered) {
+        const w = Math.min(widget.w, cols);
+        const h = widget.h;
+        let done = false;
+        for (let y = 0; !done; y++) {
+            for (let x = 0; x <= cols - w; x++) {
+                if (fits(x, y, w, h)) { placed.push({ ...widget, x, y, w }); done = true; break; }
+            }
+        }
+    }
+    return placed;
+}
+
+export function fitDashboard(layout: Layout, cols = COLS.lg, beamWidth = 6, patience = 2, maxRounds = 60): Layout {
+    const TOP_TIER_CAP = 24; 
+    const start = compactLayout(placeWithoutOverlap(layout, cols));
+    let beam: Layout[] = [start];
+    let best = start;
+    let bestScore = evaluate(start, cols);
+    let sinceImprovement = 0;
+
+    for (let round = 0; round < maxRounds && sinceImprovement <= patience; round++) {
+        const seen = new Set<string>([layoutSignature(start)]);
+        const scored: { layout: Layout; score: number }[] = [];
+        for (const state of beam) {
+            for (const move of gernerateMoves(state, cols)) {
+                const next = compactLayout(applyMove(state, move));
+                const sig = layoutSignature(next);
+                if (seen.has(sig)) continue;
+                seen.add(sig);
+                scored.push({ layout: next, score: evaluate(next, cols) });
+            }
+        }
+        if (scored.length === 0) break;
+        scored.sort((a, b) => b.score - a.score);
+
+        const topScore = scored[0].score;
+        let tierSize = 0;
+        while (tierSize < scored.length && scored[tierSize].score === topScore) tierSize++;
+        const keep = Math.max(beamWidth, Math.min(tierSize, TOP_TIER_CAP));
+        beam = scored.slice(0, keep).map(s => s.layout);
+
+        if (topScore > bestScore) {
+            best = scored[0].layout;
+            bestScore = topScore;
+            sinceImprovement = 0;
+        } else {
+            sinceImprovement++;
+        }
+    }
+    return best;
 }
