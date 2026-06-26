@@ -1,7 +1,9 @@
+import { Prisma } from "../../../generated/prisma/client.js";
 import { getScopedDb } from "../../lib/context.js";
 import { qbFetch, getOrgRealmId } from "../quickbooksService.js";
 import { httpError, ErrorCodes } from "../../types/responses.js";
 import { pushInvoice } from "./qbInvoices.js"
+import { syncInvoicePaymentTotals } from "../invoiceService.js"
 import { logExternalSync } from "./qbSyncLog.js"
 
 
@@ -178,5 +180,154 @@ export async function deleteQBPayment(qbPaymentId: string, organizationId: strin
             return;
         }
         throw error; // real failure — let the caller log delete_failed
+    }
+}
+
+export async function handleInboundPaymentEvent(
+    orgId: string, 
+    accountId: string, 
+    qbPaymentId: string,
+    operation: string
+) {
+    const sdb = getScopedDb(orgId);
+    try {
+        const existing = await sdb.invoice_payment.findFirst({
+            where: { qb_payment_id: qbPaymentId, account_id: accountId },
+        });
+
+        if (operation === "Delete" || operation === "Void") {
+            if (!existing) {
+                await logExternalSync({
+                    provider: "quickbooks",
+                    external_id: qbPaymentId,
+                    entity_type: "payment",
+                    action: "webhook_skipped_not_found",
+                    payload: { qbPaymentId },
+                    organization_id: orgId,
+                });
+                return;
+            }
+            await sdb.$transaction(async (tx) => {
+                await tx.invoice_payment.delete({
+                    where: { id: existing.id },
+                });
+                await syncInvoicePaymentTotals(existing.invoice_id, tx as Prisma.TransactionClient);
+            });
+            await logExternalSync({
+                provider: "quickbooks",
+                external_id: qbPaymentId,
+                entity_type: "payment",
+                action: "webhook_deleted",
+                payload: { qbPaymentId },
+                organization_id: orgId,
+            });
+            return;
+        }
+
+        // already exists, logging skip
+        if (existing && operation === "Create") {
+            await logExternalSync({
+                provider: "quickbooks",
+                external_id: qbPaymentId,
+                entity_type: "payment",
+                action: "webhook_echo_skipped",
+                payload: { qbPaymentId },
+                organization_id: orgId,
+            });
+            return;
+        }
+
+        const qb = await qbFetch(orgId, "GET", `/payment/${qbPaymentId}`) as QBPaymentResponse;
+        const payment = qb.Payment;
+
+        if (existing){
+            await sdb.$transaction(async (tx)=>{
+                await tx.invoice_payment.update({
+                    where: { id: existing.id },
+                    data: { amount: payment.TotalAmt, paid_at: new Date(payment.TxnDate) }
+                });
+                await syncInvoicePaymentTotals(existing.invoice_id, tx as Prisma.TransactionClient);
+            });
+            await logExternalSync({
+                provider: "quickbooks",
+                external_id: qbPaymentId,
+                entity_type: "payment",
+                action: "webhook_updated",
+                payload: { qbPaymentId },
+                organization_id: orgId,
+            });
+            return;
+        } 
+
+        // Create
+        const linkedInvoiceId = payment.Line?.flatMap(l => l.LinkedTxn ?? [])
+                                .find(t => t.TxnType === "Invoice")?.TxnId;
+        if (!linkedInvoiceId) {
+            await logExternalSync({
+                provider: "quickbooks",
+                external_id: qbPaymentId,
+                entity_type: "payment",
+                action: "webhook_skipped_no_invoice",
+                payload: { message: "No linked invoice found" },
+                organization_id: orgId,
+            });
+            return;
+        }
+        
+        const invoice = await sdb.invoice.findFirst({
+            where: { qb_invoice_id: linkedInvoiceId, account_id: accountId }
+        });
+        if (!invoice) {
+            await logExternalSync({
+                provider: "quickbooks",
+                external_id: qbPaymentId,
+                entity_type: "payment",
+                action: "webhook_skipped_no_invoice",
+                payload: { message: "Invoice not found" },
+                organization_id: orgId,
+            });
+            return;
+        }
+        await sdb.$transaction(async (tx) => {
+            await tx.invoice_payment.create({
+                data: {
+                    invoice_id: invoice.id,
+                    amount: payment.TotalAmt,
+                    paid_at: new Date(payment.TxnDate),
+                    method: "QuickBooks",
+                    qb_payment_id: qbPaymentId,
+                    account_id: accountId
+                }
+            });
+            await syncInvoicePaymentTotals(invoice.id, tx as Prisma.TransactionClient);
+        })
+        await logExternalSync({
+            provider: "quickbooks",
+            external_id: qbPaymentId,
+            entity_type: "payment",
+            action: "webhook_created",
+            payload: { qbPaymentId },
+            organization_id: orgId,
+        })
+    } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            await logExternalSync({
+                provider: "quickbooks",
+                external_id: qbPaymentId,
+                entity_type: "payment",
+                action: "webhook_duplicate_ignored",
+                payload: { message: "Duplicate entry found" },
+                organization_id: orgId,
+            });
+            return;
+        }
+        await logExternalSync({
+            provider: "quickbooks",
+            external_id: qbPaymentId,
+            entity_type: "payment",
+            action: "webhook_failed",
+            payload: { message: String(error) },
+            organization_id: orgId,
+        });
     }
 }

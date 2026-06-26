@@ -159,7 +159,7 @@ router.get("/items/mappings", requirePermission("view_inventory"), async (req, r
 	}
 });
 
-// Create an item mapping (link an existing inventory item to a QB item)
+// Create an item mapping
 router.post("/item-mappings", requirePermission("manage_inventory"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -169,7 +169,7 @@ router.post("/item-mappings", requirePermission("manage_inventory"), async (req,
 				createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.issues[0].message)
 			);
 		}
-		const { inventory_item_id, qb_item_id } = parsed.data;
+	const { inventory_item_id, qb_item_id } = parsed.data;
 		await linkQBItem(orgId, inventory_item_id, qb_item_id);
 		res.status(201).json(createSuccessResponse({ linked: true }));
 	} catch (err) {
@@ -177,7 +177,7 @@ router.post("/item-mappings", requirePermission("manage_inventory"), async (req,
 	}
 });
 
-// Remove an item mapping (unlink an inventory item from its QB item)
+// Remove an item mapping 
 router.delete("/item-mappings/:inventoryItemId", requirePermission("manage_inventory"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -223,7 +223,7 @@ router.get("/tax-codes", requirePermission("manage_taxes"), async (req, res, nex
 	}
 });
 
-// Whether this QB company uses Automated Sales Tax (mappings are advisory if so)
+// Whether this QB company uses Automated Sales Tax 
 router.get("/tax-preferences", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -234,7 +234,7 @@ router.get("/tax-preferences", requirePermission("manage_taxes"), async (req, re
 	}
 });
 
-// Link a tax group to a QB tax code (the mapping lives on tax_group.qb_tax_code_id)
+// Link a tax group to a QB tax code 
 router.put("/tax-groups/:id/qb-tax-code", requirePermission("manage_taxes"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -264,8 +264,7 @@ router.delete("/tax-groups/:id/qb-tax-code", requirePermission("manage_taxes"), 
 	}
 });
 
-// List QB invoices available to import (lite). ?customerId= scopes to one
-// QB customer (CreateClient flow); omit for the org-wide admin list.
+// List QB invoices available to import 
 router.get("/invoices/importable", requirePermission("create_invoices"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -278,7 +277,6 @@ router.get("/invoices/importable", requirePermission("create_invoices"), async (
 });
 
 // Full detail of one QB invoice, mapped to the create-invoice form shape
-// (line items, dates, memo). Used to auto-fill the form on selection.
 router.get("/invoices/:id/prefill", requirePermission("create_invoices"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;

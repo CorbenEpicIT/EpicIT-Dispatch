@@ -56,13 +56,14 @@ import notificationsRouter from "./routes/notifications.js";
 import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
 import quickbooksRouter from "./routes/quickbooks.js";
-import { handleCallback } from "./services/quickbooksService.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
 // ============================================
 // MIDDLEWARE
 // ============================================
+import { handleCallback } from "./services/quickbooksService.js";
+import { handleQBWebhook } from "./services/qb/qbWebhook.js"
 
 const errorHandler = (
 	err: any,
@@ -187,7 +188,15 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 
 const app = express();
 
-app.use(express.json());
+app.use(
+	express.json({
+		// Capture the raw request bytes so inbound webhooks (QuickBooks) can
+		// verify an HMAC signature over the exact payload Intuit signed
+		verify: (req, _res, buf) => {
+			(req as express.Request).rawBody = buf;
+		},
+	}),
+);
 app.use(pinoHttp({ logger: log }));
 app.use(httpMetricsMiddleware);
 
@@ -407,6 +416,7 @@ app.get("/integrations/quickbooks/callback", async (req, res, next) => {
 		next(err);
 	}
 });
+app.post("/integrations/quickbooks/webhook", handleQBWebhook);
 
 // ================================================================================
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)
