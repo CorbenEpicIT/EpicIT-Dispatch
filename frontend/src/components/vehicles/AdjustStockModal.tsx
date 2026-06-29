@@ -4,53 +4,51 @@ import { useAdjustStockMutation } from "../../hooks/useVehicleStock";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import type { VehicleStockItem, VehicleAdjustmentType, AdjustStockInput } from "../../types/vehicles";
 import { ADJUSTMENT_TYPE_LABELS } from "../../types/vehicles";
+import { useAuthStore } from "../../auth/authStore";
 
-const TYPE_META: Record<VehicleAdjustmentType, { description: string; warehouseEffect: string | null; note?: string }> = {
-	warehouse_exchange: { description: "Move stock between this vehicle and the warehouse — warehouse absorbs the difference",  warehouseEffect: "Warehouse adjusts ±" },
-	field_loss:         { description: "Parts used on jobs, damaged, or lost — permanently out of org inventory",               warehouseEffect: null },
-	transfer:           { description: "Receive parts from another vehicle — org total unchanged",                              warehouseEffect: null, note: "Adjust the source vehicle separately" },
-	audit:              { description: "Override count to match physical reality — no accounting impact",                       warehouseEffect: null },
-	supplier_purchase:  { description: "Bought on a job — enters the truck, records cost, no warehouse change",                warehouseEffect: null },
+const ADJUST_TYPE_PERMS: Record<VehicleAdjustmentType, string> = {
+	field_loss:         "adjust_field_loss",
+	transfer:           "adjust_transfer",
+	audit:              "adjust_audit",
+	warehouse_exchange: "adjust_warehouse_exchange",
+	supplier_purchase:  "adjust_supplier_purchase",
+};
+
+const TYPE_META: Record<VehicleAdjustmentType, { label?: string; description: string; warehouseEffect: string | null; note?: string }> = {
+	warehouse_exchange: { label: "Return to Warehouse", description: "Return surplus parts to the warehouse — vehicle qty goes down, warehouse qty goes up", warehouseEffect: "Warehouse +" },
+	field_loss:         { description: "Parts used on jobs, damaged, or lost — permanently out of org inventory", warehouseEffect: null },
+	transfer:           { description: "Receive parts from another vehicle — org total unchanged",               warehouseEffect: null, note: "Adjust the source vehicle separately" },
+	audit:              { description: "Override count to match physical reality — no accounting impact",         warehouseEffect: null },
+	supplier_purchase:  { description: "Bought on a job — enters the truck, records cost, no warehouse change",   warehouseEffect: null },
 };
 
 function TypeStep({
 	selected,
-	addMode,
 	onSelect,
-	onSelectAdd,
 	onNext,
 	onClose,
+	availableTypes,
 }: {
 	selected: VehicleAdjustmentType | null;
-	addMode: boolean;
 	onSelect: (t: VehicleAdjustmentType) => void;
-	onSelectAdd: () => void;
 	onNext: () => void;
 	onClose: () => void;
+	availableTypes: VehicleAdjustmentType[];
 }) {
 	return (
 		<>
 			<div className="px-5 py-4 space-y-2">
-				<p className="text-xs text-text-secondary mb-3">Select the type of stock adjustment.</p>
-				<button
-					onClick={onSelectAdd}
-					className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-						addMode
-							? "border-primary bg-primary/10"
-							: "border-border bg-surface hover:bg-surface-raised"
-					}`}
-				>
-					<div className="flex items-center justify-between gap-3">
-						<span className="text-sm font-semibold text-text-primary">Add from warehouse</span>
-						<span className="text-xs font-semibold px-2 py-0.5 rounded border flex-shrink-0 text-primary bg-primary/10 border-primary/30">
-							Warehouse drops
-						</span>
+				{availableTypes.length === 0 ? (
+					<div className="py-8 text-center">
+						<p className="text-sm text-text-muted">No adjustment types available.</p>
+						<p className="text-xs text-text-faint mt-1">Contact your dispatcher to enable adjustment permissions.</p>
 					</div>
-					<p className="text-xs text-text-secondary mt-1">Pull a catalog item onto this truck</p>
-				</button>
-				{(Object.keys(TYPE_META) as VehicleAdjustmentType[]).map((type) => {
+				) : (
+				<>
+				<p className="text-xs text-text-secondary mb-3">Select the type of stock adjustment.</p>
+				{availableTypes.map((type) => {
 					const meta = TYPE_META[type];
-					const isSelected = !addMode && selected === type;
+					const isSelected = selected === type;
 					return (
 						<button
 							key={type}
@@ -62,7 +60,7 @@ function TypeStep({
 							}`}
 						>
 							<div className="flex items-center justify-between gap-3">
-								<span className="text-sm font-semibold text-text-primary">{ADJUSTMENT_TYPE_LABELS[type]}</span>
+								<span className="text-sm font-semibold text-text-primary">{meta.label ?? ADJUSTMENT_TYPE_LABELS[type]}</span>
 								{meta.warehouseEffect && (
 									<span className="text-xs font-semibold px-2 py-0.5 rounded border flex-shrink-0 text-primary bg-primary/10 border-primary/30">
 										{meta.warehouseEffect}
@@ -76,19 +74,10 @@ function TypeStep({
 						</button>
 					);
 				})}
+				</>
+				)}
 			</div>
-			<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-				<button onClick={onClose} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors">
-					Cancel
-				</button>
-				<button
-					onClick={onNext}
-					disabled={!selected}
-					className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-				>
-					Next →
-				</button>
-			</div>
+			<StepFooter onBack={onClose} backLabel="Cancel" onNext={onNext} nextLabel="Next →" nextDisabled={!selected} />
 		</>
 	);
 }
@@ -112,225 +101,91 @@ function QuantitiesStep({
 	onBack: () => void;
 	onNext: () => void;
 }) {
-	const showWarehouse = type === "warehouse_exchange";
-	const hasChanges = stockItems.some((i) => quantities[i.id] !== Number(i.qty_on_hand));
+	const [clampedId, setClampedId] = useState<string | null>(null);
+	const isDecreaseOnly = isDecreaseOnlyType(type);
+	const isReturn = type === "warehouse_exchange";
+	const hasChanges = isDecreaseOnly
+		? stockItems.some((i) => quantities[i.id] < Number(i.qty_on_hand))
+		: stockItems.some((i) => quantities[i.id] !== Number(i.qty_on_hand));
 
 	return (
 		<>
 			<div className="px-5 py-4">
 				<p className="text-xs text-text-secondary mb-3">
-					Edit quantities below. Only items with changed quantities will be recorded.
-					{showWarehouse && " Warehouse inventory will be updated accordingly."}
+					{isReturn
+						? "Set the qty to return to the warehouse. Only items with a lower qty will be recorded."
+						: type === "field_loss"
+						? "Set the new qty after loss. Only items with a lower qty will be recorded."
+						: "Edit quantities below. Only items with changed quantities will be recorded."}
 				</p>
+				{isDecreaseOnly && (
+					<div className="flex items-start gap-2 text-xs text-warning-text bg-warning/10 border border-warning/20 rounded-md px-3 py-2 mb-3">
+						<span className="font-semibold flex-shrink-0">⚠</span>
+						<span>
+							{isReturn
+								? "Quantities can only be decreased — this adjustment returns stock to the warehouse."
+								: "Quantities can only be decreased — this adjustment records permanent stock loss."}
+						</span>
+					</div>
+				)}
 				<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
-					<div className={`grid ${showWarehouse ? "grid-cols-[1fr_72px_72px_80px]" : "grid-cols-[1fr_72px_80px]"} px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider`}>
+					<div className="grid grid-cols-[1fr_72px_80px] px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
 						<span>Item</span>
 						<span className="text-center">Current</span>
-						{showWarehouse && <span className="text-center">Warehouse</span>}
 						<span className="text-center">New Qty</span>
 					</div>
 					{stockItems.map((item) => {
 						const current = Number(item.qty_on_hand);
 						const newQty = quantities[item.id] ?? current;
-						const delta = newQty - current;
-						const changed = delta !== 0;
-						const warehouseImpact = type === "warehouse_exchange" ? -delta : 0;
+						const changed = isDecreaseOnly ? newQty < current : newQty !== current;
+						const showClampWarning = clampedId === item.id;
 
 						return (
 							<div
 								key={item.id}
-								className={`grid ${showWarehouse ? "grid-cols-[1fr_72px_72px_80px]" : "grid-cols-[1fr_72px_80px]"} items-center px-4 py-2 border-b border-border-subtle last:border-0 ${changed ? "bg-primary/5" : ""}`}
+								className={`grid grid-cols-[1fr_72px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0 ${changed ? "bg-primary/5" : ""}`}
 							>
-								<span className="text-sm text-text-primary">{item.inventory_item.name}</span>
+								<div className="min-w-0">
+									<span className="text-sm text-text-primary">{item.inventory_item.name}</span>
+									{showClampWarning && (
+										<span className="block text-[10px] text-warning-text mt-0.5">
+											Cannot exceed current qty
+										</span>
+									)}
+								</div>
 								<span className="text-center text-sm text-text-secondary">{current}</span>
-								{showWarehouse && (
-									<span className={`text-center text-sm font-medium ${
-										warehouseImpact < 0 ? "text-error-text" : warehouseImpact > 0 ? "text-success" : "text-text-muted"
-									}`}>
-										{warehouseImpact > 0 ? "+" : ""}{warehouseImpact !== 0 ? warehouseImpact : "—"}
-									</span>
-								)}
 								<div className="flex justify-center">
 									<input
 										type="number"
 										min={0}
 										value={newQty}
-										onChange={(e) => onQtyChange(item.id, Math.max(0, Number(e.target.value)))}
-										className={`w-16 text-center text-sm rounded border ${changed ? "border-primary text-text-primary font-semibold" : "border-border-input text-text-secondary"} bg-base px-1 py-0.5 outline-none focus:border-primary`}
+										onChange={(e) => {
+											const raw = Math.max(0, Number(e.target.value));
+											if (isDecreaseOnly && raw > current) {
+												setClampedId(item.id);
+												onQtyChange(item.id, current);
+											} else {
+												setClampedId(null);
+												onQtyChange(item.id, raw);
+											}
+										}}
+										onBlur={() => setClampedId(null)}
+										className={`w-16 text-center text-sm rounded border ${
+											showClampWarning
+												? "border-warning text-warning-text"
+												: changed
+												? "border-primary text-text-primary font-semibold"
+												: "border-border-input text-text-secondary"
+										} bg-base px-1 py-0.5 outline-none focus:border-primary`}
 									/>
 								</div>
 							</div>
 						);
 					})}
 				</div>
-				<div>
-					<label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
-					<textarea
-						value={note}
-						onChange={(e) => onNoteChange(e.target.value)}
-						rows={2}
-						maxLength={500}
-						placeholder="Reason for adjustment…"
-						className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary resize-none"
-					/>
-				</div>
+				<NoteField value={note} onChange={onNoteChange} />
 			</div>
-			<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-				<button onClick={onBack} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors">
-					← Back
-				</button>
-				<button
-					onClick={onNext}
-					disabled={!hasChanges}
-					className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-				>
-					Review →
-				</button>
-			</div>
-		</>
-	);
-}
-
-function AddFromWarehouseStep({
-	stockItems,
-	addRows,
-	note,
-	onAddRowChange,
-	onNoteChange,
-	onBack,
-	onNext,
-}: {
-	stockItems: VehicleStockItem[];
-	addRows: Record<string, number>;
-	note: string;
-	onAddRowChange: (id: string, qty: number | null) => void;
-	onNoteChange: (v: string) => void;
-	onBack: () => void;
-	onNext: () => void;
-}) {
-	const { data: catalog = [] } = useAllInventoryQuery();
-	const [search, setSearch] = useState("");
-
-	const onTruck = useMemo(
-		() => new Set(stockItems.map((s) => s.inventory_item.id)),
-		[stockItems],
-	);
-	const addable = useMemo(() => {
-		const q = search.trim().toLowerCase();
-		return catalog
-			.filter((c) => !onTruck.has(c.id))
-			.filter(
-				(c) =>
-					!q ||
-					c.name.toLowerCase().includes(q) ||
-					(c.category ?? "").toLowerCase().includes(q),
-			);
-	}, [catalog, onTruck, search]);
-
-	const hasRows = Object.values(addRows).some((qty) => qty > 0);
-
-	return (
-		<>
-			<div className="px-5 py-4">
-				<p className="text-xs text-text-secondary mb-3">
-					Pick catalog items to pull onto this truck. Warehouse inventory will be reduced accordingly.
-				</p>
-				<input
-					type="text"
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					placeholder="Search catalog…"
-					className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary mb-3"
-				/>
-				<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
-					<div className="grid grid-cols-[1fr_72px_80px] px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
-						<span>Item</span>
-						<span className="text-center">Warehouse</span>
-						<span className="text-center">Add Qty</span>
-					</div>
-					{addable.length === 0 && (
-						<div className="px-4 py-6 text-center text-xs text-text-muted">
-							No matching catalog items available.
-						</div>
-					)}
-					{addable.map((item) => {
-						const warehouseQty = Number(item.quantity);
-						const threshold = item.low_stock_threshold;
-						const added = item.id in addRows;
-						const qty = addRows[item.id] ?? 0;
-						const warehouseClass =
-							warehouseQty <= 0
-								? "text-error-text"
-								: threshold != null && warehouseQty <= threshold
-									? "text-warning"
-									: "text-text-secondary";
-
-						return (
-							<div
-								key={item.id}
-								className={`grid grid-cols-[1fr_72px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0 ${added ? "bg-primary/5" : ""}`}
-							>
-								<div className="min-w-0">
-									<span className="block text-sm text-text-primary truncate">{item.name}</span>
-									{item.category && (
-										<span className="block text-[10px] text-text-muted truncate">{item.category}</span>
-									)}
-								</div>
-								<span className={`text-center text-sm font-medium ${warehouseClass}`}>
-									{warehouseQty}
-								</span>
-								<div className="flex justify-center">
-									{added ? (
-										<input
-											type="number"
-											min={1}
-											max={warehouseQty}
-											value={qty}
-											onChange={(e) => {
-												const raw = Math.floor(Number(e.target.value));
-												const clamped = Math.max(1, Math.min(warehouseQty, raw || 1));
-												onAddRowChange(item.id, clamped);
-											}}
-											className="w-16 text-center text-sm rounded border border-primary text-text-primary font-semibold bg-base px-1 py-0.5 outline-none focus:border-primary"
-										/>
-									) : (
-										<button
-											onClick={() => onAddRowChange(item.id, Math.min(1, warehouseQty) || 1)}
-											disabled={warehouseQty <= 0}
-											className="px-2 py-0.5 text-xs font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded transition-colors disabled:opacity-50"
-										>
-											+ Add
-										</button>
-									)}
-								</div>
-							</div>
-						);
-					})}
-				</div>
-				<div>
-					<label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
-					<textarea
-						value={note}
-						onChange={(e) => onNoteChange(e.target.value)}
-						rows={2}
-						maxLength={500}
-						placeholder="Reason for adjustment…"
-						className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary resize-none"
-					/>
-				</div>
-			</div>
-			<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-				<button onClick={onBack} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors">
-					← Back
-				</button>
-				<button
-					onClick={onNext}
-					disabled={!hasRows}
-					className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-				>
-					Review →
-				</button>
-			</div>
+			<StepFooter onBack={onBack} onNext={onNext} nextLabel="Review →" nextDisabled={!hasChanges} />
 		</>
 	);
 }
@@ -486,30 +341,9 @@ function SupplierStep({
 					})}
 				</div>
 
-				<div>
-					<label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
-					<textarea
-						value={note}
-						onChange={(e) => onNoteChange(e.target.value)}
-						rows={2}
-						maxLength={500}
-						placeholder="Reason for adjustment…"
-						className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary resize-none"
-					/>
-				</div>
+				<NoteField value={note} onChange={onNoteChange} />
 			</div>
-			<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-				<button onClick={onBack} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors">
-					← Back
-				</button>
-				<button
-					onClick={onNext}
-					disabled={!canNext}
-					className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-				>
-					Review →
-				</button>
-			</div>
+			<StepFooter onBack={onBack} onNext={onNext} nextLabel="Review →" nextDisabled={!canNext} />
 		</>
 	);
 }
@@ -518,8 +352,6 @@ function ConfirmStep({
 	type,
 	stockItems,
 	quantities,
-	addMode,
-	addRows,
 	catalogById,
 	supplierRows,
 	supplierNewItem,
@@ -532,8 +364,6 @@ function ConfirmStep({
 	type: VehicleAdjustmentType;
 	stockItems: VehicleStockItem[];
 	quantities: Record<string, number>;
-	addMode: boolean;
-	addRows: Record<string, number>;
 	catalogById: Record<string, { name: string }>;
 	supplierRows: Record<string, { cost: number; qty: number }>;
 	supplierNewItem: { name: string; cost: number; qty: number };
@@ -544,8 +374,11 @@ function ConfirmStep({
 	error: string | null;
 }) {
 	const meta = TYPE_META[type];
-	const changedItems = stockItems.filter((i) => (quantities[i.id] ?? Number(i.qty_on_hand)) !== Number(i.qty_on_hand));
-	const addedEntries = Object.entries(addRows).filter(([, qty]) => qty > 0);
+	const isDecreaseOnly = isDecreaseOnlyType(type);
+	const changedItems = stockItems.filter((i) => {
+		const newQty = quantities[i.id] ?? Number(i.qty_on_hand);
+		return isDecreaseOnly ? newQty < Number(i.qty_on_hand) : newQty !== Number(i.qty_on_hand);
+	});
 
 	if (type === "supplier_purchase") {
 		const catalogEntries = Object.entries(supplierRows).filter(([, r]) => r.qty > 0);
@@ -592,63 +425,8 @@ function ConfirmStep({
 						<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">{error}</p>
 					)}
 				</div>
-				<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-					<button onClick={onBack} disabled={isPending} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50">
-						← Back
-					</button>
-					<button
-						onClick={onConfirm}
-						disabled={isPending || totalLines === 0}
-						className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-					>
-						{isPending ? "Saving…" : "Apply Adjustment"}
-					</button>
-				</div>
-			</>
-		);
-	}
-
-	if (addMode) {
-		return (
-			<>
-				<div className="px-5 py-4">
-					<p className="text-xs text-text-secondary mb-3">
-						Review items pulled from the warehouse. Warehouse adjusts ±.
-					</p>
-					<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
-						<div className="px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
-							Add from warehouse — {addedEntries.length} item{addedEntries.length !== 1 ? "s" : ""}
-						</div>
-						{addedEntries.map(([id, qty]) => (
-							<div key={id} className="flex items-center justify-between px-4 py-2 border-b border-border-subtle last:border-0">
-								<span className="text-sm text-text-primary">{catalogById[id]?.name ?? id}</span>
-								<div className="flex items-center gap-3">
-									<span className="text-sm text-text-secondary">0 → {qty}</span>
-									<span className="text-sm font-semibold text-success">+{qty}</span>
-								</div>
-							</div>
-						))}
-					</div>
-					{note && (
-						<p className="text-xs text-text-secondary italic mb-3">Note: {note}</p>
-					)}
-					{error && (
-						<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">{error}</p>
-					)}
-				</div>
-				<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-					<button onClick={onBack} disabled={isPending} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50">
-						← Back
-					</button>
-					<button
-						onClick={onConfirm}
-						disabled={isPending || addedEntries.length === 0}
-						className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-					>
-						{isPending ? "Saving…" : "Apply Adjustment"}
-					</button>
-				</div>
-			</>
+			<StepFooter onBack={onBack} onNext={onConfirm} nextLabel="Apply Adjustment" nextDisabled={totalLines === 0} isPending={isPending} />
+		</>
 		);
 	}
 
@@ -656,11 +434,11 @@ function ConfirmStep({
 		<>
 			<div className="px-5 py-4">
 				<p className="text-xs text-text-secondary mb-3">
-					Review changes. {meta.warehouseEffect ? `${meta.warehouseEffect}.` : "No warehouse impact."}
+					Review changes. {meta.warehouseEffect ? "Warehouse quantities will be updated." : "No warehouse impact."}
 				</p>
 				<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
 					<div className="px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
-						{ADJUSTMENT_TYPE_LABELS[type]} — {changedItems.length} item{changedItems.length !== 1 ? "s" : ""}
+						{meta.label ?? ADJUSTMENT_TYPE_LABELS[type]} — {changedItems.length} item{changedItems.length !== 1 ? "s" : ""}
 					</div>
 					{changedItems.map((item) => {
 						const current = Number(item.qty_on_hand);
@@ -686,19 +464,58 @@ function ConfirmStep({
 					<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">{error}</p>
 				)}
 			</div>
-			<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-				<button onClick={onBack} disabled={isPending} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50">
-					← Back
-				</button>
-				<button
-					onClick={onConfirm}
-					disabled={isPending}
-					className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-				>
-					{isPending ? "Saving…" : "Apply Adjustment"}
-				</button>
-			</div>
+			<StepFooter onBack={onBack} onNext={onConfirm} nextLabel="Apply Adjustment" isPending={isPending} />
 		</>
+	);
+}
+
+const isDecreaseOnlyType = (t: VehicleAdjustmentType): boolean =>
+	t === "warehouse_exchange" || t === "field_loss";
+
+function NoteField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+	return (
+		<div>
+			<label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+			<textarea
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				rows={2}
+				maxLength={500}
+				placeholder="Reason for adjustment…"
+				className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary resize-none"
+			/>
+		</div>
+	);
+}
+
+function StepFooter({
+	onBack,
+	backLabel = "← Back",
+	onNext,
+	nextLabel,
+	nextDisabled,
+	isPending,
+}: {
+	onBack: () => void;
+	backLabel?: string;
+	onNext: () => void;
+	nextLabel: string;
+	nextDisabled?: boolean;
+	isPending?: boolean;
+}) {
+	return (
+		<div className="flex items-center justify-between px-5 py-3 border-t border-border">
+			<button onClick={onBack} disabled={isPending} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50">
+				{backLabel}
+			</button>
+			<button
+				onClick={onNext}
+				disabled={isPending || nextDisabled}
+				className="px-4 py-2 text-sm font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
+			>
+				{isPending ? "Saving…" : nextLabel}
+			</button>
+		</div>
 	);
 }
 
@@ -711,6 +528,8 @@ const STEP_TITLES: Record<ModalStep, string> = {
 	confirm: "Confirm Adjustment",
 };
 
+const STEP_LABELS: Record<ModalStep, string> = { type: "Type", quantities: "Quantities", confirm: "Confirm" };
+
 export default function AdjustStockModal({
 	vehicleId,
 	stockItems,
@@ -722,8 +541,6 @@ export default function AdjustStockModal({
 }) {
 	const [modalStep, setModalStep] = useState<ModalStep>("type");
 	const [selectedType, setSelectedType] = useState<VehicleAdjustmentType | null>(null);
-	const [addMode, setAddMode] = useState(false);
-	const [addRows, setAddRows] = useState<Record<string, number>>({});
 	const [note, setNote] = useState("");
 	const [submitError, setSubmitError] = useState<string | null>(null);
 	const [quantities, setQuantities] = useState<Record<string, number>>(
@@ -733,35 +550,21 @@ export default function AdjustStockModal({
 	const [supplierNewItem, setSupplierNewItem] = useState({ name: "", cost: 0, qty: 1 });
 
 	const adjustMutation = useAdjustStockMutation(vehicleId);
+	const { user } = useAuthStore();
 	const { data: catalog = [] } = useAllInventoryQuery();
+
+	const availableTypes = useMemo<VehicleAdjustmentType[]>(() => {
+		const allTypes = Object.keys(TYPE_META) as VehicleAdjustmentType[];
+		if (!user || user.role !== "technician") return allTypes;
+		return allTypes.filter((t) => user.permissions.includes(ADJUST_TYPE_PERMS[t]));
+	}, [user]);
 	const catalogById = useMemo(
 		() => Object.fromEntries(catalog.map((c) => [c.id, { name: c.name }])),
 		[catalog],
 	);
 
-	const handleSelectType = (t: VehicleAdjustmentType) => {
-		setSelectedType(t);
-		setAddMode(false);
-	};
-
-	const handleSelectAdd = () => {
-		setSelectedType("warehouse_exchange");
-		setAddMode(true);
-	};
-
 	const handleQtyChange = (id: string, qty: number) => {
 		setQuantities((prev) => ({ ...prev, [id]: qty }));
-	};
-
-	const handleAddRowChange = (id: string, qty: number | null) => {
-		setAddRows((prev) => {
-			if (qty === null) {
-				const next = { ...prev };
-				delete next[id];
-				return next;
-			}
-			return { ...prev, [id]: qty };
-		});
 	};
 
 	const handleConfirm = async () => {
@@ -774,7 +577,7 @@ export default function AdjustStockModal({
 				Object.entries(supplierRows)
 					.filter(([, r]) => r.qty > 0)
 					.forEach(([inventory_item_id, r]) => {
-						lines.push({ inventory_item_id, new_item: undefined, qty_after: r.qty });
+						lines.push({ inventory_item_id, qty_after: r.qty });
 					});
 				if (supplierNewItem.name.trim() && supplierNewItem.qty > 0) {
 					lines.push({ new_item: { name: supplierNewItem.name.trim(), cost: supplierNewItem.cost }, qty_after: supplierNewItem.qty });
@@ -785,16 +588,15 @@ export default function AdjustStockModal({
 				return;
 			}
 
-			const changedLines = addMode
-				? Object.entries(addRows)
-						.filter(([, qty]) => qty > 0)
-						.map(([inventory_item_id, qty]) => ({ inventory_item_id, qty_after: qty }))
-				: stockItems
-						.filter((i) => quantities[i.id] !== Number(i.qty_on_hand))
-						.map((i) => ({ stock_item_id: i.id, qty_after: quantities[i.id] }));
+			const isDecreaseOnly = isDecreaseOnlyType(selectedType);
+			const changedLines = stockItems
+				.filter((i) => isDecreaseOnly
+					? quantities[i.id] < Number(i.qty_on_hand)
+					: quantities[i.id] !== Number(i.qty_on_hand))
+				.map((i) => ({ stock_item_id: i.id, qty_after: quantities[i.id] }));
 
 			await adjustMutation.mutateAsync({
-				type: addMode ? "warehouse_exchange" : selectedType,
+				type: selectedType,
 				note: note.trim() || null,
 				lines: changedLines,
 			});
@@ -830,7 +632,7 @@ export default function AdjustStockModal({
 								{stepIndex > i ? "✓" : i + 1}
 							</div>
 							<span className={`text-[10px] font-medium whitespace-nowrap ${stepIndex === i ? "text-text-primary" : "text-text-muted"}`}>
-								{s === "type" ? "Type" : s === "quantities" ? "Quantities" : "Confirm"}
+								{STEP_LABELS[s]}
 							</span>
 						</div>
 					))}
@@ -841,25 +643,13 @@ export default function AdjustStockModal({
 					{modalStep === "type" && (
 						<TypeStep
 							selected={selectedType}
-							addMode={addMode}
-							onSelect={handleSelectType}
-							onSelectAdd={handleSelectAdd}
+							onSelect={setSelectedType}
 							onNext={() => setModalStep("quantities")}
 							onClose={onClose}
+							availableTypes={availableTypes}
 						/>
 					)}
-					{modalStep === "quantities" && selectedType && addMode && (
-						<AddFromWarehouseStep
-							stockItems={stockItems}
-							addRows={addRows}
-							note={note}
-							onAddRowChange={handleAddRowChange}
-							onNoteChange={setNote}
-							onBack={() => setModalStep("type")}
-							onNext={() => setModalStep("confirm")}
-						/>
-					)}
-					{modalStep === "quantities" && selectedType === "supplier_purchase" && !addMode && (
+					{modalStep === "quantities" && selectedType === "supplier_purchase" && (
 						<SupplierStep
 							supplierRows={supplierRows}
 							note={note}
@@ -872,11 +662,16 @@ export default function AdjustStockModal({
 							onNewItemChange={(field, value) => setSupplierNewItem((p) => ({ ...p, [field]: value }))}
 							newItem={supplierNewItem}
 							onNoteChange={setNote}
-							onBack={() => setModalStep("type")}
+							onBack={() => {
+								setSupplierRows({});
+								setSupplierNewItem({ name: "", cost: 0, qty: 1 });
+								setNote("");
+								setModalStep("type");
+							}}
 							onNext={() => setModalStep("confirm")}
 						/>
 					)}
-					{modalStep === "quantities" && selectedType && selectedType !== "supplier_purchase" && !addMode && (
+					{modalStep === "quantities" && selectedType && selectedType !== "supplier_purchase" && (
 						<QuantitiesStep
 							type={selectedType}
 							stockItems={stockItems}
@@ -884,7 +679,11 @@ export default function AdjustStockModal({
 							note={note}
 							onQtyChange={handleQtyChange}
 							onNoteChange={setNote}
-							onBack={() => setModalStep("type")}
+							onBack={() => {
+								setQuantities(Object.fromEntries(stockItems.map((i) => [i.id, Number(i.qty_on_hand)])));
+								setNote("");
+								setModalStep("type");
+							}}
 							onNext={() => setModalStep("confirm")}
 						/>
 					)}
@@ -893,8 +692,6 @@ export default function AdjustStockModal({
 							type={selectedType}
 							stockItems={stockItems}
 							quantities={quantities}
-							addMode={addMode}
-							addRows={addRows}
 							catalogById={catalogById}
 							supplierRows={supplierRows}
 							supplierNewItem={supplierNewItem}

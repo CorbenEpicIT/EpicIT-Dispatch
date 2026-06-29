@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Trash2, Search, X, History, AlertTriangle } from "lucide-react";
+import { Trash2, Search, X, SlidersHorizontal, LayoutList } from "lucide-react";
+import { getStockHealth } from "../../lib/stockUtils";
 import {
 	useVehicleStockQuery,
 	useUpdateVehicleStockItemMutation,
@@ -9,23 +10,20 @@ import {
 	useVehiclesQuery,
 } from "../../hooks/useVehicles";
 import {
-	useVehicleUsageTodayQuery,
-	useVehicleStockAdjustmentHistoryQuery,
 	useRestockRequestsQuery,
-	useFulfillRestockRequestMutation,
+	useAcknowledgeRestockRequestMutation,
 	useDismissRestockRequestMutation,
-	useAcknowledgeDiscrepancyMutation,
 } from "../../hooks/useVehicleStock";
 import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import EditVehicle from "../../components/vehicles/EditVehicle";
-import EodWorkflow from "../../components/vehicles/EodWorkflow";
+import RestockWorkflow from "../../components/vehicles/RestockWorkflow";
 import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
 import LoadSvg from "../../assets/icons/loading.svg?react";
-import type { VehicleStockItem, VehicleStockAdjustment, RestockRequest } from "../../types/vehicles";
-import { ADJUSTMENT_TYPE_LABELS } from "../../types/vehicles";
+import type { VehicleStockItem, RestockRequest } from "../../types/vehicles";
+import StockHistorySection from "../../components/vehicles/StockHistorySection";
 
-type Tab = "stock" | "usage" | "eod" | "requests";
+type Tab = "stock" | "restock" | "alerts";
 
 const STOCK_GRID = "grid-cols-[1fr_84px_84px_84px_84px_116px_36px]";
 
@@ -50,8 +48,9 @@ function LevelGauge({ item }: { item: VehicleStockItem }) {
 	const min = Number(item.qty_min);
 	const standard = item.qty_standard !== null ? Number(item.qty_standard) : null;
 
-	const isOut = onHand === 0 && min > 0;
-	const isLow = !isOut && onHand < min;
+	const health = getStockHealth(item);
+	const isOut = health === "out";
+	const isLow = health === "low";
 
 	const target = standard !== null && standard > 0 ? standard : min > 0 ? min * 2 : 0;
 	const pct = target > 0 ? Math.min(onHand / target, 1) * 100 : onHand > 0 ? 100 : 0;
@@ -62,7 +61,7 @@ function LevelGauge({ item }: { item: VehicleStockItem }) {
 
 	return (
 		<div className="flex items-center justify-center gap-2">
-			<div className="w-10 h-1 rounded-full bg-surface-inset overflow-hidden flex-shrink-0">
+			<div className="w-10 h-1.5 rounded-full bg-surface-inset border border-border overflow-hidden flex-shrink-0">
 				<div
 					className={`h-full ${barColor} transition-all duration-200`}
 					style={{ width: `${pct}%` }}
@@ -85,25 +84,26 @@ function StockRow({ item, onUpdateStandard, onUpdateMin, onDelete }: {
 	const [editingMin, setEditingMin] = useState(false);
 	const [minVal, setMinVal] = useState(String(item.qty_min));
 	const [confirmDelete, setConfirmDelete] = useState(false);
-	const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const deleteTimer = useRef<number>(-1);
 
-	useEffect(() => () => { if (deleteTimer.current) clearTimeout(deleteTimer.current); }, []);
+	useEffect(() => () => { clearTimeout(deleteTimer.current); }, []);
 
 	const handleDeleteClick = () => {
 		if (confirmDelete) {
-			if (deleteTimer.current) clearTimeout(deleteTimer.current);
+			clearTimeout(deleteTimer.current);
 			setConfirmDelete(false);
 			onDelete();
 		} else {
 			setConfirmDelete(true);
-			deleteTimer.current = setTimeout(() => setConfirmDelete(false), 3000);
+			deleteTimer.current = window.setTimeout(() => setConfirmDelete(false), 3000);
 		}
 	};
 
 	const onHand = Number(item.qty_on_hand);
 	const min = Number(item.qty_min);
-	const isOut = onHand === 0 && min > 0;
-	const isLow = !isOut && onHand < min;
+	const health = getStockHealth(item);
+	const isOut = health === "out";
+	const isLow = health === "low";
 
 	const inputBorder = isOut ? "border-error" : isLow ? "border-warning" : "border-border-input";
 	const inputText   = isOut ? "text-error-text font-bold" : isLow ? "text-warning-text font-bold" : "text-text-primary font-semibold";
@@ -242,20 +242,43 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 	const [search, setSearch] = useState("");
 	const [qtyMin, setQtyMin] = useState("1");
 	const [qtyStandard, setQtyStandard] = useState("");
+	const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+	const [sortMode, setSortMode] = useState<"name" | "category">("name");
+	const [showFilter, setShowFilter] = useState(false);
 	const addMutation = useAddVehicleStockItemMutation();
 	const { data: allInventory = [] } = useAllInventoryQuery();
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => { inputRef.current?.focus(); }, []);
 
-	const results = allInventory.filter((item) => {
-		if (existingIds.has(item.id)) return false;
-		if (!search.trim()) return true;
-		return (
-			item.name.toLowerCase().includes(search.toLowerCase()) ||
-			item.alt_ids?.some((id) => id.toLowerCase().includes(search.toLowerCase()))
-		);
-	}).slice(0, 12);
+	const available = allInventory.filter((item) => !existingIds.has(item.id));
+	const allCategories = Array.from(new Set(
+		available.map((i) => i.category).filter((c): c is string => Boolean(c))
+	)).sort();
+
+	const q = search.toLowerCase().trim();
+	const results = available
+		.filter((item) => {
+			const matchesSearch = !q ||
+				item.name.toLowerCase().includes(q) ||
+				item.alt_ids?.some((id) => id.toLowerCase().includes(q));
+			const matchesCategory = selectedCategories.length === 0 ||
+				selectedCategories.includes(item.category ?? "");
+			return matchesSearch && matchesCategory;
+		})
+		.sort((a, b) => {
+			if (sortMode === "category") {
+				const catA = a.category ?? "";
+				const catB = b.category ?? "";
+				if (catA !== catB) {
+					if (!catA) return 1;
+					if (!catB) return -1;
+					return catA.localeCompare(catB);
+				}
+			}
+			return a.name.localeCompare(b.name);
+		})
+		.slice(0, 20);
 
 	const handleSelect = async (inventoryItemId: string) => {
 		const min = parseFloat(qtyMin);
@@ -271,6 +294,9 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 		});
 		onDone();
 	};
+
+	const toggleCategory = (cat: string) =>
+		setSelectedCategories((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
 
 	return (
 		<div className="px-5 py-3 border-t border-border">
@@ -296,7 +322,62 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 						className="w-14 text-xs bg-surface border border-border-input rounded px-1.5 py-1 text-text-primary outline-none focus:border-primary placeholder:text-text-faint"
 					/>
 				</div>
+				<div className="flex items-center gap-1 ml-auto">
+					{allCategories.length > 0 && (
+						<button
+							onClick={() => setShowFilter((v) => !v)}
+							title="Filter by category"
+							className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${
+								showFilter
+									? "bg-primary/15 border-primary/40 text-primary"
+									: "border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
+							}`}
+						>
+							<SlidersHorizontal size={11} />
+						</button>
+					)}
+					<button
+						onClick={() => setSortMode((m) => m === "name" ? "category" : "name")}
+						title={sortMode === "name" ? "Sort by category" : "Sort by name"}
+						className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${
+							sortMode === "category"
+								? "bg-primary/15 border-primary/40 text-primary"
+								: "border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
+						}`}
+					>
+						<LayoutList size={11} />
+					</button>
+				</div>
 			</div>
+			{showFilter && allCategories.length > 0 && (
+				<div className="flex flex-wrap gap-1.5 mb-2">
+					{allCategories.map((cat) => {
+						const active = selectedCategories.includes(cat);
+						return (
+							<button
+								key={cat}
+								onClick={() => toggleCategory(cat)}
+								className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+									active
+										? "bg-primary/15 border-primary/40 text-primary"
+										: "bg-surface border-border text-text-muted hover:border-border-strong hover:text-text-secondary"
+								}`}
+							>
+								{cat}
+							</button>
+						);
+					})}
+					{selectedCategories.length > 0 && (
+						<button
+							onClick={() => setSelectedCategories([])}
+							className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-text-muted hover:text-text-secondary transition-colors"
+						>
+							<X size={9} />
+							Clear
+						</button>
+					)}
+				</div>
+			)}
 			<div className="relative">
 				<div className="flex items-center gap-2 border border-primary rounded-md px-3 py-1.5 bg-base">
 					<Search size={13} className="text-text-muted flex-shrink-0" />
@@ -327,7 +408,7 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 						))}
 					</div>
 				)}
-				{search.trim() && results.length === 0 && (
+				{(q || selectedCategories.length > 0) && results.length === 0 && (
 					<div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded-md shadow-lg z-20 px-3 py-2">
 						<span className="text-xs text-text-muted">No matching inventory items</span>
 					</div>
@@ -337,91 +418,6 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 	);
 }
 
-
-function AdjustmentHistoryView({ vehicleId, stockItems, onBack }: {
-	vehicleId: string;
-	stockItems: VehicleStockItem[];
-	onBack: () => void;
-}) {
-	const { data: adjustments = [], isLoading } = useVehicleStockAdjustmentHistoryQuery(vehicleId, true);
-
-	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
-
-	return (
-		<div className="px-5 py-4">
-			<div className="flex items-center justify-between mb-4">
-				<button
-					onClick={onBack}
-					className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors"
-				>
-					← Back to Stock
-				</button>
-				<span className="text-xs text-text-muted">{adjustments.length} adjustment{adjustments.length !== 1 ? "s" : ""} (last 50)</span>
-			</div>
-			{adjustments.length === 0 ? (
-				<p className="text-sm text-text-muted text-center py-8">No stock adjustments recorded yet.</p>
-			) : (
-				<div className="space-y-3">
-					{adjustments.map((adj: VehicleStockAdjustment) => {
-						const hasWarehouseImpact = adj.type === "warehouse_exchange";
-						return (
-							<div key={adj.id} className="bg-surface rounded-lg border border-border overflow-hidden">
-								<div className="px-4 py-2.5 border-b border-border-subtle flex items-center justify-between">
-									<div className="flex items-center gap-2">
-										<span className="text-sm font-semibold text-text-primary">
-											{ADJUSTMENT_TYPE_LABELS[adj.type]}
-										</span>
-										{hasWarehouseImpact && (
-											<span className="text-[10px] font-semibold text-text-muted bg-surface-raised border border-border px-1.5 py-0.5 rounded">
-												Warehouse ±
-											</span>
-										)}
-									</div>
-									<div className="text-right">
-										<span className="text-xs text-text-muted">
-											{new Date(adj.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
-											{" · "}
-											{new Date(adj.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-											{" · "}{adj.created_by?.name ?? adj.created_by_tech?.name ?? "—"}
-										</span>
-									</div>
-								</div>
-								{adj.lines.length > 0 ? (
-									<div className="divide-y divide-border-subtle">
-										{adj.lines.map((line) => {
-											const stockItem = stockItems.find((s) => s.id === line.stock_item_id);
-											const delta = line.qty_after - line.qty_before;
-											return (
-												<div key={line.id} className="flex items-center justify-between px-4 py-2">
-													<span className="text-sm text-text-primary">
-														{stockItem?.inventory_item.name ?? line.stock_item_id}
-													</span>
-													<div className="flex items-center gap-3">
-														<span className="text-xs text-text-muted tabular-nums">{line.qty_before} → {line.qty_after}</span>
-														<span className={`text-sm font-semibold tabular-nums ${delta > 0 ? "text-success" : delta < 0 ? "text-error-text" : "text-text-muted"}`}>
-															{delta > 0 ? "+" : ""}{delta}
-														</span>
-													</div>
-												</div>
-											);
-										})}
-									</div>
-								) : (
-									<p className="px-4 py-2 text-xs text-text-muted">No items changed.</p>
-								)}
-								{adj.note && (
-									<div className="px-4 py-2 border-t border-border-subtle">
-										<span className="text-xs text-text-muted italic">{adj.note}</span>
-									</div>
-								)}
-							</div>
-						);
-					})}
-				</div>
-			)}
-		</div>
-	);
-}
 
 function SectionHeader({ label, count, tone }: { label: string; count: number; tone: "warning" | "muted" }) {
 	return (
@@ -440,23 +436,15 @@ function StockTab({ vehicleId, stockItems, isLoading }: {
 }) {
 	const [addOpen, setAddOpen] = useState(false);
 	const [adjustOpen, setAdjustOpen] = useState(false);
-	const [showHistory, setShowHistory] = useState(false);
 	const updateMutation = useUpdateVehicleStockItemMutation();
 	const deleteMutation = useDeleteVehicleStockItemMutation();
 
 	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
 
-	if (showHistory) {
-		return <AdjustmentHistoryView vehicleId={vehicleId} stockItems={stockItems} onBack={() => setShowHistory(false)} />;
-	}
-
-	const health = (i: VehicleStockItem) =>
-		Number(i.qty_on_hand) === 0 && Number(i.qty_min) > 0 ? 0 :
-		Number(i.qty_on_hand) < Number(i.qty_min) ? 1 : 2;
-
-	const sorted = [...stockItems].sort((a, b) => health(a) - health(b));
-	const needsAttention = sorted.filter((i) => health(i) < 2);
-	const stocked = sorted.filter((i) => health(i) === 2);
+	const HEALTH_ORDER: Record<"out" | "low" | "ok", number> = { out: 0, low: 1, ok: 2 };
+	const sorted = [...stockItems].sort((a, b) => HEALTH_ORDER[getStockHealth(a)] - HEALTH_ORDER[getStockHealth(b)]);
+	const needsAttention = sorted.filter((i) => getStockHealth(i) !== "ok");
+	const stocked = sorted.filter((i) => getStockHealth(i) === "ok");
 
 	const existingIds = new Set(stockItems.map((i) => i.inventory_item_id));
 	const unconfiguredCount = stockItems.filter((i) => i.qty_standard === null && Number(i.qty_min) === 0).length;
@@ -482,13 +470,6 @@ function StockTab({ vehicleId, stockItems, isLoading }: {
 				</div>
 			)}
 			<div className="flex items-center justify-end gap-2 px-5 py-2 border-b border-border/10 mt-2">
-				<button
-					onClick={() => setShowHistory(true)}
-					className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
-				>
-					<History size={12} />
-					Adjustment History
-				</button>
 				<button
 					onClick={() => setAdjustOpen(true)}
 					className="px-3 py-1.5 text-xs font-semibold bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
@@ -540,39 +521,21 @@ function StockTab({ vehicleId, stockItems, isLoading }: {
 					onClose={() => setAdjustOpen(false)}
 				/>
 			)}
+			<div className="border-t border-border/30 mt-2">
+				<div className="px-5 py-2.5">
+					<span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Stock History</span>
+				</div>
+				<StockHistorySection vehicleId={vehicleId} stockItems={stockItems} />
+			</div>
 		</div>
 	);
 }
 
-function RequestRow({ request }: { request: RestockRequest }) {
-	const fulfillMutation = useFulfillRestockRequestMutation();
-	const dismissMutation = useDismissRestockRequestMutation();
-	const warehouseQty = Number(request.stock_item.inventory_item.quantity);
-	const defaultQty = request.qty_requested !== null ? Math.ceil(Number(request.qty_requested)) : 1;
-	const [qty, setQty] = useState(String(defaultQty));
-	const [error, setError] = useState<string | null>(null);
-
-	const handleFulfill = () => {
-		const n = Number(qty);
-		if (!Number.isInteger(n) || n <= 0) {
-			setError("Enter a whole number greater than 0");
-			return;
-		}
-		setError(null);
-		fulfillMutation.mutate(
-			{ requestId: request.id, qty: n },
-			{
-				onError: (e) => {
-					setError(
-						e.message === "insufficient_warehouse_stock"
-							? `Not enough warehouse stock (${warehouseQty} available)`
-							: e.message,
-					);
-				},
-			},
-		);
-	};
-
+function AlertCard({ request, onAcknowledge, onDismiss }: {
+	request: RestockRequest;
+	onAcknowledge: (id: string) => void;
+	onDismiss: (id: string) => void;
+}) {
 	const age = (() => {
 		const ms = Date.now() - new Date(request.created_at).getTime();
 		const hours = Math.floor(ms / 3_600_000);
@@ -581,182 +544,114 @@ function RequestRow({ request }: { request: RestockRequest }) {
 		return `${Math.floor(hours / 24)}d ago`;
 	})();
 
-	return (
-		<div className="bg-surface rounded-lg border border-border px-4 py-3">
-			<div className="flex items-center justify-between gap-3">
-				<div className="min-w-0">
-					<div className="text-sm font-semibold text-text-primary truncate">
-						{request.stock_item.inventory_item.name}
-					</div>
-					<div className="text-xs text-text-muted mt-0.5">
-						{request.technician?.name ?? "Unknown tech"} · {age}
-						{request.qty_requested !== null && ` · requested ${Number(request.qty_requested)}`}
-						{` · warehouse has ${warehouseQty}`}
-					</div>
-					{request.note && (
-						<div className="text-xs text-text-muted italic mt-1">“{request.note}”</div>
-					)}
-				</div>
-				<div className="flex items-center gap-2 flex-shrink-0">
-					<input
-						value={qty}
-						onChange={(e) => setQty(e.target.value)}
-						className="w-14 text-center text-sm rounded border border-border-input text-text-primary bg-surface px-1 py-1 outline-none focus:border-primary"
-						aria-label="Quantity to fulfill"
-					/>
-					<button
-						onClick={handleFulfill}
-						disabled={fulfillMutation.isPending}
-						className="px-3 py-1.5 text-xs font-semibold bg-primary hover:enabled:bg-primary-hover text-on-primary rounded-md transition-colors disabled:opacity-50"
-					>
-						{fulfillMutation.isPending ? "Fulfilling…" : "Fulfill"}
-					</button>
-					<button
-						onClick={() => dismissMutation.mutate(request.id)}
-						disabled={dismissMutation.isPending}
-						className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
-					>
-						Dismiss
-					</button>
-				</div>
-			</div>
-			{error && <p className="text-xs text-error-text mt-2">{error}</p>}
-		</div>
-	);
-}
+	const isPending = request.status === "pending";
+	const isAcknowledged = request.status === "acknowledged";
+	const isResolved = request.status === "resolved" || request.status === "dismissed";
 
-function DiscrepancyRow({ request }: { request: RestockRequest }) {
-	const acknowledgeMutation = useAcknowledgeDiscrepancyMutation();
-	const fulfilled = Number(request.qty_fulfilled ?? 0);
-	const received = Number(request.qty_received ?? 0);
-	const delta = received - fulfilled;
 	return (
-		<div className="bg-surface rounded-lg border border-warning-border px-4 py-3">
+		<div className={`bg-surface rounded-lg border px-4 py-3 ${isResolved ? "border-border opacity-60" : isPending ? "border-border" : "border-primary/30"}`}>
 			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<div className="text-sm font-semibold text-text-primary truncate">
-						{request.stock_item.inventory_item.name}
-					</div>
-					<div className="text-xs text-text-muted mt-0.5">
-						{request.technician?.name ?? "Unknown tech"}
-					</div>
-					<div className="mt-1.5 flex items-center gap-3 text-xs">
-						<span className="text-text-muted">Sent: <span className="text-text-primary font-medium">{fulfilled}</span></span>
-						<span className="text-text-muted">Received: <span className="text-text-primary font-medium">{received}</span></span>
-						<span className={`font-semibold ${delta < 0 ? "text-error-text" : "text-success"}`}>
-							{delta >= 0 ? "+" : ""}{delta}
+				<div className="min-w-0 flex-1">
+					<div className="flex items-center gap-2 mb-0.5">
+						<span className="text-sm font-semibold text-text-primary truncate">
+							{request.stock_item.inventory_item.name}
+						</span>
+						<span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+							isPending ? "bg-warning/20 text-warning-text" :
+							isAcknowledged ? "bg-primary/15 text-primary" :
+							"bg-surface-raised text-text-muted"
+						}`}>
+							{isPending ? "Pending" : isAcknowledged ? "Acknowledged" : request.status === "dismissed" ? "Dismissed" : "Resolved"}
 						</span>
 					</div>
+					<div className="text-xs text-text-muted">
+						{request.technician?.name ?? "Unknown tech"} · {age}
+						{request.qty_requested !== null && ` · requested ${Number(request.qty_requested)}`}
+					</div>
+					<div className="text-xs text-text-muted mt-0.5">
+						On hand: <span className={`font-semibold ${Number(request.stock_item.qty_on_hand) === 0 ? "text-error-text" : "text-text-primary"}`}>
+							{Number(request.stock_item.qty_on_hand)}
+						</span>
+					</div>
+					{request.note && (
+						<div className="text-xs text-text-muted italic mt-1">"{request.note}"</div>
+					)}
+					{isResolved && request.resolved_note && (
+						<div className="text-xs text-success mt-1">{request.resolved_note}</div>
+					)}
+					{isAcknowledged && request.acknowledged_at && (
+						<div className="text-xs text-primary mt-1">
+							Acknowledged {new Date(request.acknowledged_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+						</div>
+					)}
 				</div>
-				<button
-					onClick={() => acknowledgeMutation.mutate(request.id)}
-					disabled={acknowledgeMutation.isPending}
-					className="text-xs font-semibold px-2.5 py-1.5 rounded bg-surface-hover border border-border text-text-secondary hover:bg-border-subtle disabled:opacity-50 flex-shrink-0"
-				>
-					Acknowledge
-				</button>
+				{!isResolved && (
+					<div className="flex items-center gap-2 flex-shrink-0">
+						{isPending && (
+							<button
+								onClick={() => onAcknowledge(request.id)}
+								className="px-3 py-1.5 text-xs font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-md transition-colors"
+							>
+								Acknowledge
+							</button>
+						)}
+						<button
+							onClick={() => onDismiss(request.id)}
+							className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors"
+						>
+							Dismiss
+						</button>
+					</div>
+				)}
 			</div>
 		</div>
 	);
 }
 
-function RequestsTab({ vehicleId }: { vehicleId: string }) {
-	const [showDiscrepancies, setShowDiscrepancies] = useState(false);
-	const { data: requests = [], isLoading } = useRestockRequestsQuery("pending", vehicleId);
-	const { data: discrepantRequests = [], isLoading: discrepantLoading } = useRestockRequestsQuery(undefined, vehicleId, true);
-
-	const loading = isLoading || discrepantLoading;
-	if (loading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
-
-	return (
-		<div>
-			<div className="px-5 pt-4 pb-2 flex items-center gap-3">
-				<button
-					onClick={() => setShowDiscrepancies(false)}
-					className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${!showDiscrepancies ? "bg-primary/15 text-primary" : "text-text-muted hover:text-text-secondary"}`}
-				>
-					Pending
-					{requests.length > 0 && (
-						<span className="ml-1.5 bg-primary/20 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">{requests.length}</span>
-					)}
-				</button>
-				<button
-					onClick={() => setShowDiscrepancies(true)}
-					className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${showDiscrepancies ? "bg-warning/15 text-warning-text" : "text-text-muted hover:text-text-secondary"}`}
-				>
-					<AlertTriangle size={11} />
-					Discrepancies
-					{discrepantRequests.length > 0 && (
-						<span className="bg-warning/20 text-warning-text text-[10px] font-bold px-1.5 py-0.5 rounded-full">{discrepantRequests.length}</span>
-					)}
-				</button>
-			</div>
-
-			{!showDiscrepancies && (
-				requests.length === 0 ? (
-					<div className="flex flex-col items-center justify-center py-12 text-text-muted">
-						<p className="text-sm font-medium">No pending restock requests</p>
-						<p className="text-xs mt-1">Requests from technicians on this vehicle will appear here</p>
-					</div>
-				) : (
-					<div className="px-5 pb-4 space-y-3">
-						{requests.map((r) => <RequestRow key={r.id} request={r} />)}
-					</div>
-				)
-			)}
-
-			{showDiscrepancies && (
-				discrepantRequests.length === 0 ? (
-					<div className="flex flex-col items-center justify-center py-12 text-text-muted">
-						<p className="text-sm font-medium">No discrepancies</p>
-						<p className="text-xs mt-1">Receipts where qty_received ≠ qty_sent appear here</p>
-					</div>
-				) : (
-					<div className="px-5 pb-4 space-y-3">
-						{discrepantRequests.map((r) => <DiscrepancyRow key={r.id} request={r} />)}
-					</div>
-				)
-			)}
-		</div>
-	);
-}
-
-function UsageTodayTab({ vehicleId }: { vehicleId: string }) {
-	const { data: groups = [], isLoading } = useVehicleUsageTodayQuery(vehicleId);
+function AlertsTab({ vehicleId }: { vehicleId: string }) {
+	const [showResolved, setShowResolved] = useState(false);
+	const { data: allRequests = [], isLoading } = useRestockRequestsQuery(undefined, vehicleId);
+	const acknowledgeMutation = useAcknowledgeRestockRequestMutation();
+	const dismissMutation = useDismissRestockRequestMutation();
 
 	if (isLoading) return <div className="flex justify-center py-16"><LoadSvg className="w-8 h-8" /></div>;
 
-	if (groups.length === 0) {
-		return (
-			<div className="flex flex-col items-center justify-center py-16 text-text-muted">
-				<p className="text-sm font-medium">No usage recorded today</p>
-				<p className="text-xs mt-1">Items used during visits will appear here</p>
-			</div>
-		);
-	}
+	const active = allRequests.filter((r) => r.status === "pending" || r.status === "acknowledged");
+	const resolved = allRequests.filter((r) => r.status === "resolved" || r.status === "dismissed");
+	const displayed = showResolved ? [...active, ...resolved] : active;
 
 	return (
-		<div className="px-5 py-4 space-y-4">
-			{groups.map((group) => (
-				<div key={group.visitId} className="bg-surface rounded-lg border border-border overflow-hidden">
-					<div className="px-4 py-2.5 border-b border-border-subtle flex items-center justify-between">
-						<span className="text-sm font-semibold text-text-primary">{group.visitName}</span>
-						{group.scheduledAt && (
-							<span className="text-xs text-text-muted">
-								{new Date(group.scheduledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-							</span>
-						)}
-					</div>
-					<div className="divide-y divide-border-subtle">
-						{group.items.map((item) => (
-							<div key={`${group.visitId}-${item.itemName}`} className="flex items-center justify-between px-4 py-2">
-								<span className="text-sm text-text-primary">{item.itemName}</span>
-								<span className="text-sm font-semibold text-text-secondary">−{item.qtyUsed}</span>
-							</div>
-						))}
-					</div>
+		<div>
+			<div className="px-5 pt-4 pb-2 flex items-center justify-between">
+				<span className="text-xs text-text-muted">
+					{active.length === 0 ? "No active alerts" : `${active.length} active alert${active.length !== 1 ? "s" : ""}`}
+				</span>
+				{resolved.length > 0 && (
+					<button
+						onClick={() => setShowResolved((v) => !v)}
+						className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-border text-xs font-medium text-text-muted hover:text-text-secondary hover:bg-surface-raised hover:border-border-hover transition-colors"
+					>
+						{showResolved ? "Hide resolved" : `Show ${resolved.length} resolved`}
+					</button>
+				)}
+			</div>
+			{displayed.length === 0 ? (
+				<div className="flex flex-col items-center justify-center py-12 text-text-muted">
+					<p className="text-sm font-medium">No alerts</p>
+					<p className="text-xs mt-1">Restock requests from technicians on this vehicle appear here</p>
 				</div>
-			))}
+			) : (
+				<div className="px-5 pb-4 space-y-3">
+					{displayed.map((r) => (
+						<AlertCard
+							key={r.id}
+							request={r}
+							onAcknowledge={(id) => acknowledgeMutation.mutate(id)}
+							onDismiss={(id) => dismissMutation.mutate(id)}
+						/>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -769,34 +664,25 @@ export default function VehicleStockPage() {
 	const [fillOpen, setFillOpen] = useState(false);
 
 	const { data: vehicles } = useVehiclesQuery();
-	const vehicle = vehicles?.find((v) => v.id === id);
-	const activeVehicles = vehicles?.filter((v) => v.status === "active") ?? [];
-
-	const { data: stockItems = [], isLoading: stockLoading } = useVehicleStockQuery(id!);
-	const { data: pendingRequests = [] } = useRestockRequestsQuery("pending", id);
+	const { data: stockItems = [], isLoading: stockLoading } = useVehicleStockQuery(id ?? "");
+	const { data: alertRequests = [] } = useRestockRequestsQuery(undefined, id ?? "");
+	const pendingAlertCount = alertRequests.filter((r) => r.status === "pending" || r.status === "acknowledged").length;
 
 	if (!id) return null;
+	const vehicleId = id;
+
+	const vehicle = vehicles?.find((v) => v.id === vehicleId);
+	const activeVehicles = vehicles?.filter((v) => v.status === "active") ?? [];
 
 	const techNames = vehicle?.current_technicians?.map((t) => t.name).join(", ") ?? "";
 	const vehicleSubtitle = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ")
 		+ (vehicle?.license_plate ? ` · ${vehicle.license_plate}` : "")
 		+ (techNames ? ` · ${techNames}` : "");
 
-	const outCount = stockItems.filter((i) => Number(i.qty_on_hand) === 0 && Number(i.qty_min) > 0).length;
-	const lowCount = stockItems.filter((i) => {
-		const onHand = Number(i.qty_on_hand);
-		const min = Number(i.qty_min);
-		return !(onHand === 0 && min > 0) && onHand < min;
-	}).length;
+	const outCount = stockItems.filter((i) => getStockHealth(i) === "out").length;
+	const lowCount = stockItems.filter((i) => getStockHealth(i) === "low").length;
 	const hasAnyOut = outCount > 0;
 	const hasAnyLow = !hasAnyOut && lowCount > 0;
-
-	const TAB_LABELS: Record<Tab, string> = {
-		stock:    "Stock",
-		usage:    "Usage Today",
-		eod:      "End of Day",
-		requests: "Requests",
-	};
 
 	return (
 		<div className="flex flex-col h-full text-text-primary">
@@ -828,7 +714,7 @@ export default function VehicleStockPage() {
 					<div className="flex items-center gap-2">
 						{activeVehicles.length > 1 && (
 							<select
-								value={id}
+								value={vehicleId}
 								onChange={(e) => navigate(`/dispatch/vehicles/${e.target.value}/stock`)}
 								className="text-xs bg-surface border border-border rounded-md px-2 py-1.5 text-text-secondary outline-none focus:border-primary cursor-pointer"
 							>
@@ -853,30 +739,27 @@ export default function VehicleStockPage() {
 				</div>
 				{/* Tabs */}
 				<div className="flex gap-0 -mb-px">
-					{(["stock", "usage", "eod", "requests"] as Tab[]).map((tab) => (
+					{(["stock", "restock", "alerts"] as Tab[]).map((t) => (
 						<button
-							key={tab}
-							onClick={() => setActiveTab(tab)}
-							className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-								activeTab === tab
-									? "border-primary text-text-primary"
+							key={t}
+							onClick={() => setActiveTab(t)}
+							className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+								activeTab === t
+									? "border-primary text-primary"
 									: "border-transparent text-text-muted hover:text-text-secondary"
 							}`}
 						>
-							{TAB_LABELS[tab]}
-							{tab === "stock" && stockItems.length > 0 && (
-								<span className={`text-[10px] font-semibold px-1.5 py-px rounded-full ${
-									activeTab === tab ? "bg-primary-bg text-primary-text" : "bg-surface-raised text-text-muted"
-								}`}>
-									{stockItems.length}
-								</span>
-							)}
-							{tab === "requests" && pendingRequests.length > 0 && (
-								<span className={`text-[10px] font-semibold px-1.5 py-px rounded-full ${
-									activeTab === tab ? "bg-primary-bg text-primary-text" : "bg-warning/15 text-warning-text"
-								}`}>
-									{pendingRequests.length}
-								</span>
+							{t === "stock" && "Stock"}
+							{t === "restock" && "Warehouse Restock"}
+							{t === "alerts" && (
+								<>
+									Alerts
+									{pendingAlertCount > 0 && (
+										<span className="bg-warning/20 text-warning-text text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+											{pendingAlertCount}
+										</span>
+									)}
+								</>
 							)}
 						</button>
 					))}
@@ -885,10 +768,9 @@ export default function VehicleStockPage() {
 
 			{/* Tab content */}
 			<div className="flex-1 overflow-auto min-h-0">
-				{activeTab === "stock"    && <StockTab vehicleId={id} stockItems={stockItems} isLoading={stockLoading} />}
-				{activeTab === "usage"    && <UsageTodayTab vehicleId={id} />}
-				{activeTab === "eod"      && <EodWorkflow vehicleId={id} stockItems={stockItems} />}
-				{activeTab === "requests" && <RequestsTab vehicleId={id} />}
+				{activeTab === "stock"   && <StockTab vehicleId={vehicleId} stockItems={stockItems} isLoading={stockLoading} />}
+				{activeTab === "restock" && <RestockWorkflow vehicleId={vehicleId} stockItems={stockItems} />}
+				{activeTab === "alerts"  && <AlertsTab vehicleId={vehicleId} />}
 			</div>
 
 			{vehicle && (
@@ -905,7 +787,7 @@ export default function VehicleStockPage() {
 					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 						<div className="bg-base border border-border rounded-xl w-full max-w-lg max-h-[80vh] overflow-auto">
 							<div className="px-4 pt-4 pb-1 text-sm font-semibold text-text-primary border-b border-border">Fill to Standard</div>
-							<FillToStandardPreview vehicleId={id!} onClose={() => setFillOpen(false)} />
+							<FillToStandardPreview vehicleId={vehicleId} onClose={() => setFillOpen(false)} />
 						</div>
 					</div>
 				</>

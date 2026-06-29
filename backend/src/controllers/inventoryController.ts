@@ -158,7 +158,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 			});
 
 			if (parsed.quantity > 0) {
-				await recordMovements(tx, organizationId, toActorInfo(context), [
+				await recordMovements(tx as unknown as Prisma.TransactionClient, organizationId, toActorInfo(context), [
 					{
 						inventory_item_id: created.id,
 						qty: parsed.quantity,
@@ -348,7 +348,7 @@ export const adjustInventoryStock = async (
 		let lowStockItemIds: string[] = [];
 
 		const updated = await sdb.$transaction(async (tx) => {
-			const result = await recordMovements(tx, organizationId, actor, [
+			const result = await recordMovements(tx as unknown as Prisma.TransactionClient, organizationId, actor, [
 				{
 					inventory_item_id: itemId,
 					qty,

@@ -80,15 +80,18 @@ export interface UpdateVehicleStockItemInput {
 	qty_standard?: number | null;
 }
 
-export interface VehicleStockConflictItem {
+export interface StockShortfallItem {
 	inventoryItemId: string;
 	itemName: string;
 	qtyNeeded: number;
 	qtyOnHand: number;
 }
 
+export interface VehicleStockConflictItem extends StockShortfallItem {}
+
 export interface VehicleStockConflict {
 	visitId: string;
+	jobId: string;
 	vehicleId: string;
 	vehicleName: string;
 	techNames: string[];
@@ -135,64 +138,77 @@ export interface BulkRestockInput {
 	items: Array<{ stock_item_id: string; qty_requested?: number | null; note?: string | null }>;
 }
 
-export interface ConfirmReceiptInput {
-	items: Array<{ request_id: string; qty_received: number }>;
-}
-
-export type RestockRequestStatus = "pending" | "fulfilled" | "dismissed";
+export type RestockRequestStatus = "pending" | "acknowledged" | "resolved" | "dismissed";
 
 export interface RestockRequest {
 	id: string;
 	stock_item_id: string;
 	technician_id: string;
 	technician: { id: string; name: string } | null;
-	qty_requested: number | string | null;
+	qty_requested: number | null;
 	note: string | null;
 	status: RestockRequestStatus;
 	created_at: string;
-	fulfilled_at: string | null;
-	received_at: string | null;
-	qty_received: number | null;
-	discrepant: boolean;
+	acknowledged_at: string | null;
+	resolved_at: string | null;
+	resolved_note: string | null;
 	dismissed_reason: string | null;
-	qty_fulfilled: number | null;
 	stock_item: {
 		id: string;
 		vehicle_id: string;
 		inventory_item_id: string;
+		qty_on_hand: number;
 		inventory_item: { id: string; name: string; unit: string | null; quantity: number };
 		vehicle: { id: string; name: string };
 	};
 }
 
-export interface VehicleEodRestockLine {
+export interface VehicleRestockLine {
 	id: string;
-	eod_record_id: string;
+	restock_record_id: string;
 	stock_item_id: string;
 	qty_restocked: number;
 	qty_shortfall: number;
 }
 
-export interface VehicleEodRecord {
+export interface DualActor {
+	dispatcher: { id: string; name: string } | null;
+	technician: { id: string; name: string } | null;
+}
+
+export interface VehicleRestockRecord {
 	id: string;
 	vehicle_id: string;
 	organization_id: string;
 	completed_at: string;
+	mode: "restock" | "prepare";
 	completed_by_id: string | null;
-	completed_by: { id: string; name: string } | null;
+	completed_by: DualActor["dispatcher"];
 	completed_by_tech_id: string | null;
-	completed_by_tech: { id: string; name: string } | null;
+	completed_by_tech: DualActor["technician"];
 	notes: string | null;
-	restock_lines: VehicleEodRestockLine[];
+	restock_lines: VehicleRestockLine[];
 	created_at: string;
 }
 
-export interface CompleteEodInput {
+export interface CompleteRestockInput {
 	notes?: string | null;
+	mode?: "restock" | "prepare";
 	restock_lines: Array<{
 		stock_item_id: string;
 		qty_to_restock: number;
 	}>;
+}
+
+export interface TomorrowRequirementItem extends StockShortfallItem {}
+
+export interface TomorrowRequirementVisit {
+	visitId: string;
+	visitName: string;
+	scheduledAt: string;
+	jobName: string;
+	clientName: string;
+	items: TomorrowRequirementItem[];
 }
 
 export type VehicleAdjustmentType = "warehouse_exchange" | "field_loss" | "transfer" | "audit" | "supplier_purchase";
@@ -232,9 +248,9 @@ export interface VehicleStockAdjustment {
 	type: VehicleAdjustmentType;
 	note: string | null;
 	created_by_id: string | null;
-	created_by: { id: string; name: string } | null;
+	created_by: DualActor["dispatcher"];
 	created_by_tech_id: string | null;
-	created_by_tech: { id: string; name: string } | null;
+	created_by_tech: DualActor["technician"];
 	created_at: string;
 	lines: VehicleStockAdjustmentLine[];
 }
@@ -262,7 +278,7 @@ export type VehicleReadiness = {
 	confirmed?: {
 		id: string;
 		confirmed_by: string;
-		confirmed_by_type: "dispatcher" | "technician" | "eod_auto";
+		confirmed_by_type: "dispatcher" | "technician" | "restock_auto";
 		confirmed_at: string;
 		notes: string | null;
 	};
@@ -289,3 +305,9 @@ export interface FillResultLine {
 	qty_moved: number;
 	shortfall: number;
 }
+
+export interface BulkRestockResult {
+	created: RestockRequest[];
+	skipped: { stock_item_id: string; reason: string }[];
+}
+

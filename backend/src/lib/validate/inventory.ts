@@ -11,6 +11,7 @@ export const createInventoryItemSchema = z.object({
 	description: z.string().max(5000).default(""),
 	location: z.string().min(1, "Location is required").max(255),
 	quantity: z.number().int().min(0, "Quantity must not be negative").default(0),
+	unit: z.string().max(50).default("each"),
 	unit_price: z.number().min(0).nullable().optional(),
 	cost: z.number().min(0).nullable().optional(),
 	sku: z.string().max(100).nullable().optional(),
@@ -28,6 +29,7 @@ export const updateInventoryItemSchema = z.object({
 	description: z.string().max(5000).optional(),
 	location: z.string().min(1).max(255).optional(),
 	// quantity intentionally omitted — stock changes go through adjustInventoryStock → recordMovements
+	unit: z.string().max(50).optional(),
 	unit_price: z.number().min(0).nullable().optional(),
 	cost: z.number().min(0).nullable().optional(),
 	sku: z.string().max(100).nullable().optional(),

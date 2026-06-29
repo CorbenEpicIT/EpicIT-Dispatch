@@ -27,14 +27,15 @@ import { usePermission, useAnyPermission } from "../hooks/usePermission";
 import DispatcherUserMenu from "../components/nav/DispatcherUserMenu";
 import CreatePanel from "../components/nav/CreatePanel";
 import { socket } from "../lib/socket";
+import { useOrgSettings } from "../hooks/useOrg";
 
-interface EodShortfallEvent {
+interface RestockShortfallEvent {
 	vehicle_name: string;
 	date: string;
 	shortfalls: { name: string; qty_shortfall: number }[];
 }
 
-interface ShortfallToast extends EodShortfallEvent {
+interface ShortfallToast extends RestockShortfallEvent {
 	id: number;
 }
 
@@ -42,31 +43,38 @@ export default function DispatchLayout() {
 	const { logout } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
-	const navigationCount = useRef(0);
 	const toastIdRef = useRef(0);
+	const { data: orgSettings } = useOrgSettings();
 	const [expanded, setExpanded] = useState(false);
 	const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
 	const [shortfallToasts, setShortfallToasts] = useState<ShortfallToast[]>([]);
 	const { user } = useAuthStore();
 
-	useEffect(() => {
-		navigationCount.current++;
-	}, [location.pathname]);
+	const canViewRequests = usePermission("view_requests");
+	const canViewQuotes = usePermission("view_quotes");
+	const canViewJobs = usePermission("view_jobs");
+	const canViewInvoices = usePermission("view_invoices");
+	const canViewClients = usePermission("view_clients");
+	const canViewInventory = usePermission("view_inventory");
+	const canViewVehicles = useAnyPermission(["view_vehicles", "manage_vehicles"]);
+	const canViewTechnicians = usePermission("view_technicians");
+	const canViewReports = usePermission("view_reports");
+	const canViewAdmin = useAnyPermission(["view_admin", "manage_organization", "manage_roles"]);
 
 	useEffect(() => {
-		const handler = (event: EodShortfallEvent) => {
+		const handler = (event: RestockShortfallEvent) => {
 			const id = ++toastIdRef.current;
 			setShortfallToasts((prev) => [...prev, { ...event, id }]);
 			setTimeout(() => setShortfallToasts((prev) => prev.filter((t) => t.id !== id)), 12000);
 		};
-		socket.on("vehicle:eod_shortfall", handler);
-		return () => { socket.off("vehicle:eod_shortfall", handler); };
+		socket.on("vehicle:restock_shortfall", handler);
+		return () => { socket.off("vehicle:restock_shortfall", handler); };
 	}, []);
 	const handleBack = () => {
 		const path = location.pathname;
 		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
 
-		if (navigationCount.current > 1 && historyIdx > 0) {
+		if (historyIdx > 0) {
 			navigate(-1);
 			return;
 		}
@@ -121,7 +129,7 @@ export default function DispatchLayout() {
 						icon={<Calendar size={ICON_SIZE} />}
 						label="Schedule"
 					/>
-					{usePermission("view_requests") && (
+					{canViewRequests && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/requests"
@@ -129,7 +137,7 @@ export default function DispatchLayout() {
 							label="Requests"
 						/>
 					)}
-					{usePermission("view_quotes") && (
+					{canViewQuotes && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/quotes"
@@ -137,7 +145,7 @@ export default function DispatchLayout() {
 							label="Quotes"
 						/>
 					)}
-					{usePermission("view_jobs") && (
+					{canViewJobs && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/jobs"
@@ -145,7 +153,7 @@ export default function DispatchLayout() {
 							label="Jobs"
 						/>
 					)}
-					{usePermission("view_invoices") && (
+					{canViewInvoices && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/invoices"
@@ -153,7 +161,7 @@ export default function DispatchLayout() {
 							label="Invoices"
 						/>
 					)}
-					{usePermission("view_clients") && (
+					{canViewClients && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/clients"
@@ -161,7 +169,7 @@ export default function DispatchLayout() {
 							label="Clients"
 						/>
 					)}
-					{usePermission("view_inventory") && (
+					{canViewInventory && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/inventory"
@@ -169,7 +177,7 @@ export default function DispatchLayout() {
 							label="Inventory"
 						/>
 					)}
-					{useAnyPermission(["view_vehicles", "manage_vehicles"]) && (
+					{canViewVehicles && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/vehicles"
@@ -177,7 +185,7 @@ export default function DispatchLayout() {
 							label="Vehicles"
 						/>
 					)}
-					{usePermission("view_technicians") && (
+					{canViewTechnicians && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/technicians"
@@ -191,7 +199,7 @@ export default function DispatchLayout() {
 						icon={<Map size={ICON_SIZE} />}
 						label="Map"
 					/>
-					{usePermission("view_reports") && (
+					{canViewReports && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/kpi"
@@ -199,7 +207,7 @@ export default function DispatchLayout() {
 							label="KPIs"
 						/>
 					)}
-					{usePermission("view_reports") && (
+					{canViewReports && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/reporting"
@@ -213,7 +221,7 @@ export default function DispatchLayout() {
 						icon={<UserRoundCog size={ICON_SIZE} />}
 						label="My Profile"
 					/>
-					{(user?.role === "admin" || useAnyPermission(["view_admin", "manage_organization", "manage_roles"])) && (
+					{(user?.role === "admin" || canViewAdmin) && (
 						<SideNavItem
 							expanded={expanded}
 							to="/dispatch/admin"
@@ -233,7 +241,7 @@ export default function DispatchLayout() {
 				>
 					<div className="flex items-center gap-6">
 						<div className="font-semibold text-sm whitespace-nowrap text-text-primary">
-							Dispatch Demo
+							{orgSettings?.name ?? "Dispatch"}
 						</div>
 						<button
 							onClick={handleBack}
@@ -264,7 +272,7 @@ export default function DispatchLayout() {
 			</div>
 			<CreatePanel isOpen={isCreatePanelOpen} onClose={() => setIsCreatePanelOpen(false)} />
 
-			{/* EOD shortfall toasts */}
+			{/* Restock shortfall toasts */}
 			{shortfallToasts.length > 0 && (
 				<div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
 					{shortfallToasts.map((toast) => (
@@ -275,7 +283,7 @@ export default function DispatchLayout() {
 							<AlertTriangle size={16} className="text-warning-text flex-shrink-0 mt-0.5" />
 							<div className="flex-1 min-w-0">
 								<div className="text-sm font-semibold text-text-primary">
-									EOD shortfall — {toast.vehicle_name}
+									Restock shortfall — {toast.vehicle_name}
 								</div>
 								<div className="text-xs text-text-muted mt-0.5">{toast.date}</div>
 								<ul className="mt-1 space-y-0.5">

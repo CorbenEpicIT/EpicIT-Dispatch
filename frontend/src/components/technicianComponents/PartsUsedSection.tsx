@@ -8,12 +8,15 @@ import {
 	ChevronDown,
 	ChevronUp,
 	AlertTriangle,
+	Check,
+	Trash2,
 } from "lucide-react";
 import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation } from "../../hooks/useVehicles";
 import { useUpdateJobVisitMutation } from "../../hooks/useJobs";
 
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
 import { useAuthStore } from "../../auth/authStore";
+import { usePermission } from "../../hooks/usePermission";
 import type { VehicleStockItem, SupplierPartUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 
@@ -104,7 +107,7 @@ function EditPartsTab({
 									}`}
 									aria-label={isOne ? "Remove part" : "Decrease quantity"}
 								>
-									{isOne ? "?" : "-"}
+									{isOne ? <Trash2 size={10} /> : "-"}
 								</button>
 								<span className="text-sm font-semibold text-text-primary tabular-nums min-w-[18px] text-center">
 									{qty}
@@ -176,11 +179,8 @@ function StockPartPicker({
 		);
 	}, [stockItems, search]);
 
-	const isAlreadyAdded = (stockItem: VehicleStockItem): VisitLineItem | undefined =>
-		lineItems.find(
-			(li) =>
-				li.name.toLowerCase() === stockItem.inventory_item.name.toLowerCase()
-		);
+	const findExistingLineItem = (stockItem: VehicleStockItem): VisitLineItem | undefined =>
+		lineItems.find((li) => li.inventory_item_id === stockItem.inventory_item.id);
 
 	const handleConfirm = async () => {
 		if (!selected) return;
@@ -309,15 +309,15 @@ function StockPartPicker({
 							</p>
 						</div>
 						{(() => {
-							const existing = isAlreadyAdded(item);
+							const existing = findExistingLineItem(item);
 							return existing ? (
 								<button
 									onClick={() =>
 										onSwitchToEdit(existing.id ?? "")
 									}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-success-bg text-success-text border border-success-border hover:bg-success/25 transition-colors"
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-success-bg text-success-text border border-success-border hover:bg-success/25 transition-colors flex items-center gap-1"
 								>
-									? Added
+									<Check size={10} /> Added
 								</button>
 							) : (
 								<button
@@ -409,13 +409,13 @@ function SupplierPartForm({
 export default function PartsUsedSection({
 	visitId,
 	lineItems = [],
-	total,
 }: {
 	visitId: string;
 	lineItems: VisitLineItem[];
-	total: number;
 }) {
+	const runningTotal = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unit_price), 0);
 	const { user } = useAuthStore();
+	const canUseInventory = usePermission("use_inventory");
 	const { data: techProfile } = useTechnicianByIdQuery(user?.userId ?? null);
 	const vehicleId = techProfile?.current_vehicle_id ?? null;
 	const { data: stockItems = [] } = useVehicleStockQuery(vehicleId);
@@ -550,31 +550,35 @@ export default function PartsUsedSection({
 									<Pencil size={12} />
 									Edit Parts
 								</button>
-								<button
-									onClick={() => setMode("stock")}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
-										mode === "stock"
-											? "bg-surface-raised text-on-primary"
-											: "text-text-muted hover:text-text-secondary"
-									}`}
-								>
-									<Package size={12} />
-									Vehicle Stock
-								</button>
-								<button
-									onClick={() => {
-										setMode("supplier");
-										setStockSearch("");
-									}}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
-										mode === "supplier"
-											? "bg-surface-raised text-on-primary"
-											: "text-text-muted hover:text-text-secondary"
-									}`}
-								>
-									<Wrench size={12} />
-									Supplier part
-								</button>
+								{canUseInventory && (
+									<button
+										onClick={() => setMode("stock")}
+										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+											mode === "stock"
+												? "bg-surface-raised text-on-primary"
+												: "text-text-muted hover:text-text-secondary"
+										}`}
+									>
+										<Package size={12} />
+										Vehicle Stock
+									</button>
+								)}
+								{canUseInventory && (
+									<button
+										onClick={() => {
+											setMode("supplier");
+											setStockSearch("");
+										}}
+										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+											mode === "supplier"
+												? "bg-surface-raised text-on-primary"
+												: "text-text-muted hover:text-text-secondary"
+										}`}
+									>
+										<Wrench size={12} />
+										Supplier part
+									</button>
+								)}
 							</div>
 
 							{mode === "edit" ? (
@@ -692,7 +696,7 @@ export default function PartsUsedSection({
 								Running Total
 							</span>
 							<span className="text-base font-bold text-text-primary tabular-nums">
-								${total.toFixed(2)}
+								${runningTotal.toFixed(2)}
 							</span>
 						</div>
 					)}

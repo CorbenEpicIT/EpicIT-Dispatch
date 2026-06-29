@@ -4,12 +4,14 @@ import { ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 interface ImageCarouselProps {
 	images: string[];
 	compact?: boolean;
+	compactNav?: boolean;
 	className?: string;
 }
 
 export default function ImageCarousel({
 	images,
 	compact = false,
+	compactNav = false,
 	className = "",
 }: ImageCarouselProps) {
 	const [currentIndex, setCurrentIndex] = useState(0);
@@ -61,41 +63,47 @@ export default function ImageCarousel({
 				}`}
 			/>
 
-			{images.length > 1 && (
+			{images.length > 1 && compactNav && (
+				<div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+					<button
+						type="button"
+						onClick={(e) => { e.stopPropagation(); goTo(currentIndex - 1); }}
+						className="w-4 h-4 rounded-sm bg-black/55 text-white flex items-center justify-center"
+					>
+						<ChevronLeft size={10} />
+					</button>
+					<button
+						type="button"
+						onClick={(e) => { e.stopPropagation(); goTo(currentIndex + 1); }}
+						className="w-4 h-4 rounded-sm bg-black/55 text-white flex items-center justify-center"
+					>
+						<ChevronRight size={10} />
+					</button>
+				</div>
+			)}
+			{images.length > 1 && !compactNav && (
 				<>
 					<button
 						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							goTo(currentIndex - 1);
-						}}
+						onClick={(e) => { e.stopPropagation(); goTo(currentIndex - 1); }}
 						className="absolute left-1 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
 					>
 						<ChevronLeft size={14} />
 					</button>
 					<button
 						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							goTo(currentIndex + 1);
-						}}
+						onClick={(e) => { e.stopPropagation(); goTo(currentIndex + 1); }}
 						className="absolute right-1 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
 					>
 						<ChevronRight size={14} />
 					</button>
-
 					<div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-10 flex gap-1">
 						{images.map((_, i) => (
 							<button
 								key={i}
 								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									goTo(i);
-								}}
-								className={`w-1.5 h-1.5 rounded-full transition-colors ${
-									i === currentIndex ? "bg-white" : "bg-white/40"
-								}`}
+								onClick={(e) => { e.stopPropagation(); goTo(i); }}
+								className={`w-1.5 h-1.5 rounded-full transition-colors ${i === currentIndex ? "bg-white" : "bg-white/40"}`}
 							/>
 						))}
 					</div>

@@ -21,6 +21,7 @@ export const useVehiclesQuery = (status?: string): UseQueryResult<Vehicle[], Err
 	return useQuery({
 		queryKey: ["vehicles", { status }],
 		queryFn: () => vehiclesApi.getVehicles(status),
+		staleTime: 30_000,
 	});
 };
 
@@ -53,6 +54,7 @@ export const useVehicleStockQuery = (vehicleId: string | null | undefined): UseQ
 		queryKey: ["vehicle-stock", vehicleId],
 		queryFn: () => vehiclesApi.getVehicleStock(vehicleId!),
 		enabled: !!vehicleId,
+		staleTime: 30_000,
 	});
 };
 
@@ -89,8 +91,15 @@ export const useDeleteVehicleStockItemMutation = () => {
 };
 
 export const useRestockRequestMutation = () => {
+	const qc = useQueryClient();
 	return useMutation<void, Error, { vehicleId: string; itemId: string; data: RestockRequestInput }>({
 		mutationFn: ({ vehicleId, itemId, data }) => vehiclesApi.createRestockRequest(vehicleId, itemId, data),
+		onSuccess: async (_data, variables) => {
+			await Promise.all([
+				qc.invalidateQueries({ queryKey: ["vehicles", variables.vehicleId, "restock-requests"] }),
+				qc.invalidateQueries({ queryKey: ["restock-requests"] }),
+			]);
+		},
 	});
 };
 
@@ -115,11 +124,16 @@ export const useAddPartsUsedMutation = () => {
 
 export const useAddSupplierPartUsedMutation = (visitId: string, vehicleId: string | null) => {
 	const qc = useQueryClient();
-	return useMutation({
+	return useMutation<
+		{ lineItem: VisitLineItem; usage: VehicleStockUsage | null },
+		Error,
+		SupplierPartUsedInput
+	>({
 		mutationFn: (input: SupplierPartUsedInput) => vehiclesApi.addSupplierPartUsed(visitId, input),
 		onSuccess: async () => {
 			await Promise.all([
-				qc.invalidateQueries({ queryKey: ["job-visits", visitId] }),
+				qc.invalidateQueries({ queryKey: ["jobVisits", visitId] }),
+				qc.invalidateQueries({ queryKey: ["jobVisits"] }),
 				...(vehicleId ? [qc.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] })] : []),
 			]);
 		},

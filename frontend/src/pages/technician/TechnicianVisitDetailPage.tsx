@@ -599,7 +599,6 @@ export default function TechnicianVisitDetailPage() {
 						<PartsUsedSection
 							visitId={visitId!}
 							lineItems={lineItems}
-							total={total}
 						/>
 						<JobContextSection
 							visit={visit}
@@ -621,7 +620,6 @@ export default function TechnicianVisitDetailPage() {
 						<PartsUsedSection
 							visitId={visitId!}
 							lineItems={lineItems}
-							total={total}
 						/>
 						<InvoicePreview
 							lineItems={lineItems}

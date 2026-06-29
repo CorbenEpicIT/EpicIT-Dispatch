@@ -13,17 +13,18 @@ import type {
 	RestockRequestInput,
 	RestockRequest,
 	BulkRestockInput,
-	ConfirmReceiptInput,
+	BulkRestockResult,
 	VehicleStockConflict,
 	VehicleUsageTodayGroup,
-	VehicleEodRecord,
-	CompleteEodInput,
+	VehicleRestockRecord,
+	CompleteRestockInput,
 	AdjustStockInput,
 	VehicleStockAdjustment,
 	VehicleReadiness,
 	FillPlan,
 	ApplyFillInput,
 	FillResultLine,
+	TomorrowRequirementVisit,
 } from "../types/vehicles";
 import type { VisitLineItem } from "../types/jobs";
 
@@ -32,6 +33,7 @@ import type { VisitLineItem } from "../types/jobs";
 export const getVehicles = async (status?: string): Promise<Vehicle[]> => {
 	const params = status ? { status } : undefined;
 	const response = await api.get<ApiResponse<Vehicle[]>>("/vehicles", { params });
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data || [];
 };
 
@@ -55,6 +57,7 @@ export const updateVehicle = async (id: string, input: UpdateVehicleInput): Prom
 
 export const getVehicleStock = async (vehicleId: string): Promise<VehicleStockItem[]> => {
 	const response = await api.get<ApiResponse<VehicleStockItem[]>>(`/vehicles/${vehicleId}/stock`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data || [];
 };
 
@@ -93,24 +96,20 @@ export const createRestockRequest = async (vehicleId: string, itemId: string, in
 export const getRestockRequests = async (
 	status?: string,
 	vehicleId?: string,
-	discrepant?: boolean,
 ): Promise<RestockRequest[]> => {
 	const params: Record<string, string> = {};
 	if (status) params.status = status;
 	if (vehicleId) params.vehicleId = vehicleId;
-	if (discrepant) params.discrepant = "true";
 	const response = await api.get<ApiResponse<RestockRequest[]>>("/vehicles/restock-requests", { params });
-	return response.data.data || [];
+	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to get restock requests");
+	return response.data.data ?? [];
 };
 
-export const fulfillRestockRequest = async (requestId: string, qty?: number): Promise<RestockRequest> => {
+export const acknowledgeRestockRequest = async (requestId: string): Promise<RestockRequest> => {
 	const response = await api.post<ApiResponse<RestockRequest>>(
-		`/vehicles/restock-requests/${requestId}/fulfill`,
-		qty !== undefined ? { qty } : {},
+		`/vehicles/restock-requests/${requestId}/acknowledge`,
 	);
-	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to fulfill restock request");
-	}
+	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to acknowledge restock request");
 	return response.data.data!;
 };
 
@@ -126,34 +125,18 @@ export const dismissRestockRequest = async (requestId: string): Promise<RestockR
 
 export const getVehicleRestockRequests = async (vehicleId: string): Promise<RestockRequest[]> => {
 	const response = await api.get<ApiResponse<RestockRequest[]>>(`/vehicles/${vehicleId}/restock-requests`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data || [];
 };
 
 export const createRestockRequestsBulk = async (
 	vehicleId: string,
 	input: BulkRestockInput,
-): Promise<{ created: RestockRequest[]; skipped: { stock_item_id: string; reason: string }[] }> => {
-	const response = await api.post<ApiResponse<{ created: RestockRequest[]; skipped: { stock_item_id: string; reason: string }[] }>>(
+): Promise<BulkRestockResult> => {
+	const response = await api.post<ApiResponse<BulkRestockResult>>(
 		`/vehicles/${vehicleId}/restock-requests/bulk`, input);
 	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to submit restock requests");
 	return response.data.data!;
-};
-
-export const confirmRestockReceipts = async (
-	vehicleId: string,
-	input: ConfirmReceiptInput,
-): Promise<{ confirmed: RestockRequest[]; failed: { request_id: string; error: string }[] }> => {
-	const response = await api.post<ApiResponse<{ confirmed: RestockRequest[]; failed: { request_id: string; error: string }[] }>>(
-		`/vehicles/${vehicleId}/restock-requests/confirm-receipt`, input);
-	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to confirm receipt");
-	return response.data.data!;
-};
-
-export const acknowledgeDiscrepancy = async (requestId: string): Promise<void> => {
-	const response = await api.post<ApiResponse<unknown>>(
-		`/vehicles/restock-requests/${requestId}/acknowledge-discrepancy`,
-	);
-	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to acknowledge discrepancy");
 };
 
 // ── Technician vehicle assignment ─────────────────────────────────────────────
@@ -186,6 +169,7 @@ export const applyFill = async (vehicleId: string, input: ApplyFillInput): Promi
 
 export const getUsageToday = async (vehicleId: string): Promise<VehicleUsageTodayGroup[]> => {
 	const response = await api.get<ApiResponse<VehicleUsageTodayGroup[]>>(`/vehicles/${vehicleId}/usage-today`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data || [];
 };
 
@@ -200,37 +184,46 @@ export const addPartsUsed = async (visitId: string, input: AddPartsUsedInput): P
 export const addSupplierPartUsed = async (
 	visitId: string,
 	input: SupplierPartUsedInput,
-): Promise<unknown> => {
-	const response = await api.post<ApiResponse<unknown>>(
+): Promise<{ lineItem: VisitLineItem; usage: VehicleStockUsage | null }> => {
+	const response = await api.post<ApiResponse<{ lineItem: VisitLineItem; usage: VehicleStockUsage | null }>>(
 		`/job-visits/${visitId}/parts-used/supplier`,
 		input,
 	);
 	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to add supplier part");
-	return response.data.data;
+	return response.data.data!;
 };
 
-// ── EOD (End of Day) ──────────────────────────────────────────────────────────
+export const getTomorrowRequirements = async (vehicleId: string): Promise<TomorrowRequirementVisit[]> => {
+	const response = await api.get<ApiResponse<TomorrowRequirementVisit[]>>(`/vehicles/${vehicleId}/tomorrow-requirements`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to get tomorrow requirements");
+	return response.data.data ?? [];
+};
 
-export const completeEod = async (vehicleId: string, input: CompleteEodInput): Promise<VehicleEodRecord> => {
-	const response = await api.post<ApiResponse<VehicleEodRecord>>(`/vehicles/${vehicleId}/eod`, input);
+// ── Restock (End of Day) ──────────────────────────────────────────────────────
+
+export const completeRestock = async (vehicleId: string, input: CompleteRestockInput): Promise<VehicleRestockRecord> => {
+	const response = await api.post<ApiResponse<VehicleRestockRecord>>(`/vehicles/${vehicleId}/restock`, input);
 	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to complete EOD");
+		throw new Error(response.data.error?.message || "Failed to complete restock");
 	}
 	return response.data.data!;
 };
 
-export const getVehicleEodToday = async (vehicleId: string): Promise<VehicleEodRecord | null> => {
-	const response = await api.get<ApiResponse<VehicleEodRecord | null>>(`/vehicles/${vehicleId}/eod/today`);
+export const getVehicleRestockToday = async (vehicleId: string): Promise<VehicleRestockRecord | null> => {
+	const response = await api.get<ApiResponse<VehicleRestockRecord | null>>(`/vehicles/${vehicleId}/restock/today`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data ?? null;
 };
 
-export const getVehicleEodHistory = async (vehicleId: string): Promise<VehicleEodRecord[]> => {
-	const response = await api.get<ApiResponse<VehicleEodRecord[]>>(`/vehicles/${vehicleId}/eod/history`);
+export const getVehicleRestockHistory = async (vehicleId: string): Promise<VehicleRestockRecord[]> => {
+	const response = await api.get<ApiResponse<VehicleRestockRecord[]>>(`/vehicles/${vehicleId}/restock/history`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data ?? [];
 };
 
 export const getVehicleStockAdjustmentHistory = async (vehicleId: string): Promise<VehicleStockAdjustment[]> => {
 	const response = await api.get<ApiResponse<VehicleStockAdjustment[]>>(`/vehicles/${vehicleId}/stock/adjustments`);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Request failed");
 	return response.data.data ?? [];
 };
 
@@ -259,8 +252,7 @@ export const getVehicleReadiness = async (
 	vehicleId: string,
 	date?: string,
 ): Promise<VehicleReadiness> => {
-	const params = date ? `?date=${encodeURIComponent(date)}` : "";
-	const res = await api.get<ApiResponse<VehicleReadiness>>(`/vehicles/${vehicleId}/readiness${params}`);
+	const res = await api.get<ApiResponse<VehicleReadiness>>(`/vehicles/${vehicleId}/readiness`, { params: date ? { date } : undefined });
 	if (!res.data.success || !res.data.data)
 		throw new Error(res.data.error?.message ?? "Failed to fetch readiness");
 	return res.data.data;

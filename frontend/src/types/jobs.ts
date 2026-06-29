@@ -289,6 +289,7 @@ export interface VisitLineItem {
 	unit_price: number;
 	total: number;
 	item_type?: LineItemType | null;
+	inventory_item_id?: string | null;
 	source?: LineItemSource;
 	source_job_id?: string | null;
 	source_visit_id?: string | null;

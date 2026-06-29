@@ -1,4 +1,5 @@
-import { useState } from "react";
+﻿import { useState } from "react";
+import { X } from "lucide-react";
 import type { Vehicle, VehicleReadiness } from "../../types/vehicles";
 import {
 	useConfirmReadinessMutation,
@@ -17,14 +18,14 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 	const confirmMutation = useConfirmReadinessMutation();
 	const revokeMutation = useRevokeReadinessMutation();
 
-	const handleConfirm = () => {
+	const handleConfirmReadiness = () => {
 		confirmMutation.mutate(
 			{ vehicleId: vehicle.id, body: { date, notes: notes.trim() || undefined } },
 			{ onSuccess: () => setNotes("") }
 		);
 	};
 
-	const handleRevoke = () => {
+	const handleRevokeReadiness = () => {
 		revokeMutation.mutate({ vehicleId: vehicle.id, date });
 	};
 
@@ -43,7 +44,7 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 					className="text-text-muted hover:text-text-secondary p-1 rounded transition-colors"
 					aria-label="Close panel"
 				>
-					✕
+					<X size={16} />
 				</button>
 			</div>
 
@@ -79,7 +80,7 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 								<span className="text-right text-text-muted">{gap.qty_needed}</span>
 								<span
 									className={`text-right font-semibold ${
-										gap.gap > 0 ? "text-warning" : "text-success"
+										gap.gap > 0 ? "text-warning-text" : "text-success"
 									}`}
 								>
 									{gap.gap > 0 ? `−${gap.gap}` : "✓"}
@@ -88,7 +89,7 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 						))}
 
 						{activeGaps.length > 0 && (
-							<div className="pt-2 text-xs text-warning font-medium">
+							<div className="pt-2 text-xs text-warning-text font-medium">
 								{activeGaps.length} item{activeGaps.length !== 1 ? "s" : ""} short
 							</div>
 						)}
@@ -100,8 +101,8 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 					<div className="text-xs text-text-muted border border-success/30 rounded px-3 py-2 bg-success/5 space-y-1">
 						<div className="flex items-center gap-2">
 							<span className="font-medium text-success">Confirmed</span>
-							{readiness.confirmed.confirmed_by_type === "eod_auto" && (
-								<span className="text-[10px] font-semibold bg-primary/15 text-primary px-1.5 py-0.5 rounded">EOD auto-confirmed</span>
+							{readiness.confirmed.confirmed_by_type === "restock_auto" && (
+								<span className="text-[10px] font-semibold bg-primary/15 text-primary px-1.5 py-0.5 rounded">Auto-confirmed</span>
 							)}
 							{readiness.confirmed.confirmed_by_type === "technician" && (
 								<span className="text-[10px] font-semibold bg-surface-raised text-text-secondary px-1.5 py-0.5 rounded">Tech confirmed</span>
@@ -125,7 +126,7 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 			<div className="px-4 py-3 border-t border-border space-y-2">
 				{readiness.state === "confirmed" ? (
 					<button
-						onClick={handleRevoke}
+						onClick={handleRevokeReadiness}
 						disabled={revokeMutation.isPending}
 						className="w-full text-sm text-text-muted hover:text-error py-1.5 transition-colors disabled:opacity-50"
 					>
@@ -143,7 +144,7 @@ export default function VehicleReadinessPanel({ vehicle, readiness, date, onClos
 							/>
 						)}
 						<button
-							onClick={handleConfirm}
+							onClick={handleConfirmReadiness}
 							disabled={confirmMutation.isPending}
 							className="w-full bg-primary text-on-primary text-sm font-semibold py-2 rounded hover:bg-primary-hover disabled:opacity-50 transition-colors"
 						>

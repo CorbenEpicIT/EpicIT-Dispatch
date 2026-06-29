@@ -1,15 +1,17 @@
 ﻿import { useState, useMemo, useEffect, useRef } from "react";
-import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, ArrowUpDown, ClipboardCheck } from "lucide-react";
+import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, LayoutList, ClipboardCheck, History, Plus } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
-import { useVehiclesQuery, useVehicleStockQuery, useSetTechnicianVehicleMutation, useRestockRequestMutation } from "../../hooks/useVehicles";
+import { useVehiclesQuery, useVehicleStockQuery, useSetTechnicianVehicleMutation, useRestockRequestMutation, useAddVehicleStockItemMutation } from "../../hooks/useVehicles";
 import { useVehicleStockConflictsQuery, useBulkRestockMutation } from "../../hooks/useVehicleStock";
 import RestockStatusList from "../../components/technicianComponents/RestockStatusList";
 import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
 import { useOrgSettings } from "../../hooks/useOrg";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
-import EodWorkflow from "../../components/vehicles/EodWorkflow";
+import RestockWorkflow from "../../components/vehicles/RestockWorkflow";
+import StockHistorySection from "../../components/vehicles/StockHistorySection";
 import type { Vehicle, VehicleStockItem, VehicleStockConflict, BulkRestockInput } from "../../types/vehicles";
 
 // ── Vehicle Status ────────────────────────────────────────────────────────────
@@ -21,6 +23,12 @@ function getVehicleStatus(v: Vehicle): VehicleStatus {
 	if ((v.current_technicians ?? []).length > 0) return "in-use";
 	if ((v.stock_items ?? []).some((i) => Number(i.qty_on_hand) > 0)) return "stocked";
 	return "available";
+}
+
+function getVehicleSubtitle(v: Pick<Vehicle, "color" | "type" | "license_plate">): string | null {
+	const parts = [v.color, v.type].filter(Boolean).join(" ");
+	const result = v.license_plate ? `${parts} · ${v.license_plate}` : parts;
+	return result || null;
 }
 
 function VehicleStatusBadge({ status }: { status: VehicleStatus }) {
@@ -84,8 +92,7 @@ function VehicleList({
 				const status = getVehicleStatus(v);
 				const isCurrent = v.id === currentVehicleId;
 				const isRideAlongPending = v.id === rideAlongPendingId;
-				const subtitleParts = [v.color, v.type].filter(Boolean).join(" ");
-				const subtitle = v.license_plate ? `${subtitleParts} · ${v.license_plate}` : subtitleParts;
+				const subtitle = getVehicleSubtitle(v);
 
 				return (
 					<div key={v.id}>
@@ -93,7 +100,7 @@ function VehicleList({
 							<div className="flex-1 min-w-0">
 								<p className="text-sm font-semibold text-text-primary truncate">{v.name}</p>
 								{subtitle && (
-									<p className={`text-xs mt-0.5 truncate ${isCurrent ? "text-text-muted" : "text-text-muted"}`}>{subtitle}</p>
+									<p className="text-xs mt-0.5 truncate text-text-muted">{subtitle}</p>
 								)}
 							</div>
 							<VehicleStatusBadge status={status} />
@@ -101,17 +108,9 @@ function VehicleList({
 								<span className="text-xs font-medium px-3 py-1.5 rounded-lg bg-surface-raised text-text-tertiary shrink-0">
 									Current
 								</span>
-							) : status === "in-use" ? (
-								<button
-									onClick={() => onRideAlongRequest(v.id)}
-									disabled={isPending}
-									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
-								>
-									Select
-								</button>
 							) : status !== "unavailable" ? (
 								<button
-									onClick={() => onSelect(v.id)}
+									onClick={() => status === "in-use" ? onRideAlongRequest(v.id) : onSelect(v.id)}
 									disabled={isPending}
 									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
@@ -161,8 +160,8 @@ function VehicleList({
 // ── Stock Item Row ────────────────────────────────────────────────────────────
 
 function formatUnit(unit: string | undefined): string {
-	if (!unit) return "";
-	return unit.toLowerCase() === "each" ? "count" : unit;
+	if (!unit || unit.toLowerCase() === "each") return "";
+	return unit;
 }
 
 function StockItemRow({
@@ -194,7 +193,7 @@ function StockItemRow({
 			: "text-text-muted";
 
 	const isRestockCandidate = isEmpty || isLow;
-	const isSelected = batchMode && isRestockCandidate && batchQty !== undefined && batchQty > 0;
+	const isSelected = batchMode && batchQty !== undefined && batchQty > 0;
 
 	return (
 		<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0 transition-colors ${
@@ -228,13 +227,7 @@ function StockItemRow({
 					)}
 				</div>
 			</div>
-			<div className="text-right shrink-0">
-				<p className={`text-base font-semibold tabular-nums ${qtyColor}`}>
-					{Number(item.qty_on_hand)}
-				</p>
-				<p className="text-[10px] text-text-muted">{unit}</p>
-			</div>
-			{batchMode && isRestockCandidate && onBatchQtyChange ? (
+			{batchMode && onBatchQtyChange ? (
 				<div className="flex items-center gap-1 shrink-0">
 					<button
 						onClick={() => onBatchQtyChange(item.id, Math.max(0, (batchQty ?? 0) - 1))}
@@ -266,6 +259,12 @@ function StockItemRow({
 					<RotateCcw size={14} />
 				</button>
 			) : null}
+			<div className="text-right shrink-0">
+				<p className={`text-base font-semibold tabular-nums ${qtyColor}`}>
+					{Number(item.qty_on_hand)}
+				</p>
+				<p className="text-[10px] text-text-muted">{unit}</p>
+			</div>
 		</div>
 	);
 }
@@ -332,6 +331,191 @@ function StockConflictWarning({ conflicts }: { conflicts: VehicleStockConflict[]
 	);
 }
 
+// ── Add to Stock Sheet ───────────────────────────────────────────────────────
+
+function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
+	vehicleId: string;
+	existingIds: Set<string>;
+	onDone: () => void;
+}) {
+	const [search, setSearch] = useState("");
+	const [qtyMin, setQtyMin] = useState("1");
+	const [qtyStandard, setQtyStandard] = useState("");
+	const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+	const [sortMode, setSortMode] = useState<"name" | "category">("name");
+	const [showFilter, setShowFilter] = useState(false);
+	const addMutation = useAddVehicleStockItemMutation();
+	const { data: allInventory = [] } = useAllInventoryQuery();
+
+	const available = allInventory.filter((item) => !existingIds.has(item.id));
+	const allCategories = Array.from(new Set(
+		available.map((i) => i.category).filter((c): c is string => Boolean(c))
+	)).sort();
+
+	const q = search.toLowerCase().trim();
+	const results = available
+		.filter((item) => {
+			const matchesSearch = !q ||
+				item.name.toLowerCase().includes(q) ||
+				item.alt_ids?.some((id) => id.toLowerCase().includes(q));
+			const matchesCategory = selectedCategories.length === 0 ||
+				selectedCategories.includes(item.category ?? "");
+			return matchesSearch && matchesCategory;
+		})
+		.sort((a, b) => {
+			if (sortMode === "category") {
+				const catA = a.category ?? "";
+				const catB = b.category ?? "";
+				if (catA !== catB) {
+					if (!catA) return 1;
+					if (!catB) return -1;
+					return catA.localeCompare(catB);
+				}
+			}
+			return a.name.localeCompare(b.name);
+		})
+		.slice(0, 20);
+
+	const handleSelect = async (inventoryItemId: string) => {
+		const min = parseFloat(qtyMin);
+		const std = qtyStandard.trim() !== "" ? parseFloat(qtyStandard) : null;
+		await addMutation.mutateAsync({
+			vehicleId,
+			data: {
+				inventory_item_id: inventoryItemId,
+				qty_on_hand: 0,
+				qty_min: !isNaN(min) && min >= 0 ? min : 1,
+				qty_standard: std !== null && !isNaN(std) && std >= 0 ? std : null,
+			},
+		});
+		onDone();
+	};
+
+	const toggleCategory = (cat: string) =>
+		setSelectedCategories((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
+
+	return (
+		<div className="px-4 py-3 space-y-3">
+			<div className="flex items-center gap-2">
+				<div className="flex items-center gap-1.5">
+					<label className="text-[10px] text-text-muted whitespace-nowrap">Min qty</label>
+					<input
+						type="number"
+						min={0}
+						value={qtyMin}
+						onChange={(e) => setQtyMin(e.target.value)}
+						className="w-14 text-xs bg-surface border border-border-input rounded px-1.5 py-1 text-text-primary outline-none focus:border-primary"
+					/>
+				</div>
+				<div className="flex items-center gap-1.5">
+					<label className="text-[10px] text-text-muted whitespace-nowrap">Standard</label>
+					<input
+						type="number"
+						min={0}
+						value={qtyStandard}
+						onChange={(e) => setQtyStandard(e.target.value)}
+						placeholder="—"
+						className="w-14 text-xs bg-surface border border-border-input rounded px-1.5 py-1 text-text-primary outline-none focus:border-primary placeholder:text-text-faint"
+					/>
+				</div>
+				<div className="flex items-center gap-1 ml-auto">
+					{allCategories.length > 0 && (
+						<button
+							onClick={() => setShowFilter((v) => !v)}
+							title="Filter by category"
+							className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
+								showFilter
+									? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
+									: "bg-surface border-border text-text-muted hover:text-text-secondary"
+							}`}
+						>
+							<SlidersHorizontal size={12} />
+						</button>
+					)}
+					<button
+						onClick={() => setSortMode((m) => m === "name" ? "category" : "name")}
+						title={sortMode === "name" ? "Sort by category" : "Sort by name"}
+						className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
+							sortMode === "category"
+								? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
+								: "bg-surface border-border text-text-muted hover:text-text-secondary"
+						}`}
+					>
+						<LayoutList size={12} />
+					</button>
+				</div>
+			</div>
+			{showFilter && allCategories.length > 0 && (
+				<div className="flex flex-wrap gap-1.5">
+					{allCategories.map((cat) => {
+						const active = selectedCategories.includes(cat);
+						return (
+							<button
+								key={cat}
+								onClick={() => toggleCategory(cat)}
+								className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+									active
+										? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
+										: "bg-surface border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
+								}`}
+							>
+								{cat}
+							</button>
+						);
+					})}
+					{selectedCategories.length > 0 && (
+						<button
+							onClick={() => setSelectedCategories([])}
+							className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full text-text-muted hover:text-text-secondary transition-colors"
+						>
+							<X size={10} />
+							Clear
+						</button>
+					)}
+				</div>
+			)}
+			<div className="flex items-center gap-2 bg-surface-inset border border-border rounded-lg px-3 py-1.5">
+				<Search size={13} className="text-text-faint flex-shrink-0" />
+				<input
+					value={search}
+					onChange={(e) => setSearch(e.target.value)}
+					placeholder="Search catalog…"
+					className="flex-1 text-sm bg-transparent text-text-primary placeholder:text-faint outline-none"
+				/>
+				{search && (
+					<button onClick={() => setSearch("")} className="text-text-faint hover:text-text-secondary transition-colors">
+						<X size={13} />
+					</button>
+				)}
+			</div>
+			{results.length > 0 ? (
+				<div className="border border-border rounded-lg overflow-hidden divide-y divide-border-subtle/60">
+					{results.map((item) => (
+						<button
+							key={item.id}
+							onClick={() => handleSelect(item.id)}
+							disabled={addMutation.isPending}
+							className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-surface-raised transition-colors disabled:opacity-50"
+						>
+							<div>
+								<p className="text-sm text-text-primary">{item.name}</p>
+								{item.category && <p className="text-[10px] text-text-muted">{item.category}</p>}
+							</div>
+							{item.unit && item.unit.toLowerCase() !== "each" && (
+								<span className="text-xs text-text-muted shrink-0 ml-2">{item.unit}</span>
+							)}
+						</button>
+					))}
+				</div>
+			) : (q || selectedCategories.length > 0) ? (
+				<p className="text-xs text-text-muted text-center py-2">No matching items</p>
+			) : (
+				<p className="text-xs text-text-muted text-center py-2">Search or filter to browse the catalog</p>
+			)}
+		</div>
+	);
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function TechnicianVehiclePage() {
@@ -347,14 +531,23 @@ export default function TechnicianVehiclePage() {
 	const bulk = useBulkRestockMutation(currentVehicleId ?? "");
 
 	const canStock = usePermission("stock_own_vehicle");
-	const canEod = usePermission("complete_own_eod");
+	const canRestock = usePermission("complete_own_restock");
+	const canUseInventory = usePermission("use_inventory");
+	const canAdjustStock = useMemo(() => {
+		if (!user || user.role !== "technician") return true;
+		const adjustPerms = ["adjust_field_loss", "adjust_transfer", "adjust_audit", "adjust_warehouse_exchange", "adjust_supplier_purchase"];
+		return adjustPerms.some((p) => user.permissions.includes(p));
+	}, [user]);
 	// UX emphasis only — capability comes from permissions, never from the mode
 	const { data: orgSettings } = useOrgSettings();
 	const selfServeEmphasis = orgSettings?.restock_mode !== "dispatch_prepared";
 
 	const [showVehicleList, setShowVehicleList] = useState(false);
 	const [adjustOpen, setAdjustOpen] = useState(false);
-	const [eodOpen, setEodOpen] = useState(false);
+	const [restockOpen, setRestockOpen] = useState(false);
+	const [showStockHistory, setShowStockHistory] = useState(false);
+	const [showAddItem, setShowAddItem] = useState(false);
+	const [showInventory, setShowInventory] = useState(true);
 	const [fillOpen, setFillOpen] = useState(false);
 	const [showStockActions, setShowStockActions] = useState(false);
 	const [restockTarget, setRestockTarget] = useState<VehicleStockItem | null>(null);
@@ -371,15 +564,16 @@ export default function TechnicianVehiclePage() {
 	const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 	const [sortMode, setSortMode] = useState<"name" | "category">("name");
 	const [batchMode, setBatchMode] = useState(false);
-	const [batchSel, setBatchSel] = useState<Record<string, number>>({});
+	const [batchQtys, setBatchQtys] = useState<Record<string, number>>({});
+	const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
-	const restockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const vehicleErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const restockTimerRef = useRef<number>(-1);
+	const vehicleErrorTimerRef = useRef<number>(-1);
 
 	useEffect(() => {
 		return () => {
-			if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
-			if (vehicleErrorTimerRef.current) clearTimeout(vehicleErrorTimerRef.current);
+			clearTimeout(restockTimerRef.current);
+			clearTimeout(vehicleErrorTimerRef.current);
 		};
 	}, []);
 
@@ -395,6 +589,29 @@ export default function TechnicianVehiclePage() {
 		)).sort();
 	}, [stockItems]);
 
+	const assignVehicle = (vehicleId: string | null, errorMsg: string) => {
+		if (!user?.userId) return;
+		setVehicle.mutate(
+			{ technicianId: user.userId, vehicleId },
+			{
+				onError: () => {
+					setVehicleError(errorMsg);
+					vehicleErrorTimerRef.current = setTimeout(() => setVehicleError(null), 4000);
+				},
+			},
+		);
+	};
+
+	const showRestockToast = (successMsg: string | null, errorMsg: string | null) => {
+		clearTimeout(restockTimerRef.current);
+		setRestockSuccess(successMsg);
+		setRestockError(errorMsg);
+		restockTimerRef.current = setTimeout(
+			() => { setRestockSuccess(null); setRestockError(null); },
+			successMsg ? 3000 : 4000,
+		);
+	};
+
 	const handleSelectVehicle = (vehicleId: string) => {
 		if (vehicleId === currentVehicleId) {
 			setShowVehicleList(false);
@@ -404,60 +621,25 @@ export default function TechnicianVehiclePage() {
 			setSwitchPendingId(vehicleId);
 			return;
 		}
-		if (!user?.userId) return;
-		setVehicle.mutate(
-			{ technicianId: user.userId, vehicleId },
-			{
-				onError: () => {
-					setVehicleError("Failed to assign vehicle. Please try again.");
-					vehicleErrorTimerRef.current = setTimeout(() => setVehicleError(null), 4000);
-				},
-			},
-		);
+		assignVehicle(vehicleId, "Failed to assign vehicle. Please try again.");
 		setShowVehicleList(false);
 	};
 
 	const handleConfirmSwitch = () => {
-		if (!switchPendingId || !user?.userId) return;
-		setVehicle.mutate(
-			{ technicianId: user.userId, vehicleId: switchPendingId },
-			{
-				onError: () => {
-					setVehicleError("Failed to switch vehicle. Please try again.");
-					vehicleErrorTimerRef.current = setTimeout(() => setVehicleError(null), 4000);
-				},
-			},
-		);
+		if (!switchPendingId) return;
+		assignVehicle(switchPendingId, "Failed to switch vehicle. Please try again.");
 		setSwitchPendingId(null);
 		setShowVehicleList(false);
 	};
 
 	const handleRideAlongConfirm = (vehicleId: string) => {
-		if (!user?.userId) return;
-		setVehicle.mutate(
-			{ technicianId: user.userId, vehicleId },
-			{
-				onError: () => {
-					setVehicleError("Failed to assign vehicle. Please try again.");
-					vehicleErrorTimerRef.current = setTimeout(() => setVehicleError(null), 4000);
-				},
-			},
-		);
+		assignVehicle(vehicleId, "Failed to assign vehicle. Please try again.");
 		setRideAlongPendingId(null);
 		setShowVehicleList(false);
 	};
 
 	const handleCheckOut = () => {
-		if (!user?.userId) return;
-		setVehicle.mutate(
-			{ technicianId: user.userId, vehicleId: null },
-			{
-				onError: () => {
-					setVehicleError("Failed to check out. Please try again.");
-					vehicleErrorTimerRef.current = setTimeout(() => setVehicleError(null), 4000);
-				},
-			},
-		);
+		assignVehicle(null, "Failed to check out. Please try again.");
 		setShowCheckOutConfirm(false);
 	};
 
@@ -483,43 +665,43 @@ export default function TechnicianVehiclePage() {
 				data: { qty_requested: restockQty, note: restockNote.trim() || null },
 			},
 			{
-				onSuccess: () => {
-					if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
-					setRestockError(null);
-					setRestockSuccess(item.inventory_item.name);
-					restockTimerRef.current = setTimeout(() => setRestockSuccess(null), 3000);
-				},
-				onError: () => {
-					if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
-					setRestockSuccess(null);
-					setRestockError("Failed to send restock request. Please try again.");
-					restockTimerRef.current = setTimeout(() => setRestockError(null), 4000);
-				},
+				onSuccess: () => showRestockToast(item.inventory_item.name, null),
+			onError: () => showRestockToast(null, "Failed to send restock request. Please try again."),
 			},
 		);
 		setRestockTarget(null);
 	};
 
 	const submitBatch = async () => {
-		const items = Object.entries(batchSel)
+		const items = Object.entries(batchQtys)
 			.filter(([, q]) => q > 0)
 			.map(([stock_item_id, qty_requested]) => ({ stock_item_id, qty_requested }));
 		if (items.length === 0) return;
 		const input: BulkRestockInput = { items };
 		try {
 			await bulk.mutateAsync(input);
-			if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
-			setRestockError(null);
-			setRestockSuccess(`${items.length} item${items.length > 1 ? "s" : ""}`);
-			restockTimerRef.current = setTimeout(() => setRestockSuccess(null), 3000);
+			showRestockToast(`${items.length} item${items.length > 1 ? "s" : ""}`, null);
 			setBatchMode(false);
-			setBatchSel({});
+			setBatchQtys({});
 		} catch {
-			if (restockTimerRef.current) clearTimeout(restockTimerRef.current);
-			setRestockSuccess(null);
-			setRestockError("Failed to send restock request. Please try again.");
-			restockTimerRef.current = setTimeout(() => setRestockError(null), 4000);
+			showRestockToast(null, "Failed to send restock request. Please try again.");
 		}
+	};
+
+	const handleOpenBatchMode = () => {
+		const defaults: Record<string, number> = {};
+		for (const item of stockItems) {
+			const isEmpty = Number(item.qty_on_hand) === 0;
+			const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
+			defaults[item.id] =
+				isEmpty || isLow
+					? item.qty_standard !== null
+						? Math.max(Math.ceil(Number(item.qty_standard) - Number(item.qty_on_hand)), 1)
+						: 1
+					: 0;
+		}
+		setBatchQtys(defaults);
+		setBatchMode(true);
 	};
 
 	const toggleCategory = (cat: string) => {
@@ -537,6 +719,7 @@ export default function TechnicianVehiclePage() {
 				(item.inventory_item.category?.toLowerCase().includes(q) ?? false) ||
 				(item.inventory_item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false);
 			const matchesCategory =
+				!showFilter ||
 				selectedCategories.length === 0 ||
 				selectedCategories.includes(item.inventory_item.category ?? "");
 			return matchesSearch && matchesCategory;
@@ -563,12 +746,11 @@ export default function TechnicianVehiclePage() {
 		});
 
 		return {
-			filteredItems: filtered,
 			outOfStockItems: outOfStock,
 			lowStockItems: lowStock,
 			sortedItems: sorted,
 		};
-	}, [stockItems, searchQuery, selectedCategories, sortMode]);
+	}, [stockItems, searchQuery, selectedCategories, sortMode, showFilter]);
 
 	// Build category groups for grouped render mode
 	const categoryGroups = useMemo(() => {
@@ -586,7 +768,21 @@ export default function TechnicianVehiclePage() {
 		return groups;
 	}, [sortedItems, sortMode]);
 
-	const filtersActive = selectedCategories.length > 0;
+	const selectedCount = Object.values(batchQtys).filter((q) => q > 0).length;
+	const selectedEntries = Object.entries(batchQtys).filter(([, q]) => q > 0);
+
+	const renderStockItem = (item: VehicleStockItem) => (
+		<StockItemRow
+			key={item.id}
+			item={item}
+			onRestock={handleRestock}
+			batchMode={batchMode}
+			batchQty={batchQtys[item.id]}
+			onBatchQtyChange={(id, qty) => setBatchQtys((prev) => ({ ...prev, [id]: qty }))}
+		/>
+	);
+
+	const filtersActive = showFilter && selectedCategories.length > 0;
 	const isPageLoading = techLoading || vehiclesLoading;
 
 	// ── Switch confirmation overlay ───────────────────────────────────────────
@@ -706,14 +902,11 @@ export default function TechnicianVehiclePage() {
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0">
 								<p className="font-semibold text-text-primary truncate">{currentVehicle.name}</p>
-								{(() => {
-									const cv = currentVehicle;
-									const subtitleParts = [cv.color, cv.type].filter(Boolean).join(" ");
-									const subtitle = cv.license_plate ? `${subtitleParts} · ${cv.license_plate}` : subtitleParts;
-									return subtitle ? (
-										<p className="text-sm text-text-muted mt-0.5 truncate">{subtitle}</p>
-									) : null;
-								})()}
+								{getVehicleSubtitle(currentVehicle) ? (
+									<p className="text-sm text-text-muted mt-0.5 truncate">
+										{getVehicleSubtitle(currentVehicle)}
+									</p>
+								) : null}
 								{currentVehicle.notes && (
 									<p className="text-xs text-text-muted mt-2 leading-relaxed line-clamp-3">
 										{currentVehicle.notes}
@@ -747,66 +940,62 @@ export default function TechnicianVehiclePage() {
 			{/* ── Inventory ─────────────────────────────────────────────────────── */}
 			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
 				<div className="rounded-xl border border-border-subtle overflow-hidden">
-					<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
+					<button
+						onClick={() => setShowInventory((v) => !v)}
+						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+					>
 						<Package size={15} className="text-text-muted" />
 						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">Inventory</span>
-						{(outOfStockItems.length > 0 || lowStockItems.length > 0) && (
-							<button
-								onClick={() => {
-									if (batchMode) {
-										setBatchMode(false);
-										setBatchSel({});
-									} else {
-										// Pre-populate batchSel with default qtys for all low/out items
-										const defaults: Record<string, number> = {};
-										const needsRestock = [...outOfStockItems, ...lowStockItems];
-										for (const item of needsRestock) {
-											const gap =
-												item.qty_standard !== null
-													? Math.max(Math.ceil(Number(item.qty_standard) - Number(item.qty_on_hand)), 1)
-													: 1;
-											defaults[item.id] = gap;
-										}
-										setBatchSel(defaults);
-										setBatchMode(true);
-									}
-								}}
-								className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
-									batchMode
-										? "bg-surface border-border text-text-secondary hover:text-error-text hover:border-error"
-										: "bg-primary-hover/10 border-primary-hover/30 text-primary-text hover:bg-primary-hover/20"
-								}`}
-							>
-								{batchMode ? "Cancel" : "Request restock"}
-							</button>
+						{!showInventory && outOfStockItems.length > 0 && (
+							<span className="text-[10px] font-semibold text-error-text">{outOfStockItems.length} out</span>
 						)}
-					</div>
+						{!showInventory && outOfStockItems.length === 0 && lowStockItems.length > 0 && (
+							<span className="text-[10px] font-semibold text-warning-text">{lowStockItems.length} low</span>
+						)}
+						<span className="text-xs text-text-muted">{showInventory ? "Hide" : "Open"}</span>
+					</button>
 
-					{/* Self-serve stocking actions (org/role permitted). In dispatch-prepared
-					    orgs the actions sit behind a disclosure — emphasis only, never blocked. */}
-					{canStock && (selfServeEmphasis || showStockActions ? (
-						<div className="flex items-center gap-2 px-4 py-2.5 border-b border-border-subtle">
-							<button
-								onClick={() => setFillOpen(true)}
-								className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors"
-							>
-								↑ Fill to Standard
-							</button>
-							<button
-								onClick={() => setAdjustOpen(true)}
-								className="flex-1 py-2 text-xs font-semibold rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
-							>
-								Adjust Stock
-							</button>
-						</div>
-					) : (
-						<button
-							onClick={() => setShowStockActions(true)}
-							className="w-full px-4 py-2 border-b border-border-subtle text-left text-xs text-text-muted hover:text-text-secondary transition-colors"
-						>
-							Self-stocking actions…
-						</button>
-					))}
+					{showInventory && (
+						<>
+							{/* Action row: Fill to Standard / Adjust Stock / Request Restock */}
+							{!batchMode && (canStock || stockItems.length > 0) && (
+								<div className="px-4 py-2.5 border-b border-border-subtle space-y-2">
+									<div className="flex items-center gap-2">
+										{canStock && (selfServeEmphasis || showStockActions) && (
+											<button
+												onClick={() => setFillOpen(true)}
+												className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors"
+											>
+												↑ Fill to Standard
+											</button>
+										)}
+										{canStock && (selfServeEmphasis || showStockActions) && canAdjustStock && (
+											<button
+												onClick={() => setAdjustOpen(true)}
+												className="flex-1 py-2 text-xs font-semibold rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+											>
+												Adjust Stock
+											</button>
+										)}
+										{stockItems.length > 0 && (
+											<button
+												onClick={handleOpenBatchMode}
+												className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover/10 border border-primary-hover/30 text-primary-text hover:bg-primary-hover/20 transition-colors"
+											>
+												Request Restock
+											</button>
+										)}
+									</div>
+									{canStock && !selfServeEmphasis && !showStockActions && (
+										<button
+											onClick={() => setShowStockActions(true)}
+											className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+										>
+											Self-stocking actions…
+										</button>
+									)}
+								</div>
+							)}
 
 					{/* Out of stock bar */}
 					{outOfStockItems.length > 0 && (
@@ -852,7 +1041,7 @@ export default function TechnicianVehiclePage() {
 									aria-label="Filter by category"
 									title="Filter by category"
 									className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
-										filtersActive
+										showFilter
 											? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
 											: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
 									}`}
@@ -870,7 +1059,7 @@ export default function TechnicianVehiclePage() {
 										: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
 								}`}
 							>
-								<ArrowUpDown size={13} />
+								<LayoutList size={13} />
 							</button>
 						</div>
 
@@ -906,6 +1095,32 @@ export default function TechnicianVehiclePage() {
 						)}
 					</div>
 
+					{/* Batch restock action bar */}
+					{batchMode && (
+						<div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2.5 bg-canvas border-b border-border">
+							<span className="text-xs text-text-muted">
+								{selectedCount > 0
+									? <span className="font-semibold text-text-primary">{selectedCount}</span>
+									: "0"} item{selectedCount !== 1 ? "s" : ""} selected
+							</span>
+							<div className="flex items-center gap-2">
+								<button
+									onClick={() => { setBatchMode(false); setBatchQtys({}); }}
+									className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={() => setShowBatchConfirm(true)}
+									disabled={selectedCount === 0}
+									className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary-hover hover:enabled:bg-primary text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									Send Request{selectedCount > 0 ? ` (${selectedCount})` : ""}
+								</button>
+							</div>
+						</div>
+					)}
+
 					{/* Stock list */}
 					{sortedItems.length === 0 ? (
 						<p className="px-4 py-8 text-center text-sm text-text-faint">
@@ -922,56 +1137,82 @@ export default function TechnicianVehiclePage() {
 							{categoryGroups.map((group) => (
 								<div key={group.label}>
 									<CategoryHeader label={group.label} />
-									{group.items.map((item) => (
-										<StockItemRow
-											key={item.id}
-											item={item}
-											onRestock={handleRestock}
-											batchMode={batchMode}
-											batchQty={batchSel[item.id]}
-											onBatchQtyChange={(id, qty) =>
-												setBatchSel((prev) => ({ ...prev, [id]: qty }))
-											}
-										/>
-									))}
+									{group.items.map(renderStockItem)}
 								</div>
 							))}
 						</div>
 					) : (
 						<div className="max-h-[50vh] overflow-y-auto">
-							{sortedItems.map((item) => (
-								<StockItemRow
-									key={item.id}
-									item={item}
-									onRestock={handleRestock}
-									batchMode={batchMode}
-									batchQty={batchSel[item.id]}
-									onBatchQtyChange={(id, qty) =>
-										setBatchSel((prev) => ({ ...prev, [id]: qty }))
-									}
-								/>
-							))}
+							{sortedItems.map(renderStockItem)}
+						</div>
+					)}
+						</>
+					)}
+				</div>
+			)}
+
+			{/* ── Add to stock list ──────────────────────────────────────────────── */}
+			{canStock && currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
+				<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<button
+						onClick={() => setShowAddItem((v) => !v)}
+						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+					>
+						<Plus size={15} className="text-text-muted" />
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+							Add to Stock List
+						</span>
+						<span className="text-xs text-text-muted">{showAddItem ? "Hide" : "Open"}</span>
+					</button>
+					{showAddItem && (
+						<div className="border-t border-border-subtle">
+							<AddStockItemSheet
+								vehicleId={currentVehicleId}
+								existingIds={new Set(stockItems.map((i) => i.inventory_item_id))}
+								onDone={() => setShowAddItem(false)}
+							/>
 						</div>
 					)}
 				</div>
 			)}
 
 			{/* ── End of day (optional — never gates anything) ─────────────────── */}
-			{canEod && currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
+			{canRestock && currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
 				<div className="rounded-xl border border-border-subtle overflow-hidden">
 					<button
-						onClick={() => setEodOpen((v) => !v)}
+						onClick={() => setRestockOpen((v) => !v)}
 						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
 					>
 						<ClipboardCheck size={15} className="text-text-muted" />
 						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
-							End of Day
+							Warehouse Restock
 						</span>
-						<span className="text-xs text-text-muted">{eodOpen ? "Hide" : "Open"}</span>
+						<span className="text-xs text-text-muted">{restockOpen ? "Hide" : "Open"}</span>
 					</button>
-					{eodOpen && (
+					{restockOpen && (
 						<div className="border-t border-border-subtle">
-							<EodWorkflow vehicleId={currentVehicleId} stockItems={stockItems} />
+							<RestockWorkflow vehicleId={currentVehicleId} stockItems={stockItems} layout="mobile" />
+						</div>
+					)}
+				</div>
+			)}
+
+			{/* ── Stock History ────────────────────────────────────────────────── */}
+			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (canStock || canUseInventory) && (
+				<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<button
+						onClick={() => setShowStockHistory((v) => !v)}
+						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+					>
+						<History size={15} className="text-text-muted" />
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+							Stock History
+						</span>
+						<span className="text-xs text-text-muted">{showStockHistory ? "Hide" : "Open"}</span>
+					</button>
+					{showStockHistory && (
+						<div className="border-t border-border-subtle">
+							<StockHistorySection vehicleId={currentVehicleId} stockItems={stockItems} />
 						</div>
 					)}
 				</div>
@@ -995,7 +1236,8 @@ export default function TechnicianVehiclePage() {
 			{restockTarget && (
 				<>
 					<div className="fixed inset-0 z-40 bg-overlay" onClick={() => setRestockTarget(null)} />
-					<div className="fixed bottom-0 left-0 right-0 z-50 bg-base border-t border-border rounded-t-2xl px-4 pt-4 pb-6 max-w-lg mx-auto">
+					<div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setRestockTarget(null)}>
+					<div className="bg-base border border-border rounded-xl w-full max-w-sm px-4 pt-4 pb-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
 						<p className="text-sm font-semibold text-text-primary mb-0.5">
 							Request restock — {restockTarget.inventory_item.name}
 						</p>
@@ -1046,6 +1288,7 @@ export default function TechnicianVehiclePage() {
 							</button>
 						</div>
 					</div>
+					</div>
 				</>
 			)}
 
@@ -1066,21 +1309,63 @@ export default function TechnicianVehiclePage() {
 				</div>
 			)}
 
-			{/* Batch restock footer */}
-			{batchMode && Object.values(batchSel).some((q) => q > 0) && (
-				<div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-3 bg-base/95 border-t border-border backdrop-blur-sm max-w-lg mx-auto">
-					<button
-						onClick={submitBatch}
-						disabled={bulk.isPending}
-						className="w-full py-3 text-sm font-semibold rounded-xl bg-primary-hover hover:bg-primary text-on-primary transition-colors disabled:opacity-50"
-					>
-						{bulk.isPending
-							? "Requesting…"
-							: `Request ${Object.values(batchSel).filter((q) => q > 0).length} item${
-								Object.values(batchSel).filter((q) => q > 0).length > 1 ? "s" : ""
-							}`}
-					</button>
-				</div>
+{/* Bulk restock confirmation modal */}
+			{showBatchConfirm && (
+				<>
+					<div className="fixed inset-0 z-40 bg-overlay" onClick={() => setShowBatchConfirm(false)} />
+					<div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setShowBatchConfirm(false)}>
+						<div className="bg-base border border-border rounded-xl w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+							<div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
+								<div>
+									<p className="text-sm font-semibold text-text-primary">Bulk Restock Request</p>
+									<p className="text-xs text-text-muted mt-0.5">{selectedEntries.length} item{selectedEntries.length > 1 ? "s" : ""} selected</p>
+								</div>
+								<button
+									onClick={() => setShowBatchConfirm(false)}
+									className="text-text-faint hover:text-text-secondary transition-colors p-1 -mr-1"
+								>
+									<X size={15} />
+								</button>
+							</div>
+							<div className="max-h-64 overflow-y-auto divide-y divide-border-subtle/60">
+								{selectedEntries.map(([id, qty]) => {
+									const item = stockItems.find((i) => i.id === id);
+									if (!item) return null;
+									const unit = formatUnit(item.inventory_item.unit);
+									return (
+										<div key={id} className="flex items-center gap-3 px-4 py-2.5">
+											<div className="flex-1 min-w-0">
+												<p className="text-sm text-text-primary truncate">{item.inventory_item.name}</p>
+												{item.inventory_item.category && (
+													<span className="text-[10px] text-text-muted">{item.inventory_item.category}</span>
+												)}
+											</div>
+											<div className="text-right shrink-0">
+												<p className="text-sm font-semibold tabular-nums text-primary-text">+{qty}</p>
+												{unit && <p className="text-[10px] text-text-faint">{unit}</p>}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+							<div className="flex gap-2 px-4 py-3.5 border-t border-border">
+								<button
+									onClick={() => setShowBatchConfirm(false)}
+									className="flex-1 py-2.5 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={() => { setShowBatchConfirm(false); submitBatch(); }}
+									disabled={bulk.isPending}
+									className="flex-1 py-2.5 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
+								>
+									{bulk.isPending ? "Requesting…" : "Request"}
+								</button>
+							</div>
+						</div>
+					</div>
+				</>
 			)}
 
 			{/* Toasts */}

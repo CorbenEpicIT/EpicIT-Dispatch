@@ -34,24 +34,11 @@ export type ReadinessResult = {
 	confirmed?: {
 		id: string;
 		confirmed_by: string;
-		confirmed_by_type: "dispatcher" | "technician" | "eod_auto";
+		confirmed_by_type: "dispatcher" | "technician" | "restock_auto";
 		confirmed_at: string;
 		notes: string | null;
 	};
 };
-
-function getActorInfo(context?: UserContext) {
-	return {
-		actor_type: context?.techId
-			? "technician"
-			: context?.dispatcherId
-				? "dispatcher"
-				: "system",
-		actor_id: context?.techId || context?.dispatcherId,
-		ip_address: context?.ipAddress,
-		user_agent: context?.userAgent,
-	};
-}
 
 function toActor(context?: UserContext): ActorInfo {
 	return {
@@ -59,6 +46,73 @@ function toActor(context?: UserContext): ActorInfo {
 		actor_id: context?.techId || context?.dispatcherId,
 	};
 }
+
+function getActorInfo(context?: UserContext) {
+	return { ...toActor(context), ip_address: context?.ipAddress, user_agent: context?.userAgent };
+}
+
+function formatZodError(e: ZodError): string {
+	return e.issues.map((i) => i.message).join(", ");
+}
+
+async function requireVehicle(
+	sdb: ReturnType<typeof getScopedDb>,
+	vehicleId: string,
+): Promise<string | null> {
+	const v = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
+	return v ? null : "Vehicle not found";
+}
+
+// ── Return type helpers ───────────────────────────────────────────────────────
+
+interface RestockRequestRow {
+	id: string;
+	organization_id: string;
+	stock_item_id: string;
+	technician_id: string;
+	qty_requested: unknown;
+	note: string | null;
+	status: string;
+	created_at: Date;
+	stock_item: {
+		id: string;
+		inventory_item: { id: string; name: string; unit: string; quantity: unknown };
+		vehicle: { id: string; name: string };
+	} | null;
+	technician: { id: string; name: string } | null;
+}
+
+interface RestockHistoryRecord {
+	id: string;
+	vehicle_id: string;
+	organization_id: string;
+	completed_at: Date;
+	mode: string;
+	notes: string | null;
+	restock_lines: { id: string; stock_item_id: string; qty_restocked: Prisma.Decimal; qty_shortfall: Prisma.Decimal }[];
+	completed_by: { id: string; name: string } | null;
+	completed_by_tech: { id: string; name: string } | null;
+}
+
+interface StockAdjustmentRecord {
+	id: string;
+	vehicle_id: string;
+	organization_id: string;
+	type: string;
+	note: string | null;
+	created_at: Date;
+	lines: { id: string; stock_item_id: string; qty_before: unknown; qty_after: unknown; inventory_impact: unknown }[];
+	created_by: { id: string; name: string } | null;
+	created_by_tech: { id: string; name: string } | null;
+}
+
+type RestockRecord = Prisma.vehicle_restock_recordGetPayload<{
+	include: {
+		restock_lines: true;
+		completed_by: { select: { id: true; name: true } };
+		completed_by_tech: { select: { id: true; name: true } };
+	}
+}>;
 
 // ── Validation schemas ────────────────────────────────────────────────────────
 
@@ -94,8 +148,9 @@ const restockRequestSchema = z.object({
 	note:          z.string().max(500).nullable().optional(),
 });
 
-const completeEodSchema = z.object({
+const completeRestockSchema = z.object({
 	notes: z.string().max(500).nullable().optional(),
+	mode: z.enum(["restock", "prepare"]).optional().default("restock"),
 	restock_lines: z
 		.array(
 			z.object({
@@ -110,7 +165,8 @@ const completeEodSchema = z.object({
 });
 
 // Single source of truth — prevents silent divergence from the Prisma enum
-const ADJUSTMENT_TYPES = ["warehouse_exchange", "field_loss", "transfer", "audit", "supplier_purchase"] as const;
+export const ADJUSTMENT_TYPES = ["warehouse_exchange", "field_loss", "transfer", "audit", "supplier_purchase"] as const;
+export type VehicleAdjustmentType = typeof ADJUSTMENT_TYPES[number];
 
 const adjustStockSchema = z
 	.object({
@@ -264,7 +320,7 @@ export const createVehicle = async (data: unknown, organizationId: string, conte
 		});
 		return { err: "", item: vehicle };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to create vehicle");
 		return { err: "Failed to create vehicle" };
 	}
@@ -289,7 +345,7 @@ export const updateVehicle = async (id: string, data: unknown, organizationId: s
 		return { err: "", item: vehicle };
 	} catch (e: unknown) {
 		if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") return { err: "Vehicle not found" };
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to update vehicle");
 		return { err: "Failed to update vehicle" };
 	}
@@ -343,7 +399,7 @@ export const addVehicleStockItem = async (vehicleId: string, data: unknown, orga
 			// Initial qty is ledgered as an audit correction (no warehouse impact —
 			// matches prior UX where adding an item never deducted the warehouse)
 			if (parsed.qty_on_hand > 0) {
-				await recordMovements(tx, organizationId, toActor(context), [
+				await recordMovements(tx as unknown as Prisma.TransactionClient, organizationId, toActor(context), [
 					{
 						inventory_item_id:  parsed.inventory_item_id,
 						qty:                parsed.qty_on_hand,
@@ -375,7 +431,7 @@ export const addVehicleStockItem = async (vehicleId: string, data: unknown, orga
 		});
 		return { err: "", item };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to add vehicle stock item");
 		return { err: "Failed to add stock item" };
 	}
@@ -408,7 +464,7 @@ export const updateVehicleStockItem = async (vehicleId: string, itemId: string, 
 					? parsed.qty_on_hand - Number(existing.qty_on_hand)
 					: 0;
 			if (delta !== 0) {
-				await recordMovements(tx, organizationId, toActor(context), [
+				await recordMovements(tx as unknown as Prisma.TransactionClient, organizationId, toActor(context), [
 					{
 						inventory_item_id:  existing.inventory_item_id,
 						qty:                Math.abs(delta),
@@ -441,7 +497,7 @@ export const updateVehicleStockItem = async (vehicleId: string, itemId: string, 
 		}
 		return { err: "", item };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to update vehicle stock item");
 		return { err: "Failed to update stock item" };
 	}
@@ -460,7 +516,7 @@ export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, 
 			// consistent — deleted rows leave no trace without this movement.
 			const qty = Number(existing.qty_on_hand);
 			if (qty > 0) {
-				await recordMovements(tx, organizationId, toActor(context), [
+				await recordMovements(tx as unknown as Prisma.TransactionClient, organizationId, toActor(context), [
 					{
 						inventory_item_id:  existing.inventory_item_id,
 						qty,
@@ -505,7 +561,8 @@ export const createRestockRequest = async (
 
 		const ownershipErr = await requireTechOnVehicle(vehicleId, organizationId, context);
 		if (ownershipErr) return { err: ownershipErr };
-		const technicianId = context!.techId!;
+		const technicianId = context?.techId;
+		if (!technicianId) return { err: "Technician context required" };
 
 		const stockItem = await db.vehicle_stock_item.findFirst({
 			where: { id: itemId, vehicle_id: vehicleId, vehicle: { organization_id: organizationId } },
@@ -544,7 +601,7 @@ export const createRestockRequest = async (
 		});
 		return { err: "", item: request };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
 			return { err: "Restock already requested for this item" };
 		}
@@ -553,7 +610,7 @@ export const createRestockRequest = async (
 	}
 };
 
-const RESTOCK_BATCH_MAX = 50; // used by bulk endpoints (Tasks 4-7)
+const RESTOCK_BATCH_MAX = 50; // max items per bulk restock call
 
 const bulkRestockRequestSchema = z.object({
 	items: z
@@ -587,7 +644,8 @@ export async function createRestockRequestsBulk(
 
 		const ownershipErr = await requireTechOnVehicle(vehicleId, orgId, context);
 		if (ownershipErr) return { err: ownershipErr };
-		const technicianId = context!.techId!;
+		const technicianId = context?.techId;
+		if (!technicianId) return { err: "Technician context required" };
 
 		const result = await db.$transaction(async (tx) => {
 			const ids = parsed.items.map((i) => i.stock_item_id);
@@ -649,7 +707,7 @@ export async function createRestockRequestsBulk(
 		}
 		return { err: "", created: result.created, skipped: result.skipped };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
 			return { err: "Restock already requested for one or more items" };
 		}
@@ -659,10 +717,6 @@ export async function createRestockRequestsBulk(
 }
 
 // ── Restock request lifecycle (list / fulfill / dismiss) ──────────────────────
-
-const fulfillRestockSchema = z.object({
-	qty: z.number().int().positive().optional(),
-});
 
 // vehicle_restock_request has no organization_id column — org scoping goes
 // through stock_item.vehicle (same pattern as getUsageToday).
@@ -687,24 +741,17 @@ async function requireTechOnVehicle(
 	return null;
 }
 
-// Sum of restock movements linked to a request = the fulfilled quantity
-// (the request row itself never stores it)
-function sumFulfilledQty(movements: { qty: unknown }[]): number {
-	return movements.reduce((sum, m) => sum + Number(m.qty), 0);
-}
 
 export async function listRestockRequests(
 	orgId: string,
 	status?: string,
 	vehicleId?: string,
-	discrepant?: boolean,
-): Promise<{ err?: string; requests?: object[] }> {
+): Promise<{ err?: string; requests?: RestockRequestRow[] }> {
 	try {
 		const requests = await db.vehicle_restock_request.findMany({
 			where: {
 				organization_id: orgId,
 				...(status ? { status } : {}),
-				...(discrepant !== undefined ? { discrepant } : {}),
 				...(vehicleId
 					? { stock_item: { vehicle_id: vehicleId } }
 					: {}),
@@ -743,8 +790,6 @@ export async function listRestockRequests(
 	}
 }
 
-const RESOLVED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
 export async function listVehicleRestockRequests(
 	vehicleId: string,
 	orgId: string,
@@ -757,16 +802,19 @@ export async function listVehicleRestockRequests(
 			if (ownershipErr) return { err: ownershipErr };
 		}
 
-		const since = new Date(Date.now() - RESOLVED_WINDOW_MS);
+		// Resolved/dismissed alerts are same-day only — they're operational signals,
+		// not audit records. Stock movements carry the audit trail.
+		const todayMidnightUtc = new Date();
+		todayMidnightUtc.setUTCHours(0, 0, 0, 0);
+
 		const requests = await db.vehicle_restock_request.findMany({
 			where: {
 				stock_item: { vehicle: { id: vehicleId, organization_id: orgId } },
 				OR: [
 					{ status: "pending" },
-					{ status: "fulfilled", received_at: null },
-					{ status: "fulfilled", received_at: { not: null }, fulfilled_at: { gte: since } },
-					// dismissed rows have no resolution timestamp — created_at approximates the window
-					{ status: "dismissed", created_at: { gte: since } },
+					{ status: "acknowledged" },
+					{ status: "resolved", resolved_at: { gte: todayMidnightUtc } },
+					{ status: "dismissed", created_at: { gte: todayMidnightUtc } },
 				],
 			},
 			include: {
@@ -775,336 +823,19 @@ export async function listVehicleRestockRequests(
 						inventory_item: { select: { id: true, name: true, unit: true, quantity: true } },
 					},
 				},
-				stock_movements: { where: { reason: "restock" }, select: { qty: true } },
 			},
 			orderBy: { created_at: "desc" },
 			take: 200,
 		});
 
-		return {
-			requests: requests.map((r) => ({
-				...r,
-				qty_fulfilled: r.stock_movements.length ? sumFulfilledQty(r.stock_movements) : null,
-				stock_movements: undefined,
-			})),
-		};
+		return { requests };
 	} catch (e: unknown) {
 		log.error({ err: e }, "Failed to list vehicle restock requests");
 		return { err: "Failed to list vehicle restock requests" };
 	}
 }
 
-async function fulfillOne(
-	requestId: string,
-	qtyOverride: number | undefined,
-	orgId: string,
-	context?: UserContext,
-): Promise<{ request: object; lowStockItemIds: string[] }> {
-	let lowStockItemIds: string[] = [];
 
-	const updated = await db.$transaction(async (tx) => {
-		const request = await tx.vehicle_restock_request.findFirst({
-			where: restockRequestScope(orgId, { id: requestId }),
-			include: { stock_item: true },
-		});
-		if (!request) throw new StockItemNotFoundError("Restock request not found");
-		if (request.status !== "pending") {
-			throw new RequestNotPendingError(`Request is already ${request.status}`);
-		}
-
-		const qty = qtyOverride ?? (request.qty_requested !== null ? Math.ceil(Number(request.qty_requested)) : null);
-		if (!qty || qty <= 0) throw new QuantityRequiredError("Quantity required to fulfill");
-
-		// Guarded claim before any movement — a concurrent fulfill/dismiss that already
-		// flipped the status makes count 0 and we bail with nothing recorded
-		const claimed = await tx.vehicle_restock_request.updateMany({
-			where: { id: requestId, status: "pending" },
-			data: { status: "fulfilled", fulfilled_at: new Date() },
-		});
-		if (claimed.count === 0) {
-			throw new RequestNotPendingError("Request is already fulfilled or dismissed");
-		}
-
-		const result = await recordMovements(tx, orgId, toActor(context), [
-			{
-				inventory_item_id:  request.stock_item.inventory_item_id,
-				qty,
-				from_location_type: "warehouse",
-				to_location_type:   "vehicle",
-				to_vehicle_id:      request.stock_item.vehicle_id,
-				reason:             "restock",
-				restock_request_id: requestId,
-			},
-		]);
-		lowStockItemIds = result.lowStockItemIds;
-
-		return tx.vehicle_restock_request.findFirst({ where: { id: requestId } });
-	});
-
-	await logActivity({
-		event_type: "vehicle_restock.fulfilled",
-		action: "updated",
-		entity_type: "vehicle_restock_request",
-		entity_id: requestId,
-		organization_id: orgId,
-		...getActorInfo(context),
-		changes: { status: { old: "pending", new: "fulfilled" } },
-	});
-
-	return { request: updated!, lowStockItemIds };
-}
-
-export async function fulfillRestockRequest(
-	requestId: string,
-	data: unknown,
-	orgId: string,
-	context?: UserContext,
-): Promise<{ err?: string; available?: Record<string, number>; request?: object }> {
-	try {
-		const parsed = fulfillRestockSchema.parse(data);
-		const { request, lowStockItemIds } = await fulfillOne(requestId, parsed.qty, orgId, context);
-		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
-		return { request };
-	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
-		if (e instanceof StockItemNotFoundError) return { err: e.message };
-		if (e instanceof RequestNotPendingError) return { err: e.message };
-		if (e instanceof QuantityRequiredError) return { err: e.message };
-		if (e instanceof InsufficientStockError) {
-			return { err: "insufficient_warehouse_stock", available: e.available };
-		}
-		log.error({ err: e }, "Failed to fulfill restock request");
-		return { err: "Failed to fulfill restock request" };
-	}
-}
-
-const bulkFulfillSchema = z.object({
-	items: z
-		.array(
-			z.object({
-				request_id: z.string().uuid(),
-				qty:        z.number().int().positive(),
-			}),
-		)
-		.min(1)
-		.max(RESTOCK_BATCH_MAX)
-		.refine(
-			(items) => new Set(items.map((i) => i.request_id)).size === items.length,
-			{ message: "Duplicate request_id entries are not allowed" },
-		),
-});
-
-export async function fulfillRestockRequestsBulk(
-	data: unknown,
-	orgId: string,
-	context?: UserContext,
-): Promise<{
-	err?: string;
-	fulfilled?: object[];
-	failed?: { request_id: string; error: string; available?: Record<string, number> }[];
-}> {
-	try {
-		const parsed = bulkFulfillSchema.parse(data);
-		const fulfilled: object[] = [];
-		const failed: { request_id: string; error: string; available?: Record<string, number> }[] = [];
-		const lowStock = new Set<string>();
-
-		// Per-item transaction (best-effort) — one bad item never blocks the rest
-		for (const item of parsed.items) {
-			try {
-				const r = await fulfillOne(item.request_id, item.qty, orgId, context);
-				r.lowStockItemIds.forEach((id) => lowStock.add(id));
-				fulfilled.push(r.request);
-			} catch (e: unknown) {
-				if (e instanceof InsufficientStockError) {
-					failed.push({ request_id: item.request_id, error: "insufficient_warehouse_stock", available: e.available });
-				} else if (
-					e instanceof StockItemNotFoundError ||
-					e instanceof RequestNotPendingError ||
-					e instanceof QuantityRequiredError
-				) {
-					failed.push({ request_id: item.request_id, error: e.message });
-				} else {
-					throw e;
-				}
-			}
-		}
-
-		fireLowStockAlerts([...lowStock], orgId).catch(() => {});
-		return { fulfilled, failed };
-	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
-		log.error({ err: e }, "Failed to bulk fulfill restock requests");
-		return { err: "Failed to bulk fulfill restock requests" };
-	}
-}
-
-
-const confirmReceiptSchema = z.object({
-	items: z
-		.array(
-			z.object({
-				request_id:   z.string().uuid(),
-				qty_received: z.number().int().min(0),
-			}),
-		)
-		.min(1)
-		.max(RESTOCK_BATCH_MAX)
-		.refine(
-			(items) => new Set(items.map((i) => i.request_id)).size === items.length,
-			{ message: "Duplicate request_id entries are not allowed" },
-		),
-});
-
-export async function confirmRestockReceipts(
-	vehicleId: string,
-	data: unknown,
-	orgId: string,
-	context?: UserContext,
-): Promise<{
-	err?: string;
-	confirmed?: object[];
-	failed?: { request_id: string; error: string }[];
-}> {
-	try {
-		const parsed = confirmReceiptSchema.parse(data);
-
-		const ownershipErr = await requireTechOnVehicle(vehicleId, orgId, context);
-		if (ownershipErr) return { err: ownershipErr };
-
-		const confirmed: object[] = [];
-		const failed: { request_id: string; error: string }[] = [];
-
-		for (const item of parsed.items) {
-			try {
-				const updated = await db.$transaction(async (tx) => {
-					const request = await tx.vehicle_restock_request.findFirst({
-						where: {
-							id: item.request_id,
-							stock_item: { vehicle: { id: vehicleId, organization_id: orgId } },
-						},
-						include: {
-							stock_item: true,
-							stock_movements: { where: { reason: "restock" }, select: { qty: true } },
-						},
-					});
-					if (!request) throw new StockItemNotFoundError("Restock request not found");
-					if (request.status !== "fulfilled") {
-						throw new RequestNotPendingError("Request is not fulfilled");
-					}
-
-					const expected = sumFulfilledQty(request.stock_movements);
-					const delta = item.qty_received - expected;
-
-					// Guarded — double-confirm loses here, before any adjustment movement
-					const claimed = await tx.vehicle_restock_request.updateMany({
-						where: { id: item.request_id, received_at: null },
-						data: {
-							received_at:  new Date(),
-							qty_received: item.qty_received,
-							discrepant:   delta !== 0,
-						},
-					});
-					if (claimed.count === 0) throw new RequestNotPendingError("Receipt already confirmed");
-
-					if (delta !== 0) {
-						await recordMovements(tx, orgId, toActor(context), [
-							delta < 0
-								? {
-										inventory_item_id:  request.stock_item.inventory_item_id,
-										qty:                -delta,
-										from_location_type: "vehicle",
-										from_vehicle_id:    vehicleId,
-										to_location_type:   "adjustment",
-										reason:             "audit_correction",
-										restock_request_id: request.id,
-									}
-								: {
-										inventory_item_id:  request.stock_item.inventory_item_id,
-										qty:                delta,
-										from_location_type: "adjustment",
-										to_location_type:   "vehicle",
-										to_vehicle_id:      vehicleId,
-										reason:             "audit_correction",
-										restock_request_id: request.id,
-									},
-						]);
-					}
-
-					return tx.vehicle_restock_request.findFirst({ where: { id: item.request_id } });
-				});
-
-				confirmed.push(updated!);
-				await logActivity({
-					event_type: "vehicle_restock.received",
-					action: "updated",
-					entity_type: "vehicle_restock_request",
-					entity_id: item.request_id,
-					organization_id: orgId,
-					...getActorInfo(context),
-					changes: { qty_received: { old: null, new: item.qty_received } },
-				});
-			} catch (e: unknown) {
-				if (e instanceof StockItemNotFoundError || e instanceof RequestNotPendingError) {
-					failed.push({ request_id: item.request_id, error: e.message });
-				} else {
-					throw e;
-				}
-			}
-		}
-
-		return { confirmed, failed };
-	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
-		log.error({ err: e }, "Failed to confirm restock receipts");
-		return { err: "Failed to confirm restock receipts" };
-	}
-}
-
-export async function markRestockReceived(
-	requestId: string,
-	orgId: string,
-	context?: UserContext,
-): Promise<{ err?: string; request?: object }> {
-	try {
-		const updated = await db.$transaction(async (tx) => {
-			const request = await tx.vehicle_restock_request.findFirst({
-				where: restockRequestScope(orgId, { id: requestId }),
-				include: { stock_movements: { where: { reason: "restock" }, select: { qty: true } } },
-			});
-			if (!request) throw new StockItemNotFoundError("Restock request not found");
-			if (request.status !== "fulfilled") throw new RequestNotPendingError("Request is not fulfilled");
-
-			const claimed = await tx.vehicle_restock_request.updateMany({
-				where: { id: requestId, received_at: null },
-				data: {
-					received_at:  new Date(),
-					qty_received: sumFulfilledQty(request.stock_movements),
-				},
-			});
-			if (claimed.count === 0) throw new RequestNotPendingError("Receipt already confirmed");
-
-			return tx.vehicle_restock_request.findFirst({ where: { id: requestId } });
-		});
-
-		await logActivity({
-			event_type: "vehicle_restock.received",
-			action: "updated",
-			entity_type: "vehicle_restock_request",
-			entity_id: requestId,
-			organization_id: orgId,
-			...getActorInfo(context),
-			changes: { received_override: { old: null, new: true } },
-		});
-
-		return { request: updated! };
-	} catch (e: unknown) {
-		if (e instanceof StockItemNotFoundError) return { err: e.message };
-		if (e instanceof RequestNotPendingError) return { err: e.message };
-		log.error({ err: e }, "Failed to mark restock received");
-		return { err: "Failed to mark restock received" };
-	}
-}
 export async function dismissRestockRequest(
 	requestId: string,
 	orgId: string,
@@ -1114,7 +845,7 @@ export async function dismissRestockRequest(
 		const claimed = await db.vehicle_restock_request.updateMany({
 			where: {
 				id: requestId,
-				status: "pending",
+				status: { in: ["pending", "acknowledged"] },
 				stock_item: { vehicle: { organization_id: orgId } },
 			},
 			data: { status: "dismissed", dismissed_reason: "dispatch" },
@@ -1138,7 +869,7 @@ export async function dismissRestockRequest(
 			entity_id: requestId,
 			organization_id: orgId,
 			...getActorInfo(context),
-			changes: { status: { old: "pending", new: "dismissed" } },
+			changes: { status: { old: null, new: "dismissed" } },
 		});
 
 		return { request: updated! };
@@ -1148,46 +879,53 @@ export async function dismissRestockRequest(
 	}
 }
 
-// G9: Dispatcher acknowledges a receipt discrepancy (clears the flag)
-export async function acknowledgeDiscrepancy(
+
+export async function acknowledgeRestockRequest(
 	requestId: string,
 	orgId: string,
 	context?: UserContext,
 ): Promise<{ err?: string; request?: object }> {
 	try {
-		const claimed = await db.vehicle_restock_request.updateMany({
+		const dispatcherId = context?.dispatcherId;
+		if (!dispatcherId) return { err: "Dispatcher context required" };
+
+		const updated = await db.vehicle_restock_request.updateMany({
 			where: {
 				id: requestId,
 				organization_id: orgId,
-				discrepant: true,
+				status: "pending",
 			},
-			data: { discrepant: false },
+			data: {
+				status: "acknowledged",
+				acknowledged_at: new Date(),
+				acknowledged_by_id: dispatcherId,
+			},
 		});
-		if (claimed.count === 0) {
+		if (updated.count === 0) {
 			const existing = await db.vehicle_restock_request.findFirst({
-				where: restockRequestScope(orgId, { id: requestId }),
+				where: { id: requestId, organization_id: orgId },
 			});
 			if (!existing) return { err: "Restock request not found" };
-			return { err: "No unacknowledged discrepancy on this request" };
+			return { err: "Request is not in pending state" };
 		}
-		const updated = await db.vehicle_restock_request.findFirst({
-			where: { id: requestId },
-		});
+		const request = await db.vehicle_restock_request.findUnique({ where: { id: requestId } });
+		if (!request) return { err: "Restock request not found" };
 		await logActivity({
-			event_type: "vehicle_restock.discrepancy_acknowledged",
+			event_type: "vehicle_restock_request.acknowledged",
 			action: "updated",
 			entity_type: "vehicle_restock_request",
 			entity_id: requestId,
 			organization_id: orgId,
 			...getActorInfo(context),
-			changes: { discrepant: { old: true, new: false } },
+			changes: { status: { old: "pending", new: "acknowledged" } },
 		});
-		return { request: updated! };
+		return { request };
 	} catch (e: unknown) {
-		log.error({ err: e }, "Failed to acknowledge discrepancy");
-		return { err: "Failed to acknowledge discrepancy" };
+		log.error({ err: e }, "Failed to acknowledge restock request");
+		return { err: "Failed to acknowledge restock request" };
 	}
 }
+
 
 // ── Technician vehicle assignment ─────────────────────────────────────────────
 
@@ -1266,7 +1004,7 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 			// Vehicle decrement happens inside recordMovements. allowNegative: field
 			// truth wins — negatives surface as dispatcher discrepancies.
 			await recordMovements(
-				tx,
+				tx as unknown as Prisma.TransactionClient,
 				organizationId,
 				{ actor_type: "technician", actor_id: parsed.technician_id },
 				[
@@ -1312,7 +1050,7 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 		});
 		return { err: "", item: result };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to add parts used");
 		return { err: "Failed to add parts used" };
 	}
@@ -1347,7 +1085,7 @@ export async function applyFill(
 		let lowStockItemIds: string[] = [];
 		const lines = await sdb.$transaction(async (tx) => {
 			const itemIds = [...new Set(parsed.lines.map((l) => l.inventory_item_id))].sort();
-			await lockInventoryRows(tx, itemIds);
+			await lockInventoryRows(tx as unknown as Prisma.TransactionClient, itemIds);
 			const items = await tx.inventory_item.findMany({
 				where: { id: { in: itemIds } },
 				select: { id: true, quantity: true },
@@ -1378,7 +1116,7 @@ export async function applyFill(
 					});
 				}
 			}
-			const result = await recordMovements(tx, orgId, toActor(context), movements);
+			const result = await recordMovements(tx as unknown as Prisma.TransactionClient, orgId, toActor(context), movements);
 			lowStockItemIds = result.lowStockItemIds;
 			return computed;
 		});
@@ -1398,7 +1136,7 @@ export async function applyFill(
 
 		return { lines };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to apply fill");
 		return { err: "Failed to apply fill" };
 	}
@@ -1424,7 +1162,7 @@ export interface FillPlan {
 export async function getFillPlan(
 	vehicleId: string,
 	orgId: string,
-	_getReadiness: typeof getVehicleReadiness = getVehicleReadiness,
+	getReadiness: typeof getVehicleReadiness = getVehicleReadiness,
 ): Promise<{ err?: string; plan?: FillPlan }> {
 	try {
 		const sdb = getScopedDb(orgId);
@@ -1438,7 +1176,7 @@ export async function getFillPlan(
 
 		// Visit demand for today
 		const today = new Date().toISOString().slice(0, 10);
-		const readiness = await _getReadiness(vehicleId, orgId, today);
+		const readiness = await getReadiness(vehicleId, orgId, today);
 		if (readiness.err) return { err: readiness.err };
 		const needByItem = new Map<string, { name: string; qty_needed: number }>();
 		for (const g of readiness.item?.gaps ?? []) {
@@ -1512,16 +1250,16 @@ export async function getFillPlan(
 	}
 }
 
-// ── Complete EOD ──────────────────────────────────────────────────────────────
+// ── Complete Restock ──────────────────────────────────────────────────────────
 
-export async function completeEod(
+export async function completeRestock(
 	vehicleId: string,
 	data: unknown,
 	orgId: string,
 	context?: UserContext,
-): Promise<{ err?: string; record?: object }> {
+): Promise<{ err?: string; record?: RestockRecord }> {
 	try {
-		const parsed = completeEodSchema.parse(data);
+		const parsed = completeRestockSchema.parse(data);
 		const sdb = getScopedDb(orgId);
 
 		const [vehicle, org] = await Promise.all([
@@ -1534,7 +1272,7 @@ export async function completeEod(
 		const actorId = context?.dispatcherId ?? context?.techId;
 		if (!actorId) return { err: "Actor context required" };
 
-		type EodComputedLine = {
+		type RestockComputedLine = {
 			stock_item_id:     string;
 			inventory_item_id: string;
 			qty_restocked:     number;
@@ -1546,12 +1284,13 @@ export async function completeEod(
 		const record = await sdb.$transaction(async (tx) => {
 			// Record created first — the (vehicle_id, day) unique constraint is the
 			// duplicate-EOD guard, raced-safe unlike a pre-tx findFirst.
-			const eodRecord = await tx.vehicle_eod_record.create({
+			const restockRecord = await tx.vehicle_restock_record.create({
 				data: {
 					vehicle_id:           vehicleId,
 					organization_id:      orgId,
 					completed_at:         new Date(),
 					day:                  utcDayRange(new Date(), 1, orgTz).start,
+					mode:                 parsed.mode ?? "restock",
 					completed_by_id:      context?.dispatcherId ?? null,
 					completed_by_tech_id: context?.dispatcherId ? null : (context?.techId ?? null),
 					notes:                parsed.notes ?? null,
@@ -1571,14 +1310,14 @@ export async function completeEod(
 
 			// Lock warehouse rows, then read availability for cap math
 			const itemIds = [...new Set(stockItems.map((s) => s.inventory_item_id))].sort();
-			await lockInventoryRows(tx, itemIds);
+			await lockInventoryRows(tx as unknown as Prisma.TransactionClient, itemIds);
 			const items = await tx.inventory_item.findMany({
 				where: { id: { in: itemIds } },
 				select: { id: true, quantity: true },
 			});
 			const availableById = new Map(items.map((i: { id: string; quantity: number }) => [i.id, Number(i.quantity)]));
 
-			const computedLines: EodComputedLine[] = parsed.restock_lines.map((line) => {
+			const computedLines: RestockComputedLine[] = parsed.restock_lines.map((line) => {
 				const stockItem = stockItems.find((s) => s.id === line.stock_item_id);
 				if (!stockItem) throw new Error(`Stock item ${line.stock_item_id} not found`);
 				const available = Math.max(0, availableById.get(stockItem.inventory_item_id) ?? 0);
@@ -1600,38 +1339,36 @@ export async function completeEod(
 					to_location_type:   "vehicle",
 					to_vehicle_id:      vehicleId,
 					reason:             "restock",
-					eod_record_id:      eodRecord.id,
+					restock_record_id:  restockRecord.id,
 				}));
-			const result = await recordMovements(tx, orgId, toActor(context), movements);
+			const result = await recordMovements(tx as unknown as Prisma.TransactionClient, orgId, toActor(context), movements);
 			lowStockItemIds = result.lowStockItemIds;
 
-			await tx.vehicle_eod_restock_line.createMany({
+			await tx.vehicle_restock_line.createMany({
 				data: computedLines.map((l) => ({
-					eod_record_id: eodRecord.id,
+					restock_record_id: restockRecord.id,
 					stock_item_id: l.stock_item_id,
 					qty_restocked: l.qty_restocked,
 					qty_shortfall: l.qty_shortfall,
 				})),
 			});
 
-			return tx.vehicle_eod_record.findUniqueOrThrow({
-				where: { id: eodRecord.id },
+			return tx.vehicle_restock_record.findUniqueOrThrow({
+				where: { id: restockRecord.id },
 				include: {
 					restock_lines: true,
 					completed_by: { select: { id: true, name: true } },
 					completed_by_tech: { select: { id: true, name: true } },
 				},
 			});
-		});
+		}) as unknown as RestockRecord;
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
 
 		// G6: alert dispatchers when any item couldn't be fully restocked
-		const shortfallLines = (record as unknown as { restock_lines: { qty_shortfall: number; stock_item_id: string }[] }).restock_lines.filter(
-			(l) => l.qty_shortfall > 0,
-		);
+		const shortfallLines = record.restock_lines.filter((l) => Number(l.qty_shortfall) > 0);
 		if (shortfallLines.length > 0) {
-			getSocket().emit("vehicle:eod_shortfall", {
+			getSocket().emit("vehicle:restock_shortfall", {
 				organizationId: orgId,
 				vehicleId,
 				vehicleName: vehicle.name,
@@ -1655,38 +1392,35 @@ export async function completeEod(
 					date:                 tomorrowDate,
 					confirmed_by_id:      null,
 					confirmed_by_tech_id: context.techId,
-					eod_record_id:        (record as unknown as { id: string }).id,
+					restock_record_id:    record.id,
 				},
 				update: {}, // Don't overwrite an explicit dispatcher confirmation
 			});
 		}
 
 		await logActivity({
-			event_type: "vehicle_eod.completed",
+			event_type: "vehicle_restock.completed",
 			action: "created",
-			entity_type: "vehicle_eod_record",
-			entity_id: (record as unknown as { id: string }).id,
+			entity_type: "vehicle_restock_record",
+			entity_id: record.id,
 			organization_id: orgId,
 			...getActorInfo(context),
 			changes: {
-				restock_line_count: { old: null, new: (record as unknown as { restock_lines: unknown[] }).restock_lines.length },
+				restock_line_count: { old: null, new: record.restock_lines.length },
 			},
 		});
 
 		return { record };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
-		if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-			return { err: "EOD already completed for today" };
-		}
-		log.error({ err: e }, "Failed to complete EOD");
-		return { err: "Failed to complete EOD" };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
+		log.error({ err: e }, "Failed to complete restock");
+		return { err: "Failed to complete restock" };
 	}
 }
 
-// ── Get EOD Today ─────────────────────────────────────────────────────────────
+// ── Get Restock Today ─────────────────────────────────────────────────────────
 
-export async function getEodToday(
+export async function getRestockToday(
 	vehicleId: string,
 	orgId: string,
 ): Promise<{ err?: string; record?: object | null }> {
@@ -1701,8 +1435,9 @@ export async function getEodToday(
 
 	const { start: startUTC, end: endUTC } = utcDayRange(new Date(), 1, orgTz);
 
-	const record = await sdb.vehicle_eod_record.findFirst({
+	const record = await sdb.vehicle_restock_record.findFirst({
 		where: { vehicle_id: vehicleId, completed_at: { gte: startUTC, lt: endUTC } },
+		orderBy: { completed_at: "desc" },
 		include: {
 			restock_lines: true,
 			completed_by: { select: { id: true, name: true } },
@@ -1718,10 +1453,10 @@ export async function getEodToday(
 class StockItemNotFoundError extends Error {}
 class RequestNotPendingError extends Error {}
 class QuantityRequiredError extends Error {}
+class ValidationError extends Error {}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function resolveOrCreateSupplierItem(
-	tx: any,
+	tx: Prisma.TransactionClient,
 	orgId: string,
 	line: { inventory_item_id?: string; new_item?: { name: string; cost: number } },
 	context?: UserContext,
@@ -1831,7 +1566,7 @@ export async function adjustStock(
 				} else if (parsed.type === "supplier_purchase") {
 					// supplier_purchase: resolve existing catalog item or create a
 					// provisional one, then upsert a zero-qty vehicle stock row
-					const invId = await resolveOrCreateSupplierItem(tx, orgId, line, context);
+					const invId = await resolveOrCreateSupplierItem(tx as unknown as Prisma.TransactionClient, orgId, line, context);
 					const row = await tx.vehicle_stock_item.upsert({
 						where: {
 							vehicle_id_inventory_item_id: {
@@ -1900,6 +1635,9 @@ export async function adjustStock(
 				};
 			});
 
+			if (parsed.type === "field_loss" && computedLines.some((l) => l.delta > 0)) {
+				throw new ValidationError("Field loss adjustments can only decrease stock");
+			}
 			const created = await tx.vehicle_stock_adjustment.create({
 				data: {
 					vehicle_id:         vehicleId,
@@ -1982,7 +1720,7 @@ export async function adjustStock(
 
 			// Default overdraw guard protects warehouse_exchange; other types never
 			// touch the warehouse (vehicle-side negatives are always permitted)
-			const result = await recordMovements(tx, orgId, toActor(context), movements);
+			const result = await recordMovements(tx as unknown as Prisma.TransactionClient, orgId, toActor(context), movements);
 			lowStockItemIds = result.lowStockItemIds;
 
 			return tx.vehicle_stock_adjustment.findUniqueOrThrow({
@@ -2009,8 +1747,9 @@ export async function adjustStock(
 
 		return { adjustment };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		if (e instanceof StockItemNotFoundError) return { err: e.message };
+		if (e instanceof ValidationError) return { err: e.message };
 		if (e instanceof InsufficientStockError) {
 			return { err: "insufficient_warehouse_stock", available: e.available };
 		}
@@ -2019,18 +1758,18 @@ export async function adjustStock(
 	}
 }
 
-// ── EOD History ───────────────────────────────────────────────────────────────
+// ── Restock History ───────────────────────────────────────────────────────────
 
-export async function getEodHistory(
+export async function getRestockHistory(
 	vehicleId: string,
 	orgId: string,
-): Promise<{ err?: string; records?: object[] }> {
+): Promise<{ err?: string; records?: RestockHistoryRecord[] }> {
 	const sdb = getScopedDb(orgId);
 
 	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
 	if (!vehicle) return { err: "Vehicle not found" };
 
-	const records = await sdb.vehicle_eod_record.findMany({
+	const records = await sdb.vehicle_restock_record.findMany({
 		where: { vehicle_id: vehicleId },
 		include: {
 			restock_lines: true,
@@ -2049,7 +1788,7 @@ export async function getEodHistory(
 export async function getStockAdjustmentHistory(
 	vehicleId: string,
 	orgId: string,
-): Promise<{ err?: string; adjustments?: object[] }> {
+): Promise<{ err?: string; adjustments?: StockAdjustmentRecord[] }> {
 	const sdb = getScopedDb(orgId);
 
 	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
@@ -2089,23 +1828,25 @@ export async function getUsageToday(
 ): Promise<{ err?: string; data?: UsageTodayGroup[] }> {
 	const sdb = getScopedDb(orgId);
 
-	const [vehicle, org] = await Promise.all([
-		sdb.vehicle.findFirst({ where: { id: vehicleId } }),
-		sdb.organization.findFirst({ where: { id: orgId }, select: { timezone: true } }),
-	]);
+	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
 	if (!vehicle) return { err: "Vehicle not found" };
-	const orgTz = org?.timezone ?? "UTC";
 
-	const { start: startOfToday, end: endOfToday } = utcDayRange(new Date(), 1, orgTz);
+	// Lower bound = completed_at of the last warehouse restock; fallback = vehicle creation
+	const lastRestock = await sdb.vehicle_restock_record.findFirst({
+		where: { vehicle_id: vehicleId, mode: "restock" },
+		orderBy: { completed_at: "desc" },
+		select: { completed_at: true },
+	});
+	const since = lastRestock?.completed_at ?? vehicle.created_at;
 
 	// For direct_consumption movements, join through vehicle_stock_usage to find
-	// which techs used stock from this vehicle today — a historical anchor that
-	// survives mid-day vehicle reassignments (unlike querying current_vehicle_id).
+	// which techs used stock from this vehicle since the last restock — a historical
+	// anchor that survives mid-day vehicle reassignments.
 	const vehicleUsageTechIds = (
 		await db.vehicle_stock_usage.findMany({
 			where: {
 				stock_item: { vehicle_id: vehicleId },
-				created_at: { gte: startOfToday, lt: endOfToday },
+				created_at: { gte: since },
 			},
 			select: { technician_id: true },
 			distinct: ["technician_id"],
@@ -2115,7 +1856,7 @@ export async function getUsageToday(
 	const movements = await db.stock_movement.findMany({
 		where: {
 			organization_id: orgId,
-			created_at: { gte: startOfToday, lt: endOfToday },
+			created_at: { gte: since, lte: new Date() },
 			OR: [
 				{ from_vehicle_id: vehicleId, reason: "parts_used" },
 				...(vehicleUsageTechIds.length > 0
@@ -2161,13 +1902,102 @@ export async function getUsageToday(
 	return { data: Array.from(byVisit.values()) };
 }
 
+// ── Tomorrow Requirements ─────────────────────────────────────────────────────
+
+export interface TomorrowRequirementItem {
+	inventoryItemId: string;
+	itemName: string;
+	qtyNeeded: number;
+	qtyOnHand: number;
+}
+
+export interface TomorrowRequirementVisit {
+	visitId: string;
+	visitName: string;
+	scheduledAt: string;
+	jobName: string;
+	clientName: string;
+	items: TomorrowRequirementItem[];
+}
+
+export async function getTomorrowRequirements(
+	vehicleId: string,
+	orgId: string,
+): Promise<{ err?: string; data?: TomorrowRequirementVisit[] }> {
+	try {
+		const org = await db.organization.findFirst({ where: { id: orgId }, select: { timezone: true } });
+		const orgTz = org?.timezone ?? "UTC";
+
+		// Tomorrow = next calendar day in org timezone (DST-safe via utcDayRange)
+		const { end: tomorrowStart } = utcDayRange(new Date(), 1, orgTz);
+		const { end: tomorrowEnd } = utcDayRange(new Date(), 2, orgTz);
+
+		// Find techs currently on this vehicle
+		const techs = await db.technician.findMany({
+			where: { current_vehicle_id: vehicleId, organization_id: orgId },
+			select: { id: true },
+		});
+		const techIds = techs.map((t) => t.id);
+		if (techIds.length === 0) return { data: [] };
+
+		// Find tomorrow's visits assigned to those techs
+		const visits = await db.job_visit.findMany({
+			where: {
+				job: { organization_id: orgId },
+				scheduled_start_at: { gte: tomorrowStart, lt: tomorrowEnd },
+				status: { notIn: ["Completed", "Cancelled"] },
+				visit_techs: { some: { tech_id: { in: techIds } } },
+				line_items: { some: { inventory_item_id: { not: null } } },
+			},
+			include: {
+				job: { include: { client: { select: { name: true } } } },
+				line_items: {
+					where: { inventory_item_id: { not: null } },
+					select: { inventory_item_id: true, quantity: true, name: true },
+				},
+			},
+		});
+
+		if (visits.length === 0) return { data: [] };
+
+		// Get current on-hand for this vehicle
+		const stockItems = await db.vehicle_stock_item.findMany({
+			where: { vehicle_id: vehicleId },
+			select: { inventory_item_id: true, qty_on_hand: true },
+		});
+		const onHandByItemId = new Map(stockItems.map((s) => [s.inventory_item_id, Number(s.qty_on_hand)]));
+
+		const result: TomorrowRequirementVisit[] = visits
+			.filter((v) => v.line_items.length > 0)
+			.map((v) => ({
+				visitId: v.id,
+				visitName: v.job.name,
+				scheduledAt: v.scheduled_start_at?.toISOString() ?? "",
+				jobName: v.job.name,
+				clientName: v.job.client?.name ?? "",
+				items: v.line_items
+					.filter((li) => li.inventory_item_id !== null)
+					.map((li) => ({
+						inventoryItemId: li.inventory_item_id!,
+						itemName: li.name,
+						qtyNeeded: Number(li.quantity),
+						qtyOnHand: onHandByItemId.get(li.inventory_item_id!) ?? 0,
+					})),
+			}));
+
+		return { data: result };
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to get tomorrow requirements");
+		return { err: "Failed to get tomorrow requirements" };
+	}
+}
+
 // ── Vehicle Readiness ─────────────────────────────────────────────────────────
 
 type ReadinessLineItem = {
 	visit_id: string;
 	inventory_item_id: string | null;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	quantity: any;
+	quantity: number | Prisma.Decimal;
 	inventory_item: { id: string; name: string } | null;
 };
 
@@ -2301,8 +2131,8 @@ async function computeReadinessForVehicles(
 		if (record) {
 			const confirmedByType = record.confirmed_by_id
 				? "dispatcher"
-				: record.eod_record_id
-					? "eod_auto"
+				: record.restock_record_id
+					? "restock_auto"
 					: "technician";
 			results.set(vehicleId, {
 				state: "confirmed",
@@ -2344,7 +2174,7 @@ export const getVehicleReadiness = async (
 	vehicleId: string,
 	organizationId: string,
 	dateStr: string,
-): Promise<{ err: string; item?: ReadinessResult }> => {
+): Promise<{ err?: string; item?: ReadinessResult }> => {
 	const sdb = getScopedDb(organizationId);
 
 	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
@@ -2357,7 +2187,7 @@ export const getVehicleReadiness = async (
 export const getFleetReadiness = async (
 	organizationId: string,
 	dateStr: string,
-): Promise<{ err: string; items?: Array<{ vehicle_id: string } & ReadinessResult> }> => {
+): Promise<{ err?: string; items?: Array<{ vehicle_id: string } & ReadinessResult> }> => {
 	const sdb = getScopedDb(organizationId);
 
 	const vehicles = await sdb.vehicle.findMany({
@@ -2386,7 +2216,7 @@ export const confirmReadiness = async (
 	organizationId: string,
 	dispatcherId: string,
 	body: unknown,
-): Promise<{ err: string; item?: ReadinessResult }> => {
+): Promise<{ err?: string; item?: ReadinessResult }> => {
 	const sdb = getScopedDb(organizationId);
 
 	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
@@ -2396,7 +2226,7 @@ export const confirmReadiness = async (
 	try {
 		parsed = confirmReadinessSchema.parse(body);
 	} catch (e) {
-		if (e instanceof ZodError) return { err: e.issues.map((i) => i.message).join(", ") };
+		if (e instanceof ZodError) return { err: formatZodError(e) };
 		return { err: "Invalid input" };
 	}
 
@@ -2424,7 +2254,7 @@ export const revokeReadiness = async (
 	vehicleId: string,
 	organizationId: string,
 	dateStr: string,
-): Promise<{ err: string; item?: ReadinessResult }> => {
+): Promise<{ err?: string; item?: ReadinessResult }> => {
 	const sdb = getScopedDb(organizationId);
 
 	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
@@ -2453,6 +2283,7 @@ interface StockConflictItem {
 
 interface StockConflict {
 	visitId: string;
+	jobId: string;
 	vehicleId: string;
 	vehicleName: string;
 	techNames: string[];
@@ -2463,7 +2294,7 @@ interface StockConflict {
 	conflicts: StockConflictItem[];
 }
 
-export async function getStockConflicts(orgId: string): Promise<StockConflict[]> {
+export async function getStockConflicts(orgId: string, scopeVehicleId?: string): Promise<StockConflict[]> {
 	// Today + tomorrow, UTC day boundaries (matches EOD/usage day math)
 	const { start: startOfToday, end: endOfTomorrow } = utcDayRange(new Date(), 2);
 
@@ -2546,6 +2377,7 @@ export async function getStockConflicts(orgId: string): Promise<StockConflict[]>
 
 			conflicts.push({
 				visitId: visit.id,
+				jobId: visit.job_id,
 				vehicleId,
 				vehicleName: vehicle.name,
 				techNames: techsByVehicle.get(vehicleId) ?? [],
@@ -2558,7 +2390,7 @@ export async function getStockConflicts(orgId: string): Promise<StockConflict[]>
 		}
 	}
 
-	return conflicts;
+	return scopeVehicleId ? conflicts.filter((c) => c.vehicleId === scopeVehicleId) : conflicts;
 }
 
 // ── Supplier Part Used (shortcut: external → vehicle → consumed) ──────────────
@@ -2595,9 +2427,10 @@ export async function addSupplierPartUsed(
 
 		const result = await sdb.$transaction(async (tx) => {
 			// Resolve or provision the inventory item
+			const txc = tx as unknown as Prisma.TransactionClient;
 			const inventoryItemId = parsed.inventory_item_id
-				? await resolveOrCreateSupplierItem(tx, orgId, { inventory_item_id: parsed.inventory_item_id }, context)
-				: await resolveOrCreateSupplierItem(tx, orgId, { new_item: parsed.new_item }, context);
+				? await resolveOrCreateSupplierItem(txc, orgId, { inventory_item_id: parsed.inventory_item_id }, context)
+				: await resolveOrCreateSupplierItem(txc, orgId, { new_item: parsed.new_item }, context);
 
 			const inv = await tx.inventory_item.findFirstOrThrow({
 				where: { id: inventoryItemId },
@@ -2605,7 +2438,7 @@ export async function addSupplierPartUsed(
 			});
 
 			// 1) Part enters the truck from the supplier
-			await recordMovements(tx, orgId, toActor(context), [
+			await recordMovements(txc, orgId, toActor(context), [
 				{
 					inventory_item_id:  inventoryItemId,
 					qty:                parsed.qty_used,
@@ -2634,7 +2467,7 @@ export async function addSupplierPartUsed(
 			});
 
 			await recordMovements(
-				tx,
+				txc,
 				orgId,
 				{ actor_type: "technician", actor_id: parsed.technician_id },
 				[
@@ -2702,7 +2535,7 @@ export async function addSupplierPartUsed(
 
 		return { err: "", item: result };
 	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		if (e instanceof StockItemNotFoundError) return { err: e.message };
 		log.error({ err: e }, "Failed to add supplier part");
 		return { err: "Failed to add supplier part" };
