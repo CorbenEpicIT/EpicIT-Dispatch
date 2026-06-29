@@ -56,6 +56,7 @@ import notificationsRouter from "./routes/notifications.js";
 import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
 import quickbooksRouter from "./routes/quickbooks.js";
+import oauthRouter from "./routes/oauth.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -417,6 +418,11 @@ app.get("/integrations/quickbooks/callback", async (req, res, next) => {
 	}
 });
 app.post("/integrations/quickbooks/webhook", handleQBWebhook);
+
+// ================================================================================
+// OAUTH2 AUTHORIZATION SERVER 
+// ================================================================================
+app.use("/oauth", oauthRouter);
 
 // ================================================================================
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)

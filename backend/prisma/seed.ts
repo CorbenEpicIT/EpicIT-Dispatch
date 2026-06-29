@@ -3,6 +3,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import bcryptjs from "bcryptjs";
+import crypto from "crypto";
 import { getAllPermissions } from "../src/lib/permissionCatalogs.js";
 import { recordMovements } from "../src/services/stockMovements.js";
 import {
@@ -55,6 +56,27 @@ function firstOfMonth(monthOffset: number): Date {
 
 async function main() {
 	console.log("Seeding database...");
+
+	// ============================================================================
+	// OAuth2 Server — Zapier client (dev/local)
+	// ============================================================================
+
+	await db.oauth_client.create({
+		data: {
+			client_id: "zapier-1cb47faa2f6b213d",
+			client_secret: crypto
+				.createHash("sha256")
+				.update("7XzU2_BJwx8fKlBl68eu5VCgnBEdRTO8D1ej0POlaoE")
+				.digest("hex"),
+			name: "Zapier (local test)",
+			redirect_uris: [
+				"http://localhost:3000/oauth/callback-test",
+				"http://localhost:9000", // `zapier invoke auth start` loopback catcher
+				"https://zapier.com/dashboard/auth/oauth/return/App243204CLIAPI/",
+			],
+			is_confidential: true,
+		},
+	});
 
 	// ============================================================================
 	// Organization

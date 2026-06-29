@@ -1888,3 +1888,60 @@ model tax_group_rate {
 	@@unique([tax_group_id, tax_rate_id])
 	@@index([tax_group_id])
 }
+
+
+// ============================================================================
+// OAuth
+// ============================================================================
+
+model oauth_client {
+	id              String   @id @default(uuid())
+	client_id       String   @unique
+	client_secret   String   // hash 
+	name            String   
+	redirect_uris   String[] 
+	is_confidential Boolean  @default(true)
+	created_at      DateTime @default(now())
+
+	auth_codes     oauth_auth_code[]
+	refresh_tokens oauth_refresh_token[]
+}
+
+model oauth_auth_code {
+	id                    String       @id @default(uuid())
+	code_hash             String       @unique 
+	client_id             String
+	client                oauth_client @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
+	user_id               String       
+	role                  String       
+	organization_id       String?
+	redirect_uri          String       
+	scope                 String?
+	code_challenge        String?      
+	code_challenge_method String?
+	expires_at            DateTime     
+	consumed_at           DateTime?      
+	created_at            DateTime     @default(now())
+
+	@@index([client_id])
+	@@index([expires_at])
+}
+
+model oauth_refresh_token {
+	id              String       @id @default(uuid())
+	token_hash      String       @unique 
+	client_id       String
+	client          oauth_client @relation(fields: [client_id], references: [client_id], onDelete: Cascade)
+	user_id         String
+	role            String
+	organization_id String?
+	scope           String?
+	expires_at      DateTime     
+	revoked_at      DateTime?
+	replaced_by     String?     
+	created_at      DateTime     @default(now())
+
+	@@index([user_id, role])
+	@@index([client_id])
+}
+

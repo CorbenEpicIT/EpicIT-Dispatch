@@ -33,7 +33,7 @@ export interface QBPaymentLine {
 export interface QBPayment {
     Id: string;
     SyncToken: string;
-    domain: string; // "QBO"
+    domain: string; 
     sparse: boolean;
     TxnDate: string;
     TotalAmt: number;
@@ -88,7 +88,6 @@ async function doPushPaymentToQB(paymentId: string, organizationId: string) {
         throw httpError(404, ErrorCodes.NOT_FOUND, "Payment not found");
     }
     if (payment.qb_payment_id) {
-        // Already pushed — idempotent no-op (echo-guard), not an error.
         return;
     }
     if (!payment.invoice) {
@@ -114,8 +113,6 @@ async function doPushPaymentToQB(paymentId: string, organizationId: string) {
         payment = updatedPayment;
     }
 
-    // qbCustomerId is the already-resolved QB customer id from the mapping that
-    // pushInvoice upserts — not a display name. Use it directly for CustomerRef.
     const mapping = payment.invoice.client.client_external_mapping.find(m => m.provider === "quickbooks");
     const qbCustomerId = mapping?.external_id;
     if (!qbCustomerId) {
@@ -157,8 +154,6 @@ async function doPushPaymentToQB(paymentId: string, organizationId: string) {
 }
 
 export async function deleteQBPayment(qbPaymentId: string, organizationId: string) {
-    // Takes the QB payment id directly — the local invoice_payment row is already
-    // deleted by the time this fire-and-forget runs (mirrors voidQBInvoice).
     try {
         const existing = (await qbFetch(organizationId, "GET", `/payment/${qbPaymentId}`)) as QBPaymentResponse;
         await qbFetch(organizationId, "POST", "/payment?operation=delete", {
@@ -175,7 +170,7 @@ export async function deleteQBPayment(qbPaymentId: string, organizationId: strin
             organization_id: organizationId,
         });
     } catch (error) {
-        // If QB says the payment is already gone, treat as success (idempotent).
+        // If QB says the payment is already gone, treat as success
         if (/not\s*found|ObjectNotFound|object not found/i.test(String(error))) {
             return;
         }
