@@ -1,7 +1,6 @@
 import { Prisma } from "../../generated/prisma/client.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TransactionClient = any;
+type TransactionClient = Prisma.TransactionClient;
 
 export class InsufficientStockError extends Error {
 	/** Per-item available quantities at the time of the check. */
@@ -42,9 +41,8 @@ export interface MovementInput {
 	note?: string;
 	visit_id?: string;
 	visit_line_item_id?: string;
-	eod_record_id?: string;
+	restock_record_id?: string;
 	adjustment_id?: string;
-	restock_request_id?: string;
 }
 
 export interface RecordMovementsOpts {
@@ -108,7 +106,7 @@ export async function recordMovements(
 	// 3. Aggregate cache deltas
 	const itemDeltas = new Map<string, number>(); // inventory_item.quantity
 	// vehicle key = `${vehicle_id}::${item_id}`
-	const vehicleMap = new Map<
+	const vehicleItemDeltaMap = new Map<
 		string,
 		{ vehicle_id: string; inventory_item_id: string; delta: number }
 	>();
@@ -122,15 +120,15 @@ export async function recordMovements(
 		}
 		if (m.from_vehicle_id) {
 			const key = `${m.from_vehicle_id}::${m.inventory_item_id}`;
-			const e = vehicleMap.get(key);
+			const e = vehicleItemDeltaMap.get(key);
 			if (e) e.delta -= m.qty;
-			else vehicleMap.set(key, { vehicle_id: m.from_vehicle_id, inventory_item_id: m.inventory_item_id, delta: -m.qty });
+			else vehicleItemDeltaMap.set(key, { vehicle_id: m.from_vehicle_id, inventory_item_id: m.inventory_item_id, delta: -m.qty });
 		}
 		if (m.to_vehicle_id) {
 			const key = `${m.to_vehicle_id}::${m.inventory_item_id}`;
-			const e = vehicleMap.get(key);
+			const e = vehicleItemDeltaMap.get(key);
 			if (e) e.delta += m.qty;
-			else vehicleMap.set(key, { vehicle_id: m.to_vehicle_id, inventory_item_id: m.inventory_item_id, delta: m.qty });
+			else vehicleItemDeltaMap.set(key, { vehicle_id: m.to_vehicle_id, inventory_item_id: m.inventory_item_id, delta: m.qty });
 		}
 	}
 
@@ -167,7 +165,7 @@ export async function recordMovements(
 	}
 
 	// 7. Apply vehicle_stock_item deltas (upsert — row may not exist for new restocks)
-	const vehicleEntries = [...vehicleMap.values()].sort((a, b) => {
+	const vehicleEntries = [...vehicleItemDeltaMap.values()].sort((a, b) => {
 		const v = a.vehicle_id.localeCompare(b.vehicle_id);
 		return v !== 0 ? v : a.inventory_item_id.localeCompare(b.inventory_item_id);
 	});
@@ -193,6 +191,36 @@ export async function recordMovements(
 		});
 	}
 
+	// 7b. Auto-resolve pending/acknowledged restock requests for items restocked onto a vehicle
+	const inboundVehicleEntries = [...vehicleItemDeltaMap.values()].filter((e) => e.delta > 0);
+	if (inboundVehicleEntries.length > 0) {
+		// Find stock_item IDs for (vehicle_id, inventory_item_id) pairs receiving stock
+		const stockItemRows = await tx.vehicle_stock_item.findMany({
+			where: {
+				OR: inboundVehicleEntries.map((e) => ({
+					vehicle_id: e.vehicle_id,
+					inventory_item_id: e.inventory_item_id,
+				})),
+			},
+			select: { id: true },
+		});
+		const stockItemIds = stockItemRows.map((s: { id: string }) => s.id);
+		if (stockItemIds.length > 0) {
+			const resolvedNote = `Auto-resolved by stock movement (${actor.actor_type}${actor.actor_id ? ` · ${actor.actor_id}` : ""})`;
+			await tx.vehicle_restock_request.updateMany({
+				where: {
+					stock_item_id: { in: stockItemIds },
+					status: { in: ["pending", "acknowledged"] },
+				},
+				data: {
+					status: "resolved",
+					resolved_at: new Date(),
+					resolved_note: resolvedNote,
+				},
+			});
+		}
+	}
+
 	// 8. Insert movement rows
 	await tx.stock_movement.createMany({
 		data: sorted.map((m) => ({
@@ -209,9 +237,8 @@ export async function recordMovements(
 			actor_id: actor.actor_id ?? null,
 			visit_id: m.visit_id ?? null,
 			visit_line_item_id: m.visit_line_item_id ?? null,
-			eod_record_id: m.eod_record_id ?? null,
+			restock_record_id: m.restock_record_id ?? null,
 			adjustment_id: m.adjustment_id ?? null,
-			restock_request_id: m.restock_request_id ?? null,
 		})),
 	});
 
@@ -223,7 +250,7 @@ export async function recordMovements(
 		select: { id: true, quantity: true, low_stock_threshold: true },
 	});
 
-	const lowStockItemIds = (updatedItems as { id: string; quantity: number | { valueOf(): number }; low_stock_threshold: number | null }[])
+	const lowStockItemIds = updatedItems
 		.filter(
 			(item) =>
 				item.low_stock_threshold !== null &&

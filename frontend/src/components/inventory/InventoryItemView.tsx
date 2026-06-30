@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Settings, Trash2, MoreHorizontal } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
 import {
@@ -19,6 +19,15 @@ interface InventoryItemViewProps {
 	qbConnected?: boolean;
 	isLinkedToQB?: boolean;
   	onLinkQB?: () => void;
+}
+
+function FieldRow({ label, value, colSpan }: { label: string; value: ReactNode; colSpan?: boolean }) {
+	return (
+		<div className={colSpan ? "col-span-2" : ""}>
+			<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">{label}</h2>
+			<p className="text-text-secondary text-sm mt-0.5">{value}</p>
+		</div>
+	);
 }
 
 export default function InventoryItemView({
@@ -72,6 +81,7 @@ export default function InventoryItemView({
 					<ImageCarousel
 						images={item.image_urls ?? []}
 						compact
+						compactNav
 						className="!h-[44px]"
 					/>
 				</div>
@@ -86,7 +96,7 @@ export default function InventoryItemView({
 						{item.tags && item.tags.slice(0, 2).map((tag) => (
 							<span
 								key={tag.id}
-								className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-text-tertiary shrink-0"
+								className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-text-secondary shrink-0"
 							>
 								{tag.label}
 							</span>
@@ -103,10 +113,10 @@ export default function InventoryItemView({
 							.map((pill, i) => (
 								<span key={pill.label} className="flex items-center gap-2.5 shrink-0">
 									{(i > 0 || (item.tags && item.tags.length > 0)) && (
-										<span className="text-text-faint text-[10px]">·</span>
+										<span className="text-text-muted text-[10px]">·</span>
 									)}
-									<span className="text-[11px] text-text-muted">
-										<span className="text-[10px] text-text-faint uppercase tracking-wide mr-0.5">{pill.label}</span>
+									<span className="text-[11px] text-text-secondary">
+										<span className="text-[10px] text-text-muted uppercase tracking-wide mr-0.5">{pill.label}</span>
 										{pill.value}
 									</span>
 								</span>
@@ -114,7 +124,7 @@ export default function InventoryItemView({
 					</div>
 					{/* Row 2: description */}
 					{item.description && (
-						<div className="text-[11px] text-text-muted truncate">
+						<div className="text-[11px] text-text-secondary truncate">
 							{item.description}
 						</div>
 					)}
@@ -222,8 +232,9 @@ export default function InventoryItemView({
 			className={`p-5 w-full bg-base rounded-xl shadow-md border border-border-card relative cursor-pointer hover:border-border-strong transition-colors h-full flex flex-col ${isHighlighted ? "animate-card-highlight" : ""}`}
 			onClick={onClick}
 		>
+
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
-			<h1 className="font-bold text-lg">{item.name}</h1>
+			<h3 className="font-bold text-lg">{item.name}</h3>
 			{item.tags && item.tags.length > 0 && (
 				<div className="flex flex-wrap gap-1 mt-1 max-h-[44px] overflow-hidden">
 					{item.tags.map((tag) => (
@@ -238,55 +249,19 @@ export default function InventoryItemView({
 			)}
 			<hr className="my-2 text-text-faint" />
 			<div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1">
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Location</h2>
-					<p className="text-text-secondary text-sm mt-0.5">{item.location ?? "—"}</p>
-				</div>
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">SKU</h2>
-					<p className="text-text-secondary text-sm mt-0.5">{item.sku ?? "—"}</p>
-				</div>
+				<FieldRow label="Location" value={item.location ?? "—"} />
+				<FieldRow label="SKU" value={item.sku ?? "—"} />
 				{item.alt_ids && item.alt_ids.length > 0 && (
-					<div className="col-span-2">
-						<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Alt IDs</h2>
-						<p className="text-text-secondary text-sm mt-0.5">{item.alt_ids.join(", ")}</p>
-					</div>
+					<FieldRow label="Alt IDs" value={item.alt_ids.join(", ")} colSpan />
 				)}
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Unit Price</h2>
-					<p className="text-text-secondary text-sm mt-0.5">
-						{item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : "—"}
-					</p>
-				</div>
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Cost</h2>
-					<p className="text-text-secondary text-sm mt-0.5">
-						{item.cost != null ? `$${Number(item.cost).toFixed(2)}` : "—"}
-					</p>
-				</div>
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Quantity</h2>
-					<p className="text-text-secondary text-sm mt-0.5">{item.quantity}</p>
-				</div>
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Last Updated</h2>
-					<p className="text-text-secondary text-sm mt-0.5">
-						{new Date(item.updated_at).toLocaleDateString()}
-					</p>
-				</div>
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Category</h2>
-					<p className="text-text-secondary text-sm mt-0.5">{item.category ?? "-"}</p>
-				</div>
-				<div>
-					<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Unit</h2>
-					<p className="text-text-secondary text-sm mt-0.5">{(item.unit && item.unit.toLowerCase() !== "each") ? item.unit : "-"}</p>
-				</div>
+				<FieldRow label="Unit Price" value={item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : "—"} />
+				<FieldRow label="Cost" value={item.cost != null ? `$${Number(item.cost).toFixed(2)}` : "—"} />
+				<FieldRow label="Quantity" value={item.quantity} />
+				<FieldRow label="Last Updated" value={new Date(item.updated_at).toLocaleDateString()} />
+				<FieldRow label="Category" value={item.category ?? "-"} />
+				<FieldRow label="Unit" value={(item.unit && item.unit.toLowerCase() !== "each") ? item.unit : "-"} />
 				{item.description && (
-					<div className="col-span-2">
-						<h2 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider border-b border-border-subtle pb-0.5">Description</h2>
-						<p className="text-text-secondary text-sm mt-0.5">{item.description}</p>
-					</div>
+					<FieldRow label="Description" value={item.description} colSpan />
 				)}
 			</div>
 			<div className="mt-3 pt-3 border-t border-border-subtle flex items-center justify-between">
@@ -332,3 +307,4 @@ export default function InventoryItemView({
 		</div>
 	);
 }
+

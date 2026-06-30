@@ -89,7 +89,7 @@ async function main() {
 			tax_rate: 0.0825,
 			phone:    "(608) 555-0142",
 			address:  "1857 Sand Lake Road, Onalaska, WI 54650",
-			coords:   { lat: 44.7441, lon: -91.2396 },
+			coords:   { lat: 44.7441, lng: -91.2396 },
 			email:    "info@epicitautomations.com",
 			website:  "epicitautomations.com",
 			restock_mode: "tech_self_serve",
@@ -938,7 +938,7 @@ async function main() {
 			description:
 				"Monthly preventive maintenance across all Williams Property Management units. Includes filter replacement, coil inspection, and full system check.",
 			address: client3.address,
-			coords: { lat: 43.7889, lon: -91.2297 },
+			coords: { lat: 43.7889, lng: -91.2297 },
 			priority: "Medium",
 			status: "Active",
 			starts_at: daysFromNow(-180),
@@ -989,7 +989,7 @@ async function main() {
 			description:
 				"Weekly MERV-13 filter inspection and replacement for 3 rooftop units. Required by building air quality policy.",
 			address: client4.address,
-			coords: { lat: 43.8334, lon: -91.2601 },
+			coords: { lat: 43.8334, lng: -91.2601 },
 			priority: "Low",
 			status: "Active",
 			starts_at: daysFromNow(-90),
@@ -3143,42 +3143,35 @@ async function main() {
 		},
 	});
 
-	// fulfilled — Maria's capacitor request, fulfilled with a linked restock movement
-	const fulfilledReq = await db.vehicle_restock_request.create({
+	// acknowledged — Maria's capacitor request, dispatch has seen it
+	await db.vehicle_restock_request.create({
 		data: {
 			organization_id: org.id,
 			stock_item_id: vs(van8, invCapacitor).id,
 			technician_id: tech2.id,
 			qty_requested: 2,
 			note: "Restock capacitors after the AC repair.",
-			status: "fulfilled",
-			fulfilled_at: daysFromNow(-1),
+			status: "acknowledged",
+			acknowledged_at: daysFromNow(-1),
+			acknowledged_by_id: dispatcher.id,
 		},
 	});
-	await move(dispActor, [
-		{ inventory_item_id: invCapacitor.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", restock_request_id: fulfilledReq.id, note: "Fulfilled restock request." },
-	]);
 
-	// discrepant — John's thermostat request: fulfilled with 2, only 1 arrived on the truck
-	const discrepantReq = await db.vehicle_restock_request.create({
+	// resolved — John's thermostat request, auto-resolved by a warehouse restock
+	await db.vehicle_restock_request.create({
 		data: {
 			organization_id: org.id,
 			stock_item_id: vs(van12, invThermostat).id,
 			technician_id: tech1.id,
 			qty_requested: 2,
 			note: "Need two thermostats for upcoming installs.",
-			status: "fulfilled",
-			fulfilled_at: daysFromNow(-1),
-			received_at: daysFromNow(-1),
-			qty_received: 1,
-			discrepant: true,
+			status: "resolved",
+			resolved_at: daysFromNow(-1),
+			resolved_note: "Auto-resolved by stock movement (dispatcher)",
 		},
 	});
 	await move(dispActor, [
-		{ inventory_item_id: invThermostat.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", restock_request_id: discrepantReq.id, note: "Fulfilled — 2 thermostats sent." },
-	]);
-	await move(techActor(tech1.id), [
-		{ inventory_item_id: invThermostat.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van12.id, to_location_type: "adjustment", reason: "audit_correction", restock_request_id: discrepantReq.id, note: "Receipt discrepancy — only 1 of 2 thermostats found on truck." },
+		{ inventory_item_id: invThermostat.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", note: "Restocked thermostats for tomorrow's installs." },
 	]);
 
 	// ============================================================================
@@ -3186,7 +3179,7 @@ async function main() {
 	// ============================================================================
 
 	// EOD #1 — Van 12, John, yesterday. Contactor restock fell short (warehouse low).
-	const eod1 = await db.vehicle_eod_record.create({
+	const restock1 = await db.vehicle_restock_record.create({
 		data: {
 			organization_id: org.id,
 			vehicle_id: van12.id,
@@ -3197,18 +3190,18 @@ async function main() {
 		},
 	});
 	await move(techActor(tech1.id), [
-		{ inventory_item_id: invFilter.id,    qty: 4, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", eod_record_id: eod1.id, note: "EOD restock." },
-		{ inventory_item_id: invContactor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", eod_record_id: eod1.id, note: "EOD restock (partial — warehouse low)." },
+		{ inventory_item_id: invFilter.id,    qty: 4, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", restock_record_id: restock1.id, note: "EOD restock." },
+		{ inventory_item_id: invContactor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", restock_record_id: restock1.id, note: "EOD restock (partial — warehouse low)." },
 	]);
-	await db.vehicle_eod_restock_line.createMany({
+	await db.vehicle_restock_line.createMany({
 		data: [
-			{ eod_record_id: eod1.id, stock_item_id: vs(van12, invFilter).id,    qty_restocked: 4, qty_shortfall: 0 },
-			{ eod_record_id: eod1.id, stock_item_id: vs(van12, invContactor).id, qty_restocked: 1, qty_shortfall: 2 },
+			{ restock_record_id: restock1.id, stock_item_id: vs(van12, invFilter).id,    qty_restocked: 4, qty_shortfall: 0 },
+			{ restock_record_id: restock1.id, stock_item_id: vs(van12, invContactor).id, qty_restocked: 1, qty_shortfall: 2 },
 		],
 	});
 
 	// EOD #2 — Van 8, Maria, today. Zero shortfall → auto-confirms readiness for tomorrow.
-	const eod2 = await db.vehicle_eod_record.create({
+	const restock2 = await db.vehicle_restock_record.create({
 		data: {
 			organization_id: org.id,
 			vehicle_id: van8.id,
@@ -3219,13 +3212,13 @@ async function main() {
 		},
 	});
 	await move(techActor(tech2.id), [
-		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", eod_record_id: eod2.id, note: "EOD restock." },
-		{ inventory_item_id: invFilter.id,      qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", eod_record_id: eod2.id, note: "EOD restock." },
+		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", restock_record_id: restock2.id, note: "EOD restock." },
+		{ inventory_item_id: invFilter.id,      qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", restock_record_id: restock2.id, note: "EOD restock." },
 	]);
-	await db.vehicle_eod_restock_line.createMany({
+	await db.vehicle_restock_line.createMany({
 		data: [
-			{ eod_record_id: eod2.id, stock_item_id: vs(van8, invRefrigerant).id, qty_restocked: 1, qty_shortfall: 0 },
-			{ eod_record_id: eod2.id, stock_item_id: vs(van8, invFilter).id,      qty_restocked: 2, qty_shortfall: 0 },
+			{ restock_record_id: restock2.id, stock_item_id: vs(van8, invRefrigerant).id, qty_restocked: 1, qty_shortfall: 0 },
+			{ restock_record_id: restock2.id, stock_item_id: vs(van8, invFilter).id,      qty_restocked: 2, qty_shortfall: 0 },
 		],
 	});
 	await db.vehicle_readiness.create({
@@ -3234,7 +3227,7 @@ async function main() {
 			organization_id: org.id,
 			date: today,
 			confirmed_by_tech_id: tech2.id,
-			eod_record_id: eod2.id,
+			restock_record_id: restock2.id,
 			notes: "Auto-confirmed at EOD — zero shortfalls.",
 		},
 	});

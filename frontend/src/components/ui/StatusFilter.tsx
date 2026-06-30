@@ -96,7 +96,7 @@ function DropdownFilter({
 				aria-haspopup="listbox"
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive && !hideAll
-						? "bg-primary-bg border-primary text-primary-text"
+						? "bg-primary-bg border-primary text-primary-text pr-7"
 						: "bg-surface border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
@@ -105,25 +105,26 @@ function DropdownFilter({
 						? `${placeholder}: ${selectedOption.label}`
 						: placeholder}
 				</span>
-				{isActive && !hideAll ? (
-					<X
-						size={14}
-						className="shrink-0"
-						onClick={(e) => {
-							e.stopPropagation();
-							onChange(null);
-						}}
-					/>
-				) : (
+				{!(isActive && !hideAll) && (
 					<ChevronDown size={14} className="shrink-0" />
 				)}
 			</button>
+			{isActive && !hideAll && (
+				<button
+					type="button"
+					onClick={(e) => { e.stopPropagation(); onChange(null); }}
+					aria-label="Clear filter"
+					className="absolute right-2 top-1/2 -translate-y-1/2 text-primary-text/70 hover:text-primary-text"
+				>
+					<X size={14} className="shrink-0" />
+				</button>
+			)}
 
 			{open && (
 				<div
 					role="listbox"
 					aria-label={placeholder}
-					className="absolute left-0 mt-1.5 min-w-44 bg-canvas border border-border-strong rounded-lg shadow-2xl shadow-black/50 z-50 overflow-hidden"
+					className="absolute right-0 mt-1.5 min-w-44 bg-canvas border border-border-strong rounded-lg shadow-2xl shadow-black/50 z-50 overflow-hidden"
 				>
 					<div className="py-1 px-1">
 						{!hideAll && (

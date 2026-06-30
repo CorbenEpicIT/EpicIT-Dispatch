@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { isAxiosError } from "axios";
 import { Upload, X, Trash2 } from "lucide-react";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { TemplateSearch, type TemplateSearchResult } from "../ui/forms/TemplateSearch";
@@ -59,6 +60,7 @@ export default function CreateInventoryItem({
 	const [description, setDescription] = useState("");
 	const [location, setLocation] = useState("");
 	const [quantity, setQuantity] = useState(0);
+	const [unit, setUnit] = useState("each");
 	const [unitPrice, setUnitPrice] = useState("");
 	const [cost, setCost] = useState("");
 	const [lowStockEnabled, setLowStockEnabled] = useState(false);
@@ -131,6 +133,7 @@ export default function CreateInventoryItem({
 			setDescription(existingItem.description);
 			setLocation(existingItem.location);
 			setQuantity(existingItem.quantity);
+			setUnit(existingItem.unit || "each");
 			setUnitPrice(
 				existingItem.unit_price != null
 					? String(existingItem.unit_price)
@@ -160,6 +163,7 @@ export default function CreateInventoryItem({
 		setDescription("");
 		setLocation("");
 		setQuantity(0);
+		setUnit("each");
 		setUnitPrice("");
 		setCost("");
 		setLowStockEnabled(false);
@@ -220,13 +224,14 @@ export default function CreateInventoryItem({
 
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
+			if (isEdit) return true;
 			if (targetStep === currentStep) return true;
 			if (visitedSteps.has(targetStep)) return true;
 			if (targetStep === currentStep + 1 && validateStep(currentStep))
 				return true;
 			return false;
 		},
-		[currentStep, visitedSteps, validateStep]
+		[isEdit, currentStep, visitedSteps, validateStep]
 	);
 
 	const handleUploadImages = useCallback(
@@ -282,50 +287,32 @@ export default function CreateInventoryItem({
 
 		const strippedAltIds = altIds.map((s) => s.trim()).filter(Boolean);
 
+		const buildPayload = () => ({
+			name: name.trim(),
+			sku: sku.trim() || null,
+			description: description.trim(),
+			location: location.trim(),
+			quantity,
+			unit: unit.trim() || "each",
+			unit_price: unitPrice ? Number(unitPrice) : null,
+			cost: cost ? Number(cost) : null,
+			low_stock_threshold: lowStockEnabled ? Number(lowStockThreshold) || 0 : null,
+			image_urls: imageUrls,
+			alert_emails_enabled: alertEmailsEnabled,
+			alert_email: alertEmailsEnabled ? alertEmail.trim() || null : null,
+			alt_ids: strippedAltIds,
+		});
+
 		try {
 			if (isEdit && existingItem) {
-				const data: UpdateInventoryItemInput = {
-					name: name.trim(),
-					sku: sku.trim() || null,
-					description: description.trim(),
-					location: location.trim(),
-					quantity,
-					unit_price: unitPrice ? Number(unitPrice) : null,
-					cost: cost ? Number(cost) : null,
-					low_stock_threshold: lowStockEnabled
-						? Number(lowStockThreshold) || 0
-						: null,
-					image_urls: imageUrls,
-					alert_emails_enabled: alertEmailsEnabled,
-					alert_email: alertEmailsEnabled
-						? alertEmail.trim() || null
-						: null,
-					alt_ids: strippedAltIds,
-				};
+				const data: UpdateInventoryItemInput = buildPayload();
 				await updateMutation.mutateAsync({ itemId: existingItem.id, data });
 				await setTagsMutation.mutateAsync({ itemId: existingItem.id, tagIds: selectedTagIds });
 			} else if (selectedQBId) {
 				// Create the item + QB mapping from the QB item, then apply any edits
 				const result = await importMutation.mutateAsync({ qb_item_id: selectedQBId });
 				const created = result.item;
-				const data: UpdateInventoryItemInput = {
-					name: name.trim(),
-					sku: sku.trim() || null,
-					description: description.trim(),
-					location: location.trim(),
-					quantity,
-					unit_price: unitPrice ? Number(unitPrice) : null,
-					cost: cost ? Number(cost) : null,
-					low_stock_threshold: lowStockEnabled
-						? Number(lowStockThreshold) || 0
-						: null,
-					image_urls: imageUrls,
-					alert_emails_enabled: alertEmailsEnabled,
-					alert_email: alertEmailsEnabled
-						? alertEmail.trim() || null
-						: null,
-					alt_ids: strippedAltIds,
-				};
+				const data: UpdateInventoryItemInput = buildPayload();
 				// importQBItem already set the sku from QB (or nulled it if globally
 				// taken). Only re-send sku if the user actually changed it in the form
 				// — otherwise we'd redundantly re-assert the QB sku and, when it's
@@ -339,24 +326,7 @@ export default function CreateInventoryItem({
 					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
 				}
 			} else {
-				const data: CreateInventoryItemInput = {
-					name: name.trim(),
-					sku: sku.trim() || null,
-					description: description.trim(),
-					location: location.trim(),
-					quantity,
-					unit_price: unitPrice ? Number(unitPrice) : null,
-					cost: cost ? Number(cost) : null,
-					low_stock_threshold: lowStockEnabled
-						? Number(lowStockThreshold) || 0
-						: null,
-					image_urls: imageUrls,
-					alert_emails_enabled: alertEmailsEnabled,
-					alert_email: alertEmailsEnabled
-						? alertEmail.trim() || null
-						: null,
-					alt_ids: strippedAltIds,
-				};
+				const data: CreateInventoryItemInput = buildPayload();
 				const created = await createMutation.mutateAsync(data);
 				if (selectedTagIds.length > 0) {
 					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
@@ -365,13 +335,10 @@ export default function CreateInventoryItem({
 			onClose();
 		} catch (e) {
 			console.error("Failed to save inventory item:", e);
-			// Surface the backend message (axios buries it on 4xx) so the user
-			// sees e.g. "SKU already in use" rather than a silent failure.
-			const axiosMsg =
-				typeof e === "object" && e !== null
-					? (e as { response?: { data?: { error?: { message?: string } } } }).response
-							?.data?.error?.message
-					: undefined;
+			let axiosMsg: string | undefined;
+			if (isAxiosError(e)) {
+				axiosMsg = e.response?.data?.error?.message;
+			}
 			setSubmitError(
 				axiosMsg || (e instanceof Error ? e.message : "Failed to save inventory item"),
 			);
@@ -380,7 +347,7 @@ export default function CreateInventoryItem({
 		}
 	};
 
-	const stepContent = useMemo(() => {
+	const stepContent = (() => {
 		// QuickBooks item import — full-height searchable card list (same UX as
 		// the QB invoice import in CreateInvoice / draft import in CreateJob).
 		if (qbSearchOpen) {
@@ -526,7 +493,7 @@ export default function CreateInventoryItem({
 										e.target.value
 									)
 								}
-								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-surface-inset text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-20 lg:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 						</div>
@@ -572,7 +539,7 @@ export default function CreateInventoryItem({
 			case 2:
 				return (
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
-						<div className="grid grid-cols-3 gap-2 lg:gap-3 min-w-0">
+						<div className="grid grid-cols-4 gap-2 lg:gap-3 min-w-0">
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Quantity
@@ -593,6 +560,32 @@ export default function CreateInventoryItem({
 											)
 										)
 									}
+									className={INPUT}
+									disabled={isLoading}
+								/>
+							</div>
+							<div className="min-w-0">
+								<label className={LABEL}>
+									Unit
+								</label>
+								<datalist id="inventory-unit-options">
+									<option value="each" />
+									<option value="ft" />
+									<option value="lb" />
+									<option value="oz" />
+									<option value="gallon" />
+									<option value="cylinder" />
+									<option value="box" />
+									<option value="roll" />
+									<option value="pair" />
+									<option value="case" />
+								</datalist>
+								<input
+									list="inventory-unit-options"
+									value={unit}
+									onChange={(e) => setUnit(e.target.value)}
+									placeholder="each"
+									maxLength={50}
 									className={INPUT}
 									disabled={isLoading}
 								/>
@@ -901,7 +894,7 @@ export default function CreateInventoryItem({
 									Quantity
 								</span>
 								<span className="text-text-primary">
-									{quantity}
+									{quantity}{unit && unit.toLowerCase() !== "each" ? ` ${unit}` : ""}
 								</span>
 
 								{unitPrice && (
@@ -972,38 +965,7 @@ export default function CreateInventoryItem({
 			default:
 				return null;
 		}
-	}, [
-		currentStep,
-		qbSearchOpen,
-		qbItemResults,
-		qbItemsLoading,
-		handleSelectQBItem,
-		selectedQBId,
-		selectedQBLabel,
-		qbImportAvailable,
-		name,
-		sku,
-		description,
-		location,
-		quantity,
-		unitPrice,
-		cost,
-		lowStockEnabled,
-		lowStockThreshold,
-		alertEmailsEnabled,
-		alertEmail,
-		imageUrls,
-		selectedTagIds,
-		allTags,
-		uploadErrors,
-		submitError,
-		isLoading,
-		isUploading,
-		handleDrop,
-		handleUploadImages,
-		handleRemoveImage,
-		altIds,
-	]);
+	})();
 
 	return (
 		<FormWizardContainer<Step>
@@ -1022,8 +984,6 @@ export default function CreateInventoryItem({
 			canGoNext={canGoNext}
 			submitLabel={isEdit ? "Save Changes" : selectedQBId ? "Import Item" : "Create Item"}
 			isSourceSearchOpen={qbSearchOpen}
-			sourceMode="existing"
-			onSourceModeChange={() => {}}
 			hideSourceToggle={true}
 			fullHeightContent={qbSearchOpen}
 			onStartFromExisting={() => setQbSearchOpen(true)}

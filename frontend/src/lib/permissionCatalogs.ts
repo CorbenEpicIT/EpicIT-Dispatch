@@ -129,7 +129,12 @@ export const TECHNICIAN_CATALOG = [
 		category: "Vehicle Stock",
 		permissions: [
 			{ id: "stock_own_vehicle", label: "Stock Own Vehicle" },
-			{ id: "complete_own_eod", label: "Complete End-of-Day" },
+			{ id: "complete_own_restock", label: "Complete Warehouse Restock" },
+			{ id: "adjust_field_loss", label: "Adjust: Field Loss" },
+			{ id: "adjust_transfer", label: "Adjust: Transfer In" },
+			{ id: "adjust_audit", label: "Adjust: Audit Correction" },
+			{ id: "adjust_warehouse_exchange", label: "Adjust: Return to Warehouse" },
+			{ id: "adjust_supplier_purchase", label: "Adjust: Supplier Purchase" },
 		],
 	},
 	{

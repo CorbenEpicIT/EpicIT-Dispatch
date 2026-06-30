@@ -27,7 +27,7 @@ export interface InventoryItem {
 	unit: string;
 	created_at: string;
 	updated_at: string;
-	stock_status?: StockStatus;
+	stock_status: StockStatus;
 	tags?: InventoryTag[];
 	_count?: {
 		visit_line_items: number;
@@ -46,6 +46,7 @@ export interface CreateInventoryItemInput {
 	description: string;
 	location: string;
 	quantity: number;
+	unit?: string;
 	unit_price?: number | null;
 	cost?: number | null;
 	sku?: string | null;
@@ -56,20 +57,7 @@ export interface CreateInventoryItemInput {
 	alert_email?: string | null;
 }
 
-export interface UpdateInventoryItemInput {
-	name?: string;
-	description?: string;
-	location?: string;
-	quantity?: number;
-	unit_price?: number | null;
-	cost?: number | null;
-	sku?: string | null;
-	low_stock_threshold?: number | null;
-	image_urls?: string[];
-	alt_ids?: string[];
-	alert_emails_enabled?: boolean;
-	alert_email?: string | null;
-}
+export type UpdateInventoryItemInput = Partial<CreateInventoryItemInput>;
 
 export interface ProvisionalItem {
 	id: string;
