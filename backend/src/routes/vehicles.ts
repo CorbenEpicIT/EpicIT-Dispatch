@@ -133,7 +133,7 @@ router.post(
 	requireAnyPermission("manage_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const requestId = req.params.requestId;
+			const requestId = req.params.requestId as string;
 			const orgId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result = await dismissRestockRequest(requestId, orgId, context);
@@ -159,7 +159,7 @@ router.post(
 	requireAnyPermission("manage_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const requestId = req.params.requestId;
+			const requestId = req.params.requestId as string;
 			const orgId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result = await acknowledgeRestockRequest(requestId, orgId, context);
@@ -179,7 +179,7 @@ router.post(
 
 router.put("/:id", requirePermission("manage_technicians"), async (req, res, next) => {
 	try {
-		const id = req.params.id;
+		const id = req.params.id as string;
 		const context = getUserContext(req);
 		const orgId = req.user!.organization_id as string;
 		const result = await updateVehicle(id, req.body, orgId, context);
@@ -195,7 +195,7 @@ router.put("/:id", requirePermission("manage_technicians"), async (req, res, nex
 
 router.get("/:id/stock", requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles", "stock_own_vehicle", "complete_own_restock"), async (req, res, next) => {
 	try {
-		const id = req.params.id;
+		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await listVehicleStock(id, orgId);
 		if (result.err) {
@@ -209,7 +209,7 @@ router.get("/:id/stock", requireAnyPermission("view_vehicles", "manage_vehicles"
 
 router.post("/:id/stock", requireVehiclePermission("stock_own_vehicle"), async (req, res, next) => {
 	try {
-		const id = req.params.id;
+		const id = req.params.id as string;
 		const context = getUserContext(req);
 		const orgId = req.user!.organization_id as string;
 		const result = await addVehicleStockItem(id, req.body, orgId, context);
@@ -228,7 +228,7 @@ router.get(
 	requireVehiclePermission("stock_own_vehicle"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const result = await getFillPlan(id, orgId);
 			if (result.err) {
@@ -246,7 +246,7 @@ router.post(
 	requireVehiclePermission("stock_own_vehicle"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result = await applyFill(id, req.body, orgId, context);
@@ -266,7 +266,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_technicians", "use_inventory"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const result = await getUsageToday(id, orgId);
 			if (result.err) {
@@ -284,7 +284,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const result = await getTomorrowRequirements(id, orgId);
 			if (result.err) {
@@ -302,7 +302,7 @@ router.post(
 	requireVehiclePermission("complete_own_restock"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result = await completeRestock(id, req.body, orgId, context);
@@ -326,7 +326,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_inventory", "manage_technicians", "use_inventory"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const result = await getRestockToday(id, orgId);
 			if (result.err) {
@@ -366,7 +366,7 @@ router.post(
 				}
 			}
 
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const context = getUserContext(req);
 			const result = await adjustStock(id, req.body, orgId, context);
@@ -393,7 +393,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_inventory", "manage_technicians", "use_inventory", "stock_own_vehicle"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const result = await getRestockHistory(id, orgId);
 			if (result.err) {
@@ -411,7 +411,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_inventory", "manage_technicians", "use_inventory", "stock_own_vehicle"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const result = await getStockAdjustmentHistory(id, orgId);
 			if (result.err) {
@@ -429,7 +429,7 @@ router.get(
 	requireAnyPermission("view_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const dateStr =
 				typeof req.query.date === "string"
 					? req.query.date
@@ -449,7 +449,7 @@ router.post(
 	requireAnyPermission("manage_inventory", "manage_technicians"),
 	async (req, res, next) => {
 		try {
-			const id = req.params.id;
+			const id = req.params.id as string;
 			const orgId = req.user!.organization_id as string;
 			const dispatcherId = req.user?.uid ?? "";
 			const result = await confirmReadiness(id, orgId, dispatcherId, req.body);
@@ -539,7 +539,7 @@ router.post("/:id/stock/:itemId/restock-request", requireVehiclePermission("stoc
 
 router.post("/:id/restock-requests/bulk", requireVehiclePermission("stock_own_vehicle"), async (req, res, next) => {
 	try {
-		const vehicleId = req.params.id;
+		const vehicleId = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await createRestockRequestsBulk(vehicleId, req.body, orgId, context);
@@ -557,7 +557,7 @@ router.post("/:id/restock-requests/bulk", requireVehiclePermission("stock_own_ve
 
 router.get("/:id/restock-requests", requireAnyPermission("stock_own_vehicle", "use_inventory", "manage_inventory"), async (req, res, next) => {
 	try {
-		const vehicleId = req.params.id;
+		const vehicleId = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const context = getUserContext(req);
 		const result = await listVehicleRestockRequests(vehicleId, orgId, context);
@@ -576,7 +576,7 @@ router.get("/:id/restock-requests", requireAnyPermission("stock_own_vehicle", "u
 router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_technicians"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const id = req.params.id;
+		const id = req.params.id as string;
 		const { cursor, limit } = req.query as { cursor?: string; limit?: string };
 		const result = await getVehicleMovements(
 			id,
