@@ -57,14 +57,12 @@ const inFlightPushes = new Map<string, Promise<void>>();
 export async function pushPaymentToQB(paymentId: string, organizationId: string) {
     const prior = inFlightPushes.get(paymentId) ?? Promise.resolve();
 	const run = prior.catch(() => {}).then(() => doPushPaymentToQB(paymentId, organizationId));
-	inFlightPushes.set(
-		paymentId,
-		run.finally(() => {
-			if (inFlightPushes.get(paymentId) === run) {
-				inFlightPushes.delete(paymentId);
-			}
-		})
-	);
+	inFlightPushes.set(paymentId, run);
+	run.catch(() => {}).finally(() => {
+		if (inFlightPushes.get(paymentId) === run) {
+			inFlightPushes.delete(paymentId);
+		}
+	});
 	return run;
 }
 

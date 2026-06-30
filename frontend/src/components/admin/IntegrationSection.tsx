@@ -65,7 +65,8 @@ export default function IntegrationSection() {
 			{/* Integration Cards */}
 			<div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
 				{INTEGRATIONS.map((int) => {
-					const connected = int.id === "quickbooks" && qbConnected;
+                    // Will need to change once more integrations with connections are added
+					const connected = int.id === "quickbooks" && qbConnected;  
 					return (
 						<button
 							type="button"
@@ -98,7 +99,7 @@ export default function IntegrationSection() {
 										</StatusBadge>
 									)
 								) : (
-									<StatusBadge tone="info">Available</StatusBadge>
+									<StatusBadge tone="error">Unavailable</StatusBadge>
 								)}
 							</div>
 							<p className="text-sm text-text-muted leading-relaxed flex-1">{int.desc}</p>
