@@ -1,6 +1,6 @@
-import QBItemMappingCard from "../quickbooks/QBItemMappingCard"
-import QBConnectionCard from "../quickbooks/QBConnectionCard";
-import QBTaxCodeMappingCard from "../quickbooks/QBTaxCodeMappingCard";
+import QBItemMappingCard from "./QBItemMappingCard"
+import QBConnectionCard from "./QBConnectionCard";
+import QBTaxCodeMappingCard from "./QBTaxCodeMappingCard";
 import { useQBStatusQuery } from "../../hooks/useQuickbooks"
 
 export default function QuickBooksSection() {
@@ -11,7 +11,9 @@ export default function QuickBooksSection() {
             <QBConnectionCard />
             {qbStatus?.connected && (
                 <>
+                    <br/>
                     <QBItemMappingCard />
+                    <br/>
                     <QBTaxCodeMappingCard />
                 </> 
             )}

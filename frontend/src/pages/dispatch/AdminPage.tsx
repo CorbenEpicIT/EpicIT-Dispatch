@@ -2,10 +2,10 @@
 import UsersSection from "../../components/admin/UsersSection";
 import SettingsSection from "../../components/admin/SettingsSection";
 import RolesSection from "../../components/admin/RolesSection";
-import QuickBooksSection from "../../components/admin/QuickBooksSection";
+import IntegrationSection from "../../components/admin/IntegrationSection";
 import { usePermission } from "../../hooks/usePermission";
 
-type AdminTab = "users" | "settings" | "roles" | "quickbooks";
+type AdminTab = "users" | "settings" | "roles" | "integrations";
 
 const STORAGE_KEY = "adminPage_activeTab";
 
@@ -13,7 +13,7 @@ const TABS: { id: AdminTab; label: string; permission?: string }[] = [
 	{ id: "users", label: "Users", permission: "view_admin" },
 	{ id: "settings", label: "Settings", permission: "manage_organization" },
 	{ id: "roles", label: "Roles", permission: "manage_roles" },
-	{ id: "quickbooks", label: "QuickBooks", permission: "manage_organization" },
+	{ id: "integrations", label: "Integrations", permission: "manage_organization" },
 ];
 
 export default function AdminPage() {
@@ -21,12 +21,10 @@ export default function AdminPage() {
 	const MANAGE_ORGANIZATION = usePermission("manage_organization");
 	const MANAGE_ROLES = usePermission("manage_roles");
 	const MANAGE_TAXES = usePermission("manage_taxes");
-	const MANAGE_QUICKBOOKS = usePermission("manage_organization");
 	const permMap = {
 		view_admin: VIEW_ADMIN,
 		manage_organization: MANAGE_ORGANIZATION || MANAGE_TAXES,
 		manage_roles: MANAGE_ROLES,
-		manage_quickbooks: MANAGE_QUICKBOOKS,
 	}
 	const visibleTabs = TABS.filter((tab) => permMap[tab.permission as keyof typeof permMap]);
 	const [activeTab, setActiveTab] = useState<AdminTab>(() => {
@@ -77,9 +75,9 @@ export default function AdminPage() {
 					<RolesSection />
 				</div>
 			)}
-			{activeTab === "quickbooks" && (
-				<div role="tabpanel" id="tabpanel-quickbooks" aria-labelledby="tab-quickbooks">
-					<QuickBooksSection />
+			{activeTab === "integrations" && (
+				<div role="tabpanel" id="tabpanel-integrations" aria-labelledby="tab-integrations">
+					<IntegrationSection />
 				</div>
 			)}
 		</div>

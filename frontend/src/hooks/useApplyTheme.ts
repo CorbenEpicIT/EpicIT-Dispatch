@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useThemeStore } from "../stores/themeStore";
 
 export function useApplyTheme() {
@@ -33,4 +33,24 @@ export function useApplyTheme() {
 			}
 		}
 	}, [theme, lightPalette]);
+}
+
+export function useResolvedTheme(): "dark" | "light" {
+	const theme = useThemeStore((s) => s.theme);
+	const [systemDark, setSystemDark] = useState(
+		() => window.matchMedia("(prefers-color-scheme: dark)").matches,
+	);
+
+	useEffect(() => {
+		if (theme !== "system") return;
+		const mq = window.matchMedia("(prefers-color-scheme: dark)");
+		const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+		setSystemDark(mq.matches);
+		mq.addEventListener("change", handler);
+		return () => mq.removeEventListener("change", handler);
+	}, [theme]);
+
+	if (theme === "dark") return "dark";
+	if (theme === "light") return "light";
+	return systemDark ? "dark" : "light";
 }
