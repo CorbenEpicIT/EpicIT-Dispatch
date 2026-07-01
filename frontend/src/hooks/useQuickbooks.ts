@@ -19,11 +19,12 @@ import {
     getImportableQBInvoices,
     getQBInvoicePrefill,
     importQBInvoices,
+    getQBProfitAndLossReport,
 
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type { ImportQBItemResult } from "../types/quickbooks";
+import type { ImportQBItemResult, QBProfitAndLossQuery } from "../types/quickbooks";
 
 type QBInvoiceEmailVars = {
   invoiceId: string;
@@ -124,6 +125,15 @@ export const useQBInvoicePrefillQuery = (qbInvoiceId?: string | null) => {
         queryKey: ["qbInvoicePrefill", qbInvoiceId],
         queryFn: () => getQBInvoicePrefill(qbInvoiceId!),
         enabled: !!qbInvoiceId,
+        retry: false,
+    });
+};
+
+export const useQBProfitAndLossReportQuery = (query: QBProfitAndLossQuery, enabled = true) => {
+    return useQuery({
+        queryKey: ["qbProfitAndLossReport", query],
+        queryFn: () => getQBProfitAndLossReport(query),
+        enabled,
         retry: false,
     });
 };

@@ -34,6 +34,8 @@ import {
 import { linkQBItemSchema } from "../lib/validate/quickbooks.js"
 import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
+import { queryProfitAndLossQBReport } from "../services/qb/qbReports.js";
+import type { ProfitAndLossQuery } from "../services/qb/qbReports.js";
 
 const router = Router();
 
@@ -299,6 +301,23 @@ router.post("/invoices/import", requirePermission("create_invoices"), async (req
 		}
 		const result = await importQBInvoices(orgId, ids);
 		res.status(201).json(createSuccessResponse(result));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/reports/profit-and-loss", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const query = req.query as ProfitAndLossQuery;
+		const search = new URLSearchParams();
+		for (const [key, value] of Object.entries(query)) {
+			if (typeof value === "string" && value !== "") {
+				search.set(key, value);
+			}
+		}
+		const report = await queryProfitAndLossQBReport(orgId, search.toString());
+		res.json(createSuccessResponse(report));
 	} catch (err) {
 		next(err);
 	}

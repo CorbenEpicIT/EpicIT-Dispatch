@@ -1,7 +1,17 @@
 import {api} from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type { QBCustomerLite } from "../types/clients"
-import type { QBItemLite, MappedQBItem, ImportQBItemResult, QBTaxCodeLite, QBImportableInvoice, QBInvoiceImportResult, QBInvoicePrefill } from "../types/quickbooks";
+import type { 
+    QBItemLite, 
+    MappedQBItem, 
+    ImportQBItemResult, 
+    QBTaxCodeLite, 
+    QBImportableInvoice, 
+    QBInvoiceImportResult, 
+    QBInvoicePrefill,
+    QBProfitAndLossQuery,
+    QBProfitAndLossReport
+} from "../types/quickbooks";
  
 export const getQBStatus = async (): Promise<{ connected: boolean; realmId?: string }> => {
     const response = await api.get<ApiResponse<{ connected: boolean; realmId?: string }>>(`/integrations/quickbooks/connection`);
@@ -121,5 +131,11 @@ export const getQBInvoicePrefill = async (qbInvoiceId: string): Promise<QBInvoic
 export const importQBInvoices = async (qbInvoiceIds: string[]): Promise<QBInvoiceImportResult> => {
     const response = await api.post<ApiResponse<QBInvoiceImportResult>>("integrations/quickbooks/invoices/import", { qbInvoiceIds });
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to import QB invoices");
+    return response.data.data!;
+}
+
+export const getQBProfitAndLossReport = async (query: QBProfitAndLossQuery): Promise<QBProfitAndLossReport> => {
+    const response = await api.get<ApiResponse<QBProfitAndLossReport>>("integrations/quickbooks/reports/profit-and-loss", { params: query });
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB profit and loss report");
     return response.data.data!;
 }
