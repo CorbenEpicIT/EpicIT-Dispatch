@@ -139,10 +139,47 @@ export const useQBProfitAndLossReportQuery = (query: QBProfitAndLossQuery, enabl
 };
 
 export const useQBConnectMutation = () => {
+    const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async () => {
+            // A features string with a size is what makes browsers open a real
+            // popup window instead of a new tab. Center it over the app window.
+            const w = 600;
+            const h = 720;
+            const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
+            const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+            const popup = window.open(
+                "",
+                "qb-connect",
+                `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
+            );
+
+            const channel = new BroadcastChannel("qb-oauth");
+            const cleanup = () => {
+                channel.close();
+                window.clearInterval(poll);
+            };
+            channel.onmessage = (e) => {
+                if (e.data?.type === "qb-oauth") {
+                    queryClient.invalidateQueries({ queryKey: ["qbStatus"] });
+                    popup?.close();
+                    cleanup();
+                }
+            };
+            // Stop listening if the user closes the popup manually.
+            const poll = window.setInterval(() => {
+                if (popup?.closed) cleanup();
+            }, 1000);
+
             const url = await getQBConnectUrl();
-            window.location.href = url;
+            if (popup) {
+                popup.location.href = url;
+            } else {
+                // Popup was blocked — fall back to navigating the current tab.
+                cleanup();
+                sessionStorage.setItem("qb-oauth-same-tab", "1");
+                window.location.href = url;
+            }
         },
     });
 };

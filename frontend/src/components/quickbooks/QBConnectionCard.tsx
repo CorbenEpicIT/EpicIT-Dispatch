@@ -74,7 +74,7 @@ export default function QBConnectionCard() {
 							{connectMutation.isPending && (
 								<Loader2 size={12} className="animate-spin" />
 							)}
-							{connectMutation.isPending ? "Redirecting…" : "Connect to QuickBooks"}
+							{connectMutation.isPending ? "Opening…" : "Connect to QuickBooks"}
 						</button>
 					)}
 				</div>

@@ -412,9 +412,9 @@ app.get("/integrations/quickbooks/callback", async (req, res, next) => {
 		const realmId = req.query.realmId as string;
 		const state = req.query.state as string;
 		await handleCallback(fullUrl, state, realmId);
-		res.redirect(`${process.env.FRONTEND_URL}/dispatch/admin?tab=settings&qb=connected`);
+		res.redirect(`${process.env.FRONTEND_URL}/quickbooks/callback?qb=connected`);
 	} catch (err) {
-		next(err);
+		res.redirect(`${process.env.FRONTEND_URL}/quickbooks/callback?qb=error`);
 	}
 });
 app.post("/integrations/quickbooks/webhook", handleQBWebhook);

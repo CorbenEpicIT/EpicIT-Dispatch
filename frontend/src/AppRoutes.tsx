@@ -41,6 +41,7 @@ import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
 import MyProfilePage from "./pages/MyProfilePage";
+import QBCallbackPage from "./pages/QBCallbackPage";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
@@ -96,6 +97,7 @@ export default function AppRoutes() {
 			<Route path="/register" element={<RegisterPage />} />
 			<Route path="/verify-email" element={<VerifyEmailPage />} />
 			<Route path="/reset-password" element={<ResetPasswordPage />} />
+			<Route path="/quickbooks/callback" element={<QBCallbackPage />} />
 			<Route
 				path="/dispatch/*"
 				element={
