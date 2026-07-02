@@ -33,6 +33,16 @@
 	background: var(--color-border-strong);
 }
 
+/* Side nav — hide the scrollbar so it never consumes layout width and shifts
+   the centered icon rail off-center. Scrolling still works via wheel/trackpad. */
+.sidebar-nav {
+	scrollbar-width: none; /* Firefox */
+	-ms-overflow-style: none; /* legacy Edge */
+}
+.sidebar-nav::-webkit-scrollbar {
+	display: none; /* Chromium / WebKit */
+}
+
 /* Hover-reveal scrollbar — thumb hidden until container is hovered */
 .scrollbar-on-hover {
 	scrollbar-color: transparent transparent;

@@ -11,12 +11,6 @@ import AddressForm from "../../components/ui/AddressForm";
 import type { GeocodeResult } from "../../types/location";
 import TaxSettingsSection from "./TaxSettingsSection";
 import { usePermission } from "../../hooks/usePermission";
-import {
-	useQBStatusQuery,
-	useQBConnectMutation,
-	useQBDisconnectMutation,
-} from "../../hooks/useQuickbooks";
-import QBConnectionCard from "../quickbooks/QBConnectionCard";
 
 // ── Layout primitive ─────────────────────────────────────────────────────────
 
@@ -67,10 +61,6 @@ function OrgSettingsSection() {
 	const uploadMutation = useUploadOrgLogo();
 	const deleteMutation = useDeleteOrgLogo();
 	const updateMutation = useUpdateOrgSettings();
-
-	// permissions
-	const MANAGE_ORGANIZATION = usePermission("manage_organization");
-	const MANAGE_TAXES = usePermission("manage_taxes");
 
 	const [form, setForm] = useState<OrgSettingsUpdate>({
 		name: "",
@@ -545,13 +535,6 @@ export default function SettingsSection() {
 						<TaxSettingsSection showInactive={showTaxInactive} />
 					</SettingRow>
 				)}
-
-				<SettingRow
-					title="QuickBooks"
-					description="Sync invoices and customers with QuickBooks Online."
-				>
-					<QBConnectionCard />
-				</SettingRow>
 			</div>
 		</div>
 	);
