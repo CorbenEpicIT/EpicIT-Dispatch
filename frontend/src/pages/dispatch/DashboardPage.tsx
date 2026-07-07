@@ -598,14 +598,21 @@ export default function DashboardPage() {
 					{isEditMode && (
 						<>
 							<button
-								onClick={() => setLayouts(DEFAULT_RESPONSIVE_LAYOUTS)}
+								onClick={() => {
+									setLayouts(DEFAULT_RESPONSIVE_LAYOUTS);
+									if (dispatcher?.id) saveDashboardLayout(dispatcher.id, DEFAULT_RESPONSIVE_LAYOUTS.lg ?? []);
+								}}
 								title="Reset to default layout"
 								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-error-text hover:border-error/40 hover:bg-error/10 transition-colors"
 							>
 								Reset
 							</button>
 							<button
-								onClick={() => setLayouts(prev => ({ ...prev, lg: fitDashboard(prev.lg ?? [], activeCols.lg) }))}
+								onClick={() => {
+									const fitted = fitDashboard(layouts.lg ?? [], activeCols.lg);
+									if (activeCols.lg === 12) handleLayoutSave(fitted);
+									else setDisplayLayouts(prev => ({ ...prev, lg: fitted }));
+								}}
 								title="Distribute widgets evenly across each row"
 								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
 							>
