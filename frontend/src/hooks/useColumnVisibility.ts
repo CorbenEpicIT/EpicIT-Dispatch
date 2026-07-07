@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuthStore } from "../auth/authStore";
 
 export interface ColumnOption {
 	key: string;
@@ -7,9 +8,9 @@ export interface ColumnOption {
 
 const STORAGE_PREFIX = "report-cols:";
 
-function loadHidden(storageKey: string): Set<string> {
+function loadHidden(key: string): Set<string> {
 	try {
-		const raw = localStorage.getItem(STORAGE_PREFIX + storageKey);
+		const raw = localStorage.getItem(key);
 		if (!raw) return new Set();
 		const parsed = JSON.parse(raw);
 		return Array.isArray(parsed) ? new Set(parsed.filter((k) => typeof k === "string")) : new Set();
@@ -20,19 +21,22 @@ function loadHidden(storageKey: string): Set<string> {
 
 
 export function useColumnVisibility(storageKey: string, columns: ColumnOption[]) {
-	const [hidden, setHidden] = useState<Set<string>>(() => loadHidden(storageKey));
+	// Scope column prefs per user so they don't bleed across accounts on Switch User
+	const userId = useAuthStore((s) => s.user?.userId) ?? "anon";
+	const key = `${STORAGE_PREFIX}${userId}:${storageKey}`;
+	const [hidden, setHidden] = useState<Set<string>>(() => loadHidden(key));
 
 	useEffect(() => {
-		setHidden(loadHidden(storageKey));
-	}, [storageKey]);
+		setHidden(loadHidden(key));
+	}, [key]);
 
 	useEffect(() => {
 		try {
-			localStorage.setItem(STORAGE_PREFIX + storageKey, JSON.stringify([...hidden]));
+			localStorage.setItem(key, JSON.stringify([...hidden]));
 		} catch {
 			void 0;
 		}
-	}, [storageKey, hidden]);
+	}, [key, hidden]);
 
 	const toggle = useCallback(
 		(key: string) => {
