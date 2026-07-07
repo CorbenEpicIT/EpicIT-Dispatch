@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useRememberedAccountsStore } from "../stores/rememberedAccountsStore";
 
 interface User {
 	role: "dispatcher" | "technician" | "admin";
@@ -14,7 +15,7 @@ interface AuthState {
 	user: User | null;
 	_hasHydrated: boolean;
 	login: (role: User["role"], name: string, userId: string, orgId: string | null, orgTimezone: string, permissions: string[]) => void;
-	logout: () => void;
+	logout: (remember?: boolean) => void;
 	setHasHydrated: (v: boolean) => void;
 }
 
@@ -25,8 +26,11 @@ export const useAuthStore = create<AuthState>()(
 			_hasHydrated: false,
 			login: (role, name, userId, orgId, orgTimezone, permissions) =>
 				set({ user: { role, name, userId, orgId, orgTimezone, permissions } }),
-			logout: () => {
+			logout: (remember?: boolean) => {
 				localStorage.removeItem("accessToken");
+				if (!remember) {
+					useRememberedAccountsStore.getState().removeAccount(useAuthStore.getState().user?.userId || "");
+				}
 				set({ user: null });
 			},
 			setHasHydrated: (v) => set({ _hasHydrated: v }),

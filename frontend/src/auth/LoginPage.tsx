@@ -2,11 +2,13 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "./authStore";
 import { useRef, useState } from "react";
 import { loginCall, verifyOTPCall } from "../api/authenticate.ts"
+import { useRememberedAccountsStore } from "../stores/rememberedAccountsStore";
 
 export default function LoginPage() {
 	const { login } = useAuthStore();
-
-	const [name, setName] = useState("");
+	const upsertAccount = useRememberedAccountsStore((s) => s.upsertAccount);
+	const email = new URLSearchParams(window.location.search).get("email") || "";
+	const [name, setName] = useState(email);
 	const [password, setPassword] = useState("");
 	const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 	const [otpSent, setOtpSent] = useState(false);
@@ -27,6 +29,15 @@ export default function LoginPage() {
 					const orgTimezone = payload.organization_timezone ?? "America/Chicago";
 					const permissions: string[] = payload.permissions ?? [];
 					login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone, permissions);
+					if (payload.uid && payload.email) {
+						upsertAccount({
+							userId: payload.uid,
+							email: payload.email,
+							name: payload.email.split("@")[0],
+							role: payload.role,
+							orgId: payload.organization_id ?? null,
+						});
+					}
 					if (result.forcePasswordReset && result.resetToken) {
 						navigate(`/reset-password?token=${result.resetToken}&role=${payload.role}`);
 					} else if (payload.role === "technician") {
@@ -56,6 +67,15 @@ export default function LoginPage() {
 			const orgTimezone = payload.organization_timezone ?? "America/Chicago";
 			const permissions: string[] = payload.permissions ?? [];
 			login(payload.role, name || "User", payload.uid, payload.organization_id ?? null, orgTimezone, permissions);
+			if (payload.uid && payload.email) {
+				upsertAccount({
+					userId: payload.uid,
+					email: payload.email,
+					name: payload.email.split("@")[0],
+					role: payload.role,
+					orgId: payload.organization_id ?? null,
+				});
+			}
 			if (result.forcePasswordReset && result.resetToken) {
 				navigate(`/reset-password?token=${result.resetToken}&role=${payload.role}`);
 				return;

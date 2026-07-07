@@ -68,6 +68,20 @@ export const logoutCall = async (): Promise<AuthResponse> => {
     return response.data.data!;
 }
 
+export const logoutBeacon = () => {
+    const token = localStorage.getItem("accessToken");
+    try {
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/logout`, {
+            method: "POST",
+            headers: token ? { "Authorization": `Bearer ${token}` } : {},
+            credentials: "include",
+            keepalive: true,
+        });
+    } catch (error) {
+        console.error("Logout beacon failed:", error);
+    }
+}
+
 export const requestPasswordResetCall = async (id: string, role: string): Promise<{ message: string }> => {
     const endpoint = role === "technician" ? `/technicians/${id}/reset-password` : `/dispatchers/${id}/reset-password`;
     const response = await api.post<ApiResponse<{ message: string }>>(endpoint);

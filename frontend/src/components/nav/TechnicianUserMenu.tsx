@@ -2,15 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { queryClient } from "../../main";
-import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check } from "lucide-react";
+import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check, UserRoundPlus, Users } from "lucide-react";
 import { useOrgSettings } from "../../hooks/useOrg";
 import { useThemeStore } from "../../stores/themeStore";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
+import { useRememberedAccountsStore, type RememberedAccount } from "../../stores/rememberedAccountsStore";
+import { logoutBeacon } from "../../api/authenticate";
 
 export default function TechnicianUserMenu() {
     const { user, logout } = useAuthStore();
     const [menuOpen, setMenuOpen] = useState(false);
     const [themeOpen, setThemeOpen] = useState(false);
+    const [switchUserOpen, setSwitchUserOpen] = useState(false);
+    const {accounts, upsertAccount, patchAccount, removeAccount} = useRememberedAccountsStore();
+    const otherAccounts = accounts.filter((a) => a.userId !== user?.userId);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
     const { data: org } = useOrgSettings();
@@ -34,6 +39,7 @@ export default function TechnicianUserMenu() {
 			return;
 		}
 		if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
+		logoutBeacon();
 		logout();
 		queryClient.clear();
 		navigate("/login");
@@ -48,6 +54,12 @@ export default function TechnicianUserMenu() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        if (user?.userId && org?.name) {
+            patchAccount(user.userId, { orgName: org.name });
+        }
+    }, [user?.userId, org?.name]);
 
     return (
 		<div ref={wrapperRef} className="relative">
@@ -116,8 +128,76 @@ export default function TechnicianUserMenu() {
                             </div>
                         )}
                     </div>
-
 					<div className="my-.25 border-t border-subtle" />
+                    <div className="p-2 flex flex-col">
+						<button
+							onClick={() => {
+								if (otherAccounts.length > 0) {
+									setSwitchUserOpen(!switchUserOpen)
+								} else {
+									logoutBeacon();
+									logout(true);
+									queryClient.clear();
+									navigate("/login");
+								}
+							}}
+							className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
+						>
+							<Users size={16} />
+							Switch User
+							{otherAccounts.length > 0 && (
+								<ChevronDown size={13} className={`ml-auto transition-transform duration-200 ${switchUserOpen ? "rotate-180" : ""}`} />
+							)}
+						</button>
+                        {switchUserOpen && otherAccounts.length > 0 && (
+                            <div className="flex flex-col pb-0.5">
+                                {otherAccounts.map((account) => (
+                                    <button
+                                        key={account.userId}
+                                        onClick={() => {
+                                            if (account.userId === user?.userId) return; // already logged in as this user
+                                            logoutBeacon();
+                                            localStorage.removeItem("accessToken");
+                                            useAuthStore.persist.clearStorage();
+                                            window.location.replace(`/login?email=${encodeURIComponent(account.email)}`);
+                                        }}
+                                        className="w-full flex items-center gap-2 pl-4 pr-3 py-1.5 text-sm rounded-md text-text-primary hover:text-text-primary hover:bg-surface transition-colors"
+                                    >
+                                        <UserRound size={14} className="shrink-0" />
+                                        <div className="min-w-0 flex-1 text-left">
+                                            <span className="block truncate">{account.name}</span>
+                                            {account.orgName && (
+                                                <span className="block text-xs text-text-muted truncate">{account.orgName}</span>
+                                            )}
+                                        </div>
+                                        <div
+                                            role="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                removeAccount(account.userId);
+                                            }}
+                                            className="ml-auto text-error hover:text-error-hover transition-colors hover:bg-error-bg rounded-sm w-5 h-5 flex items-center justify-center"
+                                        >
+                                            &times;
+                                        </div>
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => {
+                                        logoutBeacon();
+                                        logout(true);
+                                        queryClient.clear();
+                                        navigate("/login");
+                                    }}
+                                    className="w-full flex items-center gap-2 pl-4 pr-3 py-1.5 text-sm rounded-md text-text-primary hover:text-text-primary hover:bg-surface transition-colors"
+                                >
+                                    <UserRoundPlus size={14} className="shrink-0" />
+                                    New User
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="my-.25 border-t border-subtle" />
 					<div className="p-2">
 						<button
                             onClick={handleLogout}
