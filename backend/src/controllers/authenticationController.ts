@@ -264,8 +264,11 @@ export const issueAuthTokens = async (
 // access token is cleared on front end
 export const logout = async (res: Response, userData: any, token: string) => {
 	try {
-		await db.jwt_refresh_token.deleteMany({ where: { token: token } });
-		res.clearCookie("refreshToken");
+		const decoded = token ? checkToken(token) : null;
+		const userId = decoded?.uid ?? userData?.userId;
+		if (userId) {
+			await db.jwt_refresh_token.deleteMany({ where: { userId } });
+		}
 	} catch (e) {
 		log.error({ err: e }, "Logout error");
 		if (e instanceof ZodError) {
@@ -280,6 +283,7 @@ export const logout = async (res: Response, userData: any, token: string) => {
 			"Internal server error",
 		);
 	}
+	res.clearCookie("refreshToken");
 };
 
 export const checkToken = (token: string) => {
