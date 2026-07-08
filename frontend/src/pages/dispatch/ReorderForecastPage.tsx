@@ -8,10 +8,14 @@ import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
 import ColumnsButton from "../../components/ui/ColumnsButton";
+import ExportExcelButton from "../../components/reports/ExportExcelButton";
+import ReorderPriorityChart from "../../components/reports/ReorderPriorityChart";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { useColumnVisibility, type ColumnOption } from "../../hooks/useColumnVisibility";
 import { camelCaseToRegular } from "../../util/util";
 import { useReorderForecastQuery } from "../../hooks/useReports";
+import { exportReport } from "../../api/reports";
+import { datedFilename } from "../../util/download";
 
 /** Build column options (label derived from the key) in display order. */
 const cols = (...keys: string[]): ColumnOption[] =>
@@ -64,7 +68,7 @@ export default function ReorderForecastPage() {
 		}));
 	}, [records, searchInput, terms]);
 
-	const { hidden, toggle, reset, columnVisibility } = useColumnVisibility(
+	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
 		"reorder-forecast",
 		COLS,
 	);
@@ -81,6 +85,12 @@ export default function ReorderForecastPage() {
 		<div className="text-text-primary">
 			<PageHeader title="Reorder Forecast" />
 
+			{records.length > 0 && (
+				<div className="mb-4 h-96">
+					<ReorderPriorityChart data={records} />
+				</div>
+			)}
+
 			<PageControls
 				className="mb-4"
 				left={
@@ -92,12 +102,25 @@ export default function ReorderForecastPage() {
 					/>
 				}
 				right={
-					<ColumnsButton
-						columns={COLS}
-						hidden={hidden}
-						onToggle={toggle}
-						onReset={reset}
-					/>
+					<>
+						<ExportExcelButton
+							onExport={() =>
+								exportReport({
+									filename: datedFilename("reorder-forecast"),
+									sheetName: "Reorder Forecast",
+									columns: visibleColumns,
+									rows,
+								})
+							}
+							disabled={rows.length === 0}
+						/>
+						<ColumnsButton
+							columns={COLS}
+							hidden={hidden}
+							onToggle={toggle}
+							onReset={reset}
+						/>
+					</>
 				}
 			/>
 
@@ -131,6 +154,9 @@ export default function ReorderForecastPage() {
 						loadListener={isLoading}
 						errListener={error}
 						columnVisibility={columnVisibility}
+						onRowClick={(row) =>
+							navigate(`/dispatch/inventory?highlight=${row.id as string}`)
+						}
 					/>
 				)}
 			</div>

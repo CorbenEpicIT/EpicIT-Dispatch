@@ -1,5 +1,9 @@
 import z from "zod";
 import type { Layout } from "react-grid-layout";
+import type { ReportCategoryId } from "./reports";
+
+export type ReportLayoutEntry = { order: string[]; hidden: string[] };
+export type ReportLayout = Partial<Record<ReportCategoryId, ReportLayoutEntry>>;
 
 // ============================================================================
 // INTERFACES
@@ -22,6 +26,7 @@ export interface Dispatcher {
   permissions: string[];
   theme: "dark" | "light" | "system";
   dashboard_layout: Layout | null;
+  report_layout: ReportLayout | null;
 }
 
 export interface CreateDispatcherInput {
@@ -46,6 +51,7 @@ export interface UpdateDispatcherInput {
   role?: string;
   theme?: "dark" | "light" | "system";
   dashboard_layout?: Layout | null;
+  report_layout?: ReportLayout | null;
 }
  
 export interface ChangeDispatcherPasswordInput {
@@ -81,6 +87,13 @@ export const UpdateDispatcherSchema = z
 		last_login: z.coerce.date().optional(),
 		theme: z.enum(["dark", "light", "system"]).optional(),
 		dashboard_layout: z.array(z.any()).nullable().optional(),
+		report_layout: z
+			.record(
+				z.string(),
+				z.object({ order: z.array(z.string()), hidden: z.array(z.string()) }),
+			)
+			.nullable()
+			.optional(),
 	})
 	.refine(
 		(data) =>
@@ -93,6 +106,7 @@ export const UpdateDispatcherSchema = z
 			data.description !== undefined ||
 			data.last_login !== undefined ||
 			data.theme !== undefined ||
-			data.dashboard_layout !== undefined,
+			data.dashboard_layout !== undefined ||
+			data.report_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);

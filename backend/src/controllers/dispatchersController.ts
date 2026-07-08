@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import bcrypt from "bcryptjs";
 import { randomBytes, randomUUID } from "crypto";
 import {
@@ -158,10 +159,19 @@ export const updateDispatcher = async (
             "theme",
         ] as const);
 
+        const { report_layout, ...rest } = parsed;
         const updated = await sdb.$transaction(async (tx) => {
             const dispatcher = await tx.dispatcher.update({
                 where: { id },
-                data: parsed,
+                data: {
+                    ...rest,
+                    ...(report_layout !== undefined && {
+                        report_layout:
+                            report_layout === null
+                                ? Prisma.JsonNull
+                                : (report_layout as Prisma.InputJsonValue),
+                    }),
+                },
                 include: {
                     // Nothing needed to be included for now
                 },

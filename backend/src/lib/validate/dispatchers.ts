@@ -2,6 +2,11 @@ import z from "zod";
 
 const DispatcherRole = z.enum(["dispatcher", "admin"]);
 
+const reportLayoutSchema = z.record(
+	z.string(),
+	z.object({ order: z.array(z.string()), hidden: z.array(z.string()) }),
+);
+
 export const createDispatcherSchema = z.object({
 	organization_id: z.string().uuid("Valid organization ID is required").optional(),
 	name: z.string().min(1, "Dispatcher name is required"),
@@ -33,6 +38,7 @@ export const updateDispatcherSchema = z
 			)
 			.optional(),
 		dashboard_layout: z.any().optional(),
+		report_layout: reportLayoutSchema.nullable().optional(),
 	})
 	.refine(
 		(data) =>
@@ -45,7 +51,8 @@ export const updateDispatcherSchema = z
 			data.role !== undefined ||
 			data.theme !== undefined ||
 			data.last_login !== undefined ||
-			data.dashboard_layout !== undefined,
+			data.dashboard_layout !== undefined ||
+			data.report_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
 

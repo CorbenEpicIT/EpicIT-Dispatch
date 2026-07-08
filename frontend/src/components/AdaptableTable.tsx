@@ -18,6 +18,12 @@ interface AdaptableTableProps {
 	};
 	// Per-column visibility keyed by column id and missing keys default to visible
 	columnVisibility?: Record<string, boolean>;
+	// Per-column header text keyed by column id
+	headerLabels?: Record<string, string>;
+	// Per-column horizontal alignment keyed by column id
+	columnAlign?: Record<string, "left" | "right">;
+	// Optional totals row keyed by column id
+	footerRow?: Record<string, React.ReactNode>;
 }
 
 const PADDING = "p-3";
@@ -36,14 +42,21 @@ const AdaptableTable = ({
 	onRowClick,
 	actionColumn,
 	columnVisibility,
+	headerLabels,
+	columnAlign,
+	footerRow,
 }: AdaptableTableProps) => {
+	const alignClass = (colId: string) => {
+		if (!columnAlign) return "";
+		return columnAlign[colId] === "right" ? "text-right tabular-nums" : "text-left";
+	};
 	const columns = React.useMemo(() => {
 		if (data.length == 0) return [];
 
 		const dataColumns = Object.keys(data[0])
 			.filter((key) => !IGNORED_HEADERS[key])
 			.map((key) => ({
-				header: camelCaseToRegular(key),
+				header: headerLabels?.[key] ?? camelCaseToRegular(key),
 				accessorKey: key,
 			})) satisfies ColumnDef<Record<string, unknown>>[];
 
@@ -60,7 +73,7 @@ const AdaptableTable = ({
 		}
 
 		return dataColumns;
-	}, [data, actionColumn]);
+	}, [data, actionColumn, headerLabels]);
 
 	const table = useReactTable({
 		data,
@@ -133,7 +146,7 @@ const AdaptableTable = ({
 											key={
 												header.id
 											}
-											className={`sticky top-0 border-b font-bold text-text-tertiary ${borderColor} ${PADDING}`}
+											className={`sticky top-0 border-b font-bold text-text-tertiary ${borderColor} ${PADDING} ${alignClass(header.column.id)}`}
 										>
 											{flexRender(
 												typeof header
@@ -173,7 +186,7 @@ const AdaptableTable = ({
 											key={
 												cell.id
 											}
-											className={`border-t border-border-subtle font-normal ${PADDING}`}
+											className={`border-t border-border-subtle font-normal ${PADDING} ${alignClass(cell.column.id)}`}
 										>
 											{(() => {
 												// If this is the actions column, render the action cell
@@ -224,6 +237,20 @@ const AdaptableTable = ({
 							</tr>
 						))}
 					</tbody>
+					{footerRow && (
+						<tfoot>
+							<tr className="font-semibold text-text-primary">
+								{table.getVisibleLeafColumns().map((col) => (
+									<td
+										key={col.id}
+										className={`border-t-2 border-border ${PADDING} ${alignClass(col.id)}`}
+									>
+										{footerRow[col.id] ?? ""}
+									</td>
+								))}
+							</tr>
+						</tfoot>
+					)}
 				</table>
 			)}
 		</>

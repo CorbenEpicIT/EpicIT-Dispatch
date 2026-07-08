@@ -8,11 +8,14 @@ import PageControls from "../../components/ui/PageControls";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import ColumnsButton from "../../components/ui/ColumnsButton";
+import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { useColumnVisibility, type ColumnOption } from "../../hooks/useColumnVisibility";
 import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import { formatDate, formatTime, camelCaseToRegular } from "../../util/util";
 import { useTimesheetsReportQuery } from "../../hooks/useReports";
+import { exportReport } from "../../api/reports";
+import { datedFilename } from "../../util/download";
 
 const fmtHours = (h: number) => h.toFixed(1);
 
@@ -154,7 +157,7 @@ export default function TimesheetsReportPage() {
 	}, [records, isSummaryView, techParam, dateRange, searchInput, terms]);
 
 	const columnDefs = isSummaryView ? SUMMARY_COLS : DETAIL_COLS;
-	const { hidden, toggle, reset, columnVisibility } = useColumnVisibility(
+	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
 		`timesheets:${isSummaryView ? "summary" : "detail"}`,
 		columnDefs,
 	);
@@ -239,12 +242,25 @@ export default function TimesheetsReportPage() {
 				}
 				middle={<DateRangeFilter paramKey="date" />}
 				right={
-					<ColumnsButton
-						columns={columnDefs}
-						hidden={hidden}
-						onToggle={toggle}
-						onReset={reset}
-					/>
+					<>
+						<ExportExcelButton
+							onExport={() =>
+								exportReport({
+									filename: datedFilename("timesheets-report"),
+									sheetName: "Timesheets",
+									columns: visibleColumns,
+									rows,
+								})
+							}
+							disabled={rows.length === 0}
+						/>
+						<ColumnsButton
+							columns={columnDefs}
+							hidden={hidden}
+							onToggle={toggle}
+							onReset={reset}
+						/>
+					</>
 				}
 			/>
 

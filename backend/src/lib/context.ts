@@ -53,6 +53,8 @@ const ORG_SCOPED_MODELS = new Set([
 	"tax_rate",
 	"tax_group",
 	"organization_role",
+	"saved_report",
+	"report_favorite",
 ]);
 /*
 Here's the complete list of models that have no organization_id column and

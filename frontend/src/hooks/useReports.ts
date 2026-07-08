@@ -10,7 +10,16 @@ import type {
 	MileageReportVisit,
 	TimesheetReportEntry,
 	ReorderForecastRow,
+	InventoryReportRow,
 	AgedReceivablesResponse,
+	AgedReceivablesClientRow,
+	TaxLiabilityRow,
+	JobsReportRow,
+	InvoicesReportRow,
+	ClientsReportRow,
+	PaymentsReportRow,
+	QuoteFunnelResponse,
+	TechScorecardVisitRow,
 } from "../types/reports";
 import * as reportsApi from "../api/reports";
 
@@ -116,9 +125,105 @@ export const useReorderForecastQuery = (): UseQueryResult<ReorderForecastRow[], 
 	});
 };
 
+export const useInventoryReportQuery = (
+	range?: { start: Date; end: Date } | null,
+): UseQueryResult<InventoryReportRow[], Error> => {
+	return useQuery({
+		queryKey: [
+			"reports",
+			"inventory-full",
+			range ? `${range.start.toISOString()}|${range.end.toISOString()}` : "all",
+		],
+		queryFn: () => reportsApi.getInventoryReport(range),
+	});
+};
+
 export const useAgedReceivablesQuery = (): UseQueryResult<AgedReceivablesResponse, Error> => {
 	return useQuery({
 		queryKey: ["reports", "aged-receivables"],
 		queryFn: () => reportsApi.getAgedReceivables(),
+	});
+};
+
+export const useAgedReceivablesByClientQuery = (): UseQueryResult<
+	AgedReceivablesClientRow[],
+	Error
+> => {
+	return useQuery({
+		queryKey: ["reports", "aged-receivables", "by-client"],
+		queryFn: () => reportsApi.getAgedReceivablesByClient(),
+	});
+};
+
+export const useTaxLiabilityReportQuery = (
+	startDate?: string,
+	endDate?: string,
+): UseQueryResult<TaxLiabilityRow[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "tax-liability", startDate, endDate],
+		queryFn: () => reportsApi.getTaxLiabilityReport(startDate, endDate),
+	});
+};
+
+export const useJobsReportQuery = (
+	range?: { start: Date; end: Date } | null,
+): UseQueryResult<JobsReportRow[], Error> => {
+	return useQuery({
+		queryKey: [
+			"reports",
+			"jobs",
+			range ? `${range.start.toISOString()}|${range.end.toISOString()}` : "all",
+		],
+		queryFn: () => reportsApi.getJobsReport(range),
+	});
+};
+
+export const useInvoicesReportQuery = (
+	range?: { start: Date; end: Date } | null,
+): UseQueryResult<InvoicesReportRow[], Error> => {
+	return useQuery({
+		queryKey: [
+			"reports",
+			"invoices",
+			range ? `${range.start.toISOString()}|${range.end.toISOString()}` : "all",
+		],
+		queryFn: () => reportsApi.getInvoicesReport(range),
+	});
+};
+
+export const useClientsReportQuery = (): UseQueryResult<ClientsReportRow[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "clients"],
+		queryFn: () => reportsApi.getClientsReport(),
+	});
+};
+
+export const usePaymentsReportQuery = (
+	startDate?: string,
+	endDate?: string,
+): UseQueryResult<PaymentsReportRow[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "payments", startDate, endDate],
+		queryFn: () => reportsApi.getPaymentsReport(startDate, endDate),
+	});
+};
+
+export const useQuoteFunnelQuery = (
+	startDate?: string,
+	endDate?: string,
+): UseQueryResult<QuoteFunnelResponse, Error> => {
+	return useQuery({
+		queryKey: ["reports", "quote-funnel", startDate, endDate],
+		queryFn: () => reportsApi.getQuoteFunnelReport(startDate, endDate),
+	});
+};
+
+export const useTechnicianScorecardQuery = (
+	startDate?: string,
+	endDate?: string,
+): UseQueryResult<TechScorecardVisitRow[], Error> => {
+	return useQuery({
+		queryKey: ["reports", "technician-scorecard", startDate, endDate],
+		queryFn: () => reportsApi.getTechnicianScorecard(startDate, endDate),
 	});
 };

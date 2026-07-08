@@ -1,4 +1,19 @@
 import { getScopedDb } from "../lib/context.js";
+import { centsToDollars, dollarsToCents, type TaxSnapshot } from "../services/taxEngine.js";
+import { getStockStatus } from "../lib/inventory.js";
+import { log } from "../services/appLogger.js";
+
+// Cap on the rows that a report can have would require a change in dates
+const REPORT_ROW_CAP = 10000;
+
+const warnIfCapped = (count: number, report: string, organizationId: string) => {
+	if (count >= REPORT_ROW_CAP) {
+		log.warn(
+			{ report, organizationId, cap: REPORT_ROW_CAP },
+			"Report row cap reached; results may be truncated",
+		);
+	}
+};
 
 // ============================================================================
 // OVERVIEW METRICS
@@ -451,6 +466,20 @@ export const getUnscheduledRevenue = async (organizationId: string) => {
 // ARRIVAL PERFORMANCE
 // ============================================================================
 
+const ARRIVAL_EARLY_SECONDS = -900;
+const ARRIVAL_LATE_SECONDS = 1800;
+
+export const classifyArrival = (
+	scheduledStartAt: Date,
+	actualStartAt: Date | null,
+): "Early" | "On Time" | "Late" | null => {
+	if (!actualStartAt) return null;
+	const deltaSeconds = (actualStartAt.getTime() - scheduledStartAt.getTime()) / 1000;
+	if (deltaSeconds < ARRIVAL_EARLY_SECONDS) return "Early";
+	if (deltaSeconds > ARRIVAL_LATE_SECONDS) return "Late";
+	return "On Time";
+};
+
 export const getArrivalPerformance = async (
 	startDate: string,
 	endDate: string,
@@ -464,9 +493,9 @@ export const getArrivalPerformance = async (
 	const sdb = getScopedDb(organizationId);
 	const result = await sdb.$queryRaw<[{ early: number, on_time: number, late: number }]>`
 		SELECT
-			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) < -900 THEN 1 END)::int AS early,
-			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) > 1800 THEN 1 END)::int AS late,
-			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) BETWEEN -900 AND 1800 THEN 1 END)::int AS on_time
+			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) < ${ARRIVAL_EARLY_SECONDS} THEN 1 END)::int AS early,
+			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) > ${ARRIVAL_LATE_SECONDS} THEN 1 END)::int AS late,
+			COUNT(CASE WHEN EXTRACT(EPOCH FROM (actual_start_at - scheduled_start_at)) BETWEEN ${ARRIVAL_EARLY_SECONDS} AND ${ARRIVAL_LATE_SECONDS} THEN 1 END)::int AS on_time
 		FROM job_visit jv
 		JOIN job j ON j.id = jv.job_id
 		WHERE jv.actual_start_at IS NOT NULL
@@ -598,7 +627,9 @@ export const getMileageReport = async (
 			},
 		},
 		orderBy: { scheduled_start_at: "desc" },
+		take: REPORT_ROW_CAP,
 	});
+	warnIfCapped(visits.length, "mileage", organizationId);
 
 	return visits.map((v) => ({
 		visitId: v.id,
@@ -658,7 +689,9 @@ export const getTimesheetReport = async (
 			tech: { select: { id: true, name: true } },
 		},
 		orderBy: { started_at: "desc" },
+		take: REPORT_ROW_CAP,
 	});
+	warnIfCapped(shifts.length, "timesheets", organizationId);
 
 	return shifts.map((s) => ({
 		shiftId: s.id,
@@ -716,7 +749,9 @@ export const getInventoryReorderForecast = async (
 		FROM inventory_item ii
 		WHERE ii.organization_id = ${organizationId}
 			AND ii.is_active = true
+		LIMIT ${REPORT_ROW_CAP}
 	`;
+	warnIfCapped(rows.length, "inventory-reorder-forecast", organizationId);
 
 	const now = Date.now();
 
@@ -752,6 +787,74 @@ export const getInventoryReorderForecast = async (
 	});
 
 	return built;
+};
+
+export const getInventoryReport = async (
+	organizationId: string,
+	opts: { from?: Date; to?: Date; includeInactive: boolean },
+) => {
+	const { from, to, includeInactive } = opts;
+	const sdb = getScopedDb(organizationId);
+
+	const items = await sdb.inventory_item.findMany({
+		where: {
+			provisional: false,
+			...(includeInactive ? {} : { is_active: true }),
+		},
+		orderBy: { name: "asc" },
+		include: {
+			tags: { orderBy: { label: "asc" } },
+			vehicle_stocks: { select: { qty_on_hand: true, qty_standard: true } },
+		},
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(items.length, "inventory-full", organizationId);
+
+	const usage = await sdb.stock_movement.groupBy({
+		by: ["inventory_item_id"],
+		where: {
+			organization_id: organizationId,
+			reason: { in: ["parts_used", "direct_consumption"] },
+			...(from && to ? { created_at: { gte: from, lte: to } } : {}),
+		},
+		_sum: { qty: true },
+	});
+	const usageByItem = new Map(usage.map((u) => [u.inventory_item_id, Number(u._sum.qty ?? 0)]));
+
+	return items.map((item) => {
+		const fleetQty = item.vehicle_stocks.reduce((sum, vs) => sum + Number(vs.qty_on_hand ?? 0), 0);
+		const fleetStandard = item.vehicle_stocks.reduce(
+			(sum, vs) => sum + Number(vs.qty_standard ?? 0),
+			0,
+		);
+		const warehouseQty = item.quantity;
+		const totalQty = warehouseQty + fleetQty;
+		const cost = item.cost != null ? Number(item.cost) : null;
+
+		return {
+			id: item.id,
+			name: item.name,
+			sku: item.sku ?? null,
+			category: item.category ?? null,
+			description: item.description,
+			unit: item.unit,
+			isActive: item.is_active,
+			quantity: warehouseQty,
+			fleetQty,
+			fleetStandard,
+			totalQty,
+			lowStockThreshold: item.low_stock_threshold,
+			cost,
+			unitPrice: item.unit_price != null ? Number(item.unit_price) : null,
+			assetValue: cost != null ? cost * totalQty : null,
+			qtyUsed: usageByItem.get(item.id) ?? 0,
+			stockStatus: getStockStatus(warehouseQty, item.low_stock_threshold),
+			location: item.location,
+			tags: item.tags,
+			altIds: item.alt_ids,
+			updatedAt: item.updated_at,
+		};
+	});
 };
 
 // ============================================================================
@@ -798,4 +901,675 @@ export const getAgedReceivables = async (organizationId: string) => {
 		data,
 		totalOutstanding: data.reduce((sum, d) => sum + d.amount, 0),
 	};
+};
+
+// Outstanding invoice balances bucketed by age and grouped per client
+export const getAgedReceivablesByClient = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+
+	const rows = await sdb.$queryRaw<
+		{
+			clientId: string;
+			clientName: string;
+			bucket0_30: number | null;
+			bucket31_60: number | null;
+			bucket61_90: number | null;
+			bucket90plus: number | null;
+			total: number | null;
+			count: number;
+		}[]
+	>`
+		SELECT
+			c.id   AS "clientId",
+			c.name AS "clientName",
+			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) > NOW() - INTERVAL '31 days'
+				THEN i.balance_due ELSE 0 END)::float AS "bucket0_30",
+			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '31 days'
+					  AND COALESCE(i.due_date, i.created_at) >  NOW() - INTERVAL '61 days'
+				THEN i.balance_due ELSE 0 END)::float AS "bucket31_60",
+			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '61 days'
+					  AND COALESCE(i.due_date, i.created_at) >  NOW() - INTERVAL '91 days'
+				THEN i.balance_due ELSE 0 END)::float AS "bucket61_90",
+			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '91 days'
+				THEN i.balance_due ELSE 0 END)::float AS "bucket90plus",
+			SUM(i.balance_due)::float AS "total",
+			COUNT(*)::int             AS "count"
+		FROM invoice i
+		JOIN client c ON c.id = i.client_id
+		WHERE i.organization_id = ${organizationId}
+			AND i.status NOT IN ('Draft', 'Paid', 'Void')
+			AND i.balance_due > 0
+			AND COALESCE(i.due_date, i.created_at) <= NOW()
+		GROUP BY c.id, c.name
+		ORDER BY "total" DESC
+		LIMIT ${REPORT_ROW_CAP}
+	`;
+	warnIfCapped(rows.length, "receivables-aging-by-client", organizationId);
+
+	const round2 = (n: number | null) => Math.round(Number(n ?? 0) * 100) / 100;
+
+	return rows.map((r) => ({
+		clientId: r.clientId,
+		clientName: r.clientName,
+		bucket0_30: round2(r.bucket0_30),
+		bucket31_60: round2(r.bucket31_60),
+		bucket61_90: round2(r.bucket61_90),
+		bucket90plus: round2(r.bucket90plus),
+		total: round2(r.total),
+		count: r.count,
+	}));
+};
+
+const buildDateFilter = (startDate?: string, endDate?: string) => {
+	const filter: { gte?: Date; lte?: Date } = {};
+	if (startDate) {
+		const s = new Date(startDate);
+		s.setUTCHours(0, 0, 0, 0);
+		filter.gte = s;
+	}
+	if (endDate) {
+		const e = new Date(endDate);
+		e.setUTCHours(23, 59, 59, 999);
+		filter.lte = e;
+	}
+	return filter;
+};
+
+export interface TaxLiabilityRow {
+	rateKey: string;
+	jurisdiction: string;
+	rateName: string;
+	rate: number;
+	taxableBase: number;
+	taxCollected: number;
+	invoiceCount: number;
+}
+
+const UNCATEGORIZED_KEY = "__uncategorized__";
+
+export const getTaxLiabilityReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+): Promise<TaxLiabilityRow[]> => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const invoices = await sdb.invoice.findMany({
+		where: {
+			organization_id: organizationId,
+			status: { notIn: ["Draft", "Void"] },
+			...(Object.keys(dateFilter).length && {
+				OR: [
+					{ issue_date: dateFilter },
+					{ issue_date: null, created_at: dateFilter },
+				],
+			}),
+		},
+		select: {
+			id: true,
+			tax_amount: true,
+			tax_snapshot: true,
+			tax_rate: true,
+			subtotal: true,
+			discount_amount: true,
+		},
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(invoices.length, "tax-liability", organizationId);
+
+	const acc = new Map<
+		string,
+		{
+			jurisdiction: string;
+			rateName: string;
+			rate: number;
+			taxableBaseCents: number;
+			taxCollectedCents: number;
+			invoiceIds: Set<string>;
+		}
+	>();
+
+	const add = (
+		key: string,
+		jurisdiction: string,
+		rateName: string,
+		rate: number,
+		taxableBaseCents: number,
+		taxCollectedCents: number,
+		invoiceId: string,
+	) => {
+		const existing = acc.get(key);
+		if (existing) {
+			existing.taxableBaseCents += taxableBaseCents;
+			existing.taxCollectedCents += taxCollectedCents;
+			existing.invoiceIds.add(invoiceId);
+		} else {
+			acc.set(key, {
+				jurisdiction,
+				rateName,
+				rate,
+				taxableBaseCents,
+				taxCollectedCents,
+				invoiceIds: new Set([invoiceId]),
+			});
+		}
+	};
+
+	for (const invoice of invoices) {
+		const snapshot = invoice.tax_snapshot as TaxSnapshot | null;
+		const hasGroups =
+			snapshot != null &&
+			snapshot.locked_at !== "draft" &&
+			Array.isArray(snapshot.groups) &&
+			snapshot.groups.length > 0;
+
+		if (!hasGroups) {
+			const taxAmountCents = dollarsToCents(Number(invoice.tax_amount));
+			if (taxAmountCents > 0) {
+				const rate = Number(invoice.tax_rate);
+				const taxableBaseCents = Math.max(
+					0,
+					dollarsToCents(Number(invoice.subtotal) - Number(invoice.discount_amount)),
+				);
+				add(
+					`${UNCATEGORIZED_KEY}:${rate}`,
+					"Uncategorized",
+					"Uncategorized",
+					rate,
+					taxableBaseCents,
+					taxAmountCents,
+					invoice.id,
+				);
+			}
+			continue;
+		}
+
+		for (const group of snapshot.groups) {
+			const taxableCents = group.taxable_amount_cents;
+			const rawPerRate = group.rates.map((r) => Math.floor(taxableCents * r.rate));
+			const rawSum = rawPerRate.reduce((sum, n) => sum + n, 0);
+			const remainder = group.tax_amount_cents - rawSum;
+
+			group.rates.forEach((r, idx) => {
+				const isLast = idx === group.rates.length - 1;
+				const rateTaxCents = rawPerRate[idx] + (isLast ? remainder : 0);
+				const key = `${r.id}:${r.rate}`;
+				add(
+					key,
+					r.jurisdiction ?? "—",
+					r.name,
+					r.rate,
+					taxableCents,
+					rateTaxCents,
+					invoice.id,
+				);
+			});
+		}
+	}
+
+	return Array.from(acc.entries())
+		.filter(([, v]) => v.taxCollectedCents > 0)
+		.map(([rateKey, v]) => ({
+			rateKey,
+			jurisdiction: v.jurisdiction,
+			rateName: v.rateName,
+			rate: v.rate,
+			taxableBase: centsToDollars(v.taxableBaseCents),
+			taxCollected: centsToDollars(v.taxCollectedCents),
+			invoiceCount: v.invoiceIds.size,
+		}))
+		.sort((a, b) => b.taxCollected - a.taxCollected);
+};
+
+// ============================================================================
+// JOBS
+// ============================================================================
+
+export const getJobsReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const jobs = await sdb.job.findMany({
+		where: {
+			organization_id: organizationId,
+			...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+		},
+		orderBy: { created_at: "desc" },
+		include: {
+			client: { select: { name: true } },
+			_count: { select: { visits: true } },
+		},
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(jobs.length, "jobs", organizationId);
+
+	return jobs.map((job) => {
+		const estimatedTotal = job.estimated_total != null ? Number(job.estimated_total) : null;
+		const actualTotal = job.actual_total != null ? Number(job.actual_total) : null;
+		const variance =
+			estimatedTotal != null && actualTotal != null ? actualTotal - estimatedTotal : null;
+		const source = job.quote_id
+			? "Quote"
+			: job.recurring_plan_id
+				? "Recurring Plan"
+				: job.request_id
+					? "Request"
+					: "Manual";
+
+		return {
+			id: job.id,
+			jobNumber: job.job_number,
+			name: job.name,
+			clientName: job.client.name,
+			status: job.status,
+			priority: job.priority,
+			jobType: job.recurring_plan_id ? "Recurring" : "One-off",
+			source,
+			address: job.address,
+			createdAt: job.created_at,
+			completedAt: job.completed_at,
+			cancelledAt: job.cancelled_at,
+			estimatedTotal,
+			actualTotal,
+			variance,
+			subtotal: Number(job.subtotal),
+			taxAmount: Number(job.tax_amount),
+			discountAmount: job.discount_amount != null ? Number(job.discount_amount) : null,
+			visitCount: job._count.visits,
+		};
+	});
+};
+
+// ============================================================================
+// INVOICES
+// ============================================================================
+
+export const getInvoicesReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const invoices = await sdb.invoice.findMany({
+		where: {
+			organization_id: organizationId,
+			...(Object.keys(dateFilter).length && {
+				OR: [{ issue_date: dateFilter }, { issue_date: null, created_at: dateFilter }],
+			}),
+		},
+		orderBy: { created_at: "desc" },
+		include: { client: { select: { name: true } } },
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(invoices.length, "invoices", organizationId);
+
+	const now = Date.now();
+
+	return invoices.map((invoice) => {
+		const balanceDue = Number(invoice.balance_due);
+		const dueDate = invoice.due_date;
+		const daysOverdue =
+			balanceDue > 0 && dueDate && dueDate.getTime() < now
+				? Math.floor((now - dueDate.getTime()) / DAY_MS)
+				: 0;
+
+		return {
+			id: invoice.id,
+			invoiceNumber: invoice.invoice_number,
+			clientName: invoice.client.name,
+			status: invoice.status,
+			issueDate: invoice.issue_date,
+			dueDate: invoice.due_date,
+			paidAt: invoice.paid_at,
+			sentAt: invoice.sent_at,
+			total: Number(invoice.total),
+			amountPaid: Number(invoice.amount_paid),
+			balanceDue,
+			subtotal: Number(invoice.subtotal),
+			taxAmount: Number(invoice.tax_amount),
+			daysOverdue,
+			qbSyncStatus: invoice.qb_sync_status,
+		};
+	});
+};
+
+// ============================================================================
+// CLIENTS
+// ============================================================================
+
+export const getClientsReport = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+
+	const rows = await sdb.$queryRaw<
+		{
+			id: string;
+			name: string;
+			isActive: boolean;
+			isTaxExempt: boolean;
+			createdAt: Date;
+			lastActivity: Date;
+			jobCount: number;
+			invoiceCount: number;
+			lifetimeRevenue: number | null;
+			openBalance: number | null;
+			primaryContact: string | null;
+			email: string | null;
+			phone: string | null;
+			address: string;
+			contactCount: number;
+			taxGroup: string | null;
+			taxRate: number | null;
+		}[]
+	>`
+		SELECT
+			c.id            AS "id",
+			c.name          AS "name",
+			c.is_active     AS "isActive",
+			c.is_tax_exempt AS "isTaxExempt",
+			c.created_at    AS "createdAt",
+			c.last_activity AS "lastActivity",
+			c.address       AS "address",
+			pc.name         AS "primaryContact",
+			pc.email        AS "email",
+			pc.phone        AS "phone",
+			tg.name         AS "taxGroup",
+			c.tax_rate      AS "taxRate",
+			COALESCE(cct.contact_count, 0)::int     AS "contactCount",
+			COALESCE(j.job_count, 0)::int           AS "jobCount",
+			COALESCE(inv.invoice_count, 0)::int     AS "invoiceCount",
+			COALESCE(inv.lifetime_revenue, 0)::float AS "lifetimeRevenue",
+			COALESCE(inv.open_balance, 0)::float    AS "openBalance"
+		FROM client c
+		LEFT JOIN tax_group tg ON tg.id = c.tax_group_id
+		LEFT JOIN LATERAL (
+			SELECT ct.name, ct.email, ct.phone
+			FROM client_contact cc
+			JOIN contact ct ON ct.id = cc.contact_id
+			WHERE cc.client_id = c.id
+			ORDER BY cc.is_primary DESC, cc.is_billing DESC
+			LIMIT 1
+		) pc ON true
+		LEFT JOIN (
+			SELECT client_id, COUNT(*) AS contact_count
+			FROM client_contact
+			GROUP BY client_id
+		) cct ON cct.client_id = c.id
+		LEFT JOIN (
+			SELECT client_id, COUNT(*) AS job_count
+			FROM job
+			WHERE organization_id = ${organizationId}
+			GROUP BY client_id
+		) j ON j.client_id = c.id
+		LEFT JOIN (
+			SELECT client_id,
+				COUNT(*)         AS invoice_count,
+				SUM(amount_paid) AS lifetime_revenue,
+				SUM(balance_due) AS open_balance
+			FROM invoice
+			WHERE organization_id = ${organizationId}
+			GROUP BY client_id
+		) inv ON inv.client_id = c.id
+		WHERE c.organization_id = ${organizationId}
+		ORDER BY "lifetimeRevenue" DESC
+		LIMIT ${REPORT_ROW_CAP}
+	`;
+	warnIfCapped(rows.length, "clients", organizationId);
+
+	const round2 = (n: number | null) => Math.round(Number(n ?? 0) * 100) / 100;
+
+	return rows.map((r) => ({
+		id: r.id,
+		name: r.name,
+		status: r.isActive ? "Active" : "Inactive",
+		taxExempt: r.isTaxExempt ? "Yes" : "No",
+		primaryContact: r.primaryContact,
+		email: r.email,
+		phone: r.phone,
+		address: r.address,
+		contactCount: r.contactCount,
+		taxGroup: r.taxGroup,
+		taxRate: r.taxRate != null ? Number(r.taxRate) : null,
+		createdAt: r.createdAt,
+		lastActivity: r.lastActivity,
+		jobCount: r.jobCount,
+		invoiceCount: r.invoiceCount,
+		lifetimeRevenue: round2(r.lifetimeRevenue),
+		openBalance: round2(r.openBalance),
+	}));
+};
+
+// ============================================================================
+// PAYMENTS COLLECTED
+// ============================================================================
+
+export const getPaymentsReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const payments = await sdb.invoice_payment.findMany({
+		where: {
+			invoice: { organization_id: organizationId },
+			...(Object.keys(dateFilter).length && { paid_at: dateFilter }),
+		},
+		orderBy: { paid_at: "desc" },
+		include: {
+			invoice: {
+				select: {
+					id: true,
+					invoice_number: true,
+					client: { select: { name: true } },
+				},
+			},
+			recorded_by_dispatcher: { select: { name: true } },
+			recorded_by_tech: { select: { name: true } },
+		},
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(payments.length, "payments", organizationId);
+
+	return payments.map((p) => ({
+		paymentId: p.id,
+		paidAt: p.paid_at,
+		invoiceId: p.invoice.id,
+		invoiceNumber: p.invoice.invoice_number,
+		clientName: p.invoice.client.name,
+		amount: Number(p.amount),
+		method: p.method,
+		note: p.note,
+		recordedBy: p.recorded_by_dispatcher?.name ?? p.recorded_by_tech?.name ?? null,
+		qbSynced: !!p.qb_payment_id,
+	}));
+};
+
+// ============================================================================
+// QUOTE CONVERSION
+// ============================================================================
+
+const LOST_QUOTE_STATUSES = ["Rejected", "Expired", "Cancelled"] as const;
+
+export const getQuoteFunnelReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const quotes = await sdb.quote.findMany({
+		where: {
+			is_active: true,
+			...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+		},
+		orderBy: { created_at: "desc" },
+		include: {
+			client: { select: { name: true } },
+			request: { select: { source: true } },
+		},
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(quotes.length, "quote-funnel", organizationId);
+
+	const funnel = { created: quotes.length, issued: 0, sent: 0, viewed: 0, approved: 0 };
+	let valueWon = 0;
+	let valueLost = 0;
+	let lostCount = 0;
+	const approveDays: number[] = [];
+	const bySourceMap = new Map<string, { quotes: number; approved: number }>();
+
+	const rows = quotes.map((q) => {
+		const issued = !!(q.issued_at || q.sent_at || q.viewed_at || q.approved_at);
+		const sent = !!(q.sent_at || q.viewed_at || q.approved_at);
+		const viewed = !!(q.viewed_at || q.approved_at);
+		const approved = !!q.approved_at;
+		if (issued) funnel.issued++;
+		if (sent) funnel.sent++;
+		if (viewed) funnel.viewed++;
+		if (approved) funnel.approved++;
+
+		const total = Number(q.total);
+		if (q.status === "Approved") valueWon += total;
+		if ((LOST_QUOTE_STATUSES as readonly string[]).includes(q.status)) {
+			valueLost += total;
+			lostCount++;
+		}
+
+		const approvalBaseline = q.sent_at ?? q.issued_at ?? q.created_at;
+		const daysToApprove = q.approved_at
+			? Math.round(((q.approved_at.getTime() - approvalBaseline.getTime()) / DAY_MS) * 10) / 10
+			: null;
+		if (daysToApprove != null) approveDays.push(daysToApprove);
+
+		const source = q.request?.source ?? "manual";
+		const bucket = bySourceMap.get(source) ?? { quotes: 0, approved: 0 };
+		bucket.quotes++;
+		if (approved) bucket.approved++;
+		bySourceMap.set(source, bucket);
+
+		return {
+			quoteId: q.id,
+			quoteNumber: q.quote_number,
+			title: q.title,
+			clientName: q.client.name,
+			status: q.status,
+			source,
+			total,
+			createdAt: q.created_at,
+			issuedAt: q.issued_at,
+			sentAt: q.sent_at,
+			viewedAt: q.viewed_at,
+			approvedAt: q.approved_at,
+			daysToApprove,
+		};
+	});
+
+	const decided = funnel.approved + lostCount;
+	const round2 = (n: number) => Math.round(n * 100) / 100;
+
+	return {
+		funnel,
+		winRate: decided > 0 ? Math.round((funnel.approved / decided) * 100) : null,
+		avgDaysToApprove: approveDays.length
+			? round2(approveDays.reduce((a, b) => a + b, 0) / approveDays.length)
+			: null,
+		valueWon: round2(valueWon),
+		valueLost: round2(valueLost),
+		bySource: [...bySourceMap.entries()].map(([source, b]) => ({
+			source,
+			quotes: b.quotes,
+			approved: b.approved,
+			rate: b.quotes > 0 ? Math.round((b.approved / b.quotes) * 100) : 0,
+		})),
+		quotes: rows,
+	};
+};
+
+// ============================================================================
+// TECHNICIAN SCORECARD
+// ============================================================================
+
+// Visit revenue is calculated by job revenue/# techs
+export const getTechnicianScorecard = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const visits = await sdb.job_visit.findMany({
+		where: {
+			status: "Completed",
+			job: { organization_id: organizationId },
+			...(Object.keys(dateFilter).length && { scheduled_start_at: dateFilter }),
+		},
+		orderBy: { scheduled_start_at: "desc" },
+		include: {
+			job: {
+				select: {
+					id: true,
+					name: true,
+					client: { select: { name: true } },
+				},
+			},
+			visit_techs: { select: { tech: { select: { id: true, name: true } } } },
+			time_entries: { select: { tech_id: true, hours_worked: true } },
+		},
+		take: REPORT_ROW_CAP,
+	});
+	warnIfCapped(visits.length, "technician-scorecard", organizationId);
+
+	const round2 = (n: number) => Math.round(n * 100) / 100;
+	const rows: {
+		techId: string;
+		techName: string;
+		visitId: string;
+		jobId: string;
+		jobName: string;
+		clientName: string;
+		scheduledStartAt: Date;
+		actualStartAt: Date | null;
+		arrival: "Early" | "On Time" | "Late" | null;
+		hoursWorked: number;
+		revenueShare: number;
+	}[] = [];
+
+	for (const visit of visits) {
+		const techs = visit.visit_techs;
+		if (!techs.length) continue;
+		const revenueShare = round2(Number(visit.total) / techs.length);
+		const arrival = classifyArrival(visit.scheduled_start_at, visit.actual_start_at);
+
+		for (const { tech } of techs) {
+			const hoursWorked = visit.time_entries
+				.filter((e) => e.tech_id === tech.id)
+				.reduce((s, e) => s + Number(e.hours_worked ?? 0), 0);
+
+			rows.push({
+				techId: tech.id,
+				techName: tech.name,
+				visitId: visit.id,
+				jobId: visit.job.id,
+				jobName: visit.job.name,
+				clientName: visit.job.client.name,
+				scheduledStartAt: visit.scheduled_start_at,
+				actualStartAt: visit.actual_start_at,
+				arrival,
+				hoursWorked: round2(hoursWorked),
+				revenueShare,
+			});
+		}
+	}
+
+	return rows;
 };

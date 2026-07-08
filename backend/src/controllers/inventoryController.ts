@@ -13,8 +13,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { sendLowStockAlert } from "../services/lowStockAlerts.js";
 import { recordMovements, InsufficientStockError, type ActorInfo } from "../services/stockMovements.js";
-
-type StockStatus = "sufficient" | "low" | "out_of_stock" | null;
+import { withStockStatus } from "../lib/inventory.js";
 
 interface InventoryRecord {
 	id: string;
@@ -25,13 +24,6 @@ interface InventoryRecord {
 	alert_email: string | null;
 }
 
-
-function getStockStatus(quantity: number, threshold: number | null): StockStatus {
-	if (threshold === null) return null;
-	if (quantity === 0) return "out_of_stock";
-	if (quantity < threshold) return "low";
-	return "sufficient";
-}
 
 function getActorInfo(context?: UserContext) {
 	return {
@@ -53,14 +45,6 @@ function toActorInfo(context?: UserContext): ActorInfo {
 	};
 }
 
-function withStockStatus<T extends { quantity: number; low_stock_threshold: number | null }>(
-	item: T,
-): T & { stock_status: StockStatus } {
-	return {
-		...item,
-		stock_status: getStockStatus(item.quantity, item.low_stock_threshold),
-	};
-}
 
 export const getAllInventory = async (organizationId: string, sort?: string) => {
 	let orderBy: Record<string, unknown> = { name: "asc" };

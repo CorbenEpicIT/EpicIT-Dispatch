@@ -3,14 +3,17 @@ import { useMileageReportQuery } from "../../hooks/useReports";
 import { useState, useMemo } from "react";
 import { Gauge, ArrowLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { formatDate } from "../../util/util";
+import { formatDate, camelCaseToRegular } from "../../util/util";
 import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import PageHeader from "../../components/ui/PageHeader";
+import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
+import { exportReport } from "../../api/reports";
+import { datedFilename } from "../../util/download";
 
 export default function MileageReportPage() {
 	const navigate = useNavigate();
@@ -184,6 +187,15 @@ export default function MileageReportPage() {
 	const hasActiveFilters =
 		terms.length > 0 || (dateParamKey !== null && dateParamKey !== "all");
 
+	const exportRows = isSummaryView ? summaryDisplay : detailDisplay;
+	const exportColumns = useMemo(
+		() =>
+			(exportRows[0] ? Object.keys(exportRows[0]) : [])
+				.filter((key) => key !== "id")
+				.map((key) => ({ key, label: camelCaseToRegular(key) })),
+		[exportRows],
+	);
+
 	return (
 		<div className="text-text-primary">
 			<PageHeader
@@ -286,7 +298,19 @@ export default function MileageReportPage() {
 					/>
 				}
 				middle={<DateRangeFilter paramKey="date" />}
-				right={null}
+				right={
+					<ExportExcelButton
+						onExport={() =>
+							exportReport({
+								filename: datedFilename("mileage-report"),
+								sheetName: "Mileage",
+								columns: exportColumns,
+								rows: exportRows,
+							})
+						}
+						disabled={exportRows.length === 0}
+					/>
+				}
 			/>
 
 			<FilterChips

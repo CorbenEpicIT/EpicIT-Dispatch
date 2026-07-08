@@ -310,6 +310,40 @@ model organization {
   tax_rates   tax_rate[]
   tax_groups  tax_group[]
   organization_roles    organization_role[]
+
+  saved_reports     saved_report[]
+  report_favorites  report_favorite[]
+}
+
+model saved_report {
+  id              String   @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+  name            String
+  description     String?
+  source          String
+  config          Json
+  created_by_id   String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@unique([organization_id, name])
+  @@index([organization_id])
+  @@index([created_by_id])
+}
+
+model report_favorite {
+  id              String   @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+  dispatcher_id   String
+  kind            String
+  ref             String
+  created_at      DateTime @default(now())
+
+  @@unique([dispatcher_id, kind, ref])
+  @@index([dispatcher_id])
+  @@index([organization_id])
 }
 
 model organization_role {
@@ -1475,6 +1509,7 @@ model dispatcher {
   password_reset_token_expires_at DateTime?
   theme       String   @default("system")
   dashboard_layout Json?
+  report_layout    Json?
 
   organization_role_id String?
   organization_role    organization_role? @relation("DispatcherRole", fields: [organization_role_id], references: [id])

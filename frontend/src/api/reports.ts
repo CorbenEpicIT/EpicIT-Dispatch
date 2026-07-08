@@ -1,4 +1,5 @@
 import { api } from "./axiosClient";
+import { triggerDownload } from "../util/download";
 import type { ApiResponse } from "../types/api";
 import type {
 	OverviewResponse,
@@ -11,7 +12,16 @@ import type {
 	MileageReportVisit,
 	TimesheetReportEntry,
 	ReorderForecastRow,
+	InventoryReportRow,
 	AgedReceivablesResponse,
+	AgedReceivablesClientRow,
+	TaxLiabilityRow,
+	JobsReportRow,
+	InvoicesReportRow,
+	ClientsReportRow,
+	PaymentsReportRow,
+	QuoteFunnelResponse,
+	TechScorecardVisitRow,
 } from "../types/reports";
 
 // ============================================================================
@@ -181,6 +191,27 @@ export const getReorderForecast = async (): Promise<ReorderForecastRow[]> => {
 	return response.data.data;
 };
 
+export const getInventoryReport = async (
+	range?: { start: Date; end: Date } | null,
+): Promise<InventoryReportRow[]> => {
+	const params: Record<string, string> = { include_inactive: "true" };
+	if (range) {
+		params.startDate = range.start.toISOString();
+		params.endDate = range.end.toISOString();
+	}
+
+	const response = await api.get<ApiResponse<InventoryReportRow[]>>(
+		"/reports/inventory/full",
+		{ params },
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch inventory report");
+	}
+
+	return response.data.data;
+};
+
 export const getAgedReceivables = async (): Promise<AgedReceivablesResponse> => {
 	const response = await api.get<ApiResponse<AgedReceivablesResponse>>(
 		"/reports/receivables/aging",
@@ -191,4 +222,168 @@ export const getAgedReceivables = async (): Promise<AgedReceivablesResponse> => 
 	}
 
 	return response.data.data;
+};
+
+export const getAgedReceivablesByClient = async (): Promise<AgedReceivablesClientRow[]> => {
+	const response = await api.get<ApiResponse<AgedReceivablesClientRow[]>>(
+		"/reports/receivables/aging/by-client",
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch aged receivables by client");
+	}
+
+	return response.data.data;
+};
+
+export const getTaxLiabilityReport = async (
+	startDate?: string,
+	endDate?: string,
+): Promise<TaxLiabilityRow[]> => {
+	const params: Record<string, string> = {};
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+
+	const response = await api.get<ApiResponse<TaxLiabilityRow[]>>(
+		"/reports/tax-liability",
+		{ params },
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch tax liability report");
+	}
+
+	return response.data.data;
+};
+
+export const getJobsReport = async (
+	range?: { start: Date; end: Date } | null,
+): Promise<JobsReportRow[]> => {
+	const params: Record<string, string> = {};
+	if (range) {
+		params.startDate = range.start.toISOString();
+		params.endDate = range.end.toISOString();
+	}
+
+	const response = await api.get<ApiResponse<JobsReportRow[]>>("/reports/jobs", { params });
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch jobs report");
+	}
+
+	return response.data.data;
+};
+
+export const getInvoicesReport = async (
+	range?: { start: Date; end: Date } | null,
+): Promise<InvoicesReportRow[]> => {
+	const params: Record<string, string> = {};
+	if (range) {
+		params.startDate = range.start.toISOString();
+		params.endDate = range.end.toISOString();
+	}
+
+	const response = await api.get<ApiResponse<InvoicesReportRow[]>>("/reports/invoices", {
+		params,
+	});
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch invoices report");
+	}
+
+	return response.data.data;
+};
+
+export const getClientsReport = async (): Promise<ClientsReportRow[]> => {
+	const response = await api.get<ApiResponse<ClientsReportRow[]>>("/reports/clients");
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch clients report");
+	}
+
+	return response.data.data;
+};
+
+export const getPaymentsReport = async (
+	startDate?: string,
+	endDate?: string,
+): Promise<PaymentsReportRow[]> => {
+	const params: Record<string, string> = {};
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+
+	const response = await api.get<ApiResponse<PaymentsReportRow[]>>("/reports/payments", {
+		params,
+	});
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch payments report");
+	}
+
+	return response.data.data;
+};
+
+export const getQuoteFunnelReport = async (
+	startDate?: string,
+	endDate?: string,
+): Promise<QuoteFunnelResponse> => {
+	const params: Record<string, string> = {};
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+
+	const response = await api.get<ApiResponse<QuoteFunnelResponse>>("/reports/quote-funnel", {
+		params,
+	});
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch quote funnel report");
+	}
+
+	return response.data.data;
+};
+
+export const getTechnicianScorecard = async (
+	startDate?: string,
+	endDate?: string,
+): Promise<TechScorecardVisitRow[]> => {
+	const params: Record<string, string> = {};
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+
+	const response = await api.get<ApiResponse<TechScorecardVisitRow[]>>(
+		"/reports/technician-scorecard",
+		{ params },
+	);
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch technician scorecard");
+	}
+
+	return response.data.data;
+};
+
+export interface ExportColumn {
+	key: string;
+	label: string;
+}
+
+export interface ExportReportArgs {
+	filename: string;
+	columns: ExportColumn[];
+	rows: Array<Record<string, unknown>>;
+	sheetName?: string;
+}
+
+export const exportReport = async ({
+	filename,
+	columns,
+	rows,
+	sheetName,
+}: ExportReportArgs): Promise<void> => {
+	const response = await api.post(
+		"/reports/export",
+		{ filename, sheetName, columns, rows },
+		{ responseType: "blob" },
+	);
+	triggerDownload(response.data as Blob, filename);
 };
