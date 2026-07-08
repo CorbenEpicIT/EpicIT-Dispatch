@@ -77,6 +77,7 @@ export default function DispatchLayout() {
 		const handler = () => {
 			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
 			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
+			queryClient.invalidateQueries({ queryKey: ["inventory", "provisional"] });
 		};
 		socket.on("inventory:updated", handler);
 		return () => { socket.off("inventory:updated", handler); };

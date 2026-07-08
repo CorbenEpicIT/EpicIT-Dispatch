@@ -243,11 +243,12 @@ export const useSetItemTagsMutation = (): UseMutationResult<
 // PROVISIONAL ITEM QUERIES + MUTATIONS
 // ============================================================================
 
-export const useProvisionalItemsQuery = () =>
+export const useProvisionalItemsQuery = (enabled = true) =>
 	useQuery<ProvisionalItem[]>({
 		queryKey: ["inventory", "provisional"],
 		queryFn: () => orgApi.getProvisionalItems(),
 		staleTime: 30_000,
+		enabled,
 	});
 
 export const useApproveItemMutation = () => {

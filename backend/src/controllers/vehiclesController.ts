@@ -16,6 +16,16 @@ import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
 import { getSocket } from "../services/socketService.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
 
+// Best-effort real-time push — an unavailable/uninitialized socket layer must
+// never fail a stock mutation whose DB write already succeeded.
+function emitInventoryUpdated(organizationId: string): void {
+	try {
+		getSocket().to(`org:${organizationId}`).emit("inventory:updated", { organizationId });
+	} catch {
+		// no-op
+	}
+}
+
 export type ReadinessState = "not_applicable" | "unknown" | "auto_ready" | "needs_action" | "confirmed";
 
 export type ReadinessGap = {
@@ -1734,6 +1744,7 @@ export async function adjustStock(
 		});
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
+		if (parsed.lines.some((l) => l.new_item)) emitInventoryUpdated(orgId);
 
 		await logActivity({
 			event_type: "vehicle_stock.adjusted",
@@ -2521,6 +2532,8 @@ export async function addSupplierPartUsed(
 
 			return { lineItem };
 		});
+
+		if (parsed.new_item) emitInventoryUpdated(orgId);
 
 		await logActivity({
 			event_type:      "vehicle_stock.supplier_part_used",
