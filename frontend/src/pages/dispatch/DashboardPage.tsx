@@ -8,32 +8,27 @@ import { useNavigate } from "react-router-dom";
 import {
 	AlertCircle,
 	ChevronRight,
-	ChevronDown,
-	Briefcase,
-	FileText,
 	Clock,
-	Plus,
 	LayoutDashboard,
-	Lock,
+	LayoutGrid,
+	RotateCcw,
+	StretchHorizontal,
+	Shuffle,
 	Unlock,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import WeekStrip from "../../components/ui/schedule/WeekStrip";
 import { useAuthStore } from "../../auth/authStore";
 import { FALLBACK_TIMEZONE } from "../../util/util";
-import { useAllJobsQuery, useCreateJobMutation } from "../../hooks/useJobs";
+import { useAllJobsQuery } from "../../hooks/useJobs";
 import { useAllTechniciansQuery } from "../../hooks/useTechnicians";
-import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
-import { useAllQuotesQuery, useCreateQuoteMutation } from "../../hooks/useQuotes";
+import { useAllRequestsQuery } from "../../hooks/useRequests";
+import { useAllQuotesQuery } from "../../hooks/useQuotes";
 import { useAllRecurringPlansQuery } from "../../hooks/useRecurringPlans";
 import type { JobVisit } from "../../types/jobs";
-import CreateRequest from "../../components/requests/CreateRequest";
-import CreateJob from "../../components/jobs/CreateJob";
-import CreateQuote from "../../components/quotes/CreateQuote";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
 import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
-import { usePermission } from "../../hooks/usePermission";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, getActiveCols, fitDashboard, randomizeLayout } from "../../lib/DashboardConfig";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
@@ -56,12 +51,7 @@ export default function DashboardPage() {
 	const { data: dispatcher } = useDispatcherByIdQuery(user?.userId);
 	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
 
-	const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
-	const [isCreateQuoteModalOpen, setIsCreateQuoteModalOpen] = useState(false);
-	const [isCreateJobModalOpen, setIsCreateJobModalOpen] = useState(false);
 	const [isCreatePlanModalOpen, setIsCreatePlanModalOpen] = useState(false);
-	const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
-	const actionMenuRef = useRef<HTMLDivElement>(null);
 	const justDraggedRef = useRef(false); // to prevent click events immediately after dragging
 	
 	const [layouts, setLayouts] = useState<ResponsiveLayouts>(DEFAULT_RESPONSIVE_LAYOUTS);
@@ -81,24 +71,6 @@ export default function DashboardPage() {
 		}
 	}, [dispatcher?.dashboard_layout]);
 
-	// permissions
-	const CREATE_REQUEST = usePermission("create_requests");
-	const CREATE_QUOTE = usePermission("create_quotes");
-	const CREATE_JOB = usePermission("create_jobs");
-
-	useEffect(() => {
-		function handleClickOutside(e: MouseEvent) {
-			if (actionMenuRef.current && !actionMenuRef.current.contains(e.target as Node)) {
-				setIsActionMenuOpen(false);
-			}
-		}
-		if (isActionMenuOpen) document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, [isActionMenuOpen]);
-
-	const { mutateAsync: createRequest } = useCreateRequestMutation();
-	const { mutateAsync: createJob } = useCreateJobMutation();
-	const { mutateAsync: createQuote } = useCreateQuoteMutation();
 	const updateDispatcher = useUpdateDispatcherMutation();
 
 	const { data: jobs = [], error: jobsError } = useAllJobsQuery();
@@ -503,7 +475,7 @@ export default function DashboardPage() {
 		<div className="min-h-0 bg-canvas text-text-primary w-full">
 			<div className="w-full px-3 sm:px-5 lg:px-6" ref={containerRef}>
 				{/* Header */}
-				<div className="mb-5 flex items-center justify-between gap-4">
+				<div className="mb-3 flex items-end justify-between gap-4">
 					<div>
 						<div className="flex items-baseline gap-2">
 							<h1 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
@@ -543,68 +515,53 @@ export default function DashboardPage() {
 						</div>
 					</div>
 
-					{/* Split action button */}
-					<div className="relative shrink-0" ref={actionMenuRef}>
-						<div className="flex h-10 rounded-md overflow-hidden">
-							<button
-								title={!CREATE_REQUEST ? "You don't have permission to perform this action" : ""}
-								disabled={!CREATE_REQUEST}
-								onClick={() => setIsCreateRequestModalOpen(true)}
-								className="inline-flex items-center justify-center gap-1.5 px-4 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-							>
-								<Plus size={14} strokeWidth={2.5} className="-mt-px" />
-								New Request
-							</button>
-							
-							<span className={(!CREATE_QUOTE && !CREATE_JOB) ? "w-px bg-primary opacity-40" : "w-px bg-primary"} />
-							<button
-								disabled={!CREATE_QUOTE && !CREATE_JOB}
-								title={!CREATE_QUOTE && !CREATE_JOB ? "You don't have permission to perform other actions" : "Create Quote or Job"}
-								onClick={() => setIsActionMenuOpen((o) => !o)}
-								className="flex items-center px-2.5 bg-primary-hover hover:enabled:bg-primary-active text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-								aria-label="More actions"
-							>
-								<ChevronDown size={14} strokeWidth={2.5} className={`transition-transform duration-150 ${isActionMenuOpen ? "rotate-180" : ""}`} />
-							</button>
-						</div>
-
-						{isActionMenuOpen && (
-							<div className="absolute top-full mt-1.5 right-0 min-w-[170px] bg-canvas border border-border-strong rounded-lg shadow-xl z-50 py-1">
-								<button
-									disabled={!CREATE_QUOTE}
-									title={!CREATE_QUOTE ? "You don't have permission to perform this action" : ""}
-									onClick={() => { setIsCreateQuoteModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-reviewing-text hover:enabled:bg-reviewing/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									<FileText size={13} className="text-reviewing-text" />
-									Create Quote
-								</button>
-								<button
-									disabled={!CREATE_JOB}
-									title={!CREATE_JOB ? "You don't have permission to perform this action" : ""}
-									onClick={() => { setIsCreateJobModalOpen(true); setIsActionMenuOpen(false); }}
-									className="flex items-center gap-2.5 px-3 py-2 text-sm text-warning-text hover:enabled:bg-warning/10 transition-colors w-full text-left disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									<Briefcase size={13} className="text-warning-text" />
-									Create Job
-								</button>
-							</div>
-						)}
+					{/* Widgets / Edit layout */}
+					<div className="flex items-center gap-2 shrink-0">
+						<button
+							onClick={() => setIsAddWidgetModalOpen(true)}
+							title="Add or remove widgets"
+							className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+						>
+							<LayoutGrid size={13} />
+							Widgets
+						</button>
+						<button
+							onClick={() => setIsEditMode((e) => !e)}
+							title={isEditMode ? "Lock layout" : "Edit layout"}
+							aria-pressed={isEditMode}
+							className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors ${
+								isEditMode
+									? "bg-primary/15 border-primary/40 text-primary hover:bg-primary/20"
+									: "bg-surface hover:bg-surface-raised border-border text-text-secondary hover:text-text-primary"
+							}`}
+						>
+							{isEditMode ? <Unlock size={13} /> : <LayoutDashboard size={13} />}
+							{isEditMode ? "Done" : "Edit"}
+						</button>
 					</div>
 				</div>
 
-				{/* Layout controls strip */}
-				<div className="flex items-center justify-end gap-2 mb-3">
-					{isEditMode && (
-						<>
+				{/* Layout controls — contextual toolbar for edit mode, height-animated so it never jumps the grid */}
+				<div
+					className={`grid transition-[grid-template-rows] duration-200 ease-out ${isEditMode ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+				>
+					<div className="overflow-hidden">
+						<div
+							inert={!isEditMode}
+							className={`flex items-center justify-end gap-2 pb-3 transition-opacity duration-150 ${isEditMode ? "opacity-100 delay-75" : "opacity-0"}`}
+						>
+							<span className="text-[10px] uppercase tracking-wider text-text-faint mr-auto">
+								Drag or resize widgets to rearrange
+							</span>
 							<button
 								onClick={() => {
 									setLayouts(DEFAULT_RESPONSIVE_LAYOUTS);
 									if (dispatcher?.id) saveDashboardLayout(dispatcher.id, DEFAULT_RESPONSIVE_LAYOUTS.lg ?? []);
 								}}
 								title="Reset to default layout"
-								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-error-text hover:border-error/40 hover:bg-error/10 transition-colors"
+								className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-error/10 border border-border hover:border-error/40 text-xs font-medium text-text-secondary hover:text-error-text transition-colors"
 							>
+								<RotateCcw size={13} />
 								Reset
 							</button>
 							<button
@@ -614,39 +571,21 @@ export default function DashboardPage() {
 									else setDisplayLayouts(prev => ({ ...prev, lg: fitted }));
 								}}
 								title="Distribute widgets evenly across each row"
-								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+								className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
 							>
+								<StretchHorizontal size={13} />
 								Fit
 							</button>
 							<button
 								onClick={() => setLayouts(prev => ({ ...prev, lg: randomizeLayout(prev.lg ?? []) }))}
 								title="Scramble widgets into a messy layout (for testing Fit)"
-								className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+								className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
 							>
+								<Shuffle size={13} />
 								Randomize
 							</button>
-							<span className="w-px h-4 bg-border" />
-						</>
-					)}
-					<button
-						onClick={() => setIsAddWidgetModalOpen(true)}
-						title="Add or remove widgets"
-						className="flex items-center gap-1.5 px-3 h-8 rounded-md border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
-					>
-						Widgets
-					</button>
-					<button
-						onClick={() => setIsEditMode((e) => !e)}
-						title={isEditMode ? "Lock layout" : "Edit layout"}
-						className={`flex items-center gap-1.5 px-3 h-8 rounded-md border text-xs font-medium transition-colors ${
-							isEditMode
-								? "border-primary/40 bg-primary/10 text-primary-text hover:bg-primary/15"
-								: "border-border text-text-secondary hover:text-text-primary hover:bg-surface"
-						}`}
-					>
-						{isEditMode ? <Unlock size={13} /> : <LayoutDashboard size={13} />}
-						{isEditMode ? "Done" : "Edit"}
-					</button>
+						</div>
+					</div>
 				</div>
 
 				{/* Dashboard grid */}
@@ -709,39 +648,6 @@ export default function DashboardPage() {
 					</ResponsiveGridLayout>}
 				</div>
 			</div>
-
-			<CreateRequest
-				isModalOpen={isCreateRequestModalOpen}
-				setIsModalOpen={setIsCreateRequestModalOpen}
-				createRequest={async (input) => {
-					const newRequest = await createRequest(input);
-					if (!newRequest?.id) throw new Error("Request creation failed: no ID returned");
-					navigate(`/dispatch/requests/${newRequest.id}`);
-					return newRequest.id;
-				}}
-			/>
-
-			<CreateJob
-				isModalOpen={isCreateJobModalOpen}
-				setIsModalOpen={setIsCreateJobModalOpen}
-				createJob={async (input) => {
-					const newJob = await createJob(input);
-					if (!newJob?.id) throw new Error("Job creation failed: no ID returned");
-					navigate(`/dispatch/jobs/${newJob.id}`);
-					return newJob.id;
-				}}
-			/>
-
-			<CreateQuote
-				isModalOpen={isCreateQuoteModalOpen}
-				setIsModalOpen={setIsCreateQuoteModalOpen}
-				createQuote={async (input) => {
-					const newQuote = await createQuote(input);
-					if (!newQuote?.id) throw new Error("Quote creation failed: no ID returned");
-					navigate(`/dispatch/quotes/${newQuote.id}`);
-					return newQuote.id;
-				}}
-			/>
 
 			<CreateRecurringPlan
 				isModalOpen={isCreatePlanModalOpen}
