@@ -1,3 +1,4 @@
+import { useCallback, useRef } from "react";
 import {
 	useMutation,
 	useQuery,
@@ -135,6 +136,47 @@ export const useUploadInventoryImageMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: (file: File) => inventoryApi.uploadInventoryImage(file),
 	});
+};
+
+export const useScanInventoryItem = (): UseMutationResult<
+	InventoryItem,
+	Error,
+	string
+> => {
+	return useMutation({
+		mutationFn: (code: string) => inventoryApi.scanInventoryItem(code),
+	});
+};
+
+// Shared scan-then-branch wrapper — every call site (dispatch inventory, vehicle
+// stock, supplier-purchase catalog) needs the same mutateAsync/try-catch shape;
+// only what happens on found/not-found differs, so that stays caller-owned.
+export const useBarcodeScanHandler = (
+	onFound: (item: InventoryItem) => void,
+	onNotFound: (code: string) => void,
+): { handleScan: (code: string) => Promise<void>; isScanning: boolean } => {
+	const scanMutation = useScanInventoryItem();
+	// Synchronous guard — React state (isPending) doesn't update fast enough to
+	// block a scanner double-fire that lands two codes in the same tick.
+	const inFlightRef = useRef(false);
+
+	const handleScan = useCallback(
+		async (code: string) => {
+			if (inFlightRef.current) return;
+			inFlightRef.current = true;
+			try {
+				const item = await scanMutation.mutateAsync(code);
+				onFound(item);
+			} catch {
+				onNotFound(code);
+			} finally {
+				inFlightRef.current = false;
+			}
+		},
+		[scanMutation, onFound, onNotFound],
+	);
+
+	return { handleScan, isScanning: scanMutation.isPending };
 };
 
 // ============================================================================

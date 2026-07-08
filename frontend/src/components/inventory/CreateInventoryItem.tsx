@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { isAxiosError } from "axios";
-import { Upload, X, Trash2 } from "lucide-react";
+import { Upload, X, Trash2, Barcode as BarcodeIcon } from "lucide-react";
+import { BarcodeScanner } from "./BarcodeScanner";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import { TemplateSearch, type TemplateSearchResult } from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -33,6 +34,7 @@ interface CreateInventoryItemProps {
 	isOpen: boolean;
 	onClose: () => void;
 	existingItem?: InventoryItem | null;
+	prefillBarcode?: string;
 }
 
 const STEPS = [
@@ -49,6 +51,7 @@ export default function CreateInventoryItem({
 	isOpen,
 	onClose,
 	existingItem,
+	prefillBarcode,
 }: CreateInventoryItemProps) {
 	const isEdit = !!existingItem;
 
@@ -57,6 +60,8 @@ export default function CreateInventoryItem({
 
 	const [name, setName] = useState("");
 	const [sku, setSku] = useState("");
+	const [barcode, setBarcode] = useState("");
+	const [isScannerOpen, setIsScannerOpen] = useState(false);
 	const [description, setDescription] = useState("");
 	const [location, setLocation] = useState("");
 	const [quantity, setQuantity] = useState(0);
@@ -130,6 +135,7 @@ export default function CreateInventoryItem({
 		if (isOpen && existingItem) {
 			setName(existingItem.name);
 			setSku(existingItem.sku || "");
+			setBarcode(existingItem.barcode || "");
 			setDescription(existingItem.description);
 			setLocation(existingItem.location);
 			setQuantity(existingItem.quantity);
@@ -154,12 +160,19 @@ export default function CreateInventoryItem({
 		}
 	}, [isOpen, existingItem]);
 
+	useEffect(() => {
+		if (isOpen && !existingItem && prefillBarcode) {
+			setBarcode(prefillBarcode);
+		}
+	}, [isOpen, existingItem, prefillBarcode]);
+
 	const resetForm = useCallback(() => {
 		resetWizard();
 		setQbSearchOpen(false);
 		setSelectedQBId("");
 		setName("");
 		setSku("");
+		setBarcode("");
 		setDescription("");
 		setLocation("");
 		setQuantity(0);
@@ -290,6 +303,7 @@ export default function CreateInventoryItem({
 		const buildPayload = () => ({
 			name: name.trim(),
 			sku: sku.trim() || null,
+			barcode: barcode.trim() || null,
 			description: description.trim(),
 			location: location.trim(),
 			quantity,
@@ -435,6 +449,30 @@ export default function CreateInventoryItem({
 									className={INPUT}
 									disabled={isLoading}
 								/>
+							</div>
+						</div>
+
+						<div className="min-w-0">
+							<label className={LABEL}>Barcode</label>
+							<div className="flex items-center gap-1.5">
+								<input
+									type="text"
+									data-barcode-input="true"
+									placeholder="UPC-A, EAN-13, Code128, QR…"
+									value={barcode}
+									onChange={(e) => setBarcode(e.target.value)}
+									className={INPUT}
+									disabled={isLoading}
+								/>
+								<button
+									type="button"
+									onClick={() => setIsScannerOpen(true)}
+									disabled={isLoading}
+									aria-label="Scan barcode"
+									className="h-[34px] w-[34px] shrink-0 flex items-center justify-center rounded border border-border text-text-muted hover:text-primary hover:border-primary transition-colors"
+								>
+									<BarcodeIcon size={16} />
+								</button>
 							</div>
 						</div>
 
@@ -884,6 +922,13 @@ export default function CreateInventoryItem({
 								</span>
 
 								<span className="text-text-tertiary">
+									Barcode
+								</span>
+								<span className="text-text-primary">
+									{barcode || "—"}
+								</span>
+
+								<span className="text-text-tertiary">
 									Location
 								</span>
 								<span className="text-text-primary">
@@ -992,6 +1037,12 @@ export default function CreateInventoryItem({
 			onCloseSourceSearch={() => setQbSearchOpen(false)}
 		>
 			{stepContent}
+			{isScannerOpen && (
+				<BarcodeScanner
+					onScan={(code) => setBarcode(code)}
+					onClose={() => setIsScannerOpen(false)}
+				/>
+			)}
 		</FormWizardContainer>
 	);
 }

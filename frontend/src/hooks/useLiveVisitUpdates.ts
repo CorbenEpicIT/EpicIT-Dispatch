@@ -70,7 +70,10 @@ export function useLiveVisitUpdates() {
 	}, [userId]);
 
 	useEffect(() => {
-		const socket: Socket = io(SOCKET_URL, { transports: ["websocket"] });
+		const socket: Socket = io(SOCKET_URL, {
+			transports: ["websocket"],
+			auth: (cb) => cb({ token: localStorage.getItem("accessToken") }),
+		});
 
 		socket.on("connect_error", (err) => console.error("[LiveUpdates] socket connect_error", err));
 		socket.on("disconnect", (reason) => console.warn("[LiveUpdates] socket disconnected", reason));

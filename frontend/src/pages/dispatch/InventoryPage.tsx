@@ -1,6 +1,9 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Trash2, FileSpreadsheet, Settings2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet, Settings2, ChevronDown, ChevronUp, Barcode, X } from "lucide-react";
+import { BarcodeScanner } from "../../components/inventory/BarcodeScanner";
+import { useBarcodeScanner } from "../../hooks/useBarcodeScanner";
+import { useBarcodeScanHandler } from "../../hooks/useInventory";
 import InventoryItemView from "../../components/inventory/InventoryItemView";
 import LowStockList from "../../components/inventory/LowStockList";
 import EditInventory from "../../components/inventory/EditInventory";
@@ -51,13 +54,16 @@ export default function InventoryPage() {
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<"card" | "list">("card");
-	const [highlightedItemIds, setHighlightedItemIds] = useState<Set<string>>(new Set());
+	const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
 	const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 	const qbConnected = !!useQBStatusQuery().data?.connected;
 	const [linkItem, setLinkItem] = useState<InventoryItem | null>(null);
 	
 	const [isPendingOpen, setIsPendingOpen] = useState(false);
+	const [isScannerOpen, setIsScannerOpen] = useState(false);
+	const [scanNotFoundCode, setScanNotFoundCode] = useState<string | null>(null);
+	const [createPrefillBarcode, setCreatePrefillBarcode] = useState<string | undefined>(undefined);
 
 	//permissions
 	const MANAGE_INVENTORY = usePermission("manage_inventory");
@@ -80,6 +86,7 @@ export default function InventoryPage() {
 				(item) =>
 					item.name.toLowerCase().includes(q) ||
 					(item.sku && item.sku.toLowerCase().includes(q)) ||
+					(item.barcode && item.barcode.toLowerCase().includes(q)) ||
 					item.location.toLowerCase().includes(q) ||
 					(item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false),
 			);
@@ -112,23 +119,17 @@ export default function InventoryPage() {
 		cardRefs.current
 			.get(itemId)
 			?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-		// Remove first so the class is stripped (even if already highlighted),
-		// then re-add in the next frame to force animation restart.
-		setHighlightedItemIds((prev) => {
-			const next = new Set(prev);
-			next.delete(itemId);
-			return next;
-		});
+		// Only one item highlighted at a time — a new scan/click replaces
+		// whichever card was previously highlighted. Clear first (even if
+		// it's the same id) so the outline restarts, then set in the next frame.
+		setHighlightedItemId(null);
 		requestAnimationFrame(() => {
-			setHighlightedItemIds((prev) => new Set(prev).add(itemId));
-			setTimeout(() => {
-				setHighlightedItemIds((prev) => {
-					const next = new Set(prev);
-					next.delete(itemId);
-					return next;
-				});
-			}, 2500);
+			setHighlightedItemId(itemId);
 		});
+	}, []);
+
+	const handleHighlightMouseLeave = useCallback((itemId: string) => {
+		setHighlightedItemId((prev) => (prev === itemId ? null : prev));
 	}, []);
 
 	useEffect(() => {
@@ -149,6 +150,27 @@ export default function InventoryPage() {
 		},
 		[filteredItems, scrollAndHighlight]
 	);
+
+	const { handleScan: scanAndBranch } = useBarcodeScanHandler(
+		(item) => {
+			setSearch("");
+			handleLowStockClick(item.id);
+		},
+		(code) => setScanNotFoundCode(code),
+	);
+
+	const handleBarcodeScan = useCallback(
+		async (code: string) => {
+			setScanNotFoundCode(null);
+			await scanAndBranch(code);
+		},
+		[scanAndBranch]
+	);
+
+	// Wedge listener off while a modal owns scan input — otherwise scanning into
+	// the Create/Edit Barcode field (data-barcode-input) double-fires the page
+	// handler behind the modal (search cleared, wrong card highlighted).
+	useBarcodeScanner(handleBarcodeScan, !isCreateOpen && !editingItem && !isScannerOpen);
 
 	useEffect(() => {
 		const highlightId = searchParams.get("highlight");
@@ -222,11 +244,20 @@ export default function InventoryPage() {
 				<PageControls
 					className="mb-4"
 					left={
-						<SearchBar
-							placeholder="Search items..."
-							value={search}
-							onChange={setSearch}
-						/>
+						<div className="flex items-center gap-2 w-full">
+							<SearchBar
+								placeholder="Search items..."
+								value={search}
+								onChange={setSearch}
+							/>
+							<button
+								onClick={() => setIsScannerOpen(true)}
+								title="Scan barcode"
+								className="inline-flex items-center justify-center h-8 w-8 flex-shrink-0 rounded-md bg-surface hover:bg-surface-raised border border-border text-text-secondary transition-colors"
+							>
+								<Barcode size={14} />
+							</button>
+						</div>
 					}
 					middle={
 						<div className="flex items-center gap-2">
@@ -312,9 +343,8 @@ export default function InventoryPage() {
 								<InventoryItemView
 									item={item}
 									viewMode={viewMode}
-									isHighlighted={highlightedItemIds.has(
-										item.id
-									)}
+									isHighlighted={highlightedItemId === item.id}
+									onHighlightMouseLeave={() => handleHighlightMouseLeave(item.id)}
 									onEditThreshold={() =>
 										setThresholdItem(
 											item
@@ -394,9 +424,49 @@ export default function InventoryPage() {
 				onClose={() => {
 					setIsCreateOpen(false);
 					setEditingItem(null);
+					setCreatePrefillBarcode(undefined);
 				}}
 				existingItem={editingItem}
+				prefillBarcode={createPrefillBarcode}
 			/>
+
+			{/* Barcode Scanner */}
+			{isScannerOpen && (
+				<BarcodeScanner
+					onScan={(code) => {
+						setIsScannerOpen(false);
+						handleBarcodeScan(code);
+					}}
+					onClose={() => setIsScannerOpen(false)}
+				/>
+			)}
+
+			{/* Scan: no matching item */}
+			{scanNotFoundCode && (
+				<div role="alert" className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-error-bg border border-error-border rounded-lg shadow-2xl px-4 py-3">
+					<span className="text-sm font-medium text-error-text">
+						No item found for "{scanNotFoundCode}"
+					</span>
+					{MANAGE_INVENTORY && (
+						<button
+							onClick={() => {
+								setCreatePrefillBarcode(scanNotFoundCode);
+								setIsCreateOpen(true);
+								setScanNotFoundCode(null);
+							}}
+							className="text-sm font-semibold text-primary hover:underline flex-shrink-0"
+						>
+							Add it
+						</button>
+					)}
+					<button
+						onClick={() => setScanNotFoundCode(null)}
+						className="text-error-text/70 hover:text-error-text transition-colors flex-shrink-0"
+					>
+						<X size={14} />
+					</button>
+				</div>
+			)}
 
 			{/* Link to QuickBooks Modal */}
 			{linkItem && (

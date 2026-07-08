@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
 	getAllInventory,
 	getLowStockInventory,
+	scanInventoryByCode,
 	createInventoryItem,
 	updateInventoryItem,
 	deleteInventoryItem,
@@ -97,6 +98,9 @@ function setupTransaction() {
 			findUnique: vi.fn(),
 			findMany: vi.fn(),
 			update: vi.fn(),
+		},
+		item_external_mapping: {
+			deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
 		},
 	};
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -206,6 +210,43 @@ describe("inventoryController", () => {
 	});
 
 	// ---------------------------------------------------------------------------
+	// scanInventoryByCode
+	// ---------------------------------------------------------------------------
+	describe("scanInventoryByCode", () => {
+		it("returns NOT_FOUND after trying barcode, sku, then alt_ids", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+			const result = await scanInventoryByCode("org-1", "012345678905");
+			expect(result.err).toBe("NOT_FOUND");
+			expect(mockDb.inventory_item.findFirst).toHaveBeenCalledTimes(3);
+		});
+
+		it("excludes provisional items from every lookup branch", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+			await scanInventoryByCode("org-1", "012345678905");
+			expect(mockDb.inventory_item.findFirst.mock.calls).toHaveLength(3);
+			for (const call of mockDb.inventory_item.findFirst.mock.calls) {
+				expect(call[0].where).toMatchObject({ is_active: true, provisional: false });
+			}
+		});
+
+		it("returns the item on a barcode hit without falling through to sku", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValueOnce(
+				makeItem({ barcode: "012345678905" }),
+			);
+			const result = await scanInventoryByCode("org-1", "012345678905");
+			expect(result.err).toBe("");
+			expect(result.item).toHaveProperty("stock_status");
+			expect(mockDb.inventory_item.findFirst).toHaveBeenCalledTimes(1);
+		});
+
+		it("rejects an empty code without querying", async () => {
+			const result = await scanInventoryByCode("org-1", "   ");
+			expect(result.err).toBe("Empty code");
+			expect(mockDb.inventory_item.findFirst).not.toHaveBeenCalled();
+		});
+	});
+
+	// ---------------------------------------------------------------------------
 	// createInventoryItem
 	// ---------------------------------------------------------------------------
 	describe("createInventoryItem", () => {
@@ -280,6 +321,49 @@ describe("inventoryController", () => {
 			await createInventoryItem({ name: "Widget", location: "Shelf A" });
 
 			expect(tx.inventory_item.create.mock.calls[0][0].data.alt_ids).toEqual([]);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// barcode normalization
+	// ---------------------------------------------------------------------------
+	describe("barcode normalization", () => {
+		it("trims barcode whitespace on create", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ barcode: "012345678905" }));
+
+			await createInventoryItem({ name: "W", location: "A", barcode: "  012345678905 " });
+
+			expect(tx.inventory_item.create.mock.calls[0][0].data.barcode).toBe("012345678905");
+		});
+
+		it("stores null for a whitespace-only barcode on create", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			await createInventoryItem({ name: "W", location: "A", barcode: "   " });
+
+			expect(tx.inventory_item.create.mock.calls[0][0].data.barcode).toBeNull();
+		});
+
+		it("normalizes empty-string barcode to null on update", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ barcode: "OLD" }));
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem({ barcode: null }));
+
+			await updateInventoryItem("item-1", { barcode: "" }, "org-1");
+
+			expect(tx.inventory_item.update.mock.calls[0][0].data.barcode).toBeNull();
+		});
+
+		it("leaves barcode absent on update when not provided", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem());
+
+			await updateInventoryItem("item-1", { name: "New Name" }, "org-1");
+
+			expect(tx.inventory_item.update.mock.calls[0][0].data.barcode).toBeUndefined();
 		});
 	});
 
@@ -359,16 +443,19 @@ describe("inventoryController", () => {
 			expect((await deleteInventoryItem("missing")).err).toBe("Inventory item not found");
 		});
 
-		it("soft-deletes by setting is_active to false", async () => {
-			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+		it("soft-deletes by setting is_active to false and releasing the barcode", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ barcode: "012345678905" }));
 			const tx = setupTransaction();
-			tx.inventory_item.update.mockResolvedValue(makeItem({ is_active: false }));
+			tx.inventory_item.update.mockResolvedValue(makeItem({ is_active: false, barcode: null }));
 
 			const result = await deleteInventoryItem("item-1");
 			expect(result.err).toBe("");
 			expect(tx.inventory_item.update).toHaveBeenCalledWith(
-				expect.objectContaining({ data: { is_active: false } }),
+				expect.objectContaining({ data: { is_active: false, barcode: null } }),
 			);
+			expect(tx.item_external_mapping.deleteMany).toHaveBeenCalledWith({
+				where: { inventory_item_id: "item-1" },
+			});
 		});
 	});
 

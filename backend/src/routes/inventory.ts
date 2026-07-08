@@ -17,6 +17,7 @@ import {
     exportLowStockToXlsx,
     getInventoryImportTemplate,
     getInventoryMovements,
+    scanInventoryByCode,
     listProvisionalItems,
     approveProvisionalItem,
     mergeProvisionalItem,
@@ -32,6 +33,7 @@ import {
 import { uploadFile, signImageUrl, signImageUrls, toRawUrl } from "../services/wasabiService.js";
 import { imageUpload, spreadsheetUpload } from "../lib/upload.js";
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
+import { scanQuerySchema } from '../lib/validate/inventory.js';
 
 
 
@@ -88,6 +90,36 @@ router.post("/", requirePermission("manage_inventory"), async (req, res, next) =
         }
 
         res.status(201).json(createSuccessResponse(await signItem(result.item!)));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ── Barcode scan lookup ───────────────────────────────────────────────────────
+// NOTE: /scan must be registered BEFORE any /:id routes to avoid param collision.
+// view_inventory is held by both dispatcher and technician permission catalogs.
+
+router.get("/scan", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const parsed = scanQuerySchema.safeParse(req.query);
+        if (!parsed.success) {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.issues[0]?.message ?? "Invalid code"));
+        }
+        const result = await scanInventoryByCode(orgId, parsed.data.code);
+        if (result.err === "NOT_FOUND") {
+            return res
+                .status(404)
+                .json(createErrorResponse(ErrorCodes.NOT_FOUND, "No item found for this barcode"));
+        }
+        if (result.err) {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+        res.json(createSuccessResponse(await signItem(result.item!)));
     } catch (err) {
         next(err);
     }

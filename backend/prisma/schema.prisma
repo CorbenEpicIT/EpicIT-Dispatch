@@ -1130,6 +1130,7 @@ model inventory_item {
   unit_price Decimal? @db.Decimal(10, 2)
   cost       Decimal? @db.Decimal(10, 2)
   sku        String?
+  barcode    String? // Physical label code (UPC, EAN, Code128, Code39, QR)
   is_active  Boolean  @default(true)
   low_stock_threshold Int?
   provisional         Boolean   @default(false)
@@ -1160,7 +1161,9 @@ model inventory_item {
   invoice_line_items invoice_line_item[]
 
   @@unique([organization_id, sku])
+  @@unique([organization_id, barcode])
   @@index([sku])
+  @@index([barcode])
   @@index([is_active])
   @@index([organization_id])
   @@index([created_at])
