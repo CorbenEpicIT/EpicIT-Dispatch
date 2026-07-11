@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { queryClient } from "../../main";
-import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check, UserRoundPlus, Users } from "lucide-react";
+import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check, UserRoundPlus, Users, Loader2 } from "lucide-react";
 import { useOrgSettings } from "../../hooks/useOrg";
 import { useThemeStore } from "../../stores/themeStore";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
@@ -15,6 +15,7 @@ export default function TechnicianUserMenu() {
     const [themeOpen, setThemeOpen] = useState(false);
     const [switchUserOpen, setSwitchUserOpen] = useState(false);
     const {accounts, upsertAccount, patchAccount, removeAccount} = useRememberedAccountsStore();
+    const [accountSwitching, setAccountSwitching] = useState(false);
     const otherAccounts = accounts.filter((a) => a.userId !== user?.userId);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
@@ -135,6 +136,7 @@ export default function TechnicianUserMenu() {
 								if (otherAccounts.length > 0) {
 									setSwitchUserOpen(!switchUserOpen)
 								} else {
+                                    setAccountSwitching(true);
 									logoutBeacon();
 									logout(true);
 									queryClient.clear();
@@ -156,6 +158,7 @@ export default function TechnicianUserMenu() {
                                         key={account.userId}
                                         onClick={() => {
                                             if (account.userId === user?.userId) return; // already logged in as this user
+                                            setAccountSwitching(true);
                                             logoutBeacon();
                                             localStorage.removeItem("accessToken");
                                             useAuthStore.persist.clearStorage();
@@ -221,6 +224,12 @@ export default function TechnicianUserMenu() {
 					</div>
 				</div>
 			)}
+            {accountSwitching && (
+                <div className="fixed inset-0 z-[6000] flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm">
+                    <Loader2 className="w-10 h-10 animate-spin text-primary"/>
+                    <p className="text-sm text-text-primary">Switching account</p>
+                </div>	
+            )}
 		</div>
 	);
 }

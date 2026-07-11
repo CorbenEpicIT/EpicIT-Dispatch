@@ -11,7 +11,7 @@ export interface RememberedAccount {
 	lastUsedAt: number;
 }
 
-const MAX_ACCOUNTS = 8;
+const MAX_ACCOUNTS = 5;
 
 interface RememberedAccountsState {
 	accounts: RememberedAccount[];
