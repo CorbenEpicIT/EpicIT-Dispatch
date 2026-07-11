@@ -128,7 +128,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
 
     // avoid repeating same code for both views
     const OPTIONS = (
-                    <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
                         {viewMode === "list" &&
                             <button
                                 onClick={(e) => {

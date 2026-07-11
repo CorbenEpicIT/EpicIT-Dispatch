@@ -16,20 +16,12 @@ import {
 
 const router = Router();
 
-// This router mounts WITHOUT the global verifyToken middleware because its
-// routes have three different auth needs:
-//   /verify           — a pending_totp token only (mid-login, no session yet)
-//   /setup, /enable    — a full access token OR a pending_mfa_enroll token
-//   /disable, /status  — a full access token only
-// Each route declares its own guard below.
-
 interface MfaEnrollAuth {
 	userId: string;
 	role: string;
 	viaEnroll: boolean;
 }
 
-// Full access token only. Rejects any stage-bearing (pending) token.
 function requireAccess(req: Request, res: Response, next: NextFunction) {
 	const token = req.headers.authorization?.split(" ")[1];
 	if (!token) {
@@ -49,8 +41,6 @@ function requireAccess(req: Request, res: Response, next: NextFunction) {
 	}
 }
 
-// Full access token OR a pending_mfa_enroll token (forced-enrollment-at-login).
-// Attaches { userId, role, viaEnroll } to the request.
 function requireEnrollOrAccess(req: Request, res: Response, next: NextFunction) {
 	const token = req.headers.authorization?.split(" ")[1];
 	if (token) {
@@ -86,7 +76,6 @@ function requireEnrollOrAccess(req: Request, res: Response, next: NextFunction) 
 		.json(createErrorResponse(ErrorCodes.INVALID_TOKEN, "Unauthorized"));
 }
 
-// Begin enrollment: generate a secret + otpauth URI (shown once for the QR).
 router.post("/setup", requireEnrollOrAccess, async (req, res, next) => {
 	try {
 		const { userId, role } = (req as Request & { mfaAuth: MfaEnrollAuth }).mfaAuth;
@@ -97,8 +86,6 @@ router.post("/setup", requireEnrollOrAccess, async (req, res, next) => {
 	}
 });
 
-// Confirm enrollment: verify a code against the pending secret, store backup
-// codes, and (in the forced-enroll flow) return a real session.
 router.post("/enable", requireEnrollOrAccess, async (req, res, next) => {
 	try {
 		const { userId, role, viaEnroll } = (req as Request & { mfaAuth: MfaEnrollAuth }).mfaAuth;
@@ -111,7 +98,6 @@ router.post("/enable", requireEnrollOrAccess, async (req, res, next) => {
 	}
 });
 
-// Login challenge: verify a TOTP or backup code against a pending_totp token.
 router.post("/verify", async (req, res, next) => {
 	try {
 		const pendingToken = req.headers.authorization?.split(" ")[1];
@@ -133,11 +119,10 @@ router.post("/verify", async (req, res, next) => {
 	}
 });
 
-// Disable MFA (step-up: current password or a valid TOTP code required).
 router.post("/disable", requireAccess, async (req, res, next) => {
 	try {
-		const { password, code } = req.body;
-		const result = await disableTotp(req.user!.uid, req.user!.role, password, code);
+		const { password, code, backupCode } = req.body;
+		const result = await disableTotp(req.user!.uid, req.user!.role, password, code, backupCode);
 		if (result && "error" in result) return res.status(400).json(result);
 		res.json(createSuccessResponse(null));
 	} catch (err) {
@@ -145,7 +130,6 @@ router.post("/disable", requireAccess, async (req, res, next) => {
 	}
 });
 
-// Current user's MFA status.
 router.get("/status", requireAccess, async (req, res, next) => {
 	try {
 		const result = await getMfaStatus(req.user!.uid, req.user!.role);

@@ -52,7 +52,7 @@ export const enableMfa = async (code: string): Promise<MfaEnableResponse> => {
 	}
 };
 
-export const disableMfa = async (args: { password?: string; code?: string }): Promise<void> => {
+export const disableMfa = async (args: { password?: string; code?: string, backupCode?: string }): Promise<void> => {
 	try {
 		await api.post<ApiResponse<null>>("/mfa/disable", args);
 	} catch (err) {

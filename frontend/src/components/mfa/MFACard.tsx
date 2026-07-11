@@ -268,14 +268,14 @@ export default function MFACard() {
                     <div className="space-y-1.5">
                         <input
                             type="text"
-                            placeholder="Password or 6-digit code"
+                            placeholder="Password, 6-digit code, or backup code"
                             value={disableCode}
                             onChange={(e) => setDisableCode(e.target.value)}
                             className="w-full max-w-xs rounded-md border border-border-input bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <p className="text-xs text-text-muted">
-                            Enter your current password or a 6-digit code from your
-                            authenticator app.
+                            Enter your current password, a 6-digit code from your
+                            authenticator app, or a backup code.
                         </p>
                     </div>
                     {disableMfa.isError && (
@@ -290,7 +290,7 @@ export default function MFACard() {
                             onClick={() => {
                                 const v = disableCode.trim();
                                 disableMfa.mutate(
-                                    /^\d{6}$/.test(v) ? { code: v } : { password: v }
+                                    /^\d{6}$/.test(v) ? { code: v } : /^[0-9a-f]{8}$/i.test(v) ? {backupCode: v} : { password: v }
                                 );
                             }}
                         >

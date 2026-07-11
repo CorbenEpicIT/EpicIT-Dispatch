@@ -79,7 +79,6 @@ export const login = async (res: Response, email: string, password: string) => {
 		}
 
 		// MFA takes precedence over email OTP 
-		// authenticator app is challenged for a code instead of emailing an OTP
 		const mfa_cred = await db.mfa_credential.findFirst({
 			where: {
 				user_id: user.id,

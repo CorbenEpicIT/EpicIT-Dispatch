@@ -146,7 +146,7 @@ export async function verifyMfa(res: Response, pendingToken: string, code?: stri
     return issueAuthTokens(res, pt.userId, pt.role);
 }
 
-export async function disableTotp(userId: string, role: string, password?: string, code?: string) {
+export async function disableTotp(userId: string, role: string, password?: string, code?: string, backupCode?: string) {
     const user = role === "technician"
         ? await db.technician.findUnique({ where: { id: userId } })
         : await db.dispatcher.findUnique({ where: { id: userId } });
@@ -163,9 +163,14 @@ export async function disableTotp(userId: string, role: string, password?: strin
             where: { user_id_role: { user_id: userId, role } }
         });
         reauthed = !!credential && verifyTotp(decryptSecret(credential.secret), code);
+    } else if (backupCode) {
+        const row = await db.mfa_recovery_code.findFirst({
+            where: { user_id: userId, role, code: hashRecoveryCode(backupCode), used_at: null },
+        });
+        reauthed = !!row;
     }
     if (!reauthed) {
-        return createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Password or code required to disable MFA");
+        return createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Password, code, or backup code required to disable MFA");
     }
 
     await db.$transaction(async (tx) => {
