@@ -89,7 +89,7 @@ async function main() {
 			tax_rate: 0.0825,
 			phone:    "(608) 555-0142",
 			address:  "1857 Sand Lake Road, Onalaska, WI 54650",
-			coords:   { lat: 44.7441, lng: -91.2396 },
+			coords:   { lat: 44.7441, lon: -91.2396 },
 			email:    "info@epicitautomations.com",
 			website:  "epicitautomations.com",
 			restock_mode: "tech_self_serve",
