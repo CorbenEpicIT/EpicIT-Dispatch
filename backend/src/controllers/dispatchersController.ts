@@ -12,15 +12,18 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { getAllPermissions } from "../lib/permissionCatalogs.js";
+import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
 
 
 export const getAllDispatchers = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-    return await sdb.dispatcher.findMany({
+    const dispatchers = await sdb.dispatcher.findMany({
         include: {
             organization_role: { select: { id: true, name: true } },
         },
     });
+    const mfaEnabledIds = await getMfaEnabledUserIds(dispatchers.map((d) => d.id));
+    return dispatchers.map((d) => ({ ...d, mfaEnabled: mfaEnabledIds.has(d.id) }));
 };
 
 export const getDispatcherById = async (id: string, organizationId: string) => {
@@ -36,7 +39,7 @@ export const getDispatcherById = async (id: string, organizationId: string) => {
         dispatcher.role === "admin"
             ? getAllPermissions("dispatcher")
             : (dispatcher.organization_role?.permissions as string[] | null) ?? [];
-    return { ...dispatcher, permissions };
+    return { ...dispatcher, permissions, mfaEnabled: await isMfaEnabled(id) };
 };
 
 export const insertDispatcher = async (

@@ -8,6 +8,7 @@ import ProfileDetailsForm from "../components/profile/ProfileDetailsForm";
 import SecurityCard from "../components/profile/SecurityCard";
 import PreferencesCard from "../components/profile/PreferencesCard";
 import PermissionsCard from "../components/profile/PermissionsCard";
+import MFACard from "../components/mfa/MFACard"
 
 type ProfileTab = "profile" | "security" | "preferences" | "permissions";
 
@@ -134,6 +135,8 @@ export default function MyProfilePage() {
 			{activeTab === "security" && (
 				<div role="tabpanel" id="tabpanel-security" aria-labelledby="tab-security">
 					<SecurityCard />
+					<br></br>
+					<MFACard />
 				</div>
 			)}
 			{activeTab === "preferences" && (

@@ -57,6 +57,7 @@ import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
 import quickbooksRouter from "./routes/quickbooks.js";
 import oauthRouter from "./routes/oauth.js";
+import mfaRouter from "./routes/mfa.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -130,7 +131,7 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
 
 	try {
 		const decoded = checkToken(token);
-		if ((decoded as any).stage === "pending_otp") {
+		if ((decoded as any).stage) {
 			return res
 				.status(401)
 				.json(
@@ -423,6 +424,11 @@ app.post("/integrations/quickbooks/webhook", handleQBWebhook);
 // OAUTH2 AUTHORIZATION SERVER 
 // ================================================================================
 app.use("/oauth", oauthRouter);
+
+// ================================================================================
+// MFA (public mount — the router applies its own per-route auth guards)
+// ================================================================================
+app.use("/mfa", mfaRouter);
 
 // ================================================================================
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)

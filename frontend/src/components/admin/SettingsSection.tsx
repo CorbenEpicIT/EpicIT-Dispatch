@@ -69,6 +69,7 @@ function OrgSettingsSection() {
 		coords: null,
 		email: "",
 		website: "",
+		mfa_required: false,
 	});
 
 	useEffect(() => {
@@ -81,6 +82,7 @@ function OrgSettingsSection() {
 				email: org.email ?? "",
 				website: org.website ?? "",
 				restock_mode: org.restock_mode,
+				mfa_required: org.mfa_required,
 			});
 			setLogoImgError(false);
 		}
@@ -143,6 +145,7 @@ function OrgSettingsSection() {
 				email: form.email || null,
 				website: form.website || null,
 				...(form.restock_mode ? { restock_mode: form.restock_mode } : {}),
+				mfa_required: !!form.mfa_required,
 			});
 			setSaveSuccess(true);
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -434,6 +437,24 @@ function OrgSettingsSection() {
 							</label>
 						))}
 					</div>
+				</div>
+
+				{/* Security — org-wide MFA enforcement */}
+				<div className="mt-5 border-t border-border-subtle pt-5">
+					<span className="mb-1 block text-xs font-medium text-text-tertiary">
+						Security
+					</span>
+					<p className="mb-2 text-xs text-text-muted">
+						When on, everyone in this organization must set up an authenticator
+						app; anyone not enrolled is prompted at their next sign-in.
+					</p>
+					<Toggle
+						checked={!!form.mfa_required}
+						onChange={() =>
+							setForm((prev) => ({ ...prev, mfa_required: !prev.mfa_required }))
+						}
+						label="Require two-factor authentication"
+					/>
 				</div>
 
 				<div className="mt-5 flex items-center gap-3">

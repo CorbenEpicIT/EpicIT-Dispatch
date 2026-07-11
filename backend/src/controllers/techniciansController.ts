@@ -14,6 +14,7 @@ import { getScopedDb, type UserContext } from "../lib/context.js";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
+import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
 
 const PAID_BREAK_REASONS = new Set<string>(["Rest", "EquipmentIssue"]);
 const VALID_BREAK_REASONS = new Set<string>([
@@ -45,7 +46,7 @@ function toTechnicianStatus(v: string): technician_status | undefined {
 
 export const getAllTechnicians = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.technician.findMany({
+	const technicians = await sdb.technician.findMany({
 		include: {
 			organization_role: { select: { id: true, name: true } },
 			visit_techs: {
@@ -59,11 +60,13 @@ export const getAllTechnicians = async (organizationId: string) => {
 			},
 		},
 	});
+	const mfaEnabledIds = await getMfaEnabledUserIds(technicians.map((t) => t.id));
+	return technicians.map((t) => ({ ...t, mfaEnabled: mfaEnabledIds.has(t.id) }));
 };
 
 export const getTechnicianById = async (id: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.technician.findFirst({
+	const technician = await sdb.technician.findFirst({
 		where: { id },
 		include: {
 			organization_role: { select: { id: true, name: true } },
@@ -78,6 +81,8 @@ export const getTechnicianById = async (id: string, organizationId: string) => {
 			},
 		},
 	});
+	if (!technician) return null;
+	return { ...technician, mfaEnabled: await isMfaEnabled(id) };
 };
 
 export const insertTechnician = async (

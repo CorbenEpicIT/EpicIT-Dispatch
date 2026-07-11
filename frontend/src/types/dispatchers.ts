@@ -27,6 +27,7 @@ export interface Dispatcher {
   theme: "dark" | "light" | "system";
   dashboard_layout: Layout | null;
   report_layout: ReportLayout | null;
+  mfaEnabled?: boolean;
 }
 
 export interface CreateDispatcherInput {

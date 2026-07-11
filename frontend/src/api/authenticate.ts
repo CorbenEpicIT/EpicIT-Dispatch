@@ -22,6 +22,7 @@ interface AuthResponse {
     },
     forcePasswordReset?: boolean,
     resetToken?: string,
+    challenge?: "otp" | "totp" | "enroll"
 }
 
 export const loginCall = async (input: User): Promise<AuthResponse> => {
@@ -37,8 +38,8 @@ export const loginCall = async (input: User): Promise<AuthResponse> => {
     }
     const data = response.data.data!;
 
-    // First login skips OTP and returns a full token directly.
-    // Normal login returns a pendingToken for the OTP step.
+    // First login skips OTP and returns a full token directly
+    // Normal login returns a pendingToken for the OTP step
     const tokenToStore = data.token ?? data.pendingToken;
     localStorage.setItem("accessToken", tokenToStore);
     api.defaults.headers.common["Authorization"] = `Bearer ${tokenToStore}`;
@@ -50,6 +51,18 @@ export const verifyOTPCall = async (otp: string): Promise<AuthResponse> => {
 
     if (response.data.error) {
         throw new Error(response.data.error?.message || "OTP verification failed");
+    }
+    localStorage.setItem("accessToken", response.data.data!.token);
+    api.defaults.headers.common["Authorization"] = `Bearer ${response.data.data!.token}`;
+
+    return response.data.data!;
+}
+
+export const verifyMfaCall = async (args: { code?: string; backupCode?: string }): Promise<AuthResponse> => {
+    const response = await api.post<ApiResponse<AuthResponse>>('/mfa/verify', args);
+
+    if (response.data.error) {
+        throw new Error(response.data.error?.message || "MFA verification failed");
     }
     localStorage.setItem("accessToken", response.data.data!.token);
     api.defaults.headers.common["Authorization"] = `Bearer ${response.data.data!.token}`;

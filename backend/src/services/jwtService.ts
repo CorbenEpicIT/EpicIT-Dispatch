@@ -15,6 +15,8 @@ interface User {
 	password: string;
 	last_login: Date | null;
 }
+type PendingStage = "pending_otp" | "pending_totp" | "pending_mfa_enroll";
+
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const OTP_SECRET = process.env.OTP_SECRET;
@@ -92,20 +94,39 @@ export const generateRefreshToken = async (user: User, role: string) => {
 	return token;
 };
 
-export const generateOTPToken = (user: User, role: string) => {
+export const generatePendingToken = (user: User, role: string, stage: PendingStage = "pending_otp") => {
 	if (!OTP_SECRET) {
 		throw new Error("OTP_SECRET is not defined in environment variables");
 	}
+
 	return jwt.sign(
 		{
 			userId: user.id,
 			role: role,
 			organization_id: user.organization_id,
-			stage: "pending_otp",
+			stage: stage,
 		},
 		OTP_SECRET!,
 		{ expiresIn: "10m" },
 	);
+};
+
+export const verifyPendingToken = (token: string) => {
+	if (!OTP_SECRET) {
+		throw new Error("OTP_SECRET is not defined in environment variables");
+	}
+
+	return jwt.verify(token, OTP_SECRET) as {
+		userId: string;
+		role: string;
+		organization_id: string | null;
+		stage: PendingStage;
+	};
+};
+
+// switched to more generalized function
+export const generateOTPToken = (user: User, role: string) => {
+	return generatePendingToken(user, role);
 };
 
 export const verifyToken = (token: string) => {

@@ -10,6 +10,7 @@ import {
 	verifyRefreshToken,
 	generateOTPToken,
 	verifyOTPToken,
+	generatePendingToken,
 } from "../services/jwtService.js";
 import { createOTP, OTP_DISABLED } from "../services/otpServce.js";
 import { Response } from "express";
@@ -19,7 +20,6 @@ import {
 	sendPasswordResetEmail,
 } from "../services/emailService.js";
 import crypto from "crypto";
-import { UserContext } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
 import { logActivity } from "../services/logger.js";
 
@@ -34,9 +34,6 @@ interface AuthResponse {
 	};
 }
 
-// will only need email and password for now
-// get organization by parsing email if needed
-// might change later
 export const login = async (res: Response, email: string, password: string) => {
 	try {
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -81,7 +78,42 @@ export const login = async (res: Response, email: string, password: string) => {
 			return await issueAuthTokens(res, user.id, effectiveRole);
 		}
 
-		// OTP disabled: bypass the verification step and issue tokens directly.
+		// MFA takes precedence over email OTP 
+		// authenticator app is challenged for a code instead of emailing an OTP
+		const mfa_cred = await db.mfa_credential.findFirst({
+			where: {
+				user_id: user.id,
+				role: effectiveRole,
+			},
+		});
+
+		if (mfa_cred?.enabled) {
+			return {
+				data: {
+					challenge: "totp",
+					pendingToken: generatePendingToken(user, effectiveRole, "pending_totp"),
+				},
+			};
+		}
+
+		// Org enforces MFA but this user hasn't enrolled → force 
+		// enrollment at login before any session is issued
+		if (user.organization_id) {
+			const org = await db.organization.findUnique({
+				where: { id: user.organization_id },
+				select: { mfa_required: true },
+			});
+			if (org?.mfa_required) {
+				return {
+					data: {
+						challenge: "enroll",
+						pendingToken: generatePendingToken(user, effectiveRole, "pending_mfa_enroll"),
+					},
+				};
+			}
+		}
+
+		// OTP disabled: bypass the verification step and issue tokens directly
 		if (OTP_DISABLED) {
 			log.info(
 				{ userId: user.id, role: effectiveRole },

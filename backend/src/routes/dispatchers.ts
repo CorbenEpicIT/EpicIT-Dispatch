@@ -14,6 +14,7 @@ import {
     changeDispatcherPassword
 } from "../controllers/dispatchersController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
+import { resetMfa } from '../controllers/mfaController.js';
 import { requirePermission, requirePermissionOrSelf } from '../lib/requirePermissions.js';
 
 const router = Router();
@@ -195,6 +196,23 @@ router.delete("/:id", requirePermission("manage_dispatchers"), async (req, res, 
                 id,
             }),
         );
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post("/:id/mfa/reset", requirePermissionOrSelf("manage_dispatchers"), async (req, res, next) => {
+    try {
+        const id = req.params.id as string;
+        const orgId = req.user!.organization_id as string;
+        const target = await getDispatcherById(id, orgId);
+        if (!target) {
+            return res
+                .status(404)
+                .json(createErrorResponse(ErrorCodes.NOT_FOUND, "Dispatcher not found"));
+        }
+        const result = await resetMfa(id, "dispatcher", req.user!.uid, req.user!.role);
+        res.json(createSuccessResponse(result.data));
     } catch (err) {
         next(err);
     }

@@ -128,6 +128,7 @@ export interface Technician {
 	role_id: string | null;
 	organization_role: { id: string; name: string } | null;
 	theme: "dark" | "light" | "system";
+	mfaEnabled?: boolean;
 }
 
 export interface CreateTechnicianInput {

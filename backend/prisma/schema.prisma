@@ -273,6 +273,7 @@ model organization {
   tax_rate            Decimal @default(0) @db.Decimal(5, 4)
   wrapping_up_minutes Int     @default(15)
   restock_mode        restock_mode @default(tech_self_serve)
+  mfa_required        Boolean @default(false) // Require MFA for all users in this org
 
   logo_key String?
 
@@ -1859,6 +1860,31 @@ model jwt_refresh_token {
   createdAt DateTime @default(now())
 
   @@index([userId, role])
+}
+
+model mfa_credential {
+  id              String   @id @default(cuid())
+  user_id         String
+  role            String   
+  secret          String   // AES-256-GCM encrypted base32 TOTP secret
+  enabled         Boolean  @default(false) 
+  enrolled_at     DateTime?
+  failed_attempts Int @default(0)
+  locked_until    DateTime?
+  created_at      DateTime @default(now())
+
+  @@unique([user_id, role])
+}
+
+model mfa_recovery_code {
+  id         String   @id @default(cuid())
+  user_id    String
+  role       String  
+  code       String   // sha256 of a single-use recovery code
+  used_at    DateTime?
+  created_at DateTime @default(now())
+
+  @@index([user_id, role])
 }
 
 // ============================================================================

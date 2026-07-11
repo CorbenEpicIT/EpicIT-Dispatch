@@ -15,6 +15,7 @@ export interface OrgSettings {
 	website: string | null;
 	tax_rate: string;
 	restock_mode: RestockMode;
+	mfa_required: boolean;
 }
 
 export interface OrgSettingsUpdate {
@@ -25,6 +26,7 @@ export interface OrgSettingsUpdate {
 	email?: string | null;
 	website?: string | null;
 	restock_mode?: RestockMode;
+	mfa_required?: boolean;
 }
 
 export const getOrgSettings = async (): Promise<OrgSettings> => {

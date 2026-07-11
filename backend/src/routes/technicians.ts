@@ -13,6 +13,7 @@ import {
     changeTechnicianPassword
 } from "../controllers/techniciansController.js";
 import { requestPasswordReset } from '../controllers/authenticationController.js';
+import { resetMfa } from '../controllers/mfaController.js';
 import {
 	ErrorCodes,
 	createSuccessResponse,
@@ -400,6 +401,23 @@ router.post("/:id/done", async (req, res, next) => {
 			changedAt: new Date().toISOString(),
 		});
 		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/mfa/reset", requirePermissionOrSelf("manage_technicians"), async (req, res, next) => {
+	try {
+		const id = req.params.id as string;
+		const orgId = req.user!.organization_id as string;
+		const target = await getTechnicianById(id, orgId);
+		if (!target) {
+			return res
+				.status(404)
+				.json(createErrorResponse(ErrorCodes.NOT_FOUND, "Technician not found"));
+		}
+		const result = await resetMfa(id, "technician", req.user!.uid, req.user!.role);
+		res.json(createSuccessResponse(result.data));
 	} catch (err) {
 		next(err);
 	}

@@ -1,4 +1,4 @@
-﻿import { Phone, Mail, Briefcase, Clock, Trash2 } from "lucide-react";
+﻿import { Phone, Mail, Briefcase, Clock, Trash2, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Dispatcher } from "../../types/dispatchers";
 import { MoreHorizontal } from "lucide-react";
@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from "react";
 import { requestPasswordResetCall } from "../../api/authenticate"
 import { usePermission } from "../../hooks/usePermission";
 import { useDeleteDispatcherMutation } from "../../hooks/useDispatchers";
+import { useResetMfaMutation } from "../../hooks/useMfa";
 
 interface DispatcherCardProps {
   dispatcher: Dispatcher;
@@ -59,10 +60,20 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
     const navigate = useNavigate();
     const displayName = capitalizeWords(dispatcher.name);
     const lastLoginText = formatLastLogin(dispatcher.last_login);
+    const mfaBadge = dispatcher.mfaEnabled ? (
+        <span
+            title="Two-factor authentication enabled"
+            className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-xs font-medium text-success-text"
+        >
+            <ShieldCheck size={12} /> MFA
+        </span>
+    ) : null;
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [confirmResetMFA, setConfirmResetMFA] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const { mutateAsync: deleteDispatcher, isPending: isDeleting } = useDeleteDispatcherMutation();
+    const { mutateAsync: resetMFA, isPending: isResetingMFA } = useResetMfaMutation();
 
     //permissions
     const MANAGE_DISPATCHER = usePermission("manage_dispatchers");
@@ -83,6 +94,28 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
 		}
 	};
 
+    const handleResetMFA = async (dispatcher: Dispatcher) => {
+        if (!MANAGE_DISPATCHER) return;
+		if (!dispatcher) return;
+        if (!confirmResetMFA) {
+            setConfirmResetMFA(true);
+            return;
+        }
+        try {
+            await resetMFA({userId: dispatcher.id, role: dispatcher.role});
+            setConfirmResetMFA(false);
+            setDropdownOpen(false);
+        }catch (error) {
+			console.error("Failed to reset MFA:", error);
+			setConfirmResetMFA(false);
+			alert(
+				error instanceof Error
+					? "Failed to reset MFA: " + error.message
+					: "Failed to reset MFA."
+			);
+		}
+    }
+
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -95,88 +128,109 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
 
     // avoid repeating same code for both views
     const OPTIONS = (
-                        <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
-                            {viewMode === "list" &&
+                    <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+                        {viewMode === "list" &&
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDropdownOpen(false);
+                                    onClick?.();
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                            >
+                                View Details
+                            </button>
+                        } 
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setDropdownOpen(false);
+                                requestPasswordResetCall(dispatcher.id, dispatcher.role);
+                                alert("Password reset email sent to " + dispatcher.email);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                        >
+                            Reset Password
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setDropdownOpen(false);
+                                onEdit?.(dispatcher);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                        >
+                            Update User
+                        </button>
+                        {dispatcher.mfaEnabled && (
+                            <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleResetMFA(dispatcher)
+                            }}
+                            onMouseLeave={()=> setConfirmResetMFA(false)}
+                            disabled={isResetingMFA}
+                            className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                                confirmResetMFA
+                                    ? "bg-error hover:bg-error-strong text-on-primary"
+                                    : "text-text-primary hover:bg-surface-raised hover:text-error-text"
+                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                                {isResetingMFA
+                                    ? "Reseting MFA..."
+                                    : confirmResetMFA
+                                        ? "Click Again to Confirm"
+                                        : "Reset MFA"}
+                            </button>
+                        )}
+                        {/* Admins have all permissions */}
+                        {dispatcher.role !== "admin"  && (
+                            <>
                                 <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDropdownOpen(false);
-                                        onClick?.();
-                                    }}
-                                    className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDropdownOpen(false);
+                                    onAssignRole?.(dispatcher);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
                                 >
-                                    View Details
+                                    Assign Role
+                                </button>  
+                                <div className="my-1 border-t border-border-subtle" />
+                                <button
+                                    onClick={
+                                    handleDelete
+                                    }
+                                    onMouseLeave={() =>
+                                    setDeleteConfirm(
+                                        false
+                                    )
+                                    }
+                                    disabled={
+                                    isDeleting
+                                    }
+                                    className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                                    deleteConfirm
+                                        ? "bg-error hover:bg-error-strong text-on-primary"
+                                        : "text-error-text hover:bg-surface-raised hover:text-error-text"
+                                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                                >
+                                    <Trash2
+                                    size={
+                                        16
+                                    }
+                                    />
+                                    {isDeleting
+                                    ? "Deleting..."
+                                    : deleteConfirm
+                                        ? "Click Again to Confirm"
+                                        : "Delete Dispatcher"}
                                 </button>
-                            } 
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDropdownOpen(false);
-                                    requestPasswordResetCall(dispatcher.id, dispatcher.role);
-                                    alert("Password reset email sent to " + dispatcher.email);
-                                }}
-                                className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
-                            >
-                                Reset Password
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDropdownOpen(false);
-                                    onEdit?.(dispatcher);
-                                }}
-                                className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
-                            >
-                                Update User
-                            </button>
-                            {/* Admins have all permissions */}
-                            {dispatcher.role !== "admin"  && (
-                                <>
-                                    <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDropdownOpen(false);
-                                        onAssignRole?.(dispatcher);
-                                    }}
-                                    className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
-                                    >
-                                        Assign Role
-                                    </button>  
-                                    <div className="my-1 border-t border-border-subtle" />
-                                    <button
-                                        onClick={
-                                        handleDelete
-                                        }
-                                        onMouseLeave={() =>
-                                        setDeleteConfirm(
-                                            false
-                                        )
-                                        }
-                                        disabled={
-                                        isDeleting
-                                        }
-                                        className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-                                        deleteConfirm
-                                            ? "bg-error hover:bg-error-strong text-on-primary"
-                                            : "text-error-text hover:bg-surface-raised hover:text-error-text"
-                                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                                    >
-                                        <Trash2
-                                        size={
-                                            16
-                                        }
-                                        />
-                                        {isDeleting
-                                        ? "Deleting..."
-                                        : deleteConfirm
-                                            ? "Click Again to Confirm"
-                                            : "Delete Dispatcher"}
-                                    </button>
-                                </>
-                            )}
-                            
-                        </div>
-                    );
+                            </>
+                        )}
+                        
+                    </div>
+                );
 
     if (viewMode === "list") {
         return (
@@ -196,9 +250,12 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
 
                 {/* Role */}
                 <div className="w-36 flex-shrink-0 flex flex-col gap-0.5">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border w-fit">
-                        {dispatcher.role.charAt(0).toUpperCase() + dispatcher.role.slice(1)}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border w-fit">
+                            {dispatcher.role.charAt(0).toUpperCase() + dispatcher.role.slice(1)}
+                        </span>
+                        {mfaBadge}
+                    </div>
                     {dispatcher.organization_role && (
                         <span className="text-xs text-text-tertiary truncate">{dispatcher.organization_role.name}</span>
                     )}
@@ -263,6 +320,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border">
                             {dispatcher.role.charAt(0).toUpperCase() + dispatcher.role.slice(1)}
                         </span>
+                        {mfaBadge}
                         {dispatcher.organization_role && (
                             <span className="text-xs text-text-tertiary">{dispatcher.organization_role.name}</span>
                         )}
