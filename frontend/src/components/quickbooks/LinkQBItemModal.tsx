@@ -50,7 +50,7 @@ export default function LinkQBItemModal({ item, onClose, isOpen }: LinkQBItemMod
 			<select
 				value={selectedQbId}
 				onChange={(e) => setSelectedQbId(e.target.value)}
-				className="w-full rounded-md border border-border bg-base px-2.5 py-2 text-sm text-text-primary transition-colors focus:border-primary focus:outline-none"
+				className="w-full rounded-md border border-border bg-surface-raised px-2.5 py-2 text-sm text-text-primary transition-colors focus:border-primary focus:outline-none"
 			>
 				<option value="">Select a QuickBooks item…</option>
 				{availableQbItems.map((q) => (

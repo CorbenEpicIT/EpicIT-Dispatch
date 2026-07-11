@@ -78,7 +78,7 @@ export default function SecurityCard() {
 
 	return (
 		<section>
-			<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
+			<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
 				<h2 className="text-lg font-semibold text-text-primary mb-2">Change Password</h2>
 				<form onSubmit={(e) => { e.preventDefault(); handleChangePassword(); }} className="space-y-4">
 					<div>

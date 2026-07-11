@@ -37,7 +37,7 @@ export default function ProfileDetailsForm({ initial, onSave }: ProfileDetailsFo
 
 	return (
 		<section>
-			<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
+			<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
 				<form onSubmit={handleSave} className="space-y-4">
 					<div>
 						<label className="mb-1 block text-xs font-medium text-text-tertiary">

@@ -28,7 +28,7 @@ export default function QBConnectionCard() {
 	};
 
 	return (
-		<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
+		<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
 			{isLoading ? (
 				<div className="h-8 w-32 animate-pulse rounded-md bg-surface" />
 			) : qbStatus?.connected ? (

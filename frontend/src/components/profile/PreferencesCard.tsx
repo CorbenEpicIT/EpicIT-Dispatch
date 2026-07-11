@@ -10,7 +10,7 @@ export default function PreferencesCard({ onThemeChange }: PreferencesCardProps)
 
 	return (
 		<section>
-			<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
+			<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
 				<p className="mb-2 text-xs font-medium text-text-tertiary">Theme</p>
 				<div className="inline-flex rounded-md bg-surface-inset p-0.5">
 					<button

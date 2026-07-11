@@ -47,7 +47,7 @@ export default function ProfileHeroCard({
 	};
 
 	return (
-		<div className="bg-base border border-border rounded-xl p-6">
+		<div className="bg-surface border border-border rounded-xl p-6">
 			<div className="flex items-start gap-5">
 				{/* Avatar */}
 				<div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center text-on-primary font-bold text-xl shrink-0">
