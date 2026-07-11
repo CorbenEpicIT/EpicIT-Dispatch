@@ -30,7 +30,7 @@ import pinoHttp from "pino-http";
 import http from "http";
 import { Server } from "socket.io";
 import { initSocket } from "./services/socketService.js";
-import { refreshAccessToken } from "./services/jwtService.js";
+import { refreshAccessToken, verifyToken as verifyAccessToken } from "./services/jwtService.js";
 
 // ============================================
 // Routers
@@ -236,10 +236,24 @@ rearmWrappingUpTimers().catch((e) =>
 	log.error(e, "Failed to rearm WrappingUp timers"),
 );
 
+// Reject sockets without a valid JWT; room membership must come from verified
+// claims, never from client-supplied handshake query params.
+io.use((socket, next) => {
+	const token = socket.handshake.auth?.["token"] as string | undefined;
+	if (!token) return next(new Error("Unauthorized"));
+	try {
+		const claims = verifyAccessToken(token);
+		socket.data.orgId = claims.organization_id ?? undefined;
+		socket.data.techId = claims.role === "technician" ? claims.uid : undefined;
+		next();
+	} catch {
+		next(new Error("Unauthorized"));
+	}
+});
+
 // Each technician joins their personal room; all clients join their org room
 io.on("connection", (socket) => {
-	const techId = socket.handshake.query["techId"] as string | undefined;
-	const orgId = socket.handshake.query["orgId"] as string | undefined;
+	const { orgId, techId } = socket.data as { orgId?: string; techId?: string };
 	if (techId) socket.join(`tech:${techId}`);
 	if (orgId) socket.join(`org:${orgId}`);
 });

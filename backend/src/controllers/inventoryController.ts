@@ -14,6 +14,18 @@ import { log } from "../services/appLogger.js";
 import { sendLowStockAlert } from "../services/lowStockAlerts.js";
 import { recordMovements, InsufficientStockError, type ActorInfo } from "../services/stockMovements.js";
 import { withStockStatus } from "../lib/inventory.js";
+import { getSocket } from "../services/socketService.js";
+
+// Best-effort real-time push — an unavailable/uninitialized socket layer must
+// never fail an inventory mutation whose DB write already succeeded.
+function emitInventoryUpdated(itemId: string, organizationId: string): void {
+	try {
+		// Scoped to this org's room only — never broadcast item/org data to other tenants.
+		getSocket().to(`org:${organizationId}`).emit("inventory:updated", { itemId, organizationId });
+	} catch {
+		// no-op
+	}
+}
 
 interface InventoryRecord {
 	id: string;
@@ -100,22 +112,71 @@ export const getLowStockInventory = async (organizationId: string) => {
 		});
 };
 
-// sku is globally unique — a P2002 on inventory_item means another item
-// (possibly in another org) already holds the sku. Surface a clear 4xx, not 500.
-// `sku` is the ONLY unique constraint on inventory_item, so any P2002 on this
-// model is a sku conflict. The @prisma/adapter-pg driver populates neither
-// meta.target nor the field name in the message for transaction-scoped P2002s,
-// so match on meta.modelName (with target/message kept as extra signals).
-const isSkuConflict = (e: unknown): boolean => {
-	if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
-		return false;
-	}
-	if (e.meta?.modelName === "inventory_item") return true;
-	const target = e.meta?.target;
-	if (Array.isArray(target) && target.includes("sku")) return true;
-	if (typeof target === "string" && target.includes("sku")) return true;
-	return e.message.includes("sku");
+// UPC-A (12 digits) and EAN-13 (13 digits, UPC-compatible when 0-prefixed) encode
+// the same barcode — a scanner and the stored record can disagree on which form
+// was kept. Only the barcode field gets this treatment; sku/alt_ids are opaque
+// strings with no digit-form equivalence.
+const barcodeCandidates = (trimmed: string): string[] => {
+	const candidates = [trimmed];
+	if (/^0\d{12}$/.test(trimmed)) candidates.push(trimmed.slice(1));
+	if (/^\d{12}$/.test(trimmed)) candidates.push("0" + trimmed);
+	return candidates;
 };
+
+// Resolve a scanned code to a single active inventory item. Lookup is
+// prioritized so a match is deterministic even if the same string lives in
+// more than one field: exact barcode → exact sku → alt_ids contains.
+export const scanInventoryByCode = async (organizationId: string, code: string) => {
+	const trimmed = code.trim();
+	if (!trimmed) return { err: "Empty code" };
+
+	const sdb = getScopedDb(organizationId);
+	const item =
+		(await sdb.inventory_item.findFirst({
+			where: { is_active: true, provisional: false, barcode: { in: barcodeCandidates(trimmed) } },
+			include: { tags: true },
+		})) ??
+		(await sdb.inventory_item.findFirst({
+			where: { is_active: true, provisional: false, sku: trimmed },
+			include: { tags: true },
+		})) ??
+		(await sdb.inventory_item.findFirst({
+			where: { is_active: true, provisional: false, alt_ids: { has: trimmed } },
+			include: { tags: true },
+		}));
+
+	if (!item) return { err: "NOT_FOUND" };
+	return { err: "", item: withStockStatus(item) };
+};
+
+// inventory_item now has two per-org unique constraints: sku and barcode.
+// Surface a clear 4xx on conflict, not a 500. The @prisma/adapter-pg driver
+// often populates neither meta.target nor the field name in the message for
+// transaction-scoped P2002s — when it does, we can name the exact field;
+// otherwise we fall back to a combined message so the user still gets a 4xx.
+// Returns: "sku" | "barcode" when identifiable, "unknown" for an
+// inventory_item P2002 we can't attribute, or null when it isn't our conflict.
+const uniqueConflictField = (e: unknown): "sku" | "barcode" | "unknown" | null => {
+	if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
+		return null;
+	}
+	const target = e.meta?.target;
+	const hits = (field: string): boolean =>
+		(Array.isArray(target) && target.includes(field)) ||
+		(typeof target === "string" && target.includes(field)) ||
+		e.message.includes(field);
+	if (hits("barcode")) return "barcode";
+	if (hits("sku")) return "sku";
+	if (e.meta?.modelName === "inventory_item") return "unknown";
+	return null;
+};
+
+const conflictMessage = (field: "sku" | "barcode" | "unknown"): string =>
+	field === "barcode"
+		? "Barcode already in use"
+		: field === "sku"
+			? "SKU already in use"
+			: "SKU or barcode already in use";
 
 export const createInventoryItem = async (data: unknown, organizationId: string, context?: UserContext) => {
 	try {
@@ -132,6 +193,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 					unit_price: parsed.unit_price ?? null,
 					cost: parsed.cost ?? null,
 					sku: parsed.sku ?? null,
+					barcode: parsed.barcode ?? null,
 					low_stock_threshold: parsed.low_stock_threshold ?? null,
 					image_urls: parsed.image_urls,
 					alert_emails_enabled: parsed.alert_emails_enabled,
@@ -172,6 +234,8 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 			return { ...created, quantity: parsed.quantity };
 		});
 
+		emitInventoryUpdated(item.id, organizationId);
+
 		return { err: "", item: withStockStatus(item) };
 	} catch (e) {
 		// Expected validation outcomes — not internal errors, don't log a stack trace.
@@ -180,8 +244,9 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
-		if (isSkuConflict(e)) {
-			return { err: "SKU already in use" };
+		const createConflict = uniqueConflictField(e);
+		if (createConflict) {
+			return { err: conflictMessage(createConflict) };
 		}
 		console.error("Create inventory item error:", e);
 		return { err: "Internal server error" };
@@ -214,6 +279,7 @@ export const updateInventoryItem = async (
 			"unit_price",
 			"cost",
 			"sku",
+			"barcode",
 			"low_stock_threshold",
 			"image_urls",
 			"alert_emails_enabled",
@@ -248,6 +314,8 @@ export const updateInventoryItem = async (
 			return item;
 		});
 
+		emitInventoryUpdated(itemId, organizationId);
+
 		return { err: "", item: withStockStatus(updated) };
 	} catch (e) {
 		// Expected validation outcomes — not internal errors, don't log a stack trace.
@@ -256,8 +324,9 @@ export const updateInventoryItem = async (
 				err: `Validation failed: ${e.issues.map((err) => err.message).join(", ")}`,
 			};
 		}
-		if (isSkuConflict(e)) {
-			return { err: "SKU already in use" };
+		const updateConflict = uniqueConflictField(e);
+		if (updateConflict) {
+			return { err: conflictMessage(updateConflict) };
 		}
 		console.error("Update inventory item error:", e);
 		return { err: "Internal server error" };
@@ -278,7 +347,10 @@ export const deleteInventoryItem = async (itemId: string, organizationId: string
 		await sdb.$transaction(async (tx) => {
 			await tx.inventory_item.update({
 				where: { id: itemId },
-				data: { is_active: false },
+				// Null the barcode on soft-delete — the org-scoped unique constraint
+				// isn't partial, so a deleted item would otherwise permanently block
+				// that barcode from ever being reassigned to another item.
+				data: { is_active: false, barcode: null },
 			});
 
 			// Soft delete skips cascade; clean up QB mappings manually.
@@ -299,6 +371,8 @@ export const deleteInventoryItem = async (itemId: string, organizationId: string
 				},
 			});
 		});
+
+		emitInventoryUpdated(itemId, organizationId);
 
 		return { err: "", message: "Inventory item deleted successfully" };
 	} catch (e) {
@@ -368,6 +442,8 @@ export const adjustInventoryStock = async (
 		) {
 			sendLowStockAlert(updated as InventoryRecord).catch(() => {});
 		}
+
+		emitInventoryUpdated(itemId, organizationId);
 
 		return { err: "", item: withStockStatus(updated) };
 	} catch (e) {

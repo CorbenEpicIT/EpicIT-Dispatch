@@ -1,4 +1,5 @@
 ﻿import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect, useState } from "react";
 import {
@@ -43,6 +44,7 @@ export default function DispatchLayout() {
 	const { logout } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
+	const queryClient = useQueryClient();
 	const toastIdRef = useRef(0);
 	const { data: orgSettings } = useOrgSettings();
 	const [expanded, setExpanded] = useState(false);
@@ -70,6 +72,16 @@ export default function DispatchLayout() {
 		socket.on("vehicle:restock_shortfall", handler);
 		return () => { socket.off("vehicle:restock_shortfall", handler); };
 	}, []);
+
+	useEffect(() => {
+		const handler = () => {
+			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
+			queryClient.invalidateQueries({ queryKey: ["inventory", "provisional"] });
+		};
+		socket.on("inventory:updated", handler);
+		return () => { socket.off("inventory:updated", handler); };
+	}, [queryClient]);
 	const handleBack = () => {
 		const path = location.pathname;
 		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;

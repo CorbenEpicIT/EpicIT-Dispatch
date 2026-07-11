@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { X, Barcode } from "lucide-react";
 import { useAdjustStockMutation } from "../../hooks/useVehicleStock";
-import { useAllInventoryQuery } from "../../hooks/useInventory";
+import { useAllInventoryQuery, useBarcodeScanHandler } from "../../hooks/useInventory";
+import { BarcodeScanner } from "../inventory/BarcodeScanner";
 import type { VehicleStockItem, VehicleAdjustmentType, AdjustStockInput } from "../../types/vehicles";
 import { ADJUSTMENT_TYPE_LABELS } from "../../types/vehicles";
 import { useAuthStore } from "../../auth/authStore";
@@ -211,6 +212,24 @@ function SupplierStep({
 }) {
 	const { data: catalog = [] } = useAllInventoryQuery();
 	const [search, setSearch] = useState("");
+	const [isScannerOpen, setIsScannerOpen] = useState(false);
+	const [scanError, setScanError] = useState<string | null>(null);
+	const { handleScan: scanAndBranch } = useBarcodeScanHandler(
+		(item) => {
+			if (!catalog.some((c) => c.id === item.id)) {
+				setScanError("Item not in catalog");
+				return;
+			}
+			setSearch(item.name);
+			onRowChange(item.id, "qty", supplierRows[item.id]?.qty ?? 1);
+		},
+		() => setScanError("No item found for that code"),
+	);
+
+	const handleScan = async (code: string) => {
+		setScanError(null);
+		await scanAndBranch(code);
+	};
 
 	const searchable = useMemo(() => {
 		const q = search.trim().toLowerCase();
@@ -270,13 +289,37 @@ function SupplierStep({
 				</div>
 
 				{/* Catalog search */}
-				<input
-					type="text"
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					placeholder="Search catalog…"
-					className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary mb-3"
-				/>
+				<div className="flex items-center gap-2 mb-1">
+					<input
+						type="text"
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						placeholder="Search catalog…"
+						className="w-full text-sm bg-surface border border-border-input rounded-md px-3 py-2 text-text-primary placeholder:text-faint outline-none focus:border-primary"
+					/>
+					<button
+						type="button"
+						onClick={() => setIsScannerOpen(true)}
+						title="Scan barcode"
+						className="h-[34px] w-[34px] shrink-0 flex items-center justify-center rounded-md border border-border-input text-text-muted hover:text-primary hover:border-primary transition-colors"
+					>
+						<Barcode size={16} />
+					</button>
+				</div>
+				{scanError && (
+					<div role="alert" className="bg-error-bg border border-error-border rounded-md px-3 py-2 mb-2 text-sm text-error-text">
+						{scanError}
+					</div>
+				)}
+				{isScannerOpen && (
+					<BarcodeScanner
+						onScan={(code) => {
+							setIsScannerOpen(false);
+							handleScan(code);
+						}}
+						onClose={() => setIsScannerOpen(false)}
+					/>
+				)}
 
 				<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
 					<div className="grid grid-cols-[1fr_64px_80px] px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
@@ -534,17 +577,26 @@ export default function AdjustStockModal({
 	vehicleId,
 	stockItems,
 	onClose,
+	initialType,
+	initialFocusItemId,
 }: {
 	vehicleId: string;
 	stockItems: VehicleStockItem[];
 	onClose: () => void;
+	initialType?: VehicleAdjustmentType;
+	initialFocusItemId?: string;
 }) {
-	const [modalStep, setModalStep] = useState<ModalStep>("type");
-	const [selectedType, setSelectedType] = useState<VehicleAdjustmentType | null>(null);
+	const [modalStep, setModalStep] = useState<ModalStep>(initialType ? "quantities" : "type");
+	const [selectedType, setSelectedType] = useState<VehicleAdjustmentType | null>(initialType ?? null);
 	const [note, setNote] = useState("");
 	const [submitError, setSubmitError] = useState<string | null>(null);
 	const [quantities, setQuantities] = useState<Record<string, number>>(
-		() => Object.fromEntries(stockItems.map((i) => [i.id, Number(i.qty_on_hand)])),
+		() => Object.fromEntries(stockItems.map((i) => [
+			i.id,
+			i.id === initialFocusItemId && initialType === "field_loss"
+				? Math.max(0, Number(i.qty_on_hand) - 1)
+				: Number(i.qty_on_hand),
+		])),
 	);
 	const [supplierRows, setSupplierRows] = useState<Record<string, { cost: number; qty: number }>>({});
 	const [supplierNewItem, setSupplierNewItem] = useState({ name: "", cost: 0, qty: 1 });

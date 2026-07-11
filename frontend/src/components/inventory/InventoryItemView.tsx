@@ -16,6 +16,7 @@ interface InventoryItemViewProps {
 	viewMode?: "card" | "list";
 	onDelete?: () => void;
 	isHighlighted?: boolean;
+	onHighlightMouseLeave?: () => void;
 	qbConnected?: boolean;
 	isLinkedToQB?: boolean;
   	onLinkQB?: () => void;
@@ -37,6 +38,7 @@ export default function InventoryItemView({
 	viewMode = "card",
 	onDelete,
 	isHighlighted = false,
+	onHighlightMouseLeave,
 	qbConnected,
 	isLinkedToQB,
 	onLinkQB
@@ -72,9 +74,10 @@ export default function InventoryItemView({
 		return (
 			<div
 				className={`flex items-center gap-3 w-full bg-base rounded-lg border border-border-subtle hover:bg-surface hover:border-border-strong transition-colors duration-150 cursor-pointer px-3.5 py-2 group ${
-					isHighlighted ? "animate-card-highlight" : ""
+					isHighlighted ? "highlight-active" : ""
 				}`}
 				onClick={onClick}
+				onMouseLeave={() => isHighlighted && onHighlightMouseLeave?.()}
 			>
 				{/* Thumbnail — 44×44 */}
 				<div className="w-[44px] h-[44px] shrink-0 rounded-md overflow-hidden">
@@ -229,8 +232,9 @@ export default function InventoryItemView({
 
 	return (
 		<div
-			className={`p-5 w-full bg-base rounded-xl shadow-md border border-border-card relative cursor-pointer hover:border-border-strong transition-colors h-full flex flex-col ${isHighlighted ? "animate-card-highlight" : ""}`}
+			className={`p-5 w-full bg-base rounded-xl shadow-md border border-border-card relative cursor-pointer hover:border-border-strong transition-colors h-full flex flex-col ${isHighlighted ? "highlight-active" : ""}`}
 			onClick={onClick}
+			onMouseLeave={() => isHighlighted && onHighlightMouseLeave?.()}
 		>
 
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />

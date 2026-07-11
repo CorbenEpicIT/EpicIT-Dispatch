@@ -17,6 +17,7 @@ export interface InventoryItem {
 	unit_price: number | null;
 	cost: number | null;
 	sku: string | null;
+	barcode: string | null;
 	is_active: boolean;
 	low_stock_threshold: number | null;
 	image_urls: string[];
@@ -50,6 +51,7 @@ export interface CreateInventoryItemInput {
 	unit_price?: number | null;
 	cost?: number | null;
 	sku?: string | null;
+	barcode?: string | null;
 	low_stock_threshold?: number | null;
 	image_urls: string[];
 	alt_ids?: string[];

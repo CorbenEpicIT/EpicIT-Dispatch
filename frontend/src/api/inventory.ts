@@ -78,6 +78,18 @@ export const adjustStock = async (
 	return response.data.data!;
 };
 
+export const scanInventoryItem = async (code: string): Promise<InventoryItem> => {
+	const response = await api.get<ApiResponse<InventoryItem>>("/inventory/scan", {
+		params: { code },
+	});
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "No item found");
+	}
+
+	return response.data.data!;
+};
+
 export const uploadInventoryImage = async (file: File): Promise<string> => {
 	const formData = new FormData();
 	formData.append("image", file);

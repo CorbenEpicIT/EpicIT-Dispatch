@@ -1,5 +1,5 @@
-﻿import { useState, useMemo, useEffect, useRef } from "react";
-import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, LayoutList, ClipboardCheck, History, Plus } from "lucide-react";
+﻿import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, LayoutList, ClipboardCheck, History, Plus, Barcode } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
@@ -8,7 +8,9 @@ import { useVehicleStockConflictsQuery, useBulkRestockMutation } from "../../hoo
 import RestockStatusList from "../../components/technicianComponents/RestockStatusList";
 import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
 import { useOrgSettings } from "../../hooks/useOrg";
-import { useAllInventoryQuery } from "../../hooks/useInventory";
+import { useAllInventoryQuery, useBarcodeScanHandler } from "../../hooks/useInventory";
+import { useBarcodeScanner } from "../../hooks/useBarcodeScanner";
+import { BarcodeScanner } from "../../components/inventory/BarcodeScanner";
 import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
 import RestockWorkflow from "../../components/vehicles/RestockWorkflow";
 import StockHistorySection from "../../components/vehicles/StockHistorySection";
@@ -170,12 +172,16 @@ function StockItemRow({
 	batchMode = false,
 	batchQty,
 	onBatchQtyChange,
+	isHighlighted = false,
+	rowRef,
 }: {
 	item: VehicleStockItem;
 	onRestock: (item: VehicleStockItem) => void;
 	batchMode?: boolean;
 	batchQty?: number;
 	onBatchQtyChange?: (id: string, qty: number) => void;
+	isHighlighted?: boolean;
+	rowRef?: (el: HTMLDivElement | null) => void;
 }) {
 	const isEmpty = Number(item.qty_on_hand) === 0;
 	const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
@@ -196,9 +202,12 @@ function StockItemRow({
 	const isSelected = batchMode && batchQty !== undefined && batchQty > 0;
 
 	return (
-		<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0 transition-colors ${
-			isSelected ? "bg-primary-hover/5" : ""
-		}`}>
+		<div
+			ref={rowRef}
+			className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 last:border-0 transition-colors ${
+				isSelected ? "bg-primary-hover/5" : ""
+			} ${isHighlighted ? "highlight-active" : ""}`}
+		>
 			<div className="flex-1 min-w-0">
 				<p className="text-sm text-text-primary truncate" title={item.inventory_item.name}>
 					{item.inventory_item.name}
@@ -533,6 +542,7 @@ export default function TechnicianVehiclePage() {
 	const canStock = usePermission("stock_own_vehicle");
 	const canRestock = usePermission("complete_own_restock");
 	const canUseInventory = usePermission("use_inventory");
+	const canFieldLoss = usePermission("adjust_field_loss");
 	const canAdjustStock = useMemo(() => {
 		if (!user || user.role !== "technician") return true;
 		const adjustPerms = ["adjust_field_loss", "adjust_transfer", "adjust_audit", "adjust_warehouse_exchange", "adjust_supplier_purchase"];
@@ -566,14 +576,38 @@ export default function TechnicianVehiclePage() {
 	const [batchMode, setBatchMode] = useState(false);
 	const [batchQtys, setBatchQtys] = useState<Record<string, number>>({});
 	const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+	const [isScannerOpen, setIsScannerOpen] = useState(false);
+	const [scanFocusItemId, setScanFocusItemId] = useState<string | null>(null);
+	const [highlightedStockItemId, setHighlightedStockItemId] = useState<string | null>(null);
 
 	const restockTimerRef = useRef<number>(-1);
 	const vehicleErrorTimerRef = useRef<number>(-1);
+	const stockRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+	// Highlight is armed (not cleared) while the scan-triggered Adjust Stock modal
+	// is open, then cleared on the tech's next tap anywhere — not on a timer, and
+	// not on mouseleave, since touch devices have no reliable hover state.
+	const clearHighlightRef = useRef<() => void>(() => {});
+
+	const armHighlightClear = useCallback(() => {
+		clearHighlightRef.current();
+		const handleOutsideTap = () => {
+			setHighlightedStockItemId(null);
+			clearHighlightRef.current = () => {};
+		};
+		const timeoutId = window.setTimeout(() => {
+			document.addEventListener("click", handleOutsideTap, { once: true });
+		}, 0);
+		clearHighlightRef.current = () => {
+			window.clearTimeout(timeoutId);
+			document.removeEventListener("click", handleOutsideTap);
+		};
+	}, []);
 
 	useEffect(() => {
 		return () => {
 			clearTimeout(restockTimerRef.current);
 			clearTimeout(vehicleErrorTimerRef.current);
+			clearHighlightRef.current();
 		};
 	}, []);
 
@@ -608,9 +642,27 @@ export default function TechnicianVehiclePage() {
 		setRestockError(errorMsg);
 		restockTimerRef.current = setTimeout(
 			() => { setRestockSuccess(null); setRestockError(null); },
-			successMsg ? 3000 : 4000,
+			successMsg ? 3000 : 6000,
 		);
 	};
+
+	const { handleScan: handleBarcodeScan } = useBarcodeScanHandler(
+		(item) => {
+			const stockItem = stockItems.find((s) => s.inventory_item_id === item.id);
+			if (!stockItem) {
+				showRestockToast(null, "Item not on this vehicle.");
+				return;
+			}
+			clearHighlightRef.current();
+			setHighlightedStockItemId(stockItem.id);
+			stockRowRefs.current.get(stockItem.id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+			setScanFocusItemId(stockItem.id);
+			setAdjustOpen(true);
+		},
+		() => showRestockToast(null, "No item found for that code."),
+	);
+
+	useBarcodeScanner(handleBarcodeScan, canFieldLoss);
 
 	const handleSelectVehicle = (vehicleId: string) => {
 		if (vehicleId === currentVehicleId) {
@@ -779,6 +831,11 @@ export default function TechnicianVehiclePage() {
 			batchMode={batchMode}
 			batchQty={batchQtys[item.id]}
 			onBatchQtyChange={(id, qty) => setBatchQtys((prev) => ({ ...prev, [id]: qty }))}
+			isHighlighted={highlightedStockItemId === item.id}
+			rowRef={(el) => {
+				if (el) stockRowRefs.current.set(item.id, el);
+				else stockRowRefs.current.delete(item.id);
+			}}
 		/>
 	);
 
@@ -983,6 +1040,15 @@ export default function TechnicianVehiclePage() {
 												className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover/10 border border-primary-hover/30 text-primary-text hover:bg-primary-hover/20 transition-colors"
 											>
 												Request Restock
+											</button>
+										)}
+										{canFieldLoss && (
+											<button
+												onClick={() => setIsScannerOpen(true)}
+												title="Scan barcode"
+												className="flex-shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+											>
+												<Barcode size={14} />
 											</button>
 										)}
 									</div>
@@ -1226,9 +1292,27 @@ export default function TechnicianVehiclePage() {
 			{/* Stock adjust modal (self-serve) */}
 			{adjustOpen && currentVehicleId && (
 				<AdjustStockModal
+					key={scanFocusItemId ?? "manual"}
 					vehicleId={currentVehicleId}
 					stockItems={stockItems}
-					onClose={() => setAdjustOpen(false)}
+					onClose={() => {
+						setAdjustOpen(false);
+						if (scanFocusItemId) armHighlightClear();
+						setScanFocusItemId(null);
+					}}
+					initialType={scanFocusItemId ? "field_loss" : undefined}
+					initialFocusItemId={scanFocusItemId ?? undefined}
+				/>
+			)}
+
+			{/* Barcode scanner (camera) */}
+			{isScannerOpen && (
+				<BarcodeScanner
+					onScan={(code) => {
+						setIsScannerOpen(false);
+						handleBarcodeScan(code);
+					}}
+					onClose={() => setIsScannerOpen(false)}
 				/>
 			)}
 

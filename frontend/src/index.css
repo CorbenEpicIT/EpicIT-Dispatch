@@ -109,27 +109,33 @@ input[type="number"] {
 	-moz-appearance: textfield;
 }
 
-/* Inventory card highlight animation */
-@keyframes card-highlight {
-	0% {
-		outline-color: var(--anim-primary-80);
-	}
-	60% {
-		outline-color: var(--anim-primary-30);
-	}
-	100% {
-		outline-color: transparent;
-	}
-}
-.animate-card-highlight {
-	outline: 2px solid transparent;
+/* Inventory card highlight — persists until the user hovers then unhovers the card */
+.highlight-active {
+	outline: 2px solid var(--anim-primary-80);
 	outline-offset: -2px;
-	animation: card-highlight 2.5s ease-out forwards;
 }
 
 @keyframes feedFlash {
 	from {
 		background-color: var(--anim-surface-flash);
+	}
+	to {
+		background-color: transparent;
+	}
+}
+
+@keyframes scanSweep {
+	from {
+		top: 0%;
+	}
+	to {
+		top: 100%;
+	}
+}
+
+@keyframes scanFoundFlash {
+	from {
+		background-color: var(--color-success-bg);
 	}
 	to {
 		background-color: transparent;

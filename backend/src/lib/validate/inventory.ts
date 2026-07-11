@@ -1,5 +1,18 @@
 import z from "zod";
 
+// Trim and collapse empty/whitespace-only barcodes to null so "" never occupies
+// a slot in the per-org (organization_id, barcode) unique index.
+const barcodeField = z
+	.string()
+	.max(200)
+	.nullable()
+	.optional()
+	.transform((v) => {
+		if (v == null) return v;
+		const trimmed = v.trim();
+		return trimmed === "" ? null : trimmed;
+	});
+
 export const updateThresholdSchema = z.object({
     low_stock_threshold: z.number().int().min(0, "Threshold must not be negative").nullable().optional(),
 });
@@ -15,6 +28,7 @@ export const createInventoryItemSchema = z.object({
 	unit_price: z.number().min(0).nullable().optional(),
 	cost: z.number().min(0).nullable().optional(),
 	sku: z.string().max(100).nullable().optional(),
+	barcode: barcodeField,
 	low_stock_threshold: z.number().int().min(0).nullable().optional(),
 	image_urls: z.array(z.string().url()).default([]),
 	alert_emails_enabled: z.boolean().default(false),
@@ -33,6 +47,7 @@ export const updateInventoryItemSchema = z.object({
 	unit_price: z.number().min(0).nullable().optional(),
 	cost: z.number().min(0).nullable().optional(),
 	sku: z.string().max(100).nullable().optional(),
+	barcode: barcodeField,
 	low_stock_threshold: z.number().int().min(0).nullable().optional(),
 	image_urls: z.array(z.string().url()).optional(),
 	alert_emails_enabled: z.boolean().optional(),
@@ -47,6 +62,12 @@ export const adjustStockSchema = z.object({
 });
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
+
+export const scanQuerySchema = z.object({
+	code: z.string().trim().min(1, "Code is required").max(200),
+});
+
+export type ScanQueryInput = z.infer<typeof scanQuerySchema>;
 
 export const createTagSchema = z.object({
 	label: z.string().min(1, "Label is required").max(100),

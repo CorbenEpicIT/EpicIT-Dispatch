@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { io } from "socket.io-client";
 import type { TechnicianNotification } from "../types/notifications";
 import * as notificationsApi from "../api/notifications";
+import { useAuthStore } from "../auth/authStore";
 
 const SOCKET_URL = import.meta.env.VITE_BACKEND_URL as string;
 
@@ -12,9 +13,13 @@ export const useNotificationsQuery = (
 	onNew?: (notif: TechnicianNotification) => void,
 ): UseQueryResult<TechnicianNotification[], Error> => {
 	const queryClient = useQueryClient();
-	const queryKey = ["notifications", technicianId, { unreadOnly }];
+	const queryKey = useMemo(
+		() => ["notifications", technicianId, { unreadOnly }],
+		[technicianId, unreadOnly],
+	);
 	const onNewRef = useRef(onNew);
 	useEffect(() => { onNewRef.current = onNew; }, [onNew]);
+	const orgId = useAuthStore((s) => s.user?.orgId);
 
 	// Single socket handles both notifications and visit status syncs for all tech pages.
 	useEffect(() => {
@@ -22,7 +27,7 @@ export const useNotificationsQuery = (
 
 		const socket = io(SOCKET_URL, {
 			transports: ["websocket"],
-			query: { techId: technicianId },
+			auth: (cb) => cb({ token: localStorage.getItem("accessToken") }),
 		});
 
 		socket.on("notification:new", (notif: TechnicianNotification) => {
@@ -56,6 +61,11 @@ export const useNotificationsQuery = (
 			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 		});
 
+		socket.on("inventory:updated", () => {
+			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
+		});
+
 		return () => {
 			socket.off("notification:new");
 			socket.off("job_visit:status_changed");
@@ -64,10 +74,10 @@ export const useNotificationsQuery = (
 			socket.off("job_visit:created");
 			socket.off("job_visit:deleted");
 			socket.off("job_note:created");
+			socket.off("inventory:updated");
 			socket.disconnect();
 		};
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [technicianId]);
+	}, [technicianId, orgId, queryClient, queryKey]);
 
 	return useQuery({
 		queryKey,
