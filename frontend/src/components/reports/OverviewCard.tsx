@@ -17,6 +17,7 @@ interface OverviewCardProps {
 	valueSuffix?: string;
 	onClick?: () => void;
 	tooltip?: TooltipData;
+	showComparison?: boolean;
 }
 
 export default function OverviewCard({
@@ -28,6 +29,7 @@ export default function OverviewCard({
 	valueSuffix = "",
 	onClick,
 	tooltip,
+	showComparison = true,
 }: OverviewCardProps) {
 	const isPositive = changePercent >= 0;
 	const [showTooltip, setShowTooltip] = useState(false);
@@ -44,6 +46,7 @@ export default function OverviewCard({
 				<p className="text-2xl font-bold text-primary whitespace-nowrap">
 					{valueDisplay ?? `${valuePrefix}${value}${valueSuffix}`}
 				</p>
+				{showComparison && (
 				<div
 					className="relative flex items-center gap-1 whitespace-nowrap"
 					onMouseEnter={() => setShowTooltip(true)}
@@ -79,6 +82,7 @@ export default function OverviewCard({
 						</div>
 					)}
 				</div>
+				)}
 			</div>
 		</div>
 	);

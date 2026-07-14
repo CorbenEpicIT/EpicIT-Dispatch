@@ -129,7 +129,12 @@ export default function KPIPage() {
 							</div>
 						}
 					>
-						{overview && <OverviewSection data={overview} />}
+						{overview && (
+							<OverviewSection
+								data={overview}
+								showComparison={range.option === "this_month"}
+							/>
+						)}
 					</ReportState>
 				</div>
 
