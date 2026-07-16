@@ -15,6 +15,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
+import { db } from "../db.js";
 
 const PAID_BREAK_REASONS = new Set<string>(["Rest", "EquipmentIssue"]);
 const VALID_BREAK_REASONS = new Set<string>([
@@ -94,9 +95,8 @@ export const insertTechnician = async (
 		const parsed = createTechnicianSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
 
-		const existing = await sdb.technician.findFirst({
-			where: { email: parsed.email },
-		});
+		const existing = (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+						 (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
 		if (existing) {
 			return { err: "Email already exists" };
@@ -191,9 +191,9 @@ export const updateTechnician = async (
 		}
 
 		if (parsed.email && parsed.email !== existing.email) {
-			const emailTaken = await sdb.technician.findFirst({
-				where: { email: parsed.email },
-			});
+			const emailTaken =
+                (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+                (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
 			if (emailTaken) {
 				return { err: "Email already exists" };

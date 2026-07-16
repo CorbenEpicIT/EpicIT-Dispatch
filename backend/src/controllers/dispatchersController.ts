@@ -13,7 +13,7 @@ import { log } from "../services/appLogger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { getAllPermissions } from "../lib/permissionCatalogs.js";
 import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
-
+import { db } from "../db.js"
 
 export const getAllDispatchers = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -51,9 +51,8 @@ export const insertDispatcher = async (
         const parsed = createDispatcherSchema.parse(data);
         const passwordProvided = parsed.password ? true : false;
         const sdb = getScopedDb(organizationId);
-        const existing = await sdb.dispatcher.findFirst({
-            where: { email: parsed.email },
-        });
+        const existing = (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+                         (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
         if (existing) {
             return { err: "Email already exists" };
@@ -72,9 +71,6 @@ export const insertDispatcher = async (
                     email_verification_token: randomUUID(),
                     // if password provided dispatcher doesn't need to reset password on first login
                     ...(passwordProvided && { last_login: new Date() }),
-                },
-                include: {
-                    // not sure if anything needs to be included 
                 },
             });
 
@@ -142,9 +138,9 @@ export const updateDispatcher = async (
         }
 
         if (parsed.email && parsed.email !== existing.email) {
-            const emailTaken = await sdb.dispatcher.findFirst({
-                where: { email: parsed.email },
-            });
+            const emailTaken =
+                (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+                (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
             if (emailTaken) {
                 return { err: "Email already exists" };
