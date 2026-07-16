@@ -14,7 +14,7 @@ function getKey(): Buffer {
     }
     return keyBuffer;
 }
-const KEY = getKey();
+export const KEY = getKey();
 
 const B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -106,7 +106,7 @@ export function verifyTotp(secret: string, token: string): boolean {
     return false;
 }
 
-export function encryptSecret(secret: string): string {
+/*export function encryptSecret(secret: string): string {
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv("aes-256-gcm", KEY, iv);
     const encrypted = cipher.update(secret, "utf8");
@@ -125,7 +125,7 @@ export function decryptSecret(encrypted: string): string {
     const decrypted = decipher.update(encryptedBuffer, undefined, 'utf8');
     decipher.final();
     return decrypted;
-}
+}*/
 
 export function generateRecoveryCodes(): { codes: string[], hashed_codes: string[] } {
     const codes: string[] = [];

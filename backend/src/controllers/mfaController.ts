@@ -5,11 +5,11 @@ import {
     generateSecret,
     buildOtpAuthUri,
     verifyTotp,
-    encryptSecret,
-    decryptSecret,
     generateRecoveryCodes,
-    hashRecoveryCode
+    hashRecoveryCode,
+    KEY
 } from "../services/totpService.js";
+import { encryptSecret, decryptSecret } from "../services/crypto.js";
 import { issueAuthTokens } from "./authenticationController.js";
 import { verifyPendingToken } from "../services/jwtService.js";
 import { logActivity } from "../services/logger.js";
@@ -45,8 +45,8 @@ export async function setupTotp(userId: string, role: string): Promise<{ otpAuth
     const secret = generateSecret();
     await db.mfa_credential.upsert({
         where: { user_id_role: { user_id: userId, role } },
-        create: { user_id: userId, role, secret: encryptSecret(secret), enabled: false },
-        update: { secret: encryptSecret(secret), enabled: false },
+        create: { user_id: userId, role, secret: encryptSecret(secret, KEY), enabled: false },
+        update: { secret: encryptSecret(secret, KEY), enabled: false },
     });
     const otpAuthUri = buildOtpAuthUri(secret, email, orgName);
     // Return plaintext secret once so the client can render the QR / manual entry
@@ -63,7 +63,7 @@ export async function enableTotp(userId: string, role: string, code: string, via
     if (credential.enabled) {
         return createErrorResponse(ErrorCodes.VALIDATION_ERROR, "MFA is already enabled");
     }
-    if (!verifyTotp(decryptSecret(credential.secret), code)) {
+    if (!verifyTotp(decryptSecret(credential.secret, KEY), code)) {
         return createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Invalid code");
     }
 
@@ -114,7 +114,7 @@ export async function verifyMfa(res: Response, pendingToken: string, code?: stri
 
     let ok = false;
     if (code) {
-        ok = verifyTotp(decryptSecret(credential.secret), code);
+        ok = verifyTotp(decryptSecret(credential.secret, KEY), code);
     }
     if (!ok && backupCode) {
         const row = await db.mfa_recovery_code.findFirst({
@@ -162,7 +162,7 @@ export async function disableTotp(userId: string, role: string, password?: strin
         const credential = await db.mfa_credential.findUnique({
             where: { user_id_role: { user_id: userId, role } }
         });
-        reauthed = !!credential && verifyTotp(decryptSecret(credential.secret), code);
+        reauthed = !!credential && verifyTotp(decryptSecret(credential.secret, KEY), code);
     } else if (backupCode) {
         const row = await db.mfa_recovery_code.findFirst({
             where: { user_id: userId, role, code: hashRecoveryCode(backupCode), used_at: null },
