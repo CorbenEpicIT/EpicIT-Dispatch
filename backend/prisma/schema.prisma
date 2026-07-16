@@ -278,10 +278,10 @@ model organization {
   logo_key String?
 
   // quickbooks integration fields
-  qb_realm_id         String?
-  qb_access_token     String?
-  qb_refresh_token    String?
-  qb_token_expires_at DateTime? 
+  qb_realm_id           String?
+  qb_access_token       String?
+  qb_refresh_token      String?
+  qb_token_expires_at   DateTime? 
   
   clients               client[]
   contacts              contact[]
@@ -308,12 +308,12 @@ model organization {
   recurring_plan_notes  recurring_plan_note[]
   invoice_notes         invoice_note[]
 
-  tax_rates   tax_rate[]
-  tax_groups  tax_group[]
-  organization_roles    organization_role[]
+  tax_rates             tax_rate[]
+  tax_groups            tax_group[]
+  organization_roles    organization_role[]             
 
-  saved_reports     saved_report[]
-  report_favorites  report_favorite[]
+  saved_reports         saved_report[]
+  report_favorites      report_favorite[]
 }
 
 model saved_report {
@@ -1888,6 +1888,19 @@ model mfa_recovery_code {
   created_at DateTime @default(now())
 
   @@index([user_id, role])
+}
+
+// ============================================================================
+// SSO
+// ============================================================================
+
+model sso_handoff {
+  id          String @id @default(uuid())
+  code_hash   String @unique
+  user_id     String
+  role        String
+  expires_at  DateTime 
+  created_at  DateTime  @default(now())
 }
 
 // ============================================================================

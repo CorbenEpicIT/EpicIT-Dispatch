@@ -48,6 +48,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import RegisterPage from "./pages/RegisterPage";
 import MyProfilePage from "./pages/MyProfilePage";
 import QBCallbackPage from "./pages/QBCallbackPage";
+import SSOCompletePage from "./pages/SSOCompletePage";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
@@ -104,6 +105,7 @@ export default function AppRoutes() {
 			<Route path="/verify-email" element={<VerifyEmailPage />} />
 			<Route path="/reset-password" element={<ResetPasswordPage />} />
 			<Route path="/quickbooks/callback" element={<QBCallbackPage />} />
+			<Route path="/auth/sso/complete" element={<SSOCompletePage />} />
 			<Route
 				path="/dispatch/*"
 				element={

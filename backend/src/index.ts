@@ -58,6 +58,7 @@ import organizationRolesRouter from "./routes/organizationRoles.js";
 import quickbooksRouter from "./routes/quickbooks.js";
 import oauthRouter from "./routes/oauth.js";
 import mfaRouter from "./routes/mfa.js";
+import ssoRouter from "./routes/sso.js"
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -443,6 +444,11 @@ app.use("/oauth", oauthRouter);
 // MFA (public mount — the router applies its own per-route auth guards)
 // ================================================================================
 app.use("/mfa", mfaRouter);
+
+// ================================================================================
+// SSO 
+// ================================================================================
+app.use("/auth/sso", ssoRouter);
 
 // ================================================================================
 // ORGANIZATION (unlike org this is used for registration and doesn't require auth)
