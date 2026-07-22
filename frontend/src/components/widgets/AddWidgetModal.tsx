@@ -3,6 +3,7 @@ import { X, Search, Plus, Minus } from "lucide-react";
 import FullPopup from "../ui/FullPopup";
 import { WIDGET_CATALOG, addWidget, removeWidget } from "../../lib/DashboardConfig";
 import { useAuthStore } from "../../auth/authStore";
+import { useResolvedTheme } from "../../hooks/useApplyTheme";
 import type { Layout } from "react-grid-layout";
 
 interface AddWidgetModalProps {
@@ -42,6 +43,7 @@ function LayoutPreview({
 	hoveredId: string | null;
 	proposedId: string | null;
 }) {
+	const dark = useResolvedTheme() === "dark";
 	if (!layout.length) return (
 		<div className="w-full h-full flex items-center justify-center text-text-muted text-xs">
 			No widgets active
@@ -67,8 +69,8 @@ function LayoutPreview({
 						top: `${(item.y / totalH) * 100}%`,
 						width: `${(item.w / COLS) * 100}%`,
 						height: `${(item.h / totalH) * 100}%`,
-						background: `hsla(${hue},50%,50%,${dim ? 0.08 : isProposed ? 0.28 : 0.2})`,
-						border: `${isProposed ? "2px dashed" : "1px solid"} hsla(${hue},55%,60%,${dim ? 0.2 : 0.6})`,
+						background: `hsla(${hue}, ${dark ? 50 : 62}%, ${dark ? 50 : 52}%, ${dim ? (dark ? 0.08 : 0.12) : isProposed ? (dark ? 0.28 : 0.3) : (dark ? 0.2 : 0.22)})`,
+						border: `${isProposed ? "2px dashed" : "1px solid"} hsla(${hue}, ${dark ? 55 : 58}%, ${dark ? 60 : 44}%, ${dim ? 0.25 : 0.7})`,
 						borderRadius: 3,
 						display: "flex", alignItems: "center", justifyContent: "center",
 						overflow: "hidden",
@@ -76,7 +78,7 @@ function LayoutPreview({
 						transition: "opacity 120ms",
 						boxSizing: "border-box",
 					}}>
-						<span style={{ fontSize: 8, color: `hsl(${hue},60%,78%)`, textAlign: "center", padding: "1px 2px", lineHeight: 1.2, userSelect: "none", pointerEvents: "none" }}>
+						<span style={{ fontSize: 8, color: dark ? `hsl(${hue},60%,78%)` : `hsl(${hue},55%,30%)`, textAlign: "center", padding: "1px 2px", lineHeight: 1.2, userSelect: "none", pointerEvents: "none" }}>
 							{short}{isProposed ? " +" : ""}
 						</span>
 					</div>
