@@ -42,7 +42,7 @@ vi.mock("../../services/stockMovements.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../services/stockMovements.js")>();
 	return {
 		...actual,
-		recordMovements: vi.fn().mockResolvedValue({ lowStockItemIds: [] }),
+		recordMovements: vi.fn().mockResolvedValue({ lowStockItemIds: [], movementIds: [] }),
 		lockInventoryRows: vi.fn().mockResolvedValue(undefined),
 	};
 });
@@ -64,10 +64,12 @@ import {
 import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
 import { recordMovements, lockInventoryRows } from "../../services/stockMovements.js";
+import { logActivity } from "../../services/logger.js";
 
 const mockGetScopedDb = vi.mocked(getScopedDb);
 const mockRecordMovements = vi.mocked(recordMovements);
 const mockLockInventoryRows = vi.mocked(lockInventoryRows);
+const mockLogActivity = vi.mocked(logActivity);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,6 +119,23 @@ function buildDefaultSdb() {
 		inventory_item: {
 			findMany: vi.fn().mockResolvedValue([]),
 		},
+		// buildTrackingInputs (capped mode) reads real non-recalled lot sums for
+		// batch-tracked lines instead of trusting the inventory_item.quantity
+		// cache (phase 0 cache-drift fix). Sized generously so the batch-tracked
+		// tests below ("inv-batch") aren't clamped by this stub.
+		stock_batch: {
+			findMany: vi.fn().mockResolvedValue([{ inventory_item_id: "inv-batch", qty_in_warehouse: 999 }]),
+		},
+		// Phase 2b — response-detail resolution: serial_unit/stock_batch code lookups
+		// for explicit picks, stock_movement for the FIFO-auto-allocate lot-code
+		// join. Empty by default; individual tests override via mockResolvedValue
+		// where the assertion cares about the resolved codes.
+		serial_unit: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
+		stock_movement: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
 		vehicle_restock_record: {
 			create: vi.fn().mockResolvedValue(makeRestockRecord()),
 			findUniqueOrThrow: vi.fn().mockResolvedValue(makeRestockRecord()),
@@ -132,6 +151,12 @@ function buildDefaultSdb() {
 		},
 		organization: {
 			findFirst: vi.fn().mockResolvedValue({ timezone: "UTC", name: "Test Org" }),
+		},
+		// G6 shortfall alert reads outside the transaction (post-commit) — only
+		// exercised by tests that override _tx.vehicle_restock_record.findUniqueOrThrow
+		// to return a non-empty restock_lines with a real shortfall.
+		vehicle_stock_item: {
+			findMany: vi.fn().mockResolvedValue([]),
 		},
 		vehicle_restock_record: {
 			findFirst: vi.fn().mockResolvedValue(null),
@@ -155,7 +180,7 @@ describe("completeRestock", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [] });
+		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [], movementIds: [] });
 		sdb = buildDefaultSdb();
 		mockGetScopedDb.mockReturnValue(sdb as unknown as ReturnType<typeof getScopedDb>);
 	});
@@ -321,6 +346,409 @@ describe("completeRestock", () => {
 		const lines = sdb._tx.vehicle_restock_line.createMany.mock.calls[0][0].data;
 		expect(lines[0].qty_restocked).toBe(0);
 		expect(lines[0].qty_shortfall).toBe(5);
+	});
+
+	// ── Serial/batch tracking pass-through (B-T4) ───────────────────────────────
+
+	it("serialized item restocked with NO serial_unit_ids succeeds (allowUntracked gap, not a throw)", async () => {
+		const stockItemId = "d4e5f6a7-b8c9-4d0e-8f1a-2b3c4d5e6f7a";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-serial" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-serial", quantity: 10, is_serialized: true, is_batch_tracked: false },
+		]);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2 }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(mockRecordMovements.mock.calls[0][4]).toEqual({ allowUntracked: true });
+		const movements = mockRecordMovements.mock.calls[0][3];
+		expect(movements).toHaveLength(1);
+		expect(movements[0].serial).toBeUndefined();
+	});
+
+	it("serialized item restocked WITH correct serial_unit_ids carries serial: { unit_ids }", async () => {
+		const stockItemId = "e5f6a7b8-c9d0-4e1f-8a2b-3c4d5e6f7a8b";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-serial" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-serial", quantity: 10, is_serialized: true, is_batch_tracked: false },
+		]);
+		const serialIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2, serial_unit_ids: serialIds }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		const movements = mockRecordMovements.mock.calls[0][3];
+		expect(movements[0].serial).toEqual({ unit_ids: serialIds });
+	});
+
+	// ── Cache-drift shortfall (audit 2026-07-14, phase 0) ───────────────────────
+	//
+	// `actual = Math.min(line.qty_to_restock, available)` (vehiclesController.ts:1480)
+	// clamps against inventory_item.quantity — a cache. For a serialized item the
+	// tracking tables (serial_unit rows) are the truth, not the cache. If 10 units
+	// are scanned as in_warehouse but the cache says 6, the clamp invents a
+	// shortfall that isn't real: it trims 4 units that are physically going on the
+	// truck, moves stock without a ledger row for them, and hides the cache drift
+	// instead of surfacing it. Availability for a serialized line must be the
+	// scanned count, not the cache value.
+	it("does not clamp a serialized line to cached quantity when scanned serials exceed it (cache drift)", async () => {
+		const stockItemId = "b8c9d0e1-f2a3-4b4c-8d5e-6f7a8b9c0d1f";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-serial-drift" }),
+		]);
+		// Cache says 6 available; 10 units were actually scanned as in_warehouse.
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-serial-drift", quantity: 6, is_serialized: true, is_batch_tracked: false },
+		]);
+		const serialIds = Array.from(
+			{ length: 10 },
+			(_, i) => `${i}${i}${i}${i}${i}${i}${i}${i}-${i}${i}${i}${i}-4${i}${i}${i}-8${i}${i}${i}-${i}${i}${i}${i}${i}${i}${i}${i}${i}${i}${i}${i}`,
+		);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{
+				restock_lines: [
+					{ stock_item_id: stockItemId, qty_to_restock: 10, serial_unit_ids: serialIds },
+				],
+			},
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		const movements = mockRecordMovements.mock.calls[0][3];
+		expect(movements[0].qty).toBe(10);
+		expect(movements[0].serial).toEqual({ unit_ids: serialIds });
+		const lines = sdb._tx.vehicle_restock_line.createMany.mock.calls[0][0].data;
+		expect(lines[0].qty_restocked).toBe(10);
+		expect(lines[0].qty_shortfall).toBe(0);
+	});
+
+	it("batch-tracked item restocked with batch_picks passes them through as batch_allocations", async () => {
+		const stockItemId = "f6a7b8c9-d0e1-4f2a-8b3c-4d5e6f7a8b9c";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-batch" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-batch", quantity: 10, is_serialized: false, is_batch_tracked: true },
+		]);
+		const batchPicks = [{ batch_id: "33333333-3333-4333-8333-333333333333", qty: 2 }];
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2, batch_picks: batchPicks }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		const movements = mockRecordMovements.mock.calls[0][3];
+		expect(movements[0].batch_allocations).toEqual(batchPicks);
+	});
+
+	it("batch-tracked item restocked with no batch_picks still succeeds (FIFO/gap path)", async () => {
+		const stockItemId = "a7b8c9d0-e1f2-4a3b-8c4d-5e6f7a8b9c0d";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-batch" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-batch", quantity: 10, is_serialized: false, is_batch_tracked: true },
+		]);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2 }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		const movements = mockRecordMovements.mock.calls[0][3];
+		expect(movements[0].batch_allocations).toBeUndefined();
+	});
+
+	// ── Phase 2b: response detail + activity log ────────────────────────────────
+
+	it("untracked shortfall reports reason_code ok with a human message, and logs it as needing attention", async () => {
+		const stockItemId = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-2" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([{ id: "inv-2", quantity: 4 }]);
+		sdb._tx.vehicle_restock_record.findUniqueOrThrow.mockResolvedValue(
+			makeRestockRecord({
+				restock_lines: [{ stock_item_id: stockItemId, qty_restocked: 4, qty_shortfall: 6 }],
+			}),
+		);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 10 }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(result.line_details).toEqual([
+			{
+				stock_item_id: stockItemId,
+				reason_code: "ok",
+				message: "Only 4 of 10 available in the warehouse.",
+			},
+		]);
+		expect(mockLogActivity).toHaveBeenCalledWith(
+			expect.objectContaining({
+				changes: expect.objectContaining({
+					lines_needing_attention: {
+						old: null,
+						new: [{ item: "inv-2", reason: "ok", message: "Only 4 of 10 available in the warehouse." }],
+					},
+				}),
+			}),
+		);
+	});
+
+	it("serialized item with no scan reports no_tracking_gap with its explanatory message", async () => {
+		const stockItemId = "d4e5f6a7-b8c9-4d0e-8f1a-2b3c4d5e6f7a";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-serial" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-serial", quantity: 10, is_serialized: true, is_batch_tracked: false },
+		]);
+		sdb._tx.vehicle_restock_record.findUniqueOrThrow.mockResolvedValue(
+			makeRestockRecord({
+				restock_lines: [{ stock_item_id: stockItemId, qty_restocked: 2, qty_shortfall: 0 }],
+			}),
+		);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2 }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(result.line_details).toEqual([
+			{
+				stock_item_id: stockItemId,
+				reason_code: "no_tracking_gap",
+				message: "No units scanned — recorded as a tracking gap; verify what actually went out.",
+			},
+		]);
+	});
+
+	it("cache-drift line resolves its scanned serial codes and flags cache_drift_detected", async () => {
+		const stockItemId = "b8c9d0e1-f2a3-4b4c-8d5e-6f7a8b9c0d1f";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-serial-drift" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-serial-drift", quantity: 1, is_serialized: true, is_batch_tracked: false },
+		]);
+		const serialIds = [
+			"11111111-1111-4111-8111-111111111111",
+			"22222222-2222-4222-8222-222222222222",
+		];
+		sdb._tx.serial_unit.findMany.mockResolvedValue([
+			{ id: serialIds[0], code: "SU-AAAAAAAA" },
+			{ id: serialIds[1], code: "SU-BBBBBBBB" },
+		]);
+		sdb._tx.vehicle_restock_record.findUniqueOrThrow.mockResolvedValue(
+			makeRestockRecord({
+				restock_lines: [{ stock_item_id: stockItemId, qty_restocked: 2, qty_shortfall: 0 }],
+			}),
+		);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2, serial_unit_ids: serialIds }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(result.line_details).toEqual([
+			{
+				stock_item_id: stockItemId,
+				reason_code: "cache_drift_detected",
+				message:
+					"Scanned/lot quantity did not match the cached stock count — investigate a possible data drift.",
+				serial_codes: ["SU-AAAAAAAA", "SU-BBBBBBBB"],
+			},
+		]);
+	});
+
+	it("batch-tracked explicit picks resolve lot codes via a single batched stock_batch lookup", async () => {
+		const stockItemId = "f6a7b8c9-d0e1-4f2a-8b3c-4d5e6f7a8b9c";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-batch" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-batch", quantity: 10, is_serialized: false, is_batch_tracked: true },
+		]);
+		const batchId = "33333333-3333-4333-8333-333333333333";
+		// stock_batch.findMany is also called by buildTrackingInputs (capped-mode
+		// availability, selecting qty_in_warehouse) — branch on `select` so this
+		// one mock serves both call shapes correctly.
+		sdb._tx.stock_batch.findMany.mockImplementation(({ select }: { select?: Record<string, boolean> }) => {
+			if (select?.code) return Promise.resolve([{ id: batchId, code: "LOT-CCCCCCCC" }]);
+			// Matches inventory_item.quantity (10) below so the capped-availability
+			// check doesn't also (correctly, but not what this test is about) flag
+			// cache_drift_detected.
+			return Promise.resolve([{ inventory_item_id: "inv-batch", qty_in_warehouse: 10 }]);
+		});
+		sdb._tx.vehicle_restock_record.findUniqueOrThrow.mockResolvedValue(
+			makeRestockRecord({
+				restock_lines: [{ stock_item_id: stockItemId, qty_restocked: 2, qty_shortfall: 0 }],
+			}),
+		);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{
+				restock_lines: [
+					{ stock_item_id: stockItemId, qty_to_restock: 2, batch_picks: [{ batch_id: batchId, qty: 2 }] },
+				],
+			},
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(result.line_details).toEqual([
+			{ stock_item_id: stockItemId, reason_code: "ok", lot_codes: ["LOT-CCCCCCCC"] },
+		]);
+	});
+
+	it("FIFO auto-allocated batch line resolves lot codes via the movement rows just written", async () => {
+		const stockItemId = "a7b8c9d0-e1f2-4a3b-8c4d-5e6f7a8b9c0d";
+		const restockRecord = makeRestockRecord({ id: "restock-fifo" });
+		sdb._tx.vehicle_restock_record.create.mockResolvedValue(restockRecord);
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-batch" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-batch", quantity: 10, is_serialized: false, is_batch_tracked: true },
+		]);
+		// Matches inventory_item.quantity (10) — isolates this test to the
+		// FIFO lot-code join, not an incidental cache_drift_detected reason.
+		sdb._tx.stock_batch.findMany.mockResolvedValue([{ inventory_item_id: "inv-batch", qty_in_warehouse: 10 }]);
+		sdb._tx.stock_movement.findMany.mockResolvedValue([
+			{
+				inventory_item_id: "inv-batch",
+				movement_batches: [{ batch: { code: "LOT-FIFO001" } }, { batch: { code: "LOT-FIFO002" } }],
+			},
+		]);
+		sdb._tx.vehicle_restock_record.findUniqueOrThrow.mockResolvedValue(
+			makeRestockRecord({
+				id: "restock-fifo",
+				restock_lines: [{ stock_item_id: stockItemId, qty_restocked: 2, qty_shortfall: 0 }],
+			}),
+		);
+		// FIFO lot codes now resolve off the exact movement ids recordMovements
+		// returns (deterministic — no wall-clock created_at filter).
+		mockRecordMovements.mockResolvedValueOnce({ lowStockItemIds: [], movementIds: ["mv-fifo-1"] });
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 2 }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(result.line_details).toEqual([
+			{ stock_item_id: stockItemId, reason_code: "ok", lot_codes: ["LOT-FIFO001", "LOT-FIFO002"] },
+		]);
+		expect(sdb._tx.stock_movement.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({ id: { in: ["mv-fifo-1"] }, inventory_item_id: { in: ["inv-batch"] } }),
+			}),
+		);
+	});
+
+	it("zero-qty line reports reason_code ok with no message and is excluded from lines_needing_attention", async () => {
+		const stockItemId = "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItemId, inventory_item_id: "inv-3" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([{ id: "inv-3", quantity: 10 }]);
+		sdb._tx.vehicle_restock_record.findUniqueOrThrow.mockResolvedValue(
+			makeRestockRecord({
+				restock_lines: [{ stock_item_id: stockItemId, qty_restocked: 0, qty_shortfall: 0 }],
+			}),
+		);
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{ restock_lines: [{ stock_item_id: stockItemId, qty_to_restock: 0 }] },
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		expect(result.line_details).toEqual([{ stock_item_id: stockItemId, reason_code: "ok" }]);
+		expect(mockLogActivity).toHaveBeenCalledWith(
+			expect.objectContaining({
+				changes: expect.not.objectContaining({ lines_needing_attention: expect.anything() }),
+			}),
+		);
+	});
+
+	it("multi-line restock: tracking lands on the correct line despite a zero-qty line being filtered out", async () => {
+		const stockItem1 = "b8c9d0e1-f2a3-4b4c-8d5e-6f7a8b9c0d1e";
+		const stockItem2 = "c9d0e1f2-a3b4-4c5d-8e6f-7a8b9c0d1e2f";
+		const stockItem3 = "d0e1f2a3-b4c5-4d6e-8f7a-8b9c0d1e2f3a";
+		sdb._tx.vehicle_stock_item.findMany.mockResolvedValue([
+			makeStockItem({ id: stockItem1, inventory_item_id: "inv-1" }),
+			makeStockItem({ id: stockItem2, inventory_item_id: "inv-2" }),
+			makeStockItem({ id: stockItem3, inventory_item_id: "inv-3" }),
+		]);
+		sdb._tx.inventory_item.findMany.mockResolvedValue([
+			{ id: "inv-1", quantity: 10, is_serialized: false, is_batch_tracked: false },
+			{ id: "inv-2", quantity: 10, is_serialized: false, is_batch_tracked: false },
+			{ id: "inv-3", quantity: 10, is_serialized: true, is_batch_tracked: false },
+		]);
+		const serialIds = ["44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555"];
+
+		const result = await completeRestock(
+			"vehicle-1",
+			{
+				restock_lines: [
+					{ stock_item_id: stockItem1, qty_to_restock: 3 },
+					{ stock_item_id: stockItem2, qty_to_restock: 0 },
+					{ stock_item_id: stockItem3, qty_to_restock: 2, serial_unit_ids: serialIds },
+				],
+			},
+			"org-1",
+			{ dispatcherId: "dispatcher-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		const movements = mockRecordMovements.mock.calls[0][3];
+		// Middle (zero-qty) line produces no movement — only 2 movements for 3 lines
+		expect(movements).toHaveLength(2);
+		expect(movements[0]).toMatchObject({ inventory_item_id: "inv-1", qty: 3 });
+		expect(movements[0].serial).toBeUndefined();
+		expect(movements[1]).toMatchObject({ inventory_item_id: "inv-3", qty: 2 });
+		expect(movements[1].serial).toEqual({ unit_ids: serialIds });
 	});
 });
 

@@ -36,6 +36,7 @@ import {
 } from "../../hooks/useRecurringPlans";
 import { useGenerateInvoiceMutation } from "../../hooks/useInvoices";
 import Card from "../../components/ui/Card";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import RecurringPlanNoteManager from "../../components/recurringPlans/RecurringPlanNoteManager";
 import EditRecurringPlan from "../../components/recurringPlans/EditRecurringPlan";
@@ -94,6 +95,7 @@ export default function RecurringPlanDetailPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [daysAhead, setDaysAhead] = useState(30);
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
+	const [pendingConfirm, setPendingConfirm] = useState<"cancel" | "complete" | null>(null);
 	const [upcomingPage, setUpcomingPage] = useState(0);
 	const [pastPage, setPastPage] = useState(0);
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -232,35 +234,28 @@ export default function RecurringPlanDetailPage() {
 		}
 	};
 
-	const handleCancel = async () => {
+	const handleCancel = () => {
 		if (!jobContainerId || !MANAGE_RECURRING_PLANS) return;
-		if (
-			window.confirm(
-				"Are you sure you want to cancel this recurring plan? All future planned occurrences will be cancelled."
-			)
-		) {
-			try {
-				await cancelMutation.mutateAsync(jobContainerId);
-				setShowActionsMenu(false);
-			} catch (error) {
-				console.error("Failed to cancel plan:", error);
-			}
-		}
+		setPendingConfirm("cancel");
 	};
 
-	const handleComplete = async () => {
+	const handleComplete = () => {
 		if (!jobContainerId) return;
-		if (
-			window.confirm(
-				"Are you sure you want to mark this recurring plan as completed?"
-			)
-		) {
-			try {
+		setPendingConfirm("complete");
+	};
+
+	const confirmPendingAction = async () => {
+		if (!jobContainerId) return;
+		try {
+			if (pendingConfirm === "cancel") {
+				await cancelMutation.mutateAsync(jobContainerId);
+			} else if (pendingConfirm === "complete") {
 				await completeMutation.mutateAsync(jobContainerId);
-				setShowActionsMenu(false);
-			} catch (error) {
-				console.error("Failed to complete plan:", error);
 			}
+			setShowActionsMenu(false);
+			setPendingConfirm(null);
+		} catch (error) {
+			console.error(`Failed to ${pendingConfirm} plan:`, error);
 		}
 	};
 
@@ -1230,6 +1225,21 @@ export default function RecurringPlanDetailPage() {
 					</div>
 				</div>
 			)}
+
+			<ConfirmDialog
+				open={pendingConfirm !== null}
+				title={pendingConfirm === "cancel" ? "Cancel Plan" : "Complete Plan"}
+				body={
+					pendingConfirm === "cancel"
+						? "Are you sure you want to cancel this recurring plan? All future planned occurrences will be cancelled."
+						: "Are you sure you want to mark this recurring plan as completed?"
+				}
+				confirmLabel={pendingConfirm === "cancel" ? "Cancel Plan" : "Complete"}
+				tone={pendingConfirm === "cancel" ? "destructive" : "primary"}
+				pending={cancelMutation.isPending || completeMutation.isPending}
+				onConfirm={confirmPendingAction}
+				onCancel={() => setPendingConfirm(null)}
+			/>
 		</div>
 	);
 }

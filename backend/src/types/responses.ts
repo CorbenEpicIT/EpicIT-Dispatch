@@ -1,4 +1,4 @@
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
 	success: boolean;
 	data: T | null;
 	error: ErrorDetails | null;
@@ -8,7 +8,7 @@ export interface ApiResponse<T = any> {
 export interface ErrorDetails {
 	code: string;
 	message: string;
-	details?: any;
+	details?: unknown;
 	field?: string;
 }
 
@@ -19,7 +19,7 @@ export interface ResponseMeta {
 	hasMore?: boolean;
 }
 
-export interface ControllerResult<T = any> {
+export interface ControllerResult<T = unknown> {
 	err: string;
 	item?: T | null;
 	message?: string;
@@ -57,7 +57,7 @@ export const createSuccessResponse = <T>(
 export const createErrorResponse = (
 	code: ErrorCode | string,
 	message: string,
-	details?: any,
+	details?: unknown,
 	field?: string
 ): ApiResponse<null> => ({
 	success: false,

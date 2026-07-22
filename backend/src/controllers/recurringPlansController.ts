@@ -116,8 +116,7 @@ type RecurringRuleWithWeekdays = Prisma.recurring_ruleGetPayload<{
 async function generateOccurrencesForPlan(
 	planId: string,
 	daysAhead: number,
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	tx: any,
+	tx: Prisma.TransactionClient,
 ): Promise<OccurrenceGenerationResult> {
 	const plan = await tx.recurring_plan.findUnique({
 		where: { id: planId },
@@ -568,7 +567,7 @@ export const insertRecurringPlan = async (
 			await generateOccurrencesForPlan(
 				plan.id,
 				parsed.generation_window_days,
-				tx,
+				tx as unknown as Prisma.TransactionClient,
 			);
 
 			// Update client activity
@@ -793,7 +792,7 @@ export const updateRecurringPlan = async (
 				await generateOccurrencesForPlan(
 					existing.id,
 					plan.generation_window_days,
-					tx,
+					tx as unknown as Prisma.TransactionClient,
 				);
 			}
 
@@ -1418,7 +1417,7 @@ export const generateOccurrences = async (
 			return await generateOccurrencesForPlan(
 				plan.id,
 				parsed.days_ahead,
-				tx,
+				tx as unknown as Prisma.TransactionClient,
 			);
 		});
 

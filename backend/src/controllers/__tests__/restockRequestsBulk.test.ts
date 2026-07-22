@@ -120,6 +120,7 @@ describe("createRestockRequestsBulk", () => {
 		expect(tx.vehicle_restock_request.createManyAndReturn).toHaveBeenCalledWith({
 			data: [
 				{
+					organization_id: "org-1",
 					stock_item_id: A,
 					technician_id: "tech-1",
 					qty_requested: 5,
@@ -151,11 +152,40 @@ describe("listVehicleRestockRequests", () => {
 		expect(result.err).toBe("Technician is not assigned to this vehicle");
 	});
 
-	it("returns pending, unreceived, and recently resolved requests with qty_fulfilled", async () => {
+	it("returns pending, unreceived, and recently resolved requests", async () => {
 		mockDb.technician.findFirst.mockResolvedValue({ current_vehicle_id: "vehicle-1" } as never);
+		const createdAt = new Date("2026-07-18T12:00:00.000Z");
 		mockDb.vehicle_restock_request.findMany.mockResolvedValue([
-			{ id: "r1", status: "fulfilled", received_at: null, stock_movements: [{ qty: 5 }] },
-			{ id: "r2", status: "pending", received_at: null, stock_movements: [] },
+			{
+				id: "r1",
+				status: "pending",
+				qty_requested: 5,
+				created_at: createdAt,
+				acknowledged_at: null,
+				resolved_at: null,
+				stock_item: {
+					id: "si-1",
+					qty_on_hand: 2,
+					qty_min: 1,
+					qty_standard: 5,
+					inventory_item: { id: "inv-1", name: "Filter", unit: "ea", quantity: 10 },
+				},
+			},
+			{
+				id: "r2",
+				status: "acknowledged",
+				qty_requested: 3,
+				created_at: createdAt,
+				acknowledged_at: createdAt,
+				resolved_at: null,
+				stock_item: {
+					id: "si-2",
+					qty_on_hand: 0,
+					qty_min: 1,
+					qty_standard: null,
+					inventory_item: { id: "inv-2", name: "Belt", unit: "ea", quantity: 4 },
+				},
+			},
 		] as never);
 
 		const result = await listVehicleRestockRequests("vehicle-1", "org-1", { techId: "tech-1" });
@@ -163,8 +193,10 @@ describe("listVehicleRestockRequests", () => {
 		expect(result.err).toBeUndefined();
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const reqs = result.requests as any[];
-		expect(reqs[0].qty_fulfilled).toBe(5);
-		expect(reqs[1].qty_fulfilled).toBeNull();
+		expect(reqs[0].id).toBe("r1");
+		expect(reqs[0].created_at).toBe(createdAt.toISOString());
+		expect(reqs[0].stock_item.qty_on_hand).toBe(2);
+		expect(reqs[1].acknowledged_at).toBe(createdAt.toISOString());
 		const where = mockDb.vehicle_restock_request.findMany.mock.calls[0][0]!.where;
 		expect(where.stock_item.vehicle).toEqual({ id: "vehicle-1", organization_id: "org-1" });
 		expect(where.OR).toHaveLength(4);

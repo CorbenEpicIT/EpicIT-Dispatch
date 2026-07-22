@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import PageHeader from "../../components/ui/PageHeader";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import NewReportModal from "../../components/reports/NewReportModal";
 import FavoritesButton from "../../components/reports/FavoritesButton";
 import type { FavoriteLink } from "../../components/reports/FavoritesButton";
@@ -306,6 +307,7 @@ function CategoryCard({
 export default function ReportingPage() {
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editing, setEditing] = useState(false);
+	const [deleteReportId, setDeleteReportId] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState<Partial<Record<ReportCategoryId, boolean>>>({});
 
 	const { user } = useAuthStore();
@@ -336,8 +338,14 @@ export default function ReportingPage() {
 	};
 
 	const handleDeleteReport = (id: string) => {
-		if (!window.confirm("Delete this saved report? This cannot be undone.")) return;
-		deleteSavedReport.mutate(id);
+		setDeleteReportId(id);
+	};
+
+	const confirmDeleteReport = () => {
+		if (!deleteReportId) return;
+		deleteSavedReport.mutate(deleteReportId, {
+			onSuccess: () => setDeleteReportId(null),
+		});
 	};
 
 	const entriesByCategory = useMemo(() => {
@@ -486,6 +494,16 @@ export default function ReportingPage() {
 				))}
 			</div>
 			<NewReportModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+			<ConfirmDialog
+				open={deleteReportId !== null}
+				title="Delete Report"
+				body="Delete this saved report? This cannot be undone."
+				confirmLabel="Delete"
+				tone="destructive"
+				pending={deleteSavedReport.isPending}
+				onConfirm={confirmDeleteReport}
+				onCancel={() => setDeleteReportId(null)}
+			/>
 		</div>
 	);
 }

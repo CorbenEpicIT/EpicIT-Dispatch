@@ -11,13 +11,16 @@ import {
 	Check,
 	Trash2,
 } from "lucide-react";
-import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation } from "../../hooks/useVehicles";
+import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation } from "../../hooks/useVehicleStock";
 import { useUpdateJobVisitMutation } from "../../hooks/useJobs";
+import { useToast } from "../ui/useToast";
 
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
-import type { VehicleStockItem, SupplierPartUsedInput } from "../../types/vehicles";
+import ExistingUnitPicker from "../vehicles/ExistingUnitPicker";
+import ExistingBatchPicker from "../vehicles/ExistingBatchPicker";
+import type { VehicleStockItem, SupplierPartUsedInput, AddPartsUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 
 type Mode = "edit" | "stock" | "supplier";
@@ -164,9 +167,13 @@ function StockPartPicker({
 	onClose: () => void;
 }) {
 	const addParts = useAddPartsUsedMutation();
+	const toast = useToast();
 	const [selected, setSelected] = useState<VehicleStockItem | null>(null);
 	const [qty, setQty] = useState("1");
 	const [err, setErr] = useState<string | null>(null);
+	const [targetCount, setTargetCount] = useState(1);
+	const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
+	const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
 
 	const filtered = useMemo(() => {
 		const q = search.toLowerCase();
@@ -184,29 +191,55 @@ function StockPartPicker({
 
 	const handleConfirm = async () => {
 		if (!selected) return;
-		const parsedQty = Number(qty);
-		if (!parsedQty || parsedQty <= 0) {
-			setErr("Enter a valid quantity.");
-			return;
-		}
-		if (parsedQty > Number(selected.qty_on_hand)) {
-			setErr("Not enough stock on hand.");
-			return;
-		}
-		setErr(null);
-		await addParts.mutateAsync({
-			visitId,
-			vehicleId,
-			data: {
+		const isSerialized = selected.inventory_item.is_serialized;
+		const isBatchTracked = selected.inventory_item.is_batch_tracked;
+
+		let data: AddPartsUsedInput;
+		if (isSerialized) {
+			if (selectedUnits.length !== targetCount) {
+				setErr("Select exactly the target number of units.");
+				return;
+			}
+			data = {
+				stock_item_id: selected.id,
+				qty_used: targetCount,
+				technician_id: technicianId,
+				serial_unit_ids: selectedUnits,
+			};
+		} else {
+			const parsedQty = Number(qty);
+			if (!parsedQty || parsedQty <= 0) {
+				setErr("Enter a valid quantity.");
+				return;
+			}
+			if (parsedQty > Number(selected.qty_on_hand)) {
+				setErr("Not enough stock on hand.");
+				return;
+			}
+			data = {
 				stock_item_id: selected.id,
 				qty_used: parsedQty,
 				technician_id: technicianId,
-			},
-		});
-		onClose();
+				...(isBatchTracked && selectedBatchId ? { batch_id: selectedBatchId } : {}),
+			};
+		}
+
+		setErr(null);
+		try {
+			await addParts.mutateAsync({ visitId, vehicleId, data });
+			toast.success(`Added ${selected.inventory_item.name}`);
+			onClose();
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : "Failed to add part");
+		}
 	};
 
 	if (selected) {
+		const isSerialized = selected.inventory_item.is_serialized;
+		const isBatchTracked = selected.inventory_item.is_batch_tracked;
+		const confirmDisabled =
+			addParts.isPending || (isSerialized && selectedUnits.length !== targetCount);
+
 		return (
 			<div className="p-4">
 				<p className="text-sm font-semibold text-text-primary mb-1">
@@ -216,18 +249,73 @@ function StockPartPicker({
 					On hand: {Number(selected.qty_on_hand)}{" "}
 					{selected.inventory_item.unit}
 				</p>
-				<label className="text-xs text-text-tertiary mb-1 block">
-					Quantity Used
-				</label>
-				<input
-					type="number"
-					min="1"
-					max={Number(selected.qty_on_hand)}
-					value={qty}
-					onChange={(e) => setQty(e.target.value)}
-					autoFocus
-					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong mb-3 tabular-nums"
-				/>
+				{isSerialized ? (
+					<div className="mb-3">
+						<div className="flex items-center justify-between mb-2">
+							<label className="text-xs text-text-tertiary">
+								Units to use
+							</label>
+							<div className="flex items-center gap-1.5">
+								<button
+									type="button"
+									onClick={() =>
+										setTargetCount((c) => Math.max(1, c - 1))
+									}
+									className="flex items-center justify-center w-6 h-6 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors"
+									aria-label="Decrease units to use"
+								>
+									-
+								</button>
+								<span className="text-sm font-semibold text-text-primary tabular-nums min-w-[18px] text-center">
+									{targetCount}
+								</span>
+								<button
+									type="button"
+									onClick={() => setTargetCount((c) => c + 1)}
+									className="flex items-center justify-center w-6 h-6 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors"
+									aria-label="Increase units to use"
+								>
+									+
+								</button>
+							</div>
+						</div>
+						<ExistingUnitPicker
+							itemId={selected.inventory_item.id}
+							itemName={selected.inventory_item.name}
+							statusFilter="on_vehicle"
+							vehicleId={vehicleId}
+							targetCount={targetCount}
+							value={selectedUnits}
+							onChange={setSelectedUnits}
+						/>
+					</div>
+				) : (
+					<>
+						<label className="text-xs text-text-tertiary mb-1 block">
+							Quantity Used
+						</label>
+						<input
+							type="number"
+							min="1"
+							max={Number(selected.qty_on_hand)}
+							value={qty}
+							onChange={(e) => setQty(e.target.value)}
+							autoFocus
+							className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong mb-3 tabular-nums"
+						/>
+						{isBatchTracked && (
+							<div className="mb-3">
+								<ExistingBatchPicker
+									itemId={selected.inventory_item.id}
+									vehicleId={vehicleId}
+									direction="vehicle_out"
+									value={selectedBatchId}
+									onChange={setSelectedBatchId}
+								/>
+							</div>
+						)}
+					</>
+				)}
 				{err && <p className="text-xs text-error-text mb-2">{err}</p>}
 				<div className="flex gap-2">
 					<button
@@ -238,7 +326,7 @@ function StockPartPicker({
 					</button>
 					<button
 						onClick={handleConfirm}
-						disabled={addParts.isPending}
+						disabled={confirmDisabled}
 						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40"
 					>
 						{addParts.isPending ? "Adding…" : "Add Part"}
@@ -321,7 +409,14 @@ function StockPartPicker({
 								</button>
 							) : (
 								<button
-									onClick={() => setSelected(item)}
+									onClick={() => {
+										setSelected(item);
+										setQty("1");
+										setTargetCount(1);
+										setSelectedUnits([]);
+										setSelectedBatchId(null);
+										setErr(null);
+									}}
 									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-primary-bg text-primary-text hover:bg-primary-bg-subtle hover:text-primary-text transition-colors border border-primary-border"
 								>
 									+ Add
@@ -349,6 +444,7 @@ function SupplierPartForm({
 	onClose: () => void;
 }) {
 	const mutation = useAddSupplierPartUsedMutation(visitId, vehicleId);
+	const toast = useToast();
 	const [name, setName] = useState("");
 	const [qty, setQty] = useState("1");
 	const [unitCost, setUnitCost] = useState("");
@@ -366,9 +462,12 @@ function SupplierPartForm({
 				qty_used: parsedQty,
 				new_item: { name: name.trim(), cost: parsedCost || 0 },
 			} satisfies SupplierPartUsedInput);
+			toast.success(`Added ${name.trim()}`);
 			onClose();
 		} catch (e: unknown) {
-			setErr(e instanceof Error ? e.message : "Failed to add part");
+			const message = e instanceof Error ? e.message : "Failed to add part";
+			setErr(message);
+			toast.error(message);
 		}
 	};
 

@@ -26,6 +26,8 @@ export interface InventoryItem {
 	alert_email: string | null;
 	category: string | null;
 	unit: string;
+	is_serialized: boolean;
+	is_batch_tracked: boolean;
 	created_at: string;
 	updated_at: string;
 	stock_status: StockStatus;
@@ -57,6 +59,8 @@ export interface CreateInventoryItemInput {
 	alt_ids?: string[];
 	alert_emails_enabled: boolean;
 	alert_email?: string | null;
+	is_serialized?: boolean;
+	is_batch_tracked?: boolean;
 }
 
 export type UpdateInventoryItemInput = Partial<CreateInventoryItemInput>;

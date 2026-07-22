@@ -1,4 +1,3 @@
-import { useCallback, useRef } from "react";
 import {
 	useMutation,
 	useQuery,
@@ -18,6 +17,8 @@ import type {
 
 import * as inventoryApi from "../api/inventory";
 import * as orgApi from "../api/org";
+import { qk, invalidate } from "../lib/queryKeys";
+import { useScanDispatcher } from "./useScanDispatcher";
 
 // ============================================================================
 // INVENTORY QUERIES
@@ -27,14 +28,14 @@ export const useAllInventoryQuery = (
 	sort?: InventorySortOption,
 ): UseQueryResult<InventoryItem[], Error> => {
 	return useQuery({
-		queryKey: ["allInventory", sort],
+		queryKey: qk.inventory.list(sort ? { sort } : undefined),
 		queryFn: () => inventoryApi.getAllInventory(false, sort),
 	});
 };
 
 export const useLowStockInventoryQuery = (): UseQueryResult<InventoryItem[], Error> => {
 	return useQuery({
-		queryKey: ["allInventory", "low-stock"],
+		queryKey: qk.inventory.list({ lowStock: true }),
 		queryFn: () => inventoryApi.getAllInventory(true),
 	});
 };
@@ -54,8 +55,8 @@ export const useUpdateItemThresholdMutation = (): UseMutationResult<
 		mutationFn: ({ itemId, threshold }: { itemId: string; threshold: number | null }) =>
 			inventoryApi.updateItemThreshold(itemId, threshold),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
+			invalidate.warehouse(queryClient);
+			invalidate.vehicleStock(queryClient);
 		},
 		onError: (error: Error) => {
 			console.error("Failed to update inventory threshold:", error);
@@ -74,7 +75,7 @@ export const useCreateInventoryItemMutation = (): UseMutationResult<
 		mutationFn: (data: CreateInventoryItemInput) =>
 			inventoryApi.createInventoryItem(data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			invalidate.warehouse(queryClient);
 		},
 	});
 };
@@ -90,8 +91,8 @@ export const useUpdateInventoryItemMutation = (): UseMutationResult<
 		mutationFn: ({ itemId, data }: { itemId: string; data: UpdateInventoryItemInput }) =>
 			inventoryApi.updateInventoryItem(itemId, data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
+			invalidate.warehouse(queryClient);
+			invalidate.vehicleStock(queryClient);
 		},
 	});
 };
@@ -106,7 +107,7 @@ export const useDeleteInventoryItemMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: (itemId: string) => inventoryApi.deleteInventoryItem(itemId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			invalidate.warehouse(queryClient);
 		},
 	});
 };
@@ -122,8 +123,8 @@ export const useAdjustStockMutation = (): UseMutationResult<
 		mutationFn: ({ itemId, delta }: { itemId: string; delta: number }) =>
 			inventoryApi.adjustStock(itemId, delta),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock"] });
+			invalidate.warehouse(queryClient);
+			invalidate.vehicleStock(queryClient);
 		},
 	});
 };
@@ -148,35 +149,15 @@ export const useScanInventoryItem = (): UseMutationResult<
 	});
 };
 
-// Shared scan-then-branch wrapper — every call site (dispatch inventory, vehicle
-// stock, supplier-purchase catalog) needs the same mutateAsync/try-catch shape;
-// only what happens on found/not-found differs, so that stays caller-owned.
+// Thin wrapper over useScanDispatcher — every call site (dispatch inventory,
+// vehicle stock, supplier-purchase catalog) only cares about found/not-found,
+// so this keeps their signature unchanged while routing through the
+// scan-anything resolver (item today; serial/batch once Workstream B lands).
 export const useBarcodeScanHandler = (
 	onFound: (item: InventoryItem) => void,
 	onNotFound: (code: string) => void,
 ): { handleScan: (code: string) => Promise<void>; isScanning: boolean } => {
-	const scanMutation = useScanInventoryItem();
-	// Synchronous guard — React state (isPending) doesn't update fast enough to
-	// block a scanner double-fire that lands two codes in the same tick.
-	const inFlightRef = useRef(false);
-
-	const handleScan = useCallback(
-		async (code: string) => {
-			if (inFlightRef.current) return;
-			inFlightRef.current = true;
-			try {
-				const item = await scanMutation.mutateAsync(code);
-				onFound(item);
-			} catch {
-				onNotFound(code);
-			} finally {
-				inFlightRef.current = false;
-			}
-		},
-		[scanMutation, onFound, onNotFound],
-	);
-
-	return { handleScan, isScanning: scanMutation.isPending };
+	return useScanDispatcher({ onItem: onFound, onNotFound });
 };
 
 // ============================================================================
@@ -185,7 +166,7 @@ export const useBarcodeScanHandler = (
 
 export const useInventoryTagsQuery = (): UseQueryResult<InventoryTag[], Error> => {
 	return useQuery({
-		queryKey: ["inventoryTags"],
+		queryKey: qk.inventory.tags,
 		queryFn: () => inventoryApi.getInventoryTags(),
 	});
 };
@@ -195,7 +176,7 @@ export const useCreateInventoryTagMutation = (): UseMutationResult<InventoryTag,
 	return useMutation({
 		mutationFn: (label: string) => inventoryApi.createInventoryTag(label),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["inventoryTags"] });
+			queryClient.invalidateQueries({ queryKey: qk.inventory.tags });
 		},
 	});
 };
@@ -209,7 +190,7 @@ export const useUpdateInventoryTagMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ tagId, label }) => inventoryApi.updateInventoryTag(tagId, label),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["inventoryTags"] });
+			queryClient.invalidateQueries({ queryKey: qk.inventory.tags });
 		},
 	});
 };
@@ -219,8 +200,8 @@ export const useDeleteInventoryTagMutation = (): UseMutationResult<void, Error, 
 	return useMutation({
 		mutationFn: (tagId: string) => inventoryApi.deleteInventoryTag(tagId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["inventoryTags"] });
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			queryClient.invalidateQueries({ queryKey: qk.inventory.tags });
+			invalidate.warehouse(queryClient);
 		},
 	});
 };
@@ -234,7 +215,7 @@ export const useSetItemTagsMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: ({ itemId, tagIds }) => inventoryApi.setItemTags(itemId, tagIds),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			invalidate.warehouse(queryClient);
 		},
 	});
 };
@@ -245,7 +226,7 @@ export const useSetItemTagsMutation = (): UseMutationResult<
 
 export const useProvisionalItemsQuery = (enabled = true) =>
 	useQuery<ProvisionalItem[]>({
-		queryKey: ["inventory", "provisional"],
+		queryKey: qk.inventory.provisional,
 		queryFn: () => orgApi.getProvisionalItems(),
 		staleTime: 30_000,
 		enabled,
@@ -257,8 +238,8 @@ export const useApproveItemMutation = () => {
 		mutationFn: ({ itemId, initial_warehouse_qty }: { itemId: string; initial_warehouse_qty?: number }) =>
 			orgApi.approveItem(itemId, initial_warehouse_qty !== undefined ? { initial_warehouse_qty } : undefined),
 		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
-			await qc.invalidateQueries({ queryKey: ["inventory"] });
+			await qc.invalidateQueries({ queryKey: qk.inventory.provisional });
+			await invalidate.warehouse(qc);
 		},
 	});
 };
@@ -269,8 +250,8 @@ export const useMergeItemMutation = () => {
 		mutationFn: ({ itemId, targetId }: { itemId: string; targetId: string }) =>
 			orgApi.mergeItem(itemId, targetId),
 		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
-			await qc.invalidateQueries({ queryKey: ["inventory"] });
+			await qc.invalidateQueries({ queryKey: qk.inventory.provisional });
+			await invalidate.warehouse(qc);
 		},
 	});
 };
@@ -280,7 +261,7 @@ export const useRejectItemMutation = () => {
 	return useMutation({
 		mutationFn: (itemId: string) => orgApi.rejectItem(itemId),
 		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: ["inventory", "provisional"] });
+			await qc.invalidateQueries({ queryKey: qk.inventory.provisional });
 		},
 	});
 };

@@ -41,17 +41,21 @@ function handleTaxError(e: unknown, context: string): TaxErrResult {
 	return taxErr("INTERNAL", "Internal server error");
 }
 
-/** Unset all existing defaults for a model within the transaction.
- *  Uses `any` to avoid the Prisma extended-client vs TransactionClient mismatch
- *  (same pattern as the rest of the codebase — e.g. `tx as unknown as Prisma.TransactionClient`).
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function clearDefaults(tx: any, model: "tax_rate" | "tax_group"): Promise<void> {
+/** Unset all existing defaults for a model within the transaction. */
+async function clearDefaults(
+	tx: Prisma.TransactionClient,
+	model: "tax_rate" | "tax_group",
+): Promise<void> {
+	// Indexed access on the model-name union leaves updateMany's overloads
+	// mutually incompatible to TS — pick either arm's shape, both accept this call.
 	await (tx[model] as Prisma.TransactionClient["tax_rate"]).updateMany({
 		where: { is_default: true },
 		data: { is_default: false },
 	});
 }
+
+/** Cast a `$transaction` callback's `tx` to `Prisma.TransactionClient` for `clearDefaults`. */
+const asTx = (tx: unknown) => tx as unknown as Prisma.TransactionClient;
 
 // ============================================================================
 // TAX RATES
@@ -74,7 +78,7 @@ export const createTaxRate = async (
 		const sdb = getScopedDb(organizationId);
 
 		const created = await sdb.$transaction(async (tx) => {
-			if (parsed.is_default) await clearDefaults(tx, "tax_rate");
+			if (parsed.is_default) await clearDefaults(asTx(tx), "tax_rate");
 			return tx.tax_rate.create({
 				data: {
 					organization_id: organizationId,
@@ -102,7 +106,7 @@ export const updateTaxRate = async (id: string, data: unknown, organizationId: s
 			const existing = await tx.tax_rate.findFirst({ where: { id } });
 			if (!existing) throw Object.assign(new Error("Tax rate not found"), { code: "NOT_FOUND" });
 
-			if (parsed.is_default === true) await clearDefaults(tx, "tax_rate");
+			if (parsed.is_default === true) await clearDefaults(asTx(tx), "tax_rate");
 
 			return tx.tax_rate.update({
 				where: { id },
@@ -203,7 +207,7 @@ export const createTaxGroup = async (data: unknown, organizationId: string) => {
 		const sdb = getScopedDb(organizationId);
 
 		const created = await sdb.$transaction(async (tx) => {
-			if (parsed.is_default) await clearDefaults(tx, "tax_group");
+			if (parsed.is_default) await clearDefaults(asTx(tx), "tax_group");
 
 			if (parsed.rate_ids.length > 0) {
 				const foundRates = await tx.tax_rate.findMany({
@@ -253,7 +257,7 @@ export const updateTaxGroup = async (id: string, data: unknown, organizationId: 
 			const existing = await tx.tax_group.findFirst({ where: { id } });
 			if (!existing) throw Object.assign(new Error("Tax group not found"), { code: "NOT_FOUND" });
 
-			if (parsed.is_default === true) await clearDefaults(tx, "tax_group");
+			if (parsed.is_default === true) await clearDefaults(asTx(tx), "tax_group");
 
 			if (parsed.rate_ids !== undefined && parsed.rate_ids.length > 0) {
 				const foundRates = await tx.tax_rate.findMany({

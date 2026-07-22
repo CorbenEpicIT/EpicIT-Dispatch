@@ -2,14 +2,12 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Trash2, Search, X, SlidersHorizontal, LayoutList } from "lucide-react";
 import { getStockHealth } from "../../lib/stockUtils";
+import { useVehiclesQuery } from "../../hooks/useVehicles";
 import {
 	useVehicleStockQuery,
 	useUpdateVehicleStockItemMutation,
 	useDeleteVehicleStockItemMutation,
 	useAddVehicleStockItemMutation,
-	useVehiclesQuery,
-} from "../../hooks/useVehicles";
-import {
 	useRestockRequestsQuery,
 	useAcknowledgeRestockRequestMutation,
 	useDismissRestockRequestMutation,

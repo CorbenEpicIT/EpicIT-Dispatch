@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => ({
 		environment: "jsdom",
 		setupFiles: ["./src/test/setup.ts"],
 		css: true,
+		include: ["src/**/*.{test,spec}.{ts,tsx}"],
+		exclude: ["tests/**", "node_modules/**", "dist/**"],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "json", "html"],

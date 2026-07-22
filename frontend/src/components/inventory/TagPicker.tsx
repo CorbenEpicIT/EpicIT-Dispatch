@@ -64,7 +64,7 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 		<div ref={ref} className="relative">
 			<button
 				onClick={() => setOpen((o) => !o)}
-				className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-sm font-medium transition-colors ${
+				className={`inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border text-sm font-medium transition-colors ${
 					hasFilter
 						? "bg-primary-bg border-primary-border text-primary-text"
 						: "bg-surface hover:bg-surface-raised border-border text-text-secondary"

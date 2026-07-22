@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import { useFillPlanQuery, useApplyFillMutation } from "../../hooks/useVehicleStock";
-import type { FillPlanLine } from "../../types/vehicles";
+import RestockSummaryModal, { type RestockSummaryLine } from "./RestockSummaryModal";
+import type { FillPlanLine, FillResultLine } from "../../types/vehicles";
 
 function Section({ title, lines, qtys, onQty }: {
 	title: string;
@@ -39,11 +40,22 @@ function Section({ title, lines, qtys, onQty }: {
 	);
 }
 
-export default function FillToStandardPreview({ vehicleId, onClose }: { vehicleId: string; onClose: () => void }) {
+export default function FillToStandardPreview({ vehicleId, onClose, onSuccess, onError }: {
+	vehicleId: string;
+	onClose: () => void;
+	// Optional — fired after a successful apply / on failure, so a caller can
+	// toast without this shared component needing to know about any particular
+	// toast system. Dispatch's VehicleStockPage doesn't pass these, so its
+	// behavior (no toast) is unchanged.
+	onSuccess?: () => void;
+	onError?: (message: string) => void;
+}) {
 	const { data: plan, isLoading } = useFillPlanQuery(vehicleId, true);
 	const applyMutation = useApplyFillMutation(vehicleId);
 	const [qtys, setQtys] = useState<Record<string, number>>({});
 	const [applied, setApplied] = useState(false);
+	const [fillResult, setFillResult] = useState<FillResultLine[] | null>(null);
+	const [summaryDismissed, setSummaryDismissed] = useState(false);
 	const initialised = useRef(false);
 
 	useEffect(() => {
@@ -60,6 +72,26 @@ export default function FillToStandardPreview({ vehicleId, onClose }: { vehicleI
 	);
 	const nothing = !plan || (plan.standard.length === 0 && plan.visits.length === 0);
 
+	// Label lookup for the acknowledgment summary — applyFill's result only
+	// carries inventory_item_id, so names come from the plan already fetched here.
+	const nameById = useMemo(
+		() => new Map([...(plan?.standard ?? []), ...(plan?.visits ?? [])].map((l) => [l.inventory_item_id, l.name])),
+		[plan],
+	);
+	const attentionLines = useMemo<RestockSummaryLine[]>(() => {
+		if (!fillResult) return [];
+		return fillResult
+			.filter((l) => l.shortfall > 0 || l.reason_code !== "ok")
+			.map((l) => ({
+				label: nameById.get(l.inventory_item_id) ?? l.inventory_item_id,
+				requested: l.qty_moved + l.shortfall,
+				moved: l.qty_moved,
+				message: l.message,
+				serialCodes: l.serial_codes,
+				lotCodes: l.lot_codes,
+			}));
+	}, [fillResult, nameById]);
+
 	const handleApply = async () => {
 		// Sum per inventory item across both buckets (an item can appear in both)
 		const merged: Record<string, number> = {};
@@ -70,20 +102,33 @@ export default function FillToStandardPreview({ vehicleId, onClose }: { vehicleI
 		const lines = Object.entries(merged).map(([inventory_item_id, qty]) => ({ inventory_item_id, qty }));
 		if (lines.length === 0) { onClose(); return; }
 		try {
-			await applyMutation.mutateAsync({ lines });
+			const result = await applyMutation.mutateAsync({ lines });
+			setFillResult(result);
+			setSummaryDismissed(false);
 			setApplied(true);
-		} catch {
+			onSuccess?.();
+		} catch (e) {
 			// TanStack Query sets applyMutation.isError + applyMutation.error automatically
+			onError?.(e instanceof Error ? e.message : "Failed to apply fill. Try again.");
 		}
 	};
 
 	if (isLoading) return <div className="flex justify-center py-12"><LoadSvg className="w-7 h-7" /></div>;
 	if (applied) return (
-		<div className="px-5 py-8 text-center">
-			<div className="text-sm font-semibold text-text-primary mb-1">Stock filled</div>
-			<p className="text-xs text-text-muted mb-4">Quantities exceeding warehouse stock were capped at what was available.</p>
-			<button onClick={onClose} className="px-4 py-2 text-sm font-semibold bg-primary hover:bg-primary-hover text-on-primary rounded-md">Done</button>
-		</div>
+		<>
+			<div className="px-5 py-8 text-center">
+				<div className="text-sm font-semibold text-text-primary mb-1">Stock filled</div>
+				<p className="text-xs text-text-muted mb-4">Quantities exceeding warehouse stock were capped at what was available.</p>
+				<button onClick={onClose} className="px-4 py-2 text-sm font-semibold bg-primary hover:bg-primary-hover text-on-primary rounded-md">Done</button>
+			</div>
+			{attentionLines.length > 0 && !summaryDismissed && (
+				<RestockSummaryModal
+					title="Fill to Standard Summary"
+					lines={attentionLines}
+					onAcknowledge={() => setSummaryDismissed(true)}
+				/>
+			)}
+		</>
 	);
 	if (nothing) return (
 		<div className="px-5 py-8 text-center">

@@ -271,8 +271,10 @@ router.get("/:techId/visits", requirePermissionOrSelf("view_technicians", "techI
     }
 });
 
-// permissions could be an issue if use_inventory is removed from tech, not urgent fix 
-router.put("/:id/vehicle", requireAnyPermissionOrSelf(["manage_vehicles", "use_vehicles"], "id"), async (req, res, next) => {
+// Technicians may set only their OWN current vehicle (self match on :id); dispatchers
+// with manage_vehicles may set anyone's. use_vehicles is intentionally NOT accepted here —
+// it would let any technician reassign a colleague's vehicle (horizontal priv-esc).
+router.put("/:id/vehicle", requireAnyPermissionOrSelf(["manage_vehicles"], "id"), async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;

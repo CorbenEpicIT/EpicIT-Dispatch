@@ -1,5 +1,6 @@
 ﻿import { useState, useRef, useEffect, type ReactNode } from "react";
-import { Settings, Trash2, MoreHorizontal } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Settings, Trash2, MoreHorizontal, Barcode } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
 import {
 	calculateStockStatus,
@@ -8,6 +9,8 @@ import {
 	getStockRingColor,
 } from "../../util/util";
 import ImageCarousel from "./ImageCarousel";
+import AddToLabelQueueButton from "./labels/AddToLabelQueueButton";
+import { TrackingBadges } from "./TrackingBadges";
 
 interface InventoryItemViewProps {
 	item: InventoryItem;
@@ -45,6 +48,7 @@ export default function InventoryItemView({
 }: InventoryItemViewProps) {
 	const stockStatus = item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 	const threshold = item.low_stock_threshold;
+	const isTracked = item.is_serialized || item.is_batch_tracked;
 
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -96,6 +100,7 @@ export default function InventoryItemView({
 						<span className="text-[13px] font-semibold text-text-primary truncate min-w-0">
 							{item.name}
 						</span>
+						<TrackingBadges item={item} />
 						{item.tags && item.tags.slice(0, 2).map((tag) => (
 							<span
 								key={tag.id}
@@ -198,6 +203,17 @@ export default function InventoryItemView({
 										Alert Settings
 									</button>
 								)}
+								<AddToLabelQueueButton item={item} onAdded={() => setMenuOpen(false)} />
+								{isTracked && (
+									<Link
+										to={`/dispatch/inventory/items/${item.id}/tracking`}
+										onClick={() => setMenuOpen(false)}
+										className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
+									>
+										<Barcode size={13} />
+										Serials & Batches
+									</Link>
+								)}
 								{qbConnected && isLinkedToQB && (
 									<div className="px-3 py-1.5 text-xs text-success-text flex items-center gap-2">
 										QB Linked
@@ -238,19 +254,25 @@ export default function InventoryItemView({
 		>
 
 			<ImageCarousel images={item.image_urls ?? []} compact className="mb-2" />
-			<h3 className="font-bold text-lg">{item.name}</h3>
-			{item.tags && item.tags.length > 0 && (
-				<div className="flex flex-wrap gap-1 mt-1 max-h-[44px] overflow-hidden">
-					{item.tags.map((tag) => (
-						<span
-							key={tag.id}
-							className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface text-text-secondary border border-border-subtle"
-						>
-							{tag.label}
-						</span>
-					))}
-				</div>
-			)}
+			{/*
+			 * Single wrapping flow: name → tracking badges → tags.
+			 * Uniform gap-y keeps wrapped badges (e.g. "Batch" pushed to row 2 by a
+			 * long name) and the tags on the same second row with even spacing,
+			 * instead of the old two-container layout that stranded a wrapped badge
+			 * on its own line with an oversized gap above the tags.
+			 */}
+			<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<h3 className="font-bold text-lg">{item.name}</h3>
+				<TrackingBadges item={item} />
+				{item.tags?.map((tag) => (
+					<span
+						key={tag.id}
+						className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface text-text-secondary border border-border-subtle"
+					>
+						{tag.label}
+					</span>
+				))}
+			</div>
 			<hr className="my-2 text-text-faint" />
 			<div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1">
 				<FieldRow label="Location" value={item.location ?? "—"} />
@@ -295,18 +317,33 @@ export default function InventoryItemView({
 							</button>
 						) : null)}
 				</div>
-				{onEditThreshold && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							onEditThreshold();
-						}}
+				<div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+					<AddToLabelQueueButton
+						item={item}
+						title="Add to label queue"
 						className="p-1.5 hover:bg-surface text-text-tertiary hover:text-text-primary rounded-md transition-colors"
-						title="Edit threshold"
 					>
-						<Settings size={14} />
-					</button>
-				)}
+						<span className="sr-only">Add to Label Queue</span>
+					</AddToLabelQueueButton>
+					{isTracked && (
+						<Link
+							to={`/dispatch/inventory/items/${item.id}/tracking`}
+							className="p-1.5 hover:bg-surface text-text-tertiary hover:text-text-primary rounded-md transition-colors"
+							title="Serials & Batches"
+						>
+							<Barcode size={14} />
+						</Link>
+					)}
+					{onEditThreshold && (
+						<button
+							onClick={onEditThreshold}
+							className="p-1.5 hover:bg-surface text-text-tertiary hover:text-text-primary rounded-md transition-colors"
+							title="Edit threshold"
+						>
+							<Settings size={14} />
+						</button>
+					)}
+				</div>
 			</div>
 		</div>
 	);

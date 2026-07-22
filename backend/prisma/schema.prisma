@@ -79,6 +79,14 @@ enum stock_movement_reason {
   supplier_purchase
 }
 
+enum serial_unit_status {
+  in_warehouse
+  on_vehicle
+  consumed
+  lost
+  returned
+}
+
 enum restock_mode {
   tech_self_serve
   dispatch_prepared
@@ -293,6 +301,8 @@ model organization {
   logs                  log[]
   vehicle_readiness     vehicle_readiness[]
   stock_movements       stock_movement[]
+  serial_units          serial_unit[]
+  stock_batches         stock_batch[]
 
   requests              request[]
   quotes                quote[]
@@ -432,6 +442,7 @@ model client {
   recurring_plans recurring_plan[]
   invoices        invoice[]
   client_external_mapping client_external_mapping[]
+  serial_units    serial_unit[]
 
   @@index([is_active])
   @@index([is_tax_exempt])
@@ -786,6 +797,7 @@ model job_visit {
   invoice_visits         invoice_visit[]
   vehicle_stock_usages   vehicle_stock_usage[]
   stock_movements        stock_movement[]
+  consumed_serial_units  serial_unit[]
 
   @@index([job_id])
   @@index([status])
@@ -827,6 +839,7 @@ model job_visit_line_item {
   created_at DateTime @default(now())
   time_entry visit_tech_time_entry?
   stock_movements stock_movement[]
+  consumed_serial_units serial_unit[]
 
   @@index([visit_id])
   @@index([sort_order])
@@ -1121,8 +1134,8 @@ model form_draft {
 
 model inventory_item {
   id          String @id @unique @default(uuid())
-  organization_id String?
-  organization    organization? @relation(fields: [organization_id], references: [id])
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
   name        String
   description String @db.Text
   location    String
@@ -1133,6 +1146,8 @@ model inventory_item {
   sku        String?
   barcode    String? // Physical label code (UPC, EAN, Code128, Code39, QR)
   is_active  Boolean  @default(true)
+  is_serialized    Boolean @default(false)
+  is_batch_tracked Boolean @default(false)
   low_stock_threshold Int?
   provisional         Boolean   @default(false)
   created_by_tech_id  String?
@@ -1160,6 +1175,8 @@ model inventory_item {
   stock_movements  stock_movement[]
   external_mappings item_external_mapping[]
   invoice_line_items invoice_line_item[]
+  serial_units     serial_unit[]
+  stock_batches    stock_batch[]
 
   @@unique([organization_id, sku])
   @@unique([organization_id, barcode])
@@ -1205,8 +1222,8 @@ model inventory_tag {
 
 model vehicle {
   id              String        @id @default(uuid())
-  organization_id String?
-  organization    organization? @relation(fields: [organization_id], references: [id])
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
   name            String
   type            String        // freetext: "van", "truck", "sedan", etc.
   license_plate   String?
@@ -1226,6 +1243,8 @@ model vehicle {
   readiness_records   vehicle_readiness[]
   movements_from      stock_movement[]     @relation("MovementFromVehicle")
   movements_to        stock_movement[]     @relation("MovementToVehicle")
+  serial_units        serial_unit[]
+  stock_batches       vehicle_stock_batch[]
 
   @@index([organization_id])
   @@index([status])
@@ -1404,6 +1423,9 @@ model stock_movement {
   adjustment_id      String?
   adjustment         vehicle_stock_adjustment? @relation(fields: [adjustment_id], references: [id])
 
+  movement_serials   stock_movement_serial[]
+  movement_batches   stock_movement_batch[]
+
   created_at DateTime @default(now())
 
   @@index([organization_id, inventory_item_id, created_at])
@@ -1413,6 +1435,124 @@ model stock_movement {
   @@index([visit_id])
   @@index([restock_record_id])
   @@index([adjustment_id])
+}
+
+// ============================================================================
+// SERIAL + BATCH TRACKING (per-unit + lot traceability)
+// Cached quantities (stock_batch.qty_in_warehouse, vehicle_stock_batch.qty_on_hand)
+// and serial_unit.status/current_vehicle_id/consumed_* are written ONLY by
+// services/stockMovements.recordMovements() in the same tx.
+// ============================================================================
+
+model serial_unit {
+  id                String @id @default(uuid())
+  organization_id   String
+  organization      organization @relation(fields: [organization_id], references: [id])
+  inventory_item_id String
+  inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id])
+  serial_number     String // manufacturer serial (may collide across SKUs)
+  code              String @unique @default(uuid()) // stable QR payload (short base32 assigned by app)
+  status            serial_unit_status @default(in_warehouse)
+
+  current_vehicle_id String?
+  current_vehicle    vehicle? @relation(fields: [current_vehicle_id], references: [id])
+
+  // Consumption snapshot (set on consume, cleared on reversal)
+  consumed_at          DateTime?
+  consumed_visit_id    String?
+  consumed_visit       job_visit? @relation(fields: [consumed_visit_id], references: [id])
+  consumed_line_item_id String?
+  consumed_line_item   job_visit_line_item? @relation(fields: [consumed_line_item_id], references: [id])
+  client_id            String? // denormalized visit→job→client at consumption for recall lookups
+  client               client? @relation(fields: [client_id], references: [id])
+
+  batch_id String?
+  batch    stock_batch? @relation(fields: [batch_id], references: [id])
+
+  received_at DateTime @default(now())
+  note        String?  @db.Text
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  movement_serials stock_movement_serial[]
+
+  @@unique([organization_id, inventory_item_id, serial_number])
+  @@index([organization_id, status])
+  @@index([inventory_item_id, status])
+  @@index([current_vehicle_id])
+  @@index([client_id])
+  @@index([consumed_visit_id])
+  @@index([batch_id])
+  @@index([organization_id, serial_number])
+}
+
+model stock_batch {
+  id                String @id @default(uuid())
+  organization_id   String
+  organization      organization @relation(fields: [organization_id], references: [id])
+  inventory_item_id String
+  inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id])
+  batch_number      String
+  code              String @unique @default(uuid()) // stable QR payload
+
+  expires_at  DateTime? @db.Date
+  supplier    String?
+  recalled_at DateTime? // recall flag blocks FIFO picks
+  qty_received     Decimal @default(0) @db.Decimal(10, 2) // cumulative received
+  qty_in_warehouse Decimal @default(0) @db.Decimal(10, 2) // cached — written ONLY by recordMovements
+
+  received_at DateTime @default(now())
+  note        String?  @db.Text
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  serial_units     serial_unit[]
+  vehicle_batches  vehicle_stock_batch[]
+  movement_batches stock_movement_batch[]
+
+  @@unique([organization_id, inventory_item_id, batch_number])
+  @@index([inventory_item_id, received_at])
+  @@index([organization_id])
+}
+
+model vehicle_stock_batch {
+  id          String  @id @default(uuid())
+  vehicle_id  String
+  vehicle     vehicle @relation(fields: [vehicle_id], references: [id], onDelete: Cascade)
+  batch_id    String
+  batch       stock_batch @relation(fields: [batch_id], references: [id])
+  qty_on_hand Decimal @default(0) @db.Decimal(10, 2)
+  updated_at  DateTime @updatedAt
+  created_at  DateTime @default(now())
+
+  @@unique([vehicle_id, batch_id])
+  @@index([vehicle_id])
+  @@index([batch_id])
+}
+
+model stock_movement_serial {
+  id             String @id @default(uuid())
+  movement_id    String
+  movement       stock_movement @relation(fields: [movement_id], references: [id], onDelete: Cascade)
+  serial_unit_id String
+  serial_unit    serial_unit    @relation(fields: [serial_unit_id], references: [id], onDelete: Cascade)
+
+  @@unique([movement_id, serial_unit_id])
+  @@index([serial_unit_id])
+  @@index([movement_id])
+}
+
+model stock_movement_batch {
+  id          String @id @default(uuid())
+  movement_id String
+  movement    stock_movement @relation(fields: [movement_id], references: [id], onDelete: Cascade)
+  batch_id    String
+  batch       stock_batch    @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  qty         Decimal @db.Decimal(10, 2) // strictly positive allocation
+
+  @@unique([movement_id, batch_id])
+  @@index([batch_id])
+  @@index([movement_id])
 }
 
 // ============================================================================

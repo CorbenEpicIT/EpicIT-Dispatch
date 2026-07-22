@@ -1,26 +1,61 @@
 import { useMemo, useState } from "react";
 import { X, Barcode } from "lucide-react";
+import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { useAdjustStockMutation } from "../../hooks/useVehicleStock";
 import { useAllInventoryQuery, useBarcodeScanHandler } from "../../hooks/useInventory";
 import { BarcodeScanner } from "../inventory/BarcodeScanner";
-import type { VehicleStockItem, VehicleAdjustmentType, AdjustStockInput } from "../../types/vehicles";
+import type {
+	VehicleStockItem,
+	VehicleAdjustmentType,
+	AdjustStockInput,
+} from "../../types/vehicles";
 import { ADJUSTMENT_TYPE_LABELS } from "../../types/vehicles";
 import { useAuthStore } from "../../auth/authStore";
+import SerialCaptureList from "../inventory/tracking/SerialCaptureList";
+import BatchCaptureFields, {
+	type BatchCaptureValue,
+} from "../inventory/tracking/BatchCaptureFields";
+import ExistingUnitPicker from "./ExistingUnitPicker";
+import ExistingBatchPicker, { type BatchPickDirection } from "./ExistingBatchPicker";
+import type { SerialUnitStatus } from "../../types/tracking";
 
 const ADJUST_TYPE_PERMS: Record<VehicleAdjustmentType, string> = {
-	field_loss:         "adjust_field_loss",
-	transfer:           "adjust_transfer",
-	audit:              "adjust_audit",
+	field_loss: "adjust_field_loss",
+	transfer: "adjust_transfer",
+	audit: "adjust_audit",
 	warehouse_exchange: "adjust_warehouse_exchange",
-	supplier_purchase:  "adjust_supplier_purchase",
+	supplier_purchase: "adjust_supplier_purchase",
 };
 
-const TYPE_META: Record<VehicleAdjustmentType, { label?: string; description: string; warehouseEffect: string | null; note?: string }> = {
-	warehouse_exchange: { label: "Return to Warehouse", description: "Return surplus parts to the warehouse — vehicle qty goes down, warehouse qty goes up", warehouseEffect: "Warehouse +" },
-	field_loss:         { description: "Parts used on jobs, damaged, or lost — permanently out of org inventory", warehouseEffect: null },
-	transfer:           { description: "Receive parts from another vehicle — org total unchanged",               warehouseEffect: null, note: "Adjust the source vehicle separately" },
-	audit:              { description: "Override count to match physical reality — no accounting impact",         warehouseEffect: null },
-	supplier_purchase:  { description: "Bought on a job — enters the truck, records cost, no warehouse change",   warehouseEffect: null },
+const TYPE_META: Record<
+	VehicleAdjustmentType,
+	{ label?: string; description: string; warehouseEffect: string | null; note?: string }
+> = {
+	warehouse_exchange: {
+		label: "Return to Warehouse",
+		description:
+			"Return surplus parts to the warehouse — vehicle qty goes down, warehouse qty goes up",
+		warehouseEffect: "Warehouse +",
+	},
+	field_loss: {
+		description:
+			"Parts used on jobs, damaged, or lost — permanently out of org inventory",
+		warehouseEffect: null,
+	},
+	transfer: {
+		description: "Receive parts from another vehicle — org total unchanged",
+		warehouseEffect: null,
+		note: "Adjust the source vehicle separately",
+	},
+	audit: {
+		description: "Override count to match physical reality — no accounting impact",
+		warehouseEffect: null,
+	},
+	supplier_purchase: {
+		description:
+			"Bought on a job — enters the truck, records cost, no warehouse change",
+		warehouseEffect: null,
+	},
 };
 
 function TypeStep({
@@ -41,44 +76,70 @@ function TypeStep({
 			<div className="px-5 py-4 space-y-2">
 				{availableTypes.length === 0 ? (
 					<div className="py-8 text-center">
-						<p className="text-sm text-text-muted">No adjustment types available.</p>
-						<p className="text-xs text-text-faint mt-1">Contact your dispatcher to enable adjustment permissions.</p>
+						<p className="text-sm text-text-muted">
+							No adjustment types available.
+						</p>
+						<p className="text-xs text-text-faint mt-1">
+							Contact your dispatcher to enable adjustment
+							permissions.
+						</p>
 					</div>
 				) : (
-				<>
-				<p className="text-xs text-text-secondary mb-3">Select the type of stock adjustment.</p>
-				{availableTypes.map((type) => {
-					const meta = TYPE_META[type];
-					const isSelected = selected === type;
-					return (
-						<button
-							key={type}
-							onClick={() => onSelect(type)}
-							className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-								isSelected
-									? "border-primary bg-primary/10"
-									: "border-border bg-surface hover:bg-surface-raised"
-							}`}
-						>
-							<div className="flex items-center justify-between gap-3">
-								<span className="text-sm font-semibold text-text-primary">{meta.label ?? ADJUSTMENT_TYPE_LABELS[type]}</span>
-								{meta.warehouseEffect && (
-									<span className="text-xs font-semibold px-2 py-0.5 rounded border flex-shrink-0 text-primary bg-primary/10 border-primary/30">
-										{meta.warehouseEffect}
-									</span>
-								)}
-							</div>
-							<p className="text-xs text-text-secondary mt-1">{meta.description}</p>
-							{meta.note && (
-								<p className="text-[10px] text-text-muted mt-1 italic">{meta.note}</p>
-							)}
-						</button>
-					);
-				})}
-				</>
+					<>
+						<p className="text-xs text-text-secondary mb-3">
+							Select the type of stock adjustment.
+						</p>
+						{availableTypes.map((type) => {
+							const meta = TYPE_META[type];
+							const isSelected = selected === type;
+							return (
+								<button
+									key={type}
+									onClick={() =>
+										onSelect(type)
+									}
+									className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+										isSelected
+											? "border-primary bg-primary/10"
+											: "border-border bg-surface hover:bg-surface-raised"
+									}`}
+								>
+									<div className="flex items-center justify-between gap-3">
+										<span className="text-sm font-semibold text-text-primary">
+											{meta.label ??
+												ADJUSTMENT_TYPE_LABELS[
+													type
+												]}
+										</span>
+										{meta.warehouseEffect && (
+											<span className="text-xs font-semibold px-2 py-0.5 rounded border flex-shrink-0 text-primary bg-primary/10 border-primary/30">
+												{
+													meta.warehouseEffect
+												}
+											</span>
+										)}
+									</div>
+									<p className="text-xs text-text-secondary mt-1">
+										{meta.description}
+									</p>
+									{meta.note && (
+										<p className="text-[10px] text-text-muted mt-1 italic">
+											{meta.note}
+										</p>
+									)}
+								</button>
+							);
+						})}
+					</>
 				)}
 			</div>
-			<StepFooter onBack={onClose} backLabel="Cancel" onNext={onNext} nextLabel="Next →" nextDisabled={!selected} />
+			<StepFooter
+				onBack={onClose}
+				backLabel="Cancel"
+				onNext={onNext}
+				nextLabel="Next →"
+				nextDisabled={!selected}
+			/>
 		</>
 	);
 }
@@ -116,12 +177,14 @@ function QuantitiesStep({
 					{isReturn
 						? "Set the qty to return to the warehouse. Only items with a lower qty will be recorded."
 						: type === "field_loss"
-						? "Set the new qty after loss. Only items with a lower qty will be recorded."
-						: "Edit quantities below. Only items with changed quantities will be recorded."}
+							? "Set the new qty after loss. Only items with a lower qty will be recorded."
+							: "Edit quantities below. Only items with changed quantities will be recorded."}
 				</p>
 				{isDecreaseOnly && (
 					<div className="flex items-start gap-2 text-xs text-warning-text bg-warning/10 border border-warning/20 rounded-md px-3 py-2 mb-3">
-						<span className="font-semibold flex-shrink-0">⚠</span>
+						<span className="font-semibold flex-shrink-0">
+							⚠
+						</span>
 						<span>
 							{isReturn
 								? "Quantities can only be decreased — this adjustment returns stock to the warehouse."
@@ -138,7 +201,9 @@ function QuantitiesStep({
 					{stockItems.map((item) => {
 						const current = Number(item.qty_on_hand);
 						const newQty = quantities[item.id] ?? current;
-						const changed = isDecreaseOnly ? newQty < current : newQty !== current;
+						const changed = isDecreaseOnly
+							? newQty < current
+							: newQty !== current;
 						const showClampWarning = clampedId === item.id;
 
 						return (
@@ -147,36 +212,70 @@ function QuantitiesStep({
 								className={`grid grid-cols-[1fr_72px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0 ${changed ? "bg-primary/5" : ""}`}
 							>
 								<div className="min-w-0">
-									<span className="text-sm text-text-primary">{item.inventory_item.name}</span>
+									<span className="text-sm text-text-primary">
+										{
+											item
+												.inventory_item
+												.name
+										}
+									</span>
 									{showClampWarning && (
 										<span className="block text-[10px] text-warning-text mt-0.5">
-											Cannot exceed current qty
+											Cannot
+											exceed
+											current qty
 										</span>
 									)}
 								</div>
-								<span className="text-center text-sm text-text-secondary">{current}</span>
+								<span className="text-center text-sm text-text-secondary">
+									{current}
+								</span>
 								<div className="flex justify-center">
 									<input
 										type="number"
 										min={0}
 										value={newQty}
 										onChange={(e) => {
-											const raw = Math.max(0, Number(e.target.value));
-											if (isDecreaseOnly && raw > current) {
-												setClampedId(item.id);
-												onQtyChange(item.id, current);
+											const raw = clampNumber(
+												e.target.value,
+												{
+													min: 0,
+													fallback: 0,
+												}
+											);
+											if (
+												isDecreaseOnly &&
+												raw >
+													current
+											) {
+												setClampedId(
+													item.id
+												);
+												onQtyChange(
+													item.id,
+													current
+												);
 											} else {
-												setClampedId(null);
-												onQtyChange(item.id, raw);
+												setClampedId(
+													null
+												);
+												onQtyChange(
+													item.id,
+													raw
+												);
 											}
 										}}
-										onBlur={() => setClampedId(null)}
+										onBlur={() =>
+											setClampedId(
+												null
+											)
+										}
 										className={`w-16 text-center text-sm rounded border ${
 											showClampWarning
 												? "border-warning text-warning-text"
 												: changed
-												? "border-primary text-text-primary font-semibold"
-												: "border-border-input text-text-secondary"
+													? "border-primary text-text-primary font-semibold"
+													: "border-border-input text-text-secondary"
 										} bg-base px-1 py-0.5 outline-none focus:border-primary`}
 									/>
 								</div>
@@ -186,7 +285,12 @@ function QuantitiesStep({
 				</div>
 				<NoteField value={note} onChange={onNoteChange} />
 			</div>
-			<StepFooter onBack={onBack} onNext={onNext} nextLabel="Review →" nextDisabled={!hasChanges} />
+			<StepFooter
+				onBack={onBack}
+				onNext={onNext}
+				nextLabel="Review →"
+				nextDisabled={!hasChanges}
+			/>
 		</>
 	);
 }
@@ -223,7 +327,7 @@ function SupplierStep({
 			setSearch(item.name);
 			onRowChange(item.id, "qty", supplierRows[item.id]?.qty ?? 1);
 		},
-		() => setScanError("No item found for that code"),
+		() => setScanError("No item found for that code")
 	);
 
 	const handleScan = async (code: string) => {
@@ -237,7 +341,7 @@ function SupplierStep({
 		return catalog.filter(
 			(c) =>
 				c.name.toLowerCase().includes(q) ||
-				(c.category ?? "").toLowerCase().includes(q),
+				(c.category ?? "").toLowerCase().includes(q)
 		);
 	}, [catalog, search]);
 
@@ -249,7 +353,8 @@ function SupplierStep({
 		<>
 			<div className="px-5 py-4">
 				<p className="text-xs text-text-secondary mb-3">
-					Record items purchased from a supplier. Choose from the catalog or enter a new item. No warehouse impact.
+					Record items purchased from a supplier. Choose from the
+					catalog or enter a new item. No warehouse impact.
 				</p>
 
 				{/* New item row */}
@@ -263,7 +368,12 @@ function SupplierStep({
 						<input
 							type="text"
 							value={newItem.name}
-							onChange={(e) => onNewItemChange("name", e.target.value)}
+							onChange={(e) =>
+								onNewItemChange(
+									"name",
+									e.target.value
+								)
+							}
 							placeholder="Item name…"
 							className="text-sm bg-base border border-border-input rounded px-2 py-0.5 text-text-primary placeholder:text-faint outline-none focus:border-primary"
 						/>
@@ -271,8 +381,20 @@ function SupplierStep({
 							type="number"
 							min={0}
 							step={0.01}
-							value={newItem.cost === 0 ? "" : newItem.cost}
-							onChange={(e) => onNewItemChange("cost", parseFloat(e.target.value) || 0)}
+							value={
+								newItem.cost === 0
+									? ""
+									: newItem.cost
+							}
+							onChange={(e) =>
+								onNewItemChange(
+									"cost",
+									clampNumber(e.target.value, {
+										step: 0.01,
+										fallback: 0,
+									})
+								)
+							}
 							placeholder="0.00"
 							className="w-full text-center text-sm bg-base border border-border-input rounded px-1 py-0.5 text-text-primary outline-none focus:border-primary"
 						/>
@@ -281,7 +403,16 @@ function SupplierStep({
 								type="number"
 								min={1}
 								value={newItem.qty}
-								onChange={(e) => onNewItemChange("qty", Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+								onChange={(e) =>
+									onNewItemChange(
+										"qty",
+										clampNumber(e.target.value, {
+											min: 1,
+											step: 1,
+											fallback: 1,
+										})
+									)
+								}
 								className={`w-16 text-center text-sm rounded border ${newItem.name.trim() ? "border-primary text-text-primary font-semibold" : "border-border-input text-text-secondary"} bg-base px-1 py-0.5 outline-none focus:border-primary`}
 							/>
 						</div>
@@ -307,7 +438,10 @@ function SupplierStep({
 					</button>
 				</div>
 				{scanError && (
-					<div role="alert" className="bg-error-bg border border-error-border rounded-md px-3 py-2 mb-2 text-sm text-error-text">
+					<div
+						role="alert"
+						className="bg-error-bg border border-error-border rounded-md px-3 py-2 mb-2 text-sm text-error-text"
+					>
 						{scanError}
 					</div>
 				)}
@@ -341,9 +475,15 @@ function SupplierStep({
 								className={`grid grid-cols-[1fr_64px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0 ${isAdded ? "bg-primary/5" : ""}`}
 							>
 								<div className="min-w-0">
-									<span className="block text-sm text-text-primary truncate">{item.name}</span>
+									<span className="block text-sm text-text-primary truncate">
+										{item.name}
+									</span>
 									{item.category && (
-										<span className="block text-[10px] text-text-muted truncate">{item.category}</span>
+										<span className="block text-[10px] text-text-muted truncate">
+											{
+												item.category
+											}
+										</span>
 									)}
 								</div>
 								<div className="flex justify-center">
@@ -352,13 +492,36 @@ function SupplierStep({
 											type="number"
 											min={0}
 											step={0.01}
-											value={row.cost === 0 ? "" : row.cost}
-											onChange={(e) => onRowChange(item.id, "cost", parseFloat(e.target.value) || 0)}
+											value={
+												row.cost ===
+												0
+													? ""
+													: row.cost
+											}
+											onChange={(
+												e
+											) =>
+												onRowChange(
+													item.id,
+													"cost",
+													clampNumber(
+														e
+															.target
+															.value,
+														{
+															step: 0.01,
+															fallback: 0,
+														}
+													)
+												)
+											}
 											placeholder="0.00"
 											className="w-full text-center text-sm bg-base border border-primary rounded px-1 py-0.5 text-text-primary outline-none focus:border-primary"
 										/>
 									) : (
-										<span className="text-sm text-text-muted">—</span>
+										<span className="text-sm text-text-muted">
+											—
+										</span>
 									)}
 								</div>
 								<div className="flex justify-center">
@@ -366,13 +529,38 @@ function SupplierStep({
 										<input
 											type="number"
 											min={1}
-											value={row.qty}
-											onChange={(e) => onRowChange(item.id, "qty", Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+											value={
+												row.qty
+											}
+											onChange={(
+												e
+											) =>
+												onRowChange(
+													item.id,
+													"qty",
+													clampNumber(
+														e
+															.target
+															.value,
+														{
+															min: 1,
+															step: 1,
+															fallback: 1,
+														}
+													)
+												)
+											}
 											className="w-16 text-center text-sm rounded border border-primary text-text-primary font-semibold bg-base px-1 py-0.5 outline-none focus:border-primary"
 										/>
 									) : (
 										<button
-											onClick={() => onRowChange(item.id, "qty", 1)}
+											onClick={() =>
+												onRowChange(
+													item.id,
+													"qty",
+													1
+												)
+											}
 											className="px-2 py-0.5 text-xs font-semibold bg-primary hover:bg-primary-hover text-on-primary rounded transition-colors"
 										>
 											+ Add
@@ -386,7 +574,12 @@ function SupplierStep({
 
 				<NoteField value={note} onChange={onNoteChange} />
 			</div>
-			<StepFooter onBack={onBack} onNext={onNext} nextLabel="Review →" nextDisabled={!canNext} />
+			<StepFooter
+				onBack={onBack}
+				onNext={onNext}
+				nextLabel="Review →"
+				nextDisabled={!canNext}
+			/>
 		</>
 	);
 }
@@ -420,7 +613,9 @@ function ConfirmStep({
 	const isDecreaseOnly = isDecreaseOnlyType(type);
 	const changedItems = stockItems.filter((i) => {
 		const newQty = quantities[i.id] ?? Number(i.qty_on_hand);
-		return isDecreaseOnly ? newQty < Number(i.qty_on_hand) : newQty !== Number(i.qty_on_hand);
+		return isDecreaseOnly
+			? newQty < Number(i.qty_on_hand)
+			: newQty !== Number(i.qty_on_hand);
 	});
 
 	if (type === "supplier_purchase") {
@@ -435,41 +630,72 @@ function ConfirmStep({
 					</p>
 					<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
 						<div className="grid grid-cols-[1fr_64px_80px] px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
-							<span>Supplier Purchase — {totalLines} item{totalLines !== 1 ? "s" : ""}</span>
+							<span>
+								Supplier Purchase — {totalLines}{" "}
+								item{totalLines !== 1 ? "s" : ""}
+							</span>
 							<span className="text-center">Cost</span>
 							<span className="text-center">Qty</span>
 						</div>
 						{hasNew && (
 							<div className="grid grid-cols-[1fr_64px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0 bg-primary/5">
 								<div className="min-w-0">
-									<span className="block text-sm text-text-primary truncate">{supplierNewItem.name.trim()}</span>
-									<span className="block text-[10px] text-text-muted">New item</span>
+									<span className="block text-sm text-text-primary truncate">
+										{supplierNewItem.name.trim()}
+									</span>
+									<span className="block text-[10px] text-text-muted">
+										New item
+									</span>
 								</div>
 								<span className="text-center text-sm text-text-secondary">
-									{supplierNewItem.cost > 0 ? `$${supplierNewItem.cost.toFixed(2)}` : "—"}
+									{supplierNewItem.cost > 0
+										? `$${supplierNewItem.cost.toFixed(2)}`
+										: "—"}
 								</span>
-								<span className="text-center text-sm font-semibold text-success">+{supplierNewItem.qty}</span>
+								<span className="text-center text-sm font-semibold text-success">
+									+{supplierNewItem.qty}
+								</span>
 							</div>
 						)}
 						{catalogEntries.map(([id, row]) => (
-							<div key={id} className="grid grid-cols-[1fr_64px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0">
-								<span className="text-sm text-text-primary truncate">{catalogById[id]?.name ?? id}</span>
-								<span className="text-center text-sm text-text-secondary">
-									{row.cost > 0 ? `$${row.cost.toFixed(2)}` : "—"}
+							<div
+								key={id}
+								className="grid grid-cols-[1fr_64px_80px] items-center px-4 py-2 border-b border-border-subtle last:border-0"
+							>
+								<span className="text-sm text-text-primary truncate">
+									{catalogById[id]?.name ??
+										id}
 								</span>
-								<span className="text-center text-sm font-semibold text-success">+{row.qty}</span>
+								<span className="text-center text-sm text-text-secondary">
+									{row.cost > 0
+										? `$${row.cost.toFixed(2)}`
+										: "—"}
+								</span>
+								<span className="text-center text-sm font-semibold text-success">
+									+{row.qty}
+								</span>
 							</div>
 						))}
 					</div>
 					{note && (
-						<p className="text-xs text-text-secondary italic mb-3">Note: {note}</p>
+						<p className="text-xs text-text-secondary italic mb-3">
+							Note: {note}
+						</p>
 					)}
 					{error && (
-						<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">{error}</p>
+						<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">
+							{error}
+						</p>
 					)}
 				</div>
-			<StepFooter onBack={onBack} onNext={onConfirm} nextLabel="Apply Adjustment" nextDisabled={totalLines === 0} isPending={isPending} />
-		</>
+				<StepFooter
+					onBack={onBack}
+					onNext={onConfirm}
+					nextLabel="Apply Adjustment"
+					nextDisabled={totalLines === 0}
+					isPending={isPending}
+				/>
+			</>
 		);
 	}
 
@@ -477,23 +703,40 @@ function ConfirmStep({
 		<>
 			<div className="px-5 py-4">
 				<p className="text-xs text-text-secondary mb-3">
-					Review changes. {meta.warehouseEffect ? "Warehouse quantities will be updated." : "No warehouse impact."}
+					Review changes.{" "}
+					{meta.warehouseEffect
+						? "Warehouse quantities will be updated."
+						: "No warehouse impact."}
 				</p>
 				<div className="bg-surface rounded-lg border border-border overflow-hidden mb-3">
 					<div className="px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
-						{meta.label ?? ADJUSTMENT_TYPE_LABELS[type]} — {changedItems.length} item{changedItems.length !== 1 ? "s" : ""}
+						{meta.label ?? ADJUSTMENT_TYPE_LABELS[type]} —{" "}
+						{changedItems.length} item
+						{changedItems.length !== 1 ? "s" : ""}
 					</div>
 					{changedItems.map((item) => {
 						const current = Number(item.qty_on_hand);
 						const newQty = quantities[item.id];
 						const delta = newQty - current;
 						return (
-							<div key={item.id} className="flex items-center justify-between px-4 py-2 border-b border-border-subtle last:border-0">
-								<span className="text-sm text-text-primary">{item.inventory_item.name}</span>
+							<div
+								key={item.id}
+								className="flex items-center justify-between px-4 py-2 border-b border-border-subtle last:border-0"
+							>
+								<span className="text-sm text-text-primary">
+									{item.inventory_item.name}
+								</span>
 								<div className="flex items-center gap-3">
-									<span className="text-sm text-text-secondary">{current} → {newQty}</span>
-									<span className={`text-sm font-semibold ${delta > 0 ? "text-success" : "text-error-text"}`}>
-										{delta > 0 ? "+" : ""}{delta}
+									<span className="text-sm text-text-secondary">
+										{current} → {newQty}
+									</span>
+									<span
+										className={`text-sm font-semibold ${delta > 0 ? "text-success" : "text-error-text"}`}
+									>
+										{delta > 0
+											? "+"
+											: ""}
+										{delta}
 									</span>
 								</div>
 							</div>
@@ -501,13 +744,22 @@ function ConfirmStep({
 					})}
 				</div>
 				{note && (
-					<p className="text-xs text-text-secondary italic mb-3">Note: {note}</p>
+					<p className="text-xs text-text-secondary italic mb-3">
+						Note: {note}
+					</p>
 				)}
 				{error && (
-					<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">{error}</p>
+					<p className="text-xs text-error-text bg-error/10 border border-error/30 rounded-md px-3 py-2">
+						{error}
+					</p>
 				)}
 			</div>
-			<StepFooter onBack={onBack} onNext={onConfirm} nextLabel="Apply Adjustment" isPending={isPending} />
+			<StepFooter
+				onBack={onBack}
+				onNext={onConfirm}
+				nextLabel="Apply Adjustment"
+				isPending={isPending}
+			/>
 		</>
 	);
 }
@@ -515,10 +767,28 @@ function ConfirmStep({
 const isDecreaseOnlyType = (t: VehicleAdjustmentType): boolean =>
 	t === "warehouse_exchange" || t === "field_loss";
 
+// Parses a number-input's raw string, floors it when step is a whole number
+// (qty fields), falls back when the parse is NaN, then clamps to [min, max].
+// Reproduces each call site's prior hand-rolled parse+clamp exactly.
+function clampNumber(
+	raw: string,
+	opts: { min?: number; max?: number; step?: number; fallback: number }
+): number {
+	const { min, max, step, fallback } = opts;
+	let n = parseFloat(raw);
+	if (step === 1) n = Math.floor(n);
+	if (Number.isNaN(n)) n = fallback;
+	if (min !== undefined) n = Math.max(min, n);
+	if (max !== undefined) n = Math.min(max, n);
+	return n;
+}
+
 function NoteField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
 	return (
 		<div>
-			<label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+			<label className="block text-xs text-text-secondary mb-1">
+				Note (optional)
+			</label>
 			<textarea
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
@@ -548,7 +818,11 @@ function StepFooter({
 }) {
 	return (
 		<div className="flex items-center justify-between px-5 py-3 border-t border-border">
-			<button onClick={onBack} disabled={isPending} className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50">
+			<button
+				onClick={onBack}
+				disabled={isPending}
+				className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
+			>
 				{backLabel}
 			</button>
 			<button
@@ -562,44 +836,265 @@ function StepFooter({
 	);
 }
 
-const STEP_ORDER = ["type", "quantities", "confirm"] as const;
+// A resolved line that needs serial/batch capture before the adjustment can
+// be submitted. `key` matches whatever the line will key its captured value
+// on (stock_item_id for existing on-truck lines, inventory_item_id for
+// supplier_purchase catalog lines — new_item lines are never tracked, since a
+// freshly-created provisional item can't already be serialized/batch-tracked).
+interface TrackingLineReq {
+	key: string;
+	inventoryItemId: string;
+	name: string;
+	qty: number; // abs(delta) — how many units/serials this line needs
+	delta: number; // signed — direction drives which candidate pool applies
+	isSerialized: boolean;
+	isBatchTracked: boolean;
+	// ExistingUnitPicker props, precomputed once from existingUnitFilterFor
+	// below. Undefined for supplier_purchase lines, which use
+	// SerialCaptureList instead and never render ExistingUnitPicker.
+	statusFilter?: SerialUnitStatus;
+	vehicleIdForPicker?: string;
+}
+
+// Existing-unit-picker filter for a non-supplier_purchase line, derived from
+// how adjustStock (vehiclesController.ts) builds each movement's
+// from_location_type per type/direction:
+//  - delta < 0 (out of this vehicle): every type moves FROM this vehicle
+//    (warehouse_exchange→"vehicle", field_loss→"vehicle", transfer/audit
+//    (no target)→"vehicle") — candidates are units on_vehicle at this vehicle.
+//  - delta > 0, warehouse_exchange (restock): FROM "warehouse" — candidates
+//    are units in_warehouse (no vehicle scope; a global pool).
+//  - delta > 0, audit/transfer (no target_vehicle_id wired by this modal):
+//    FROM "adjustment" — inventoryTracking.ts's applySerialMovement skips the
+//    from-status check entirely for external/adjustment sources, so the
+//    backend imposes no location constraint here. No status filter applied;
+//    every unit for the item is shown (documented judgment call — see report).
+function existingUnitFilterFor(
+	type: VehicleAdjustmentType,
+	delta: number
+): { statusFilter?: SerialUnitStatus; scopeToVehicle: boolean } {
+	if (delta < 0) return { statusFilter: "on_vehicle", scopeToVehicle: true };
+	if (type === "warehouse_exchange")
+		return { statusFilter: "in_warehouse", scopeToVehicle: false };
+	return { scopeToVehicle: false };
+}
+
+function existingBatchDirectionFor(type: VehicleAdjustmentType, delta: number): BatchPickDirection {
+	if (delta < 0) return "vehicle_out";
+	if (type === "warehouse_exchange") return "warehouse_in";
+	return "unconstrained";
+}
+
+const DEFAULT_NEW_BATCH: BatchCaptureValue = {
+	mode: "new",
+	batch_number: "",
+	expires_at: null,
+	supplier: "",
+};
+
+function TrackingStep({
+	type,
+	vehicleId,
+	lines,
+	serialValues,
+	onSerialChange,
+	newBatchValues,
+	onNewBatchChange,
+	batchPickValues,
+	onBatchPickChange,
+	onBack,
+	onNext,
+	canProceed,
+}: {
+	type: VehicleAdjustmentType;
+	vehicleId: string;
+	lines: TrackingLineReq[];
+	serialValues: Record<string, string[]>;
+	onSerialChange: (key: string, value: string[]) => void;
+	newBatchValues: Record<string, BatchCaptureValue>;
+	onNewBatchChange: (key: string, value: BatchCaptureValue) => void;
+	batchPickValues: Record<string, string | null>;
+	onBatchPickChange: (key: string, value: string | null) => void;
+	onBack: () => void;
+	onNext: () => void;
+	canProceed: boolean;
+}) {
+	const isNewCapture = type === "supplier_purchase";
+
+	return (
+		<>
+			<div className="px-5 py-4 space-y-3">
+				<p className="text-xs text-text-secondary mb-1">
+					{isNewCapture
+						? "Record serial numbers or lot info for the tracked items in this purchase."
+						: "Select which existing serialized units or lots this adjustment affects."}
+				</p>
+				{lines.map((line) => (
+					<div
+						key={line.key}
+						className="bg-surface rounded-lg border border-border p-3"
+					>
+						<div className="flex items-center justify-between mb-2">
+							<span className="text-sm font-semibold text-text-primary">
+								{line.name}
+							</span>
+							<span className="text-xs text-text-muted">
+								{line.qty} unit
+								{line.qty !== 1 ? "s" : ""}
+							</span>
+						</div>
+
+						{line.isSerialized && isNewCapture && (
+							<SerialCaptureList
+								itemId={line.inventoryItemId}
+								targetCount={line.qty}
+								value={serialValues[line.key] ?? []}
+								onChange={(v) =>
+									onSerialChange(line.key, v)
+								}
+							/>
+						)}
+
+						{line.isSerialized && !isNewCapture && (
+							<ExistingUnitPicker
+								itemId={line.inventoryItemId}
+								itemName={line.name}
+								targetCount={line.qty}
+								statusFilter={line.statusFilter}
+								vehicleId={line.vehicleIdForPicker}
+								value={serialValues[line.key] ?? []}
+								onChange={(v) =>
+									onSerialChange(line.key, v)
+								}
+							/>
+						)}
+
+						{line.isBatchTracked && isNewCapture && (
+							<BatchCaptureFields
+								itemId={line.inventoryItemId}
+								value={
+									newBatchValues[line.key] ??
+									DEFAULT_NEW_BATCH
+								}
+								onChange={(v) =>
+									onNewBatchChange(
+										line.key,
+										v
+									)
+								}
+							/>
+						)}
+
+						{line.isBatchTracked && !isNewCapture && (
+							<ExistingBatchPicker
+								itemId={line.inventoryItemId}
+								vehicleId={vehicleId}
+								direction={existingBatchDirectionFor(
+									type,
+									line.delta
+								)}
+								value={
+									batchPickValues[line.key] ??
+									null
+								}
+								onChange={(v) =>
+									onBatchPickChange(
+										line.key,
+										v
+									)
+								}
+							/>
+						)}
+					</div>
+				))}
+			</div>
+			<StepFooter
+				onBack={onBack}
+				onNext={onNext}
+				nextLabel="Review →"
+				nextDisabled={!canProceed}
+			/>
+		</>
+	);
+}
+
+const STEP_ORDER = ["type", "quantities", "tracking", "confirm"] as const;
 type ModalStep = (typeof STEP_ORDER)[number];
 
 const STEP_TITLES: Record<ModalStep, string> = {
 	type: "Adjust Stock",
 	quantities: "Edit Quantities",
+	tracking: "Serial / Batch Tracking",
 	confirm: "Confirm Adjustment",
 };
 
-const STEP_LABELS: Record<ModalStep, string> = { type: "Type", quantities: "Quantities", confirm: "Confirm" };
+const STEP_LABELS: Record<ModalStep, string> = {
+	type: "Type",
+	quantities: "Quantities",
+	tracking: "Tracking",
+	confirm: "Confirm",
+};
 
 export default function AdjustStockModal({
 	vehicleId,
 	stockItems,
 	onClose,
+	onSuccess,
+	onError,
 	initialType,
 	initialFocusItemId,
+	initialSerialUnitId,
 }: {
 	vehicleId: string;
 	stockItems: VehicleStockItem[];
 	onClose: () => void;
+	// Optional — fired right after a successful submit (before onClose), so a
+	// caller can toast without this shared modal needing to know about any
+	// particular toast system. Dispatch's VehicleStockPage doesn't pass these,
+	// so its behavior (no toast) is unchanged.
+	onSuccess?: () => void;
+	onError?: (message: string) => void;
 	initialType?: VehicleAdjustmentType;
 	initialFocusItemId?: string;
+	// serial_unit id to preselect in ExistingUnitPicker. Only meaningful
+	// alongside initialFocusItemId, whose stock_item_id is the serialValues key
+	// for non-supplier_purchase lines. Lets SerialSheet deep-link a specific
+	// unit into field_loss so the tech doesn't re-pick what they just scanned.
+	initialSerialUnitId?: string;
 }) {
 	const [modalStep, setModalStep] = useState<ModalStep>(initialType ? "quantities" : "type");
-	const [selectedType, setSelectedType] = useState<VehicleAdjustmentType | null>(initialType ?? null);
+	const [selectedType, setSelectedType] = useState<VehicleAdjustmentType | null>(
+		initialType ?? null
+	);
 	const [note, setNote] = useState("");
 	const [submitError, setSubmitError] = useState<string | null>(null);
-	const [quantities, setQuantities] = useState<Record<string, number>>(
-		() => Object.fromEntries(stockItems.map((i) => [
-			i.id,
-			i.id === initialFocusItemId && initialType === "field_loss"
-				? Math.max(0, Number(i.qty_on_hand) - 1)
-				: Number(i.qty_on_hand),
-		])),
+	const [quantities, setQuantities] = useState<Record<string, number>>(() =>
+		Object.fromEntries(
+			stockItems.map((i) => [
+				i.id,
+				i.id === initialFocusItemId && initialType === "field_loss"
+					? Math.max(0, Number(i.qty_on_hand) - 1)
+					: Number(i.qty_on_hand),
+			])
+		)
 	);
-	const [supplierRows, setSupplierRows] = useState<Record<string, { cost: number; qty: number }>>({});
+	const [supplierRows, setSupplierRows] = useState<
+		Record<string, { cost: number; qty: number }>
+	>({});
 	const [supplierNewItem, setSupplierNewItem] = useState({ name: "", cost: 0, qty: 1 });
+
+	// Tracking-step capture state, keyed by TrackingLineReq.key (stock_item_id
+	// for existing lines, inventory_item_id for supplier_purchase catalog
+	// lines). serialValues doubles as both new_serials (supplier_purchase) and
+	// serial_unit_ids (every other type) — the two are mutually exclusive per
+	// line since a line's type never changes mid-flow.
+	const [serialValues, setSerialValues] = useState<Record<string, string[]>>(() =>
+		initialSerialUnitId && initialFocusItemId
+			? { [initialFocusItemId]: [initialSerialUnitId] }
+			: {}
+	);
+	const [newBatchValues, setNewBatchValues] = useState<Record<string, BatchCaptureValue>>({});
+	const [batchPickValues, setBatchPickValues] = useState<Record<string, string | null>>({});
 
 	const adjustMutation = useAdjustStockMutation(vehicleId);
 	const { user } = useAuthStore();
@@ -612,12 +1107,92 @@ export default function AdjustStockModal({
 	}, [user]);
 	const catalogById = useMemo(
 		() => Object.fromEntries(catalog.map((c) => [c.id, { name: c.name }])),
-		[catalog],
+		[catalog]
 	);
 
 	const handleQtyChange = (id: string, qty: number) => {
 		setQuantities((prev) => ({ ...prev, [id]: qty }));
 	};
+
+	// Lines that need serial/batch capture before this adjustment can submit.
+	// supplier_purchase draws from the catalog rows being purchased (new_item
+	// lines are never tracked — a freshly-created provisional item can't
+	// already be serialized/batch-tracked); every other type draws from the
+	// on-truck lines actually changing, exactly mirroring handleConfirm's own
+	// changedLines derivation below so the two never disagree.
+	const trackingLines = useMemo<TrackingLineReq[]>(() => {
+		if (!selectedType) return [];
+
+		if (selectedType === "supplier_purchase") {
+			const lines: TrackingLineReq[] = [];
+			for (const [id, row] of Object.entries(supplierRows)) {
+				if (row.qty <= 0) continue;
+				const item = catalog.find((c) => c.id === id);
+				if (!item || (!item.is_serialized && !item.is_batch_tracked))
+					continue;
+				lines.push({
+					key: id,
+					inventoryItemId: id,
+					name: item.name,
+					qty: row.qty,
+					delta: row.qty,
+					isSerialized: item.is_serialized,
+					isBatchTracked: item.is_batch_tracked,
+				});
+			}
+			return lines;
+		}
+
+		const isDecreaseOnly = isDecreaseOnlyType(selectedType);
+		const lines: TrackingLineReq[] = [];
+		for (const item of stockItems) {
+			const current = Number(item.qty_on_hand);
+			const newQty = quantities[item.id] ?? current;
+			const changed = isDecreaseOnly ? newQty < current : newQty !== current;
+			if (!changed) continue;
+			const inv = item.inventory_item;
+			if (!inv.is_serialized && !inv.is_batch_tracked) continue;
+			const delta = newQty - current;
+			const { statusFilter, scopeToVehicle } = existingUnitFilterFor(selectedType, delta);
+			lines.push({
+				key: item.id,
+				inventoryItemId: inv.id,
+				name: inv.name,
+				qty: Math.abs(delta),
+				delta,
+				isSerialized: inv.is_serialized,
+				isBatchTracked: inv.is_batch_tracked,
+				statusFilter,
+				vehicleIdForPicker: scopeToVehicle ? vehicleId : undefined,
+			});
+		}
+		return lines;
+	}, [selectedType, supplierRows, catalog, stockItems, quantities, vehicleId]);
+
+	const needsTrackingStep = trackingLines.length > 0;
+	const visibleSteps = useMemo(
+		() => STEP_ORDER.filter((s) => s !== "tracking" || needsTrackingStep),
+		[needsTrackingStep]
+	);
+
+	const trackingSatisfied = useMemo(() => {
+		return trackingLines.every((line) => {
+			const serialOk =
+				!line.isSerialized ||
+				(serialValues[line.key] ?? []).length === line.qty;
+			const batchOk =
+				!line.isBatchTracked ||
+				selectedType !== "supplier_purchase" || // existing-batch pick is always optional (FIFO fallback)
+				(() => {
+					const bv = newBatchValues[line.key];
+					if (!bv) return false;
+					return bv.mode === "new"
+						? bv.batch_number.trim().length > 0
+						: !!bv.batch_id;
+				})();
+			return serialOk && batchOk;
+		});
+	}, [trackingLines, selectedType, serialValues, newBatchValues]);
 
 	const handleConfirm = async () => {
 		if (!selectedType) return;
@@ -629,61 +1204,151 @@ export default function AdjustStockModal({
 				Object.entries(supplierRows)
 					.filter(([, r]) => r.qty > 0)
 					.forEach(([inventory_item_id, r]) => {
-						lines.push({ inventory_item_id, qty_after: r.qty });
+						const item = catalog.find(
+							(c) => c.id === inventory_item_id
+						);
+						const line: AdjustStockInput["lines"][number] = {
+							inventory_item_id,
+							qty_after: r.qty,
+						};
+						if (item?.is_serialized) {
+							line.new_serials =
+								serialValues[inventory_item_id] ??
+								[];
+						}
+						if (item?.is_batch_tracked) {
+							const bv =
+								newBatchValues[inventory_item_id];
+							if (bv?.mode === "new") {
+								line.new_batch = {
+									batch_number:
+										bv.batch_number.trim(),
+									expires_at: bv.expires_at,
+									supplier:
+										bv.supplier.trim() ||
+										undefined,
+								};
+							} else if (bv?.mode === "existing") {
+								line.batch_picks = [
+									{
+										batch_id: bv.batch_id,
+										qty: r.qty,
+									},
+								];
+							}
+						}
+						lines.push(line);
 					});
 				if (supplierNewItem.name.trim() && supplierNewItem.qty > 0) {
-					lines.push({ new_item: { name: supplierNewItem.name.trim(), cost: supplierNewItem.cost }, qty_after: supplierNewItem.qty });
+					lines.push({
+						new_item: {
+							name: supplierNewItem.name.trim(),
+							cost: supplierNewItem.cost,
+						},
+						qty_after: supplierNewItem.qty,
+					});
 				}
 				if (lines.length === 0) return;
-				await adjustMutation.mutateAsync({ type: "supplier_purchase", note: note.trim() || null, lines });
+				await adjustMutation.mutateAsync({
+					type: "supplier_purchase",
+					note: note.trim() || null,
+					lines,
+				});
+				onSuccess?.();
 				onClose();
 				return;
 			}
 
 			const isDecreaseOnly = isDecreaseOnlyType(selectedType);
 			const changedLines = stockItems
-				.filter((i) => isDecreaseOnly
-					? quantities[i.id] < Number(i.qty_on_hand)
-					: quantities[i.id] !== Number(i.qty_on_hand))
-				.map((i) => ({ stock_item_id: i.id, qty_after: quantities[i.id] }));
+				.filter((i) =>
+					isDecreaseOnly
+						? quantities[i.id] < Number(i.qty_on_hand)
+						: quantities[i.id] !== Number(i.qty_on_hand)
+				)
+				.map((i) => {
+					const delta = quantities[i.id] - Number(i.qty_on_hand);
+					const inv = i.inventory_item;
+					const line: AdjustStockInput["lines"][number] = {
+						stock_item_id: i.id,
+						qty_after: quantities[i.id],
+					};
+					if (inv.is_serialized) {
+						line.serial_unit_ids = serialValues[i.id] ?? [];
+					} else if (inv.is_batch_tracked) {
+						const pick = batchPickValues[i.id];
+						if (pick)
+							line.batch_picks = [
+								{
+									batch_id: pick,
+									qty: Math.abs(delta),
+								},
+							];
+					}
+					return line;
+				});
 
 			await adjustMutation.mutateAsync({
 				type: selectedType,
 				note: note.trim() || null,
 				lines: changedLines,
 			});
+			onSuccess?.();
 			onClose();
 		} catch (e: unknown) {
-			setSubmitError(e instanceof Error ? e.message : "Failed to adjust stock");
+			const message = e instanceof Error ? e.message : "Failed to adjust stock";
+			setSubmitError(message);
+			onError?.(message);
 		}
 	};
 
-	const stepIndex = STEP_ORDER.indexOf(modalStep);
+	const stepIndex = visibleSteps.indexOf(modalStep);
+	const dialogA11y = useDialogA11y<HTMLDivElement>(onClose);
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-			<div className="bg-canvas border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay">
+			<div
+				{...dialogA11y}
+				aria-label={STEP_TITLES[modalStep]}
+				className="bg-canvas border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
+			>
 				{/* Header */}
 				<div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
-					<span className="text-sm font-bold text-text-primary">{STEP_TITLES[modalStep]}</span>
-					<button onClick={onClose} className="text-text-faint hover:text-text-secondary transition-colors">
+					<span className="text-sm font-bold text-text-primary">
+						{STEP_TITLES[modalStep]}
+					</span>
+					<button
+						onClick={onClose}
+						aria-label="Close"
+						className="text-text-faint hover:text-text-secondary transition-colors"
+					>
 						<X size={16} />
 					</button>
 				</div>
 
 				{/* Step indicator */}
 				<div className="flex items-center px-5 py-2 border-b border-border/30 bg-base/40 flex-shrink-0">
-					{STEP_ORDER.map((s, i) => (
+					{visibleSteps.map((s, i) => (
 						<div key={s} className="flex items-center gap-1">
-							{i > 0 && <div className={`w-6 h-px mx-1 ${stepIndex >= i ? "bg-primary" : "bg-border"}`} />}
-							<div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
-								stepIndex === i ? "bg-primary text-on-primary" :
-								stepIndex > i ? "bg-success text-on-primary" :
-								"bg-surface border border-border text-text-faint"
-							}`}>
+							{i > 0 && (
+								<div
+									className={`w-6 h-px mx-1 ${stepIndex >= i ? "bg-primary" : "bg-border"}`}
+								/>
+							)}
+							<div
+								className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+									stepIndex === i
+										? "bg-primary text-on-primary"
+										: stepIndex > i
+											? "bg-success text-on-primary"
+											: "bg-surface border border-border text-text-faint"
+								}`}
+							>
 								{stepIndex > i ? "✓" : i + 1}
 							</div>
-							<span className={`text-[10px] font-medium whitespace-nowrap ${stepIndex === i ? "text-text-primary" : "text-text-muted"}`}>
+							<span
+								className={`text-[10px] font-medium whitespace-nowrap ${stepIndex === i ? "text-text-primary" : "text-text-muted"}`}
+							>
 								{STEP_LABELS[s]}
 							</span>
 						</div>
@@ -701,42 +1366,120 @@ export default function AdjustStockModal({
 							availableTypes={availableTypes}
 						/>
 					)}
-					{modalStep === "quantities" && selectedType === "supplier_purchase" && (
-						<SupplierStep
-							supplierRows={supplierRows}
-							note={note}
-							onRowChange={(id, field, value) => {
-								setSupplierRows((prev) => ({
-									...prev,
-									[id]: { ...(prev[id] ?? { cost: 0, qty: 1 }), [field]: value ?? 0 },
-								}));
-							}}
-							onNewItemChange={(field, value) => setSupplierNewItem((p) => ({ ...p, [field]: value }))}
-							newItem={supplierNewItem}
-							onNoteChange={setNote}
-							onBack={() => {
-								setSupplierRows({});
-								setSupplierNewItem({ name: "", cost: 0, qty: 1 });
-								setNote("");
-								setModalStep("type");
-							}}
-							onNext={() => setModalStep("confirm")}
-						/>
-					)}
-					{modalStep === "quantities" && selectedType && selectedType !== "supplier_purchase" && (
-						<QuantitiesStep
+					{modalStep === "quantities" &&
+						selectedType === "supplier_purchase" && (
+							<SupplierStep
+								supplierRows={supplierRows}
+								note={note}
+								onRowChange={(id, field, value) => {
+									setSupplierRows((prev) => ({
+										...prev,
+										[id]: {
+											...(prev[
+												id
+											] ?? {
+												cost: 0,
+												qty: 1,
+											}),
+											[field]:
+												value ??
+												0,
+										},
+									}));
+								}}
+								onNewItemChange={(field, value) =>
+									setSupplierNewItem((p) => ({
+										...p,
+										[field]: value,
+									}))
+								}
+								newItem={supplierNewItem}
+								onNoteChange={setNote}
+								onBack={() => {
+									setSupplierRows({});
+									setSupplierNewItem({
+										name: "",
+										cost: 0,
+										qty: 1,
+									});
+									setNote("");
+									setModalStep("type");
+								}}
+								onNext={() =>
+									setModalStep(
+										needsTrackingStep
+											? "tracking"
+											: "confirm"
+									)
+								}
+							/>
+						)}
+					{modalStep === "quantities" &&
+						selectedType &&
+						selectedType !== "supplier_purchase" && (
+							<QuantitiesStep
+								type={selectedType}
+								stockItems={stockItems}
+								quantities={quantities}
+								note={note}
+								onQtyChange={handleQtyChange}
+								onNoteChange={setNote}
+								onBack={() => {
+									setQuantities(
+										Object.fromEntries(
+											stockItems.map(
+												(
+													i
+												) => [
+													i.id,
+													Number(
+														i.qty_on_hand
+													),
+												]
+											)
+										)
+									);
+									setNote("");
+									setModalStep("type");
+								}}
+								onNext={() =>
+									setModalStep(
+										needsTrackingStep
+											? "tracking"
+											: "confirm"
+									)
+								}
+							/>
+						)}
+					{modalStep === "tracking" && selectedType && (
+						<TrackingStep
 							type={selectedType}
-							stockItems={stockItems}
-							quantities={quantities}
-							note={note}
-							onQtyChange={handleQtyChange}
-							onNoteChange={setNote}
-							onBack={() => {
-								setQuantities(Object.fromEntries(stockItems.map((i) => [i.id, Number(i.qty_on_hand)])));
-								setNote("");
-								setModalStep("type");
-							}}
+							vehicleId={vehicleId}
+							lines={trackingLines}
+							serialValues={serialValues}
+							onSerialChange={(key, v) =>
+								setSerialValues((prev) => ({
+									...prev,
+									[key]: v,
+								}))
+							}
+							newBatchValues={newBatchValues}
+							onNewBatchChange={(key, v) =>
+								setNewBatchValues((prev) => ({
+									...prev,
+									[key]: v,
+								}))
+							}
+							batchPickValues={batchPickValues}
+							onBatchPickChange={(key, v) =>
+								setBatchPickValues((prev) => ({
+									...prev,
+									[key]: v,
+								}))
+							}
+							onBack={() => setModalStep("quantities")}
 							onNext={() => setModalStep("confirm")}
+							canProceed={trackingSatisfied}
 						/>
 					)}
 					{modalStep === "confirm" && selectedType && (
@@ -748,7 +1491,14 @@ export default function AdjustStockModal({
 							supplierRows={supplierRows}
 							supplierNewItem={supplierNewItem}
 							note={note}
-							onBack={() => { setSubmitError(null); setModalStep("quantities"); }}
+							onBack={() => {
+								setSubmitError(null);
+								setModalStep(
+									needsTrackingStep
+										? "tracking"
+										: "quantities"
+								);
+							}}
 							onConfirm={handleConfirm}
 							isPending={adjustMutation.isPending}
 							error={submitError}

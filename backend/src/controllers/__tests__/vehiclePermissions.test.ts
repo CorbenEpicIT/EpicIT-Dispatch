@@ -7,7 +7,7 @@ vi.mock("../../db.js", () => ({
 	},
 }));
 
-import { requireVehiclePermission } from "../../lib/requirePermissions.js";
+import { requireVehiclePermission, requireAnyPermissionOrSelf } from "../../lib/requirePermissions.js";
 import { db } from "../../db.js";
 
 const mockFindFirst = vi.mocked(db.technician.findFirst);
@@ -144,5 +144,51 @@ describe("requireVehiclePermission", () => {
 		);
 		expect(next).not.toHaveBeenCalled();
 		expect(res.status).toHaveBeenCalledWith(403);
+	});
+});
+
+// Guards the PUT /technicians/:id/vehicle gate (Finding 1): a technician may set
+// only their OWN current vehicle. use_vehicles must NOT grant cross-technician
+// assignment — only manage_vehicles or a self match may.
+describe("requireAnyPermissionOrSelf (vehicle assignment gate)", () => {
+	const middleware = requireAnyPermissionOrSelf(["manage_vehicles"], "id");
+	let next: NextFunction;
+
+	function makeReqSelf(user: Record<string, unknown>, targetId: string): Request {
+		return { user, params: { id: targetId } } as unknown as Request;
+	}
+
+	beforeEach(() => {
+		next = vi.fn();
+	});
+
+	it("passes a user acting on their own id (self match), regardless of permissions", () => {
+		middleware(makeReqSelf({ role: "technician", uid: "tech-1", permissions: [] }, "tech-1"), makeRes(), next);
+		expect(next).toHaveBeenCalledOnce();
+	});
+
+	it("403s a technician with only use_vehicles targeting another technician", () => {
+		const res = makeRes();
+		middleware(
+			makeReqSelf({ role: "technician", uid: "tech-1", permissions: ["use_vehicles", "view_vehicles"] }, "tech-2"),
+			res,
+			next,
+		);
+		expect(next).not.toHaveBeenCalled();
+		expect(res.status).toHaveBeenCalledWith(403);
+	});
+
+	it("passes a dispatcher with manage_vehicles targeting any technician", () => {
+		middleware(
+			makeReqSelf({ role: "dispatcher", uid: "disp-1", permissions: ["manage_vehicles"] }, "tech-2"),
+			makeRes(),
+			next,
+		);
+		expect(next).toHaveBeenCalledOnce();
+	});
+
+	it("passes admins on any id without a permission check", () => {
+		middleware(makeReqSelf({ role: "admin", uid: "admin-1", permissions: [] }, "tech-2"), makeRes(), next);
+		expect(next).toHaveBeenCalledOnce();
 	});
 });
