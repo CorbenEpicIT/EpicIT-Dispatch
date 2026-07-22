@@ -3296,6 +3296,12 @@ async function main() {
 			{ visit_id: recurringVisit1.id, tech_id: tech1.id, clocked_in_at: dateAt(occurrencePastStart, 8, 5), clocked_out_at: dateAt(occurrencePastStart, 11, 50), hours_worked: 3.75 },
 		],
 	});
+	await db.technician_shift.createMany({
+		data: [
+			{ tech_id: tech1.id, org_id: org.id, started_at: dateAt(today, 7), ended_at: null},
+			{ tech_id: tech2.id, org_id: org.id, started_at: dateAt(today, 8), ended_at: null},
+		],
+	})
 
 	// ============================================================================
 	// Technician Notifications (John Smith)
