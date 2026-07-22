@@ -2,11 +2,11 @@
 	/* ── Backgrounds / Surfaces ──────────────────────────────────────────── */
 	/* Zinc Daylight v3: cool blue-gray canvas mirrors dark mode's zinc DNA.
 	   Structure from layer contrast, not border strokes. */
-	--color-canvas:         #edf0f5;   /* cool steel-blue gray — Stripe-tier corporate */
-	--color-base:           #dce2ed;   /* sidebar/secondary bg — distinctly darker than canvas */
-	--color-surface:        #ffffff;   /* pure white — header, cards, panels */
-	--color-surface-raised: #e2e8f2;   /* hover/elevated on white surfaces */
-	--color-surface-inset:  #cdd5e3;   /* clearly recessed wells, inset inputs */
+	--color-canvas:         #e6eaf0;   /* page floor — darkened so it sits clearly below surface (was #edf0f4) */
+	--color-base:           #ffffff;   /* brightest card/panel layer */
+	--color-surface:        #eef1f6;   /* secondary layer — now one clear step above canvas (was #ebf1f7) */
+	--color-surface-raised: #f6f8fb;   /* elevated/hover — distinct step above surface (was #f4f8fb) */
+	--color-surface-inset:  #d3d9e3;   /* recessed wells/inputs — one firm step below canvas, not a cliff (was #c8d0df) */
 
 	/* ── Text ────────────────────────────────────────────────────────────── */
 	/* Slate hierarchy — cool authority, matches dark mode's zinc personality */
@@ -14,7 +14,7 @@
 	--color-text-secondary:  #334155;   /* slate-700 */
 	--color-text-tertiary:   #475569;   /* slate-600 */
 	--color-text-muted:      #64748b;   /* slate-500 */
-	--color-text-faint:      #7c8ea6;   /* custom; between slate-400 (#94a3b8) and slate-500 (#64748b) */
+	--color-text-faint:      #6b7a90;   /* ~4.5:1 on white for real text (was #7c8ea6, ~3.3:1) */
 	--color-text-inverse:    #ffffff;
 	--color-text-link:       #2563eb;
 	--color-text-on-surface: #475569;   /* slate-600 */
@@ -32,12 +32,12 @@
 	--color-primary-disabled:  #1e40af;
 
 	/* ── Borders ─────────────────────────────────────────────────────────── */
-	/* Present but not loud — clear section definition without cage-like weight */
-	--color-border-subtle: #c5d1e5;   /* section dividers — 1.53:1 on white, faint but present */
-	--color-border:        #8fa6bf;   /* default edge — 2.48:1 on white, clearly visible at 1px */
-	--color-border-strong: #6080a0;   /* emphasized headers — 4.13:1 on white */
-	--color-border-card:   #b5c4db;   /* card inset — 1.76:1, visible not heavy */
-	--color-border-input:  #5e7a98;   /* input — 4.45:1 on white, strong field boundary */
+	/* Quiet by default — elevation comes from stepped surfaces + shadow, not strokes */
+	--color-border-subtle: #e2e6ec;   /* section dividers — a whisper (was #c5d1e5) */
+	--color-border:        #d0d6df;   /* default edge — light + desaturated (was #8fa6bf) */
+	--color-border-strong: #b2bcc9;   /* emphasized edge — still clearly present (was #6080a0) */
+	--color-border-card:   #e2e6ec;   /* card edge — matches subtle (was #b5c4db) */
+	--color-border-input:  #a6b0be;   /* input — firm field boundary, no longer navy (was #5e7a98) */
 
 	/* ── Overlay / modal backdrop ─────────────────────────────────────────────── */
 	--color-overlay: rgba(9, 9, 11, 0.60);
@@ -324,17 +324,18 @@
  * Applied via data-palette="warm" on <html> when effective theme is light.
  * ─────────────────────────────────────────────────────────────────────── */
 [data-palette="warm"] {
-	--color-canvas:         #f4f0eb;
-	--color-base:           #e6dfd5;
-	--color-surface:        #faf8f5;
-	--color-surface-raised: #ede7de;
-	--color-surface-inset:  #ddd5c9;
-	--color-border-subtle:  #cec5b8;
-	--color-border:         #b0a294;
-	--color-border-strong:  #8f7e6d;
-	--color-border-card:    #c4b8a8;
-	--color-border-input:   #8a7a6a;
-	--color-mapbox-bg:      #faf8f5;
+	--color-test: 			#edf0f4;
+	--color-canvas:         #efe7db; /* floor — now drops below surface (was #f4f0eb, sat above it) */
+	--color-base:           #fdfbf7; /* warm white card top */
+	--color-surface:        #f4eee4; /* sits above canvas, ascending (was #ece6dd, below it) */
+	--color-surface-raised: #f8f4ec; /* distinct step above surface */
+	--color-surface-inset:  #e4dccd; /* one firm step below canvas, not a cliff (was #d5ccbe) */
+	--color-border-subtle:  #e7ded1; /* dividers recede (was #cec5b8) */
+	--color-border:         #d9cebe; /* quiet default edge (was #b0a294) */
+	--color-border-strong:  #bcae9b; /* emphasized edge (was #8f7e6d) */
+	--color-border-card:    #e7ded1; /* matches subtle (was #c4b8a8) */
+	--color-border-input:   #b2a28e; /* firm field edge, softer (was #8a7a6a) */
+	--color-mapbox-bg:      #fdfbf7;
 	--color-mapbox-bg-hover:#ede7de;
 	--color-chart-fallback: #e6dfd5;
 	--color-chart-hole-bg:  #f4f0eb;
@@ -345,16 +346,16 @@
  * Applied via data-palette="neutral" on <html> when effective theme is light.
  * ─────────────────────────────────────────────────────────────────────── */
 [data-palette="neutral"] {
-	--color-canvas:         #f0f0f0;
-	--color-base:           #e0e0e0;
-	--color-surface:        #ffffff;
-	--color-surface-raised: #e8e8e8;
-	--color-surface-inset:  #d0d0d0;
-	--color-border-subtle:  #c0c0c0;
-	--color-border:         #999999;
-	--color-border-strong:  #707070;
-	--color-border-card:    #b8b8b8;
-	--color-border-input:   #888888;
+	--color-canvas:         #e9e9e9; /* floor — now drops below surface (was #f0f0f0, sat above it) */
+	--color-base:           #ffffff; /* card top */
+	--color-surface:        #f0f0f0; /* sits above canvas, ascending (was #e8e8e8, below it) */
+	--color-surface-raised: #f6f6f6; /* distinct step above surface */
+	--color-surface-inset:  #dcdcdc; /* one firm step below canvas, not a cliff (was #cbcbcb) */
+	--color-border-subtle:  #e4e4e4; /* dividers recede (was #c0c0c0) */
+	--color-border:         #d4d4d4; /* quiet default edge — was very heavy #999999 */
+	--color-border-strong:  #b3b3b3; /* emphasized edge (was #707070) */
+	--color-border-card:    #e4e4e4; /* matches subtle (was #b8b8b8) */
+	--color-border-input:   #adadad; /* firm field edge, softer (was #888888) */
 	--color-mapbox-bg:      #ffffff;
 	--color-mapbox-bg-hover:#e8e8e8;
 	--color-chart-fallback: #e0e0e0;
