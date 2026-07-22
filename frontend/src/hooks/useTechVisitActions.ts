@@ -48,6 +48,7 @@ export interface UseTechVisitActionsReturn {
 	dismiss: () => void;
 	constraints: VisitActionConstraints;
 	handleConfirmSwitch: () => Promise<void>;
+	optimisticStatus: string | null; 
 }
 
 const CONFIRM_TIMEOUT_MS = 4000;
@@ -73,6 +74,7 @@ export function useTechVisitActions(
 ): UseTechVisitActionsReturn {
 	const [uiState, setUiState] = useState<TechVisitUiState>("idle");
 	const [confirmingAction, setConfirmingAction] = useState<TechVisitConfirmingAction>(null);
+	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
 	const [clockError, setClockError] = useState<string | null>(null);
 	const [pendingPauseAction, setPendingPauseAction] = useState<"clock-out" | "pause" | null>(null);
 	const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,7 +89,7 @@ export function useTechVisitActions(
 
 	const visitId = visit?.id ?? "";
 
-	const myTechVisitStatus =
+	const myTechVisitStatus = optimisticStatus ?? 
 		visit?.visit_techs?.find((vt) => vt.tech_id === techId)?.tech_status ?? "Assigned";
 
 	const myOpenEntry = visit?.time_entries?.find(
@@ -153,12 +155,14 @@ export function useTechVisitActions(
 			startConfirmTimer();
 			return;
 		}
+		setOptimisticStatus("EnRoute");
 		clearConfirmTimer();
 		setConfirmingAction(null);
 		setClockError(null);
 		try {
 			const techCoords = await getDeviceCoords();
 			await transitionMutation.mutateAsync({ visitId, action: "drive", techCoords: techCoords ?? undefined });
+			setOptimisticStatus(null);
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "";
 			if (msg.includes("CLOCKED_IN")) {
@@ -166,6 +170,7 @@ export function useTechVisitActions(
 			} else {
 				setClockError("Failed to update status — try again.");
 			}
+			setOptimisticStatus(null);
 		}
 	}, [isLoading, constraints.drive.requiresSwitchConfirm, confirmingAction, visitId, transitionMutation, startConfirmTimer, clearConfirmTimer]);
 
@@ -363,5 +368,6 @@ export function useTechVisitActions(
 		dismiss,
 		constraints,
 		handleConfirmSwitch,
+		optimisticStatus,
 	};
 }

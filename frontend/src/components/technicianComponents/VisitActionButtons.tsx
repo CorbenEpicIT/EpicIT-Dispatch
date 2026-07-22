@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
-import { Car, MapPin, Clock, Pause, CheckCircle2, Play, AlertTriangle, Info, UserCheck } from "lucide-react";
+import { Car, MapPin, Clock, Pause, CheckCircle2, Play, AlertTriangle, Info, UserCheck, Loader2 } from "lucide-react";
 import { useTechVisitActions } from "../../hooks/useTechVisitActions";
 import type { JobVisit } from "../../types/jobs";
 
@@ -46,6 +46,7 @@ export default function VisitActionButtons({
 		dismiss,
 		constraints,
 		handleConfirmSwitch,
+		optimisticStatus,
 	} = useTechVisitActions(visit, techId);
 
 	const [tooltip, setTooltip] = useState<string | null>(null);
@@ -331,8 +332,8 @@ export default function VisitActionButtons({
 								: "bg-action-drive hover:bg-action-drive-hover text-on-primary"
 						}`}
 					>
-						<Car size={iconSize} />
-						{confirmingAction === "drive" ? "Confirm Driving" : "I'm Driving"}
+					<Car size={iconSize} />
+					{confirmingAction === "drive" ? "Confirm Driving" : "I'm Driving"}
 					</button>
 				</div>
 				{clockError && (
@@ -355,7 +356,7 @@ export default function VisitActionButtons({
 								? () => constraints.arrive.reason && showTooltip(constraints.arrive.reason)
 								: handleArrive
 						}
-						disabled={isLoading}
+						disabled={isLoading || optimisticStatus !== null}
 						aria-label={confirmingAction === "arrive" ? "Confirm — tap again to mark arrived" : "I've Arrived"}
 						className={`${btn} ${
 							arriveDisabled
@@ -365,8 +366,17 @@ export default function VisitActionButtons({
 								: "bg-action-drive hover:bg-action-drive-hover text-on-primary"
 						}`}
 					>
-						<MapPin size={iconSize} />
-						{confirmingAction === "arrive" ? "Confirm Arrived" : "I've Arrived"}
+						{optimisticStatus === "EnRoute" ? (
+							<>
+								<Loader2 size={iconSize} className="animate-spin" />
+								Confirm Drive
+							</>
+						) : (
+							<>
+								<MapPin size={iconSize} />
+								{confirmingAction === "arrive" ? "Confirm Arrived" : "I've Arrived"}
+							</>
+						)}
 					</button>
 				</div>
 				{clockError && (
