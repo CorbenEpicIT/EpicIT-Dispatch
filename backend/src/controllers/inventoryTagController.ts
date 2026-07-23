@@ -86,6 +86,14 @@ export const setItemTags = async (
 		});
 		if (!item) return { err: "Inventory item not found" };
 
+		const uniqueTagIds = [...new Set(parsed.tag_ids)];
+		if (uniqueTagIds.length > 0) {
+			const ownedCount = await sdb.inventory_tag.count({
+				where: { id: { in: uniqueTagIds } },
+			});
+			if (ownedCount !== uniqueTagIds.length) return { err: "One or more tags not found" };
+		}
+
 		const updated = await sdb.inventory_item.update({
 			where: { id: itemId },
 			data: {

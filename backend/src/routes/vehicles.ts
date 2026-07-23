@@ -314,7 +314,9 @@ router.post(
 					: 400;
 				return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
 			}
-			return res.status(201).json(createSuccessResponse(result.record));
+			return res
+				.status(201)
+				.json(createSuccessResponse({ ...result.record, line_details: result.line_details }));
 		} catch (err) {
 			next(err);
 		}
@@ -515,7 +517,7 @@ router.delete("/:id/stock/:itemId", requireVehiclePermission("stock_own_vehicle"
 	}
 });
 
-router.post("/:id/stock/:itemId/restock-request", requireVehiclePermission("stock_own_vehicle"), async (req, res, next) => {
+router.post("/:id/stock/:itemId/restock-request", requireVehiclePermission("view_vehicles"), async (req, res, next) => {
 	try {
 		const { id, itemId } = req.params as { id: string; itemId: string };
 		const orgId = req.user!.organization_id as string;
@@ -537,7 +539,7 @@ router.post("/:id/stock/:itemId/restock-request", requireVehiclePermission("stoc
 	}
 });
 
-router.post("/:id/restock-requests/bulk", requireVehiclePermission("stock_own_vehicle"), async (req, res, next) => {
+router.post("/:id/restock-requests/bulk", requireVehiclePermission("view_vehicles"), async (req, res, next) => {
 	try {
 		const vehicleId = req.params.id as string;
 		const orgId = req.user!.organization_id as string;

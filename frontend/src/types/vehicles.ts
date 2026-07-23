@@ -65,7 +65,7 @@ export interface CreateVehicleInput {
 	notes?: string | null;
 }
 
-export interface UpdateVehicleInput extends Partial<CreateVehicleInput> {}
+export type UpdateVehicleInput = Partial<CreateVehicleInput>;
 
 export interface AddVehicleStockItemInput {
 	inventory_item_id: string;
@@ -87,7 +87,7 @@ export interface StockShortfallItem {
 	qtyOnHand: number;
 }
 
-export interface VehicleStockConflictItem extends StockShortfallItem {}
+export type VehicleStockConflictItem = StockShortfallItem;
 
 export interface VehicleStockConflict {
 	visitId: string;
@@ -120,6 +120,8 @@ export interface AddPartsUsedInput {
 	stock_item_id: string;
 	qty_used: number;
 	technician_id: string;
+	serial_unit_ids?: string[];
+	batch_id?: string;
 }
 
 export interface SupplierPartUsedInput {
@@ -171,6 +173,22 @@ export interface VehicleRestockLine {
 	qty_shortfall: number;
 }
 
+// Mirrors backend's RestockLineDetail (vehiclesController.ts) — a sibling
+// array returned alongside completeRestock's VehicleRestockRecord, joinable
+// via stock_item_id (same key as VehicleRestockLine.stock_item_id). A line is
+// "needs attention" (worth surfacing in an acknowledgment UI) whenever the
+// joined VehicleRestockLine.qty_shortfall > 0 OR reason_code !== "ok" —
+// reason_code === "ok" does NOT by itself mean nothing to show, since a real
+// warehouse/lot shortfall also reports "ok" with a descriptive message. Fully
+// clean lines have message: undefined and should be filtered out of any summary.
+export interface RestockLineDetail {
+	stock_item_id: string;
+	reason_code: "ok" | "no_tracking_gap" | "cache_drift_detected";
+	message?: string;
+	serial_codes?: string[];
+	lot_codes?: string[];
+}
+
 export interface DualActor {
 	dispatcher: { id: string; name: string } | null;
 	technician: { id: string; name: string } | null;
@@ -189,6 +207,10 @@ export interface VehicleRestockRecord {
 	notes: string | null;
 	restock_lines: VehicleRestockLine[];
 	created_at: string;
+	// Only present on the completeRestock response — endpoints that were never
+	// touched by this task (getVehicleRestockToday/getVehicleRestockHistory)
+	// won't have it.
+	line_details?: RestockLineDetail[];
 }
 
 export interface CompleteRestockInput {
@@ -197,10 +219,12 @@ export interface CompleteRestockInput {
 	restock_lines: Array<{
 		stock_item_id: string;
 		qty_to_restock: number;
+		serial_unit_ids?: string[];
+		batch_picks?: Array<{ batch_id: string; qty: number }>;
 	}>;
 }
 
-export interface TomorrowRequirementItem extends StockShortfallItem {}
+export type TomorrowRequirementItem = StockShortfallItem;
 
 export interface TomorrowRequirementVisit {
 	visitId: string;
@@ -229,6 +253,13 @@ export interface AdjustStockInput {
 		inventory_item_id?: string;
 		new_item?: { name: string; cost: number };
 		qty_after: number;
+		// Serial/batch tracking (F-T4) — which of these apply depends on the
+		// resolved item's is_serialized/is_batch_tracked flags and the adjustment
+		// type; see AdjustStockModal's tracking step for how they're populated.
+		serial_unit_ids?: string[];
+		new_serials?: string[];
+		batch_picks?: Array<{ batch_id: string; qty: number }>;
+		new_batch?: { batch_number: string; expires_at?: string | null; supplier?: string };
 	}>;
 }
 
@@ -304,6 +335,13 @@ export interface FillResultLine {
 	inventory_item_id: string;
 	qty_moved: number;
 	shortfall: number;
+	// Mirrors backend's FillToStandardLine — carries these directly (no sibling
+	// array to join, unlike RestockLineDetail). A line "needs attention" whenever
+	// shortfall > 0 || reason_code !== "ok"; fully clean lines have message: undefined.
+	reason_code: "ok" | "no_tracking_gap" | "cache_drift_detected";
+	message?: string;
+	serial_codes?: string[];
+	lot_codes?: string[];
 }
 
 export interface BulkRestockResult {

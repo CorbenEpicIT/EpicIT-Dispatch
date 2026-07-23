@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Plus, Trash2, FileSpreadsheet, Settings2, ChevronDown, ChevronUp, Barcode, X } from "lucide-react";
+import { useSearchParams, Link } from "react-router-dom";
+import { Plus, Trash2, FileSpreadsheet, Settings2, ChevronDown, ChevronUp, Barcode, X, QrCode } from "lucide-react";
 import { BarcodeScanner } from "../../components/inventory/BarcodeScanner";
 import { useBarcodeScanner } from "../../hooks/useBarcodeScanner";
 import { useBarcodeScanHandler } from "../../hooks/useInventory";
@@ -32,6 +32,8 @@ import {
 	useQBMappedItemsQuery,
 } from "../../hooks/useQuickbooks";
 import LinkQBItemModal from "../../components/quickbooks/LinkQBItemModal";
+import LabelQueueToast from "../../components/inventory/labels/LabelQueueToast";
+import { useLabelQueueStore } from "../../stores/labelQueueStore";
 
 const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 	{ value: "name", label: "Name A-Z" },
@@ -64,6 +66,8 @@ export default function InventoryPage() {
 	const [isScannerOpen, setIsScannerOpen] = useState(false);
 	const [scanNotFoundCode, setScanNotFoundCode] = useState<string | null>(null);
 	const [createPrefillBarcode, setCreatePrefillBarcode] = useState<string | undefined>(undefined);
+
+	const labelQueueCount = useLabelQueueStore((s) => s.items.length);
 
 	//permissions
 	const MANAGE_INVENTORY = usePermission("manage_inventory");
@@ -213,6 +217,19 @@ export default function InventoryPage() {
 			{/* Main content */}
 			<div className="flex-1 flex flex-col min-h-0 p-4 mr-7">
 				<PageHeader title="Inventory">
+						{labelQueueCount > 0 && (
+							<Link
+								to="/dispatch/inventory/labels/print"
+								className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
+								title="View and print queued labels"
+							>
+								<QrCode size={14} />
+								Print Labels
+								<span className="inline-flex items-center justify-center h-5 min-w-5 rounded-full bg-primary text-on-primary text-xs font-bold px-1.5">
+									{labelQueueCount}
+								</span>
+							</Link>
+						)}
 						<button
 						onClick={() => setIsTagManagerOpen(true)}
 						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
@@ -253,7 +270,7 @@ export default function InventoryPage() {
 							<button
 								onClick={() => setIsScannerOpen(true)}
 								title="Scan barcode"
-								className="inline-flex items-center justify-center h-8 w-8 flex-shrink-0 rounded-md bg-surface hover:bg-surface-raised border border-border text-text-secondary transition-colors"
+								className="inline-flex items-center justify-center h-9 w-9 flex-shrink-0 rounded-md bg-surface hover:bg-surface-raised border border-border text-text-secondary transition-colors"
 							>
 								<Barcode size={14} />
 							</button>
@@ -467,6 +484,9 @@ export default function InventoryPage() {
 					</button>
 				</div>
 			)}
+
+			{/* Label-queue add confirmation toast */}
+			<LabelQueueToast />
 
 			{/* Link to QuickBooks Modal */}
 			{linkItem && (

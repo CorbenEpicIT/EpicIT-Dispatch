@@ -1,17 +1,49 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import * as vehicleApi from "../api/vehicles";
-import type { VehicleStockConflict, VehicleUsageTodayGroup, VehicleRestockRecord, CompleteRestockInput, AdjustStockInput, VehicleStockAdjustment, RestockRequest, FillPlan, ApplyFillInput, BulkRestockInput, TomorrowRequirementVisit } from "../types/vehicles";
+import type {
+	VehicleStockItem,
+	VehicleStockConflict,
+	VehicleUsageTodayGroup,
+	VehicleRestockRecord,
+	CompleteRestockInput,
+	AdjustStockInput,
+	VehicleStockAdjustment,
+	RestockRequest,
+	FillPlan,
+	ApplyFillInput,
+	BulkRestockInput,
+	TomorrowRequirementVisit,
+	AddVehicleStockItemInput,
+	UpdateVehicleStockItemInput,
+	AddPartsUsedInput,
+	SupplierPartUsedInput,
+	RestockRequestInput,
+	VehicleStockUsage,
+} from "../types/vehicles";
+import type { VisitLineItem } from "../types/jobs";
+import { qk, invalidate } from "../lib/queryKeys";
+
+// ── Vehicle stock queries ──────────────────────────────────────────────────────
+
+export const useVehicleStockQuery = (vehicleId: string | null | undefined): UseQueryResult<VehicleStockItem[], Error> => {
+	return useQuery({
+		queryKey: qk.vehicles.stock(vehicleId ?? ""),
+		queryFn: () => vehicleApi.getVehicleStock(vehicleId!),
+		enabled: !!vehicleId,
+		staleTime: 30_000,
+	});
+};
 
 export const useVehicleStockConflictsQuery = () =>
 	useQuery<VehicleStockConflict[]>({
-		queryKey: ["vehicles", "stock-conflicts"],
+		queryKey: qk.vehicles.stockConflicts,
 		queryFn: vehicleApi.getStockConflicts,
 		staleTime: 30_000,
 	});
 
 export const useFillPlanQuery = (vehicleId: string, enabled: boolean) =>
 	useQuery<FillPlan>({
-		queryKey: ["vehicles", vehicleId, "fill-plan"],
+		queryKey: qk.vehicles.fillPlan(vehicleId),
 		queryFn: () => vehicleApi.getFillPlan(vehicleId),
 		enabled: !!vehicleId && enabled,
 		staleTime: 0,
@@ -23,11 +55,8 @@ export const useApplyFillMutation = (vehicleId: string) => {
 		mutationFn: (input: ApplyFillInput) => vehicleApi.applyFill(vehicleId, input),
 		onSuccess: async () => {
 			await Promise.all([
-				qc.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", "stock-conflicts"] }),
-				qc.invalidateQueries({ queryKey: ["vehicles"] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "fill-plan"] }),
-				qc.invalidateQueries({ queryKey: ["allInventory"] }),
+				invalidate.stockData(qc, vehicleId),
+				qc.invalidateQueries({ queryKey: qk.vehicles.fillPlan(vehicleId) }),
 			]);
 		},
 	});
@@ -35,7 +64,7 @@ export const useApplyFillMutation = (vehicleId: string) => {
 
 export const useVehicleUsageTodayQuery = (vehicleId: string) =>
 	useQuery<VehicleUsageTodayGroup[]>({
-		queryKey: ["vehicles", vehicleId, "usage-today"],
+		queryKey: qk.vehicles.usageToday(vehicleId),
 		queryFn: () => vehicleApi.getUsageToday(vehicleId),
 		enabled: !!vehicleId,
 		staleTime: 30_000,
@@ -43,7 +72,7 @@ export const useVehicleUsageTodayQuery = (vehicleId: string) =>
 
 export const useVehicleRestockTodayQuery = (vehicleId: string) =>
 	useQuery<VehicleRestockRecord | null>({
-		queryKey: ["vehicles", vehicleId, "restock-today"],
+		queryKey: qk.vehicles.restockToday(vehicleId),
 		queryFn: () => vehicleApi.getVehicleRestockToday(vehicleId),
 		enabled: !!vehicleId,
 		staleTime: 30_000,
@@ -51,7 +80,7 @@ export const useVehicleRestockTodayQuery = (vehicleId: string) =>
 
 export const useVehicleRestockHistoryQuery = (vehicleId: string, enabled: boolean) =>
 	useQuery<VehicleRestockRecord[]>({
-		queryKey: ["vehicles", vehicleId, "restock-history"],
+		queryKey: qk.vehicles.restockHistory(vehicleId),
 		queryFn: () => vehicleApi.getVehicleRestockHistory(vehicleId),
 		enabled: !!vehicleId && enabled,
 		staleTime: 60_000,
@@ -59,7 +88,7 @@ export const useVehicleRestockHistoryQuery = (vehicleId: string, enabled: boolea
 
 export const useVehicleStockAdjustmentHistoryQuery = (vehicleId: string, enabled: boolean) =>
 	useQuery<VehicleStockAdjustment[]>({
-		queryKey: ["vehicles", vehicleId, "stock-adjustments"],
+		queryKey: qk.vehicles.stockAdjustments(vehicleId),
 		queryFn: () => vehicleApi.getVehicleStockAdjustmentHistory(vehicleId),
 		enabled: !!vehicleId && enabled,
 		staleTime: 30_000,
@@ -69,14 +98,10 @@ export const useAdjustStockMutation = (vehicleId: string) => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (input: AdjustStockInput) => vehicleApi.adjustStock(vehicleId, input),
-		onSuccess: async (_data, variables) => {
-			const isWarehouseExchange = variables.type === "warehouse_exchange";
+		onSuccess: async () => {
 			await Promise.all([
-				qc.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", "stock-conflicts"] }),
-				qc.invalidateQueries({ queryKey: ["vehicles"] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "stock-adjustments"] }),
-				...(isWarehouseExchange ? [qc.invalidateQueries({ queryKey: ["allInventory"] })] : []),
+				invalidate.stockData(qc, vehicleId),
+				qc.invalidateQueries({ queryKey: qk.vehicles.stockAdjustments(vehicleId) }),
 			]);
 		},
 	});
@@ -84,38 +109,34 @@ export const useAdjustStockMutation = (vehicleId: string) => {
 
 export const useRestockRequestsQuery = (status?: string, vehicleId?: string) =>
 	useQuery<RestockRequest[]>({
-		queryKey: ["restock-requests", { status, vehicleId }],
+		queryKey: qk.restockRequests.list({ status, vehicleId }),
 		queryFn: () => vehicleApi.getRestockRequests(status, vehicleId),
 		staleTime: 30_000,
 	});
 
-export const useAcknowledgeRestockRequestMutation = (vehicleId?: string) => {
+export const useAcknowledgeRestockRequestMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (requestId: string) => vehicleApi.acknowledgeRestockRequest(requestId),
 		onSuccess: async () => {
-			const work = [qc.invalidateQueries({ queryKey: ["restock-requests"] })];
-			if (vehicleId) work.push(qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "restock-requests"] }));
-			await Promise.all(work);
+			await invalidate.restockRequests(qc);
 		},
 	});
 };
 
-export const useDismissRestockRequestMutation = (vehicleId?: string) => {
+export const useDismissRestockRequestMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (requestId: string) => vehicleApi.dismissRestockRequest(requestId),
 		onSuccess: async () => {
-			const work = [qc.invalidateQueries({ queryKey: ["restock-requests"] })];
-			if (vehicleId) work.push(qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "restock-requests"] }));
-			await Promise.all(work);
+			await invalidate.restockRequests(qc);
 		},
 	});
 };
 
 export const useTomorrowRequirementsQuery = (vehicleId: string) =>
 	useQuery<TomorrowRequirementVisit[]>({
-		queryKey: ["vehicles", vehicleId, "tomorrow-requirements"],
+		queryKey: qk.vehicles.tomorrowRequirements(vehicleId),
 		queryFn: () => vehicleApi.getTomorrowRequirements(vehicleId),
 		staleTime: 60_000,
 	});
@@ -126,11 +147,9 @@ export const useCompleteRestockMutation = (vehicleId: string) => {
 		mutationFn: (input: CompleteRestockInput) => vehicleApi.completeRestock(vehicleId, input),
 		onSuccess: async () => {
 			await Promise.all([
-				qc.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "restock-today"] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "restock-requests"] }),
-				qc.invalidateQueries({ queryKey: ["vehicles", "stock-conflicts"] }),
-				qc.invalidateQueries({ queryKey: ["allInventory"] }),
+				invalidate.stockData(qc, vehicleId),
+				qc.invalidateQueries({ queryKey: qk.vehicles.restockToday(vehicleId) }),
+				invalidate.restockRequests(qc),
 			]);
 		},
 	});
@@ -138,7 +157,7 @@ export const useCompleteRestockMutation = (vehicleId: string) => {
 
 export const useVehicleRestockRequestsQuery = (vehicleId: string) =>
 	useQuery<RestockRequest[]>({
-		queryKey: ["vehicles", vehicleId, "restock-requests"],
+		queryKey: qk.restockRequests.list({ vehicleId }),
 		queryFn: () => vehicleApi.getVehicleRestockRequests(vehicleId),
 		enabled: !!vehicleId,
 		staleTime: 30_000,
@@ -149,9 +168,84 @@ export const useBulkRestockMutation = (vehicleId: string) => {
 	return useMutation({
 		mutationFn: (input: BulkRestockInput) => vehicleApi.createRestockRequestsBulk(vehicleId, input),
 		onSuccess: async () => {
+			await invalidate.restockRequests(qc);
+		},
+	});
+};
+
+// ── Stock item CRUD ────────────────────────────────────────────────────────────
+
+export const useAddVehicleStockItemMutation = () => {
+	const queryClient = useQueryClient();
+	return useMutation<VehicleStockItem, Error, { vehicleId: string; data: AddVehicleStockItemInput }>({
+		mutationFn: ({ vehicleId, data }) => vehicleApi.addVehicleStockItem(vehicleId, data),
+		onSuccess: (_result, { vehicleId }) => {
+			invalidate.stockData(queryClient, vehicleId);
+		},
+	});
+};
+
+export const useUpdateVehicleStockItemMutation = () => {
+	const queryClient = useQueryClient();
+	return useMutation<VehicleStockItem, Error, { vehicleId: string; itemId: string; data: UpdateVehicleStockItemInput }>({
+		mutationFn: ({ vehicleId, itemId, data }) => vehicleApi.updateVehicleStockItem(vehicleId, itemId, data),
+		onSuccess: (_result, { vehicleId }) => {
+			invalidate.stockData(queryClient, vehicleId);
+		},
+	});
+};
+
+export const useDeleteVehicleStockItemMutation = () => {
+	const queryClient = useQueryClient();
+	return useMutation<void, Error, { vehicleId: string; itemId: string }>({
+		mutationFn: ({ vehicleId, itemId }) => vehicleApi.deleteVehicleStockItem(vehicleId, itemId),
+		onSuccess: (_result, { vehicleId }) => {
+			invalidate.stockData(queryClient, vehicleId);
+		},
+	});
+};
+
+export const useRestockRequestMutation = () => {
+	const qc = useQueryClient();
+	return useMutation<void, Error, { vehicleId: string; itemId: string; data: RestockRequestInput }>({
+		mutationFn: ({ vehicleId, itemId, data }) => vehicleApi.createRestockRequest(vehicleId, itemId, data),
+		onSuccess: async () => {
+			await invalidate.restockRequests(qc);
+		},
+	});
+};
+
+// ── Parts used ────────────────────────────────────────────────────────────────
+
+export const useAddPartsUsedMutation = () => {
+	const queryClient = useQueryClient();
+	return useMutation<
+		{ lineItem: VisitLineItem; usage: VehicleStockUsage },
+		Error,
+		{ visitId: string; vehicleId: string; data: AddPartsUsedInput }
+	>({
+		mutationFn: ({ visitId, data }) => vehicleApi.addPartsUsed(visitId, data),
+		onSuccess: (_result, { visitId, vehicleId }) => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits", visitId] });
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			invalidate.stockData(queryClient, vehicleId);
+		},
+	});
+};
+
+export const useAddSupplierPartUsedMutation = (visitId: string, vehicleId: string | null) => {
+	const qc = useQueryClient();
+	return useMutation<
+		{ lineItem: VisitLineItem; usage: VehicleStockUsage | null },
+		Error,
+		SupplierPartUsedInput
+	>({
+		mutationFn: (input: SupplierPartUsedInput) => vehicleApi.addSupplierPartUsed(visitId, input),
+		onSuccess: async () => {
 			await Promise.all([
-				qc.invalidateQueries({ queryKey: ["vehicles", vehicleId, "restock-requests"] }),
-				qc.invalidateQueries({ queryKey: ["restock-requests"] }),
+				qc.invalidateQueries({ queryKey: ["jobVisits", visitId] }),
+				qc.invalidateQueries({ queryKey: ["jobVisits"] }),
+				...(vehicleId ? [invalidate.stockData(qc, vehicleId)] : []),
 			]);
 		},
 	});

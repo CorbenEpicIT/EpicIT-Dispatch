@@ -25,7 +25,7 @@ vi.mock("../../services/stockMovements.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../services/stockMovements.js")>();
 	return {
 		...actual,
-		recordMovements: vi.fn().mockResolvedValue({ lowStockItemIds: [] }),
+		recordMovements: vi.fn().mockResolvedValue({ lowStockItemIds: [], movementIds: [] }),
 		lockInventoryRows: vi.fn().mockResolvedValue(undefined),
 	};
 });
@@ -55,6 +55,29 @@ function makeFillSdb(stockItems: unknown[], warehouseItems: unknown[] = []) {
 	const tx = {
 		vehicle_stock_item: { findMany: vi.fn().mockResolvedValue(stockItems) },
 		inventory_item: { findMany: vi.fn().mockResolvedValue(warehouseItems) },
+		// buildTrackingInputs (capped mode) reads real non-recalled lot sums for
+		// batch-tracked lines instead of trusting the inventory_item.quantity
+		// cache (phase 0 cache-drift fix) — sized generously so the batch-tracked
+		// tests below (all using inventory_item_id "dddddddd-...") aren't clamped
+		// by this stub. Literal used (not the describe-scoped INV_UUID const,
+		// which this module-scoped helper can't see) but they're the same value.
+		stock_batch: {
+			findMany: vi
+				.fn()
+				.mockResolvedValue([
+					{ inventory_item_id: "dddddddd-dddd-4ddd-addd-dddddddddddd", qty_in_warehouse: 999 },
+				]),
+		},
+		// Phase 2b — response-detail resolution: serial_unit/stock_batch code
+		// lookups for explicit picks, stock_movement for the FIFO-auto-allocate
+		// lot-code join. Empty by default; individual tests override where the
+		// assertion cares about the resolved codes.
+		serial_unit: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
+		stock_movement: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
 	};
 	const sdb = {
 		vehicle: { findFirst: vi.fn().mockResolvedValue({ id: "vehicle-1" }) },
@@ -70,7 +93,7 @@ function makeFillSdb(stockItems: unknown[], warehouseItems: unknown[] = []) {
 describe("applyFill", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [] });
+		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [], movementIds: [] });
 	});
 
 	it("caps each line at warehouse availability and records warehouse → vehicle restock", async () => {
@@ -118,18 +141,168 @@ describe("applyFill", () => {
 		const result = await applyFill("missing", { lines: [{ inventory_item_id: "dddddddd-dddd-4ddd-addd-dddddddddddd", qty: 1 }] }, "org-1", {});
 		expect(result.err).toBe("Vehicle not found");
 	});
+
+	// ── Serial/batch tracking pass-through (B-T4) ───────────────────────────────
+
+	const INV_UUID = "dddddddd-dddd-4ddd-addd-dddddddddddd";
+
+	it("serialized item filled with NO serial_unit_ids succeeds (allowUntracked gap, not a throw)", async () => {
+		makeFillSdb(
+			[{ id: "s1", qty_on_hand: 0, qty_standard: 5, inventory_item_id: INV_UUID }],
+			[{ id: INV_UUID, quantity: 5, is_serialized: true, is_batch_tracked: false }],
+		);
+		const result = await applyFill(
+			"vehicle-1",
+			{ lines: [{ inventory_item_id: INV_UUID, qty: 2 }] },
+			"org-1",
+			{ dispatcherId: "d-1" },
+		);
+		expect(result.err).toBeUndefined();
+		expect(mockRecordMovements.mock.calls[0][4]).toEqual({ allowUntracked: true });
+		const movements = movementsFromLastCall();
+		expect(movements).toHaveLength(1);
+		expect(movements![0].serial).toBeUndefined();
+	});
+
+	it("serialized item filled WITH serial_unit_ids carries serial: { unit_ids }", async () => {
+		makeFillSdb(
+			[{ id: "s1", qty_on_hand: 0, qty_standard: 5, inventory_item_id: INV_UUID }],
+			[{ id: INV_UUID, quantity: 5, is_serialized: true, is_batch_tracked: false }],
+		);
+		const serialIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+		const result = await applyFill(
+			"vehicle-1",
+			{ lines: [{ inventory_item_id: INV_UUID, qty: 2, serial_unit_ids: serialIds }] },
+			"org-1",
+			{ dispatcherId: "d-1" },
+		);
+		expect(result.err).toBeUndefined();
+		const movements = movementsFromLastCall();
+		expect(movements![0].serial).toEqual({ unit_ids: serialIds });
+	});
+
+	// ── Cache-drift shortfall (audit 2026-07-14, phase 0) ───────────────────────
+	//
+	// `moved = Math.min(line.qty, available)` (vehiclesController.ts:1236) clamps
+	// against inventory_item.quantity — a cache. For a serialized item the tracking
+	// tables (serial_unit rows) are the truth, not the cache. If 10 units are
+	// scanned as in_warehouse but the cache says 6, the clamp invents a shortfall
+	// that isn't real: it trims 4 units that are physically going on the truck,
+	// moves stock without a ledger row for them, and hides the cache drift instead
+	// of surfacing it. Availability for a serialized line must be the scanned
+	// count, not the cache value.
+	it("does not clamp a serialized line to cached quantity when scanned serials exceed it (cache drift)", async () => {
+		makeFillSdb(
+			[{ id: "s1", qty_on_hand: 0, qty_standard: 10, inventory_item_id: INV_UUID }],
+			// Cache says 6 available; 10 units were actually scanned as in_warehouse.
+			[{ id: INV_UUID, quantity: 6, is_serialized: true, is_batch_tracked: false }],
+		);
+		const serialIds = Array.from(
+			{ length: 10 },
+			(_, i) => `${i}${i}${i}${i}${i}${i}${i}${i}-${i}${i}${i}${i}-4${i}${i}${i}-8${i}${i}${i}-${i}${i}${i}${i}${i}${i}${i}${i}${i}${i}${i}${i}`,
+		);
+
+		const result = await applyFill(
+			"vehicle-1",
+			{ lines: [{ inventory_item_id: INV_UUID, qty: 10, serial_unit_ids: serialIds }] },
+			"org-1",
+			{ dispatcherId: "d-1" },
+		);
+
+		expect(result.err).toBeUndefined();
+		const movements = movementsFromLastCall();
+		expect(movements![0].qty).toBe(10);
+		expect(movements![0].serial).toEqual({ unit_ids: serialIds });
+		expect(result.lines).toEqual([
+			expect.objectContaining({ inventory_item_id: INV_UUID, qty_moved: 10, shortfall: 0 }),
+		]);
+	});
+
+	it("batch-tracked item filled with batch_picks passes them through as batch_allocations", async () => {
+		makeFillSdb(
+			[{ id: "s1", qty_on_hand: 0, qty_standard: 5, inventory_item_id: INV_UUID }],
+			[{ id: INV_UUID, quantity: 5, is_serialized: false, is_batch_tracked: true }],
+		);
+		const batchPicks = [{ batch_id: "33333333-3333-4333-8333-333333333333", qty: 2 }];
+		const result = await applyFill(
+			"vehicle-1",
+			{ lines: [{ inventory_item_id: INV_UUID, qty: 2, batch_picks: batchPicks }] },
+			"org-1",
+			{ dispatcherId: "d-1" },
+		);
+		expect(result.err).toBeUndefined();
+		const movements = movementsFromLastCall();
+		expect(movements![0].batch_allocations).toEqual(batchPicks);
+	});
+
+	it("batch-tracked item filled with no batch_picks still succeeds (FIFO/gap path)", async () => {
+		makeFillSdb(
+			[{ id: "s1", qty_on_hand: 0, qty_standard: 5, inventory_item_id: INV_UUID }],
+			[{ id: INV_UUID, quantity: 5, is_serialized: false, is_batch_tracked: true }],
+		);
+		const result = await applyFill(
+			"vehicle-1",
+			{ lines: [{ inventory_item_id: INV_UUID, qty: 2 }] },
+			"org-1",
+			{ dispatcherId: "d-1" },
+		);
+		expect(result.err).toBeUndefined();
+		const movements = movementsFromLastCall();
+		expect(movements![0].batch_allocations).toBeUndefined();
+	});
 });
 
 // ── addVehicleStockItem / updateVehicleStockItem (ledgered manual edits) ──────
 
 const INV_UUID = "dddddddd-dddd-4ddd-addd-dddddddddddd";
 
+function makeStockItemRow(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "s1",
+		vehicle_id: "vehicle-1",
+		inventory_item_id: INV_UUID,
+		qty_on_hand: 0,
+		qty_min: 0,
+		qty_standard: null,
+		created_at: new Date("2026-01-01T00:00:00.000Z"),
+		updated_at: new Date("2026-01-01T00:00:00.000Z"),
+		inventory_item: {
+			id: INV_UUID,
+			organization_id: "org-1",
+			name: "Test Part",
+			description: "",
+			location: "",
+			quantity: 0,
+			unit_price: null,
+			cost: null,
+			sku: null,
+			barcode: null,
+			is_active: true,
+			low_stock_threshold: null,
+			provisional: false,
+			created_by_tech_id: null,
+			approved_at: null,
+			approved_by_id: null,
+			image_keys: [],
+			alt_ids: [],
+			image_urls: [],
+			alert_emails_enabled: false,
+			alert_email: null,
+			created_at: new Date("2026-01-01T00:00:00.000Z"),
+			updated_at: new Date("2026-01-01T00:00:00.000Z"),
+			category: null,
+			unit: "each",
+		},
+		...overrides,
+	};
+}
+
 function makeManualSdb(existingStockItem: unknown = null) {
 	const tx = {
 		vehicle_stock_item: {
 			create: vi.fn().mockResolvedValue({ id: "s1" }),
 			update: vi.fn().mockResolvedValue(undefined),
-			findUniqueOrThrow: vi.fn().mockResolvedValue({ id: "s1", inventory_item: {} }),
+			findUniqueOrThrow: vi.fn().mockResolvedValue(makeStockItemRow()),
 		},
 	};
 	const sdb = {
@@ -148,7 +321,7 @@ function makeManualSdb(existingStockItem: unknown = null) {
 describe("addVehicleStockItem", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [] });
+		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [], movementIds: [] });
 	});
 
 	it("creates with qty 0 and ledgers initial quantity as an audit correction", async () => {
@@ -189,7 +362,7 @@ describe("addVehicleStockItem", () => {
 describe("updateVehicleStockItem", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [] });
+		mockRecordMovements.mockResolvedValue({ lowStockItemIds: [], movementIds: [] });
 	});
 
 	it("ledgers a positive qty_on_hand edit as adjustment→vehicle audit_correction", async () => {

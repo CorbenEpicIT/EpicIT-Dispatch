@@ -740,7 +740,12 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				// Inventory consumption is event-driven: it fires once per visit on
 				// its Completed transition (ledger model — see services/stockMovements).
 				if (parsed.status === "Completed" && existingVisit.status !== "Completed") {
-					const deductResult = await deductInventoryForVisit(id, tx, organizationId, context);
+					const deductResult = await deductInventoryForVisit(
+						id,
+						tx as unknown as Prisma.TransactionClient,
+						organizationId,
+						context,
+					);
 					deductLowStockIds = deductResult.lowStockItemIds;
 				}
 
@@ -1388,7 +1393,12 @@ export const applyVisitTransition = async (
 
 			// ── Inventory consumption (once, on this visit's Completed transition) ──
 			if (action === "complete" && existingVisit.status !== "Completed") {
-				const deductResult = await deductInventoryForVisit(id, tx, organizationId, context);
+				const deductResult = await deductInventoryForVisit(
+					id,
+					tx as unknown as Prisma.TransactionClient,
+					organizationId,
+					context,
+				);
 				deductLowStockIds = deductResult.lowStockItemIds;
 			}
 

@@ -1,20 +1,57 @@
 ﻿import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { Truck, Package, AlertTriangle, PackageX, X, Search, RotateCcw, SlidersHorizontal, LayoutList, ClipboardCheck, History, Plus, Barcode } from "lucide-react";
+import {
+	Truck,
+	Package,
+	AlertTriangle,
+	PackageX,
+	X,
+	Search,
+	RotateCcw,
+	SlidersHorizontal,
+	LayoutList,
+	ClipboardCheck,
+	History,
+	ListChecks,
+	Barcode,
+} from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
-import { useVehiclesQuery, useVehicleStockQuery, useSetTechnicianVehicleMutation, useRestockRequestMutation, useAddVehicleStockItemMutation } from "../../hooks/useVehicles";
-import { useVehicleStockConflictsQuery, useBulkRestockMutation } from "../../hooks/useVehicleStock";
+import { useVehiclesQuery, useSetTechnicianVehicleMutation } from "../../hooks/useVehicles";
+import {
+	useVehicleStockQuery,
+	useRestockRequestMutation,
+	useAddVehicleStockItemMutation,
+	useVehicleStockConflictsQuery,
+	useBulkRestockMutation,
+} from "../../hooks/useVehicleStock";
 import RestockStatusList from "../../components/technicianComponents/RestockStatusList";
+import RemoveStockItemSheet from "../../components/technicianComponents/RemoveStockItemSheet";
 import FillToStandardPreview from "../../components/vehicles/FillToStandardPreview";
 import { useOrgSettings } from "../../hooks/useOrg";
-import { useAllInventoryQuery, useBarcodeScanHandler } from "../../hooks/useInventory";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import { useBarcodeScanner } from "../../hooks/useBarcodeScanner";
+import { useScanDispatcher } from "../../hooks/useScanDispatcher";
 import { BarcodeScanner } from "../../components/inventory/BarcodeScanner";
+import { TrackingBadges } from "../../components/inventory/TrackingBadges";
 import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
 import RestockWorkflow from "../../components/vehicles/RestockWorkflow";
 import StockHistorySection from "../../components/vehicles/StockHistorySection";
-import type { Vehicle, VehicleStockItem, VehicleStockConflict, BulkRestockInput } from "../../types/vehicles";
+import SerialSheet, {
+	type SerialSheetTarget,
+} from "../../components/inventory/tracking/SerialSheet";
+import LotSheet, {
+	type LotSheetTarget,
+} from "../../components/inventory/tracking/LotSheet";
+import EmptyState from "../../components/ui/EmptyState";
+import { useToast } from "../../components/ui/useToast";
+import type {
+	Vehicle,
+	VehicleStockItem,
+	VehicleStockConflict,
+	BulkRestockInput,
+} from "../../types/vehicles";
+import type { InventoryItem } from "../../types/inventory";
 
 // ── Vehicle Status ────────────────────────────────────────────────────────────
 
@@ -36,18 +73,20 @@ function getVehicleSubtitle(v: Pick<Vehicle, "color" | "type" | "license_plate">
 function VehicleStatusBadge({ status }: { status: VehicleStatus }) {
 	const styles: Record<VehicleStatus, string> = {
 		unavailable: "bg-surface-raised text-text-tertiary",
-		"in-use":    "bg-warning/10 text-warning-text",
-		stocked:     "bg-success/10 text-success-text",
-		available:   "bg-surface text-text-tertiary",
+		"in-use": "bg-warning/10 text-warning-text",
+		stocked: "bg-success/10 text-success-text",
+		available: "bg-surface text-text-tertiary",
 	};
 	const labels: Record<VehicleStatus, string> = {
 		unavailable: "Unavailable",
-		"in-use":    "In-use",
-		stocked:     "Stocked",
-		available:   "Available",
+		"in-use": "In-use",
+		stocked: "Stocked",
+		available: "Available",
 	};
 	return (
-		<span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${styles[status]}`}>
+		<span
+			className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${styles[status]}`}
+		>
 			{labels[status]}
 		</span>
 	);
@@ -78,13 +117,11 @@ function VehicleList({
 }) {
 	if (vehicles.length === 0) {
 		return (
-			<div className="py-10 flex flex-col items-center gap-3">
-				<Truck size={28} className="text-text-faint" />
-				<p className="text-sm font-medium text-text-primary">No vehicles available</p>
-				<p className="text-xs text-text-muted text-center px-6">
-					Contact your dispatcher to get a vehicle assigned.
-				</p>
-			</div>
+			<EmptyState
+				icon={<Truck size={28} />}
+				title="No vehicles available"
+				description="Contact your dispatcher to get a vehicle assigned."
+			/>
 		);
 	}
 
@@ -98,11 +135,17 @@ function VehicleList({
 
 				return (
 					<div key={v.id}>
-						<div className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 ${isCurrent ? "bg-primary-bg-dim border-l-2 border-l-primary" : ""}`}>
+						<div
+							className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 ${isCurrent ? "bg-primary-bg-dim border-l-2 border-l-primary" : ""}`}
+						>
 							<div className="flex-1 min-w-0">
-								<p className="text-sm font-semibold text-text-primary truncate">{v.name}</p>
+								<p className="text-sm font-semibold text-text-primary truncate">
+									{v.name}
+								</p>
 								{subtitle && (
-									<p className="text-xs mt-0.5 truncate text-text-muted">{subtitle}</p>
+									<p className="text-xs mt-0.5 truncate text-text-muted">
+										{subtitle}
+									</p>
 								)}
 							</div>
 							<VehicleStatusBadge status={status} />
@@ -112,7 +155,15 @@ function VehicleList({
 								</span>
 							) : status !== "unavailable" ? (
 								<button
-									onClick={() => status === "in-use" ? onRideAlongRequest(v.id) : onSelect(v.id)}
+									onClick={() =>
+										status === "in-use"
+											? onRideAlongRequest(
+													v.id
+												)
+											: onSelect(
+													v.id
+												)
+									}
 									disabled={isPending}
 									className="text-xs font-medium px-3 py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
 								>
@@ -124,18 +175,30 @@ function VehicleList({
 							<div className="px-4 py-3 bg-warning/5 border-b border-warning/20 flex items-center justify-between gap-3">
 								<p className="text-xs text-warning-text">
 									Ride along with{" "}
-									{(v.current_technicians ?? []).map((t) => t.name).join(", ")}?
+									{(
+										v.current_technicians ??
+										[]
+									)
+										.map((t) => t.name)
+										.join(", ")}
+									?
 								</p>
 								<div className="flex items-center gap-2 shrink-0">
 									<button
-										onClick={onRideAlongCancel}
+										onClick={
+											onRideAlongCancel
+										}
 										disabled={isPending}
 										className="text-xs text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-50 py-2.5 px-1"
 									>
 										Cancel
 									</button>
 									<button
-										onClick={() => onRideAlongConfirm(v.id)}
+										onClick={() =>
+											onRideAlongConfirm(
+												v.id
+											)
+										}
 										disabled={isPending}
 										className="text-xs font-medium px-3 py-2.5 rounded-lg bg-warning/20 text-warning-text hover:bg-warning/30 transition-colors disabled:opacity-50 disabled:pointer-events-none"
 									>
@@ -169,6 +232,8 @@ function formatUnit(unit: string | undefined): string {
 function StockItemRow({
 	item,
 	onRestock,
+	onOpenSerials,
+	onOpenLots,
 	batchMode = false,
 	batchQty,
 	onBatchQtyChange,
@@ -177,6 +242,10 @@ function StockItemRow({
 }: {
 	item: VehicleStockItem;
 	onRestock: (item: VehicleStockItem) => void;
+	// Only wired for serialized items — opens SerialSheet in list mode.
+	onOpenSerials?: (item: VehicleStockItem) => void;
+	// Only wired for batch-tracked items — opens LotSheet in list mode.
+	onOpenLots?: (item: VehicleStockItem) => void;
 	batchMode?: boolean;
 	batchQty?: number;
 	onBatchQtyChange?: (id: string, qty: number) => void;
@@ -184,21 +253,25 @@ function StockItemRow({
 	rowRef?: (el: HTMLDivElement | null) => void;
 }) {
 	const isEmpty = Number(item.qty_on_hand) === 0;
-	const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
+	const isLow =
+		Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
 	const unit = formatUnit(item.inventory_item.unit);
 
-	const qtyColor = isEmpty ? "text-error-text" : isLow ? "text-warning-text" : "text-text-primary";
+	const qtyColor = isEmpty
+		? "text-error-text"
+		: isLow
+			? "text-warning-text"
+			: "text-text-primary";
 
 	const warehouseQty = Number(item.inventory_item.quantity);
 	const warehouseColor =
 		warehouseQty === 0
 			? "text-error-text"
 			: item.inventory_item.low_stock_threshold != null &&
-			  warehouseQty <= Number(item.inventory_item.low_stock_threshold)
-			? "text-warning-text"
-			: "text-text-muted";
+				  warehouseQty <= Number(item.inventory_item.low_stock_threshold)
+				? "text-warning-text"
+				: "text-text-muted";
 
-	const isRestockCandidate = isEmpty || isLow;
 	const isSelected = batchMode && batchQty !== undefined && batchQty > 0;
 
 	return (
@@ -209,49 +282,90 @@ function StockItemRow({
 			} ${isHighlighted ? "highlight-active" : ""}`}
 		>
 			<div className="flex-1 min-w-0">
-				<p className="text-sm text-text-primary truncate" title={item.inventory_item.name}>
+				<p
+					className="text-sm text-text-primary truncate"
+					title={item.inventory_item.name}
+				>
 					{item.inventory_item.name}
 				</p>
 				<div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+					<TrackingBadges
+						item={item.inventory_item}
+						onSerialClick={
+							onOpenSerials
+								? () => onOpenSerials(item)
+								: undefined
+						}
+						onBatchClick={
+							onOpenLots
+								? () => onOpenLots(item)
+								: undefined
+						}
+					/>
 					{item.inventory_item.category && (
 						<>
 							<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-secondary rounded">
 								{item.inventory_item.category}
 							</span>
-							<span className="text-[10px] text-text-faint">·</span>
-						</>
-					)}
-					<span className="text-[10px] text-text-muted">Min {Number(item.qty_min)} {unit}</span>
-					<span className="text-[10px] text-text-faint">·</span>
-					<span className={`text-[10px] tabular-nums ${warehouseColor}`}>
-						Stock {warehouseQty}
-					</span>
-					{item.inventory_item.alt_ids && item.inventory_item.alt_ids.length > 0 && (
-						<>
-							<span className="text-[10px] text-text-faint">·</span>
-							<span className="text-[10px] text-text-muted">
-								{item.inventory_item.alt_ids.join(" · ")}
+							<span className="text-[10px] text-text-faint">
+								·
 							</span>
 						</>
 					)}
+					<span className="text-[10px] text-text-muted">
+						Min {Number(item.qty_min)} {unit}
+					</span>
+					<span className="text-[10px] text-text-faint">·</span>
+					<span
+						className={`text-[10px] tabular-nums ${warehouseColor}`}
+					>
+						Stock {warehouseQty}
+					</span>
+					{item.inventory_item.alt_ids &&
+						item.inventory_item.alt_ids.length > 0 && (
+							<>
+								<span className="text-[10px] text-text-faint">
+									·
+								</span>
+								<span className="text-[10px] text-text-muted">
+									{item.inventory_item.alt_ids.join(
+										" · "
+									)}
+								</span>
+							</>
+						)}
 				</div>
 			</div>
 			{batchMode && onBatchQtyChange ? (
 				<div className="flex items-center gap-1 shrink-0">
 					<button
-						onClick={() => onBatchQtyChange(item.id, Math.max(0, (batchQty ?? 0) - 1))}
+						onClick={() =>
+							onBatchQtyChange(
+								item.id,
+								Math.max(0, (batchQty ?? 0) - 1)
+							)
+						}
 						aria-label="Decrease quantity"
 						className="w-7 h-7 rounded border border-border text-text-secondary text-sm font-semibold hover:bg-surface transition-colors leading-none"
 					>
 						−
 					</button>
-					<span className={`w-6 text-center text-sm font-bold tabular-nums ${
-						(batchQty ?? 0) > 0 ? "text-primary-text" : "text-text-faint"
-					}`}>
+					<span
+						className={`w-6 text-center text-sm font-bold tabular-nums ${
+							(batchQty ?? 0) > 0
+								? "text-primary-text"
+								: "text-text-faint"
+						}`}
+					>
 						{batchQty ?? 0}
 					</span>
 					<button
-						onClick={() => onBatchQtyChange(item.id, (batchQty ?? 0) + 1)}
+						onClick={() =>
+							onBatchQtyChange(
+								item.id,
+								(batchQty ?? 0) + 1
+							)
+						}
 						aria-label="Increase quantity"
 						className="w-7 h-7 rounded border border-border text-text-secondary text-sm font-semibold hover:bg-surface transition-colors leading-none"
 					>
@@ -308,25 +422,57 @@ function StockConflictWarning({ conflicts }: { conflicts: VehicleStockConflict[]
 		<div className="rounded-xl border border-error overflow-hidden">
 			<div className="px-4 py-2.5 bg-error/10 border-b border-error/30 flex items-center gap-2">
 				<AlertTriangle size={14} className="text-error-text shrink-0" />
-				<span className="text-sm font-semibold text-error-text">Stock issue for today's visits</span>
+				<span className="text-sm font-semibold text-error-text">
+					Stock issue for today's visits
+				</span>
 			</div>
 			<div className="divide-y divide-border-subtle">
 				{conflicts.map((conflict, i) => {
-					const time = new Date(conflict.scheduledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+					const time = new Date(
+						conflict.scheduledAt
+					).toLocaleTimeString([], {
+						hour: "numeric",
+						minute: "2-digit",
+					});
 					return (
 						<div key={i} className="px-4 py-3">
 							<div className="flex items-center gap-2 mb-2">
-								<span className="text-sm font-semibold text-text-primary">{conflict.visitName}</span>
-								<span className="text-xs text-text-muted">{time}</span>
+								<span className="text-sm font-semibold text-text-primary">
+									{conflict.visitName}
+								</span>
+								<span className="text-xs text-text-muted">
+									{time}
+								</span>
 							</div>
 							<div className="space-y-1">
 								{conflict.conflicts.map((item) => (
-									<div key={item.inventoryItemId} className="flex items-center justify-between bg-base rounded px-3 py-1.5">
-										<span className="text-xs text-text-primary">{item.itemName}</span>
+									<div
+										key={
+											item.inventoryItemId
+										}
+										className="flex items-center justify-between bg-base rounded px-3 py-1.5"
+									>
+										<span className="text-xs text-text-primary">
+											{
+												item.itemName
+											}
+										</span>
 										<div className="flex items-center gap-2">
-											<span className="text-xs text-text-muted">Need <span className="text-text-primary font-semibold">{item.qtyNeeded}</span></span>
-											<span className={`text-xs font-bold ${item.qtyOnHand === 0 ? "text-error-text" : "text-warning-text"}`}>
-												Have {item.qtyOnHand}
+											<span className="text-xs text-text-muted">
+												Need{" "}
+												<span className="text-text-primary font-semibold">
+													{
+														item.qtyNeeded
+													}
+												</span>
+											</span>
+											<span
+												className={`text-xs font-bold ${item.qtyOnHand === 0 ? "text-error-text" : "text-warning-text"}`}
+											>
+												Have{" "}
+												{
+													item.qtyOnHand
+												}
 											</span>
 										</div>
 									</div>
@@ -342,14 +488,18 @@ function StockConflictWarning({ conflicts }: { conflicts: VehicleStockConflict[]
 
 // ── Add to Stock Sheet ───────────────────────────────────────────────────────
 
-function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
+function AddStockItemSheet({
+	vehicleId,
+	existingIds,
+	onDone,
+}: {
 	vehicleId: string;
 	existingIds: Set<string>;
 	onDone: () => void;
 }) {
 	const [search, setSearch] = useState("");
 	const [qtyMin, setQtyMin] = useState("1");
-	const [qtyStandard, setQtyStandard] = useState("");
+	const [qtyStandard, setQtyStandard] = useState("1");
 	const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 	const [sortMode, setSortMode] = useState<"name" | "category">("name");
 	const [showFilter, setShowFilter] = useState(false);
@@ -357,17 +507,19 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 	const { data: allInventory = [] } = useAllInventoryQuery();
 
 	const available = allInventory.filter((item) => !existingIds.has(item.id));
-	const allCategories = Array.from(new Set(
-		available.map((i) => i.category).filter((c): c is string => Boolean(c))
-	)).sort();
+	const allCategories = Array.from(
+		new Set(available.map((i) => i.category).filter((c): c is string => Boolean(c)))
+	).sort();
 
 	const q = search.toLowerCase().trim();
 	const results = available
 		.filter((item) => {
-			const matchesSearch = !q ||
+			const matchesSearch =
+				!q ||
 				item.name.toLowerCase().includes(q) ||
 				item.alt_ids?.some((id) => id.toLowerCase().includes(q));
-			const matchesCategory = selectedCategories.length === 0 ||
+			const matchesCategory =
+				selectedCategories.length === 0 ||
 				selectedCategories.includes(item.category ?? "");
 			return matchesSearch && matchesCategory;
 		})
@@ -401,13 +553,17 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 	};
 
 	const toggleCategory = (cat: string) =>
-		setSelectedCategories((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
+		setSelectedCategories((prev) =>
+			prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+		);
 
 	return (
 		<div className="px-4 py-3 space-y-3">
 			<div className="flex items-center gap-2">
 				<div className="flex items-center gap-1.5">
-					<label className="text-[10px] text-text-muted whitespace-nowrap">Min qty</label>
+					<label className="text-[10px] text-text-muted whitespace-nowrap">
+						Min qty
+					</label>
 					<input
 						type="number"
 						min={0}
@@ -417,7 +573,9 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 					/>
 				</div>
 				<div className="flex items-center gap-1.5">
-					<label className="text-[10px] text-text-muted whitespace-nowrap">Standard</label>
+					<label className="text-[10px] text-text-muted whitespace-nowrap">
+						Standard
+					</label>
 					<input
 						type="number"
 						min={0}
@@ -442,8 +600,16 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 						</button>
 					)}
 					<button
-						onClick={() => setSortMode((m) => m === "name" ? "category" : "name")}
-						title={sortMode === "name" ? "Sort by category" : "Sort by name"}
+						onClick={() =>
+							setSortMode((m) =>
+								m === "name" ? "category" : "name"
+							)
+						}
+						title={
+							sortMode === "name"
+								? "Sort by category"
+								: "Sort by name"
+						}
 						className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
 							sortMode === "category"
 								? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
@@ -492,7 +658,11 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 					className="flex-1 text-sm bg-transparent text-text-primary placeholder:text-faint outline-none"
 				/>
 				{search && (
-					<button onClick={() => setSearch("")} className="text-text-faint hover:text-text-secondary transition-colors">
+					<button
+						onClick={() => setSearch("")}
+						aria-label="Clear search"
+						className="text-text-faint hover:text-text-secondary transition-colors"
+					>
 						<X size={13} />
 					</button>
 				)}
@@ -507,19 +677,33 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 							className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-surface-raised transition-colors disabled:opacity-50"
 						>
 							<div>
-								<p className="text-sm text-text-primary">{item.name}</p>
-								{item.category && <p className="text-[10px] text-text-muted">{item.category}</p>}
+								<p className="text-sm text-text-primary">
+									{item.name}
+								</p>
+								{item.category && (
+									<p className="text-[10px] text-text-muted">
+										{item.category}
+									</p>
+								)}
 							</div>
-							{item.unit && item.unit.toLowerCase() !== "each" && (
-								<span className="text-xs text-text-muted shrink-0 ml-2">{item.unit}</span>
-							)}
+							{item.unit &&
+								item.unit.toLowerCase() !==
+									"each" && (
+									<span className="text-xs text-text-muted shrink-0 ml-2">
+										{item.unit}
+									</span>
+								)}
 						</button>
 					))}
 				</div>
-			) : (q || selectedCategories.length > 0) ? (
-				<p className="text-xs text-text-muted text-center py-2">No matching items</p>
+			) : q || selectedCategories.length > 0 ? (
+				<p className="text-xs text-text-muted text-center py-2">
+					No matching items
+				</p>
 			) : (
-				<p className="text-xs text-text-muted text-center py-2">Search or filter to browse the catalog</p>
+				<p className="text-xs text-text-muted text-center py-2">
+					Search or filter to browse the catalog
+				</p>
 			)}
 		</div>
 	);
@@ -529,7 +713,9 @@ function AddStockItemSheet({ vehicleId, existingIds, onDone }: {
 
 export default function TechnicianVehiclePage() {
 	const { user } = useAuthStore();
-	const { data: techProfile, isLoading: techLoading } = useTechnicianByIdQuery(user?.userId ?? null);
+	const { data: techProfile, isLoading: techLoading } = useTechnicianByIdQuery(
+		user?.userId ?? null
+	);
 	const { data: vehicles = [], isLoading: vehiclesLoading } = useVehiclesQuery();
 	const currentVehicleId = techProfile?.current_vehicle_id ?? null;
 	const { data: stockItems = [] } = useVehicleStockQuery(currentVehicleId);
@@ -538,6 +724,7 @@ export default function TechnicianVehiclePage() {
 	const setVehicle = useSetTechnicianVehicleMutation();
 	const restockMutation = useRestockRequestMutation();
 	const bulk = useBulkRestockMutation(currentVehicleId ?? "");
+	const toast = useToast();
 
 	const canStock = usePermission("stock_own_vehicle");
 	const canRestock = usePermission("complete_own_restock");
@@ -545,7 +732,13 @@ export default function TechnicianVehiclePage() {
 	const canFieldLoss = usePermission("adjust_field_loss");
 	const canAdjustStock = useMemo(() => {
 		if (!user || user.role !== "technician") return true;
-		const adjustPerms = ["adjust_field_loss", "adjust_transfer", "adjust_audit", "adjust_warehouse_exchange", "adjust_supplier_purchase"];
+		const adjustPerms = [
+			"adjust_field_loss",
+			"adjust_transfer",
+			"adjust_audit",
+			"adjust_warehouse_exchange",
+			"adjust_supplier_purchase",
+		];
 		return adjustPerms.some((p) => user.permissions.includes(p));
 	}, [user]);
 	// UX emphasis only — capability comes from permissions, never from the mode
@@ -557,6 +750,7 @@ export default function TechnicianVehiclePage() {
 	const [restockOpen, setRestockOpen] = useState(false);
 	const [showStockHistory, setShowStockHistory] = useState(false);
 	const [showAddItem, setShowAddItem] = useState(false);
+	const [stockEditMode, setStockEditMode] = useState<"add" | "remove">("add");
 	const [showInventory, setShowInventory] = useState(true);
 	const [fillOpen, setFillOpen] = useState(false);
 	const [showStockActions, setShowStockActions] = useState(false);
@@ -567,9 +761,6 @@ export default function TechnicianVehiclePage() {
 	const [switchPendingId, setSwitchPendingId] = useState<string | null>(null);
 	const [rideAlongPendingId, setRideAlongPendingId] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [restockSuccess, setRestockSuccess] = useState<string | null>(null);
-	const [restockError, setRestockError] = useState<string | null>(null);
-	const [vehicleError, setVehicleError] = useState<string | null>(null);
 	const [showFilter, setShowFilter] = useState(false);
 	const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 	const [sortMode, setSortMode] = useState<"name" | "category">("name");
@@ -579,9 +770,10 @@ export default function TechnicianVehiclePage() {
 	const [isScannerOpen, setIsScannerOpen] = useState(false);
 	const [scanFocusItemId, setScanFocusItemId] = useState<string | null>(null);
 	const [highlightedStockItemId, setHighlightedStockItemId] = useState<string | null>(null);
+	const [serialTarget, setSerialTarget] = useState<SerialSheetTarget | null>(null);
+	const [lotTarget, setLotTarget] = useState<LotSheetTarget | null>(null);
+	const [pendingLostSerialId, setPendingLostSerialId] = useState<string | null>(null);
 
-	const restockTimerRef = useRef<number>(-1);
-	const vehicleErrorTimerRef = useRef<number>(-1);
 	const stockRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 	// Highlight is armed (not cleared) while the scan-triggered Adjust Stock modal
 	// is open, then cleared on the tech's next tap anywhere — not on a timer, and
@@ -605,22 +797,24 @@ export default function TechnicianVehiclePage() {
 
 	useEffect(() => {
 		return () => {
-			clearTimeout(restockTimerRef.current);
-			clearTimeout(vehicleErrorTimerRef.current);
 			clearHighlightRef.current();
 		};
 	}, []);
 
-	const currentVehicle = vehicles.find((v) => v.id === currentVehicleId) ??
-		techProfile?.current_vehicle ?? null;
+	const currentVehicle =
+		vehicles.find((v) => v.id === currentVehicleId) ??
+		techProfile?.current_vehicle ??
+		null;
 
 	// All categories derived from unfiltered stock items
 	const allCategories = useMemo(() => {
-		return Array.from(new Set(
-			stockItems
-				.map((i) => i.inventory_item.category)
-				.filter((c): c is string => Boolean(c)),
-		)).sort();
+		return Array.from(
+			new Set(
+				stockItems
+					.map((i) => i.inventory_item.category)
+					.filter((c): c is string => Boolean(c))
+			)
+		).sort();
 	}, [stockItems]);
 
 	const assignVehicle = (vehicleId: string | null, errorMsg: string) => {
@@ -628,39 +822,43 @@ export default function TechnicianVehiclePage() {
 		setVehicle.mutate(
 			{ technicianId: user.userId, vehicleId },
 			{
-				onError: () => {
-					setVehicleError(errorMsg);
-					vehicleErrorTimerRef.current = setTimeout(() => setVehicleError(null), 4000);
-				},
-			},
-		);
-	};
-
-	const showRestockToast = (successMsg: string | null, errorMsg: string | null) => {
-		clearTimeout(restockTimerRef.current);
-		setRestockSuccess(successMsg);
-		setRestockError(errorMsg);
-		restockTimerRef.current = setTimeout(
-			() => { setRestockSuccess(null); setRestockError(null); },
-			successMsg ? 3000 : 6000,
-		);
-	};
-
-	const { handleScan: handleBarcodeScan } = useBarcodeScanHandler(
-		(item) => {
-			const stockItem = stockItems.find((s) => s.inventory_item_id === item.id);
-			if (!stockItem) {
-				showRestockToast(null, "Item not on this vehicle.");
-				return;
+				onError: () => toast.error(errorMsg),
 			}
-			clearHighlightRef.current();
-			setHighlightedStockItemId(stockItem.id);
-			stockRowRefs.current.get(stockItem.id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-			setScanFocusItemId(stockItem.id);
-			setAdjustOpen(true);
-		},
-		() => showRestockToast(null, "No item found for that code."),
-	);
+		);
+	};
+
+	const findStockItemOrWarn = (inventoryItemId: string): VehicleStockItem | null => {
+		const stockItem = stockItems.find((s) => s.inventory_item_id === inventoryItemId);
+		if (!stockItem) {
+			toast.error("Item not on this vehicle.");
+			return null;
+		}
+		return stockItem;
+	};
+
+	const focusStockItem = (item: InventoryItem) => {
+		const stockItem = findStockItemOrWarn(item.id);
+		if (!stockItem) return;
+		clearHighlightRef.current();
+		setHighlightedStockItemId(stockItem.id);
+		stockRowRefs.current
+			.get(stockItem.id)
+			?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+		setScanFocusItemId(stockItem.id);
+		setAdjustOpen(true);
+	};
+
+	// Scan-anything: /inventory/resolve routes items, serial stickers, and lot
+	// labels. The old useBarcodeScanHandler only matched barcode/sku/alt_ids, so
+	// a serial sticker fell through to "No item found" even though the backend
+	// resolved it fine. onBatch is omitted deliberately — the dispatcher falls
+	// back to onItem(batch.item), which is v1's "focus the parent item".
+	const { handleScan: handleBarcodeScan } = useScanDispatcher({
+		onItem: focusStockItem,
+		onSerial: (serial) =>
+			setSerialTarget({ mode: "serial", serialId: serial.serialUnitId }),
+		onNotFound: () => toast.error("No item found for that code."),
+	});
 
 	useBarcodeScanner(handleBarcodeScan, canFieldLoss);
 
@@ -700,7 +898,13 @@ export default function TechnicianVehiclePage() {
 		if (!currentVehicleId) return;
 		const gap =
 			item.qty_standard !== null
-				? Math.max(Math.ceil(Number(item.qty_standard) - Number(item.qty_on_hand)), 1)
+				? Math.max(
+						Math.ceil(
+							Number(item.qty_standard) -
+								Number(item.qty_on_hand)
+						),
+						1
+					)
 				: 1;
 		setRestockTarget(item);
 		setRestockQty(gap);
@@ -714,12 +918,21 @@ export default function TechnicianVehiclePage() {
 			{
 				vehicleId: currentVehicleId,
 				itemId: item.id,
-				data: { qty_requested: restockQty, note: restockNote.trim() || null },
+				data: {
+					qty_requested: restockQty,
+					note: restockNote.trim() || null,
+				},
 			},
 			{
-				onSuccess: () => showRestockToast(item.inventory_item.name, null),
-			onError: () => showRestockToast(null, "Failed to send restock request. Please try again."),
-			},
+				onSuccess: () =>
+					toast.success(
+						`Restock requested for ${item.inventory_item.name}`
+					),
+				onError: () =>
+					toast.error(
+						"Failed to send restock request. Please try again."
+					),
+			}
 		);
 		setRestockTarget(null);
 	};
@@ -727,16 +940,21 @@ export default function TechnicianVehiclePage() {
 	const submitBatch = async () => {
 		const items = Object.entries(batchQtys)
 			.filter(([, q]) => q > 0)
-			.map(([stock_item_id, qty_requested]) => ({ stock_item_id, qty_requested }));
+			.map(([stock_item_id, qty_requested]) => ({
+				stock_item_id,
+				qty_requested,
+			}));
 		if (items.length === 0) return;
 		const input: BulkRestockInput = { items };
 		try {
 			await bulk.mutateAsync(input);
-			showRestockToast(`${items.length} item${items.length > 1 ? "s" : ""}`, null);
+			toast.success(
+				`Restock requested for ${items.length} item${items.length > 1 ? "s" : ""}`
+			);
 			setBatchMode(false);
 			setBatchQtys({});
 		} catch {
-			showRestockToast(null, "Failed to send restock request. Please try again.");
+			toast.error("Failed to send restock request. Please try again.");
 		}
 	};
 
@@ -744,11 +962,21 @@ export default function TechnicianVehiclePage() {
 		const defaults: Record<string, number> = {};
 		for (const item of stockItems) {
 			const isEmpty = Number(item.qty_on_hand) === 0;
-			const isLow = Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
+			const isLow =
+				Number(item.qty_on_hand) > 0 &&
+				Number(item.qty_on_hand) <= Number(item.qty_min);
 			defaults[item.id] =
 				isEmpty || isLow
 					? item.qty_standard !== null
-						? Math.max(Math.ceil(Number(item.qty_standard) - Number(item.qty_on_hand)), 1)
+						? Math.max(
+								Math.ceil(
+									Number(item.qty_standard) -
+										Number(
+											item.qty_on_hand
+										)
+								),
+								1
+							)
 						: 1
 					: 0;
 		}
@@ -758,7 +986,7 @@ export default function TechnicianVehiclePage() {
 
 	const toggleCategory = (cat: string) => {
 		setSelectedCategories((prev) =>
-			prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
+			prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
 		);
 	};
 
@@ -768,8 +996,12 @@ export default function TechnicianVehiclePage() {
 			const matchesSearch =
 				!q ||
 				item.inventory_item.name.toLowerCase().includes(q) ||
-				(item.inventory_item.category?.toLowerCase().includes(q) ?? false) ||
-				(item.inventory_item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false);
+				(item.inventory_item.category?.toLowerCase().includes(q) ??
+					false) ||
+				(item.inventory_item.alt_ids?.some((id) =>
+					id.toLowerCase().includes(q)
+				) ??
+					false);
 			const matchesCategory =
 				!showFilter ||
 				selectedCategories.length === 0 ||
@@ -779,7 +1011,9 @@ export default function TechnicianVehiclePage() {
 
 		const outOfStock = filtered.filter((i) => Number(i.qty_on_hand) === 0);
 		const lowStock = filtered.filter(
-			(i) => Number(i.qty_on_hand) > 0 && Number(i.qty_on_hand) <= Number(i.qty_min),
+			(i) =>
+				Number(i.qty_on_hand) > 0 &&
+				Number(i.qty_on_hand) <= Number(i.qty_min)
 		);
 
 		const sorted = [...filtered].sort((a, b) => {
@@ -828,9 +1062,24 @@ export default function TechnicianVehiclePage() {
 			key={item.id}
 			item={item}
 			onRestock={handleRestock}
+			onOpenSerials={(stockItem) =>
+				setSerialTarget({
+					mode: "item",
+					itemId: stockItem.inventory_item_id,
+					itemName: stockItem.inventory_item.name,
+				})
+			}
+			onOpenLots={(stockItem) =>
+				setLotTarget({
+					itemId: stockItem.inventory_item_id,
+					itemName: stockItem.inventory_item.name,
+				})
+			}
 			batchMode={batchMode}
 			batchQty={batchQtys[item.id]}
-			onBatchQtyChange={(id, qty) => setBatchQtys((prev) => ({ ...prev, [id]: qty }))}
+			onBatchQtyChange={(id, qty) =>
+				setBatchQtys((prev) => ({ ...prev, [id]: qty }))
+			}
 			isHighlighted={highlightedStockItemId === item.id}
 			rowRef={(el) => {
 				if (el) stockRowRefs.current.set(item.id, el);
@@ -850,18 +1099,27 @@ export default function TechnicianVehiclePage() {
 				<div className="rounded-xl border border-border-subtle overflow-hidden">
 					<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
 						<Truck size={15} className="text-text-muted" />
-						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Switch Vehicle</span>
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+							Switch Vehicle
+						</span>
 					</div>
 					<div className="px-4 py-5">
 						<p className="text-sm text-text-secondary mb-1">
-							Switch to <span className="text-text-primary font-medium">{pending?.name}</span>?
+							Switch to{" "}
+							<span className="text-text-primary font-medium">
+								{pending?.name}
+							</span>
+							?
 						</p>
 						<p className="text-xs text-text-muted mb-4">
-							Parts tracked today stay on record — switching won't remove them.
+							Parts tracked today stay on record —
+							switching won't remove them.
 						</p>
 						<div className="flex gap-2">
 							<button
-								onClick={() => setSwitchPendingId(null)}
+								onClick={() =>
+									setSwitchPendingId(null)
+								}
 								disabled={setVehicle.isPending}
 								className="flex-1 py-2 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors disabled:opacity-50"
 							>
@@ -872,7 +1130,9 @@ export default function TechnicianVehiclePage() {
 								disabled={setVehicle.isPending}
 								className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
 							>
-								{setVehicle.isPending ? "Switching…" : "Switch"}
+								{setVehicle.isPending
+									? "Switching…"
+									: "Switch"}
 							</button>
 						</div>
 					</div>
@@ -887,7 +1147,9 @@ export default function TechnicianVehiclePage() {
 			<div className="rounded-xl border border-border-subtle overflow-hidden">
 				<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
 					<Truck size={15} className="text-text-muted" />
-					<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Vehicle</span>
+					<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+						Vehicle
+					</span>
 				</div>
 
 				{isPageLoading ? (
@@ -895,21 +1157,33 @@ export default function TechnicianVehiclePage() {
 				) : !currentVehicle ? (
 					/* ── State A: No vehicle selected ──────────────────────────── */
 					<>
-						<div className="px-4 py-5 flex items-center gap-3 border-b border-border-subtle">
-							<div className="flex items-center justify-center w-9 h-9 rounded-lg bg-surface shrink-0">
-								<Truck size={17} className="text-text-muted" />
-							</div>
-							<div>
-								<p className="text-sm font-medium text-text-primary">No vehicle selected</p>
-								<p className="text-xs text-text-muted mt-0.5">Select a vehicle to begin your day</p>
-							</div>
+						<div className="px-4 py-5 border-b border-border-subtle">
+							<EmptyState
+								icon={<Truck size={17} />}
+								title="No vehicle selected"
+								description="Select a vehicle to begin your day"
+								action={{
+									label: "Open vehicle list",
+									onClick: () =>
+										setShowVehicleList(
+											true
+										),
+									icon: (
+										<LayoutList
+											size={14}
+										/>
+									),
+								}}
+							/>
 						</div>
 						<VehicleList
 							vehicles={vehicles}
 							onSelect={handleSelectVehicle}
 							rideAlongPendingId={rideAlongPendingId}
 							onRideAlongRequest={setRideAlongPendingId}
-							onRideAlongCancel={() => setRideAlongPendingId(null)}
+							onRideAlongCancel={() =>
+								setRideAlongPendingId(null)
+							}
 							onRideAlongConfirm={handleRideAlongConfirm}
 							isPending={setVehicle.isPending}
 						/>
@@ -917,13 +1191,17 @@ export default function TechnicianVehiclePage() {
 				) : showVehicleList ? (
 					/* ── State C: Switching ─────────────────────────────────────── */
 					<VehicleList
-						vehicles={vehicles.filter((v) => v.status === "active")}
+						vehicles={vehicles.filter(
+							(v) => v.status === "active"
+						)}
 						currentVehicleId={currentVehicleId}
 						onSelect={handleSelectVehicle}
 						onCancel={() => setShowVehicleList(false)}
 						rideAlongPendingId={rideAlongPendingId}
 						onRideAlongRequest={setRideAlongPendingId}
-						onRideAlongCancel={() => setRideAlongPendingId(null)}
+						onRideAlongCancel={() =>
+							setRideAlongPendingId(null)
+						}
 						onRideAlongConfirm={handleRideAlongConfirm}
 						isPending={setVehicle.isPending}
 					/>
@@ -931,14 +1209,23 @@ export default function TechnicianVehiclePage() {
 					/* ── Check-out confirmation ─────────────────────────────────── */
 					<div className="px-4 py-4">
 						<p className="text-sm text-text-secondary mb-1">
-							Check out of <span className="text-text-primary font-medium">{currentVehicle.name}</span>?
+							Check out of{" "}
+							<span className="text-text-primary font-medium">
+								{currentVehicle.name}
+							</span>
+							?
 						</p>
 						<p className="text-xs text-text-muted mb-4">
-							Your stock records will remain. You can select a vehicle again tomorrow.
+							Your stock records will remain. You can
+							select a vehicle again tomorrow.
 						</p>
 						<div className="flex gap-2">
 							<button
-								onClick={() => setShowCheckOutConfirm(false)}
+								onClick={() =>
+									setShowCheckOutConfirm(
+										false
+									)
+								}
 								disabled={setVehicle.isPending}
 								className="flex-1 py-2 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors disabled:opacity-50"
 							>
@@ -949,7 +1236,9 @@ export default function TechnicianVehiclePage() {
 								disabled={setVehicle.isPending}
 								className="flex-1 py-2 text-sm rounded-lg bg-error-strong/80 hover:bg-error-strong text-on-primary font-medium transition-colors disabled:opacity-50"
 							>
-								{setVehicle.isPending ? "Checking out…" : "Check Out"}
+								{setVehicle.isPending
+									? "Checking out…"
+									: "Check Out"}
 							</button>
 						</div>
 					</div>
@@ -958,27 +1247,43 @@ export default function TechnicianVehiclePage() {
 					<div className="px-4 py-4">
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0">
-								<p className="font-semibold text-text-primary truncate">{currentVehicle.name}</p>
-								{getVehicleSubtitle(currentVehicle) ? (
+								<p className="font-semibold text-text-primary truncate">
+									{currentVehicle.name}
+								</p>
+								{getVehicleSubtitle(
+									currentVehicle
+								) ? (
 									<p className="text-sm text-text-muted mt-0.5 truncate">
-										{getVehicleSubtitle(currentVehicle)}
+										{getVehicleSubtitle(
+											currentVehicle
+										)}
 									</p>
 								) : null}
 								{currentVehicle.notes && (
 									<p className="text-xs text-text-muted mt-2 leading-relaxed line-clamp-3">
-										{currentVehicle.notes}
+										{
+											currentVehicle.notes
+										}
 									</p>
 								)}
 							</div>
 							<div className="flex items-center gap-3 shrink-0">
 								<button
-									onClick={() => setShowVehicleList(true)}
+									onClick={() =>
+										setShowVehicleList(
+											true
+										)
+									}
 									className="text-sm text-primary-text hover:text-primary-text font-medium transition-colors"
 								>
 									Switch
 								</button>
 								<button
-									onClick={() => setShowCheckOutConfirm(true)}
+									onClick={() =>
+										setShowCheckOutConfirm(
+											true
+										)
+									}
 									className="text-sm text-text-muted hover:text-text-secondary font-medium transition-colors"
 								>
 									Check out
@@ -1002,306 +1307,641 @@ export default function TechnicianVehiclePage() {
 						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
 					>
 						<Package size={15} className="text-text-muted" />
-						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">Inventory</span>
+						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+							Inventory
+						</span>
 						{!showInventory && outOfStockItems.length > 0 && (
-							<span className="text-[10px] font-semibold text-error-text">{outOfStockItems.length} out</span>
+							<span className="text-[10px] font-semibold text-error-text">
+								{outOfStockItems.length} out
+							</span>
 						)}
-						{!showInventory && outOfStockItems.length === 0 && lowStockItems.length > 0 && (
-							<span className="text-[10px] font-semibold text-warning-text">{lowStockItems.length} low</span>
-						)}
-						<span className="text-xs text-text-muted">{showInventory ? "Hide" : "Open"}</span>
+						{!showInventory &&
+							outOfStockItems.length === 0 &&
+							lowStockItems.length > 0 && (
+								<span className="text-[10px] font-semibold text-warning-text">
+									{lowStockItems.length} low
+								</span>
+							)}
+						<span className="text-xs text-text-muted">
+							{showInventory ? "Hide" : "Open"}
+						</span>
 					</button>
 
 					{showInventory && (
 						<>
 							{/* Action row: Fill to Standard / Adjust Stock / Request Restock */}
-							{!batchMode && (canStock || stockItems.length > 0) && (
-								<div className="px-4 py-2.5 border-b border-border-subtle space-y-2">
-									<div className="flex items-center gap-2">
-										{canStock && (selfServeEmphasis || showStockActions) && (
+							{!batchMode &&
+								(canStock ||
+									stockItems.length > 0) && (
+									<div className="px-4 py-2.5 border-b border-border-subtle space-y-2">
+										<div className="flex items-center gap-2">
+											{canStock &&
+												(selfServeEmphasis ||
+													showStockActions) && (
+													<button
+														onClick={() =>
+															setFillOpen(
+																true
+															)
+														}
+														className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors"
+													>
+														↑
+														Fill
+														to
+														Standard
+													</button>
+												)}
+											{canStock &&
+												(selfServeEmphasis ||
+													showStockActions) &&
+												canAdjustStock && (
+													<button
+														onClick={() =>
+															setAdjustOpen(
+																true
+															)
+														}
+														className="flex-1 py-2 text-xs font-semibold rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+													>
+														Adjust
+														Stock
+													</button>
+												)}
+											{stockItems.length >
+												0 && (
+												<button
+													onClick={
+														handleOpenBatchMode
+													}
+													className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover/10 border border-primary-hover/30 text-primary-text hover:bg-primary-hover/20 transition-colors"
+												>
+													Request
+													Restock
+												</button>
+											)}
+											{canFieldLoss && (
+												<button
+													onClick={() =>
+														setIsScannerOpen(
+															true
+														)
+													}
+													title="Scan barcode"
+													className="flex-shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+												>
+													<Barcode
+														size={
+															14
+														}
+													/>
+												</button>
+											)}
+										</div>
+										{canStock &&
+											!selfServeEmphasis &&
+											!showStockActions && (
+												<button
+													onClick={() =>
+														setShowStockActions(
+															true
+														)
+													}
+													className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+												>
+													Self-stocking
+													actions…
+												</button>
+											)}
+									</div>
+								)}
+
+							{/* Out of stock bar */}
+							{outOfStockItems.length > 0 && (
+								<div
+									role="status"
+									className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-error/5 text-error-text text-xs font-medium"
+								>
+									<PackageX
+										size={13}
+										aria-hidden="true"
+									/>
+									{outOfStockItems.length}{" "}
+									item
+									{outOfStockItems.length > 1
+										? "s"
+										: ""}{" "}
+									out of stock
+								</div>
+							)}
+							{/* Low stock bar */}
+							{lowStockItems.length > 0 && (
+								<div
+									role="status"
+									className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-warning/5 text-warning-text text-xs font-medium"
+								>
+									<AlertTriangle
+										size={13}
+										aria-hidden="true"
+									/>
+									{lowStockItems.length} item
+									{lowStockItems.length > 1
+										? "s"
+										: ""}{" "}
+									low stock
+								</div>
+							)}
+
+							{/* Search + filter + sort toolbar */}
+							<div className="px-4 py-2 border-b border-border-subtle space-y-2">
+								<div className="flex items-center gap-2">
+									<div className="relative flex-1">
+										<Search
+											size={13}
+											className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none"
+										/>
+										<input
+											type="text"
+											placeholder="Search items..."
+											value={
+												searchQuery
+											}
+											onChange={(
+												e
+											) =>
+												setSearchQuery(
+													e
+														.target
+														.value
+												)
+											}
+											aria-label="Search inventory items"
+											className="w-full bg-surface-inset border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
+										/>
+										{searchQuery && (
 											<button
-												onClick={() => setFillOpen(true)}
-												className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover hover:bg-primary text-on-primary transition-colors"
+												onClick={() =>
+													setSearchQuery(
+														""
+													)
+												}
+												aria-label="Clear search"
+												className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
 											>
-												↑ Fill to Standard
-											</button>
-										)}
-										{canStock && (selfServeEmphasis || showStockActions) && canAdjustStock && (
-											<button
-												onClick={() => setAdjustOpen(true)}
-												className="flex-1 py-2 text-xs font-semibold rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
-											>
-												Adjust Stock
-											</button>
-										)}
-										{stockItems.length > 0 && (
-											<button
-												onClick={handleOpenBatchMode}
-												className="flex-1 py-2 text-xs font-semibold rounded-lg bg-primary-hover/10 border border-primary-hover/30 text-primary-text hover:bg-primary-hover/20 transition-colors"
-											>
-												Request Restock
-											</button>
-										)}
-										{canFieldLoss && (
-											<button
-												onClick={() => setIsScannerOpen(true)}
-												title="Scan barcode"
-												className="flex-shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
-											>
-												<Barcode size={14} />
+												<X
+													size={
+														13
+													}
+												/>
 											</button>
 										)}
 									</div>
-									{canStock && !selfServeEmphasis && !showStockActions && (
+									{allCategories.length >
+										0 && (
 										<button
-											onClick={() => setShowStockActions(true)}
-											className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+											onClick={() =>
+												setShowFilter(
+													(
+														v
+													) =>
+														!v
+												)
+											}
+											aria-label="Filter by category"
+											title="Filter by category"
+											className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
+												showFilter
+													? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
+													: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
+											}`}
 										>
-											Self-stocking actions…
+											<SlidersHorizontal
+												size={
+													13
+												}
+											/>
 										</button>
+									)}
+									<button
+										onClick={() =>
+											setSortMode(
+												(
+													m
+												) =>
+													m ===
+													"name"
+														? "category"
+														: "name"
+											)
+										}
+										aria-label={
+											sortMode ===
+											"name"
+												? "Sort by category"
+												: "Sort by name"
+										}
+										title={
+											sortMode ===
+											"name"
+												? "Sort by category"
+												: "Sort by name"
+										}
+										className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
+											sortMode ===
+											"category"
+												? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
+												: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
+										}`}
+									>
+										<LayoutList
+											size={13}
+										/>
+									</button>
+								</div>
+
+								{/* Category filter chips */}
+								{showFilter &&
+									allCategories.length >
+										0 && (
+										<div className="flex flex-wrap gap-1.5">
+											{allCategories.map(
+												(
+													cat
+												) => {
+													const active =
+														selectedCategories.includes(
+															cat
+														);
+													return (
+														<button
+															key={
+																cat
+															}
+															onClick={() =>
+																toggleCategory(
+																	cat
+																)
+															}
+															className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+																active
+																	? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
+																	: "bg-surface border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
+															}`}
+														>
+															{
+																cat
+															}
+														</button>
+													);
+												}
+											)}
+											{filtersActive && (
+												<button
+													onClick={() =>
+														setSelectedCategories(
+															[]
+														)
+													}
+													className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full text-text-muted hover:text-text-secondary transition-colors"
+												>
+													<X
+														size={
+															10
+														}
+													/>
+													Clear
+												</button>
+											)}
+										</div>
+									)}
+							</div>
+
+							{/* Batch restock action bar */}
+							{batchMode && (
+								<div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2.5 bg-canvas border-b border-border">
+									<span className="text-xs text-text-muted">
+										{selectedCount >
+										0 ? (
+											<span className="font-semibold text-text-primary">
+												{
+													selectedCount
+												}
+											</span>
+										) : (
+											"0"
+										)}{" "}
+										item
+										{selectedCount !== 1
+											? "s"
+											: ""}{" "}
+										selected
+									</span>
+									<div className="flex items-center gap-2">
+										<button
+											onClick={() => {
+												setBatchMode(
+													false
+												);
+												setBatchQtys(
+													{}
+												);
+											}}
+											className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors"
+										>
+											Cancel
+										</button>
+										<button
+											onClick={() =>
+												setShowBatchConfirm(
+													true
+												)
+											}
+											disabled={
+												selectedCount ===
+												0
+											}
+											className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary-hover hover:enabled:bg-primary text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											Send Request
+											{selectedCount >
+											0
+												? ` (${selectedCount})`
+												: ""}
+										</button>
+									</div>
+								</div>
+							)}
+
+							{/* Stock list */}
+							{sortedItems.length === 0 ? (
+								<EmptyState
+									title={
+										searchQuery &&
+										filtersActive
+											? `No items match "${searchQuery}" in selected categories`
+											: searchQuery
+												? `No items match "${searchQuery}"`
+												: filtersActive
+													? "No items in selected categories"
+													: "No items in stock"
+									}
+									action={
+										searchQuery ||
+										filtersActive
+											? {
+													label: "Clear filters",
+													onClick: () => {
+														setSearchQuery(
+															""
+														);
+														setSelectedCategories(
+															[]
+														);
+													},
+													icon: (
+														<RotateCcw
+															size={
+																14
+															}
+														/>
+													),
+												}
+											: undefined
+									}
+								/>
+							) : categoryGroups ? (
+								<div>
+									{categoryGroups.map(
+										(group) => (
+											<div
+												key={
+													group.label
+												}
+											>
+												<CategoryHeader
+													label={
+														group.label
+													}
+												/>
+												{group.items.map(
+													renderStockItem
+												)}
+											</div>
+										)
+									)}
+								</div>
+							) : (
+								<div>
+									{sortedItems.map(
+										renderStockItem
 									)}
 								</div>
 							)}
-
-					{/* Out of stock bar */}
-					{outOfStockItems.length > 0 && (
-						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-error/5 text-error-text text-xs font-medium">
-							<PackageX size={13} aria-hidden="true" />
-							{outOfStockItems.length} item{outOfStockItems.length > 1 ? "s" : ""} out of stock
-						</div>
-					)}
-					{/* Low stock bar */}
-					{lowStockItems.length > 0 && (
-						<div role="status" className="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-warning/5 text-warning-text text-xs font-medium">
-							<AlertTriangle size={13} aria-hidden="true" />
-							{lowStockItems.length} item{lowStockItems.length > 1 ? "s" : ""} low stock
-						</div>
-					)}
-
-					{/* Search + filter + sort toolbar */}
-					<div className="px-4 py-2 border-b border-border-subtle space-y-2">
-						<div className="flex items-center gap-2">
-							<div className="relative flex-1">
-								<Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
-								<input
-									type="text"
-									placeholder="Search items..."
-									value={searchQuery}
-									onChange={(e) => setSearchQuery(e.target.value)}
-									aria-label="Search inventory items"
-									className="w-full bg-surface-inset border border-border rounded-lg pl-8 pr-8 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
-								/>
-								{searchQuery && (
-									<button
-										onClick={() => setSearchQuery("")}
-										aria-label="Clear search"
-										className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
-									>
-										<X size={13} />
-									</button>
-								)}
-							</div>
-							{allCategories.length > 0 && (
-								<button
-									onClick={() => setShowFilter((v) => !v)}
-									aria-label="Filter by category"
-									title="Filter by category"
-									className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
-										showFilter
-											? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
-											: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
-									}`}
-								>
-									<SlidersHorizontal size={13} />
-								</button>
-							)}
-							<button
-								onClick={() => setSortMode((m) => m === "name" ? "category" : "name")}
-								aria-label={sortMode === "name" ? "Sort by category" : "Sort by name"}
-								title={sortMode === "name" ? "Sort by category" : "Sort by name"}
-								className={`flex items-center justify-center w-11 h-11 rounded-lg border transition-colors shrink-0 ${
-									sortMode === "category"
-										? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
-										: "bg-surface/60 border-border text-text-muted hover:text-text-secondary hover:border-border-strong"
-								}`}
-							>
-								<LayoutList size={13} />
-							</button>
-						</div>
-
-						{/* Category filter chips */}
-						{showFilter && allCategories.length > 0 && (
-							<div className="flex flex-wrap gap-1.5">
-								{allCategories.map((cat) => {
-									const active = selectedCategories.includes(cat);
-									return (
-										<button
-											key={cat}
-											onClick={() => toggleCategory(cat)}
-											className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
-												active
-													? "bg-primary-hover/20 border-primary-hover/40 text-primary-text"
-													: "bg-surface border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
-											}`}
-										>
-											{cat}
-										</button>
-									);
-								})}
-								{filtersActive && (
-									<button
-										onClick={() => setSelectedCategories([])}
-										className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full text-text-muted hover:text-text-secondary transition-colors"
-									>
-										<X size={10} />
-										Clear
-									</button>
-								)}
-							</div>
-						)}
-					</div>
-
-					{/* Batch restock action bar */}
-					{batchMode && (
-						<div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2.5 bg-canvas border-b border-border">
-							<span className="text-xs text-text-muted">
-								{selectedCount > 0
-									? <span className="font-semibold text-text-primary">{selectedCount}</span>
-									: "0"} item{selectedCount !== 1 ? "s" : ""} selected
-							</span>
-							<div className="flex items-center gap-2">
-								<button
-									onClick={() => { setBatchMode(false); setBatchQtys({}); }}
-									className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised transition-colors"
-								>
-									Cancel
-								</button>
-								<button
-									onClick={() => setShowBatchConfirm(true)}
-									disabled={selectedCount === 0}
-									className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary-hover hover:enabled:bg-primary text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									Send Request{selectedCount > 0 ? ` (${selectedCount})` : ""}
-								</button>
-							</div>
-						</div>
-					)}
-
-					{/* Stock list */}
-					{sortedItems.length === 0 ? (
-						<p className="px-4 py-8 text-center text-sm text-text-faint">
-							{searchQuery && filtersActive
-							? `No items match "${searchQuery}" in selected categories`
-							: searchQuery
-							? `No items match "${searchQuery}"`
-							: filtersActive
-							? "No items in selected categories"
-							: "No items in stock"}
-						</p>
-					) : categoryGroups ? (
-						<div className="max-h-[50vh] overflow-y-auto">
-							{categoryGroups.map((group) => (
-								<div key={group.label}>
-									<CategoryHeader label={group.label} />
-									{group.items.map(renderStockItem)}
-								</div>
-							))}
-						</div>
-					) : (
-						<div className="max-h-[50vh] overflow-y-auto">
-							{sortedItems.map(renderStockItem)}
-						</div>
-					)}
 						</>
 					)}
 				</div>
 			)}
 
 			{/* ── Add to stock list ──────────────────────────────────────────────── */}
-			{canStock && currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
-				<div className="rounded-xl border border-border-subtle overflow-hidden">
-					<button
-						onClick={() => setShowAddItem((v) => !v)}
-						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
-					>
-						<Plus size={15} className="text-text-muted" />
-						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
-							Add to Stock List
-						</span>
-						<span className="text-xs text-text-muted">{showAddItem ? "Hide" : "Open"}</span>
-					</button>
-					{showAddItem && (
-						<div className="border-t border-border-subtle">
-							<AddStockItemSheet
-								vehicleId={currentVehicleId}
-								existingIds={new Set(stockItems.map((i) => i.inventory_item_id))}
-								onDone={() => setShowAddItem(false)}
+			{canStock &&
+				currentVehicleId &&
+				!showVehicleList &&
+				!showCheckOutConfirm && (
+					<div className="rounded-xl border border-border-subtle overflow-hidden">
+						<button
+							onClick={() => setShowAddItem((v) => !v)}
+							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+						>
+							<ListChecks
+								size={15}
+								className="text-text-muted"
 							/>
-						</div>
-					)}
-				</div>
-			)}
+							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+								Add / Remove Stock Items
+							</span>
+							<span className="text-xs text-text-muted">
+								{showAddItem ? "Hide" : "Open"}
+							</span>
+						</button>
+						{showAddItem && (
+							<div className="border-t border-border-subtle">
+								<div className="flex gap-1 p-2 bg-base/40">
+									{(["add", "remove"] as const).map(
+										(mode) => (
+											<button
+												key={mode}
+												onClick={() =>
+													setStockEditMode(
+														mode
+													)
+												}
+												className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
+													stockEditMode ===
+													mode
+														? "bg-surface-raised text-text-primary"
+														: "text-text-muted hover:text-text-secondary"
+												}`}
+											>
+												{mode === "add"
+													? "Add"
+													: "Remove"}
+											</button>
+										)
+									)}
+								</div>
+								{stockEditMode === "add" ? (
+									<AddStockItemSheet
+										vehicleId={currentVehicleId}
+										existingIds={
+											new Set(
+												stockItems.map(
+													(
+														i
+													) =>
+														i.inventory_item_id
+												)
+											)
+										}
+										onDone={() =>
+											setShowAddItem(
+												false
+											)
+										}
+									/>
+								) : (
+									<RemoveStockItemSheet
+										vehicleId={currentVehicleId}
+										stockItems={stockItems}
+										onAdjust={(item) => {
+											clearHighlightRef.current();
+											setHighlightedStockItemId(item.id);
+											setScanFocusItemId(item.id);
+											setAdjustOpen(true);
+										}}
+									/>
+								)}
+							</div>
+						)}
+					</div>
+				)}
 
 			{/* ── End of day (optional — never gates anything) ─────────────────── */}
-			{canRestock && currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
-				<div className="rounded-xl border border-border-subtle overflow-hidden">
-					<button
-						onClick={() => setRestockOpen((v) => !v)}
-						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
-					>
-						<ClipboardCheck size={15} className="text-text-muted" />
-						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
-							Warehouse Restock
-						</span>
-						<span className="text-xs text-text-muted">{restockOpen ? "Hide" : "Open"}</span>
-					</button>
-					{restockOpen && (
-						<div className="border-t border-border-subtle">
-							<RestockWorkflow vehicleId={currentVehicleId} stockItems={stockItems} layout="mobile" />
-						</div>
-					)}
-				</div>
-			)}
+			{canRestock &&
+				currentVehicleId &&
+				!showVehicleList &&
+				!showCheckOutConfirm && (
+					<div className="rounded-xl border border-border-subtle overflow-hidden">
+						<button
+							onClick={() => setRestockOpen((v) => !v)}
+							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+						>
+							<ClipboardCheck
+								size={15}
+								className="text-text-muted"
+							/>
+							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+								Warehouse Restock
+							</span>
+							<span className="text-xs text-text-muted">
+								{restockOpen ? "Hide" : "Open"}
+							</span>
+						</button>
+						{restockOpen && (
+							<div className="border-t border-border-subtle">
+								<RestockWorkflow
+									vehicleId={currentVehicleId}
+									stockItems={stockItems}
+									layout="mobile"
+								/>
+							</div>
+						)}
+					</div>
+				)}
 
 			{/* ── Stock History ────────────────────────────────────────────────── */}
-			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (canStock || canUseInventory) && (
-				<div className="rounded-xl border border-border-subtle overflow-hidden">
-					<button
-						onClick={() => setShowStockHistory((v) => !v)}
-						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
-					>
-						<History size={15} className="text-text-muted" />
-						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
-							Stock History
-						</span>
-						<span className="text-xs text-text-muted">{showStockHistory ? "Hide" : "Open"}</span>
-					</button>
-					{showStockHistory && (
-						<div className="border-t border-border-subtle">
-							<StockHistorySection vehicleId={currentVehicleId} stockItems={stockItems} />
-						</div>
-					)}
-				</div>
-			)}
+			{currentVehicleId &&
+				!showVehicleList &&
+				!showCheckOutConfirm &&
+				(canStock || canUseInventory) && (
+					<div className="rounded-xl border border-border-subtle overflow-hidden">
+						<button
+							onClick={() =>
+								setShowStockHistory((v) => !v)
+							}
+							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+						>
+							<History
+								size={15}
+								className="text-text-muted"
+							/>
+							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
+								Stock History
+							</span>
+							<span className="text-xs text-text-muted">
+								{showStockHistory ? "Hide" : "Open"}
+							</span>
+						</button>
+						{showStockHistory && (
+							<div className="border-t border-border-subtle">
+								<StockHistorySection
+									vehicleId={currentVehicleId}
+									stockItems={stockItems}
+								/>
+							</div>
+						)}
+					</div>
+				)}
 
 			{/* ── Restock status list ──────────────────────────────────────────── */}
 			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
 				<RestockStatusList vehicleId={currentVehicleId} />
 			)}
 
+			{/* Serial unit sheet — scan a sticker or tap a Serialized badge */}
+			{currentVehicleId && (
+				<SerialSheet
+					target={serialTarget}
+					onClose={() => setSerialTarget(null)}
+					vehicleId={currentVehicleId}
+					onReportLost={({ serialUnitId, inventoryItemId }) => {
+						const stockItem = findStockItemOrWarn(inventoryItemId);
+						if (!stockItem) return;
+						setSerialTarget(null);
+						clearHighlightRef.current();
+						setHighlightedStockItemId(stockItem.id);
+						setScanFocusItemId(stockItem.id);
+						setPendingLostSerialId(serialUnitId);
+						setAdjustOpen(true);
+					}}
+				/>
+			)}
+
+			{/* Lot sheet — tap a Batch badge */}
+			{currentVehicleId && (
+				<LotSheet
+					target={lotTarget}
+					onClose={() => setLotTarget(null)}
+					vehicleId={currentVehicleId}
+				/>
+			)}
+
 			{/* Stock adjust modal (self-serve) */}
 			{adjustOpen && currentVehicleId && (
 				<AdjustStockModal
-					key={scanFocusItemId ?? "manual"}
+					key={`${scanFocusItemId ?? "manual"}:${pendingLostSerialId ?? ""}`}
 					vehicleId={currentVehicleId}
 					stockItems={stockItems}
 					onClose={() => {
 						setAdjustOpen(false);
 						if (scanFocusItemId) armHighlightClear();
 						setScanFocusItemId(null);
+						setPendingLostSerialId(null);
 					}}
+					onSuccess={() => toast.success("Stock adjusted")}
+					onError={(message) => toast.error(message)}
 					initialType={scanFocusItemId ? "field_loss" : undefined}
 					initialFocusItemId={scanFocusItemId ?? undefined}
+					initialSerialUnitId={pendingLostSerialId ?? undefined}
 				/>
 			)}
 
@@ -1319,154 +1959,279 @@ export default function TechnicianVehiclePage() {
 			{/* Restock request sheet — qty + optional note */}
 			{restockTarget && (
 				<>
-					<div className="fixed inset-0 z-40 bg-overlay" onClick={() => setRestockTarget(null)} />
-					<div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setRestockTarget(null)}>
-					<div className="bg-base border border-border rounded-xl w-full max-w-sm px-4 pt-4 pb-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-						<p className="text-sm font-semibold text-text-primary mb-0.5">
-							Request restock — {restockTarget.inventory_item.name}
-						</p>
-						<p className="text-xs text-text-muted mb-4">
-							On hand {Number(restockTarget.qty_on_hand)}
-							{restockTarget.qty_standard !== null && ` · standard ${Number(restockTarget.qty_standard)}`}
-							{` · warehouse ${Number(restockTarget.inventory_item.quantity)}`}
-						</p>
-						<div className="flex items-center justify-center gap-4 mb-4">
-							<button
-								onClick={() => setRestockQty((q) => Math.max(1, q - 1))}
-								className="w-11 h-11 rounded-lg border border-border text-text-secondary text-lg font-semibold hover:bg-surface transition-colors"
-								aria-label="Decrease quantity"
-							>
-								−
-							</button>
-							<span className="w-12 text-center text-xl font-bold text-text-primary tabular-nums">
-								{restockQty}
-							</span>
-							<button
-								onClick={() => setRestockQty((q) => q + 1)}
-								className="w-11 h-11 rounded-lg border border-border text-text-secondary text-lg font-semibold hover:bg-surface transition-colors"
-								aria-label="Increase quantity"
-							>
-								+
-							</button>
+					<div
+						className="fixed inset-0 z-40 bg-overlay"
+						onClick={() => setRestockTarget(null)}
+					/>
+					<div
+						className="fixed inset-0 z-50 flex items-center justify-center px-4"
+						onClick={() => setRestockTarget(null)}
+					>
+						<div
+							className="bg-base border border-border rounded-xl w-full max-w-sm px-4 pt-4 pb-5 shadow-2xl"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<p className="text-sm font-semibold text-text-primary mb-0.5">
+								Request restock —{" "}
+								{restockTarget.inventory_item.name}
+							</p>
+							<p className="text-xs text-text-muted mb-4">
+								On hand{" "}
+								{Number(restockTarget.qty_on_hand)}
+								{restockTarget.qty_standard !==
+									null &&
+									` · standard ${Number(restockTarget.qty_standard)}`}
+								{` · warehouse ${Number(restockTarget.inventory_item.quantity)}`}
+							</p>
+							<div className="flex items-center justify-center gap-4 mb-4">
+								<button
+									onClick={() =>
+										setRestockQty((q) =>
+											Math.max(
+												1,
+												q -
+													1
+											)
+										)
+									}
+									className="w-11 h-11 rounded-lg border border-border text-text-secondary text-lg font-semibold hover:bg-surface transition-colors"
+									aria-label="Decrease quantity"
+								>
+									−
+								</button>
+								<span className="w-12 text-center text-xl font-bold text-text-primary tabular-nums">
+									{restockQty}
+								</span>
+								<button
+									onClick={() =>
+										setRestockQty(
+											(q) => q + 1
+										)
+									}
+									className="w-11 h-11 rounded-lg border border-border text-text-secondary text-lg font-semibold hover:bg-surface transition-colors"
+									aria-label="Increase quantity"
+								>
+									+
+								</button>
+							</div>
+							<input
+								value={restockNote}
+								onChange={(e) =>
+									setRestockNote(
+										e.target.value
+									)
+								}
+								placeholder="Note (optional)"
+								maxLength={500}
+								className="w-full mb-4 bg-surface-inset border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
+							/>
+							<div className="flex gap-2">
+								<button
+									onClick={() =>
+										setRestockTarget(
+											null
+										)
+									}
+									className="flex-1 py-2.5 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={submitRestock}
+									disabled={
+										restockMutation.isPending
+									}
+									className="flex-1 py-2.5 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
+								>
+									{restockMutation.isPending
+										? "Sending…"
+										: "Request"}
+								</button>
+							</div>
 						</div>
-						<input
-							value={restockNote}
-							onChange={(e) => setRestockNote(e.target.value)}
-							placeholder="Note (optional)"
-							maxLength={500}
-							className="w-full mb-4 bg-surface-inset border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
-						/>
-						<div className="flex gap-2">
-							<button
-								onClick={() => setRestockTarget(null)}
-								className="flex-1 py-2.5 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
-							>
-								Cancel
-							</button>
-							<button
-								onClick={submitRestock}
-								disabled={restockMutation.isPending}
-								className="flex-1 py-2.5 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
-							>
-								{restockMutation.isPending ? "Sending…" : "Request"}
-							</button>
-						</div>
-					</div>
 					</div>
 				</>
 			)}
 
 			{/* Fill to Standard modal */}
 			{fillOpen && currentVehicleId && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setFillOpen(false)}>
-					<div className="bg-canvas border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col mx-4" onClick={(e) => e.stopPropagation()}>
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-overlay"
+					onClick={() => setFillOpen(false)}
+				>
+					<div
+						className="bg-canvas border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col mx-4"
+						onClick={(e) => e.stopPropagation()}
+					>
 						<div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
-							<span className="text-sm font-bold text-text-primary">Fill to Standard</span>
-							<button onClick={() => setFillOpen(false)} className="text-text-faint hover:text-text-secondary transition-colors">
+							<span className="text-sm font-bold text-text-primary">
+								Fill to Standard
+							</span>
+							<button
+								onClick={() => setFillOpen(false)}
+								aria-label="Close"
+								className="text-text-faint hover:text-text-secondary transition-colors"
+							>
 								<X size={16} />
 							</button>
 						</div>
 						<div className="overflow-y-auto flex-1">
-							<FillToStandardPreview vehicleId={currentVehicleId} onClose={() => setFillOpen(false)} />
+							<FillToStandardPreview
+								vehicleId={currentVehicleId}
+								onClose={() => setFillOpen(false)}
+								onSuccess={() =>
+									toast.success(
+										"Vehicle filled to standard"
+									)
+								}
+								onError={(message) =>
+									toast.error(message)
+								}
+							/>
 						</div>
 					</div>
 				</div>
 			)}
 
-{/* Bulk restock confirmation modal */}
+			{/* Bulk restock confirmation modal */}
 			{showBatchConfirm && (
 				<>
-					<div className="fixed inset-0 z-40 bg-overlay" onClick={() => setShowBatchConfirm(false)} />
-					<div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setShowBatchConfirm(false)}>
-						<div className="bg-base border border-border rounded-xl w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+					<div
+						className="fixed inset-0 z-40 bg-overlay"
+						onClick={() => setShowBatchConfirm(false)}
+					/>
+					<div
+						className="fixed inset-0 z-50 flex items-center justify-center px-4"
+						onClick={() => setShowBatchConfirm(false)}
+					>
+						<div
+							className="bg-base border border-border rounded-xl w-full max-w-sm shadow-2xl"
+							onClick={(e) => e.stopPropagation()}
+						>
 							<div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
 								<div>
-									<p className="text-sm font-semibold text-text-primary">Bulk Restock Request</p>
-									<p className="text-xs text-text-muted mt-0.5">{selectedEntries.length} item{selectedEntries.length > 1 ? "s" : ""} selected</p>
+									<p className="text-sm font-semibold text-text-primary">
+										Bulk Restock Request
+									</p>
+									<p className="text-xs text-text-muted mt-0.5">
+										{
+											selectedEntries.length
+										}{" "}
+										item
+										{selectedEntries.length >
+										1
+											? "s"
+											: ""}{" "}
+										selected
+									</p>
 								</div>
 								<button
-									onClick={() => setShowBatchConfirm(false)}
+									onClick={() =>
+										setShowBatchConfirm(
+											false
+										)
+									}
+									aria-label="Close"
 									className="text-text-faint hover:text-text-secondary transition-colors p-1 -mr-1"
 								>
 									<X size={15} />
 								</button>
 							</div>
 							<div className="max-h-64 overflow-y-auto divide-y divide-border-subtle/60">
-								{selectedEntries.map(([id, qty]) => {
-									const item = stockItems.find((i) => i.id === id);
-									if (!item) return null;
-									const unit = formatUnit(item.inventory_item.unit);
-									return (
-										<div key={id} className="flex items-center gap-3 px-4 py-2.5">
-											<div className="flex-1 min-w-0">
-												<p className="text-sm text-text-primary truncate">{item.inventory_item.name}</p>
-												{item.inventory_item.category && (
-													<span className="text-[10px] text-text-muted">{item.inventory_item.category}</span>
-												)}
+								{selectedEntries.map(
+									([id, qty]) => {
+										const item =
+											stockItems.find(
+												(
+													i
+												) =>
+													i.id ===
+													id
+											);
+										if (!item)
+											return null;
+										const unit =
+											formatUnit(
+												item
+													.inventory_item
+													.unit
+											);
+										return (
+											<div
+												key={
+													id
+												}
+												className="flex items-center gap-3 px-4 py-2.5"
+											>
+												<div className="flex-1 min-w-0">
+													<p className="text-sm text-text-primary truncate">
+														{
+															item
+																.inventory_item
+																.name
+														}
+													</p>
+													{item
+														.inventory_item
+														.category && (
+														<span className="text-[10px] text-text-muted">
+															{
+																item
+																	.inventory_item
+																	.category
+															}
+														</span>
+													)}
+												</div>
+												<div className="text-right shrink-0">
+													<p className="text-sm font-semibold tabular-nums text-primary-text">
+														+
+														{
+															qty
+														}
+													</p>
+													{unit && (
+														<p className="text-[10px] text-text-faint">
+															{
+																unit
+															}
+														</p>
+													)}
+												</div>
 											</div>
-											<div className="text-right shrink-0">
-												<p className="text-sm font-semibold tabular-nums text-primary-text">+{qty}</p>
-												{unit && <p className="text-[10px] text-text-faint">{unit}</p>}
-											</div>
-										</div>
-									);
-								})}
+										);
+									}
+								)}
 							</div>
 							<div className="flex gap-2 px-4 py-3.5 border-t border-border">
 								<button
-									onClick={() => setShowBatchConfirm(false)}
+									onClick={() =>
+										setShowBatchConfirm(
+											false
+										)
+									}
 									className="flex-1 py-2.5 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
 								>
 									Cancel
 								</button>
 								<button
-									onClick={() => { setShowBatchConfirm(false); submitBatch(); }}
+									onClick={() => {
+										setShowBatchConfirm(
+											false
+										);
+										submitBatch();
+									}}
 									disabled={bulk.isPending}
 									className="flex-1 py-2.5 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium transition-colors disabled:opacity-50"
 								>
-									{bulk.isPending ? "Requesting…" : "Request"}
+									{bulk.isPending
+										? "Requesting…"
+										: "Request"}
 								</button>
 							</div>
 						</div>
 					</div>
 				</>
-			)}
-
-			{/* Toasts */}
-			{restockSuccess && (
-				<div role="status" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-surface border border-border rounded-lg px-4 py-2 text-sm text-text-primary shadow-xl whitespace-nowrap">
-					Restock requested for {restockSuccess}
-				</div>
-			)}
-			{restockError && (
-				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-error-bg border border-error rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
-					{restockError}
-				</div>
-			)}
-			{vehicleError && (
-				<div role="alert" className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-error-bg border border-error rounded-lg px-4 py-2 text-sm text-error-text shadow-xl whitespace-nowrap">
-					{vehicleError}
-				</div>
 			)}
 		</div>
 	);

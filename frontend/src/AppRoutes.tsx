@@ -37,6 +37,10 @@ import AssignTechnicianPage from "./pages/dispatch/AssignTechnicianPage";
 import RequestsPage from "./pages/dispatch/RequestsPage";
 import RequestDetailsPage from "./pages/dispatch/RequestDetailPage";
 import InventoryPage from "./pages/dispatch/InventoryPage";
+import LabelPrintPage from "./components/inventory/labels/LabelPrintPage";
+import ItemTrackingPage from "./pages/dispatch/ItemTrackingPage";
+import SerialDetailPage from "./pages/dispatch/SerialDetailPage";
+import BatchDetailPage from "./pages/dispatch/BatchDetailPage";
 import FullMapPage from "./pages/dispatch/FullMapPage";
 import InvoicesPage from "./pages/dispatch/InvoicesPage";
 import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
@@ -151,6 +155,10 @@ export default function AppRoutes() {
 				<Route path="timesheets" element={<RequirePermission permission="view_reports"><TimesheetsReportPage /></RequirePermission>} />
 				<Route path="inventory/reorder-forecast" element={<RequirePermission permission="view_reports"><ReorderForecastPage /></RequirePermission>} />
 				<Route path="inventory" element={<RequirePermission permission="view_inventory"><InventoryPage /></RequirePermission>} />
+				<Route path="inventory/labels/print" element={<RequirePermission permission="manage_inventory"><LabelPrintPage /></RequirePermission>} />
+				<Route path="inventory/items/:itemId/tracking" element={<RequirePermission permission="view_inventory"><ItemTrackingPage /></RequirePermission>} />
+				<Route path="inventory/serials/:serialId" element={<RequirePermission permission="view_inventory"><SerialDetailPage /></RequirePermission>} />
+				<Route path="inventory/batches/:batchId" element={<RequirePermission permission="view_inventory"><BatchDetailPage /></RequirePermission>} />
 				<Route path="quotes" element={<RequirePermission permission="view_quotes"><QuotesPage /></RequirePermission>} />
 				<Route path="quotes/:quoteId" element={<RequirePermission permission="view_quotes"><QuoteDetailPage /></RequirePermission>} />
 				<Route path="requests" element={<RequirePermission permission="view_requests"><RequestsPage /></RequirePermission>} />

@@ -47,6 +47,11 @@ const StepWizard = <T extends number>({
 	const stepStates = useMemo(() => {
 		return steps.map((step, index) => {
 			const isCurrent = currentStep === step.id;
+			// Completed (green) = positionally before the current step.
+			// Pending (yellow) = ahead of the current step but already
+			// visited/filled — only reachable by navigating backward, and
+			// signals "this step has content" distinctly from a step that's
+			// accessible-but-untouched.
 			const isCompleted = currentStep > step.id;
 			const isAccessible = canGoToStep(step.id);
 			const isLocked = !isAccessible && !isCompleted;
@@ -148,8 +153,8 @@ const StepWizard = <T extends number>({
 								</button>
 								<span
 									className={`
-										mt-2 text-xs font-medium transition-colors duration-300 
-										whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]
+										mt-2 text-xs font-medium transition-colors duration-300
+										max-w-[96px] leading-tight text-center
 										${getLabelColor(state)}
 									`}
 									title={state.label}

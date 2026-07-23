@@ -130,6 +130,7 @@ export const useSetTechnicianVehicleMutation = () => {
 			technicianApi.setTechnicianCurrentVehicle(technicianId, vehicleId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicles"] });
 		},
 	});
 };

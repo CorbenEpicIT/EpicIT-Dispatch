@@ -152,6 +152,7 @@ export const setTechnicianVehicle = async (technicianId: string, vehicleId: stri
 
 export const getStockConflicts = async (): Promise<VehicleStockConflict[]> => {
 	const response = await api.get<ApiResponse<VehicleStockConflict[]>>("/vehicles/stock-conflicts");
+	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to load stock conflicts");
 	return response.data.data || [];
 };
 

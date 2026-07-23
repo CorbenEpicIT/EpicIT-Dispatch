@@ -5,7 +5,7 @@ import { PrismaClient } from "../generated/prisma/client.js";
 import bcryptjs from "bcryptjs";
 import crypto from "crypto";
 import { getAllPermissions } from "../src/lib/permissionCatalogs.js";
-import { recordMovements } from "../src/services/stockMovements.js";
+import { recordMovements, getOrCreateBatch, shortCode } from "../src/services/stockMovements.js";
 import {
 	calculateDocumentTax,
 	centsToDollars,
@@ -244,6 +244,7 @@ async function main() {
 				hire_date: new Date("2015-03-12"),
 				coords: { lat: 43.8014, lng: -91.2396 },
 				hourly_rate: 95.00,
+				last_login: new Date(),
 				organization_role_id: technicianRole.id,
 			},
 		}),
@@ -300,6 +301,7 @@ async function main() {
 		invFlameSensor,
 		invCondPump,
 		invLineSet,
+		invCompressor,
 	] = await Promise.all([
 		db.inventory_item.create({
 			data: {
@@ -312,10 +314,12 @@ async function main() {
 				unit_price: 60.0,
 				cost: 38.0,
 				sku: "REF-410A-25",
+				barcode: shortCode("ITM"),
 				alt_ids: ["R410A-25LB", "NU-410A"],
 				low_stock_threshold: 3,
 				category: "Refrigerants",
 				unit: "cylinder",
+				is_batch_tracked: true,
 			},
 		}),
 		db.inventory_item.create({
@@ -329,6 +333,7 @@ async function main() {
 				unit_price: 8.5,
 				cost: 3.25,
 				sku: "FILT-16251-M8",
+				barcode: shortCode("ITM"),
 				alt_ids: ["16x25x1-M8", "AF-1625-8"],
 				low_stock_threshold: 12,
 				category: "Filters",
@@ -346,6 +351,7 @@ async function main() {
 				unit_price: 22.0,
 				cost: 8.5,
 				sku: "CAP-45-5-440",
+				barcode: shortCode("ITM"),
 				alt_ids: ["97F9895", "TRCFD455"],
 				low_stock_threshold: 5,
 				category: "Electrical",
@@ -397,10 +403,12 @@ async function main() {
 				unit_price: 185.0,
 				cost: 96.0,
 				sku: "MOT-BLW-12HP",
+				barcode: shortCode("ITM"),
 				alt_ids: ["FM-BL-0500", "5KCP39"],
 				low_stock_threshold: 2,
 				category: "Motors",
 				unit: "each",
+				is_serialized: true,
 			},
 		}),
 		db.inventory_item.create({
@@ -469,6 +477,26 @@ async function main() {
 				low_stock_threshold: 20,
 				category: "Refrigerants",
 				unit: "ft",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Compressor 3-Ton Scroll R410A",
+				description:
+					"Copeland scroll compressor for 3-ton split systems. Serialized for warranty tracking and lot-tracked for defect recalls.",
+				location: "Warehouse — Shelf A2",
+				quantity: 0,
+				unit_price: 620.0,
+				cost: 410.0,
+				sku: "COMP-3T-SCRL",
+				barcode: shortCode("ITM"),
+				alt_ids: ["ZP31K5E-PFV", "CMP-3T-SCRL"],
+				low_stock_threshold: 1,
+				category: "Compressors",
+				unit: "each",
+				is_serialized: true,
+				is_batch_tracked: true,
 			},
 		}),
 	]);
@@ -2949,6 +2977,7 @@ async function main() {
 		{ v: van12, i: invThermostat,  qty_min: 2,  qty_standard: 3 },
 		{ v: van12, i: invIgniter,     qty_min: 2,  qty_standard: 3 },
 		{ v: van12, i: invFlameSensor, qty_min: 3,  qty_standard: 4 },
+		{ v: van12, i: invBlower,      qty_min: 1,  qty_standard: 1 },
 		// Van 8 (Maria Rodriguez)
 		{ v: van8,  i: invRefrigerant, qty_min: 2,  qty_standard: 2 },
 		{ v: van8,  i: invFilter,      qty_min: 4,  qty_standard: 10 },
@@ -2965,6 +2994,7 @@ async function main() {
 		{ v: truck4, i: invFlameSensor, qty_min: 2,  qty_standard: 4 },
 		{ v: truck4, i: invCondPump,    qty_min: 1,  qty_standard: 2 },
 		{ v: truck4, i: invLineSet,     qty_min: 20, qty_standard: 50 },
+		{ v: truck4, i: invCompressor,  qty_min: 1,  qty_standard: 2 },
 	];
 
 	const stockMap = new Map<string, { id: string }>();
@@ -2996,15 +3026,174 @@ async function main() {
 	const move = (actor: any, movements: any[], opts: any = {}) =>
 		db.$transaction((tx) => recordMovements(tx, org.id, actor, movements, opts));
 
-	// (a) Initial receive — external → warehouse. Sized to cover all downstream
-	//     outflow while leaving refrigerant + contactor at/below threshold.
+	// ============================================================================
+	// Serial & Batch Tracking Demo Data — Blower Motor (is_serialized) +
+	// Refrigerant (is_batch_tracked). Everything still flows through
+	// recordMovements; serial_unit/stock_batch rows are a byproduct of the
+	// ledger, never written directly (except recalled_at — the one field the
+	// real PATCH endpoint owns, set here after the fact to model discovery).
+	// ============================================================================
+
+	// -- Blower Motor: 5 serialized units covering every serial_unit_status --
 	await move(sysActor, [
-		{ inventory_item_id: invRefrigerant.id, qty: 9,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{
+			inventory_item_id: invBlower.id,
+			qty: 5,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "initial",
+			note: "Opening warehouse count (serialized).",
+			serial: {
+				create: ["BLW24-0001", "BLW24-0002", "BLW24-0003", "BLW24-0004", "BLW24-0005"].map(
+					(serial_number) => ({ serial_number }),
+				),
+			},
+		},
+	]);
+	const [bu1, bu2, bu3, bu4] = await db.serial_unit.findMany({
+		where: { inventory_item_id: invBlower.id },
+		orderBy: { serial_number: "asc" },
+	});
+
+	// Restock — 2 units to Truck 4 (one becomes the steady-state spare, one is
+	// written off below), 1 unit to Van 12.
+	await move(dispActor, [
+		{ inventory_item_id: invBlower.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [bu1.id, bu3.id] } },
+		{ inventory_item_id: invBlower.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock", serial: { unit_ids: [bu2.id] } },
+	]);
+
+	// Consumed — installed during the completed Williams PM visit (sets the
+	// client-linked consumption snapshot recall lookups read from).
+	await move(techActor(tech1.id), [
+		{ inventory_item_id: invBlower.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van12.id, to_location_type: "consumed", reason: "parts_used", visit_id: recurringVisit1.id, serial: { unit_ids: [bu2.id] }, note: "Blower motor replaced — noisy bearing found during PM." },
+	]);
+
+	// Lost — cracked housing found on Truck 4, written off via an adjustment.
+	const blowerLossAdjustment = await db.vehicle_stock_adjustment.create({
+		data: {
+			organization_id: org.id,
+			vehicle_id: truck4.id,
+			type: "field_loss",
+			note: "Blower motor housing cracked in transit — discarded.",
+			created_by_id: dispatcher.id,
+		},
+	});
+	await move(dispActor, [
+		{ inventory_item_id: invBlower.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "adjustment", reason: "loss", adjustment_id: blowerLossAdjustment.id, serial: { unit_ids: [bu3.id] }, note: "Cracked housing." },
+	]);
+	await db.vehicle_stock_adjustment_line.create({
+		data: {
+			adjustment_id: blowerLossAdjustment.id,
+			stock_item_id: vs(truck4, invBlower).id,
+			qty_before: 2,
+			qty_after: 1,
+			inventory_impact: -1,
+		},
+	});
+
+	// Returned — defective unit sent back to the supplier under warranty
+	// (never left the warehouse). The 5th unit (BLW24-0005) is left untouched
+	// — a clean "just received, in_warehouse" example.
+	await move(dispActor, [
+		{ inventory_item_id: invBlower.id, qty: 1, from_location_type: "warehouse", to_location_type: "external", reason: "transfer", serial: { unit_ids: [bu4.id] }, note: "Defective unit returned to Ferguson under warranty — RMA #48213." },
+	]);
+
+	// -- Refrigerant R-410A: 3 lots (fresh, near-expiry, recalled) --
+	const makeLot = (args: {
+		inventory_item_id: string;
+		batch_number: string;
+		supplier?: string;
+		expires_at?: Date;
+		note?: string;
+	}) => db.$transaction((tx) => getOrCreateBatch(tx, org.id, args));
+
+	const lotFresh = await makeLot({
+		inventory_item_id: invRefrigerant.id,
+		batch_number: "LOT-24-0512",
+		supplier: "Airgas",
+		expires_at: daysFromNow(410),
+	});
+	const lotNearExpiry = await makeLot({
+		inventory_item_id: invRefrigerant.id,
+		batch_number: "LOT-24-0138",
+		supplier: "Airgas",
+		expires_at: daysFromNow(18),
+		note: "Received short-dated — prioritize for FIFO consumption.",
+	});
+	const lotRecalled = await makeLot({
+		inventory_item_id: invRefrigerant.id,
+		batch_number: "LOT-23-0899",
+		supplier: "RefrigCo Supply",
+		expires_at: daysFromNow(300),
+		note: "Manufacturer recall — valve seal defect reported across this production run.",
+	});
+
+	await move(sysActor, [
+		{ inventory_item_id: invRefrigerant.id, qty: 5, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count — Lot LOT-24-0512.", batch_allocations: [{ batch_id: lotFresh.id, qty: 5 }] },
+		{ inventory_item_id: invRefrigerant.id, qty: 3, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count — Lot LOT-24-0138.", batch_allocations: [{ batch_id: lotNearExpiry.id, qty: 3 }] },
+		{ inventory_item_id: invRefrigerant.id, qty: 4, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count — Lot LOT-23-0899.", batch_allocations: [{ batch_id: lotRecalled.id, qty: 4 }] },
+	]);
+
+	await move(dispActor, [
+		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", batch_allocations: [{ batch_id: lotFresh.id, qty: 1 }] },
+		{ inventory_item_id: invRefrigerant.id, qty: 3, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", batch_allocations: [{ batch_id: lotFresh.id, qty: 3 }] },
+		{ inventory_item_id: invRefrigerant.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock", batch_allocations: [{ batch_id: lotRecalled.id, qty: 2 }] },
+	]);
+
+	// Consumed on job2 before the recall was discovered — traced by the recall report.
+	const visit2RefrigerantLine = await db.job_visit_line_item.findFirst({
+		where: { visit_id: visit2.id, inventory_item_id: invRefrigerant.id },
+		select: { id: true },
+	});
+	await move(techActor(tech2.id), [
+		{ inventory_item_id: invRefrigerant.id, qty: 2, from_location_type: "vehicle", from_vehicle_id: van8.id, to_location_type: "consumed", reason: "parts_used", visit_id: visit2.id, visit_line_item_id: visit2RefrigerantLine?.id ?? undefined, batch_allocations: [{ batch_id: lotRecalled.id, qty: 2 }], note: "R-410A charge during rooftop install." },
+	]);
+
+	// Recall discovered after the fact — blocks the 2 remaining warehouse units
+	// from any further pick (fresh/near-expiry lots are unaffected).
+	await db.stock_batch.update({
+		where: { id: lotRecalled.id },
+		data: { recalled_at: daysFromNow(-3) },
+	});
+
+	// -- Compressor: dual-tracked (is_serialized + is_batch_tracked) — one lot,
+	// 3 serialized units, each unit's batch_id points back to the lot. --
+	const lotCompressor = await makeLot({
+		inventory_item_id: invCompressor.id,
+		batch_number: "LOT-COMP-24-03",
+		supplier: "Copeland Distribution",
+	});
+	await move(sysActor, [
+		{
+			inventory_item_id: invCompressor.id,
+			qty: 3,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "initial",
+			note: "Opening warehouse count (dual-tracked).",
+			serial: {
+				create: ["CMP24-0001", "CMP24-0002", "CMP24-0003"].map((serial_number) => ({
+					serial_number,
+					batch_id: lotCompressor.id,
+				})),
+			},
+		},
+	]);
+	const [cu1] = await db.serial_unit.findMany({
+		where: { inventory_item_id: invCompressor.id },
+		orderBy: { serial_number: "asc" },
+	});
+	await move(dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [cu1.id] } },
+	]);
+
+	// (a) Initial receive — external → warehouse. Sized to cover all downstream
+	//     outflow while leaving contactor at/below threshold.
+	await move(sysActor, [
 		{ inventory_item_id: invFilter.id,      qty: 78,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invCapacitor.id,   qty: 32,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invThermostat.id,  qty: 15,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invContactor.id,   qty: 9,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
-		{ inventory_item_id: invBlower.id,      qty: 5,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invIgniter.id,     qty: 12,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invFlameSensor.id, qty: 18,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invCondPump.id,    qty: 6,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
@@ -3021,17 +3210,14 @@ async function main() {
 		{ inventory_item_id: invIgniter.id,     qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
 		{ inventory_item_id: invFlameSensor.id, qty: 4, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "restock" },
 		// Van 8
-		{ inventory_item_id: invRefrigerant.id, qty: 1,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
 		{ inventory_item_id: invFilter.id,      qty: 10, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
 		{ inventory_item_id: invCapacitor.id,   qty: 2,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
 		{ inventory_item_id: invCondPump.id,    qty: 1,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: van8.id, reason: "restock" },
 		// Truck 4 (spare — fully loaded)
-		{ inventory_item_id: invRefrigerant.id, qty: 4,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invFilter.id,      qty: 24, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invCapacitor.id,   qty: 10, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invThermostat.id,  qty: 4,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invContactor.id,   qty: 5,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
-		{ inventory_item_id: invBlower.id,      qty: 1,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invIgniter.id,     qty: 3,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invFlameSensor.id, qty: 4,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
 		{ inventory_item_id: invCondPump.id,    qty: 2,  from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock" },
@@ -3097,7 +3283,7 @@ async function main() {
 		},
 	});
 	await move(techActor(tech2.id), [
-		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van8.id, to_location_type: "adjustment", reason: "loss", adjustment_id: lossAdjustment.id, note: "Damaged R-410A cylinder." },
+		{ inventory_item_id: invRefrigerant.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: van8.id, to_location_type: "adjustment", reason: "loss", adjustment_id: lossAdjustment.id, batch_allocations: [{ batch_id: lotFresh.id, qty: 1 }], note: "Damaged R-410A cylinder." },
 	]);
 	await db.vehicle_stock_adjustment_line.create({
 		data: {
@@ -3544,6 +3730,9 @@ async function main() {
 	console.log(`  Shifts:            2  (+ lunch breaks, visit time entries)`);
 	console.log(`  Notifications:     3  (John Smith)`);
 	console.log(`  Inventory Tags:    4  Fast-moving, Electrical, Refrigerant, Controls`);
+	console.log(`  Serial Units:      5  Blower Motor — in_warehouse/on_vehicle/consumed/lost/returned`);
+	console.log(`  Stock Batches:     3  Refrigerant lots — fresh, near-expiry, recalled (2 consumed pre-recall)`);
+	console.log(`  Barcodes:          4  items pre-labeled (rest lazily assigned on first scan)`);
 	console.log(
 		`  Activity Logs:     41 entries covering all feed event types`,
 	);

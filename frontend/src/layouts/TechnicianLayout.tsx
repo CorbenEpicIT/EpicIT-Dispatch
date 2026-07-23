@@ -4,15 +4,19 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X, Gauge } from "lucide-react";
 import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
+import { useSocketQuerySync } from "../hooks/useSocketQuerySync";
 import type { TechnicianNotification } from "../types/notifications";
 import { usePermission, useAnyPermission } from "../hooks/usePermission";
 import TechnicianUserMenu from "../components/nav/TechnicianUserMenu";
+import ToastViewport from "../components/ui/ToastViewport";
 
 export default function TechnicianLayout() {
 	const { user } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const navigationCount = useRef(0);
+
+	useSocketQuerySync();
 
 	const [notifBanner, setNotifBanner] = useState<TechnicianNotification | null>(null);
 	const notifBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -185,6 +189,8 @@ export default function TechnicianLayout() {
 					<span>Map</span>
 				</NavLink>
 			</nav>
+
+			<ToastViewport inset="above-nav" />
 		</div>
 	);
 }

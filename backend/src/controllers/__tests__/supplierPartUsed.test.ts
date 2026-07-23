@@ -94,12 +94,13 @@ function makeStockRow() {
  */
 function makeSdb(
 	invItem: { name: string; unit_price: number } | null = { name: "Widget", unit_price: 10 },
+	invItemFlags: { is_serialized?: boolean; is_batch_tracked?: boolean } = {},
 ) {
 	const tx = {
 		inventory_item: {
 			findFirst: vi.fn().mockResolvedValue(invItem ? { id: INV_ITEM_ID } : null),
 			create: vi.fn().mockResolvedValue({ id: INV_ITEM_ID }),
-			findFirstOrThrow: vi.fn().mockResolvedValue({ name: "Widget", unit_price: 10 }),
+			findFirstOrThrow: vi.fn().mockResolvedValue({ name: "Widget", unit_price: 10, ...invItemFlags }),
 		},
 		job_visit_line_item: {
 			create: vi.fn().mockResolvedValue(makeLineItem()),
@@ -110,6 +111,13 @@ function makeSdb(
 		},
 		vehicle_stock_usage: {
 			create: vi.fn().mockResolvedValue({ id: "usage-1" }),
+		},
+		serial_unit: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
+		stock_batch: {
+			findFirst: vi.fn().mockResolvedValue(null),
+			create: vi.fn().mockResolvedValue({ id: "batch-created-1", code: "LOT-X" }),
 		},
 	};
 
@@ -354,5 +362,226 @@ describe("addSupplierPartUsed", () => {
 
 		expect(result.err).toMatch(/not found/i);
 		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	// ── Case 7: serialized item — new_serials created on leg 1, consumed on leg 2 ──
+
+	it("serialized item: creates serials on leg 1 and consumes the same units on leg 2", async () => {
+		const sdb = makeSdb(undefined, { is_serialized: true, is_batch_tracked: false });
+		mockTechOnVehicle();
+
+		const createdUnits = [{ id: "su-1" }, { id: "su-2" }];
+		sdb._tx.serial_unit.findMany.mockResolvedValue(createdUnits);
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{
+				technician_id: TECH_ID,
+				qty_used: 2,
+				inventory_item_id: INV_ITEM_ID,
+				new_serials: ["SN-1", "SN-2"],
+			},
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toBe("");
+		expect(mockRecordMovements).toHaveBeenCalledTimes(2);
+
+		const [, , , movements1] = mockRecordMovements.mock.calls[0];
+		expect(movements1[0]).toEqual(
+			expect.objectContaining({
+				serial: { create: [{ serial_number: "SN-1" }, { serial_number: "SN-2" }] },
+			}),
+		);
+
+		expect(sdb._tx.serial_unit.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({
+					organization_id: ORG_ID,
+					inventory_item_id: INV_ITEM_ID,
+					serial_number: { in: ["SN-1", "SN-2"] },
+				}),
+			}),
+		);
+
+		const [, , , movements2] = mockRecordMovements.mock.calls[1];
+		expect(movements2[0]).toEqual(
+			expect.objectContaining({
+				serial: { unit_ids: ["su-1", "su-2"] },
+			}),
+		);
+	});
+
+	it("serialized item: missing new_serials is rejected before any DB write", async () => {
+		makeSdb(undefined, { is_serialized: true, is_batch_tracked: false });
+		mockTechOnVehicle();
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{ technician_id: TECH_ID, qty_used: 2, inventory_item_id: INV_ITEM_ID },
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toMatch(/new_serials/i);
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	it("serialized item: wrong-length new_serials is rejected before any DB write", async () => {
+		makeSdb(undefined, { is_serialized: true, is_batch_tracked: false });
+		mockTechOnVehicle();
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{
+				technician_id: TECH_ID,
+				qty_used: 2,
+				inventory_item_id: INV_ITEM_ID,
+				new_serials: ["SN-1"],
+			},
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toMatch(/new_serials/i);
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	// ── Case 8: batch-tracked item — new lot / existing lot ──────────────────
+
+	it("batch-tracked item: a new lot (batch) succeeds and both legs carry matching batch_allocations", async () => {
+		const sdb = makeSdb(undefined, { is_serialized: false, is_batch_tracked: true });
+		mockTechOnVehicle();
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{
+				technician_id: TECH_ID,
+				qty_used: 4,
+				inventory_item_id: INV_ITEM_ID,
+				batch: { batch_number: "LOT-100" },
+			},
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toBe("");
+		expect(sdb._tx.stock_batch.create).toHaveBeenCalledOnce();
+
+		const [, , , movements1] = mockRecordMovements.mock.calls[0];
+		expect(movements1[0]).toEqual(
+			expect.objectContaining({
+				batch_allocations: [{ batch_id: "batch-created-1", qty: 4 }],
+			}),
+		);
+
+		const [, , , movements2] = mockRecordMovements.mock.calls[1];
+		expect(movements2[0]).toEqual(
+			expect.objectContaining({
+				batch_allocations: [{ batch_id: "batch-created-1", qty: 4 }],
+			}),
+		);
+	});
+
+	it("batch-tracked item: an existing lot (batch_id) succeeds", async () => {
+		const sdb = makeSdb(undefined, { is_serialized: false, is_batch_tracked: true });
+		mockTechOnVehicle();
+		sdb._tx.stock_batch.findFirst.mockResolvedValue({ id: "batch-existing-1" });
+
+		const BATCH_ID = "11111111-1111-4111-a111-111111111111";
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{
+				technician_id: TECH_ID,
+				qty_used: 3,
+				inventory_item_id: INV_ITEM_ID,
+				batch_id: BATCH_ID,
+			},
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toBe("");
+		expect(sdb._tx.stock_batch.findFirst).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: BATCH_ID, organization_id: ORG_ID, inventory_item_id: INV_ITEM_ID },
+			}),
+		);
+
+		const [, , , movements1] = mockRecordMovements.mock.calls[0];
+		expect(movements1[0]).toEqual(
+			expect.objectContaining({
+				batch_allocations: [{ batch_id: "batch-existing-1", qty: 3 }],
+			}),
+		);
+	});
+
+	it("batch-tracked item: batch_id not belonging to this item/org is rejected", async () => {
+		const sdb = makeSdb(undefined, { is_serialized: false, is_batch_tracked: true });
+		mockTechOnVehicle();
+		sdb._tx.stock_batch.findFirst.mockResolvedValue(null);
+
+		const BATCH_ID = "22222222-2222-4222-a222-222222222222";
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{
+				technician_id: TECH_ID,
+				qty_used: 1,
+				inventory_item_id: INV_ITEM_ID,
+				batch_id: BATCH_ID,
+			},
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toBe("Batch not found");
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	it("batch-tracked item: providing neither batch nor batch_id is rejected", async () => {
+		makeSdb(undefined, { is_serialized: false, is_batch_tracked: true });
+		mockTechOnVehicle();
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{ technician_id: TECH_ID, qty_used: 1, inventory_item_id: INV_ITEM_ID },
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toMatch(/provide batch or batch_id/i);
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	// ── Case 9: untracked existing item — no regression ──────────────────────
+
+	it("untracked existing item: no serial/batch fields are added to either movement", async () => {
+		makeSdb(undefined, { is_serialized: false, is_batch_tracked: false });
+		mockTechOnVehicle();
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{ technician_id: TECH_ID, qty_used: 5, inventory_item_id: INV_ITEM_ID },
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toBe("");
+		const [, , , movements1] = mockRecordMovements.mock.calls[0];
+		expect(movements1[0].serial).toBeUndefined();
+		expect(movements1[0].batch_allocations).toBeUndefined();
+
+		const [, , , movements2] = mockRecordMovements.mock.calls[1];
+		expect(movements2[0].serial).toBeUndefined();
+		expect(movements2[0].batch_allocations).toBeUndefined();
 	});
 });

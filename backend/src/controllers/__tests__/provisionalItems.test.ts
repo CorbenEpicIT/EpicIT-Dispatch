@@ -125,10 +125,14 @@ describe("provisionalItems", () => {
 	// approveProvisionalItem
 	// -------------------------------------------------------------------------
 	describe("approveProvisionalItem", () => {
+		beforeEach(() => {
+			mockDb.$transaction.mockImplementation((cb: (tx: unknown) => Promise<unknown>) => cb(mockDb));
+		});
+
 		it("flips provisional=false with timestamp", async () => {
 			mockDb.inventory_item.updateMany.mockResolvedValue({ count: 1 });
 			mockDb.inventory_item.findFirst.mockResolvedValue({ id: "prov-1", provisional: false });
-			const result = await approveProvisionalItem("prov-1", "org-1", { dispatcherId: "d-1" });
+			const result = await approveProvisionalItem("prov-1", "org-1", {}, { dispatcherId: "d-1" });
 			expect(result.err).toBeUndefined();
 			expect(mockDb.inventory_item.updateMany).toHaveBeenCalledWith(expect.objectContaining({
 				where: { id: "prov-1", organization_id: "org-1", provisional: true },
@@ -161,7 +165,7 @@ describe("provisionalItems", () => {
 			const updatedItem = { id: "prov-1", name: "Fuse 30A", provisional: false };
 			mockDb.inventory_item.updateMany.mockResolvedValue({ count: 1 });
 			mockDb.inventory_item.findFirst.mockResolvedValue(updatedItem);
-			const result = await approveProvisionalItem("prov-1", "org-1", { dispatcherId: "d-1" });
+			const result = await approveProvisionalItem("prov-1", "org-1", {}, { dispatcherId: "d-1" });
 			expect(result.item).toEqual(updatedItem);
 		});
 	});

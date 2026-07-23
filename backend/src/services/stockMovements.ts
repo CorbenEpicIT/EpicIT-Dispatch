@@ -1,4 +1,26 @@
+import { randomUUID } from "crypto";
 import { Prisma } from "../../generated/prisma/client.js";
+import {
+	applyTracking,
+	type ItemTrackingFlags,
+	type TrackedMovement,
+	type SerialMovementInput,
+	type BatchAllocationInput,
+} from "./inventoryTracking.js";
+
+export {
+	InsufficientBatchStockError,
+	TrackingValidationError,
+	getOrCreateBatch,
+	shortCode,
+	buildTrackingInputs,
+	type RawTrackingInput,
+	type TrackingLineInput,
+	type TrackingReasonCode,
+	type ResolvedTrackingLine,
+	type BuildTrackingOpts,
+	type ItemTrackingFlags,
+} from "./inventoryTracking.js";
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -43,11 +65,21 @@ export interface MovementInput {
 	visit_line_item_id?: string;
 	restock_record_id?: string;
 	adjustment_id?: string;
+	/** Serial units to move/create (serialized items only). */
+	serial?: SerialMovementInput;
+	/** Explicit batch picks (batch-tracked items); omitted → FIFO auto-allocate on deductions. */
+	batch_allocations?: BatchAllocationInput[];
 }
 
 export interface RecordMovementsOpts {
 	/** Allow warehouse qty to go negative. Default: false (throws InsufficientStockError). */
 	allowNegative?: boolean;
+	/**
+	 * Let a tracked movement through even when serial/batch inputs are missing
+	 * (visit-completion path only). Records a "[TRACKING_GAP]" note instead of
+	 * throwing; surfaced by the reconciliation report.
+	 */
+	allowUntracked?: boolean;
 }
 
 /**
@@ -78,8 +110,8 @@ export async function recordMovements(
 	actor: ActorInfo,
 	movements: MovementInput[],
 	opts: RecordMovementsOpts = {},
-): Promise<{ lowStockItemIds: string[] }> {
-	if (movements.length === 0) return { lowStockItemIds: [] };
+): Promise<{ lowStockItemIds: string[]; gapItemIds: string[]; movementIds: string[] }> {
+	if (movements.length === 0) return { lowStockItemIds: [], gapItemIds: [], movementIds: [] };
 
 	// 1. Validate qty
 	for (const m of movements) {
@@ -103,6 +135,14 @@ export async function recordMovements(
 		return (a.to_vehicle_id ?? "").localeCompare(b.to_vehicle_id ?? "");
 	});
 
+	// 2b. Pre-generate ledger ids — createMany returns none, and serial/batch
+	// allocation joins must reference stock_movement.id. Note may be mutated later
+	// by the tracking pass (TRACKING_GAP), so insert reads from these same objects.
+	const withIds: (MovementInput & { _id: string })[] = sorted.map((m) => ({
+		...m,
+		_id: randomUUID(),
+	}));
+
 	// 3. Aggregate cache deltas
 	const itemDeltas = new Map<string, number>(); // inventory_item.quantity
 	// vehicle key = `${vehicle_id}::${item_id}`
@@ -111,7 +151,7 @@ export async function recordMovements(
 		{ vehicle_id: string; inventory_item_id: string; delta: number }
 	>();
 
-	for (const m of sorted) {
+	for (const m of withIds) {
 		if (m.from_location_type === "warehouse") {
 			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? 0) - m.qty);
 		}
@@ -221,9 +261,32 @@ export async function recordMovements(
 		}
 	}
 
-	// 8. Insert movement rows
+	// 7c. Serial + batch tracking pass (locks batch → serial rows, mutates
+	// serial_unit / stock_batch / vehicle_stock_batch, and returns allocation-join
+	// rows to insert after the movement rows). May append TRACKING_GAP to notes.
+	const allItemIds = [...new Set(withIds.map((m) => m.inventory_item_id))];
+	const flags = new Map<string, ItemTrackingFlags>();
+	if (allItemIds.length > 0) {
+		const flagRows = await tx.inventory_item.findMany({
+			where: { id: { in: allItemIds }, organization_id: orgId },
+			select: { id: true, is_serialized: true, is_batch_tracked: true },
+		});
+		for (const r of flagRows)
+			flags.set(r.id, {
+				is_serialized: !!r.is_serialized,
+				is_batch_tracked: !!r.is_batch_tracked,
+			});
+	}
+
+	const tracking = await applyTracking(tx, orgId, flags, withIds as TrackedMovement[], {
+		allowUntracked: opts.allowUntracked,
+		allowNegative: opts.allowNegative,
+	});
+
+	// 8. Insert movement rows (explicit ids so allocation joins can reference them)
 	await tx.stock_movement.createMany({
-		data: sorted.map((m) => ({
+		data: withIds.map((m) => ({
+			id: m._id,
 			organization_id: orgId,
 			inventory_item_id: m.inventory_item_id,
 			qty: new Prisma.Decimal(m.qty),
@@ -242,8 +305,17 @@ export async function recordMovements(
 		})),
 	});
 
+	// 8b. Insert allocation joins (FKs → stock_movement.id + serial_unit/stock_batch.id)
+	if (tracking.movementSerials.length > 0) {
+		await tx.stock_movement_serial.createMany({ data: tracking.movementSerials });
+	}
+	if (tracking.movementBatches.length > 0) {
+		await tx.stock_movement_batch.createMany({ data: tracking.movementBatches });
+	}
+
 	// 9. Return low-stock item IDs for caller to fire alerts post-commit
-	if (itemIds.length === 0) return { lowStockItemIds: [] };
+	const movementIds = withIds.map((m) => m._id);
+	if (itemIds.length === 0) return { lowStockItemIds: [], gapItemIds: tracking.gapItemIds, movementIds };
 
 	const updatedItems = await tx.inventory_item.findMany({
 		where: { id: { in: itemIds } },
@@ -258,5 +330,5 @@ export async function recordMovements(
 		)
 		.map((item) => item.id);
 
-	return { lowStockItemIds };
+	return { lowStockItemIds, gapItemIds: tracking.gapItemIds, movementIds };
 }

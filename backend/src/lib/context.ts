@@ -28,7 +28,7 @@ export const getUserContext = (req: Request): UserContext => {
 	};
 };
 
-// Models that have an organization_id column and must be filtered per-org
+// Models that carry an organization_id column and are filtered per-org directly.
 const ORG_SCOPED_MODELS = new Set([
 	"contact",
 	"client",
@@ -43,6 +43,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"recurring_plan_note",
 	"form_draft",
 	"inventory_item",
+	"inventory_tag",
 	"technician",
 	"dispatcher",
 	"invoice",
@@ -50,79 +51,162 @@ const ORG_SCOPED_MODELS = new Set([
 	"log",
 	"vehicle",
 	"stock_movement",
+	"serial_unit",
+	"stock_batch",
+	"vehicle_restock_record",
+	"vehicle_stock_adjustment",
+	"vehicle_restock_request",
+	"vehicle_readiness",
 	"tax_rate",
 	"tax_group",
 	"organization_role",
 	"saved_report",
 	"report_favorite",
 ]);
-/*
-Here's the complete list of models that have no organization_id column and
-   rely on a parent relation for org scoping:
 
-  ┌───────────────────────┬─────────────────────────────────────────┐
-  │         Model         │             Scoped through              │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ job_visit             │ job.organization_id                     │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ job_visit_line_item   │ job_visit → job.organization_id         │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ job_visit_technician  │ job_visit → job.organization_id         │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ visit_tech_time_entry │ job_visit → job.organization_id         │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ quote_line_item       │ quote.organization_id                   │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ recurring_occurrence  │ recurring_plan.organization_id          │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ invoice_line_item     │ invoice.organization_id                 │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ invoice_payment       │ invoice.organization_id                 │
-  ├───────────────────────┼─────────────────────────────────────────┤
-  │ client_contact        │ client.organization_id (junction table) │
-  └───────────────────────┴─────────────────────────────────────────┘
-*/
 /**
- * Returns a Prisma client scoped to an organization.
- * Automatically injects `organization_id` into findMany, findFirst, count,
- * updateMany, and deleteMany where clauses for all tenant-scoped models.
+ * Models with no organization_id column: org ownership is enforced through a
+ * parent relation. Each entry maps to the relation-filter fragment that pins the
+ * row to the caller's org. Registering a model here gives it the same tenancy
+ * guarantees as an org-scoped model — reads are filtered, writes are guarded.
  *
- * Does NOT cover: create (set organization_id manually in data),
- * update/delete single-record (use updateMany/deleteMany or verify ownership first),
- * findUnique (use findFirst instead).
+ * Models still relying on caller-provided parent scoping (not auto-enforced):
+ * job_visit_line_item, job_visit_technician, visit_tech_time_entry,
+ * quote_line_item, recurring_occurrence, invoice_line_item, invoice_payment,
+ * client_contact. Add them here as needed.
+ */
+const RELATION_SCOPED_MODELS: Record<string, (organizationId: string) => Record<string, unknown>> = {
+	vehicle_stock_item: (o) => ({ vehicle: { organization_id: o } }),
+	vehicle_restock_line: (o) => ({ stock_item: { vehicle: { organization_id: o } } }),
+	vehicle_stock_adjustment_line: (o) => ({ stock_item: { vehicle: { organization_id: o } } }),
+	vehicle_stock_usage: (o) => ({ stock_item: { vehicle: { organization_id: o } } }),
+	item_external_mapping: (o) => ({ inventory_item: { organization_id: o } }),
+	job_visit: (o) => ({ job: { organization_id: o } }),
+	vehicle_stock_batch: (o) => ({ vehicle: { organization_id: o } }),
+	stock_movement_serial: (o) => ({ movement: { organization_id: o } }),
+	stock_movement_batch: (o) => ({ movement: { organization_id: o } }),
+};
+
+// Returns the where-fragment that pins a row to the caller's org, or null if the
+// model is not tenant-scoped.
+function scopeFilter(model: string, organizationId: string): Record<string, unknown> | null {
+	if (ORG_SCOPED_MODELS.has(model)) return { organization_id: organizationId };
+	const rel = RELATION_SCOPED_MODELS[model];
+	return rel ? rel(organizationId) : null;
+}
+
+// AND-composes the caller's org filter into a scoped query's where clause,
+// leaving args untouched for non-tenant-scoped models.
+function scopedArgs<A extends { where?: unknown }>(model: string, args: A, organizationId: string): A {
+	const f = scopeFilter(model, organizationId);
+	if (f) (args as any).where = { AND: [args.where ?? {}, f] };
+	return args;
+}
+
+// Merges the org filter into a single-row where clause as SIBLING properties
+// (not AND-wrapped) alongside the caller's unique identifier — Prisma supports
+// filtering update/delete on non-unique fields this way, and (unlike a separate
+// pre-check query) it's the exact same query the caller already runs, so it
+// naturally participates in whatever transaction that query is part of and sees
+// that transaction's own uncommitted writes (e.g. a batch row created moments
+// earlier via getOrCreateBatch in the same still-open transaction). A mismatch
+// (wrong org, or no such row) makes Prisma itself throw its native P2025.
+function uniqueScopedWhere(model: string, where: unknown, organizationId: string): unknown {
+	const f = scopeFilter(model, organizationId);
+	if (!f) return where;
+	return { ...(where as Record<string, unknown>), ...f };
+}
+
+// Forces create/upsert-create data onto the caller's org, defeating spoofed
+// organization_id / organization.connect payloads.
+function forceOrg<T>(data: T, organizationId: string): T {
+	if (Array.isArray(data)) return data.map((d) => forceOrg(d, organizationId)) as unknown as T;
+	if (!data || typeof data !== "object") return data;
+	const { organization, ...rest } = data as Record<string, unknown>;
+	return (
+		organization !== undefined
+			? { ...rest, organization: { connect: { id: organizationId } } }
+			: { ...rest, organization_id: organizationId }
+	) as unknown as T;
+}
+
+/**
+ * Returns a Prisma client scoped to an organization. Every tenant-scoped model
+ * (org-scoped or relation-scoped) is enforced automatically:
+ *
+ * - reads (findMany/findFirst/count/aggregate) inject the org filter;
+ * - update/delete merge the org filter into the where clause as a sibling of
+ *   the caller's unique identifier (Prisma's "filter on non-unique fields"
+ *   support) rather than a separate ownership pre-check query — it's the same
+ *   query the caller already runs, so it naturally sees whatever transaction
+ *   that query is part of (a separate pre-check query would run on its own
+ *   connection and miss uncommitted writes from an still-open transaction).
+ *   A foreign-org or missing row makes Prisma itself throw its native P2025;
+ * - create/createMany force the caller's org into the data (spoofing impossible);
+ * - upsert forces the caller's org into its create branch;
+ * - findUnique/findUniqueOrThrow reroute to a scoped findFirst/findFirstOrThrow.
+ *
+ * The only rule for adding a model: register it in ORG_SCOPED_MODELS (has an
+ * organization_id column) or RELATION_SCOPED_MODELS (scoped via a parent).
+ *
+ * Note: upsert is not ownership-guarded (its unique where may be a composite key
+ * that can't safely absorb an extra sibling filter) — it only force-scopes the
+ * create branch.
  */
 export function getScopedDb(organizationId: string) {
 	return db.$extends({
 		query: {
 			$allModels: {
 				async findMany({ model, args, query }) {
-					if (ORG_SCOPED_MODELS.has(model))
-						args.where = { ...(args.where as any), organization_id: organizationId };
-					return query(args);
+					return query(scopedArgs(model, args, organizationId));
 				},
 				async findFirst({ model, args, query }) {
-					if (ORG_SCOPED_MODELS.has(model))
-						args.where = { ...(args.where ?? {} as any), organization_id: organizationId };
-					return query(args);
+					return query(scopedArgs(model, args, organizationId));
 				},
 				async count({ model, args, query }) {
-					if (ORG_SCOPED_MODELS.has(model))
-						args.where = { ...(args.where as any), organization_id: organizationId };
-					return query(args);
+					return query(scopedArgs(model, args, organizationId));
 				},
 				async aggregate({ model, args, query }) {
-					if (ORG_SCOPED_MODELS.has(model))
-						(args as any).where = { ...((args as any).where ?? {}), organization_id: organizationId };
-					return query(args);
+					return query(scopedArgs(model, args, organizationId));
 				},
 				async updateMany({ model, args, query }) {
-					if (ORG_SCOPED_MODELS.has(model))
-						args.where = { ...(args.where as any), organization_id: organizationId };
-					return query(args);
+					return query(scopedArgs(model, args, organizationId));
 				},
 				async deleteMany({ model, args, query }) {
-					if (ORG_SCOPED_MODELS.has(model))
-						args.where = { ...(args.where as any), organization_id: organizationId };
+					return query(scopedArgs(model, args, organizationId));
+				},
+				async update({ model, args, query }) {
+					args.where = uniqueScopedWhere(model, args.where, organizationId) as typeof args.where;
+					return query(args);
+				},
+				async delete({ model, args, query }) {
+					args.where = uniqueScopedWhere(model, args.where, organizationId) as typeof args.where;
+					return query(args);
+				},
+				async upsert({ model, args, query }) {
+					if (ORG_SCOPED_MODELS.has(model)) args.create = forceOrg(args.create, organizationId);
+					return query(args);
+				},
+				async create({ model, args, query }) {
+					if (ORG_SCOPED_MODELS.has(model)) args.data = forceOrg(args.data, organizationId);
+					return query(args);
+				},
+				async createMany({ model, args, query }) {
+					if (ORG_SCOPED_MODELS.has(model)) args.data = forceOrg(args.data, organizationId);
+					return query(args);
+				},
+				async findUnique({ model, args, query }) {
+					// Merge the org filter as a sibling of the unique identifier (same trick as
+					// uniqueScopedWhere for update/delete) and keep the original findUnique
+					// operation, so this stays on `query` — the transaction-aware client Prisma
+					// already bound this call to. Rerouting to a different model/operation (e.g.
+					// findFirst on `db`) would run on a separate connection that can't see this
+					// transaction's own uncommitted writes.
+					args.where = uniqueScopedWhere(model, args.where, organizationId) as typeof args.where;
+					return query(args);
+				},
+				async findUniqueOrThrow({ model, args, query }) {
+					args.where = uniqueScopedWhere(model, args.where, organizationId) as typeof args.where;
 					return query(args);
 				},
 			},

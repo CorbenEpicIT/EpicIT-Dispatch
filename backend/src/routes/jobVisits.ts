@@ -390,7 +390,7 @@ router.post("/:id/parts-used", requireAnyPermission("edit_jobs", "use_inventory"
             }
             return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
-        res.status(201).json(createSuccessResponse(result.item));
+        res.status(201).json(createSuccessResponse("item" in result ? result.item : null));
     } catch (err) {
         next(err);
     }
@@ -417,7 +417,7 @@ router.post("/:id/parts-used/supplier", requirePermission("use_inventory"), asyn
             const status = result.err.includes("not found") ? 404 : 400;
             return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
-        res.status(201).json(createSuccessResponse(result.item));
+        res.status(201).json(createSuccessResponse("item" in result ? result.item : null));
     } catch (err) { next(err); }
 });
 

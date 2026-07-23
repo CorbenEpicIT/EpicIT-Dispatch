@@ -7,6 +7,7 @@ import {
 	exportLowStockInventory,
 	type ImportResult,
 } from "../../api/inventory";
+import { invalidate } from "../../lib/queryKeys";
 
 const ACCEPTED_EXTS = [".xlsx", ".xls", ".csv"];
 const ACCEPTED_MIMES = [
@@ -62,7 +63,7 @@ export default function InventoryImportExport({ isOpen, onClose }: Props) {
 		try {
 			const result = await importInventory(selectedFile);
 			setImportResult(result);
-			queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+			invalidate.warehouse(queryClient);
 		} catch (e) {
 			setImportError(e instanceof Error ? e.message : "Import failed");
 		} finally {

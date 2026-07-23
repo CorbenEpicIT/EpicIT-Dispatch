@@ -9,21 +9,45 @@ import {
 	recordMovements,
 	lockInventoryRows,
 	InsufficientStockError,
+	InsufficientBatchStockError,
+	TrackingValidationError,
+	getOrCreateBatch,
+	buildTrackingInputs,
 	type ActorInfo,
 	type MovementInput,
+	type ItemTrackingFlags,
+	type TrackingReasonCode,
+	type ResolvedTrackingLine,
 } from "../services/stockMovements.js";
 import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
-import { getSocket } from "../services/socketService.js";
+import { expiresAtField } from "../lib/validate/inventoryTracking.js";
+import { emitToOrg, emitInventoryUpdated } from "../services/socketService.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
+import {
+	mapVehicleStockItemWithInventory,
+	mapRestockHistoryRecord,
+	mapStockAdjustmentRecord,
+	mapRestockRequest,
+	mapStockMovement,
+} from "../types/dto/vehicles.js";
 
-// Best-effort real-time push — an unavailable/uninitialized socket layer must
-// never fail a stock mutation whose DB write already succeeded.
-function emitInventoryUpdated(organizationId: string): void {
-	try {
-		getSocket().to(`org:${organizationId}`).emit("inventory:updated", { organizationId });
-	} catch {
-		// no-op
-	}
+// Stock-item quantities nested under a restock request only carry a partial
+// inventory_item select (id/name/unit/quantity, no Decimal fields) — convert
+// just the Decimal quantities here rather than the full DTO mapper, which
+// expects a complete inventory_item to map.
+function mapStockItemForRequest<T extends { qty_on_hand: unknown; qty_min: unknown; qty_standard: unknown }>(
+	stockItem: T,
+): Omit<T, "qty_on_hand" | "qty_min" | "qty_standard"> & {
+	qty_on_hand: number;
+	qty_min: number;
+	qty_standard: number | null;
+} {
+	return {
+		...stockItem,
+		qty_on_hand: Number(stockItem.qty_on_hand),
+		qty_min: Number(stockItem.qty_min),
+		qty_standard: stockItem.qty_standard == null ? null : Number(stockItem.qty_standard),
+	};
 }
 
 export type ReadinessState = "not_applicable" | "unknown" | "auto_ready" | "needs_action" | "confirmed";
@@ -65,6 +89,22 @@ function formatZodError(e: ZodError): string {
 	return e.issues.map((i) => i.message).join(", ");
 }
 
+/**
+ * Shared catch-block handling for the tracking errors (InsufficientBatchStockError,
+ * TrackingValidationError) that applyFill / completeRestock / adjustStock / addPartsUsed /
+ * addSupplierPartUsed all surface the same way. Returns null when `e` isn't one of these,
+ * so callers fall through to their own remaining checks.
+ */
+function trackingErrorResponse(e: unknown): { err: string; available?: Record<string, number> } | null {
+	if (e instanceof InsufficientBatchStockError) {
+		return { err: "insufficient_batch_stock", available: e.available };
+	}
+	if (e instanceof TrackingValidationError) {
+		return { err: e.message };
+	}
+	return null;
+}
+
 async function requireVehicle(
 	sdb: ReturnType<typeof getScopedDb>,
 	vehicleId: string,
@@ -80,10 +120,10 @@ interface RestockRequestRow {
 	organization_id: string;
 	stock_item_id: string;
 	technician_id: string;
-	qty_requested: unknown;
+	qty_requested: number | null;
 	note: string | null;
 	status: string;
-	created_at: Date;
+	created_at: string;
 	stock_item: {
 		id: string;
 		inventory_item: { id: string; name: string; unit: string; quantity: unknown };
@@ -96,10 +136,10 @@ interface RestockHistoryRecord {
 	id: string;
 	vehicle_id: string;
 	organization_id: string;
-	completed_at: Date;
+	completed_at: string;
 	mode: string;
 	notes: string | null;
-	restock_lines: { id: string; stock_item_id: string; qty_restocked: Prisma.Decimal; qty_shortfall: Prisma.Decimal }[];
+	restock_lines: { id: string; stock_item_id: string; qty_restocked: number; qty_shortfall: number }[];
 	completed_by: { id: string; name: string } | null;
 	completed_by_tech: { id: string; name: string } | null;
 }
@@ -110,8 +150,8 @@ interface StockAdjustmentRecord {
 	organization_id: string;
 	type: string;
 	note: string | null;
-	created_at: Date;
-	lines: { id: string; stock_item_id: string; qty_before: unknown; qty_after: unknown; inventory_impact: unknown }[];
+	created_at: string;
+	lines: { id: string; stock_item_id: string; qty_before: number; qty_after: number; inventory_impact: number }[];
 	created_by: { id: string; name: string } | null;
 	created_by_tech: { id: string; name: string } | null;
 }
@@ -123,6 +163,182 @@ type RestockRecord = Prisma.vehicle_restock_recordGetPayload<{
 		completed_by_tech: { select: { id: true; name: true } };
 	}
 }>;
+
+// ── Tracking line detail (Phase 2b: 2026-07-14 audit-fixes plan) ─────────────
+//
+// completeRestock / applyFill both call buildTrackingInputs (Task 1) and, on
+// success, need to tell the dispatcher/tech what actually happened per line —
+// not just requested/moved/short, but *why* a line came up short and which
+// physical units/lots moved. `reason_code` is Task 1's TrackingReasonCode
+// as-shipped (do not rename/extend it — reviewed and approved); `message` is
+// built here in the controller, per the plan's guidance, not in the helper.
+
+/** Shared response shape for both completeRestock's sibling array and applyFill's extended line. */
+export interface RestockLineDetail {
+	stock_item_id: string;
+	reason_code: TrackingReasonCode;
+	message?: string;
+	/** Serial codes that moved, for serialized lines (explicit scans only — these two callers never create new serials). */
+	serial_codes?: string[];
+	/** Lot codes that moved, for batch-tracked lines (explicit picks or FIFO auto-allocation). */
+	lot_codes?: string[];
+}
+
+function trackingLineMessage(
+	reasonCode: TrackingReasonCode,
+	requested: number,
+	moved: number,
+): string | undefined {
+	if (reasonCode === "no_tracking_gap") {
+		return "No units scanned — recorded as a tracking gap; verify what actually went out.";
+	}
+	if (reasonCode === "cache_drift_detected") {
+		return "Scanned/lot quantity did not match the cached stock count — investigate a possible data drift.";
+	}
+	// reasonCode === "ok" — Task 1 review Finding B: a batch-tracked edge case can
+	// report "ok" with a real shortfall against genuine lot availability, so
+	// shortfall (not reasonCode) is what decides whether there's a message here.
+	return moved < requested ? `Only ${moved} of ${requested} available in the warehouse.` : undefined;
+}
+
+/**
+ * A line needs dispatcher/tech attention whenever it came up short OR its
+ * reasonCode flags something noteworthy — independently of each other.
+ * reasonCode === "ok" does NOT imply "nothing to show" (Task 1 review Finding B).
+ */
+function trackingNeedsAttention(reasonCode: TrackingReasonCode, shortfall: number): boolean {
+	return shortfall > 0 || reasonCode !== "ok";
+}
+
+/**
+ * Resolves human-readable codes for lines where the caller supplied explicit
+ * serial_unit_ids / batch_picks — one batched query each, across all lines,
+ * rather than a query per line.
+ */
+async function resolveExplicitTrackingCodes(
+	tx: Prisma.TransactionClient,
+	lines: Pick<ResolvedTrackingLine, "tracking">[],
+): Promise<{ serialCodeById: Map<string, string>; batchCodeById: Map<string, string> }> {
+	const serialIds = new Set<string>();
+	const batchIds = new Set<string>();
+	for (const l of lines) {
+		for (const id of l.tracking.serial?.unit_ids ?? []) serialIds.add(id);
+		for (const a of l.tracking.batch_allocations ?? []) batchIds.add(a.batch_id);
+	}
+	const [serialRows, batchRows] = await Promise.all([
+		serialIds.size
+			? tx.serial_unit.findMany({ where: { id: { in: [...serialIds] } }, select: { id: true, code: true } })
+			: Promise.resolve([] as { id: string; code: string }[]),
+		batchIds.size
+			? tx.stock_batch.findMany({ where: { id: { in: [...batchIds] } }, select: { id: true, code: true } })
+			: Promise.resolve([] as { id: string; code: string }[]),
+	]);
+	return {
+		serialCodeById: new Map(serialRows.map((r) => [r.id, r.code])),
+		batchCodeById: new Map(batchRows.map((r) => [r.id, r.code])),
+	};
+}
+
+/**
+ * Lot codes for batch-tracked lines that went through with NO explicit picks
+ * (FIFO auto-allocation — decided later, inside recordMovements -> applyTracking,
+ * which this function never touches or threads a signature change through).
+ * Read-after-write: the movement rows recordMovements just created inside this
+ * same transaction are the only record of which lot(s) FIFO chose.
+ */
+async function resolveFifoLotCodes(
+	tx: Prisma.TransactionClient,
+	where: Prisma.stock_movementWhereInput,
+): Promise<Map<string, string[]>> {
+	const rows = await tx.stock_movement.findMany({
+		where,
+		select: { inventory_item_id: true, movement_batches: { select: { batch: { select: { code: true } } } } },
+	});
+	const byItem = new Map<string, string[]>();
+	for (const row of rows) {
+		if (row.movement_batches.length === 0) continue;
+		const codes = byItem.get(row.inventory_item_id) ?? [];
+		for (const mb of row.movement_batches) codes.push(mb.batch.code);
+		byItem.set(row.inventory_item_id, codes);
+	}
+	return byItem;
+}
+
+/**
+ * Serial/lot codes that actually moved for a set of resolved tracking lines —
+ * shared by applyFill and completeRestock (Phase 2b). Explicit picks resolve
+ * straight from buildTrackingInputs's output; FIFO auto-allocated batch lines
+ * (no explicit picks) resolve via a read-after-write on EXACTLY the movement
+ * rows recordMovements just wrote (`movementIds` it returns) — no wall-clock
+ * `created_at` filter, so a DB/app clock skew can't silently drop lot codes.
+ * Returns a per-line map keyed by index into `resolvedLines`.
+ */
+async function resolveMovedTrackingCodes(
+	tx: Prisma.TransactionClient,
+	resolvedLines: ResolvedTrackingLine[],
+	flags: Map<string, ItemTrackingFlags>,
+	movementIds: string[],
+): Promise<Map<number, { serial_codes?: string[]; lot_codes?: string[] }>> {
+	const { serialCodeById, batchCodeById } = await resolveExplicitTrackingCodes(tx, resolvedLines);
+	const fifoItemIds = [
+		...new Set(
+			resolvedLines
+				.filter(
+					(r) =>
+						flags.get(r.inventory_item_id)?.is_batch_tracked &&
+						r.qty > 0 &&
+						!r.tracking.batch_allocations?.length,
+				)
+				.map((r) => r.inventory_item_id),
+		),
+	];
+	const fifoLotCodesByItem =
+		fifoItemIds.length && movementIds.length
+			? await resolveFifoLotCodes(tx, { id: { in: movementIds }, inventory_item_id: { in: fifoItemIds } })
+			: new Map<string, string[]>();
+
+	const byIndex = new Map<number, { serial_codes?: string[]; lot_codes?: string[] }>();
+	resolvedLines.forEach((r, i) => {
+		const out: { serial_codes?: string[]; lot_codes?: string[] } = {};
+		const serialIds = r.tracking.serial?.unit_ids;
+		if (serialIds?.length) {
+			const codes = serialIds.map((id) => serialCodeById.get(id)).filter((c): c is string => !!c);
+			if (codes.length) out.serial_codes = codes;
+		}
+		const explicitLots = r.tracking.batch_allocations
+			?.map((a) => batchCodeById.get(a.batch_id))
+			.filter((c): c is string => !!c);
+		const lots = explicitLots?.length ? explicitLots : fifoLotCodesByItem.get(r.inventory_item_id);
+		if (lots?.length) out.lot_codes = [...new Set(lots)];
+		byIndex.set(i, out);
+	});
+	return byIndex;
+}
+
+/**
+ * Loads is_serialized/is_batch_tracked flags for a set of inventory items,
+ * keyed by id — shared by applyFill, completeRestock, and adjustStock.
+ */
+async function loadTrackingFlags(
+	tx: Prisma.TransactionClient,
+	itemIds: string[],
+): Promise<Map<string, ItemTrackingFlags>> {
+	const flagRows = itemIds.length
+		? await tx.inventory_item.findMany({
+				where: { id: { in: itemIds } },
+				select: { id: true, is_serialized: true, is_batch_tracked: true },
+			})
+		: [];
+	return new Map<string, ItemTrackingFlags>(
+		flagRows.map((r: { id: string; is_serialized: boolean; is_batch_tracked: boolean }) => [
+			r.id,
+			{ is_serialized: r.is_serialized, is_batch_tracked: r.is_batch_tracked },
+		]),
+	);
+}
+
+/** Serial/batch tracking to splice into a MovementInput for a single resolved line. */
+type LineTracking = { serial?: MovementInput["serial"]; batch_allocations?: MovementInput["batch_allocations"] };
 
 // ── Validation schemas ────────────────────────────────────────────────────────
 
@@ -166,6 +382,13 @@ const completeRestockSchema = z.object({
 			z.object({
 				stock_item_id:  z.string().uuid(),
 				qty_to_restock: z.number().int().min(0),
+				// Serial/batch tracking (B-T4) — optional pass-through; a technician who
+				// scans supplies real per-unit/lot tracking, otherwise the movement goes
+				// through untracked (allowUntracked) and records a gap instead of blocking.
+				serial_unit_ids: z.array(z.string().uuid()).optional(),
+				batch_picks:     z
+					.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
+					.optional(),
 			}),
 		)
 		.refine(
@@ -193,6 +416,21 @@ const adjustStockSchema = z
 						inventory_item_id: z.string().uuid().optional(),
 						new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
 						qty_after:         z.number().min(0),
+						// Serial/batch tracking (B-T3) — which fields apply depends on the
+						// resolved item's is_serialized/is_batch_tracked flags, which Zod
+						// can't see; the controller validates that once the item is loaded.
+						serial_unit_ids: z.array(z.string().uuid()).optional(),
+						new_serials:     z.array(z.string().trim().min(1).max(100)).optional(),
+						batch_picks:     z
+							.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
+							.optional(),
+						new_batch: z
+							.object({
+								batch_number: z.string().trim().min(1).max(100),
+								expires_at:   expiresAtField,
+								supplier:     z.string().trim().max(200).optional(),
+							})
+							.optional(),
 					})
 					.refine(
 						(l) => {
@@ -200,6 +438,10 @@ const adjustStockSchema = z
 							return identifiers === 1;
 						},
 						{ message: "Each line needs exactly one of stock_item_id, inventory_item_id, or new_item" },
+					)
+					.refine(
+						(l) => !(l.serial_unit_ids?.length && l.new_serials?.length),
+						{ message: "Provide either serial_unit_ids or new_serials, not both" },
 					),
 			)
 			.min(1, "At least one line required")
@@ -259,6 +501,28 @@ const adjustStockSchema = z
 						code: z.ZodIssueCode.custom,
 						path: ["lines", i, "new_item"],
 						message: "new_item is only allowed for supplier_purchase",
+					});
+				}
+			});
+		}
+
+		// new_serials / new_batch (creating brand-new tracked units/lots) are only
+		// meaningful for supplier_purchase — the one type whose movement direction
+		// is external→vehicle (units/lots entering circulation for the first time).
+		if (data.type !== "supplier_purchase") {
+			data.lines.forEach((line, i) => {
+				if (line.new_serials) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						path: ["lines", i, "new_serials"],
+						message: "new_serials is only allowed for supplier_purchase",
+					});
+				}
+				if (line.new_batch) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						path: ["lines", i, "new_batch"],
+						message: "new_batch is only allowed for supplier_purchase",
 					});
 				}
 			});
@@ -376,7 +640,7 @@ export const listVehicleStock = async (vehicleId: string, organizationId: string
 			{ inventory_item: { name: "asc" } },
 		],
 	});
-	return { err: "", items };
+	return { err: "", items: items.map(mapVehicleStockItemWithInventory) };
 };
 
 export const addVehicleStockItem = async (vehicleId: string, data: unknown, organizationId: string, context?: UserContext) => {
@@ -439,7 +703,7 @@ export const addVehicleStockItem = async (vehicleId: string, data: unknown, orga
 				qty_min:     { old: null, new: item.qty_min },
 			},
 		});
-		return { err: "", item };
+		return { err: "", item: mapVehicleStockItemWithInventory(item) };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to add vehicle stock item");
@@ -505,7 +769,7 @@ export const updateVehicleStockItem = async (vehicleId: string, itemId: string, 
 				changes,
 			});
 		}
-		return { err: "", item };
+		return { err: "", item: mapVehicleStockItemWithInventory(item) };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		log.error({ err: e }, "Failed to update vehicle stock item");
@@ -728,13 +992,6 @@ export async function createRestockRequestsBulk(
 
 // ── Restock request lifecycle (list / fulfill / dismiss) ──────────────────────
 
-// vehicle_restock_request has no organization_id column — org scoping goes
-// through stock_item.vehicle (same pattern as getUsageToday).
-const restockRequestScope = (orgId: string, extra: Record<string, unknown> = {}) => ({
-	...extra,
-	stock_item: { vehicle: { organization_id: orgId } },
-});
-
 async function requireTechOnVehicle(
 	vehicleId: string,
 	orgId: string,
@@ -790,7 +1047,8 @@ export async function listRestockRequests(
 
 		return {
 			requests: requests.map((r) => ({
-				...r,
+				...mapRestockRequest(r),
+				stock_item: mapStockItemForRequest(r.stock_item),
 				technician: techById.get(r.technician_id) ?? null,
 			})),
 		};
@@ -838,7 +1096,12 @@ export async function listVehicleRestockRequests(
 			take: 200,
 		});
 
-		return { requests };
+		return {
+			requests: requests.map((r) => ({
+				...mapRestockRequest(r),
+				stock_item: mapStockItemForRequest(r.stock_item),
+			})),
+		};
 	} catch (e: unknown) {
 		log.error({ err: e }, "Failed to list vehicle restock requests");
 		return { err: "Failed to list vehicle restock requests" };
@@ -856,20 +1119,20 @@ export async function dismissRestockRequest(
 			where: {
 				id: requestId,
 				status: { in: ["pending", "acknowledged"] },
-				stock_item: { vehicle: { organization_id: orgId } },
+				organization_id: orgId,
 			},
 			data: { status: "dismissed", dismissed_reason: "dispatch" },
 		});
 		if (claimed.count === 0) {
 			const existing = await db.vehicle_restock_request.findFirst({
-				where: restockRequestScope(orgId, { id: requestId }),
+				where: { id: requestId, organization_id: orgId },
 			});
 			if (!existing) return { err: "Restock request not found" };
 			return { err: `Request is already ${existing.status}` };
 		}
 
 		const updated = await db.vehicle_restock_request.findFirst({
-			where: restockRequestScope(orgId, { id: requestId }),
+			where: { id: requestId, organization_id: orgId },
 		});
 
 		await logActivity({
@@ -918,7 +1181,11 @@ export async function acknowledgeRestockRequest(
 			if (!existing) return { err: "Restock request not found" };
 			return { err: "Request is not in pending state" };
 		}
-		const request = await db.vehicle_restock_request.findUnique({ where: { id: requestId } });
+		// Org-filtered — the prior unscoped findUnique here could return another
+		// org's request once the updateMany above confirmed ownership by id alone.
+		const request = await db.vehicle_restock_request.findUnique({
+			where: { id: requestId, organization_id: orgId },
+		});
 		if (!request) return { err: "Restock request not found" };
 		await logActivity({
 			event_type: "vehicle_restock_request.acknowledged",
@@ -973,9 +1240,11 @@ export const setTechnicianVehicle = async (technicianId: string, vehicleId: stri
 // ── Parts used (visit-level stock deduction) ──────────────────────────────────
 
 const addPartsUsedSchema = z.object({
-	stock_item_id: z.string().uuid(),
-	qty_used:      z.number().positive(),
-	technician_id: z.string().uuid(),
+	stock_item_id:   z.string().uuid(),
+	qty_used:        z.number().positive(),
+	technician_id:   z.string().uuid(),
+	serial_unit_ids: z.array(z.string().uuid()).optional(),
+	batch_id:        z.string().uuid().optional(),
 });
 
 export const addPartsUsed = async (visitId: string, data: unknown, organizationId: string) => {
@@ -991,6 +1260,33 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 
 		const visit = await sdb.job_visit.findFirst({ where: { id: visitId } });
 		if (!visit) return { err: "Visit not found" };
+
+		// Serial/batch tracking (B-T2) — uncapped/strict single line. Resolved
+		// BEFORE the transaction opens so a validation failure never opens one
+		// (addPartsUsed.test.ts "...without opening a transaction"). Uncapped mode
+		// never dereferences `tx` (no tx.stock_batch query happens unless capped),
+		// so a throwaway value is safe here — see task-1 report for why the
+		// signature keeps `tx` non-nullable rather than widening it.
+		const [partsUsedTracking] = await buildTrackingInputs(
+			null as unknown as Prisma.TransactionClient,
+			organizationId,
+			new Map<string, ItemTrackingFlags>([
+				[
+					stockItem.inventory_item_id,
+					{
+						is_serialized: stockItem.inventory_item.is_serialized,
+						is_batch_tracked: stockItem.inventory_item.is_batch_tracked,
+					},
+				],
+			]),
+			[
+				{
+					inventory_item_id: stockItem.inventory_item_id,
+					qty: parsed.qty_used,
+					raw: { serial_unit_ids: parsed.serial_unit_ids, batch_id: parsed.batch_id },
+				},
+			],
+		);
 
 		const result = await sdb.$transaction(async (tx) => {
 			// Create line item first — the movement links to it
@@ -1027,6 +1323,8 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 						reason:             "parts_used",
 						visit_id:           visitId,
 						visit_line_item_id: lineItem.id,
+						serial:             partsUsedTracking.tracking.serial,
+						batch_allocations:  partsUsedTracking.tracking.batch_allocations,
 					},
 				],
 				{ allowNegative: true },
@@ -1061,6 +1359,8 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 		return { err: "", item: result };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
+		const t = trackingErrorResponse(e);
+		if (t) return t;
 		log.error({ err: e }, "Failed to add parts used");
 		return { err: "Failed to add parts used" };
 	}
@@ -1072,11 +1372,25 @@ export interface FillToStandardLine {
 	inventory_item_id: string;
 	qty_moved: number;
 	shortfall: number;
+	reason_code: TrackingReasonCode;
+	message?: string;
+	serial_codes?: string[];
+	lot_codes?: string[];
 }
 
 const applyFillSchema = z.object({
 	lines: z
-		.array(z.object({ inventory_item_id: z.string().uuid(), qty: z.number().int().positive() }))
+		.array(
+			z.object({
+				inventory_item_id: z.string().uuid(),
+				qty:               z.number().int().positive(),
+				// Serial/batch tracking (B-T4) — see completeRestockSchema comment above.
+				serial_unit_ids: z.array(z.string().uuid()).optional(),
+				batch_picks:     z
+					.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
+					.optional(),
+			}),
+		)
 		.min(1, "At least one line required"),
 });
 
@@ -1085,7 +1399,7 @@ export async function applyFill(
 	data: unknown,
 	orgId: string,
 	context?: UserContext,
-): Promise<{ err?: string; lines?: FillToStandardLine[] }> {
+): Promise<{ err?: string; available?: Record<string, number>; lines?: FillToStandardLine[] }> {
 	try {
 		const parsed = applyFillSchema.parse(data);
 		const sdb = getScopedDb(orgId);
@@ -1104,35 +1418,81 @@ export async function applyFill(
 				items.map((i: { id: string; quantity: number }) => [i.id, Number(i.quantity)]),
 			);
 
-			const computed: FillToStandardLine[] = [];
-			const movements: MovementInput[] = [];
-			for (const line of parsed.lines) {
-				const available = Math.max(0, availableById.get(line.inventory_item_id) ?? 0);
-				const moved = Math.min(line.qty, available);
-				computed.push({
+			// Serial/batch tracking (B-T4) — warn-don't-block: allowUntracked lets a
+			// gap be recorded instead of throwing when nothing was scanned. Capped
+			// mode — availableById (the warehouse cache) is mutated in place by
+			// buildTrackingInputs to mirror this loop's original running-balance
+			// behavior. A serialized line with real scan input is never clamped to
+			// the cache (phase 0 cache-drift fix); a batch-tracked line clamps
+			// against the real stock_batch lot sum instead.
+			const flags = await loadTrackingFlags(tx as unknown as Prisma.TransactionClient, itemIds);
+
+			const resolvedLines = await buildTrackingInputs(
+				tx as unknown as Prisma.TransactionClient,
+				orgId,
+				flags,
+				parsed.lines.map((line) => ({
 					inventory_item_id: line.inventory_item_id,
-					qty_moved: moved,
-					shortfall: line.qty - moved,
-				});
-				if (moved > 0) {
-					availableById.set(line.inventory_item_id, available - moved);
-					movements.push({
-						inventory_item_id: line.inventory_item_id,
-						qty: moved,
-						from_location_type: "warehouse",
-						to_location_type: "vehicle",
-						to_vehicle_id: vehicleId,
-						reason: "restock",
-					});
-				}
-			}
-			const result = await recordMovements(tx as unknown as Prisma.TransactionClient, orgId, toActor(context), movements);
+					qty: line.qty,
+					raw: { serial_unit_ids: line.serial_unit_ids, batch_picks: line.batch_picks },
+				})),
+				{ available: availableById },
+			);
+
+			const computed: FillToStandardLine[] = resolvedLines.map((r, i) => {
+				const requested = parsed.lines[i].qty;
+				const detail: FillToStandardLine = {
+					inventory_item_id: r.inventory_item_id,
+					qty_moved: r.qty,
+					shortfall: r.shortfall,
+					reason_code: r.reasonCode,
+				};
+				const message = trackingLineMessage(r.reasonCode, requested, r.qty);
+				if (message) detail.message = message;
+				return detail;
+			});
+			const movements: MovementInput[] = resolvedLines
+				.filter((r) => r.qty > 0)
+				.map((r) => ({
+					inventory_item_id: r.inventory_item_id,
+					qty: r.qty,
+					from_location_type: "warehouse",
+					to_location_type: "vehicle",
+					to_vehicle_id: vehicleId,
+					reason: "restock",
+					...r.tracking,
+				}));
+			const result = await recordMovements(
+				tx as unknown as Prisma.TransactionClient,
+				orgId,
+				toActor(context),
+				movements,
+				{ allowUntracked: true },
+			);
 			lowStockItemIds = result.lowStockItemIds;
+
+			// Phase 2b — serial/lot codes that actually moved (see resolveMovedTrackingCodes).
+			const movedCodes = await resolveMovedTrackingCodes(
+				tx as unknown as Prisma.TransactionClient,
+				resolvedLines,
+				flags,
+				result.movementIds,
+			);
+			computed.forEach((line, i) => {
+				const codes = movedCodes.get(i);
+				if (codes?.serial_codes) line.serial_codes = codes.serial_codes;
+				if (codes?.lot_codes) line.lot_codes = codes.lot_codes;
+			});
+
 			return computed;
 		});
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
 		if (lines.some((l) => l.qty_moved > 0)) {
+			emitInventoryUpdated(orgId, { vehicleId });
+			const linesNeedingAttention = lines
+				.filter((l) => trackingNeedsAttention(l.reason_code, l.shortfall))
+				.map((l) => ({ item: l.inventory_item_id, reason: l.reason_code, message: l.message }));
 			await logActivity({
 				event_type: "vehicle_stock.fill_to_standard",
 				action: "updated",
@@ -1140,13 +1500,20 @@ export async function applyFill(
 				entity_id: vehicleId,
 				organization_id: orgId,
 				...getActorInfo(context),
-				changes: { lines_filled: { old: null, new: lines.filter((l) => l.qty_moved > 0).length } },
+				changes: {
+					lines_filled: { old: null, new: lines.filter((l) => l.qty_moved > 0).length },
+					...(linesNeedingAttention.length > 0
+						? { lines_needing_attention: { old: null, new: linesNeedingAttention } }
+						: {}),
+				},
 			});
 		}
 
 		return { lines };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
+		const t = trackingErrorResponse(e);
+		if (t) return t;
 		log.error({ err: e }, "Failed to apply fill");
 		return { err: "Failed to apply fill" };
 	}
@@ -1267,7 +1634,12 @@ export async function completeRestock(
 	data: unknown,
 	orgId: string,
 	context?: UserContext,
-): Promise<{ err?: string; record?: RestockRecord }> {
+): Promise<{
+	err?: string;
+	available?: Record<string, number>;
+	record?: RestockRecord;
+	line_details?: RestockLineDetail[];
+}> {
 	try {
 		const parsed = completeRestockSchema.parse(data);
 		const sdb = getScopedDb(orgId);
@@ -1290,8 +1662,9 @@ export async function completeRestock(
 		};
 
 		let lowStockItemIds: string[] = [];
+		const stockItemInventoryItemId = new Map<string, string>();
 
-		const record = await sdb.$transaction(async (tx) => {
+		const { record, lineDetails } = (await sdb.$transaction(async (tx) => {
 			// Record created first — the (vehicle_id, day) unique constraint is the
 			// duplicate-EOD guard, raced-safe unlike a pre-tx findFirst.
 			const restockRecord = await tx.vehicle_restock_record.create({
@@ -1327,22 +1700,70 @@ export async function completeRestock(
 			});
 			const availableById = new Map(items.map((i: { id: string; quantity: number }) => [i.id, Number(i.quantity)]));
 
-			const computedLines: RestockComputedLine[] = parsed.restock_lines.map((line) => {
+			// Resolve each line's stock item up front (throws for an unknown
+			// stock_item_id, same as the original per-line .find() did).
+			const lineMeta = parsed.restock_lines.map((line) => {
 				const stockItem = stockItems.find((s) => s.id === line.stock_item_id);
 				if (!stockItem) throw new Error(`Stock item ${line.stock_item_id} not found`);
-				const available = Math.max(0, availableById.get(stockItem.inventory_item_id) ?? 0);
-				const actual = Math.min(line.qty_to_restock, available);
-				return {
-					stock_item_id:     line.stock_item_id,
-					inventory_item_id: stockItem.inventory_item_id,
-					qty_restocked:     actual,
-					qty_shortfall:     line.qty_to_restock - actual,
-				};
+				return { stock_item_id: line.stock_item_id, inventory_item_id: stockItem.inventory_item_id, raw: line };
+			});
+			for (const l of lineMeta) stockItemInventoryItemId.set(l.stock_item_id, l.inventory_item_id);
+
+			// Serial/batch tracking (B-T4) — warn-don't-block: allowUntracked lets a
+			// gap be recorded instead of throwing when nothing was scanned. Capped
+			// against the warehouse cache (availableById), mutated in place by
+			// buildTrackingInputs. Zero-qty_to_restock lines are excluded from the
+			// helper call (nothing to reconcile) and reconstituted afterward so
+			// index-alignment with parsed.restock_lines survives (a zero-qty line
+			// must not shift or drop a later line's tracking — see "multi-line
+			// restock: tracking lands on the correct line despite a zero-qty line
+			// being filtered out").
+			const flagItemIds = [...new Set(lineMeta.map((l) => l.inventory_item_id))].sort();
+			const flags = await loadTrackingFlags(tx as unknown as Prisma.TransactionClient, flagItemIds);
+
+			const nonZeroIdx: number[] = [];
+			const nonZeroLines: { inventory_item_id: string; qty: number; raw: { serial_unit_ids?: string[]; batch_picks?: MovementInput["batch_allocations"] } }[] = [];
+			lineMeta.forEach((l, i) => {
+				if (l.raw.qty_to_restock <= 0) return;
+				nonZeroIdx.push(i);
+				nonZeroLines.push({
+					inventory_item_id: l.inventory_item_id,
+					qty: l.raw.qty_to_restock,
+					raw: { serial_unit_ids: l.raw.serial_unit_ids, batch_picks: l.raw.batch_picks },
+				});
 			});
 
-			const movements: MovementInput[] = computedLines
-				.filter((l) => l.qty_restocked > 0)
-				.map((l) => ({
+			const resolvedLines = await buildTrackingInputs(
+				tx as unknown as Prisma.TransactionClient,
+				orgId,
+				flags,
+				nonZeroLines,
+				{ available: availableById },
+			);
+
+			const computedLines: RestockComputedLine[] = lineMeta.map((l) => ({
+				stock_item_id:     l.stock_item_id,
+				inventory_item_id: l.inventory_item_id,
+				qty_restocked:     0,
+				qty_shortfall:     0,
+			}));
+			const trackingByLine: LineTracking[] = lineMeta.map(() => ({}));
+			nonZeroIdx.forEach((origIdx, k) => {
+				const r = resolvedLines[k];
+				computedLines[origIdx] = {
+					stock_item_id:     lineMeta[origIdx].stock_item_id,
+					inventory_item_id: lineMeta[origIdx].inventory_item_id,
+					qty_restocked:     r.qty,
+					qty_shortfall:     r.shortfall,
+				};
+				trackingByLine[origIdx] = r.tracking;
+			});
+
+			const movements: MovementInput[] = [];
+			for (let i = 0; i < computedLines.length; i++) {
+				const l = computedLines[i];
+				if (l.qty_restocked <= 0) continue;
+				movements.push({
 					inventory_item_id:  l.inventory_item_id,
 					qty:                l.qty_restocked,
 					from_location_type: "warehouse",
@@ -1350,9 +1771,47 @@ export async function completeRestock(
 					to_vehicle_id:      vehicleId,
 					reason:             "restock",
 					restock_record_id:  restockRecord.id,
-				}));
-			const result = await recordMovements(tx as unknown as Prisma.TransactionClient, orgId, toActor(context), movements);
+					...trackingByLine[i],
+				});
+			}
+			const result = await recordMovements(
+				tx as unknown as Prisma.TransactionClient,
+				orgId,
+				toActor(context),
+				movements,
+				{ allowUntracked: true },
+			);
 			lowStockItemIds = result.lowStockItemIds;
+
+			// Phase 2b — per-line reason codes + serial/lot codes that moved, for the
+			// response payload and activity log. Zero-qty lines never ran through
+			// buildTrackingInputs, so they default to "ok" with no message (nothing
+			// requested, nothing to report).
+			const movedCodes = await resolveMovedTrackingCodes(
+				tx as unknown as Prisma.TransactionClient,
+				resolvedLines,
+				flags,
+				result.movementIds,
+			);
+
+			const lineDetails: RestockLineDetail[] = lineMeta.map((l) => ({
+				stock_item_id: l.stock_item_id,
+				reason_code: "ok",
+			}));
+			nonZeroIdx.forEach((origIdx, k) => {
+				const r = resolvedLines[k];
+				const requested = lineMeta[origIdx].raw.qty_to_restock;
+				const detail: RestockLineDetail = {
+					stock_item_id: lineMeta[origIdx].stock_item_id,
+					reason_code: r.reasonCode,
+				};
+				const message = trackingLineMessage(r.reasonCode, requested, r.qty);
+				if (message) detail.message = message;
+				const codes = movedCodes.get(k);
+				if (codes?.serial_codes) detail.serial_codes = codes.serial_codes;
+				if (codes?.lot_codes) detail.lot_codes = codes.lot_codes;
+				lineDetails[origIdx] = detail;
+			});
 
 			await tx.vehicle_restock_line.createMany({
 				data: computedLines.map((l) => ({
@@ -1363,7 +1822,7 @@ export async function completeRestock(
 				})),
 			});
 
-			return tx.vehicle_restock_record.findUniqueOrThrow({
+			const restockRecordWithLines = await tx.vehicle_restock_record.findUniqueOrThrow({
 				where: { id: restockRecord.id },
 				include: {
 					restock_lines: true,
@@ -1371,23 +1830,41 @@ export async function completeRestock(
 					completed_by_tech: { select: { id: true, name: true } },
 				},
 			});
-		}) as unknown as RestockRecord;
+			return { record: restockRecordWithLines, lineDetails };
+		})) as unknown as { record: RestockRecord; lineDetails: RestockLineDetail[] };
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
+		emitInventoryUpdated(orgId, { vehicleId });
+
+		// Re-key by stock_item_id (the join key) rather than trusting the DB read's
+		// row order to match lineDetails' construction order.
+		const detailsByStockItemId = new Map(lineDetails.map((d) => [d.stock_item_id, d]));
+		const line_details: RestockLineDetail[] = record.restock_lines.map(
+			(rl) => detailsByStockItemId.get(rl.stock_item_id) ?? { stock_item_id: rl.stock_item_id, reason_code: "ok" },
+		);
 
 		// G6: alert dispatchers when any item couldn't be fully restocked
 		const shortfallLines = record.restock_lines.filter((l) => Number(l.qty_shortfall) > 0);
 		if (shortfallLines.length > 0) {
-			getSocket().emit("vehicle:restock_shortfall", {
-				organizationId: orgId,
-				vehicleId,
-				vehicleName: vehicle.name,
-				date: localDateString(new Date(), orgTz),
-				shortfalls: shortfallLines.map((l) => ({
-					stock_item_id: l.stock_item_id,
-					qty_shortfall: l.qty_shortfall,
-				})),
+			const shortfallStockItems = await sdb.vehicle_stock_item.findMany({
+				where: { id: { in: shortfallLines.map((l) => l.stock_item_id) } },
+				select: { id: true, inventory_item: { select: { name: true } } },
 			});
+			const nameByStockItemId = new Map(shortfallStockItems.map((s) => [s.id, s.inventory_item.name]));
+			try {
+				emitToOrg(orgId, "vehicle:restock_shortfall", {
+					organizationId: orgId,
+					vehicleId,
+					vehicle_name: vehicle.name,
+					date: localDateString(new Date(), orgTz),
+					shortfalls: shortfallLines.map((l) => ({
+						name: nameByStockItemId.get(l.stock_item_id) ?? "Unknown item",
+						qty_shortfall: Number(l.qty_shortfall),
+					})),
+				});
+			} catch {
+				// no-op — same "socket not initialized" tolerance as emitInventoryUpdated
+			}
 		}
 
 		// G10: zero-shortfall EOD auto-confirms readiness for tomorrow
@@ -1408,6 +1885,19 @@ export async function completeRestock(
 			});
 		}
 
+		const linesNeedingAttention = record.restock_lines
+			.map((rl) => {
+				const detail = detailsByStockItemId.get(rl.stock_item_id);
+				const reasonCode = detail?.reason_code ?? "ok";
+				if (!trackingNeedsAttention(reasonCode, Number(rl.qty_shortfall))) return null;
+				return {
+					item: stockItemInventoryItemId.get(rl.stock_item_id) ?? rl.stock_item_id,
+					reason: reasonCode,
+					message: detail?.message,
+				};
+			})
+			.filter((x): x is { item: string; reason: TrackingReasonCode; message: string | undefined } => x !== null);
+
 		await logActivity({
 			event_type: "vehicle_restock.completed",
 			action: "created",
@@ -1417,12 +1907,17 @@ export async function completeRestock(
 			...getActorInfo(context),
 			changes: {
 				restock_line_count: { old: null, new: record.restock_lines.length },
+				...(linesNeedingAttention.length > 0
+					? { lines_needing_attention: { old: null, new: linesNeedingAttention } }
+					: {}),
 			},
 		});
 
-		return { record };
+		return { record, line_details };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
+		const t = trackingErrorResponse(e);
+		if (t) return t;
 		log.error({ err: e }, "Failed to complete restock");
 		return { err: "Failed to complete restock" };
 	}
@@ -1648,6 +2143,71 @@ export async function adjustStock(
 			if (parsed.type === "field_loss" && computedLines.some((l) => l.delta > 0)) {
 				throw new ValidationError("Field loss adjustments can only decrease stock");
 			}
+
+			// Serial/batch tracking (B-T3) — uncapped/strict, per-line qty =
+			// abs(delta), allowNewSerials: true (adjustStock is the one caller that
+			// can create brand-new serials via new_serials). new_batch creation is a
+			// DB write (getOrCreateBatch) that needs the live tx, so it's resolved to
+			// a batch_id BEFORE the line is fed to buildTrackingInputs — the helper's
+			// uncapped batch branch turns a single batch_id into
+			// [{ batch_id, qty: line.qty }], matching the original inline shape.
+			const flagItemIds = [...new Set(resolved.map((r) => r.inventory_item_id))].sort();
+			const flags = await loadTrackingFlags(tx as unknown as Prisma.TransactionClient, flagItemIds);
+
+			const nonZeroIdx: number[] = [];
+			const nonZeroLines: {
+				inventory_item_id: string;
+				qty: number;
+				raw: {
+					serial_unit_ids?: string[];
+					new_serials?: string[];
+					batch_id?: string;
+					batch_picks?: MovementInput["batch_allocations"];
+				};
+			}[] = [];
+			for (let i = 0; i < computedLines.length; i++) {
+				const line = computedLines[i];
+				if (line.delta === 0) continue;
+				const raw = parsed.lines[i];
+				const itemFlags = flags.get(line.inventory_item_id);
+
+				let batchId: string | undefined;
+				if (itemFlags?.is_batch_tracked && raw.new_batch) {
+					const batch = await getOrCreateBatch(tx as unknown as Prisma.TransactionClient, orgId, {
+						inventory_item_id: line.inventory_item_id,
+						batch_number: raw.new_batch.batch_number,
+						expires_at: raw.new_batch.expires_at ? new Date(raw.new_batch.expires_at) : null,
+						supplier: raw.new_batch.supplier ?? null,
+					});
+					batchId = batch.id;
+				}
+
+				nonZeroIdx.push(i);
+				nonZeroLines.push({
+					inventory_item_id: line.inventory_item_id,
+					qty: Math.abs(line.delta),
+					raw: {
+						serial_unit_ids: raw.serial_unit_ids,
+						new_serials: raw.new_serials,
+						batch_id: batchId,
+						batch_picks: raw.batch_picks,
+					},
+				});
+			}
+
+			const resolvedTracking = await buildTrackingInputs(
+				tx as unknown as Prisma.TransactionClient,
+				orgId,
+				flags,
+				nonZeroLines,
+				{ allowNewSerials: true },
+			);
+
+			const trackingByLine: LineTracking[] = computedLines.map(() => ({}));
+			nonZeroIdx.forEach((origIdx, k) => {
+				trackingByLine[origIdx] = resolvedTracking[k].tracking;
+			});
+
 			const created = await tx.vehicle_stock_adjustment.create({
 				data: {
 					vehicle_id:         vehicleId,
@@ -1671,10 +2231,12 @@ export async function adjustStock(
 			// Counterparty: warehouse (warehouse_exchange), target vehicle
 			// (transfer with target), or the adjustment bucket.
 			const movements: MovementInput[] = [];
-			for (const line of computedLines) {
+			for (let i = 0; i < computedLines.length; i++) {
+				const line = computedLines[i];
 				if (line.delta === 0) continue;
 				const qty = Math.abs(line.delta);
 				const into = line.delta > 0;
+				const tracking = trackingByLine[i];
 
 				if (parsed.type === "warehouse_exchange") {
 					movements.push({
@@ -1686,6 +2248,7 @@ export async function adjustStock(
 						to_vehicle_id:      into ? vehicleId : undefined,
 						reason:             into ? "restock" : "return_to_warehouse",
 						adjustment_id:      created.id,
+						...tracking,
 					});
 				} else if (parsed.type === "transfer" && parsed.target_vehicle_id) {
 					movements.push({
@@ -1697,6 +2260,7 @@ export async function adjustStock(
 						to_vehicle_id:      into ? vehicleId : parsed.target_vehicle_id,
 						reason:             "transfer",
 						adjustment_id:      created.id,
+						...tracking,
 					});
 				} else if (parsed.type === "supplier_purchase") {
 					movements.push({
@@ -1707,6 +2271,7 @@ export async function adjustStock(
 						to_vehicle_id:      vehicleId,
 						reason:             "supplier_purchase",
 						adjustment_id:      created.id,
+						...tracking,
 					});
 				} else {
 					const reason =
@@ -1724,6 +2289,7 @@ export async function adjustStock(
 						to_vehicle_id:      into ? vehicleId : undefined,
 						reason,
 						adjustment_id:      created.id,
+						...tracking,
 					});
 				}
 			}
@@ -1744,7 +2310,7 @@ export async function adjustStock(
 		});
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
-		if (parsed.lines.some((l) => l.new_item)) emitInventoryUpdated(orgId);
+		if (parsed.type === "warehouse_exchange" || parsed.lines.some((l) => l.new_item)) emitInventoryUpdated(orgId, { vehicleId });
 
 		await logActivity({
 			event_type: "vehicle_stock.adjusted",
@@ -1764,6 +2330,8 @@ export async function adjustStock(
 		if (e instanceof InsufficientStockError) {
 			return { err: "insufficient_warehouse_stock", available: e.available };
 		}
+		const t = trackingErrorResponse(e);
+		if (t) return t;
 		log.error({ err: e }, "Failed to adjust stock");
 		return { err: "Failed to adjust stock" };
 	}
@@ -1791,7 +2359,7 @@ export async function getRestockHistory(
 		take: 30,
 	});
 
-	return { records };
+	return { records: records.map(mapRestockHistoryRecord) };
 }
 
 // ── Adjustment History ────────────────────────────────────────────────────────
@@ -1816,7 +2384,7 @@ export async function getStockAdjustmentHistory(
 		take: 50,
 	});
 
-	return { adjustments };
+	return { adjustments: adjustments.map(mapStockAdjustmentRecord) };
 }
 
 // ── Usage today ───────────────────────────────────────────────────────────────
@@ -1854,7 +2422,7 @@ export async function getUsageToday(
 	// which techs used stock from this vehicle since the last restock — a historical
 	// anchor that survives mid-day vehicle reassignments.
 	const vehicleUsageTechIds = (
-		await db.vehicle_stock_usage.findMany({
+		await sdb.vehicle_stock_usage.findMany({
 			where: {
 				stock_item: { vehicle_id: vehicleId },
 				created_at: { gte: since },
@@ -1864,9 +2432,8 @@ export async function getUsageToday(
 		})
 	).map((u) => u.technician_id);
 
-	const movements = await db.stock_movement.findMany({
+	const movements = await sdb.stock_movement.findMany({
 		where: {
-			organization_id: orgId,
 			created_at: { gte: since, lte: new Date() },
 			OR: [
 				{ from_vehicle_id: vehicleId, reason: "parts_used" },
@@ -1936,7 +2503,12 @@ export async function getTomorrowRequirements(
 	orgId: string,
 ): Promise<{ err?: string; data?: TomorrowRequirementVisit[] }> {
 	try {
-		const org = await db.organization.findFirst({ where: { id: orgId }, select: { timezone: true } });
+		const sdb = getScopedDb(orgId);
+
+		const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId } });
+		if (!vehicle) return { err: "Vehicle not found" };
+
+		const org = await sdb.organization.findFirst({ where: { id: orgId }, select: { timezone: true } });
 		const orgTz = org?.timezone ?? "UTC";
 
 		// Tomorrow = next calendar day in org timezone (DST-safe via utcDayRange)
@@ -1944,17 +2516,16 @@ export async function getTomorrowRequirements(
 		const { end: tomorrowEnd } = utcDayRange(new Date(), 2, orgTz);
 
 		// Find techs currently on this vehicle
-		const techs = await db.technician.findMany({
-			where: { current_vehicle_id: vehicleId, organization_id: orgId },
+		const techs = await sdb.technician.findMany({
+			where: { current_vehicle_id: vehicleId },
 			select: { id: true },
 		});
 		const techIds = techs.map((t) => t.id);
 		if (techIds.length === 0) return { data: [] };
 
 		// Find tomorrow's visits assigned to those techs
-		const visits = await db.job_visit.findMany({
+		const visits = await sdb.job_visit.findMany({
 			where: {
-				job: { organization_id: orgId },
 				scheduled_start_at: { gte: tomorrowStart, lt: tomorrowEnd },
 				status: { notIn: ["Completed", "Cancelled"] },
 				visit_techs: { some: { tech_id: { in: techIds } } },
@@ -1972,7 +2543,7 @@ export async function getTomorrowRequirements(
 		if (visits.length === 0) return { data: [] };
 
 		// Get current on-hand for this vehicle
-		const stockItems = await db.vehicle_stock_item.findMany({
+		const stockItems = await sdb.vehicle_stock_item.findMany({
 			where: { vehicle_id: vehicleId },
 			select: { inventory_item_id: true, qty_on_hand: true },
 		});
@@ -2412,11 +2983,23 @@ const supplierPartUsedSchema = z
 		qty_used:          z.number().positive(),
 		inventory_item_id: z.string().uuid().optional(),
 		new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
+		new_serials:       z.array(z.string().trim().min(1).max(100)).optional(),
+		batch: z
+			.object({
+				batch_number: z.string().trim().min(1).max(100),
+				expires_at:   expiresAtField,
+				supplier:     z.string().trim().max(200).optional(),
+			})
+			.optional(),
+		batch_id: z.string().uuid().optional(),
 	})
 	.refine(
 		(d) => (d.inventory_item_id ? 1 : 0) + (d.new_item ? 1 : 0) === 1,
 		{ message: "Provide exactly one of inventory_item_id or new_item" },
-	);
+	)
+	.refine((d) => !(d.batch && d.batch_id), {
+		message: "provide either batch or batch_id, not both",
+	});
 
 export async function addSupplierPartUsed(
 	vehicleId: string,
@@ -2445,8 +3028,50 @@ export async function addSupplierPartUsed(
 
 			const inv = await tx.inventory_item.findFirstOrThrow({
 				where: { id: inventoryItemId },
-				select: { name: true, unit_price: true },
+				select: { name: true, unit_price: true, is_serialized: true, is_batch_tracked: true },
 			});
+
+			// Serial/batch tracking (B-T3) — leg 1 (external → vehicle) creates the
+			// new units/lot, leg 2 (vehicle → consumed) resolves-once and reuses
+			// the same units/lot. Only the existing-item branch above can ever be
+			// tracked (provisional items are always untracked), so this simply
+			// no-ops for the new_item path.
+			let leg1Serial: MovementInput["serial"];
+			let leg2Serial: MovementInput["serial"];
+			let batchAllocations: MovementInput["batch_allocations"];
+
+			if (inv.is_serialized) {
+				if (!Number.isInteger(parsed.qty_used)) {
+					throw new TrackingValidationError("qty_used must be an integer for a serialized item");
+				}
+				if (!parsed.new_serials || parsed.new_serials.length !== parsed.qty_used) {
+					throw new TrackingValidationError(
+						"new_serials is required and its length must equal qty_used for a serialized item",
+					);
+				}
+				leg1Serial = { create: parsed.new_serials.map((sn) => ({ serial_number: sn })) };
+			} else if (inv.is_batch_tracked) {
+				if (!parsed.batch && !parsed.batch_id) {
+					throw new TrackingValidationError("Provide batch or batch_id for a batch-tracked item");
+				}
+				let resolvedBatch: { id: string };
+				if (parsed.batch) {
+					resolvedBatch = await getOrCreateBatch(txc, orgId, {
+						inventory_item_id: inventoryItemId,
+						batch_number:      parsed.batch.batch_number,
+						expires_at:        parsed.batch.expires_at ? new Date(parsed.batch.expires_at) : null,
+						supplier:          parsed.batch.supplier ?? null,
+					});
+				} else {
+					const batchRow = await tx.stock_batch.findFirst({
+						where: { id: parsed.batch_id!, organization_id: orgId, inventory_item_id: inventoryItemId },
+						select: { id: true },
+					});
+					if (!batchRow) throw new Error("Batch not found");
+					resolvedBatch = batchRow;
+				}
+				batchAllocations = [{ batch_id: resolvedBatch.id, qty: parsed.qty_used }];
+			}
 
 			// 1) Part enters the truck from the supplier
 			await recordMovements(txc, orgId, toActor(context), [
@@ -2457,8 +3082,22 @@ export async function addSupplierPartUsed(
 					to_location_type:   "vehicle",
 					to_vehicle_id:      vehicleId,
 					reason:             "supplier_purchase",
+					...(leg1Serial ? { serial: leg1Serial } : {}),
+					...(batchAllocations ? { batch_allocations: batchAllocations } : {}),
 				},
 			]);
+
+			if (inv.is_serialized && parsed.new_serials) {
+				const createdUnits = await tx.serial_unit.findMany({
+					where: {
+						organization_id:   orgId,
+						inventory_item_id: inventoryItemId,
+						serial_number:     { in: parsed.new_serials },
+					},
+					select: { id: true },
+				});
+				leg2Serial = { unit_ids: createdUnits.map((u) => u.id) };
+			}
 
 			// 2) Line item + consumption from the truck
 			const unitPrice = Number(inv.unit_price ?? 0);
@@ -2491,6 +3130,8 @@ export async function addSupplierPartUsed(
 						reason:             "parts_used",
 						visit_id:           visitId,
 						visit_line_item_id: lineItem.id,
+						...(leg2Serial ? { serial: leg2Serial } : {}),
+						...(batchAllocations ? { batch_allocations: batchAllocations } : {}),
 					},
 				],
 				{ allowNegative: true },
@@ -2533,7 +3174,7 @@ export async function addSupplierPartUsed(
 			return { lineItem };
 		});
 
-		if (parsed.new_item) emitInventoryUpdated(orgId);
+		if (parsed.new_item) emitInventoryUpdated(orgId, { vehicleId });
 
 		await logActivity({
 			event_type:      "vehicle_stock.supplier_part_used",
@@ -2550,6 +3191,9 @@ export async function addSupplierPartUsed(
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
 		if (e instanceof StockItemNotFoundError) return { err: e.message };
+		const t = trackingErrorResponse(e);
+		if (t) return t;
+		if (e instanceof Error && e.message === "Batch not found") return { err: e.message };
 		log.error({ err: e }, "Failed to add supplier part");
 		return { err: "Failed to add supplier part" };
 	}
@@ -2588,5 +3232,5 @@ export const getVehicleMovements = async (
 	const page = hasNext ? movements.slice(0, take) : movements;
 	const nextCursor = hasNext ? page[page.length - 1].id : null;
 
-	return { err: "", movements: page, nextCursor };
+	return { err: "", movements: page.map(mapStockMovement), nextCursor };
 };

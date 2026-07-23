@@ -27,6 +27,7 @@ import {
 import { useInvoicesByVisitIdQuery } from "../../hooks/useInvoices";
 import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import Card from "../../components/ui/Card";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
@@ -47,6 +48,7 @@ export default function JobVisitDetailPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
+	const [pendingConfirm, setPendingConfirm] = useState<"complete" | "delay" | null>(null);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
 	const { data: linkedInvoices = [] } = useInvoicesByVisitIdQuery(jobId!, visitId!);
@@ -120,19 +122,8 @@ export default function JobVisitDetailPage() {
 		}
 	};
 
-	const handleCompleteVisit = async () => {
-		if (
-			window.confirm(
-				"Are you sure you want to mark this visit as completed? This will record the actual end time."
-			)
-		) {
-			try {
-				await completeVisitMutation.mutateAsync(visitId!);
-				setIsOptionsMenuOpen(false);
-			} catch (error) {
-				console.error("Failed to complete visit:", error);
-			}
-		}
+	const handleCompleteVisit = () => {
+		setPendingConfirm("complete");
 	};
 
 	const handleCancelVisit = async () => {
@@ -150,14 +141,21 @@ export default function JobVisitDetailPage() {
 		}
 	};
 
-	const handleDelayVisit = async () => {
-		if (window.confirm("Mark this visit as Delayed? The technician will remain in their current state until the visit is resumed.")) {
-			try {
+	const handleDelayVisit = () => {
+		setPendingConfirm("delay");
+	};
+
+	const confirmPendingAction = async () => {
+		try {
+			if (pendingConfirm === "complete") {
+				await completeVisitMutation.mutateAsync(visitId!);
+			} else if (pendingConfirm === "delay") {
 				await delayVisitMutation.mutateAsync(visitId!);
-				setIsOptionsMenuOpen(false);
-			} catch (error) {
-				console.error("Failed to delay visit:", error);
 			}
+			setIsOptionsMenuOpen(false);
+			setPendingConfirm(null);
+		} catch (error) {
+			console.error(`Failed to ${pendingConfirm} visit:`, error);
 		}
 	};
 
@@ -838,6 +836,20 @@ export default function JobVisitDetailPage() {
 				initialVisitIds={visitId ? [visitId] : []}
 				initialJobId={jobId}
 				defaultClientId={job?.client_id}
+			/>
+
+			<ConfirmDialog
+				open={pendingConfirm !== null}
+				title={pendingConfirm === "complete" ? "Complete Visit" : "Delay Visit"}
+				body={
+					pendingConfirm === "complete"
+						? "Are you sure you want to mark this visit as completed? This will record the actual end time."
+						: "Mark this visit as Delayed? The technician will remain in their current state until the visit is resumed."
+				}
+				confirmLabel={pendingConfirm === "complete" ? "Complete" : "Delay"}
+				pending={completeVisitMutation.isPending || delayVisitMutation.isPending}
+				onConfirm={confirmPendingAction}
+				onCancel={() => setPendingConfirm(null)}
 			/>
 		</div>
 	);

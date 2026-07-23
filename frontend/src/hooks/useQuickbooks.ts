@@ -25,6 +25,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { ImportQBItemResult, QBProfitAndLossQuery } from "../types/quickbooks";
+import { invalidate } from "../lib/queryKeys";
 
 type QBInvoiceEmailVars = {
   invoiceId: string;
@@ -223,7 +224,7 @@ export const useLinkQBItemMutation = () => {
         mutationFn: ({ inventory_item_id, qb_item_id }) => linkQBItem(inventory_item_id, qb_item_id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
-            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+            invalidate.warehouse(queryClient);
         },
     });
 };
@@ -234,7 +235,7 @@ export const useImportQBItemMutation = () => {
         mutationFn: ({ qb_item_id }) => importQBItem(qb_item_id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
-            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+            invalidate.warehouse(queryClient);
         },
     });
 };
@@ -245,7 +246,7 @@ export const usePushQBItemMutation = () => {
         mutationFn: ({itemId}) => pushQBItem(itemId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
-            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+            invalidate.warehouse(queryClient);
         },
     });
 };
@@ -256,7 +257,7 @@ export const useUnlinkQBItemMutation = () => {
         mutationFn: ({ inventory_item_id }) => unlinkQBItem(inventory_item_id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["qbMappedItems"] });
-            queryClient.invalidateQueries({ queryKey: ["allInventory"] });
+            invalidate.warehouse(queryClient);
         },
     });
 };

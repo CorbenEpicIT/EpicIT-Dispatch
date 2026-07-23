@@ -12,6 +12,7 @@ import CreateVehicle from "../../components/vehicles/CreateVehicle";
 import EditVehicle from "../../components/vehicles/EditVehicle";
 import type { Vehicle, VehicleReadiness } from "../../types/vehicles";
 import { getFleetReadiness } from "../../api/vehicles";
+import { qk } from "../../lib/queryKeys";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
@@ -168,7 +169,7 @@ export default function VehiclesPage() {
 
 	// One batched request for the whole fleet (was a per-vehicle query fan-out)
 	const { data: fleetReadiness = [] } = useQuery({
-		queryKey: ["fleet-readiness", selectedDate],
+		queryKey: qk.fleetReadiness(selectedDate),
 		queryFn: () => getFleetReadiness(selectedDate),
 		staleTime: 30_000,
 		enabled: (vehicles?.length ?? 0) > 0,

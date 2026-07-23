@@ -7,6 +7,9 @@ import {
 	useTomorrowRequirementsQuery,
 	useVehicleUsageTodayQuery,
 } from "../../hooks/useVehicleStock";
+import ExistingUnitPicker from "./ExistingUnitPicker";
+import ExistingBatchPicker from "./ExistingBatchPicker";
+import RestockSummaryModal, { type RestockSummaryLine } from "./RestockSummaryModal";
 import type { VehicleStockItem, VehicleRestockRecord } from "../../types/vehicles";
 
 type SubTab = "restock" | "prepare";
@@ -16,7 +19,14 @@ interface RestockLine {
 	item: VehicleStockItem;
 	qtyToRestock: number;
 	tomorrowNeed: number;
+	// Optional "scan units loaded" capture (P8-2) — existing warehouse units/lot
+	// being moved onto the vehicle for this line. Warn-don't-block: submitting
+	// with these empty/short is always valid, the backend records the gap.
+	serialUnitIds: string[];
+	batchId: string | null;
 }
+
+type TrackingPatch = { serialUnitIds?: string[]; batchId?: string | null };
 
 // ── CompleteStep ──────────────────────────────────────────────────────────────
 
@@ -170,49 +180,96 @@ function PrepContextPanel({ vehicleId }: { vehicleId: string }) {
 const RESTOCK_GRID = "grid-cols-[1fr_72px_72px_80px_80px]";
 const PREP_GRID = "grid-cols-[1fr_64px_64px_72px_72px_80px]";
 
-function RestockRow({ line, dimmed, subTab, grid, mobile, onChange }: {
+function RestockRow({ line, dimmed, subTab, grid, mobile, vehicleId, onChange, onTrackingChange }: {
 	line: RestockLine;
 	dimmed: boolean;
 	subTab: SubTab;
 	grid: string;
 	mobile: boolean;
+	vehicleId: string;
 	onChange: (stockItemId: string, qty: number) => void;
+	onTrackingChange: (stockItemId: string, patch: TrackingPatch) => void;
 }) {
 	const onHand = Number(line.item.qty_on_hand);
 	const standard = line.item.qty_standard !== null ? Number(line.item.qty_standard) : null;
 	const warehouse = Number(line.item.inventory_item.quantity);
 	const overLimit = line.qtyToRestock > warehouse;
+	const invItem = line.item.inventory_item;
+	const showTracking = line.qtyToRestock > 0 && (invItem.is_serialized || invItem.is_batch_tracked);
 	return (
-		<div className={`grid ${grid} items-center px-5 py-2.5 border-b border-border/20 transition-opacity ${dimmed ? "opacity-50" : ""}`}>
-			<span className="text-sm text-text-primary">{line.item.inventory_item.name}</span>
-			<span className="text-center text-sm tabular-nums text-text-secondary">{onHand}</span>
-			{!mobile && (
-				<span className="text-center text-sm tabular-nums text-text-secondary">{standard ?? "—"}</span>
-			)}
-			{subTab === "prepare" && (
-				<span className={`text-center text-sm tabular-nums font-medium ${line.tomorrowNeed > onHand ? "text-warning-text" : "text-text-secondary"}`}>
-					{line.tomorrowNeed > 0 ? line.tomorrowNeed : "—"}
-				</span>
-			)}
-			<span className={`text-center text-sm tabular-nums font-medium ${
-				warehouse === 0 ? "text-error-text font-semibold" : overLimit ? "text-warning-text" : "text-text-secondary"
-			}`}>
-				{warehouse}
-			</span>
-			<div className={mobile ? "flex flex-col items-center gap-0.5" : "flex justify-center"}>
-				<input
-					type="number"
-					min={0}
-					value={line.qtyToRestock}
-					onChange={(e) => onChange(line.stockItemId, Math.max(0, Number(e.target.value)))}
-					className={`w-16 text-center text-sm rounded border ${mobile ? "py-1.5" : "py-0.5"} ${
-						overLimit ? "border-warning text-warning-text" : "border-border-input text-text-primary"
-					} bg-base px-1 outline-none focus:border-primary`}
-				/>
-				{mobile && overLimit && (
-					<span className="text-[10px] text-warning-text whitespace-nowrap">⚠ Only {warehouse} in warehouse</span>
+		<div className={`border-b border-border/20 transition-opacity ${dimmed ? "opacity-50" : ""}`}>
+			<div className={`grid ${grid} items-center px-5 py-2.5`}>
+				<span className="text-sm text-text-primary">{invItem.name}</span>
+				<span className="text-center text-sm tabular-nums text-text-secondary">{onHand}</span>
+				{!mobile && (
+					<span className="text-center text-sm tabular-nums text-text-secondary">{standard ?? "—"}</span>
 				)}
+				{subTab === "prepare" && (
+					<span className={`text-center text-sm tabular-nums font-medium ${line.tomorrowNeed > onHand ? "text-warning-text" : "text-text-secondary"}`}>
+						{line.tomorrowNeed > 0 ? line.tomorrowNeed : "—"}
+					</span>
+				)}
+				<span className={`text-center text-sm tabular-nums font-medium ${
+					warehouse === 0 ? "text-error-text font-semibold" : overLimit ? "text-warning-text" : "text-text-secondary"
+				}`}>
+					{warehouse}
+				</span>
+				<div className={mobile ? "flex flex-col items-center gap-0.5" : "flex justify-center"}>
+					<input
+						type="number"
+						min={0}
+						value={line.qtyToRestock}
+						onChange={(e) => onChange(line.stockItemId, Math.max(0, Number(e.target.value)))}
+						className={`w-16 text-center text-sm rounded border ${mobile ? "py-1.5" : "py-0.5"} ${
+							overLimit ? "border-warning text-warning-text" : "border-border-input text-text-primary"
+						} bg-base px-1 outline-none focus:border-primary`}
+					/>
+					{mobile && overLimit && (
+						<span className="text-[10px] text-warning-text whitespace-nowrap">⚠ Only {warehouse} in warehouse</span>
+					)}
+				</div>
 			</div>
+
+			{showTracking && (
+				<div className="px-5 pb-3">
+					{invItem.is_serialized ? (
+						<>
+							<ExistingUnitPicker
+								itemId={invItem.id}
+								itemName={invItem.name}
+								statusFilter="in_warehouse"
+								targetCount={line.qtyToRestock}
+								value={line.serialUnitIds}
+								onChange={(ids) => onTrackingChange(line.stockItemId, { serialUnitIds: ids })}
+							/>
+							{overLimit ? (
+								<p className="mt-1.5 text-xs text-warning-text">
+									Warehouse stock is short for this line — the restock will be capped, so scanned units won't be recorded as tracked.
+								</p>
+							) : line.serialUnitIds.length < line.qtyToRestock ? (
+								<p className="mt-1.5 text-xs text-warning-text">
+									{line.serialUnitIds.length} of {line.qtyToRestock} units scanned — scan all {line.qtyToRestock} to record this line as tracked, or submit as-is to restock it untracked.
+								</p>
+							) : null}
+						</>
+					) : (
+						<>
+							<ExistingBatchPicker
+								itemId={invItem.id}
+								vehicleId={vehicleId}
+								direction="warehouse_in"
+								value={line.batchId}
+								onChange={(id) => onTrackingChange(line.stockItemId, { batchId: id })}
+							/>
+							{overLimit && (
+								<p className="mt-1.5 text-xs text-warning-text">
+									Warehouse stock is short for this line — the restock will be capped, so the selected batch won't be recorded as tracked.
+								</p>
+							)}
+						</>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -225,6 +282,8 @@ function RestockPanel({
 	onApply,
 	isPending,
 	onChange,
+	onTrackingChange,
+	vehicleId,
 	layout = "desktop",
 }: {
 	subTab: SubTab;
@@ -234,6 +293,8 @@ function RestockPanel({
 	onApply: () => void;
 	isPending: boolean;
 	onChange: (stockItemId: string, qty: number) => void;
+	onTrackingChange: (stockItemId: string, patch: TrackingPatch) => void;
+	vehicleId: string;
 	layout?: "desktop" | "mobile";
 }) {
 	const RESTOCK_GRID_MOBILE = "grid-cols-[1fr_56px_56px_64px]";
@@ -284,7 +345,17 @@ function RestockPanel({
 
 			{/* Needs restock */}
 			{needs.map((l) => (
-				<RestockRow key={l.stockItemId} line={l} dimmed={false} subTab={subTab} grid={grid} mobile={mobile} onChange={onChange} />
+				<RestockRow
+					key={l.stockItemId}
+					line={l}
+					dimmed={false}
+					subTab={subTab}
+					grid={grid}
+					mobile={mobile}
+					vehicleId={vehicleId}
+					onChange={onChange}
+					onTrackingChange={onTrackingChange}
+				/>
 			))}
 
 			{/* Already met */}
@@ -296,7 +367,17 @@ function RestockPanel({
 				</div>
 			)}
 			{met.map((l) => (
-				<RestockRow key={l.stockItemId} line={l} dimmed={true} subTab={subTab} grid={grid} mobile={mobile} onChange={onChange} />
+				<RestockRow
+					key={l.stockItemId}
+					line={l}
+					dimmed={true}
+					subTab={subTab}
+					grid={grid}
+					mobile={mobile}
+					vehicleId={vehicleId}
+					onChange={onChange}
+					onTrackingChange={onTrackingChange}
+				/>
 			))}
 
 			{/* Shortfall warning */}
@@ -435,8 +516,42 @@ function computeRestockLines(
 		const standard = item.qty_standard !== null ? Number(item.qty_standard) : 0;
 		const needed = tomorrowNeeds.get(item.inventory_item_id) ?? 0;
 		const target = mode === "prepare" ? Math.max(standard, needed) : standard;
-		return { stockItemId: item.id, item, qtyToRestock: Math.max(0, target - onHand), tomorrowNeed: needed };
+		return {
+			stockItemId: item.id,
+			item,
+			qtyToRestock: Math.max(0, target - onHand),
+			tomorrowNeed: needed,
+			serialUnitIds: [],
+			batchId: null,
+		};
 	});
+}
+
+// ── restock attention-line join ───────────────────────────────────────────────
+// Joins the record's restock_lines (qty_restocked/qty_shortfall) with the
+// sibling line_details array (reason_code/message/serial_codes/lot_codes) by
+// stock_item_id, then filters to lines a tech should acknowledge: a real
+// shortfall OR a non-"ok" reason_code (a genuine warehouse/lot shortfall still
+// reports reason_code "ok", so both signals matter — see RestockLineDetail).
+function computeAttentionLines(record: VehicleRestockRecord, stockItems: VehicleStockItem[]): RestockSummaryLine[] {
+	if (!record.line_details) return [];
+	return record.line_details
+		.map((detail) => {
+			const line = record.restock_lines.find((l) => l.stock_item_id === detail.stock_item_id);
+			const moved = line?.qty_restocked ?? 0;
+			const requested = moved + (line?.qty_shortfall ?? 0);
+			const needsAttention = (line?.qty_shortfall ?? 0) > 0 || detail.reason_code !== "ok";
+			return { detail, moved, requested, needsAttention };
+		})
+		.filter((x) => x.needsAttention)
+		.map(({ detail, moved, requested }) => ({
+			label: stockItems.find((s) => s.id === detail.stock_item_id)?.inventory_item.name ?? detail.stock_item_id,
+			requested,
+			moved,
+			message: detail.message,
+			serialCodes: detail.serial_codes,
+			lotCodes: detail.lot_codes,
+		}));
 }
 
 // ── MobileContextAccordion ────────────────────────────────────────────────────
@@ -489,9 +604,15 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 	const [notes, setNotes] = useState("");
 	const [showConfirm, setShowConfirm] = useState(false);
 	const [submitError, setSubmitError] = useState<string | null>(null);
+	const [summaryDismissed, setSummaryDismissed] = useState(false);
 
 	const { data: tomorrowVisits = [] } = useTomorrowRequirementsQuery(vehicleId);
 	const completeMutation = useCompleteRestockMutation(vehicleId);
+
+	const attentionLines = useMemo(
+		() => completedRecord ? computeAttentionLines(completedRecord, stockItems) : [],
+		[completedRecord, stockItems],
+	);
 
 	const tomorrowNeeds = useMemo(() => {
 		const map = new Map<string, number>();
@@ -513,6 +634,7 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 		setNotes("");
 		setSubmitError(null);
 		setShowConfirm(false);
+		setSummaryDismissed(false);
 	};
 
 	const handleReset = () => {
@@ -528,12 +650,44 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 				mode: subTab === "restock" ? "restock" : "prepare",
 				restock_lines: restockLines
 					.filter((l) => l.qtyToRestock > 0)
-					.map((l) => ({ stock_item_id: l.stockItemId, qty_to_restock: l.qtyToRestock })),
+					.map((l) => {
+						// Backend requires an exact serial/batch count match against its
+						// own fresh-locked warehouse availability (never the client's
+						// stale qtyToRestock) — a short or long array throws and aborts
+						// the whole transaction (all lines), it does not degrade to a
+						// per-line gap. So tracking fields are only ever sent when (a)
+						// the capture exactly matches what was requested, and (b) the
+						// warehouse isn't already known (client-side) to be short for
+						// this line, since a cap makes even an exact capture mismatch
+						// the server's capped `actual`. A depletion landing in the
+						// instant between this check and the transaction lock is a
+						// residual race that can't be closed client-side — if it happens,
+						// the mismatch still throws and aborts the whole submission (the
+						// same failure mode this whole check exists to avoid, just in a
+						// narrower window); allowUntracked only rescues the case where
+						// tracking fields are omitted entirely, not a stale-but-present
+						// mismatch. Retrying after the resulting refetch self-heals,
+						// since knownShortfall will then correctly reflect the depletion.
+						const knownShortfall = l.qtyToRestock > Number(l.item.inventory_item.quantity);
+						const serialUnitIds = !knownShortfall && l.serialUnitIds.length === l.qtyToRestock
+							? l.serialUnitIds
+							: undefined;
+						const batchPicks = !knownShortfall && l.batchId
+							? [{ batch_id: l.batchId, qty: l.qtyToRestock }]
+							: undefined;
+						return {
+							stock_item_id: l.stockItemId,
+							qty_to_restock: l.qtyToRestock,
+							serial_unit_ids: serialUnitIds,
+							batch_picks: batchPicks,
+						};
+					}),
 			},
 			{
 				onSuccess: (record) => {
 					setCompletedRecord(record);
 					setShowConfirm(false);
+					setSummaryDismissed(false);
 				},
 				onError: (e) => {
 					setSubmitError(e instanceof Error ? e.message : "Failed to complete restock");
@@ -544,6 +698,10 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 
 	const handleLineChange = (stockItemId: string, qty: number) => {
 		setRestockLines((prev) => prev.map((l) => l.stockItemId === stockItemId ? { ...l, qtyToRestock: qty } : l));
+	};
+
+	const handleLineTrackingChange = (stockItemId: string, patch: TrackingPatch) => {
+		setRestockLines((prev) => prev.map((l) => l.stockItemId === stockItemId ? { ...l, ...patch } : l));
 	};
 
 	return (
@@ -588,6 +746,8 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 								onApply={() => setShowConfirm(true)}
 								isPending={completeMutation.isPending}
 								onChange={handleLineChange}
+								onTrackingChange={handleLineTrackingChange}
+								vehicleId={vehicleId}
 								layout="mobile"
 							/>
 						</>
@@ -613,6 +773,8 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 								onApply={() => setShowConfirm(true)}
 								isPending={completeMutation.isPending}
 								onChange={handleLineChange}
+								onTrackingChange={handleLineTrackingChange}
+								vehicleId={vehicleId}
 							/>
 						)}
 					</div>
@@ -628,6 +790,14 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 					error={submitError}
 					onConfirm={handleComplete}
 					onCancel={() => { setShowConfirm(false); setSubmitError(null); }}
+				/>
+			)}
+
+			{completedRecord && attentionLines.length > 0 && !summaryDismissed && (
+				<RestockSummaryModal
+					title={completedRecord.mode === "prepare" ? "Prep Summary" : "Restock Summary"}
+					lines={attentionLines}
+					onAcknowledge={() => setSummaryDismissed(true)}
 				/>
 			)}
 		</div>
