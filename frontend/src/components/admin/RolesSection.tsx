@@ -23,7 +23,7 @@ const RolesSection = () => {
 
     // Search
     const [searchInput, setSearchInput] = useState("");
-    const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("rolesSearch");
+    const { terms, addTerm, removeTerm, duplicateTerm, clearAll } = useMultiSearch("rolesSearch");
 
     // Tier filter
     const [showDispatchers, setShowDispatchers] = useState(true);
@@ -57,6 +57,7 @@ const RolesSection = () => {
 
     const clearAllFilters = () => {
         setSearchInput("");
+        clearAll();
         setShowDispatchers(true);
         setShowTechnicians(true);
         setDefaultOnly(false);

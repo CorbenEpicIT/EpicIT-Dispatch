@@ -72,7 +72,7 @@ export default function LinkQBItemModal({ item, onClose, isOpen }: LinkQBItemMod
 				<button
 					type="button"
 					onClick={onClose}
-					className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface-raised"
+					className="rounded-md border border-border bg-base px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface-raised"
 				>
 					Cancel
 				</button>

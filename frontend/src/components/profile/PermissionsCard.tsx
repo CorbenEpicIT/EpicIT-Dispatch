@@ -15,7 +15,7 @@ export default function PermissionsCard({ permissionIds, tier }: PermissionsCard
 			) : (
 				<div className="space-y-2">
 					{permissionGroups.map(({ category, permissions }) => (
-						<div key={category} className="rounded-lg border border-border-subtle bg-surface px-4 py-3">
+						<div key={category} className="rounded-lg border border-border-subtle bg-base px-4 py-3">
 							<p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
 								{category}
 							</p>
@@ -23,7 +23,7 @@ export default function PermissionsCard({ permissionIds, tier }: PermissionsCard
 								{permissions.map((p) => (
 									<span
 										key={p.id}
-										className="px-2 py-0.5 rounded-md bg-surface text-xs text-text-secondary border border-border-subtle"
+										className="px-2 py-0.5 rounded-md bg-base text-xs text-text-secondary border border-border-subtle"
 									>
 										{p.label}
 									</span>

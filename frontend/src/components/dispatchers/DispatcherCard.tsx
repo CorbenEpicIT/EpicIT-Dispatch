@@ -236,7 +236,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
         return (
             <div 
                 onClick={VIEW_DISPATCHER ? onClick : undefined} 
-                className="w-full bg-base rounded-lg border border-border-card shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
+                className="w-full bg-base rounded-lg border border-border shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
             >
                 {/* Avatar */}
                 <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
@@ -287,7 +287,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                         }}
-                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
                     >
                         <MoreHorizontal size={18} />
                         <span className="text-sm font-medium">Options</span>
@@ -302,7 +302,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
     return (
         <div
             className="
-            bg-base border border-border-card rounded-lg p-5
+            bg-base border border-border rounded-lg p-5
             hover:border-border-strong hover:shadow-lg transition-all
             w-full max-w-[360px] flex flex-col gap-4" 
         >
@@ -364,7 +364,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                             e.stopPropagation();
                             onClick?.();
                         }}
-                        className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-primary text-sm font-medium rounded-md transition-colors"
+                        className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors"
                     >
                         View Details
                     </button>
@@ -376,7 +376,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                             }}
-                            className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
+                            className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
                         >
                             <MoreHorizontal size={18} />
                         </button>

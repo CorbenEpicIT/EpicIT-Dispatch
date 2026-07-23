@@ -35,7 +35,7 @@ export default function QBItemMappingCard() {
     );
 
     return (
-        <div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
+        <div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
             <h2 className="mb-1 text-lg font-semibold text-text-primary">QuickBooks Item Mapping</h2>
             <p className="mb-4 text-xs text-text-muted">
                 Link inventory items to QuickBooks items so synced invoice lines post to the right product
@@ -80,7 +80,7 @@ export default function QBItemMappingCard() {
                                                     onClick={() => unlink.mutate({ inventory_item_id: item.id })}
                                                     disabled={!MANAGE_INVENTORY || unlink.isPending}
                                                     title={!MANAGE_INVENTORY ? NO_PERMISSION_TITLE : undefined}
-                                                    className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-border-strong hover:bg-surface-raised hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                                    className="rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-border-strong hover:bg-surface hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                     Unlink
                                                 </button>
@@ -95,7 +95,7 @@ export default function QBItemMappingCard() {
                                                         onClick={() => setLinkItem(item)}
                                                         disabled={!MANAGE_INVENTORY}
                                                         title={!MANAGE_INVENTORY ? NO_PERMISSION_TITLE : undefined}
-                                                        className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+                                                        className="rounded-md border border-border bg-surface-raised px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         Link
                                                     </button>

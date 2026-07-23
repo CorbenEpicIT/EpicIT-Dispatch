@@ -10,14 +10,14 @@ export default function PreferencesCard({ onThemeChange }: PreferencesCardProps)
 
 	return (
 		<section>
-			<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
+			<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
 				<p className="mb-2 text-xs font-medium text-text-tertiary">Theme</p>
 				<div className="inline-flex rounded-md bg-surface-inset p-0.5">
 					<button
 						onClick={() => onThemeChange("system")}
 						className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
 							theme === "system"
-								? "bg-surface text-text-primary shadow-sm"
+								? "bg-base text-text-primary shadow-sm"
 								: "text-text-muted hover:text-text-secondary"
 						}`}
 					>
@@ -28,7 +28,7 @@ export default function PreferencesCard({ onThemeChange }: PreferencesCardProps)
 						onClick={() => onThemeChange("dark")}
 						className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
 							theme === "dark"
-								? "bg-surface text-text-primary shadow-sm"
+								? "bg-base text-text-primary shadow-sm"
 								: "text-text-muted hover:text-text-secondary"
 						}`}
 					>
@@ -39,7 +39,7 @@ export default function PreferencesCard({ onThemeChange }: PreferencesCardProps)
 						onClick={() => onThemeChange("light")}
 						className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
 							theme === "light"
-								? "bg-surface text-text-primary shadow-sm"
+								? "bg-base text-text-primary shadow-sm"
 								: "text-text-muted hover:text-text-secondary"
 						}`}
 					>
@@ -64,7 +64,7 @@ export default function PreferencesCard({ onThemeChange }: PreferencesCardProps)
 									onClick={() => setLightPalette(value)}
 									className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
 										lightPalette === value
-											? "bg-surface text-text-primary shadow-sm"
+											? "bg-base text-text-primary shadow-sm"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>

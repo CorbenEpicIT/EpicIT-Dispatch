@@ -20,7 +20,7 @@ export default function QBTaxCodeMappingCard() {
     const pending = link.isPending || unlink.isPending;
 
     return (
-        <div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
+        <div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
             <h2 className="mb-1 text-lg font-semibold text-text-primary">QuickBooks Tax Code Mapping</h2>
             <p className="mb-4 text-xs text-text-muted">
                 Link each tax group to a QuickBooks tax code so synced invoices post to the right tax bucket.
@@ -58,7 +58,7 @@ export default function QBTaxCodeMappingCard() {
                                             value={taxGroup.qb_tax_code_id ?? ""}
                                             onChange={(e) => handleTaxCodeChange(taxGroup.id, e.target.value)}
                                             disabled={pending}
-                                            className="w-full max-w-[260px] rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text-primary transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                                            className="w-full max-w-[260px] rounded-md border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text-primary transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                                         >
                                             <option value="">— Not linked —</option>
                                             {qbTaxCodes?.map((taxCode) => (

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 const inputBase =
-	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
+	"w-full rounded-md border border-border bg-base px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
 
 interface ProfileDetailsFormProps {
 	initial: { phone: string; title: string; description: string };
@@ -37,7 +37,7 @@ export default function ProfileDetailsForm({ initial, onSave }: ProfileDetailsFo
 
 	return (
 		<section>
-			<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
+			<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
 				<form onSubmit={handleSave} className="space-y-4">
 					<div>
 						<label className="mb-1 block text-xs font-medium text-text-tertiary">

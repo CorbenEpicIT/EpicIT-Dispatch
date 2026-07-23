@@ -65,7 +65,7 @@ export default function MFACard() {
     };
 
     return (
-        <div className="rounded-lg border border-border-card bg-surface p-6">
+        <div className="rounded-lg border border-border-card bg-base p-6">
             {/* Header */}
             <div className="mb-5 flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-bg text-primary">
@@ -170,7 +170,7 @@ export default function MFACard() {
                                         Setup key
                                     </p>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <code className="rounded-md border border-border-subtle bg-surface-inset px-3 py-1.5 font-mono text-sm tracking-wider text-text-primary">
+                                        <code className="rounded-md border border-border-subtle bg-surface px-3 py-1.5 font-mono text-sm tracking-wider text-text-primary">
                                             {setupMFa.data.secret.replace(/(.{4})/g, "$1 ").trim()}
                                         </code>
                                         <button
@@ -194,7 +194,7 @@ export default function MFACard() {
                             <p className="text-sm font-medium text-text-secondary">
                                 Enter the 6-digit code from your app
                             </p>
-                            <div className="max-w-xs">
+                            <div className="w-fit">
                                 <SixDigitInput
                                     value={sixDigitVal}
                                     onChange={setSixDigitVal}
@@ -271,7 +271,7 @@ export default function MFACard() {
                             placeholder="Password, 6-digit code, or backup code"
                             value={disableCode}
                             onChange={(e) => setDisableCode(e.target.value)}
-                            className="w-full max-w-xs rounded-md border border-border-input bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full max-w-xs rounded-md border border-border-input bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <p className="text-xs text-text-muted">
                             Enter your current password, a 6-digit code from your

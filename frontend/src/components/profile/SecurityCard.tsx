@@ -74,11 +74,11 @@ export default function SecurityCard() {
 	}
 
 	const inputBase =
-		"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
+		"w-full rounded-md border border-border bg-base px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
 
 	return (
 		<section>
-			<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
+			<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
 				<h2 className="text-lg font-semibold text-text-primary mb-2">Change Password</h2>
 				<form onSubmit={(e) => { e.preventDefault(); handleChangePassword(); }} className="space-y-4">
 					<div>

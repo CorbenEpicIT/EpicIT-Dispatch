@@ -72,7 +72,7 @@ export default function IntegrationSection() {
 							type="button"
 							key={int.id}
 							className={[
-								"flex flex-col gap-3 text-left p-[18px] rounded-xl border bg-surface",
+								"flex flex-col gap-3 text-left p-[18px] rounded-xl border bg-base",
 								"transition-colors hover:border-border focus-visible:outline-2 focus-visible:outline-primary",
 								selected === int.id
 									? "border-primary ring-1 ring-primary"

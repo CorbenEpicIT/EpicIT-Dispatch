@@ -28,9 +28,9 @@ export default function QBConnectionCard() {
 	};
 
 	return (
-		<div className="rounded-lg border border-border-subtle bg-surface px-5 py-5">
+		<div className="rounded-lg border border-border-subtle bg-base px-5 py-5">
 			{isLoading ? (
-				<div className="h-8 w-32 animate-pulse rounded-md bg-surface" />
+				<div className="h-8 w-32 animate-pulse rounded-md bg-base" />
 			) : qbStatus?.connected ? (
 				<div className="flex items-center justify-between gap-4">
 					<div className="flex items-center gap-2">
@@ -47,7 +47,7 @@ export default function QBConnectionCard() {
 							type="button"
 							onClick={handleDisconnect}
 							disabled={disconnectMutation.isPending}
-							className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-error-border hover:bg-error-bg disabled:cursor-not-allowed disabled:opacity-50"
+							className="flex items-center gap-1.5 rounded-md border border-border bg-base px-3 py-1.5 text-xs font-medium text-error-text transition-colors hover:border-error-border hover:bg-error-bg disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{disconnectMutation.isPending ? (
 								<Loader2 size={12} className="animate-spin" />
