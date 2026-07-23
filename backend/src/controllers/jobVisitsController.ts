@@ -1346,6 +1346,14 @@ export const applyVisitTransition = async (
 						where: { id: other.id },
 						data: { status: "Scheduled" },
 					});
+					await tx.job_visit_technician.updateMany({
+						where: {
+							visit_id: other.id,
+							tech_id: context.techId,
+							tech_status: "EnRoute",
+						},
+						data: { tech_status: "Assigned" },
+					})
 					// Re-sync job status for the reverted visit
 					const otherJobVisits = await tx.job_visit.findMany({
 						where: { job_id: other.job_id },
