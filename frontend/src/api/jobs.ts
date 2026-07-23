@@ -306,18 +306,18 @@ export const deleteJobNote = async (
 	return response.data.data || { message: "Job note deleted successfully" };
 };
 
-export const uploadNotePhoto = async (file: File): Promise<string> => {
+export const uploadNotePhoto = async (jobId: string, file: File): Promise<{ url: string, raw_url: string }> => {
 	const formData = new FormData();
 	formData.append("photo", file);
-	const response = await api.post<ApiResponse<{ url: string }>>(
-		"/notes/upload-photo",
+	const response = await api.post<ApiResponse<{ url: string, raw_url: string }>>(
+		`/jobs/${jobId}/notes/upload-photo`,
 		formData,
 		{ headers: { "Content-Type": "multipart/form-data" } },
 	);
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Upload failed");
 	}
-	return response.data.data!.url;
+	return response.data.data!;
 };
 
 export const fetchRecentStatusEvents = async (): Promise<VisitStatusEvent[]> => {

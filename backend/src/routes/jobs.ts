@@ -26,6 +26,8 @@ import {
 import * as invoicesController from '../controllers/invoicesController.js';
 import * as recurringPlansController from "../controllers/recurringPlansController.js";
 import * as recurringPlanNotesController from "../controllers/recurringPlanNotesController.js";
+import { imageUpload } from "../lib/upload.js";
+import { uploadFile, signImageUrl } from "../services/wasabiService.js";
 
 const router = Router();
 
@@ -250,6 +252,37 @@ router.delete("/:jobId/notes/:noteId", requirePermission("edit_jobs"), async (re
         next(err);
     }
 });
+
+router.post(
+    "/:jobId/notes/upload-photo",
+    requireAnyPermission("edit_jobs", "add_job_notes"),
+    imageUpload.single("photo"),
+    async (req, res, next) => {
+        try {
+            if (!req.file) {
+                return res
+                    .status(400)
+                    .json(
+                        createErrorResponse(
+                            ErrorCodes.VALIDATION_ERROR,
+                            "No image file provided",
+                        ),
+                    );
+            }
+
+            const rawUrl = await uploadFile(
+                req.file.buffer,
+                req.file.mimetype,
+                req.file.originalname,
+                "job-notes-photos"
+            );
+            const signedUrl = await signImageUrl(rawUrl);
+            res.json(createSuccessResponse({ url: signedUrl, raw_url: rawUrl }));
+        } catch (err) {
+            next(err);
+        }
+    },
+);
 
 // invoices
 router.get("/:jobId/invoices", requirePermission("view_invoices"), async (req, res, next) => {

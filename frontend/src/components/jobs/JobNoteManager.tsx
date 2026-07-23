@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from "react";
-import { Plus, Edit2, Trash2, X, Calendar } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Calendar, Camera } from "lucide-react";
 import Card from "../ui/Card";
 import type { JobNote, JobVisit } from "../../types/jobs";
 import {
@@ -9,6 +9,8 @@ import {
 	useDeleteJobNoteMutation,
 } from "../../hooks/useJobs";
 import { usePermission } from "../../hooks/usePermission";
+import ImageCarousel from "../inventory/ImageCarousel";
+import NotePhotoGallery from "./NotePhotoGallery";
 
 interface JobNoteManagerProps {
 	jobId: string;
@@ -223,6 +225,11 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 								<div className="p-3 bg-surface rounded-lg border border-border group hover:border-border-strong transition-colors">
 									<div className="flex justify-between items-start mb-2">
 										<div className="flex-1">
+											{note.photos && note.photos.length > 0 && (
+												<div className="mt-2">
+													<NotePhotoGallery photos={note.photos} />
+												</div>
+											)}
 											<p className="text-text-primary text-sm mb-1 whitespace-pre-wrap">
 												{
 													note.content

@@ -565,5 +565,5 @@ export const useDeleteJobNoteMutation = (): UseMutationResult<
 	});
 };
 
-export const useUploadNotePhotoMutation = (): UseMutationResult<string, Error, File> =>
-	useMutation({ mutationFn: jobApi.uploadNotePhoto });
+export const useUploadNotePhotoMutation = (): UseMutationResult<{ url: string, raw_url: string }, Error, {jobId: string, file: File}> =>
+	useMutation({ mutationFn: ({jobId, file}) => jobApi.uploadNotePhoto(jobId, file) });

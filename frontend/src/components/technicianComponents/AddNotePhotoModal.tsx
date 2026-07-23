@@ -2,11 +2,13 @@
 import { X, Camera, Loader2 } from "lucide-react";
 import { useUploadNotePhotoMutation } from "../../hooks/useJobs";
 import type { JobVisit } from "../../types/jobs";
+import ImageCarousel from "../inventory/ImageCarousel";
 
 export interface NotePhoto {
 	photo_url: string;
 	photo_label: "Before" | "After" | "Other";
 	filename: string;
+	preview_url: string;
 }
 
 interface AddNotePhotoModalProps {
@@ -31,7 +33,6 @@ export default function AddNotePhotoModal({
 	);
 	const [photos, setPhotos] = useState<NotePhoto[]>([]);
 	const [pendingFile, setPendingFile] = useState<File | null>(null);
-	const [pendingUploadUrl, setPendingUploadUrl] = useState<string | null>(null);
 	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
 	const [selectedLabel, setSelectedLabel] = useState<PhotoLabel>("Before");
 	const [isUploading, setIsUploading] = useState(false);
@@ -39,6 +40,7 @@ export default function AddNotePhotoModal({
 	const [uploadError, setUploadError] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [visible, setVisible] = useState(false);
+	const [pendingUpload, setPendingUpload] = useState<{ url: string; raw_url: string } | null>(null);
 
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,8 +72,10 @@ export default function AddNotePhotoModal({
 		setSelectedLabel("Before");
 
 		try {
-			const url = await uploadMutation.mutateAsync(file);
-			setPendingUploadUrl(url);
+			const jobId = selectedVisit?.job_id;
+			if (!jobId) throw new Error("No job selected");
+			const res = await uploadMutation.mutateAsync({jobId, file});
+			setPendingUpload(res);
 		} catch {
 			setUploadError("Upload failed. Please try again.");
 			setLabelPickerOpen(false);
@@ -82,20 +86,20 @@ export default function AddNotePhotoModal({
 	};
 
 	const handleConfirmLabel = () => {
-		if (!pendingFile || !pendingUploadUrl) return;
+		if (!pendingFile || !pendingUpload) return;
 		setPhotos((prev) => [
 			...prev,
-			{ photo_url: pendingUploadUrl, photo_label: selectedLabel, filename: pendingFile.name },
+			{ photo_url: pendingUpload.raw_url, photo_label: selectedLabel, filename: pendingFile.name, preview_url: pendingUpload.url },
 		]);
 		setPendingFile(null);
-		setPendingUploadUrl(null);
 		setLabelPickerOpen(false);
 		setUploadError(null);
+		setPendingUpload(null);
 	};
 
 	const handleCancelLabel = () => {
 		setPendingFile(null);
-		setPendingUploadUrl(null);
+		setPendingUpload(null);
 		setLabelPickerOpen(false);
 		setUploadError(null);
 	};
@@ -274,6 +278,15 @@ export default function AddNotePhotoModal({
 							<p className="text-xs text-error-text py-4 text-center">{uploadError}</p>
 						) : (
 							<>
+								{pendingUpload && (
+									<ImageCarousel
+										images={[pendingUpload.url]}
+										compact
+										contain
+										maxHeight="max-h-80"
+										className="w-full mb-4"
+									/>
+								)}
 								<div className="flex gap-2 mb-4">
 									{PHOTO_LABELS.map((l) => (
 										<button

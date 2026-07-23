@@ -3,7 +3,10 @@ import { PlusCircle, Camera, X, ChevronDown, ChevronUp } from "lucide-react";
 import { useCreateJobNoteMutation, useJobNotesQuery } from "../../hooks/useJobs";
 import { formatDateTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
-import type { JobNote } from "../../types/jobs";
+import type { JobNote, JobVisit } from "../../types/jobs";
+import NotePhotoGallery from "../jobs/NotePhotoGallery";
+import AddNotePhotoModal from "../../components/technicianComponents/AddNotePhotoModal";
+import type { NotePhoto } from "../../components/technicianComponents/AddNotePhotoModal";
 
 // ── Note Add Sheet ────────────────────────────────────────────────────────────
 
@@ -154,16 +157,8 @@ function NoteItem({ note, tz }: { note: JobNote; tz: string }) {
 				<p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{note.content}</p>
 			)}
 			{note.photos && note.photos.length > 0 && (
-				<div className="flex flex-wrap gap-1.5 mt-1.5">
-					{note.photos.map((p) => (
-						<span
-							key={p.id}
-							className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface border border-border text-[10px] text-text-tertiary"
-						>
-							<Camera size={10} aria-hidden="true" />
-							{p.photo_label}
-						</span>
-					))}
+				<div className="mt-2">
+					<NotePhotoGallery photos={note.photos} />
 				</div>
 			)}
 			<p className="text-[11px] text-text-faint mt-1">
@@ -187,6 +182,7 @@ export default function WorkPerformedSection({
 	const { data: notes = [] } = useJobNotesQuery(jobId);
 	const createNote = useCreateJobNoteMutation();
 
+	const [showNotePhotoModal, setShowNotePhotoModal] = useState(false);
 	const [showNoteSheet, setShowNoteSheet] = useState(false);
 	const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 	const [expanded, setExpanded] = useState(true);
@@ -215,6 +211,25 @@ export default function WorkPerformedSection({
 		setPendingPhoto(null);
 	};
 
+	const handleAddNotePhoto = async (
+		visitId: string,
+		jobId: string,
+		content: string,
+		photos: NotePhoto[],
+	) => {
+		await createNote.mutateAsync({
+			jobId,
+			data: {
+				content,
+				visit_id: visitId,
+				photos: photos.map((p) => ({
+					photo_url: p.photo_url,
+					photo_label: p.photo_label,
+				})),
+			},
+		});
+	};
+
 	return (
 		<div className="rounded-xl border border-border-subtle overflow-hidden">
 			{/* Header */}
@@ -240,18 +255,11 @@ export default function WorkPerformedSection({
 					{/* Action row */}
 					<div id="work-performed-panel" className="flex gap-2 px-4 py-3 border-b border-border-subtle">
 						<button
-							onClick={() => setShowNoteSheet(true)}
-							className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
+							onClick={() => setShowNotePhotoModal(true)}
+							className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
 						>
 							<PlusCircle size={14} />
-							Add Note
-						</button>
-						<button
-							onClick={() => photoInputRef.current?.click()}
-							className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
-						>
-							<Camera size={14} />
-							Add Photo
+							Add Note / Photo
 						</button>
 						<input
 							ref={photoInputRef}
@@ -285,6 +293,14 @@ export default function WorkPerformedSection({
 					file={pendingPhoto}
 					onConfirm={handlePhotoConfirm}
 					onClose={() => setPendingPhoto(null)}
+				/>
+			)}
+			{showNotePhotoModal && (
+				<AddNotePhotoModal
+					visits={[{ id: visitId, job_id: jobId } as JobVisit]}
+					preselectedVisitId={visitId}
+					onClose={() => {setShowNotePhotoModal(false);}}
+					onSubmit={handleAddNotePhoto}
 				/>
 			)}
 		</div>

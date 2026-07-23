@@ -5,6 +5,10 @@ interface ImageCarouselProps {
 	images: string[];
 	compact?: boolean;
 	compactNav?: boolean;
+	contain?: boolean;
+	maxHeight?: string;
+	index?: number;
+	onIndexChange?: (i: number) => void;
 	className?: string;
 }
 
@@ -12,17 +16,25 @@ export default function ImageCarousel({
 	images,
 	compact = false,
 	compactNav = false,
+	contain = false,
+	maxHeight = "max-h-[70vh]",
+	index,
+	onIndexChange,
 	className = "",
 }: ImageCarouselProps) {
-	const [currentIndex, setCurrentIndex] = useState(0);
+	const [currentIndex, setCurrentIndex] = useState(index ?? 0);
 	const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
 
 	const height = compact ? "h-30" : "h-48";
 
-	// Reset load state whenever the displayed image changes
+	// Sync a controlled index in from the parent (chip clicks, etc.)
 	useEffect(() => {
-		setStatus("loading");
-	}, [currentIndex]);
+		if (index != null && index !== currentIndex) {
+			setCurrentIndex(index);
+			setStatus("loading");
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [index]);
 
 	if (!images.length) {
 		return (
@@ -35,11 +47,14 @@ export default function ImageCarousel({
 	}
 
 	const goTo = (index: number) => {
-		setCurrentIndex((index + images.length) % images.length);
+		const next = (index + images.length) % images.length;
+		setCurrentIndex(next);
+		setStatus("loading");
+		onIndexChange?.(next);
 	};
 
 	return (
-		<div className={`relative group ${height} ${className}`}>
+		<div className={`relative group ${contain ? (status === "loaded" ? "" : height) : height} ${className}`}>
 			{/* Shimmer while image is fetching */}
 			{status === "loading" && (
 				<div className="absolute inset-0 animate-pulse bg-surface rounded-md border border-border" />
@@ -54,13 +69,25 @@ export default function ImageCarousel({
 
 			<img
 				key={currentIndex}
+				ref={(node) => {
+					// Cached images can finish loading before React attaches onLoad
+					if (node?.complete && node.naturalWidth > 0) {
+						setStatus("loaded");
+					}
+				}}
 				src={images[currentIndex]}
 				alt={`Image ${currentIndex + 1}`}
 				onLoad={() => setStatus("loaded")}
 				onError={() => setStatus("error")}
-				className={`absolute inset-0 w-full h-full object-cover border border-border rounded-md transition-opacity duration-150 ${
-					status === "loaded" ? "opacity-100" : "opacity-0"
-				}`}
+				className={
+					contain
+						? `block w-full h-auto ${maxHeight} object-contain border border-border rounded-md transition-opacity duration-150 ${
+								status === "loaded" ? "opacity-100" : "opacity-0"
+							}`
+						: `absolute inset-0 w-full h-full object-cover border border-border rounded-md transition-opacity duration-150 ${
+								status === "loaded" ? "opacity-100" : "opacity-0"
+							}`
+				}
 			/>
 
 			{images.length > 1 && compactNav && (
