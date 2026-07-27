@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Receipt } from "lucide-react";
+import { Filter } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
 import ColumnsButton from "../../components/ui/ColumnsButton";
+import StatCard from "../../components/ui/StatCard";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
+import FirstTimeFixChart from "../../components/reports/FirstTimeFixChart";
 import ReportPagination from "../../components/reports/ReportPagination";
 import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
@@ -19,31 +21,23 @@ import {
 	useColumnVisibility,
 	type ColumnOption,
 } from "../../hooks/useColumnVisibility";
-import { formatCurrency } from "../../util/util";
-import { formatRatePercentLabel } from "../../lib/formatTax";
 import { parseDateRangeFromParams, resolveDateRange } from "../../util/dateRangeUtils";
-import { useTaxLiabilityReportQuery } from "../../hooks/useReports";
-import type { ReportFetchParams } from "../../types/reports";
+import { useFirstTimeFixQuery } from "../../hooks/useReports";
+import type { FirstTimeFixSummary, ReportFetchParams } from "../../types/reports";
 
 const COLS: ColumnOption[] = [
-	{ key: "jurisdiction", label: "Jurisdiction" },
-	{ key: "rateName", label: "Rate" },
-	{ key: "rate", label: "Rate %" },
-	{ key: "taxableBase", label: "Taxable Base" },
-	{ key: "taxCollected", label: "Tax Collected" },
-	{ key: "invoiceCount", label: "Invoices" },
+	{ key: "jobNumber", label: "Job #" },
+	{ key: "name", label: "Name" },
+	{ key: "clientName", label: "Client" },
+	{ key: "completedAt", label: "Completed" },
+	{ key: "visitCount", label: "Visits" },
+	{ key: "firstTimeFix", label: "First-Time Fix" },
 ];
 
 const HEADER_LABELS = buildHeaderLabels(COLS);
-const COLUMN_ALIGN = buildColumnAlign(COLS, ["rate", "taxableBase", "taxCollected", "invoiceCount"]);
+const COLUMN_ALIGN = buildColumnAlign(COLS, ["visitCount"]);
 
-interface TaxSummary {
-	taxableBase?: number;
-	taxCollected?: number;
-	invoiceCount?: number;
-}
-
-export default function TaxLiabilityPage() {
+export default function FirstTimeFixRatePage() {
 	const [searchInput, setSearchInput] = useState("");
 	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
 
@@ -66,44 +60,34 @@ export default function TaxLiabilityPage() {
 		[startDate, endDate, searchTerms, page, pageSize],
 	);
 
-	const { data, isLoading, isFetching, error } = useTaxLiabilityReportQuery(queryParams);
+	const { data, isLoading, isFetching, error } = useFirstTimeFixQuery(queryParams);
 	const rows = useMemo(() => data?.rows ?? [], [data]);
 	const total = data?.total ?? 0;
 	const hasMore = data?.hasMore ?? false;
-	const summary = useMemo(() => (data?.summary ?? {}) as TaxSummary, [data]);
+	const summary = data?.summary as FirstTimeFixSummary | undefined;
 
 	const filterKey = JSON.stringify([startDate, endDate, searchTerms, pageSize]);
 	useEffect(() => {
 		setPage(0);
 	}, [filterKey]);
 
-	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
-		"tax-liability",
-		COLS,
-	);
-
-	const displayRows = useMemo(
-		() =>
-			rows.map((r) => ({
-				id: r.id,
-				jurisdiction: r.jurisdiction,
-				rateName: r.rateName,
-				rate: formatRatePercentLabel(Number(r.rate)),
-				taxableBase: formatCurrency(Number(r.taxableBase)),
-				taxCollected: formatCurrency(Number(r.taxCollected)),
-				invoiceCount: r.invoiceCount,
-			})),
-		[rows],
-	);
-
-	const footerRow = useMemo(
-		() => ({
-			jurisdiction: "Total",
-			taxableBase: formatCurrency(summary.taxableBase ?? 0),
-			taxCollected: formatCurrency(summary.taxCollected ?? 0),
-			invoiceCount: (summary.invoiceCount ?? 0).toLocaleString(),
-		}),
+	const stats = useMemo(
+		() => [
+			{
+				label: "First-Time Fix Rate",
+				value: summary ? `${summary.ftfrPercent}%` : "—",
+				hint: "of completed jobs",
+			},
+			{ label: "Completed Jobs", value: summary ? String(summary.completedJobs) : "—" },
+			{ label: "First-Time Fixes", value: summary ? String(summary.firstTimeFix) : "—" },
+			{ label: "Repeat-Visit Jobs", value: summary ? String(summary.repeatVisit) : "—" },
+		],
 		[summary],
+	);
+
+	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
+		"first-time-fix",
+		COLS,
 	);
 
 	const clearAllFilters = () => {
@@ -116,14 +100,29 @@ export default function TaxLiabilityPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Tax Liability" />
+			<PageHeader title="First-Time Fix Rate" />
+
+			<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+				{stats.map((card) => (
+					<StatCard key={card.label} {...card} />
+				))}
+			</div>
+
+			{summary && !isLoading && !error && (
+				<div className="h-80 mb-4">
+					<FirstTimeFixChart
+						firstTimeFix={summary.firstTimeFix}
+						repeatVisit={summary.repeatVisit}
+					/>
+				</div>
+			)}
 
 			<PageControls
 				className="mb-4"
 				left={
 					<SearchBar
 						paramKey="search"
-						placeholder="Search by jurisdiction or rate..."
+						placeholder="Search by job, client, or number..."
 						onValueChange={setSearchInput}
 						onSubmit={addTerm}
 					/>
@@ -134,9 +133,9 @@ export default function TaxLiabilityPage() {
 						<ExportExcelButton
 							onExport={() =>
 								exportReportServer({
-									report: "tax-liability",
-									filename: datedFilename("tax-liability"),
-									sheetName: "Tax Liability",
+									report: "first-time-fix",
+									filename: datedFilename("first-time-fix"),
+									sheetName: "First-Time Fix",
 									columns: visibleColumns,
 									params: { startDate, endDate, searchTerms },
 								})
@@ -162,25 +161,26 @@ export default function TaxLiabilityPage() {
 			<div className="shadow-sm border border-border-subtle p-3 bg-base rounded-lg overflow-x-auto text-left">
 				{showEmpty ? (
 					<div className="text-center py-16">
-						<Receipt size={48} className="mx-auto text-text-faint mb-3" />
-						<h3 className="text-text-tertiary text-lg font-medium mb-2">No tax collected</h3>
+						<Filter size={48} className="mx-auto text-text-faint mb-3" />
+						<h3 className="text-text-tertiary text-lg font-medium mb-2">
+							No completed jobs found
+						</h3>
 						<p className="text-text-muted text-sm">
 							{hasActiveFilters
 								? "Try adjusting your filters"
-								: "Tax collected on issued invoices appears here"}
+								: "Completed jobs appear here as visits wrap up"}
 						</p>
 					</div>
 				) : (
 					<>
 						<AdaptableTable
-							data={displayRows}
+							data={rows}
 							loadListener={isLoading}
 							errListener={error}
 							formatNums={false}
 							columnVisibility={columnVisibility}
 							headerLabels={HEADER_LABELS}
 							columnAlign={COLUMN_ALIGN}
-							footerRow={footerRow}
 						/>
 						<ReportPagination
 							page={page}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Filter } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import SearchBar from "../../components/ui/SearchBar";
@@ -10,8 +10,9 @@ import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import QuoteFunnelChart from "../../components/reports/QuoteFunnelChart";
+import ReportPagination from "../../components/reports/ReportPagination";
 import Card from "../../components/ui/Card";
-import { exportReport } from "../../api/reports";
+import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import {
@@ -20,9 +21,10 @@ import {
 	useColumnVisibility,
 	type ColumnOption,
 } from "../../hooks/useColumnVisibility";
-import { formatCurrency, formatDate } from "../../util/util";
+import { formatCurrency } from "../../util/util";
 import { parseDateRangeFromParams, resolveDateRange } from "../../util/dateRangeUtils";
 import { useQuoteFunnelQuery } from "../../hooks/useReports";
+import type { QuoteFunnelResponse, ReportFetchParams } from "../../types/reports";
 
 const COLS: ColumnOption[] = [
 	{ key: "quoteNumber", label: "Quote #" },
@@ -38,12 +40,13 @@ const COLS: ColumnOption[] = [
 	{ key: "daysToApprove", label: "Days to Approve" },
 ];
 
-const TEXT_KEYS = ["quoteNumber", "title", "clientName", "status", "source"] as const;
-
 const HEADER_LABELS = buildHeaderLabels(COLS);
 const COLUMN_ALIGN = buildColumnAlign(COLS, ["total", "daysToApprove"]);
 
-const dateCell = (value: string | null) => (value ? formatDate(value) : "—");
+type QuoteSummary = Pick<
+	QuoteFunnelResponse,
+	"funnel" | "winRate" | "avgDaysToApprove" | "valueWon" | "valueLost" | "bySource"
+>;
 
 export default function QuoteFunnelPage() {
 	const [searchInput, setSearchInput] = useState("");
@@ -55,34 +58,45 @@ export default function QuoteFunnelPage() {
 	const startDate = resolved?.start.toISOString();
 	const endDate = resolved?.end.toISOString();
 
-	const { data, isLoading, error } = useQuoteFunnelQuery(startDate, endDate);
-	const records = useMemo(() => data?.quotes ?? [], [data]);
+	const [page, setPage] = useState(0);
+	const [pageSize, setPageSize] = useState(50);
 
-	const rows = useMemo(() => {
-		const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
-		return records.filter((r) =>
-			activeTerms.every((term) => {
-				const t = term.toLowerCase();
-				return TEXT_KEYS.some((key) => String(r[key] ?? "").toLowerCase().includes(t));
-			}),
-		);
-	}, [records, searchInput, terms]);
+	const searchTerms = useMemo(() => {
+		const t = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
+		return t.length ? t : undefined;
+	}, [terms, searchInput]);
+
+	const queryParams = useMemo<ReportFetchParams>(
+		() => ({ startDate, endDate, searchTerms, page, limit: pageSize }),
+		[startDate, endDate, searchTerms, page, pageSize],
+	);
+
+	const { data, isLoading, isFetching, error } = useQuoteFunnelQuery(queryParams);
+	const rows = useMemo(() => data?.rows ?? [], [data]);
+	const total = data?.total ?? 0;
+	const hasMore = data?.hasMore ?? false;
+	const summary = data?.summary as QuoteSummary | undefined;
+
+	const filterKey = JSON.stringify([startDate, endDate, searchTerms, pageSize]);
+	useEffect(() => {
+		setPage(0);
+	}, [filterKey]);
 
 	const stats = useMemo(
 		() => [
 			{
 				label: "Win Rate",
-				value: data?.winRate != null ? `${data.winRate}%` : "—",
+				value: summary?.winRate != null ? `${summary.winRate}%` : "—",
 				hint: "of completed quotes",
 			},
 			{
 				label: "Avg Days to Approve",
-				value: data?.avgDaysToApprove != null ? String(data.avgDaysToApprove) : "—",
+				value: summary?.avgDaysToApprove != null ? String(summary.avgDaysToApprove) : "—",
 			},
-			{ label: "Value Won", value: formatCurrency(data?.valueWon ?? 0) },
-			{ label: "Value Lost", value: formatCurrency(data?.valueLost ?? 0) },
+			{ label: "Value Won", value: formatCurrency(summary?.valueWon ?? 0) },
+			{ label: "Value Lost", value: formatCurrency(summary?.valueLost ?? 0) },
 		],
-		[data],
+		[summary],
 	);
 
 	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
@@ -93,18 +107,18 @@ export default function QuoteFunnelPage() {
 	const displayRows = useMemo(
 		() =>
 			rows.map((r) => ({
-				id: r.quoteId,
+				id: r.id,
 				quoteNumber: r.quoteNumber,
 				title: r.title,
 				clientName: r.clientName,
 				status: r.status,
 				source: r.source,
-				total: formatCurrency(r.total),
-				createdAt: dateCell(r.createdAt),
-				sentAt: dateCell(r.sentAt),
-				viewedAt: dateCell(r.viewedAt),
-				approvedAt: dateCell(r.approvedAt),
-				daysToApprove: r.daysToApprove != null ? String(r.daysToApprove) : "—",
+				total: formatCurrency(Number(r.total)),
+				createdAt: r.createdAt,
+				sentAt: r.sentAt,
+				viewedAt: r.viewedAt,
+				approvedAt: r.approvedAt,
+				daysToApprove: typeof r.daysToApprove === "number" ? String(r.daysToApprove) : "—",
 			})),
 		[rows],
 	);
@@ -115,7 +129,7 @@ export default function QuoteFunnelPage() {
 	};
 
 	const hasActiveFilters = terms.length > 0 || dateRange.option !== "all";
-	const showEmpty = rows.length === 0 && !isLoading && !error;
+	const showEmpty = total === 0 && !isLoading && !error;
 
 	return (
 		<div className="text-text-primary">
@@ -135,18 +149,16 @@ export default function QuoteFunnelPage() {
 				))}
 			</div>
 
-			{data && !isLoading && !error && (
+			{summary && !isLoading && !error && (
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 					<div className="h-80">
-						<QuoteFunnelChart funnel={data.funnel} />
+						<QuoteFunnelChart funnel={summary.funnel} />
 					</div>
 					<div className="h-80">
 						<Card className="h-full" title="Conversion by Source">
-							{data.bySource.length === 0 ? (
+							{summary.bySource.length === 0 ? (
 								<div className="flex-1 min-h-0 flex items-center justify-center">
-									<p className="text-sm text-text-muted">
-										No quotes in this period
-									</p>
+									<p className="text-sm text-text-muted">No quotes in this period</p>
 								</div>
 							) : (
 								<div className="flex-1 min-h-0 overflow-y-auto">
@@ -160,21 +172,12 @@ export default function QuoteFunnelPage() {
 											</tr>
 										</thead>
 										<tbody>
-											{data.bySource.map((s) => (
-												<tr
-													key={s.source}
-													className="border-t border-border-subtle"
-												>
+											{summary.bySource.map((s) => (
+												<tr key={s.source} className="border-t border-border-subtle">
 													<td className="p-2 capitalize">{s.source}</td>
-													<td className="p-2 text-right tabular-nums">
-														{s.quotes}
-													</td>
-													<td className="p-2 text-right tabular-nums">
-														{s.approved}
-													</td>
-													<td className="p-2 text-right tabular-nums">
-														{s.rate}%
-													</td>
+													<td className="p-2 text-right tabular-nums">{s.quotes}</td>
+													<td className="p-2 text-right tabular-nums">{s.approved}</td>
+													<td className="p-2 text-right tabular-nums">{s.rate}%</td>
 												</tr>
 											))}
 										</tbody>
@@ -201,14 +204,15 @@ export default function QuoteFunnelPage() {
 						<DateRangeFilter paramKey="period" />
 						<ExportExcelButton
 							onExport={() =>
-								exportReport({
+								exportReportServer({
+									report: "quotes",
 									filename: datedFilename("quote-funnel"),
 									sheetName: "Quotes",
 									columns: visibleColumns,
-									rows: displayRows,
+									params: { startDate, endDate, searchTerms },
 								})
 							}
-							disabled={rows.length === 0}
+							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
 					</>
@@ -222,7 +226,7 @@ export default function QuoteFunnelPage() {
 					onRemove: () => removeTerm(term),
 					highlighted: duplicateTerm === term,
 				}))}
-				resultCount={rows.length}
+				resultCount={total}
 				onClearAll={clearAllFilters}
 			/>
 
@@ -238,15 +242,26 @@ export default function QuoteFunnelPage() {
 						</p>
 					</div>
 				) : (
-					<AdaptableTable
-						data={displayRows}
-						loadListener={isLoading}
-						errListener={error}
-						formatNums={false}
-						columnVisibility={columnVisibility}
-						headerLabels={HEADER_LABELS}
-						columnAlign={COLUMN_ALIGN}
-					/>
+					<>
+						<AdaptableTable
+							data={displayRows}
+							loadListener={isLoading}
+							errListener={error}
+							formatNums={false}
+							columnVisibility={columnVisibility}
+							headerLabels={HEADER_LABELS}
+							columnAlign={COLUMN_ALIGN}
+						/>
+						<ReportPagination
+							page={page}
+							pageSize={pageSize}
+							total={total}
+							hasMore={hasMore}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							isFetching={isFetching}
+						/>
+					</>
 				)}
 			</div>
 		</div>

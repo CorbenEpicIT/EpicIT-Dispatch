@@ -1,6 +1,7 @@
 import { z } from "zod";
+import type { UseQueryResult } from "@tanstack/react-query";
 import type { ColumnOption } from "../hooks/useColumnVisibility";
-import type { ReportCategoryId } from "../types/reports";
+import type { Paginated, ReportCategoryId, ReportFetchParams, ReportRowRecord } from "../types/reports";
 import {
 	useInventoryReportQuery,
 	useJobsReportQuery,
@@ -9,9 +10,6 @@ import {
 	usePaymentsReportQuery,
 	useQuoteFunnelQuery,
 } from "../hooks/useReports";
-import { formatDate, getStatusLabel } from "../util/util";
-
-export type RowRecord = Record<string, unknown>;
 
 export type ColumnType = "text" | "number" | "date" | "currency";
 
@@ -29,10 +27,26 @@ export interface ReportColumnCategory {
 }
 
 export interface ReportRows {
-	data: RowRecord[];
+	rows: ReportRowRecord[];
+	total: number;
+	page: number;
+	pageSize: number;
+	hasMore: boolean;
 	isLoading: boolean;
+	isFetching: boolean;
 	error: Error | null;
 }
+
+const toReportRows = (result: UseQueryResult<Paginated, Error>): ReportRows => ({
+	rows: (result.data?.rows ?? []) as ReportRowRecord[],
+	total: result.data?.total ?? 0,
+	page: result.data?.page ?? 0,
+	pageSize: result.data?.pageSize ?? 0,
+	hasMore: result.data?.hasMore ?? false,
+	isLoading: result.isLoading,
+	isFetching: result.isFetching,
+	error: result.error ?? null,
+});
 
 export interface ReportSource {
 	id: string;
@@ -43,7 +57,7 @@ export interface ReportSource {
 	dateKey?: string;
 	serverDateFilter?: boolean;
 	categories: ReportColumnCategory[];
-	useRows: (range?: { start: Date; end: Date } | null) => ReportRows;
+	useRows: (params: ReportFetchParams) => ReportRows;
 }
 
 function allColumnDefs(source: ReportSource): ReportColumnDef[] {
@@ -176,7 +190,7 @@ function isEmptyCell(cell: unknown): boolean {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function matchesCondition(
-	row: RowRecord,
+	row: ReportRowRecord,
 	source: ReportSource,
 	condition: FilterCondition,
 ): boolean {
@@ -300,36 +314,8 @@ const inventorySource: ReportSource = {
 			],
 		},
 	],
-	useRows: (range) => {
-		const { data, isLoading, error } = useInventoryReportQuery(range);
-		const rows: RowRecord[] = (data ?? []).map((item) => ({
-			id: item.id,
-			itemName: item.name,
-			sku: item.sku ?? "—",
-			category: item.category ?? "—",
-			status: item.isActive ? "Active" : "Discontinued",
-			description: item.description || "—",
-			quantity: item.quantity,
-			fleetQty: item.fleetQty,
-			totalQty: item.totalQty,
-			fleetStandard: item.fleetStandard,
-			lowStockThreshold: item.lowStockThreshold ?? "—",
-			unit: item.unit || "—",
-			stockStatus: getStatusLabel(item.stockStatus),
-			cost: item.cost ?? "—",
-			unitPrice: item.unitPrice ?? "—",
-			assetValue: item.assetValue ?? "—",
-			qtyUsed: item.qtyUsed,
-			location: item.location || "—",
-			tags: item.tags?.map((t) => t.label).join(", ") || "—",
-			altIds: item.altIds?.join(", ") || "—",
-			updatedAt: formatDate(item.updatedAt),
-		}));
-		return { data: rows, isLoading, error: error ?? null };
-	},
+	useRows: (params) => toReportRows(useInventoryReportQuery(params)),
 };
-
-const dateCell = (value: string | null): string => (value ? formatDate(value) : "—");
 
 const jobsSource: ReportSource = {
 	id: "jobs",
@@ -379,31 +365,7 @@ const jobsSource: ReportSource = {
 			columns: [{ key: "visitCount", label: "Visits", type: "number" }],
 		},
 	],
-	useRows: (range) => {
-		const { data, isLoading, error } = useJobsReportQuery(range);
-		const rows: RowRecord[] = (data ?? []).map((job) => ({
-			id: job.id,
-			jobNumber: job.jobNumber,
-			name: job.name,
-			clientName: job.clientName,
-			status: job.status,
-			priority: job.priority,
-			jobType: job.jobType,
-			source: job.source,
-			address: job.address || "—",
-			createdAt: dateCell(job.createdAt),
-			completedAt: dateCell(job.completedAt),
-			cancelledAt: dateCell(job.cancelledAt),
-			estimatedTotal: job.estimatedTotal ?? "—",
-			actualTotal: job.actualTotal ?? "—",
-			variance: job.variance ?? "—",
-			subtotal: job.subtotal,
-			taxAmount: job.taxAmount,
-			discountAmount: job.discountAmount ?? "—",
-			visitCount: job.visitCount,
-		}));
-		return { data: rows, isLoading, error: error ?? null };
-	},
+	useRows: (params) => toReportRows(useJobsReportQuery(params)),
 };
 
 const invoicesSource: ReportSource = {
@@ -456,27 +418,7 @@ const invoicesSource: ReportSource = {
 			],
 		},
 	],
-	useRows: (range) => {
-		const { data, isLoading, error } = useInvoicesReportQuery(range);
-		const rows: RowRecord[] = (data ?? []).map((invoice) => ({
-			id: invoice.id,
-			invoiceNumber: invoice.invoiceNumber,
-			clientName: invoice.clientName,
-			status: invoice.status,
-			issueDate: dateCell(invoice.issueDate),
-			dueDate: dateCell(invoice.dueDate),
-			paidAt: dateCell(invoice.paidAt),
-			sentAt: dateCell(invoice.sentAt),
-			total: invoice.total,
-			amountPaid: invoice.amountPaid,
-			balanceDue: invoice.balanceDue,
-			subtotal: invoice.subtotal,
-			taxAmount: invoice.taxAmount,
-			daysOverdue: invoice.daysOverdue,
-			qbSyncStatus: invoice.qbSyncStatus,
-		}));
-		return { data: rows, isLoading, error: error ?? null };
-	},
+	useRows: (params) => toReportRows(useInvoicesReportQuery(params)),
 };
 
 const clientsSource: ReportSource = {
@@ -533,35 +475,8 @@ const clientsSource: ReportSource = {
 			],
 		},
 	],
-	useRows: () => {
-		const { data, isLoading, error } = useClientsReportQuery();
-		const rows: RowRecord[] = (data ?? []).map((client) => ({
-			id: client.id,
-			name: client.name,
-			status: client.status,
-			taxExempt: client.taxExempt,
-			primaryContact: client.primaryContact || "—",
-			email: client.email || "—",
-			phone: client.phone || "—",
-			address: client.address || "—",
-			contactCount: client.contactCount,
-			taxGroup: client.taxGroup || "—",
-			taxRate: client.taxRate != null ? client.taxRate * 100 : "—",
-			lifetimeRevenue: client.lifetimeRevenue,
-			openBalance: client.openBalance,
-			jobCount: client.jobCount,
-			invoiceCount: client.invoiceCount,
-			createdAt: dateCell(client.createdAt),
-			lastActivity: dateCell(client.lastActivity),
-		}));
-		return { data: rows, isLoading, error: error ?? null };
-	},
+	useRows: (params) => toReportRows(useClientsReportQuery(params)),
 };
-
-const rangeToParams = (range?: { start: Date; end: Date } | null) =>
-	range
-		? { startDate: range.start.toISOString(), endDate: range.end.toISOString() }
-		: { startDate: undefined, endDate: undefined };
 
 const quotesSource: ReportSource = {
 	id: "quotes",
@@ -603,26 +518,7 @@ const quotesSource: ReportSource = {
 			columns: [{ key: "daysToApprove", label: "Days to Approve", type: "number" }],
 		},
 	],
-	useRows: (range) => {
-		const { startDate, endDate } = rangeToParams(range);
-		const { data, isLoading, error } = useQuoteFunnelQuery(startDate, endDate);
-		const rows: RowRecord[] = (data?.quotes ?? []).map((q) => ({
-			id: q.quoteId,
-			quoteNumber: q.quoteNumber,
-			title: q.title,
-			clientName: q.clientName,
-			status: q.status,
-			source: q.source,
-			total: q.total,
-			createdAt: dateCell(q.createdAt),
-			issuedAt: dateCell(q.issuedAt),
-			sentAt: dateCell(q.sentAt),
-			viewedAt: dateCell(q.viewedAt),
-			approvedAt: dateCell(q.approvedAt),
-			daysToApprove: q.daysToApprove ?? "—",
-		}));
-		return { data: rows, isLoading, error: error ?? null };
-	},
+	useRows: (params) => toReportRows(useQuoteFunnelQuery(params)),
 };
 
 const paymentsSource: ReportSource = {
@@ -661,22 +557,7 @@ const paymentsSource: ReportSource = {
 			],
 		},
 	],
-	useRows: (range) => {
-		const { startDate, endDate } = rangeToParams(range);
-		const { data, isLoading, error } = usePaymentsReportQuery(startDate, endDate);
-		const rows: RowRecord[] = (data ?? []).map((p) => ({
-			id: p.paymentId,
-			invoiceNumber: p.invoiceNumber,
-			clientName: p.clientName,
-			method: p.method || "—",
-			recordedBy: p.recordedBy ?? "—",
-			note: p.note || "—",
-			amount: p.amount,
-			paidAt: dateCell(p.paidAt),
-			qbSynced: p.qbSynced ? "Synced" : "Not synced",
-		}));
-		return { data: rows, isLoading, error: error ?? null };
-	},
+	useRows: (params) => toReportRows(usePaymentsReportQuery(params)),
 };
 
 export const REPORT_SOURCES: ReportSource[] = [

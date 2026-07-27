@@ -531,6 +531,7 @@ model request {
   @@index([updated_at])
   @@index([created_by_dispatcher_id])
   @@index([status, priority]) // Composite for "urgent pending requests"
+  @@index([organization_id, created_at])
 }
 
 model request_note {
@@ -619,6 +620,7 @@ model quote {
   @@index([created_at])
   @@index([client_id, is_active])
   @@index([request_id, is_active])
+  @@index([organization_id, created_at])
   @@unique([organization_id, quote_number])
 }
 
@@ -724,6 +726,7 @@ model job {
   @@index([updated_at])
 
   @@index([client_id, status])
+  @@index([organization_id, created_at])
   @@unique([organization_id, job_number])
 }
 
@@ -804,6 +807,7 @@ model job_visit {
   @@index([scheduled_start_at])
   @@index([scheduled_end_at])
   @@index([job_id, scheduled_start_at])
+  @@index([status, actual_end_at])
 }
 
 model job_visit_line_item {
@@ -1732,6 +1736,7 @@ model technician_shift {
   @@index([tech_id])
   @@index([org_id])
   @@index([tech_id, ended_at])
+  @@index([org_id, started_at])
 }
 
 model technician_shift_break {
@@ -1882,6 +1887,8 @@ model invoice {
   @@index([due_date])
   @@index([recurring_plan_id])
   @@index([client_id, status])
+  @@index([organization_id, created_at])
+  @@index([organization_id, issue_date])
   @@unique([organization_id, invoice_number])
   @@unique([account_id, qb_invoice_id])
 }

@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type {
 	OverviewResponse,
 	RevenueYTDResponse,
@@ -9,17 +9,10 @@ import type {
 	ArrivalPerformanceResponse,
 	MileageReportVisit,
 	TimesheetReportEntry,
-	ReorderForecastRow,
-	InventoryReportRow,
 	AgedReceivablesResponse,
-	AgedReceivablesClientRow,
-	TaxLiabilityRow,
-	JobsReportRow,
-	InvoicesReportRow,
-	ClientsReportRow,
-	PaymentsReportRow,
-	QuoteFunnelResponse,
 	TechScorecardVisitRow,
+	Paginated,
+	ReportFetchParams,
 } from "../types/reports";
 import * as reportsApi from "../api/reports";
 
@@ -118,25 +111,23 @@ export const useTimesheetsReportQuery = (
 	});
 };
 
-export const useReorderForecastQuery = (): UseQueryResult<ReorderForecastRow[], Error> => {
-	return useQuery({
-		queryKey: ["reports", "reorder-forecast"],
-		queryFn: () => reportsApi.getReorderForecast(),
+export const useReorderForecastQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "reorder-forecast", params],
+		queryFn: () => reportsApi.getReorderForecast(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
 export const useInventoryReportQuery = (
-	range?: { start: Date; end: Date } | null,
-): UseQueryResult<InventoryReportRow[], Error> => {
-	return useQuery({
-		queryKey: [
-			"reports",
-			"inventory-full",
-			range ? `${range.start.toISOString()}|${range.end.toISOString()}` : "all",
-		],
-		queryFn: () => reportsApi.getInventoryReport(range),
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "inventory-full", params],
+		queryFn: () => reportsApi.getInventoryReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
 export const useAgedReceivablesQuery = (): UseQueryResult<AgedReceivablesResponse, Error> => {
 	return useQuery({
@@ -145,78 +136,86 @@ export const useAgedReceivablesQuery = (): UseQueryResult<AgedReceivablesRespons
 	});
 };
 
-export const useAgedReceivablesByClientQuery = (): UseQueryResult<
-	AgedReceivablesClientRow[],
-	Error
-> => {
-	return useQuery({
-		queryKey: ["reports", "aged-receivables", "by-client"],
-		queryFn: () => reportsApi.getAgedReceivablesByClient(),
+export const useAgedReceivablesByClientQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "aged-receivables", "by-client", params],
+		queryFn: () => reportsApi.getAgedReceivablesByClient(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
 export const useTaxLiabilityReportQuery = (
-	startDate?: string,
-	endDate?: string,
-): UseQueryResult<TaxLiabilityRow[], Error> => {
-	return useQuery({
-		queryKey: ["reports", "tax-liability", startDate, endDate],
-		queryFn: () => reportsApi.getTaxLiabilityReport(startDate, endDate),
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "tax-liability", params],
+		queryFn: () => reportsApi.getTaxLiabilityReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
 export const useJobsReportQuery = (
-	range?: { start: Date; end: Date } | null,
-): UseQueryResult<JobsReportRow[], Error> => {
-	return useQuery({
-		queryKey: [
-			"reports",
-			"jobs",
-			range ? `${range.start.toISOString()}|${range.end.toISOString()}` : "all",
-		],
-		queryFn: () => reportsApi.getJobsReport(range),
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "jobs", params],
+		queryFn: () => reportsApi.getJobsReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
 export const useInvoicesReportQuery = (
-	range?: { start: Date; end: Date } | null,
-): UseQueryResult<InvoicesReportRow[], Error> => {
-	return useQuery({
-		queryKey: [
-			"reports",
-			"invoices",
-			range ? `${range.start.toISOString()}|${range.end.toISOString()}` : "all",
-		],
-		queryFn: () => reportsApi.getInvoicesReport(range),
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "invoices", params],
+		queryFn: () => reportsApi.getInvoicesReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
-export const useClientsReportQuery = (): UseQueryResult<ClientsReportRow[], Error> => {
-	return useQuery({
-		queryKey: ["reports", "clients"],
-		queryFn: () => reportsApi.getClientsReport(),
+export const useClientsReportQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "clients", params],
+		queryFn: () => reportsApi.getClientsReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
+
+export const useClientRetentionQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "client-retention", params],
+		queryFn: () => reportsApi.getClientRetentionReport(params),
+		placeholderData: keepPreviousData,
+	});
 
 export const usePaymentsReportQuery = (
-	startDate?: string,
-	endDate?: string,
-): UseQueryResult<PaymentsReportRow[], Error> => {
-	return useQuery({
-		queryKey: ["reports", "payments", startDate, endDate],
-		queryFn: () => reportsApi.getPaymentsReport(startDate, endDate),
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "payments", params],
+		queryFn: () => reportsApi.getPaymentsReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
 
 export const useQuoteFunnelQuery = (
-	startDate?: string,
-	endDate?: string,
-): UseQueryResult<QuoteFunnelResponse, Error> => {
-	return useQuery({
-		queryKey: ["reports", "quote-funnel", startDate, endDate],
-		queryFn: () => reportsApi.getQuoteFunnelReport(startDate, endDate),
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "quote-funnel", params],
+		queryFn: () => reportsApi.getQuoteFunnelReport(params),
+		placeholderData: keepPreviousData,
 	});
-};
+
+export const useFirstTimeFixQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "first-time-fix", params],
+		queryFn: () => reportsApi.getFirstTimeFixReport(params),
+		placeholderData: keepPreviousData,
+	});
 
 export const useTechnicianScorecardQuery = (
 	startDate?: string,

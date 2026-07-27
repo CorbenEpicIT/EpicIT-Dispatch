@@ -11,18 +11,41 @@ import type {
 	ArrivalPerformanceResponse,
 	MileageReportVisit,
 	TimesheetReportEntry,
-	ReorderForecastRow,
-	InventoryReportRow,
 	AgedReceivablesResponse,
-	AgedReceivablesClientRow,
-	TaxLiabilityRow,
-	JobsReportRow,
-	InvoicesReportRow,
-	ClientsReportRow,
-	PaymentsReportRow,
-	QuoteFunnelResponse,
 	TechScorecardVisitRow,
+	Paginated,
+	ReportFetchParams,
 } from "../types/reports";
+
+const buildReportParams = (p: ReportFetchParams): Record<string, string> => {
+	const q: Record<string, string> = {};
+	if (p.startDate) q.startDate = p.startDate;
+	if (p.endDate) q.endDate = p.endDate;
+	if (p.search) q.search = p.search;
+	if (p.searchTerms?.length) q.searchTerms = JSON.stringify(p.searchTerms);
+	if (p.conditions?.length) q.conditions = JSON.stringify(p.conditions);
+	if (p.join) q.join = p.join;
+	if (p.sortKey) q.sortKey = p.sortKey;
+	if (p.sortDir) q.sortDir = p.sortDir;
+	if (p.sortType) q.sortType = p.sortType;
+	if (p.page != null) q.page = String(p.page);
+	if (p.limit != null) q.limit = String(p.limit);
+	if (p.include_inactive) q.include_inactive = "true";
+	if (p.lookbackDays != null) q.lookbackDays = String(p.lookbackDays);
+	return q;
+};
+
+const fetchPaginated = async (
+	path: string,
+	params: ReportFetchParams,
+	errorMessage: string,
+): Promise<Paginated> => {
+	const response = await api.get<ApiResponse<Paginated>>(path, {
+		params: buildReportParams(params),
+	});
+	if (!response.data.data) throw new Error(errorMessage);
+	return response.data.data;
+};
 
 // ============================================================================
 // REPORTS API
@@ -179,38 +202,19 @@ export const getTimesheetsReport = async (
 	return response.data.data;
 };
 
-export const getReorderForecast = async (): Promise<ReorderForecastRow[]> => {
-	const response = await api.get<ApiResponse<ReorderForecastRow[]>>(
+export const getReorderForecast = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
 		"/reports/inventory/reorder-forecast",
+		params,
+		"Failed to fetch reorder forecast",
 	);
 
-	if (!response.data.data) {
-		throw new Error("Failed to fetch reorder forecast");
-	}
-
-	return response.data.data;
-};
-
-export const getInventoryReport = async (
-	range?: { start: Date; end: Date } | null,
-): Promise<InventoryReportRow[]> => {
-	const params: Record<string, string> = { include_inactive: "true" };
-	if (range) {
-		params.startDate = range.start.toISOString();
-		params.endDate = range.end.toISOString();
-	}
-
-	const response = await api.get<ApiResponse<InventoryReportRow[]>>(
+export const getInventoryReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
 		"/reports/inventory/full",
-		{ params },
+		{ include_inactive: true, ...params },
+		"Failed to fetch inventory report",
 	);
-
-	if (!response.data.data) {
-		throw new Error("Failed to fetch inventory report");
-	}
-
-	return response.data.data;
-};
 
 export const getAgedReceivables = async (): Promise<AgedReceivablesResponse> => {
 	const response = await api.get<ApiResponse<AgedReceivablesResponse>>(
@@ -224,123 +228,36 @@ export const getAgedReceivables = async (): Promise<AgedReceivablesResponse> => 
 	return response.data.data;
 };
 
-export const getAgedReceivablesByClient = async (): Promise<AgedReceivablesClientRow[]> => {
-	const response = await api.get<ApiResponse<AgedReceivablesClientRow[]>>(
+export const getAgedReceivablesByClient = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
 		"/reports/receivables/aging/by-client",
+		params,
+		"Failed to fetch aged receivables by client",
 	);
 
-	if (!response.data.data) {
-		throw new Error("Failed to fetch aged receivables by client");
-	}
+export const getTaxLiabilityReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/tax-liability", params, "Failed to fetch tax liability report");
 
-	return response.data.data;
-};
+export const getJobsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/jobs", params, "Failed to fetch jobs report");
 
-export const getTaxLiabilityReport = async (
-	startDate?: string,
-	endDate?: string,
-): Promise<TaxLiabilityRow[]> => {
-	const params: Record<string, string> = {};
-	if (startDate) params.startDate = startDate;
-	if (endDate) params.endDate = endDate;
+export const getInvoicesReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/invoices", params, "Failed to fetch invoices report");
 
-	const response = await api.get<ApiResponse<TaxLiabilityRow[]>>(
-		"/reports/tax-liability",
-		{ params },
-	);
+export const getClientsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/clients", params, "Failed to fetch clients report");
 
-	if (!response.data.data) {
-		throw new Error("Failed to fetch tax liability report");
-	}
+export const getClientRetentionReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/clients/retention", params, "Failed to fetch client retention report");
 
-	return response.data.data;
-};
+export const getPaymentsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/payments", params, "Failed to fetch payments report");
 
-export const getJobsReport = async (
-	range?: { start: Date; end: Date } | null,
-): Promise<JobsReportRow[]> => {
-	const params: Record<string, string> = {};
-	if (range) {
-		params.startDate = range.start.toISOString();
-		params.endDate = range.end.toISOString();
-	}
+export const getQuoteFunnelReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/quote-funnel", params, "Failed to fetch quote funnel report");
 
-	const response = await api.get<ApiResponse<JobsReportRow[]>>("/reports/jobs", { params });
-
-	if (!response.data.data) {
-		throw new Error("Failed to fetch jobs report");
-	}
-
-	return response.data.data;
-};
-
-export const getInvoicesReport = async (
-	range?: { start: Date; end: Date } | null,
-): Promise<InvoicesReportRow[]> => {
-	const params: Record<string, string> = {};
-	if (range) {
-		params.startDate = range.start.toISOString();
-		params.endDate = range.end.toISOString();
-	}
-
-	const response = await api.get<ApiResponse<InvoicesReportRow[]>>("/reports/invoices", {
-		params,
-	});
-
-	if (!response.data.data) {
-		throw new Error("Failed to fetch invoices report");
-	}
-
-	return response.data.data;
-};
-
-export const getClientsReport = async (): Promise<ClientsReportRow[]> => {
-	const response = await api.get<ApiResponse<ClientsReportRow[]>>("/reports/clients");
-
-	if (!response.data.data) {
-		throw new Error("Failed to fetch clients report");
-	}
-
-	return response.data.data;
-};
-
-export const getPaymentsReport = async (
-	startDate?: string,
-	endDate?: string,
-): Promise<PaymentsReportRow[]> => {
-	const params: Record<string, string> = {};
-	if (startDate) params.startDate = startDate;
-	if (endDate) params.endDate = endDate;
-
-	const response = await api.get<ApiResponse<PaymentsReportRow[]>>("/reports/payments", {
-		params,
-	});
-
-	if (!response.data.data) {
-		throw new Error("Failed to fetch payments report");
-	}
-
-	return response.data.data;
-};
-
-export const getQuoteFunnelReport = async (
-	startDate?: string,
-	endDate?: string,
-): Promise<QuoteFunnelResponse> => {
-	const params: Record<string, string> = {};
-	if (startDate) params.startDate = startDate;
-	if (endDate) params.endDate = endDate;
-
-	const response = await api.get<ApiResponse<QuoteFunnelResponse>>("/reports/quote-funnel", {
-		params,
-	});
-
-	if (!response.data.data) {
-		throw new Error("Failed to fetch quote funnel report");
-	}
-
-	return response.data.data;
-};
+export const getFirstTimeFixReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/first-time-fix", params, "Failed to fetch first-time fix report");
 
 export const getTechnicianScorecard = async (
 	startDate?: string,
@@ -383,6 +300,33 @@ export const exportReport = async ({
 	const response = await api.post(
 		"/reports/export",
 		{ filename, sheetName, columns, rows },
+		{ responseType: "blob" },
+	);
+	triggerDownload(response.data as Blob, filename);
+};
+
+export interface ExportServerArgs {
+	report: string;
+	filename: string;
+	columns: ExportColumn[];
+	sheetName?: string;
+	params?: ReportFetchParams;
+}
+
+// Server-side export: sends the report key + active filters (not the rows) so the
+// backend regenerates the full filtered set for the sheet.
+export const exportReportServer = async ({
+	report,
+	filename,
+	columns,
+	sheetName,
+	params = {},
+}: ExportServerArgs): Promise<void> => {
+	// Export regenerates the full filtered set, so page/limit are irrelevant (the
+	// server ignores them); include_inactive is forwarded under the API's camelCase.
+	const response = await api.post(
+		"/reports/export/server",
+		{ report, filename, sheetName, columns, ...params, includeInactive: params.include_inactive },
 		{ responseType: "blob" },
 	);
 	triggerDownload(response.data as Blob, filename);

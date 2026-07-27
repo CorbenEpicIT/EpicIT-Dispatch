@@ -17,6 +17,8 @@ export interface ResponseMeta {
 	timestamp?: string;
 	count?: number;
 	hasMore?: boolean;
+	page?: number;
+	pageSize?: number;
 }
 
 export interface ControllerResult<T = unknown> {

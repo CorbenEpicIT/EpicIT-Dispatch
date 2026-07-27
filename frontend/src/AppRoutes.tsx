@@ -27,9 +27,11 @@ import MileageReportPage from "./pages/dispatch/MileageReportPage";
 import TimesheetsReportPage from "./pages/dispatch/TimesheetsReportPage";
 import ReorderForecastPage from "./pages/dispatch/ReorderForecastPage";
 import AgedReceivablesPage from "./pages/dispatch/AgedReceivablesPage";
+import ClientRetentionPage from "./pages/dispatch/ClientRetentionPage";
 import TaxLiabilityPage from "./pages/dispatch/TaxLiabilityPage";
 import PaymentsReportPage from "./pages/dispatch/PaymentsReportPage";
 import QuoteFunnelPage from "./pages/dispatch/QuoteFunnelPage";
+import FirstTimeFixRatePage from "./pages/dispatch/FirstTimeFixRatePage";
 import TechnicianScorecardPage from "./pages/dispatch/TechnicianScorecardPage";
 import QuotesPage from "./pages/dispatch/QuotesPage";
 import QuoteDetailPage from "./pages/dispatch/QuoteDetailPage";
@@ -146,9 +148,11 @@ export default function AppRoutes() {
 				<Route path="reporting" element={<RequirePermission permission="view_reports"><ReportingPage /></RequirePermission>} />
 				<Route path="reporting/builder" element={<RequirePermission permission="view_reports"><ReportBuilderPage /></RequirePermission>} />
 				<Route path="reporting/aged-receivables" element={<RequirePermission permission="view_reports"><AgedReceivablesPage /></RequirePermission>} />
+				<Route path="reporting/client-retention" element={<RequirePermission permission="view_reports"><ClientRetentionPage /></RequirePermission>} />
 				<Route path="reporting/tax-liability" element={<RequirePermission permission="view_reports"><TaxLiabilityPage /></RequirePermission>} />
 				<Route path="reporting/payments" element={<RequirePermission permission="view_reports"><PaymentsReportPage /></RequirePermission>} />
 				<Route path="reporting/quote-funnel" element={<RequirePermission permission="view_reports"><QuoteFunnelPage /></RequirePermission>} />
+				<Route path="reporting/first-time-fix" element={<RequirePermission permission="view_reports"><FirstTimeFixRatePage /></RequirePermission>} />
 				<Route path="reporting/technician-scorecard" element={<RequirePermission permission="view_reports"><TechnicianScorecardPage /></RequirePermission>} />
 				<Route path="kpi" element={<RequirePermission permission="view_reports"><KPIPage /></RequirePermission>} />
 				<Route path="mileage" element={<MileageReportPage />} />

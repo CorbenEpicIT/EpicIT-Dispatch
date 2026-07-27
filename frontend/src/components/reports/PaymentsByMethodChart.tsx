@@ -54,7 +54,12 @@ export default function PaymentsByMethodChart({ data, total }: PaymentsByMethodC
 			className="h-full"
 			title="Payments by Method"
 			headerAction={
-				<span className="text-xl font-bold text-primary">{formatCurrency(total)}</span>
+				<span className="flex items-baseline gap-2">
+					<span className="text-xs uppercase tracking-wider text-text-tertiary">
+						Collected
+					</span>
+					<span className="text-xl font-bold text-primary">{formatCurrency(total)}</span>
+				</span>
 			}
 		>
 			{total === 0 ? (
@@ -64,17 +69,6 @@ export default function PaymentsByMethodChart({ data, total }: PaymentsByMethodC
 			) : (
 				<>
 					<div className="relative flex-1 min-h-0">
-						<div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-							<div className="text-center">
-								<p className="text-xs uppercase tracking-wider text-text-tertiary">
-									Collected
-								</p>
-								<p className="text-xl font-bold text-primary">
-									{formatCurrency(total)}
-								</p>
-							</div>
-						</div>
-
 						<ResponsiveContainer width="100%" height="100%" minWidth={0}>
 							<PieChart>
 								<Pie

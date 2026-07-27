@@ -3,7 +3,10 @@ import { ArrowLeft, FileBarChart, Loader2, Save, SlidersHorizontal } from "lucid
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AdaptableTable from "../../components/AdaptableTable";
 import PageHeader from "../../components/ui/PageHeader";
-import ReportCustomizeDrawer, { type SortDir } from "../../components/reports/ReportCustomizeDrawer";
+import ReportCustomizeDrawer, {
+	type AppliedReportConfig,
+	type SortDir,
+} from "../../components/reports/ReportCustomizeDrawer";
 import SaveReportModal from "../../components/reports/SaveReportModal";
 import { useColumnVisibility } from "../../hooks/useColumnVisibility";
 import {
@@ -11,32 +14,30 @@ import {
 	useCreateSavedReportMutation,
 	useUpdateSavedReportMutation,
 } from "../../hooks/useSavedReports";
-import type { SavedReportConfig } from "../../types/reports";
+import type { ReportFetchParams, SavedReportConfig } from "../../types/reports";
 import {
 	type FilterCondition,
 	type FilterJoin,
 	type ReportSource,
-	compareValues,
 	filterConditionSchema,
 	getReportSource,
 	isConditionActive,
-	matchesCondition,
 	sourceColumnOptions,
 	sourceColumnType,
 	sourceDefaultHidden,
 } from "../../reports/reportSources";
 import {
 	type DateRangeValue,
-	matchesDateRange,
 	parseDateRangeFromParams,
 	resolveDateRange,
 	serializeDateRange,
 } from "../../util/dateRangeUtils";
-import { exportReport } from "../../api/reports";
+import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
 import { builderConfigKey } from "../../reports/reportBuilderState";
 import { useAuthStore } from "../../auth/authStore";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
+import ReportPagination from "../../components/reports/ReportPagination";
 
 interface PersistedConfig {
 	date: string;
@@ -113,7 +114,7 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 		[initialConfig, defaultHidden],
 	);
 
-	const { hidden, toggle, reset, hideAll, columnVisibility, visibleColumns } = useColumnVisibility(
+	const { hidden, setHidden, columnVisibility, visibleColumns } = useColumnVisibility(
 		storageKey,
 		columns,
 		initialHidden,
@@ -138,14 +139,6 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 		parseDateRangeFromParams(new URLSearchParams(initial.date), "date"),
 	);
 
-	const resolvedRange = useMemo(
-		() =>
-			source.serverDateFilter && dateRange.option !== "all"
-				? resolveDateRange(dateRange)
-				: null,
-		[source, dateRange],
-	);
-	const { data, isLoading, error } = source.useRows(resolvedRange);
 	const [search, setSearch] = useState(initial.search);
 	const [conditions, setConditions] = useState<FilterCondition[]>(initial.conditions);
 	const [join, setJoin] = useState<FilterJoin>(initial.join);
@@ -153,6 +146,48 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 	const [sortDir, setSortDir] = useState<SortDir>(initial.sortDir);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saveModalOpen, setSaveModalOpen] = useState(false);
+	const [page, setPage] = useState(0);
+	const [pageSize, setPageSize] = useState(50);
+
+	const resolvedRange = useMemo(
+		() => (dateRange.option !== "all" ? resolveDateRange(dateRange) : null),
+		[dateRange],
+	);
+
+	const queryParams = useMemo<ReportFetchParams>(
+		() => ({
+			startDate: resolvedRange?.start.toISOString(),
+			endDate: resolvedRange?.end.toISOString(),
+			search: search.trim() || undefined,
+			conditions: conditions
+				.filter(isConditionActive)
+				.map((c) => ({ ...c, columnType: sourceColumnType(source, c.columnKey) })),
+			join,
+			sortKey: sortKey || undefined,
+			sortDir,
+			sortType: sortKey ? sourceColumnType(source, sortKey) : undefined,
+			page,
+			limit: pageSize,
+		}),
+		[resolvedRange, search, conditions, join, sortKey, sortDir, page, pageSize, source],
+	);
+
+	const { rows, total, hasMore, isLoading, isFetching, error } = source.useRows(queryParams);
+
+	// Reset to the first page whenever any filter changes
+	const filterKey = JSON.stringify([
+		queryParams.startDate,
+		queryParams.endDate,
+		queryParams.search,
+		queryParams.conditions,
+		queryParams.join,
+		queryParams.sortKey,
+		queryParams.sortDir,
+		queryParams.limit,
+	]);
+	useEffect(() => {
+		setPage(0);
+	}, [filterKey]);
 
 	useEffect(() => {
 		if (reportId) return;
@@ -212,42 +247,18 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 		}
 	};
 
-	const rows = useMemo(() => {
-		const source_rows = data;
-		const q = search.trim().toLowerCase();
-
-		const activeConditions = conditions.filter(isConditionActive);
-
-		let result = source_rows.filter((row) => {
-			if (source.dateKey && dateRange.option !== "all") {
-				const cell = row[source.dateKey];
-				if (!matchesDateRange(new Date(String(cell)), dateRange)) return false;
-			}
-			if (q) {
-				const hit = columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-				if (!hit) return false;
-			}
-			if (activeConditions.length > 0) {
-				const checks = activeConditions.map((c) => matchesCondition(row, source, c));
-				const pass = join === "and" ? checks.every(Boolean) : checks.some(Boolean);
-				if (!pass) return false;
-			}
-			return true;
-		});
-
-		if (sortKey) {
-			const type = sourceColumnType(source, sortKey);
-			const factor = sortDir === "asc" ? 1 : -1;
-			result = [...result].sort(
-				(a, b) => compareValues(a[sortKey], b[sortKey], type) * factor,
-			);
-		}
-
-		return result;
-	}, [data, source, columns, dateRange, search, conditions, join, sortKey, sortDir]);
+	const handleApply = (config: AppliedReportConfig) => {
+		setDateRange(config.dateRange);
+		setSearch(config.search);
+		setConditions(config.conditions);
+		setJoin(config.join);
+		setSortKey(config.sortKey);
+		setSortDir(config.sortDir);
+		setHidden(config.hidden);
+	};
 
 	const activeConditionCount = conditions.filter(isConditionActive).length;
-	const showEmpty = rows.length === 0 && !isLoading && !error;
+	const showEmpty = total === 0 && !isLoading && !error;
 
 	return (
 		<div className="text-text-primary">
@@ -265,13 +276,14 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 			>
 				<ExportExcelButton
 					onExport={() =>
-						exportReport({
+						exportReportServer({
+							report: source.id,
 							filename: datedFilename(displayName),
 							columns: visibleColumns,
-							rows: rows,
+							params: { ...queryParams, page: undefined, limit: undefined },
 						})
 					}
-					disabled={rows.length === 0}
+					disabled={total === 0}
 				/>
 				<button
 					onClick={() => setDrawerOpen(true)}
@@ -304,13 +316,24 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 						<p className="text-text-muted text-sm">Try adjusting your filters</p>
 					</div>
 				) : (
-					<AdaptableTable
-						data={rows}
-						loadListener={isLoading}
-						errListener={error}
-						columnVisibility={columnVisibility}
-						headerLabels={headerLabels}
-					/>
+					<>
+						<AdaptableTable
+							data={rows}
+							loadListener={isLoading}
+							errListener={error}
+							columnVisibility={columnVisibility}
+							headerLabels={headerLabels}
+						/>
+						<ReportPagination
+							page={queryParams.page ?? 0}
+							pageSize={pageSize}
+							total={total}
+							hasMore={hasMore}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							isFetching={isFetching}
+						/>
+					</>
 				)}
 			</div>
 
@@ -319,21 +342,13 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 				onClose={() => setDrawerOpen(false)}
 				source={source}
 				hidden={hidden}
-				onToggleColumn={toggle}
-				onResetColumns={reset}
-				onDeselectColumns={hideAll}
 				dateRange={dateRange}
-				onDateRangeChange={setDateRange}
 				search={search}
-				onSearchChange={setSearch}
 				conditions={conditions}
-				onConditionsChange={setConditions}
 				join={join}
-				onJoinChange={setJoin}
 				sortKey={sortKey}
-				onSortKeyChange={setSortKey}
 				sortDir={sortDir}
-				onSortDirChange={setSortDir}
+				onApply={handleApply}
 			/>
 
 			<SaveReportModal

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Receipt } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { UserX } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
 import ColumnsButton from "../../components/ui/ColumnsButton";
+import Dropdown from "../../components/ui/Dropdown";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
-import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import ReportPagination from "../../components/reports/ReportPagination";
 import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
@@ -20,39 +20,36 @@ import {
 	type ColumnOption,
 } from "../../hooks/useColumnVisibility";
 import { formatCurrency } from "../../util/util";
-import { formatRatePercentLabel } from "../../lib/formatTax";
-import { parseDateRangeFromParams, resolveDateRange } from "../../util/dateRangeUtils";
-import { useTaxLiabilityReportQuery } from "../../hooks/useReports";
-import type { ReportFetchParams } from "../../types/reports";
+import { useClientRetentionQuery } from "../../hooks/useReports";
+import type { ClientRetentionRow, ReportFetchParams } from "../../types/reports";
 
 const COLS: ColumnOption[] = [
-	{ key: "jurisdiction", label: "Jurisdiction" },
-	{ key: "rateName", label: "Rate" },
-	{ key: "rate", label: "Rate %" },
-	{ key: "taxableBase", label: "Taxable Base" },
-	{ key: "taxCollected", label: "Tax Collected" },
-	{ key: "invoiceCount", label: "Invoices" },
+	{ key: "name", label: "Client" },
+	{ key: "primaryContact", label: "Primary Contact" },
+	{ key: "email", label: "Email" },
+	{ key: "phone", label: "Phone" },
+	{ key: "lastActivity", label: "Last Activity" },
+	{ key: "lifetimeRevenue", label: "Lifetime Revenue" },
+	{ key: "jobCount", label: "Jobs" },
 ];
 
+const NUMERIC_KEYS = ["lifetimeRevenue", "jobCount"] as const;
+
 const HEADER_LABELS = buildHeaderLabels(COLS);
-const COLUMN_ALIGN = buildColumnAlign(COLS, ["rate", "taxableBase", "taxCollected", "invoiceCount"]);
+const COLUMN_ALIGN = buildColumnAlign(COLS, NUMERIC_KEYS);
 
-interface TaxSummary {
-	taxableBase?: number;
-	taxCollected?: number;
-	invoiceCount?: number;
-}
+const LOOKBACK_OPTIONS = [
+	{ value: "90", label: "No activity in 90 days" },
+	{ value: "180", label: "No activity in 180 days" },
+	{ value: "365", label: "No activity in 365 days" },
+];
 
-export default function TaxLiabilityPage() {
+export default function ClientRetentionPage() {
+	const navigate = useNavigate();
 	const [searchInput, setSearchInput] = useState("");
 	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
 
-	const [searchParams] = useSearchParams();
-	const dateRange = parseDateRangeFromParams(searchParams, "period");
-	const resolved = resolveDateRange(dateRange);
-	const startDate = resolved?.start.toISOString();
-	const endDate = resolved?.end.toISOString();
-
+	const [lookbackDays, setLookbackDays] = useState(180);
 	const [page, setPage] = useState(0);
 	const [pageSize, setPageSize] = useState(50);
 
@@ -62,23 +59,22 @@ export default function TaxLiabilityPage() {
 	}, [terms, searchInput]);
 
 	const queryParams = useMemo<ReportFetchParams>(
-		() => ({ startDate, endDate, searchTerms, page, limit: pageSize }),
-		[startDate, endDate, searchTerms, page, pageSize],
+		() => ({ searchTerms, lookbackDays, page, limit: pageSize }),
+		[searchTerms, lookbackDays, page, pageSize],
 	);
 
-	const { data, isLoading, isFetching, error } = useTaxLiabilityReportQuery(queryParams);
-	const rows = useMemo(() => data?.rows ?? [], [data]);
+	const { data, isLoading, isFetching, error } = useClientRetentionQuery(queryParams);
+	const rows = useMemo(() => (data?.rows ?? []) as ClientRetentionRow[], [data]);
 	const total = data?.total ?? 0;
 	const hasMore = data?.hasMore ?? false;
-	const summary = useMemo(() => (data?.summary ?? {}) as TaxSummary, [data]);
 
-	const filterKey = JSON.stringify([startDate, endDate, searchTerms, pageSize]);
+	const filterKey = JSON.stringify([searchTerms, lookbackDays, pageSize]);
 	useEffect(() => {
 		setPage(0);
 	}, [filterKey]);
 
 	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
-		"tax-liability",
+		"client-retention",
 		COLS,
 	);
 
@@ -86,24 +82,15 @@ export default function TaxLiabilityPage() {
 		() =>
 			rows.map((r) => ({
 				id: r.id,
-				jurisdiction: r.jurisdiction,
-				rateName: r.rateName,
-				rate: formatRatePercentLabel(Number(r.rate)),
-				taxableBase: formatCurrency(Number(r.taxableBase)),
-				taxCollected: formatCurrency(Number(r.taxCollected)),
-				invoiceCount: r.invoiceCount,
+				name: r.name,
+				primaryContact: r.primaryContact,
+				email: r.email,
+				phone: r.phone,
+				lastActivity: r.lastActivity,
+				lifetimeRevenue: formatCurrency(Number(r.lifetimeRevenue)),
+				jobCount: r.jobCount,
 			})),
 		[rows],
-	);
-
-	const footerRow = useMemo(
-		() => ({
-			jurisdiction: "Total",
-			taxableBase: formatCurrency(summary.taxableBase ?? 0),
-			taxCollected: formatCurrency(summary.taxCollected ?? 0),
-			invoiceCount: (summary.invoiceCount ?? 0).toLocaleString(),
-		}),
-		[summary],
 	);
 
 	const clearAllFilters = () => {
@@ -111,34 +98,45 @@ export default function TaxLiabilityPage() {
 		clearAll();
 	};
 
-	const hasActiveFilters = terms.length > 0 || dateRange.option !== "all";
+	const hasActiveFilters = terms.length > 0;
 	const showEmpty = total === 0 && !isLoading && !error;
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Tax Liability" />
+			<PageHeader title="Client Retention" />
 
 			<PageControls
 				className="mb-4"
 				left={
 					<SearchBar
 						paramKey="search"
-						placeholder="Search by jurisdiction or rate..."
+						placeholder="Search by client or contact..."
 						onValueChange={setSearchInput}
 						onSubmit={addTerm}
 					/>
 				}
 				right={
 					<>
-						<DateRangeFilter paramKey="period" />
+						<div className="w-52">
+							<Dropdown
+								aria-label="Retention window"
+								value={String(lookbackDays)}
+								onChange={(v) => setLookbackDays(Number(v))}
+								entries={LOOKBACK_OPTIONS.map((o) => (
+									<option key={o.value} value={o.value}>
+										{o.label}
+									</option>
+								))}
+							/>
+						</div>
 						<ExportExcelButton
 							onExport={() =>
 								exportReportServer({
-									report: "tax-liability",
-									filename: datedFilename("tax-liability"),
-									sheetName: "Tax Liability",
+									report: "client-retention",
+									filename: datedFilename("client-retention"),
+									sheetName: "Client Retention",
 									columns: visibleColumns,
-									params: { startDate, endDate, searchTerms },
+									params: { searchTerms, lookbackDays },
 								})
 							}
 							disabled={total === 0}
@@ -162,12 +160,14 @@ export default function TaxLiabilityPage() {
 			<div className="shadow-sm border border-border-subtle p-3 bg-base rounded-lg overflow-x-auto text-left">
 				{showEmpty ? (
 					<div className="text-center py-16">
-						<Receipt size={48} className="mx-auto text-text-faint mb-3" />
-						<h3 className="text-text-tertiary text-lg font-medium mb-2">No tax collected</h3>
+						<UserX size={48} className="mx-auto text-text-faint mb-3" />
+						<h3 className="text-text-tertiary text-lg font-medium mb-2">
+							No lapsed clients
+						</h3>
 						<p className="text-text-muted text-sm">
 							{hasActiveFilters
 								? "Try adjusting your filters"
-								: "Tax collected on issued invoices appears here"}
+								: "Every active client has had a purchase, service, or contact in this window"}
 						</p>
 					</div>
 				) : (
@@ -180,7 +180,7 @@ export default function TaxLiabilityPage() {
 							columnVisibility={columnVisibility}
 							headerLabels={HEADER_LABELS}
 							columnAlign={COLUMN_ALIGN}
-							footerRow={footerRow}
+							onRowClick={(row) => navigate(`/dispatch/clients/${row.id as string}`)}
 						/>
 						<ReportPagination
 							page={page}

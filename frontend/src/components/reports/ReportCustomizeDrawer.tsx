@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Search, X } from "lucide-react";
 import Drawer from "../ui/Drawer";
 import CollapsibleSection from "../ui/CollapsibleSection";
@@ -17,26 +17,28 @@ import type { DateRangeValue } from "../../util/dateRangeUtils";
 
 export type SortDir = "asc" | "desc";
 
+export interface AppliedReportConfig {
+	dateRange: DateRangeValue;
+	search: string;
+	conditions: FilterCondition[];
+	join: FilterJoin;
+	sortKey: string;
+	sortDir: SortDir;
+	hidden: Set<string>;
+}
+
 interface ReportCustomizeDrawerProps {
 	isOpen: boolean;
 	onClose: () => void;
 	source: ReportSource;
 	hidden: Set<string>;
-	onToggleColumn: (key: string) => void;
-	onResetColumns: () => void;
-	onDeselectColumns: () => void;
 	dateRange: DateRangeValue;
-	onDateRangeChange: (value: DateRangeValue) => void;
 	search: string;
-	onSearchChange: (value: string) => void;
 	conditions: FilterCondition[];
-	onConditionsChange: (conditions: FilterCondition[]) => void;
 	join: FilterJoin;
-	onJoinChange: (join: FilterJoin) => void;
 	sortKey: string;
-	onSortKeyChange: (value: string) => void;
 	sortDir: SortDir;
-	onSortDirChange: (value: SortDir) => void;
+	onApply: (config: AppliedReportConfig) => void;
 }
 
 export default function ReportCustomizeDrawer({
@@ -44,29 +46,42 @@ export default function ReportCustomizeDrawer({
 	onClose,
 	source,
 	hidden,
-	onToggleColumn,
-	onResetColumns,
-	onDeselectColumns,
 	dateRange,
-	onDateRangeChange,
 	search,
-	onSearchChange,
 	conditions,
-	onConditionsChange,
 	join,
-	onJoinChange,
 	sortKey,
-	onSortKeyChange,
 	sortDir,
-	onSortDirChange,
+	onApply,
 }: ReportCustomizeDrawerProps) {
 	const columns = useMemo(() => sourceColumnOptions(source), [source]);
+
+	const [draftHidden, setDraftHidden] = useState<Set<string>>(() => new Set(hidden));
+	const [draftDateRange, setDraftDateRange] = useState<DateRangeValue>(dateRange);
+	const [draftSearch, setDraftSearch] = useState(search);
+	const [draftConditions, setDraftConditions] = useState<FilterCondition[]>(conditions);
+	const [draftJoin, setDraftJoin] = useState<FilterJoin>(join);
+	const [draftSortKey, setDraftSortKey] = useState(sortKey);
+	const [draftSortDir, setDraftSortDir] = useState<SortDir>(sortDir);
+
+	// Reset to match the report each time the drawer opens again if an Apply 
+	// while the drawer is still open
+	useEffect(() => {
+		if (!isOpen) return;
+		setDraftHidden(new Set(hidden));
+		setDraftDateRange(dateRange);
+		setDraftSearch(search);
+		setDraftConditions(conditions);
+		setDraftJoin(join);
+		setDraftSortKey(sortKey);
+		setDraftSortDir(sortDir);
+	}, [isOpen, hidden, dateRange, search, conditions, join, sortKey, sortDir]);
 
 	const addCondition = () => {
 		const firstKey = columns[0]?.key ?? "";
 		const firstOp = operatorsForType(sourceColumnType(source, firstKey))[0]?.value ?? "contains";
-		onConditionsChange([
-			...conditions,
+		setDraftConditions([
+			...draftConditions,
 			{
 				id: crypto.randomUUID(),
 				columnKey: firstKey,
@@ -78,7 +93,7 @@ export default function ReportCustomizeDrawer({
 	};
 
 	const updateCondition = (id: string, patch: Partial<FilterCondition>) => {
-		onConditionsChange(conditions.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+		setDraftConditions(draftConditions.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 	};
 
 	const changeConditionColumn = (id: string, columnKey: string) => {
@@ -87,18 +102,72 @@ export default function ReportCustomizeDrawer({
 	};
 
 	const removeCondition = (id: string) => {
-		onConditionsChange(conditions.filter((c) => c.id !== id));
+		setDraftConditions(draftConditions.filter((c) => c.id !== id));
+	};
+
+	const toggleColumn = (key: string) => {
+		setDraftHidden((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				// Keep at least one column visible.
+				const visibleCount = columns.filter((c) => !next.has(c.key)).length;
+				if (visibleCount <= 1) return prev;
+				next.add(key);
+			}
+			return next;
+		});
+	};
+
+	const resetColumns = () => setDraftHidden(new Set());
+	const deselectColumns = () => setDraftHidden(new Set(columns.map((c) => c.key)));
+
+	const isDirty =
+		draftSearch !== search ||
+		draftJoin !== join ||
+		draftSortKey !== sortKey ||
+		draftSortDir !== sortDir ||
+		JSON.stringify(draftDateRange) !== JSON.stringify(dateRange) ||
+		JSON.stringify(draftConditions) !== JSON.stringify(conditions) ||
+		draftHidden.size !== hidden.size ||
+		[...draftHidden].some((k) => !hidden.has(k));
+
+	const applyChanges = () => {
+		onApply({
+			dateRange: draftDateRange,
+			search: draftSearch,
+			conditions: draftConditions,
+			join: draftJoin,
+			sortKey: draftSortKey,
+			sortDir: draftSortDir,
+			hidden: draftHidden,
+		});
 	};
 
 	return (
-		<Drawer isOpen={isOpen} onClose={onClose} title="Customize Report">
+		<Drawer
+			isOpen={isOpen}
+			onClose={onClose}
+			title="Customize Report"
+			footer={
+				<button
+					type="button"
+					onClick={applyChanges}
+					disabled={!isDirty}
+					className="w-full flex items-center justify-center gap-1.5 h-9 px-3 rounded-md bg-primary hover:bg-primary-hover text-on-primary text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+				>
+					Apply
+				</button>
+			}
+		>
 			<CollapsibleSection title="Columns">
 				<CategorizedColumnPicker
 					categories={source.categories}
-					hidden={hidden}
-					onToggle={onToggleColumn}
-					onReset={onResetColumns}
-					onDeselectAll={onDeselectColumns}
+					hidden={draftHidden}
+					onToggle={toggleColumn}
+					onReset={resetColumns}
+					onDeselectAll={deselectColumns}
 				/>
 			</CollapsibleSection>
 
@@ -109,7 +178,7 @@ export default function ReportCustomizeDrawer({
 							<p className="text-xs text-text-muted uppercase tracking-wide font-semibold mb-1.5">
 								Date range
 							</p>
-							<DateRangeFilter value={dateRange} onChange={onDateRangeChange} />
+							<DateRangeFilter value={draftDateRange} onChange={setDraftDateRange} />
 						</div>
 					)}
 					<div>
@@ -122,8 +191,8 @@ export default function ReportCustomizeDrawer({
 								className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
 							/>
 							<input
-								value={search}
-								onChange={(e) => onSearchChange(e.target.value)}
+								value={draftSearch}
+								onChange={(e) => setDraftSearch(e.target.value)}
 								placeholder="Filter rows..."
 								className="w-full h-9 pl-8 pr-2.5 bg-base border border-border rounded-md text-sm text-text-primary placeholder:text-faint focus:border-primary focus:outline-none"
 							/>
@@ -135,13 +204,13 @@ export default function ReportCustomizeDrawer({
 							<p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
 								Conditions
 							</p>
-							{conditions.length >= 2 && (
+							{draftConditions.length >= 2 && (
 								<div className="flex items-center rounded-md border border-border overflow-hidden">
 									<button
 										type="button"
-										onClick={() => onJoinChange("and")}
+										onClick={() => setDraftJoin("and")}
 										className={`px-2 py-1 text-xs transition-colors ${
-											join === "and"
+											draftJoin === "and"
 												? "bg-primary-bg text-primary-text"
 												: "bg-base text-text-tertiary hover:text-text-primary"
 										}`}
@@ -150,9 +219,9 @@ export default function ReportCustomizeDrawer({
 									</button>
 									<button
 										type="button"
-										onClick={() => onJoinChange("or")}
+										onClick={() => setDraftJoin("or")}
 										className={`px-2 py-1 text-xs border-l border-border transition-colors ${
-											join === "or"
+											draftJoin === "or"
 												? "bg-primary-bg text-primary-text"
 												: "bg-base text-text-tertiary hover:text-text-primary"
 										}`}
@@ -164,7 +233,7 @@ export default function ReportCustomizeDrawer({
 						</div>
 
 						<div className="flex flex-col gap-2">
-							{conditions.map((condition) => {
+							{draftConditions.map((condition) => {
 								const type = sourceColumnType(source, condition.columnKey);
 								const operators = operatorsForType(type);
 								const valueless =
@@ -348,8 +417,8 @@ export default function ReportCustomizeDrawer({
 					<div className="flex-1">
 						<Dropdown
 							aria-label="Sort field"
-							value={sortKey}
-							onChange={onSortKeyChange}
+							value={draftSortKey}
+							onChange={setDraftSortKey}
 							entries={[
 								<option key="" value="">
 									None
@@ -364,12 +433,12 @@ export default function ReportCustomizeDrawer({
 					</div>
 					<button
 						type="button"
-						onClick={() => onSortDirChange(sortDir === "asc" ? "desc" : "asc")}
-						disabled={!sortKey}
-						aria-label={sortDir === "asc" ? "Ascending" : "Descending"}
+						onClick={() => setDraftSortDir(draftSortDir === "asc" ? "desc" : "asc")}
+						disabled={!draftSortKey}
+						aria-label={draftSortDir === "asc" ? "Ascending" : "Descending"}
 						className="flex items-center justify-center h-[34px] w-[34px] rounded border border-border bg-base text-text-secondary hover:text-text-primary hover:border-border-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
 					>
-						{sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+						{draftSortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
 					</button>
 				</div>
 			</CollapsibleSection>

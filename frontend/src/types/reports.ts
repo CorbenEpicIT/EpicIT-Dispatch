@@ -1,4 +1,4 @@
-import type { FilterCondition, FilterJoin } from "../reports/reportSources";
+import type { ColumnType, FilterCondition, FilterJoin } from "../reports/reportSources";
 import type { StockStatus } from "./inventory";
 
 // ============================================================================
@@ -6,6 +6,37 @@ import type { StockStatus } from "./inventory";
 // ============================================================================
 
 export type ReportCategoryId = "financial" | "operational" | "technician" | "client";
+
+// ============================================================================
+// PAGINATION
+// ============================================================================
+
+export type ReportRowRecord = Record<string, unknown>;
+
+export interface Paginated<T = ReportRowRecord> {
+	rows: T[];
+	total: number;
+	page: number;
+	pageSize: number;
+	hasMore: boolean;
+	summary?: Record<string, unknown>;
+}
+
+export interface ReportFetchParams {
+	startDate?: string;
+	endDate?: string;
+	search?: string;
+	searchTerms?: string[];
+	conditions?: FilterCondition[];
+	join?: FilterJoin;
+	sortKey?: string;
+	sortDir?: "asc" | "desc";
+	sortType?: ColumnType;
+	page?: number;
+	limit?: number;
+	include_inactive?: boolean;
+	lookbackDays?: number;
+}
 
 // ============================================================================
 // OVERVIEW
@@ -314,6 +345,17 @@ export interface ClientsReportRow {
 	openBalance: number;
 }
 
+export interface ClientRetentionRow {
+	id: string;
+	name: string;
+	primaryContact: string;
+	email: string;
+	phone: string;
+	lastActivity: string;
+	lifetimeRevenue: number;
+	jobCount: number;
+}
+
 // ============================================================================
 // PAYMENTS REPORT
 // ============================================================================
@@ -374,6 +416,27 @@ export interface QuoteFunnelResponse {
 	valueLost: number;
 	bySource: QuoteFunnelSourceRow[];
 	quotes: QuoteFunnelQuoteRow[];
+}
+
+// ============================================================================
+// FIRST-TIME FIX RATE
+// ============================================================================
+
+export interface FirstTimeFixRow {
+	id: string;
+	jobNumber: string;
+	name: string;
+	clientName: string;
+	completedAt: string;
+	visitCount: number;
+	firstTimeFix: string;
+}
+
+export interface FirstTimeFixSummary {
+	completedJobs: number;
+	firstTimeFix: number;
+	repeatVisit: number;
+	ftfrPercent: number;
 }
 
 // ============================================================================
