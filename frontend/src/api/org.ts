@@ -16,6 +16,8 @@ export interface OrgSettings {
 	tax_rate: string;
 	restock_mode: RestockMode;
 	mfa_required: boolean;
+	brand_color: string | null;
+	followups_enabled: boolean;
 }
 
 export interface OrgSettingsUpdate {
@@ -27,6 +29,8 @@ export interface OrgSettingsUpdate {
 	website?: string | null;
 	restock_mode?: RestockMode;
 	mfa_required?: boolean;
+	brand_color?: string | null;
+	followups_enabled?: boolean;
 }
 
 export const getOrgSettings = async (): Promise<OrgSettings> => {
