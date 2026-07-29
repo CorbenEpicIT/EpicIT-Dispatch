@@ -139,7 +139,7 @@ export const WIDGET_CATALOG: Record<string, {
                                 ]
                             },
     "report-unscheduled-revenue":{ label: "Unscheduled Revenue",
-                                defaultW: 3,  defaultH: 7,  minW: 3, minH: 5, maxH: 12, maxW: 6,
+                                defaultW: 3,  defaultH: 5,  minW: 3, minH: 5, maxH: 7, maxW: 6,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
@@ -176,6 +176,13 @@ export const WIDGET_CATALOG: Record<string, {
                             },
     "report-aged-receivables-bar":{ label: "Aged Receivables (Bars)",
                                 defaultW: 4,  defaultH: 7,  minW: 3, minH: 6, maxH: 6, maxW: 6,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
+                                ]
+                            },
+    "report-page-summary":  {   label: "Page Report",
+                                defaultW: 4,  defaultH: 6,  minW: 4, minH: 6, maxH: 8, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]

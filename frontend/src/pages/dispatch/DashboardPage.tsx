@@ -43,6 +43,7 @@ import MileageSummaryWidget from "../../components/widgets/MileageSummaryWidget"
 import AgedReceivablesColumnWidget from "../../components/widgets/AgedReceivablesColumnWidget";
 import MapWidget from "../../components/widgets/MapWidget";
 import QBWidget from "../../components/widgets/QBWidget";
+import PageReportWidget from "../../components/widgets/PageReportWidget";
 
 
 export default function DashboardPage() {
@@ -467,6 +468,7 @@ export default function DashboardPage() {
 			case "report-arrival":         return <ArrivalPerformanceWidget />;
 			case "report-mileage":         return <MileageSummaryWidget />;
 			case "report-aged-receivables-bar": return <AgedReceivablesColumnWidget />;
+			case "report-page-summary":    return <PageReportWidget />;
 			default: return <div>Unknown widget: {id}</div>;
 		}
 	}

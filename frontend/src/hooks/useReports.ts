@@ -20,6 +20,7 @@ import type {
 	PaymentsReportRow,
 	QuoteFunnelResponse,
 	TechScorecardVisitRow,
+	PageSummaryResponse
 } from "../types/reports";
 import * as reportsApi from "../api/reports";
 
@@ -225,5 +226,17 @@ export const useTechnicianScorecardQuery = (
 	return useQuery({
 		queryKey: ["reports", "technician-scorecard", startDate, endDate],
 		queryFn: () => reportsApi.getTechnicianScorecard(startDate, endDate),
+	});
+};
+
+export const usePageSummaryQuery = (
+	page: string,
+	startDate?: string,
+	endDate?: string,
+	groupBy?: string,
+): UseQueryResult<PageSummaryResponse, Error> => {
+	return useQuery({
+		queryKey: ["reports", "page-summary", page, startDate, endDate, groupBy],
+		queryFn: () => reportsApi.getPageSummary(page, startDate, endDate, groupBy),
 	});
 };

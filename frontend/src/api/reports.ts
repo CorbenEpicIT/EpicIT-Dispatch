@@ -22,6 +22,7 @@ import type {
 	PaymentsReportRow,
 	QuoteFunnelResponse,
 	TechScorecardVisitRow,
+	PageSummaryResponse
 } from "../types/reports";
 
 // ============================================================================
@@ -387,3 +388,21 @@ export const exportReport = async ({
 	);
 	triggerDownload(response.data as Blob, filename);
 };
+
+export const getPageSummary = async (
+	page: string,
+	startDate?: string,
+	endDate?: string,
+	groupBy?: string,
+): Promise<PageSummaryResponse> => {
+	const params: Record<string, string> = {};
+	params.page = page;
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+	if (groupBy) params.groupBy = groupBy;
+	const response = await api.get("/reports/page-summary", { params });
+	if (!response.data.data){
+		throw new Error("Failed to fetch page summary");
+	}
+	return response.data.data;
+}

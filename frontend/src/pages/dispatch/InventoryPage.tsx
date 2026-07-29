@@ -27,7 +27,8 @@ import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
-import { 
+import PageReportSection from "../../components/reports/PageReportSection";
+import {
 	useQBStatusQuery,
 	useQBMappedItemsQuery,
 } from "../../hooks/useQuickbooks";
@@ -215,7 +216,7 @@ export default function InventoryPage() {
 	return (
 		<div className="flex h-full text-text-primary">
 			{/* Main content */}
-			<div className="flex-1 flex flex-col min-h-0 p-4 mr-7">
+			<div className="flex-1 overflow-y-auto p-4 mr-7">
 				<PageHeader title="Inventory">
 						{labelQueueCount > 0 && (
 							<Link
@@ -257,6 +258,8 @@ export default function InventoryPage() {
 							New Item
 						</button>
 				</PageHeader>
+
+				<PageReportSection page="inventory" label="Inventory report" />
 
 				<PageControls
 					className="mb-4"
@@ -340,7 +343,7 @@ export default function InventoryPage() {
 					</div>
 				)}
 
-				<div className="flex-1 overflow-auto min-h-0">
+				<div>
 					<div
 						className={
 							viewMode === "card"

@@ -15,6 +15,7 @@ import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
+import PageReportSection from "../../components/reports/PageReportSection";
 
 export default function ClientsPage() {
 	const navigate = useNavigate();
@@ -128,6 +129,8 @@ export default function ClientsPage() {
 					)}
 				</div>
 			</PageHeader>
+
+			<PageReportSection page="clients" label="Clients report" />
 
 			<PageControls
 				className="mb-4"

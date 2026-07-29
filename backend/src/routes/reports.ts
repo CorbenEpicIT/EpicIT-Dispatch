@@ -24,7 +24,8 @@ import { getAgedReceivables,
     getRevenueYTD,
     getTechnicianScorecard,
     getTimesheetReport,
-    getUnscheduledRevenue
+    getUnscheduledRevenue,
+	getPageSummary
 } from '../controllers/reportsController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
 import { rowsToXlsxBuffer } from '../lib/excel/reportExcel.js';
@@ -544,5 +545,18 @@ router.delete("/favorites/:id", requirePermission("view_reports"), async (req, r
 		next(err);
 	}
 });
+
+router.get("/page-summary", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { page, startDate, endDate, groupBy } = req.query as { page: string, startDate?: string, endDate?: string, groupBy?: string};
+
+		const result = await getPageSummary(orgId, page, startDate, endDate, groupBy);
+
+		res.json(createSuccessResponse(result));
+	} catch (err) {
+		next(err);
+	}
+})
 
 export default router;

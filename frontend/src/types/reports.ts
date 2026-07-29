@@ -448,3 +448,13 @@ export interface CreateFavoriteInput {
 	kind: ReportFavoriteKind;
 	ref: string;
 }
+
+// ===========================================================================
+// Page summary
+// ===========================================================================
+export interface PageSummaryResponse {
+	page: string;
+	stats: { label: string; value: number; format: "number" | "currency" | "percent" | "duration" }[];
+	breakdown: { label: string; value: number; }[];
+	breakdownLabel: string;
+}

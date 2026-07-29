@@ -32,10 +32,11 @@ type QBInvoiceEmailVars = {
   sendTo: string;
 };
 
-export const useQBStatusQuery = () => {
+export const useQBStatusQuery = (enabled = true) => {
     return useQuery({
         queryKey: ["qbStatus"],
         queryFn: getQBStatus,
+        enabled,
         refetchInterval: 2 * 60 * 1000,
         staleTime: 30_000,
     });

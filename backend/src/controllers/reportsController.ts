@@ -1,7 +1,10 @@
 import { getScopedDb } from "../lib/context.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import { centsToDollars, dollarsToCents, type TaxSnapshot } from "../services/taxEngine.js";
 import { getStockStatus } from "../lib/inventory.js";
+import { getOrgRealmId } from "../services/quickbooksService.js";
 import { log } from "../services/appLogger.js";
+import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 
 // Cap on the rows that a report can have would require a change in dates
 const REPORT_ROW_CAP = 10000;
@@ -1573,3 +1576,289 @@ export const getTechnicianScorecard = async (
 
 	return rows;
 };
+
+const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory"];
+const BREAKDOWNS: Record<string, string[]> = {
+	jobs: ["status", "priority", "type"],
+	quotes: ["status", "priority"],
+	requests: ["status", "priority"],
+	invoices: ["status", "qb_sync"],
+	clients: ["status", "tax_exempt"],
+	inventory: ["status", "qb_linked"],
+};
+type Stat = { label: string; value: number; format: "number" | "currency" | "percent" | "duration" };
+type Slice = { label: string; value: number; };
+interface PageSummaryResponse {
+	page: string;
+	stats: Stat[];
+	breakdown: Slice[];
+	breakdownLabel: string;
+}
+
+export const getPageSummary = async (orgId: string, page:string, startDate?: string, endDate?: string, groupBy?: string): Promise<PageSummaryResponse> => {
+	if (!PAGES.includes(page))
+		throw new Error("Unknown page");
+	const allowed = BREAKDOWNS[page] ?? ["status"];
+	const grouping = groupBy && allowed.includes(groupBy) ? groupBy : allowed[0];
+	const sdb = getScopedDb(orgId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+	const dated = Object.keys(dateFilter).length ? dateFilter : undefined;
+	const createdWhere = dated? { created_at: dated } : {}
+	const now = new Date();
+	let stats: Stat[] = [];
+	let breakdown: Slice[] = [];
+	let breakdownLabel = "";
+	
+	switch (page) {
+		case "jobs": {
+			const OPEN_STATUSES = ["Unscheduled", "Scheduled", "InProgress"] as const;
+			const [total, open, backlog, revenue] = await Promise.all([
+				sdb.job.count({ where: { organization_id: orgId, ...createdWhere }}),
+				sdb.job.count({ where: { organization_id: orgId, status: { in: [...OPEN_STATUSES] }, ...createdWhere }}),
+				sdb.job.aggregate({
+					where: { organization_id: orgId, status: "Unscheduled", ...createdWhere },
+					_sum: { estimated_total: true },
+				}),
+				sdb.job_visit.aggregate({
+					// Revenue is scoped by completion date, not job creation.
+					where: { status: "Completed", ...(dated ? { actual_end_at: dated } : {}) },
+					_sum: { total: true },
+				}),
+			]);
+			if (grouping === "priority") {
+				const g = await sdb.job.groupBy({ by: ["priority"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.priority, value: r._count._all }));
+				breakdownLabel = "By Priority";
+			} else if (grouping === "type") {
+				const [oneOff, recurring] = await Promise.all([
+					sdb.job.count({ where: { organization_id: orgId, recurring_plan_id: null, ...createdWhere } }),
+					sdb.job.count({ where: { organization_id: orgId, recurring_plan_id: { not: null }, ...createdWhere } }),
+				]);
+				breakdown = [
+					{ label: "One-off", value: oneOff },
+					{ label: "Recurring", value: recurring },
+				];
+				breakdownLabel = "By Type";
+			} else {
+				const g = await sdb.job.groupBy({ by: ["status"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.status, value: r._count._all }));
+				breakdownLabel = "By Status";
+			}
+			stats = [
+				{ label: "Total",         value: total,                                        format: "number" },
+				{ label: "Open",          value: open,                                         format: "number" },
+				{ label: "Unscheduled",   value: Number(backlog._sum.estimated_total ?? 0),    format: "currency" },
+				{ label: "Revenue",       value: Number(revenue._sum.total ?? 0),              format: "currency" },
+			];
+			break;
+		}
+		case "quotes": {
+			const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
+			const createdRangeSql = Prisma.sql`
+				${dated?.gte ? Prisma.sql`AND created_at >= ${dated.gte}` : Prisma.empty}
+				${dated?.lte ? Prisma.sql`AND created_at <= ${dated.lte}` : Prisma.empty}`;
+			const [total, open, pipeline, approved, rows] = await Promise.all([
+				sdb.quote.count({ where: { organization_id: orgId, ...createdWhere }}),
+				sdb.quote.count({ where: { organization_id: orgId, status: { in: [...OPEN_STATUSES]}, ...createdWhere }}),
+				sdb.quote.aggregate({
+					where: { organization_id: orgId, status: { in: [...OPEN_STATUSES]}, ...createdWhere },
+					_sum: { total: true }
+				}),
+				sdb.quote.aggregate({ 
+					where: { organization_id: orgId, status: "Approved", ...createdWhere},
+					_sum: { total: true },
+				}),
+				sdb.$queryRaw<{ avg_seconds: number | null }[]>(Prisma.sql`
+					SELECT EXTRACT(EPOCH FROM AVG(approved_at - sent_at)) AS avg_seconds
+					FROM quote
+					WHERE organization_id = ${orgId}
+						AND approved_at IS NOT NULL
+						AND sent_at IS NOT NULL
+						${createdRangeSql}`),
+			]);
+			const avgSeconds = rows[0]?.avg_seconds ?? null;
+			const avgDays = avgSeconds != null ? avgSeconds / 86_400 : null;
+			if (grouping === "priority") {
+				const g = await sdb.quote.groupBy({ by: ["priority"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.priority, value: r._count._all }));
+				breakdownLabel = "By Priority";
+			} else {
+				const g = await sdb.quote.groupBy({ by: ["status"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.status, value: r._count._all }));
+				breakdownLabel = "By Status";
+			}
+			stats = [
+				{ label: "Total",    	 	  value: total,                            format: "number" },
+				{ label: "Open",     	 	  value: open,                             format: "number" },
+				{ label: "Pipeline", 	 	  value: Number(pipeline._sum.total ?? 0), format: "currency" },
+				{ label: "Approved", 	 	  value: Number(approved._sum.total ?? 0), format: "currency" },
+				{ label: "Avg. Approve Time", value: Number(avgDays), 	  		  	   format: "duration"}
+			];
+			break;
+		} 
+		case "requests": {
+			const OPEN_STATUSES = ["New", "Reviewing"] as const;
+			const [total, open, converted, estimatedValue] = await Promise.all([
+				sdb.request.count({ where: { organization_id: orgId, ...createdWhere }}),
+				sdb.request.count({ where: { organization_id: orgId, status: { in: [...OPEN_STATUSES]}, ...createdWhere}}),
+				sdb.request.count({ where: { organization_id: orgId, status: "ConvertedToJob", ...createdWhere }}),
+				sdb.request.aggregate({
+					where: { organization_id: orgId, ...createdWhere },
+					_sum: { estimated_value: true }
+				})
+			]);
+			if (grouping === "priority") {
+				const g = await sdb.request.groupBy({ by: ["priority"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.priority, value: r._count._all }));
+				breakdownLabel = "By Priority";
+			} else {
+				const g = await sdb.request.groupBy({ by: ["status"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.status, value: r._count._all }));
+				breakdownLabel = "By Status";
+			}
+			stats = [
+				{ label: "Total",      value: total,                                        format: "number" },
+				{ label: "Open",       value: open,                                         format: "number" },
+				{ label: "Converted",  value: converted,                                    format: "number" },
+				{ label: "Est. Value", value: Number(estimatedValue._sum.estimated_value ?? 0),   format: "currency" },
+			];
+			break;
+		} 
+		case "invoices": {
+			const invoiceDateWhere: Prisma.invoiceWhereInput = dated
+				? { OR: [{ issue_date: dated }, { issue_date: null, created_at: dated }] }
+				: {};
+			const paidAtFilter = dated ? dated : { not: null };
+			const issueRangeSql = Prisma.sql`
+				${dated?.gte ? Prisma.sql`AND issue_date >= ${dated.gte}` : Prisma.empty}
+				${dated?.lte ? Prisma.sql`AND issue_date <= ${dated.lte}` : Prisma.empty}`;
+			const [total, issued, collected, rows] = await Promise.all([
+				sdb.invoice.count({ where: { organization_id: orgId, ...invoiceDateWhere } }),
+				sdb.invoice.aggregate({
+					where: { organization_id: orgId, ...invoiceDateWhere },
+					_sum: { total: true },
+				}),
+				sdb.invoice.aggregate({
+					where: { organization_id: orgId, paid_at: paidAtFilter },
+					_sum: { amount_paid: true },
+				}),
+				sdb.$queryRaw<{ avg_seconds: number | null }[]>(Prisma.sql`
+					SELECT EXTRACT(EPOCH FROM AVG(paid_at - issue_date)) AS avg_seconds
+					FROM invoice
+					WHERE organization_id = ${orgId}
+						AND paid_at IS NOT NULL
+						AND issue_date IS NOT NULL
+						${issueRangeSql}`),
+			]);
+			const avgSeconds = rows[0]?.avg_seconds ?? null;
+			const avgDays = avgSeconds != null ? avgSeconds / 86_400 : null;
+			if (grouping === "qb_sync") {
+				const g = await sdb.invoice.groupBy({ by: ["qb_sync_status"], where: { organization_id: orgId, ...invoiceDateWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.qb_sync_status, value: r._count._all }));
+				breakdownLabel = "By QB Sync";
+			} else {
+				const g = await sdb.invoice.groupBy({ by: ["status"], where: { organization_id: orgId, ...invoiceDateWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.status, value: r._count._all }));
+				breakdownLabel = "By Status";
+			}
+			stats = [
+				{ label: "Total",           value: total,                                    format: "number" },
+				{ label: "Issued",          value: Number(issued._sum.total ?? 0),           format: "currency" },
+				{ label: "Collected",       value: Number(collected._sum.amount_paid ?? 0),  format: "currency" },
+				{ label: "Avg. Days to Pay", value: Number(avgDays),                          format: "duration" },
+			];
+			break;
+		}
+		case "clients": {
+			const [total, added, active, openBalance, income] = await Promise.all([
+				sdb.client.count({ where: { organization_id: orgId } }),
+				sdb.client.count({ where: { organization_id: orgId, ...createdWhere } }),
+				sdb.client.count({ where: { organization_id: orgId, is_active: true } }),
+				sdb.invoice.aggregate({
+					where: { organization_id: orgId, balance_due: { gt: 0 } },
+					_sum: { balance_due: true },
+				}),
+				sdb.invoice.aggregate({
+					where: { organization_id: orgId },
+					_sum: { total: true },
+				}),
+			]);
+			// Avg income per client = total billed spread over the whole client book
+			const avgIncome = total > 0 ? Number(income._sum.total ?? 0) / total : 0;
+			if (grouping === "tax_exempt") {
+				const g = await sdb.client.groupBy({ by: ["is_tax_exempt"], where: { organization_id: orgId }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.is_tax_exempt ? "Exempt" : "Taxable", value: r._count._all }));
+				breakdownLabel = "By Tax Status";
+			} else {
+				const g = await sdb.client.groupBy({ by: ["is_active"], where: { organization_id: orgId }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.is_active ? "Active" : "Inactive", value: r._count._all }));
+				breakdownLabel = "By Status";
+			}
+			stats = [
+				{ label: "Total",        value: total,                                     format: "number" },
+				{ label: "New",          value: added,                                     format: "number" },
+				{ label: "Active",       value: active,                                    format: "number" },
+				{ label: "Open Balance", value: Number(openBalance._sum.balance_due ?? 0), format: "currency" },
+				{ label: "Avg. Income",   value: avgIncome,                                 format: "currency" },
+			];
+			break;
+		}
+		case "inventory": {
+			const items = await sdb.inventory_item.findMany({
+				where: { organization_id: orgId, provisional: false, is_active: true },
+				select: { id: true, quantity: true, low_stock_threshold: true, cost: true },
+				take: REPORT_ROW_CAP,
+			});
+			let low = 0;
+			let out = 0;
+			let sufficient = 0;
+			let assetValue = 0;
+			for (const it of items) {
+				assetValue += it.quantity * Number(it.cost ?? 0);
+				const status = getStockStatus(it.quantity, it.low_stock_threshold);
+				if (status === "low") low++;
+				else if (status === "out_of_stock") out++;
+				else if (status === "sufficient") sufficient++;
+			}
+			if (grouping === "qb_linked") {
+				const realmId = await getOrgRealmId(orgId);
+				const mappings = realmId
+					? await sdb.item_external_mapping.findMany({
+							where: {
+								provider: "quickbooks",
+								account_id: realmId,
+								inventory_item_id: { in: items.map((it) => it.id) },
+							},
+							select: { inventory_item_id: true },
+						})
+					: [];
+				const linkedIds = new Set(mappings.map((m) => m.inventory_item_id));
+				const linked = items.filter((it) => linkedIds.has(it.id)).length;
+				breakdown = [
+					{ label: "Linked", value: linked },
+					{ label: "Not Linked", value: items.length - linked },
+				];
+				breakdownLabel = "By QuickBooks";
+			} else {
+				breakdown = [
+					{ label: "Sufficient", value: sufficient },
+					{ label: "Low", value: low },
+					{ label: "Out of Stock", value: out },
+				];
+				breakdownLabel = "By Stock Status";
+			}
+			stats = [
+				{ label: "Total Items",  value: items.length, format: "number" },
+				{ label: "Low",          value: low,          format: "number" },
+				{ label: "Out of Stock", value: out,          format: "number" },
+				{ label: "Asset Value",  value: assetValue,   format: "currency" },
+			];
+			break;
+		}
+		default: {
+
+		}
+	}
+
+	return { page, stats, breakdown, breakdownLabel };
+}
