@@ -8,6 +8,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { createNotification } from "./notificationsController.js";
+import { getSocket } from "../services/socketService.js";
 import { signImageUrl, toRawUrl } from "../services/wasabiService.js";
 
 type NoteLike = { photos?: { photo_url: string }[] | null } | null | undefined;
@@ -69,53 +70,17 @@ const noteInclude = {
 
 export const getJobNotes = async (jobId: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.job_note.findMany({
+	const notes = await sdb.job_note.findMany({
 		where: { job_id: jobId },
-		include: {
-			creator_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			creator_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_tech: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			last_editor_dispatcher: {
-				select: {
-					id: true,
-					name: true,
-					email: true,
-				},
-			},
-			visit: {
-				select: {
-					id: true,
-					scheduled_start_at: true,
-					scheduled_end_at: true,
-					status: true,
-				},
-			},
-		},
+		include: noteInclude,
 		orderBy: { created_at: "desc" },
 	});
+	return await signNotePhotosMany(notes);
 };
 
 export const getJobNotesByVisitId = async (jobId: string, visitId: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.job_note.findMany({
+	const notes = await sdb.job_note.findMany({
 		where: {
 			job_id: jobId,
 			visit_id: visitId,
@@ -123,17 +88,19 @@ export const getJobNotesByVisitId = async (jobId: string, visitId: string, organ
 		include: noteInclude,
 		orderBy: { created_at: "desc" },
 	});
+	return await signNotePhotosMany(notes);
 };
 
 export const getNoteById = async (jobId: string, noteId: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.job_note.findFirst({
+	const note = await sdb.job_note.findFirst({
 		where: {
 			id: noteId,
 			job_id: jobId,
 		},
 		include: noteInclude,
 	});
+	return await signNotePhotos(note);
 };
 
 export const insertJobNote = async (
@@ -230,6 +197,7 @@ export const insertJobNote = async (
 		});
 
 		if (!created) return { err: "Failed to create note" };
+		const signed = await signNotePhotos(created);
 
 		// Notify assigned technicians if dispatcher flagged the note
 		if (parsed.notify_technician && created.visit_id) {
@@ -252,7 +220,8 @@ export const insertJobNote = async (
 			}
 		}
 
-		return { err: "", item: created };
+		getSocket().emit("job_note:created", { organizationId });
+		return { err: "", item: signed };
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {

@@ -6,7 +6,10 @@ declare global {
                 email: string;
                 role: string;
                 organization_id: string | null;
+                permissions: string[] | null;
             }
+            // Raw request bytes for webhook
+            rawBody?: Buffer;
         }
     }
 }

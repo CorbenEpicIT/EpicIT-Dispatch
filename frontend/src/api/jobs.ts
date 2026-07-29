@@ -13,6 +13,7 @@ import type {
 	UpdateJobVisitInput,
 	ClockInResult,
 	ClockOutResult,
+	VisitStatusEvent,
 } from "../types/jobs";
 
 
@@ -185,9 +186,12 @@ export const deleteJobVisit = async (id: string): Promise<{ message: string }> =
 // ============================================
 // JOB VISIT LIFECYCLE API
 // ============================================
-
-export const transitionJobVisit = async (visitId: string, action: import("../types/jobs").LifecycleAction): Promise<JobVisit> => {
-	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/transition`, { action });
+export const transitionJobVisit = async (visitId: string,action: import("../types/jobs").LifecycleAction,pauseReason?: string,techCoords?: { lat: number; lon: number },): Promise<JobVisit> => {
+	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/transition`, {
+		action,
+		...(pauseReason ? { pause_reason: pauseReason } : {}),
+		...(techCoords ? { tech_coords: techCoords } : {}),
+	});
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to update visit");
@@ -203,6 +207,16 @@ export const cancelJobVisit = async (visitId: string, cancellationReason: string
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to cancel visit");
+	}
+
+	return response.data.data!;
+};
+
+export const delayJobVisit = async (visitId: string): Promise<JobVisit> => {
+	const response = await api.post<ApiResponse<JobVisit>>(`/job-visits/${visitId}/delay`);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to delay visit");
 	}
 
 	return response.data.data!;
@@ -230,10 +244,10 @@ export const clockInVisit = async (visitId: string, techId: string): Promise<Clo
 	}
 };
 
-export const clockOutVisit = async (visitId: string, techId: string): Promise<ClockOutResult> => {
+export const clockOutVisit = async (visitId: string, techId: string, pauseReason?: string): Promise<ClockOutResult> => {
 	const response = await api.post<ApiResponse<ClockOutResult>>(
 		`/job-visits/${visitId}/clock-out`,
-		{ tech_id: techId },
+		{ tech_id: techId, ...(pauseReason ? { pause_reason: pauseReason } : {}) },
 	);
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to clock out");
@@ -292,16 +306,21 @@ export const deleteJobNote = async (
 	return response.data.data || { message: "Job note deleted successfully" };
 };
 
-export const uploadNotePhoto = async (file: File): Promise<string> => {
+export const uploadNotePhoto = async (jobId: string, file: File): Promise<{ url: string, raw_url: string }> => {
 	const formData = new FormData();
 	formData.append("photo", file);
-	const response = await api.post<ApiResponse<{ url: string }>>(
-		"/notes/upload-photo",
+	const response = await api.post<ApiResponse<{ url: string, raw_url: string }>>(
+		`/jobs/${jobId}/notes/upload-photo`,
 		formData,
 		{ headers: { "Content-Type": "multipart/form-data" } },
 	);
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Upload failed");
 	}
-	return response.data.data!.url;
+	return response.data.data!;
+};
+
+export const fetchRecentStatusEvents = async (): Promise<VisitStatusEvent[]> => {
+	const response = await api.get<ApiResponse<VisitStatusEvent[]>>("/job-visits/recent-status-events");
+	return response.data.data ?? [];
 };

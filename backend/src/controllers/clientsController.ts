@@ -6,6 +6,8 @@ import {
 } from "../lib/validate/clients.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
+import { insertContact } from "./contactsController.js"
+import { getOrgRealmId } from "../services/quickbooksService.js";
 
 const buildClientInclude = () => ({
 	jobs: {
@@ -102,6 +104,10 @@ export const insertClient = async (
 	try {
 		const parsed = createClientSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
+		// Scope the QB customer mapping to the org's current realm 
+		const accountId = parsed.qb_customer_id
+			? await getOrgRealmId(organizationId)
+			: "";
 		const created = await sdb.$transaction(async (tx) => {
 			const client = await tx.client.create({
 				data: {
@@ -113,6 +119,18 @@ export const insertClient = async (
 					last_activity: new Date(),
 				},
 			});
+
+			// adds qb relation
+			if (parsed.qb_customer_id) {
+				await tx.client_external_mapping.create({
+					data: {
+						client_id: client.id,
+						provider: "quickbooks",
+						account_id: accountId,
+						external_id: parsed.qb_customer_id,
+					},
+				});
+			}
 
 			await logActivity({
 				event_type: "client.created",
@@ -140,6 +158,30 @@ export const insertClient = async (
 				include: buildClientInclude(),
 			});
 		});
+		
+		// attempt to create contact if the qb info exists
+		if (parsed.qb_contact_email || parsed.qb_contact_phone) {
+			const contactResult = await insertContact({
+				name: parsed.qb_contact_name || parsed.name,
+				email: parsed.qb_contact_email,
+				phone: parsed.qb_contact_phone,
+				client_id: created!.id,
+				is_primary: true,
+				relationship: "contact",
+			}, organizationId);
+
+			// contact already exists in this org — link it instead of failing
+			if (contactResult.existingContact) {
+				await sdb.client_contact.create({
+					data: {
+						client_id: created!.id,
+						contact_id: contactResult.existingContact.id,
+						is_primary: true,
+						relationship: "contact",
+					},
+				}).catch(() => {});  // ignore if already linked to this client
+			}
+		}
 
 		return { err: "", item: created };
 	} catch (e) {

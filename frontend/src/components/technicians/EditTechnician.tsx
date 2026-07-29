@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Technician, UpdateTechnicianInput } from "../../types/technicians";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
+import { useOrgRolesQuery, useAssignOrgRoleMutation } from "../../hooks/useOrgRoles";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import DatePicker from "../ui/DatePicker";
 import Dropdown from "../ui/Dropdown";
@@ -16,14 +17,18 @@ const STATUS_ENTRIES = (
 	<>
 		<option value="Offline">Offline</option>
 		<option value="Available">Available</option>
-		<option value="Busy">Busy</option>
+		<option value="Working">Working</option>
+		<option value="EnRoute">En Route</option>
+		<option value="OnSite">On Site</option>
+		<option value="Paused">Paused</option>
+		<option value="WrappingUp">Wrapping Up</option>
 		<option value="Break">Break</option>
 	</>
 );
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 export default function EditTechnician({ isOpen, onClose, technician }: EditTechnicianProps) {
 	const navigate = useNavigate();
@@ -37,10 +42,14 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 	const [hireDate, setHireDate] = useState<Date>(
 		technician.hire_date ? new Date(technician.hire_date) : new Date()
 	);
+	const [organizationRoleId, setOrganizationRoleId] = useState<string>(technician.organization_role?.id ?? "");
 
 	const updateTechnician = useUpdateTechnicianMutation();
+	const assignRole = useAssignOrgRoleMutation();
+	const { data: orgRoles } = useOrgRolesQuery();
+	const technicianRoles = orgRoles?.filter((r) => r.base_tier === "technician") ?? [];
 
-	const isLoading = updateTechnician.isPending;
+	const isLoading = updateTechnician.isPending || assignRole.isPending;
 
 	useEffect(() => {
 		if (isOpen) {
@@ -53,6 +62,7 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 			setHireDate(
 				technician.hire_date ? new Date(technician.hire_date) : new Date()
 			);
+			setOrganizationRoleId(technician.organization_role?.id ?? "");
 		}
 	}, [isOpen, technician]);
 
@@ -70,6 +80,14 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 					hire_date: hireDate,
 				},
 			});
+			const newRoleId = organizationRoleId || null;
+			if (newRoleId !== (technician.organization_role?.id ?? null)) {
+				await assignRole.mutateAsync({
+					user_id: technician.id,
+					user_type: "technician",
+					role_id: newRoleId,
+				});
+			}
 			onClose();
 		} catch (error) {
 			console.error("Failed to update technician:", error);
@@ -143,9 +161,25 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 						placeholder="Brief description or notes..."
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
+				</div>
+
+				{/* Permission Role */}
+				<div className="min-w-0">
+					<label className={LABEL}>Permission Role</label>
+					<select
+						value={organizationRoleId}
+						onChange={(e) => setOrganizationRoleId(e.target.value)}
+						className={INPUT}
+						disabled={isLoading}
+					>
+						<option value="">— No Role —</option>
+						{technicianRoles.map((r) => (
+							<option key={r.id} value={r.id}>{r.name}</option>
+						))}
+					</select>
 				</div>
 
 				{/* Status + Hire Date */}
@@ -177,7 +211,7 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 				</div>
 			</div>
 		),
-		[name, email, phone, title, description, status, hireDate, isLoading]
+		[name, email, phone, title, description, status, hireDate, organizationRoleId, technicianRoles, isLoading]
 	);
 
 	return (

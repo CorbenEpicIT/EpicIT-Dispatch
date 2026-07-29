@@ -1,17 +1,23 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { type CreateInvoiceInput, type CreateInvoiceLineItemInput } from "../../types/invoices";
 import { type LineItemType, type BaseLineItem } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import { useAllJobsQuery } from "../../hooks/useJobs";
-import { useCreateInvoiceMutation, useInvoicesByClientIdQuery } from "../../hooks/useInvoices";
+import { useCreateInvoiceMutation, useInvoicesByClientIdQuery, useOverlapCheckMutation } from "../../hooks/useInvoices";
+import { useJobVisitsByJobIdQuery } from "../../hooks/useJobs";
+import { getJobVisitById } from "../../api/jobs";
+import type { OverlapWarning } from "../../types/invoices";
 import Dropdown from "../ui/Dropdown";
 import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import FinancialSummary from "../ui/forms/FinancialSummary";
+import { TemplateSearch, type TemplateSearchResult, type TemplateSearchClient } from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
+import { useTaxGroups, useDefaultTaxGroup } from "../../hooks/useTaxGroups";
+import { useQBStatusQuery, useImportableQBInvoicesQuery, useQBInvoicePrefillQuery } from "../../hooks/useQuickbooks";
 import { X, Briefcase, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 
 type Step = 1 | 2 | 3;
@@ -20,6 +26,8 @@ interface CreateInvoiceProps {
 	isModalOpen: boolean;
 	setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 	defaultClientId?: string;
+	initialVisitIds?: string[];
+	initialJobId?: string;
 }
 
 const STEPS = [
@@ -40,8 +48,8 @@ const PAYMENT_TERM_OPTIONS = [
 ];
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 // ── Billing history derived types ─────────────────────────────────────────
 interface JobBillingInfo {
@@ -54,7 +62,7 @@ interface VisitBillingInfo {
 	invoiceNumbers: string[];
 }
 
-const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateInvoiceProps) => {
+const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVisitIds, initialJobId }: CreateInvoiceProps) => {
 	// ── Core form state ───────────────────────────────────────────────────
 	const [clientId, setClientId] = useState(defaultClientId ?? "");
 	const [memo, setMemo] = useState("");
@@ -63,9 +71,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	const [dueDate, setDueDate] = useState<Date | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isDirty, setIsDirty] = useState(false);
+	const [qbSearchOpen, setQbSearchOpen] = useState(false);
+	const [selectedQBInvoice, setSelectedQBInvoice] = useState<string | null>(null);
 	// Tracks whether a source picker or other inner input was recently focused,
 	// so the next row click doesn't accidentally toggle selection.
 	const billingInputFocusedRef = useRef(false);
+	// Synchronous in-flight guard for handleImportFromVisits — prevents double-import
+	// on rapid double-click before React re-renders the disabled button state.
+	const importingFromVisitsRef = useRef(false);
+	// Cache fetched visit data so re-imports hit memory, not the network
+	const visitDataCacheRef = useRef<Map<string, Awaited<ReturnType<typeof getJobVisitById>>>>(new Map());
 
 	// ── Job / visit picker state ──────────────────────────────────────────
 	const [linkedJobIds, setLinkedJobIds] = useState<Set<string>>(new Set());
@@ -73,11 +88,36 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	const [visitBillings, setVisitBillings] = useState<Map<string, number>>(new Map());
 	const [importedSources, setImportedSources] = useState<Set<string>>(new Set());
 
+	// ── Overlap / import state ────────────────────────────────────────────
+	const [overlapWarnings, setOverlapWarnings] = useState<OverlapWarning[]>([]);
+	const [showOverlapModal, setShowOverlapModal] = useState(false);
+	const [emptyVisitWarnings, setEmptyVisitWarnings] = useState<string[]>([]);
+	const [importingLineItems, setImportingLineItems] = useState(false);
+	const [isCheckingOverlap, setIsCheckingOverlap] = useState(false);
+	const [submitError, setSubmitError] = useState<string | null>(null);
+
 	// ── Queries ───────────────────────────────────────────────────────────
 	const { data: clients } = useAllClientsQuery();
 	const { data: allJobs = [] } = useAllJobsQuery();
 	const { data: clientInvoices = [] } = useInvoicesByClientIdQuery(clientId);
+	const { data: initialJobVisits = [] } = useJobVisitsByJobIdQuery(initialJobId ?? "");
 	const { mutateAsync: insertInvoice } = useCreateInvoiceMutation();
+	const { mutateAsync: checkOverlap } = useOverlapCheckMutation();
+	const { data: taxGroups = [] } = useTaxGroups();
+	const { data: defaultTaxGroup } = useDefaultTaxGroup();
+	const qbConnected = !!useQBStatusQuery().data?.connected;
+	const {
+		data: importableQBInvoices = [],
+		isFetching: qbInvoicesLoading,
+	} = useImportableQBInvoicesQuery(qbConnected && qbSearchOpen, clientId);
+	const { data: qbPrefill, isFetching: qbPrefillLoading } =
+		useQBInvoicePrefillQuery(selectedQBInvoice);
+	// Guards the prefill effect so editing the seeded form doesn't re-seed.
+	const appliedPrefillRef = useRef<string | null>(null);
+	const clientExempt = useMemo(
+		() => clients?.find((c) => c.id === clientId)?.is_tax_exempt ?? false,
+		[clients, clientId]
+	);
 
 	// ── Hooks ─────────────────────────────────────────────────────────────
 	const {
@@ -90,11 +130,25 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		subtotal,
 		resetLineItems,
 		seedLineItems,
+		appendLineItems,
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
 		originalLineItems,
-	} = useLineItems({ minItems: 0, mode: "create" });
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
+	} = useLineItems({ minItems: 0, mode: "create", defaultTaxGroupId: defaultTaxGroup?.id ?? null });
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems]
+	);
 
 	const {
 		taxRate,
@@ -106,12 +160,17 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		setDiscountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		reset: resetFinancials,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
-	} = useFinancialCalculations(subtotal);
+	} = useFinancialCalculations(subtotal, { taxGroups, lineItemsForCalc, clientExempt });
 
 	const {
 		currentStep,
@@ -179,7 +238,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		for (const jobId of linkedJobIds) {
 			const job = clientJobs.find((j) => j.id === jobId);
 			if (!job) continue;
-			const items = (job as any).line_items ?? [];
+			const items = job.line_items ?? [];
 			if (items.length > 0 && !importedSources.has(jobId)) {
 				sources.push({ id: jobId, label: `${job.job_number}`, items });
 			}
@@ -187,11 +246,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 		for (const [visitId] of visitBillings) {
 			const job = clientJobs.find((j) =>
-				((j as any).visits ?? []).some((v: any) => v.id === visitId)
+				(j.visits ?? []).some((v) => v.id === visitId)
 			);
 			if (!job) continue;
-			const visit = ((job as any).visits ?? []).find(
-				(v: any) => v.id === visitId
+			const visit = (job.visits ?? []).find(
+				(v) => v.id === visitId
 			);
 			if (!visit) continue;
 			const items = visit.line_items ?? [];
@@ -218,6 +277,30 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		}
 	}, [paymentTermsDays]);
 
+	// ── Auto-fill from a selected QuickBooks invoice ────────────────────────
+	// Seeds line items + memo + due date once per selected invoice. Client stays
+	// as the user picked it (org-wide list lets you assign to any client).
+	useEffect(() => {
+		if (!qbPrefill) return;
+		if (appliedPrefillRef.current === qbPrefill.qbInvoiceId) return;
+		appliedPrefillRef.current = qbPrefill.qbInvoiceId;
+
+		seedLineItems(
+			qbPrefill.lineItems.map((li) => ({
+				name: li.name,
+				description: li.description ?? "",
+				quantity: li.quantity,
+				unit_price: li.unit_price,
+				item_type: "",
+			})),
+		);
+		setMemo(qbPrefill.memo ?? "");
+		setDueDate(qbPrefill.dueDate ? new Date(qbPrefill.dueDate) : null);
+		// If the QB customer maps to a local client, adopt it (like draft import).
+		if (qbPrefill.clientId) setClientId(qbPrefill.clientId);
+		markDirty();
+	}, [qbPrefill, seedLineItems, markDirty]);
+
 	// ── Reset ──────────────────────────────────────────────────────────────
 	const resetForm = useCallback(() => {
 		resetWizard();
@@ -230,9 +313,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		setExpandedJobs(new Set());
 		setVisitBillings(new Map());
 		setImportedSources(new Set());
+		setQbSearchOpen(false);
+		setSelectedQBInvoice(null);
+		appliedPrefillRef.current = null;
 		resetLineItems();
 		resetFinancials();
 		setIsDirty(false);
+		setSubmitError(null);
 	}, [resetWizard, resetLineItems, resetFinancials, defaultClientId]);
 
 	useEffect(() => {
@@ -241,6 +328,36 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			setIsLoading(false);
 		}
 	}, [isModalOpen, resetForm]);
+
+	// ── Pre-select visits from context entry points ───────────────────────
+	useEffect(() => {
+		if (!isModalOpen) return;
+		if (initialVisitIds && initialVisitIds.length > 0) {
+			// Pre-select specific visits with actual totals when available
+			const billings = new Map(
+				initialVisitIds.map((id) => {
+					const matched = initialJobVisits.find((v) => v.id === id);
+					return [id, matched ? Number(matched.total ?? 0) : 0];
+				}),
+			);
+			setVisitBillings(billings);
+			// Link and expand the parent job so the pre-selected visit is visible in the picker
+			if (initialJobId) {
+				setLinkedJobIds(new Set([initialJobId]));
+				setExpandedJobs(new Set([initialJobId]));
+			}
+		} else if (initialJobId && initialJobVisits.length > 0) {
+			const completedVisits = initialJobVisits.filter((v) => v.status === "Completed");
+			if (completedVisits.length > 0) {
+				setLinkedJobIds(new Set([initialJobId]));
+				setExpandedJobs(new Set([initialJobId]));
+				setVisitBillings(
+					new Map(completedVisits.map((v) => [v.id, Number(v.total ?? 0)])),
+				);
+			}
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isModalOpen, initialJobId, initialJobVisits.length]);
 
 	// ── Job picker handlers ───────────────────────────────────────────────
 	const toggleJobExpanded = useCallback((jobId: string) => {
@@ -263,7 +380,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 					next.delete(jobId);
 					setVisitBillings((vPrev) => {
 						const vNext = new Map(vPrev);
-						for (const visit of (job as any).visits ?? []) {
+						for (const visit of job.visits ?? []) {
 							vNext.delete(visit.id);
 						}
 						return vNext;
@@ -279,7 +396,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 					setVisitBillings((vPrev) => {
 						const vNext = new Map(vPrev);
-						for (const visit of (job as any).visits ?? []) {
+						for (const visit of job.visits ?? []) {
 							if (
 								visit.status === "Completed" &&
 								!visitBillingMap.has(visit.id)
@@ -313,8 +430,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 				} else {
 					next.set(visitId, visitTotal);
 					const parentJob = clientJobs.find((j) =>
-						((j as any).visits ?? []).some(
-							(v: any) => v.id === visitId
+						(j.visits ?? []).some(
+							(v) => v.id === visitId
 						)
 					);
 					if (parentJob) {
@@ -331,18 +448,29 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		[clientJobs, markDirty]
 	);
 
-	// ── Import line items ─────────────────────────────────────────────────
-	const handleImportLineItems = useCallback(() => {
-		const allSeeds: any[] = [];
-		const newImportedIds: string[] = [];
+	// Pick a QB invoice from the search overlay → close search, prefill effect seeds the form
+	const handleSelectQBInvoice = useCallback((qbInvoiceId: string) => {
+		setSelectedQBInvoice(qbInvoiceId);
+		setQbSearchOpen(false);
+	}, []);
 
-		for (const jobId of linkedJobIds) {
-			const job = clientJobs.find((j) => j.id === jobId);
-			if (!job) continue;
+	// ── Import all (jobs + visits) ────────────────────────────────────────
+	const handleImportAll = useCallback(async () => {
+		if (importingFromVisitsRef.current) return;
+		importingFromVisitsRef.current = true;
+		setImportingLineItems(true);
+		setEmptyVisitWarnings([]);
+		try {
+			const seeds: Parameters<typeof appendLineItems>[0] = [];
+			const newImportedJobIds: string[] = [];
 
-			if (!importedSources.has(jobId) && (job as any).line_items?.length) {
-				for (const item of (job as any).line_items) {
-					allSeeds.push({
+			// Job-level line items (from already-loaded local data)
+			for (const jobId of linkedJobIds) {
+				if (importedSources.has(jobId)) continue;
+				const job = clientJobs.find((j) => j.id === jobId);
+				if (!job || !job.line_items?.length) continue;
+				for (const item of job.line_items) {
+					seeds.push({
 						name: item.name ?? "",
 						description: item.description ?? "",
 						quantity: Number(item.quantity ?? 1),
@@ -352,55 +480,62 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 						source_visit_id: null,
 					});
 				}
-				newImportedIds.push(jobId);
+				newImportedJobIds.push(jobId);
 			}
 
-			const jobVisits: any[] = (job as any).visits ?? [];
-			for (const visit of jobVisits) {
-				if (!visitBillings.has(visit.id)) continue;
-				if (importedSources.has(visit.id)) continue;
-				if (!visit.line_items?.length) continue;
-				for (const item of visit.line_items) {
-					allSeeds.push({
-						name: item.name ?? "",
-						description: item.description ?? "",
-						quantity: Number(item.quantity ?? 1),
-						unit_price: Number(item.unit_price ?? 0),
-						item_type: item.item_type ?? "",
-						source_job_id: jobId,
-						source_visit_id: visit.id,
-					});
+			// Visit line items (API fetch with cache; smart restore on re-click)
+			if (visitBillings.size > 0) {
+				const allVisitIds = [...visitBillings.keys()];
+				const uncachedIds = allVisitIds.filter((id) => !visitDataCacheRef.current.has(id));
+				if (uncachedIds.length > 0) {
+					const fetched = await Promise.all(uncachedIds.map((id) => getJobVisitById(id)));
+					fetched.forEach((v) => visitDataCacheRef.current.set(v.id, v));
 				}
-				newImportedIds.push(visit.id);
+				const empty: string[] = [];
+				for (const visitId of allVisitIds) {
+					const visit = visitDataCacheRef.current.get(visitId)!;
+					if (!visit.line_items?.length) {
+						const dateLabel = new Date(visit.scheduled_start_at).toLocaleDateString("en-US", {
+							month: "short",
+							day: "numeric",
+						});
+						empty.push(`${dateLabel} (#${visit.id.slice(0, 6)})`);
+						continue;
+					}
+					// Only add items not already present for this visit (restore-on-re-click)
+					const existingNames = new Set(
+						activeLineItems
+							.filter((li) => li.source_visit_id === visitId)
+							.map((li) => li.name)
+					);
+					for (const li of visit.line_items) {
+						if (existingNames.has(li.name)) continue;
+						seeds.push({
+							name: li.name,
+							description: li.description ?? "",
+							quantity: Number(li.quantity),
+							unit_price: Number(li.unit_price),
+							item_type: li.item_type ?? "",
+							source_visit_id: visit.id,
+							source_job_id: visit.job?.id ?? null,
+						});
+					}
+				}
+				setEmptyVisitWarnings(empty);
 			}
-		}
 
-		if (allSeeds.length > 0) {
-			const existingSeeds = activeLineItems
-				.filter((li) => li.name.trim() !== "" || li.unit_price > 0)
-				.map((li) => ({
-					name: li.name,
-					description: li.description ?? "",
-					quantity: Number(li.quantity),
-					unit_price: Number(li.unit_price),
-					item_type: li.item_type ?? "",
-					source_job_id: (li as any).source_job_id ?? null,
-					source_visit_id: (li as any).source_visit_id ?? null,
-				}));
-			seedLineItems([...existingSeeds, ...allSeeds]);
+			if (seeds.length > 0) {
+				appendLineItems(seeds);
+				markDirty();
+			}
+			if (newImportedJobIds.length > 0) {
+				setImportedSources((prev) => new Set([...prev, ...newImportedJobIds]));
+			}
+		} finally {
+			importingFromVisitsRef.current = false;
+			setImportingLineItems(false);
 		}
-
-		if (newImportedIds.length > 0) {
-			setImportedSources((prev) => new Set<string>([...prev, ...newImportedIds]));
-		}
-	}, [
-		visitBillings,
-		linkedJobIds,
-		clientJobs,
-		importedSources,
-		activeLineItems,
-		seedLineItems,
-	]);
+	}, [visitBillings, linkedJobIds, clientJobs, importedSources, activeLineItems, appendLineItems, markDirty]);
 
 	// ── Validation ────────────────────────────────────────────────────────
 	const validateStep1 = useCallback((): boolean => !!clientId.trim(), [clientId]);
@@ -413,7 +548,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			const hasType = (item.item_type?.trim?.() ?? "") !== "";
 			return hasText || hasNumbers || hasType;
 		});
-		if (meaningful.length === 0) return true;
+		if (meaningful.length === 0) return false;
 		return meaningful.every(
 			(item) =>
 				item.name.trim() &&
@@ -433,6 +568,26 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 	const canGoNext = validateStep(currentStep);
 
+	// ── Step 1→2 transition: run overlap check ────────────────────────────
+	const handleNext = useCallback(async () => {
+		if (currentStep === 1 && visitBillings.size > 0) {
+			setIsCheckingOverlap(true);
+			try {
+				const { warnings } = await checkOverlap([...visitBillings.keys()]);
+				if (warnings.length > 0) {
+					setOverlapWarnings(warnings);
+					setShowOverlapModal(true);
+					return;
+				}
+			} catch {
+				// Non-blocking — proceed even if overlap check fails
+			} finally {
+				setIsCheckingOverlap(false);
+			}
+		}
+		goNext();
+	}, [currentStep, visitBillings, checkOverlap, goNext]);
+
 	const canGoToStep = useCallback(
 		(targetStep: Step): boolean => {
 			if (targetStep === currentStep) return true;
@@ -443,6 +598,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		},
 		[currentStep, visitedSteps, validateStep]
 	);
+
 
 	// ── Dirty wrappers ────────────────────────────────────────────────────
 	const dirtyAddLineItem = useCallback(() => {
@@ -490,21 +646,20 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 				item_type: (item.item_type || undefined) as
 					| LineItemType
 					| undefined,
-				source_job_id: (item as any).source_job_id ?? undefined,
-				source_visit_id: (item as any).source_visit_id ?? undefined,
+				taxable: item.taxable,
+				tax_group_id: item.tax_group_id ?? undefined,
+				source_job_id: item.source_job_id ?? undefined,
+				source_visit_id: item.source_visit_id ?? undefined,
 			}));
 
 		const safeSubtotal = isNaN(subtotal) ? 0 : subtotal;
-		const safeTaxRate = isNaN(taxRate) ? 0 : taxRate;
-		const safeTaxAmount = isNaN(taxAmount) ? 0 : taxAmount;
 		const safeDiscountValue = isNaN(discountValue ?? 0) ? 0 : (discountValue ?? 0);
 		const safeDiscountAmount = isNaN(discountAmount ?? 0) ? 0 : (discountAmount ?? 0);
-		const safeTotal = isNaN(total) ? 0 : total;
 
 		const visitBilledAmounts = new Map<string, number>();
 		for (const [visitId] of visitBillings) {
 			const total = preparedLineItems
-				.filter((li) => (li as any).source_visit_id === visitId)
+				.filter((li) => li.source_visit_id === visitId)
 				.reduce((sum, li) => sum + (li.total ?? 0), 0);
 			visitBilledAmounts.set(visitId, total);
 		}
@@ -518,8 +673,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			const jobOnlyTotal = preparedLineItems
 				.filter(
 					(li) =>
-						(li as any).source_job_id === job_id &&
-						!(li as any).source_visit_id
+						li.source_job_id === job_id &&
+						!li.source_visit_id
 				)
 				.reduce((sum, li) => sum + (li.total ?? 0), 0);
 			return { job_id, billed_amount: jobOnlyTotal };
@@ -540,22 +695,23 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 					? preparedVisitBillings
 					: undefined,
 			subtotal: safeSubtotal,
-			tax_rate: safeTaxRate / 100,
-			tax_amount: safeTaxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: safeDiscountValue,
 			discount_amount: safeDiscountAmount,
-			total: safeTotal,
+			total: resolvedTotal,
 			line_items: preparedLineItems.length ? preparedLineItems : undefined,
 		};
 
 		setIsLoading(true);
+		setSubmitError(null);
 		try {
 			await insertInvoice(newInvoice);
 			setIsModalOpen(false);
 			resetForm();
 		} catch (error) {
-			console.error("Failed to create invoice:", error);
+			setSubmitError(error instanceof Error ? error.message : "Failed to create invoice. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -594,16 +750,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 	const getVisitStatusClass = (status: string) => {
 		switch (status) {
 			case "Completed":
-				return "bg-green-500/10 text-green-400";
+				return "bg-success/10 text-success-text";
 			case "InProgress":
 			case "Driving":
 			case "OnSite":
-				return "bg-blue-500/10 text-blue-400";
+				return "bg-primary/10 text-primary-text";
 			case "Paused":
 			case "Delayed":
-				return "bg-amber-500/10 text-amber-400";
+				return "bg-warning/10 text-warning-text";
 			default:
-				return "bg-zinc-700 text-zinc-400";
+				return "bg-surface-raised text-text-tertiary";
 		}
 	};
 
@@ -623,12 +779,109 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		return `${nums.slice(0, max).join(", ")} +${nums.length - max} more`;
 	};
 
+	// ── QB invoice import: search-overlay data ──────────────────────────────
+	const qbInvoiceResults = useMemo<TemplateSearchResult[]>(
+		() =>
+			importableQBInvoices.map((inv) => ({
+				id: inv.Id,
+				title: inv.customerName || `Invoice ${inv.DocNumber ?? inv.Id}`,
+				subtitle: inv.DocNumber ? `#${inv.DocNumber}` : undefined,
+				detail: `${inv.lineCount} line item${inv.lineCount === 1 ? "" : "s"}`,
+				value: formatCurrency(inv.TotalAmt),
+				createdAt: inv.TxnDate ?? undefined,
+				clientId: inv.customerId ?? undefined,
+				clientName: inv.customerName ?? undefined,
+				// Informational only — a local invoice already exists for this QB
+				// invoice. Still selectable: prefill is non-destructive (it only
+				// pre-fills the form; saving creates a fresh, unlinked draft), so
+				// re-importing to base a new draft on it is a valid use.
+				badge: inv.alreadyImported ? "Imported" : undefined,
+				badgeColor: inv.alreadyImported
+					? "bg-success-bg text-success-text border-success-border"
+					: undefined,
+			})),
+		[importableQBInvoices]
+	);
+
+	// QB customers present in the results — powers the "filter by customer" control
+	const qbInvoiceClients = useMemo<TemplateSearchClient[]>(() => {
+		const map = new Map<string, string>();
+		importableQBInvoices.forEach((inv) => {
+			if (inv.customerId && inv.customerName) map.set(inv.customerId, inv.customerName);
+		});
+		return [...map].map(([id, name]) => ({ id, name }));
+	}, [importableQBInvoices]);
+
+	// Label for the chip shown once an invoice has been imported
+	const selectedQBLabel = useMemo(() => {
+		if (!selectedQBInvoice) return null;
+		const inv = importableQBInvoices.find((i) => i.Id === selectedQBInvoice);
+		if (inv?.DocNumber) return `#${inv.DocNumber}`;
+		if (qbPrefill?.docNumber) return `#${qbPrefill.docNumber}`;
+		return "selected invoice";
+	}, [selectedQBInvoice, importableQBInvoices, qbPrefill]);
+
 	// ── Step content ──────────────────────────────────────────────────────
 	const stepContent = useMemo(() => {
+		// QuickBooks invoice import — full-height searchable card list (same UX as
+		// the "Use Draft / Existing" search in CreateJob).
+		if (qbSearchOpen) {
+			return (
+				<TemplateSearch
+					heading="Import from QuickBooks"
+					placeholder="Search by invoice #, customer…"
+					results={qbInvoiceResults}
+					clients={qbInvoiceClients}
+					isLoading={qbInvoicesLoading}
+					onSelect={handleSelectQBInvoice}
+					onClose={() => setQbSearchOpen(false)}
+				/>
+			);
+		}
+
 		switch (currentStep) {
 			case 1:
 				return (
 					<div className="space-y-2 lg:space-y-3 xl:space-y-4 min-w-0">
+						{/* Imported-from-QuickBooks chip */}
+						{selectedQBInvoice && (
+							<div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+								<span className="text-primary-text font-medium">
+									{qbPrefillLoading
+										? "Loading invoice details…"
+										: `Imported from QuickBooks: ${selectedQBLabel}`}
+								</span>
+								<div className="ml-auto flex items-center gap-3">
+									{qbConnected && (
+										<button
+											type="button"
+											onClick={() => setQbSearchOpen(true)}
+											disabled={isLoading}
+											className="text-xs font-medium text-primary-text underline hover:text-text-primary disabled:opacity-40"
+										>
+											Change
+										</button>
+									)}
+									<button
+										type="button"
+										onClick={() => {
+											// Detach the QB import and clear what it prefilled.
+											setSelectedQBInvoice(null);
+											appliedPrefillRef.current = null;
+											resetLineItems();
+											setMemo("");
+											setDueDate(null);
+											markDirty();
+										}}
+										disabled={isLoading}
+										className="text-xs font-medium text-text-tertiary underline hover:text-text-primary disabled:opacity-40"
+									>
+										Clear
+									</button>
+								</div>
+							</div>
+						)}
+
 						{/* Client */}
 						<div className="min-w-0">
 							<label className={LABEL}>
@@ -691,7 +944,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Due Date{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(auto or override)
 									</span>
 								</label>
@@ -714,7 +967,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 						<div className="min-w-0">
 							<label className={LABEL}>
 								Internal Notes{" "}
-								<span className="text-zinc-500 normal-case font-normal">
+								<span className="text-text-muted normal-case font-normal">
 									(not shown to client)
 								</span>
 							</label>
@@ -727,7 +980,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 									);
 									markDirty();
 								}}
-								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 						</div>
@@ -737,7 +990,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Link Jobs &amp; Visits{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(optional)
 									</span>
 								</label>
@@ -756,15 +1009,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 											jobBillingMap.get(
 												job.id
 											);
-										const visits: any[] =
-											(job as any)
-												.visits ??
+										const visits =
+											job.visits ??
 											[];
 										const linkedVisitCount =
 											visits.filter(
-												(
-													v: any
-												) =>
+												(v) =>
 													visitBillings.has(
 														v.id
 													)
@@ -785,8 +1035,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 												<div
 													className={`flex items-center gap-0 rounded-md border transition-colors ${
 														isJobLinked
-															? "border-blue-500 bg-blue-500/10"
-															: "border-zinc-700 bg-zinc-900 hover:border-zinc-600"
+															? "border-primary bg-primary/10"
+															: "border-border bg-base hover:border-border-strong"
 													}`}
 												>
 													{/* Checkbox area */}
@@ -805,11 +1055,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 														<div
 															className={`w-3.5 h-3.5 rounded border flex-shrink-0 self-center flex items-center justify-center transition-colors ${
 																isJobLinked
-																	? "border-blue-500 bg-blue-500"
+																	? "border-primary bg-primary"
 																	: linkedVisitCount >
 																		  0
-																		? "border-blue-400 bg-transparent"
-																		: "border-zinc-600 bg-transparent"
+																		? "border-primary-text bg-transparent"
+																		: "border-border-strong bg-transparent"
 															}`}
 														>
 															{isJobLinked && (
@@ -821,7 +1071,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 																>
 																	<path
 																		d="M1 3L3 5L7 1"
-																		stroke="white"
+																		stroke="currentColor"
 																		strokeWidth="1.5"
 																		strokeLinecap="round"
 																		strokeLinejoin="round"
@@ -831,7 +1081,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 															{!isJobLinked &&
 																linkedVisitCount >
 																	0 && (
-																	<div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+																	<div className="w-1.5 h-1.5 rounded-full bg-primary-text" />
 																)}
 														</div>
 														<Briefcase
@@ -840,12 +1090,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 															}
 															className={
 																hasAnyLink
-																	? "text-blue-400 flex-shrink-0 self-center"
-																	: "text-zinc-500 flex-shrink-0 self-center"
+																	? "text-primary-text flex-shrink-0 self-center"
+																	: "text-text-muted flex-shrink-0 self-center"
 															}
 														/>
 														<div className="flex-1 min-w-0">
-															<span className="block truncate text-sm font-medium text-white">
+															<span className="block truncate text-sm font-medium text-text-primary">
 																{
 																	job.job_number
 																}{" "}
@@ -855,7 +1105,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 																}
 															</span>
 															{jobHistory && (
-																<div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-400/90">
+																<div className="flex items-center gap-1 mt-0.5 text-[10px] text-warning-text/90">
 																	<AlertTriangle
 																		size={
 																			9
@@ -880,11 +1130,11 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 															className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 self-center ${
 																job.status ===
 																"Completed"
-																	? "bg-green-500/10 text-green-400"
+																	? "bg-success/10 text-success-text"
 																	: job.status ===
 																		  "InProgress"
-																		? "bg-blue-500/10 text-blue-400"
-																		: "bg-zinc-700 text-zinc-400"
+																		? "bg-primary/10 text-primary-text"
+																		: "bg-surface-raised text-text-tertiary"
 															}`}
 														>
 															{
@@ -897,7 +1147,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 													{!isExpanded &&
 														linkedVisitCount >
 															0 && (
-															<span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-blue-500/20 text-blue-400 border border-blue-500/30 self-center mr-1">
+															<span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-primary/20 text-primary-text border border-primary/30 self-center mr-1">
 																{
 																	linkedVisitCount
 																}{" "}
@@ -926,9 +1176,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 															className={`px-3 py-2 transition-colors flex-shrink-0 border-l-2 ${
 																hasAnyLink
 																	? isExpanded
-																		? "border-blue-500 text-blue-400 hover:text-white bg-blue-500/5"
-																		: "border-blue-500/50 text-blue-400 hover:text-white"
-																	: "border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-400"
+																		? "border-primary text-primary-text hover:text-text-primary bg-primary/5"
+																		: "border-primary/50 text-primary-text hover:text-text-primary"
+																	: "border-border-strong text-text-tertiary hover:text-text-primary hover:border-text-tertiary"
 															}`}
 															title={
 																isExpanded
@@ -958,14 +1208,14 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 													<div className="ml-4 mt-1 space-y-1">
 														{visits.length ===
 														0 ? (
-															<p className="text-xs text-zinc-500 px-3 py-2">
+															<p className="text-xs text-text-muted px-3 py-2">
 																No
 																visits
 															</p>
 														) : (
 															visits.map(
 																(
-																	visit: any
+																	visit
 																) => {
 																	const isVisitSelected =
 																		visitBillings.has(
@@ -999,16 +1249,16 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 																				}
 																				className={`w-full flex items-center gap-2 px-3 py-1.5 rounded border transition-colors text-sm text-left ${
 																					isVisitSelected
-																						? "border-blue-500/50 bg-blue-500/5"
-																						: "border-zinc-700/50 bg-zinc-800/50 hover:border-zinc-600"
+																						? "border-primary/50 bg-primary/5"
+																						: "border-border/50 bg-surface/50 hover:border-border-strong"
 																				}`}
 																			>
 																				{/* Checkbox */}
 																				<div
 																					className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
 																						isVisitSelected
-																							? "border-blue-500 bg-blue-500"
-																							: "border-zinc-600 bg-transparent"
+																							? "border-primary bg-primary"
+																							: "border-border-strong bg-transparent"
 																					}`}
 																				>
 																					{isVisitSelected && (
@@ -1020,7 +1270,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 																						>
 																							<path
 																								d="M1 3L3 5L7 1"
-																								stroke="white"
+																								stroke="currentColor"
 																								strokeWidth="1.5"
 																								strokeLinecap="round"
 																								strokeLinejoin="round"
@@ -1035,13 +1285,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 																				 * billing: flex-1 min-w-0 truncate — fills available space, truncates when tight
 																				 * status:  flex-shrink-0 — always visible, pinned right
 																				 */}
-																				<span className="flex-shrink-0 text-sm text-zinc-300">
+																				<span className="flex-shrink-0 text-sm text-text-secondary">
 																					{formatVisitDate(
 																						visit.scheduled_start_at
 																					)}
 																				</span>
 																				{visitHistory && (
-																					<span className="flex-1 min-w-0 truncate text-[10px] text-amber-400/90">
+																					<span className="flex-1 min-w-0 truncate text-[10px] text-warning-text/90">
 																						Previously
 																						billed{" "}
 																						{formatCurrency(
@@ -1079,7 +1329,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 								{/* Summary line */}
 								{(linkedJobIds.size > 0 ||
 									visitBillings.size > 0) && (
-									<div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
+									<div className="mt-2 flex items-center gap-3 text-xs text-text-muted">
 										{linkedJobIds.size >
 											0 && (
 											<span>
@@ -1097,7 +1347,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 										{visitBillings.size >
 											0 && (
 											<>
-												<span className="text-zinc-700">
+												<span className="text-text-faint">
 													·
 												</span>
 												<span>
@@ -1127,9 +1377,9 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 						id: job.id,
 						job_number: job.job_number,
 						name: job.name,
-						visits: ((job as any).visits ?? [])
-							.filter((v: any) => visitBillings.has(v.id))
-							.map((v: any) => ({
+						visits: (job.visits ?? [])
+							.filter((v) => visitBillings.has(v.id))
+							.map((v) => ({
 								id: v.id,
 								scheduled_start_at:
 									v.scheduled_start_at,
@@ -1142,8 +1392,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 					.reduce((n, visitId) => {
 						for (const job of clientJobs) {
 							const visit = (
-								(job as any).visits ?? []
-							).find((v: any) => v.id === visitId);
+								job.visits ?? []
+							).find((v) => v.id === visitId);
 							if (visit)
 								return (
 									n +
@@ -1158,13 +1408,27 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 					.filter((jobId) => !importedSources.has(jobId))
 					.reduce((n, jobId) => {
 						const job = clientJobs.find((j) => j.id === jobId);
-						return n + ((job as any).line_items?.length ?? 0);
+						return n + (job?.line_items?.length ?? 0);
 					}, 0);
 
 				const totalImportable = importableCount + jobImportableCount;
 
+				const hasImportSource = visitBillings.size > 0 || totalImportable > 0;
+				const importLabel = totalImportable > 0
+					? `Import ${totalImportable} item${totalImportable !== 1 ? "s" : ""}`
+					: visitBillings.size > 0
+						? "Import from visits"
+						: undefined;
+
 				return (
 					<div className="min-w-0 flex flex-col -mt-3 sm:-mt-4">
+						{emptyVisitWarnings.length > 0 && (
+							<div className="mb-2 mx-4 sm:mx-6 mt-3 rounded border border-warning-border bg-warning-bg px-3 py-2 text-sm text-warning-text">
+								{emptyVisitWarnings.length === 1
+									? `Visit on ${emptyVisitWarnings[0]} has no line items — add manually or deselect it.`
+									: `${emptyVisitWarnings.length} visits have no line items (${emptyVisitWarnings.join(", ")}) — add manually or deselect them.`}
+							</div>
+						)}
 						<LineItemsSection
 							lineItems={activeLineItems}
 							isLoading={isLoading}
@@ -1181,17 +1445,14 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							onUndoSource={undoLineItemSource}
 							originalLineItemsMap={originalLineItems}
 							sourceJobs={sourceJobsForStep2}
-							onImport={
-								totalImportable > 0
-									? handleImportLineItems
-									: undefined
-							}
-							importLabel={
-								totalImportable > 0
-									? `Import ${totalImportable} line item${totalImportable !== 1 ? "s" : ""}`
-									: undefined
-							}
+							onImport={hasImportSource ? handleImportAll : undefined}
+							importLabel={importLabel}
+							importLoading={importingLineItems}
 							stickyHeader
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={setLineItemTaxGroup}
+							onTaxGroupBulkSet={setAllLineItemsTaxGroup}
 						/>
 					</div>
 				);
@@ -1208,12 +1469,17 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
-						<div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 text-sm space-y-1.5">
+						{submitError && (
+							<div className="rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
+								{submitError}
+							</div>
+						)}
+						<div className="p-3 bg-surface/50 rounded-lg border border-border/50 text-sm space-y-1.5">
 							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Client
 								</span>
-								<span className="text-white font-medium">
+								<span className="text-text-primary font-medium">
 									{clients?.find(
 										(c) =>
 											c.id ===
@@ -1223,20 +1489,20 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							</div>
 							{memo && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Memo
 									</span>
-									<span className="text-white truncate max-w-[60%] text-right">
+									<span className="text-text-primary truncate max-w-[60%] text-right">
 										{memo}
 									</span>
 								</div>
 							)}
 							{paymentTermsDays && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Payment Terms
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{paymentTermsDays ===
 										"0"
 											? "Due on Receipt"
@@ -1246,20 +1512,20 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							)}
 							{dueDateLabel && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Due Date
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{dueDateLabel}
 									</span>
 								</div>
 							)}
 							{linkedJobIds.size > 0 && (
 								<div className="flex justify-between items-start">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Linked Jobs
 									</span>
-									<span className="text-blue-400 text-right">
+									<span className="text-primary-text text-right">
 										{linkedJobIds.size}{" "}
 										job
 										{linkedJobIds.size !==
@@ -1271,10 +1537,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							)}
 							{visitBillings.size > 0 && (
 								<div className="flex justify-between items-start">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Linked Visits
 									</span>
-									<span className="text-blue-400 text-right">
+									<span className="text-primary-text text-right">
 										{visitBillings.size}{" "}
 										visit
 										{visitBillings.size !==
@@ -1293,10 +1559,13 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 							discountType={discountType}
 							discountValue={discountValue}
 							discountAmount={discountAmount}
-							total={total}
+							total={resolvedTotal}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
+							clientExempt={clientExempt}
 							isLoading={isLoading}
 							mode="create"
-							onTaxRateChange={(v) => {
+							onTaxRateChange={groupsSummary.length > 0 ? undefined : (v) => {
 								setTaxRate(v);
 								markDirty();
 							}}
@@ -1354,17 +1623,82 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 		discountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		clientExempt,
+		taxGroups,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 		clients,
 		defaultClientId,
 		importSources,
-		handleImportLineItems,
+		handleImportAll,
+		submitError,
+		qbConnected,
+		qbSearchOpen,
+		qbInvoiceResults,
+		qbInvoiceClients,
+		qbInvoicesLoading,
+		handleSelectQBInvoice,
+		selectedQBInvoice,
+		selectedQBLabel,
+		qbPrefillLoading,
 	]);
 
 	return (
+		<>
+		{showOverlapModal && (
+			<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+				<div className="w-full max-w-lg rounded-lg border border-border bg-base p-6 shadow-xl">
+					<h3 className="mb-1 text-base font-semibold text-text-primary">Visits Already Billed</h3>
+					<p className="mb-4 text-sm text-text-tertiary">
+						These visits are on active invoices. You can still proceed — this may be intentional
+						(partial billing, corrections).
+					</p>
+					<ul className="mb-5 space-y-2">
+						{overlapWarnings.map((w) => (
+							<li key={w.visit_id} className="rounded border border-border bg-surface p-3 text-sm">
+								<span className="font-medium text-text-primary">
+									{new Date(w.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+								</span>
+								<ul className="mt-1 space-y-0.5 text-text-tertiary">
+									{w.existing_invoices.map((inv) => (
+										<li key={inv.invoice_id}>
+											{inv.invoice_number} —{" "}
+											<span className="text-text-secondary">{inv.status}</span>
+											{inv.billed_amount != null && (
+												<span className="ml-1 text-text-tertiary">(${inv.billed_amount.toFixed(2)} billed)</span>
+											)}
+										</li>
+									))}
+								</ul>
+							</li>
+						))}
+					</ul>
+					<div className="flex justify-end gap-3">
+						<button
+							onClick={() => setShowOverlapModal(false)}
+							className="rounded px-4 py-2 text-sm text-text-secondary hover:bg-surface"
+						>
+							Go Back
+						</button>
+						<button
+							onClick={() => {
+								setShowOverlapModal(false);
+								goNext();
+							}}
+							className="rounded bg-primary-hover px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary"
+						>
+							Continue Anyway
+						</button>
+					</div>
+				</div>
+			</div>
+		)}
 		<FormWizardContainer<Step>
 			title="Create Invoice"
 			steps={STEPS}
@@ -1375,24 +1709,27 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId }: CreateI
 			onClose={() => setIsModalOpen(false)}
 			canGoToStep={canGoToStep}
 			onStepClick={goToStep}
-			onNext={goNext}
+			onNext={handleNext}
 			onBack={goBack}
 			onSubmit={invokeCreate}
-			canGoNext={canGoNext}
+			canGoNext={canGoNext && !isCheckingOverlap}
 			submitLabel="Create Invoice"
-			isSourceSearchOpen={false}
+			isSourceSearchOpen={qbSearchOpen}
 			sourceMode="existing"
 			onSourceModeChange={() => {}}
+			hideSourceToggle={true}
 			draftCount={0}
-			onStartFromExisting={() => {}}
-			hideStartFromExisting={true}
-			fullHeightContent={false}
-			onCloseSourceSearch={() => {}}
+			onStartFromExisting={() => setQbSearchOpen(true)}
+			startFromExistingLabel="Import from QuickBooks"
+			hideStartFromExisting={!qbConnected}
+			fullHeightContent={qbSearchOpen}
+			onCloseSourceSearch={() => setQbSearchOpen(false)}
 			canSaveDraft={false}
 			isSavingDraft={false}
 		>
 			{stepContent}
 		</FormWizardContainer>
+		</>
 	);
 };
 

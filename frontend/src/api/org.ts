@@ -1,5 +1,8 @@
 import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
+import type { ProvisionalItem } from "../types/inventory";
+
+export type RestockMode = "tech_self_serve" | "dispatch_prepared";
 
 export interface OrgSettings {
 	id: string;
@@ -11,6 +14,10 @@ export interface OrgSettings {
 	email: string | null;
 	website: string | null;
 	tax_rate: string;
+	restock_mode: RestockMode;
+	mfa_required: boolean;
+	brand_color: string | null;
+	followups_enabled: boolean;
 }
 
 export interface OrgSettingsUpdate {
@@ -20,6 +27,10 @@ export interface OrgSettingsUpdate {
 	coords?: { lat: number; lon: number } | null;
 	email?: string | null;
 	website?: string | null;
+	restock_mode?: RestockMode;
+	mfa_required?: boolean;
+	brand_color?: string | null;
+	followups_enabled?: boolean;
 }
 
 export const getOrgSettings = async (): Promise<OrgSettings> => {
@@ -46,4 +57,25 @@ export const uploadOrgLogo = async (file: File): Promise<string> => {
 
 export const deleteOrgLogo = async (): Promise<void> => {
 	await api.delete("/org/logo");
+};
+
+// ============================================================================
+// PROVISIONAL ITEMS
+// ============================================================================
+
+export const getProvisionalItems = async (): Promise<ProvisionalItem[]> => {
+	const response = await api.get<ApiResponse<ProvisionalItem[]>>("/inventory/provisional");
+	return response.data.data || [];
+};
+
+export const approveItem = async (itemId: string, body?: { initial_warehouse_qty?: number }): Promise<void> => {
+	await api.post(`/inventory/${itemId}/approve`, body ?? {});
+};
+
+export const mergeItem = async (itemId: string, targetInventoryItemId: string): Promise<void> => {
+	await api.post(`/inventory/${itemId}/merge`, { target_inventory_item_id: targetInventoryItemId });
+};
+
+export const rejectItem = async (itemId: string): Promise<void> => {
+	await api.post(`/inventory/${itemId}/reject`);
 };

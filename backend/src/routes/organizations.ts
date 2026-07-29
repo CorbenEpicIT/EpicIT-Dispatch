@@ -4,7 +4,9 @@ import {
 	createSuccessResponse,
 	createErrorResponse,
 } from "../types/responses.js";
-import { registerOrganization } from "../controllers/organizationsController.js";
+import { 
+	registerOrganization,
+ } from "../controllers/organizationsController.js";
 
 const router = Router();
 

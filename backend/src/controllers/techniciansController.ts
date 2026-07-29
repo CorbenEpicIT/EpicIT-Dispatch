@@ -1,18 +1,55 @@
 import { ZodError } from "zod";
+import type {
+	tech_break_reason,
+	technician_status,
+} from "../../generated/prisma/client.js";
 import {
 	createTechnicianSchema,
 	updateTechnicianSchema,
+	changePasswordSchema,
 } from "../lib/validate/technicians.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
+import { sendEmailVerificationEmail } from "../services/emailService.js";
+import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
+import { db } from "../db.js";
+
+const PAID_BREAK_REASONS = new Set<string>(["Rest", "EquipmentIssue"]);
+const VALID_BREAK_REASONS = new Set<string>([
+	"Lunch",
+	"Rest",
+	"EquipmentIssue",
+	"Other",
+]);
+const VALID_TECH_STATUSES = new Set<string>([
+	"Offline",
+	"Available",
+	"Break",
+	"EnRoute",
+	"OnSite",
+	"Working",
+	"Paused",
+	"WrappingUp",
+]);
+
+function toBreakReason(v: string): tech_break_reason | undefined {
+	if (!VALID_BREAK_REASONS.has(v)) return undefined;
+	return v as tech_break_reason;
+}
+
+function toTechnicianStatus(v: string): technician_status | undefined {
+	if (!VALID_TECH_STATUSES.has(v)) return undefined;
+	return v as technician_status;
+}
 
 export const getAllTechnicians = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.technician.findMany({
+	const technicians = await sdb.technician.findMany({
 		include: {
+			organization_role: { select: { id: true, name: true } },
 			visit_techs: {
 				include: {
 					visit: {
@@ -24,13 +61,16 @@ export const getAllTechnicians = async (organizationId: string) => {
 			},
 		},
 	});
+	const mfaEnabledIds = await getMfaEnabledUserIds(technicians.map((t) => t.id));
+	return technicians.map((t) => ({ ...t, mfaEnabled: mfaEnabledIds.has(t.id) }));
 };
 
 export const getTechnicianById = async (id: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-	return await sdb.technician.findFirst({
+	const technician = await sdb.technician.findFirst({
 		where: { id },
 		include: {
+			organization_role: { select: { id: true, name: true } },
 			visit_techs: {
 				include: {
 					visit: {
@@ -42,6 +82,8 @@ export const getTechnicianById = async (id: string, organizationId: string) => {
 			},
 		},
 	});
+	if (!technician) return null;
+	return { ...technician, mfaEnabled: await isMfaEnabled(id) };
 };
 
 export const insertTechnician = async (
@@ -53,16 +95,16 @@ export const insertTechnician = async (
 		const parsed = createTechnicianSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
 
-		const existing = await sdb.technician.findFirst({
-			where: { email: parsed.email },
-		});
+		const existing = (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+						 (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
 		if (existing) {
 			return { err: "Email already exists" };
 		}
 
-		const passwordProvided = parsed.password? true : false;
-		const tempPassword = parsed.password ?? randomBytes(8).toString("hex") + "A1!";
+		const passwordProvided = parsed.password ? true : false;
+		const tempPassword =
+			parsed.password ?? randomBytes(8).toString("hex") + "A1!";
 		const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
 		const created = await sdb.$transaction(async (tx) => {
@@ -87,6 +129,13 @@ export const insertTechnician = async (
 				},
 			});
 
+			// Don't worry about this right now since main doesn't have working emails
+			/*sendEmailVerificationEmail(
+				technician.email, 
+				technician.email_verification_token!, 
+				passwordProvided ? undefined : tempPassword
+			);*/
+
 			await logActivity({
 				event_type: "technician.created",
 				action: "created",
@@ -96,8 +145,8 @@ export const insertTechnician = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: null, new: technician.name },
@@ -142,9 +191,9 @@ export const updateTechnician = async (
 		}
 
 		if (parsed.email && parsed.email !== existing.email) {
-			const emailTaken = await sdb.technician.findFirst({
-				where: { email: parsed.email },
-			});
+			const emailTaken =
+                (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+                (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
 			if (emailTaken) {
 				return { err: "Email already exists" };
@@ -161,6 +210,7 @@ export const updateTechnician = async (
 			"coords",
 			"hire_date",
 			"last_login",
+			"theme",
 		] as const);
 
 		const updated = await sdb.$transaction(async (tx) => {
@@ -190,8 +240,8 @@ export const updateTechnician = async (
 					actor_type: context?.techId
 						? "technician"
 						: context?.dispatcherId
-						? "dispatcher"
-						: "system",
+							? "dispatcher"
+							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
 					changes,
 					ip_address: context?.ipAddress,
@@ -211,6 +261,57 @@ export const updateTechnician = async (
 		}
 		log.error({ err: e }, "Error updating technician");
 		return { err: "Internal server error" };
+	}
+};
+
+export const checkAndClearWrappingUp = async (
+	techId: string,
+	organizationId: string,
+) => {
+	try {
+		const sdb = getScopedDb(organizationId);
+		const tech = await sdb.technician.findFirst({
+			where: { id: techId },
+			select: {
+				status: true,
+				organization: { select: { wrapping_up_minutes: true } },
+			},
+		});
+		if (!tech || tech.status !== "WrappingUp") return null;
+
+		const wrappingMinutes = tech.organization?.wrapping_up_minutes ?? 15;
+		const cutoff = new Date(Date.now() - wrappingMinutes * 60 * 1000);
+
+		// Check the tech's own most-recent clock-out rather than the visit's actual_end_at,
+		// which reflects the visit level and may not match when this individual tech finished.
+		const recentlyCompleted = await sdb.visit_tech_time_entry.findFirst({
+			where: {
+				tech_id: techId,
+				clocked_out_at: { gte: cutoff },
+			},
+			orderBy: { clocked_out_at: "desc" },
+		});
+
+		if (!recentlyCompleted) {
+			const updated = await sdb.technician.update({
+				where: { id: techId },
+				data: { status: "Available" },
+				include: {
+					visit_techs: {
+						include: {
+							visit: {
+								include: { job: { include: { client: true } } },
+							},
+						},
+					},
+				},
+			});
+			return updated;
+		}
+		return null;
+	} catch (e) {
+		log.error({ err: e }, "checkAndClearWrappingUp failed");
+		return null;
 	}
 };
 
@@ -245,11 +346,14 @@ export const updateTechnicianLocation = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
-					coords: { old: existing.coords ?? null, new: parsed.coords ?? null },
+					coords: {
+						old: existing.coords ?? null,
+						new: parsed.coords ?? null,
+					},
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -297,7 +401,11 @@ export const deleteTechnician = async (
 		}
 
 		await sdb.$transaction(async (tx) => {
-			await tx.job_visit_technician.deleteMany({ where: { tech_id: id } });
+			await tx.job_visit_technician.deleteMany({
+				where: { tech_id: id },
+			});
+
+			await tx.technician.delete({ where: { id } });
 
 			await logActivity({
 				event_type: "technician.deleted",
@@ -308,8 +416,8 @@ export const deleteTechnician = async (
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
-					? "dispatcher"
-					: "system",
+						? "dispatcher"
+						: "system",
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					name: { old: existing.name, new: null },
@@ -326,4 +434,334 @@ export const deleteTechnician = async (
 		log.error({ err: error }, "Error deleting technician");
 		return { err: "Internal server error" };
 	}
+};
+
+// ── Shift lifecycle ──────────────────────────────────────────────────────────
+
+export const startShift = async (techId: string, organizationId: string) => {
+	try {
+		const sdb = getScopedDb(organizationId);
+		const tech = await sdb.technician.findUnique({ where: { id: techId } });
+		if (!tech) return { err: "Technician not found" };
+		if (tech.status !== "Offline")
+			return { err: "Technician is not Offline" };
+
+		const updated = await sdb.$transaction(async (tx) => {
+			await tx.technician_shift.create({
+				data: {
+					tech_id: techId,
+					org_id: organizationId,
+					started_at: new Date(),
+				},
+			});
+			return tx.technician.update({
+				where: { id: techId },
+				data: { status: "Available" },
+				include: {
+					visit_techs: {
+						include: {
+							visit: {
+								include: { job: { include: { client: true } } },
+							},
+						},
+					},
+				},
+			});
+		});
+
+		return { err: "", item: updated };
+	} catch (e) {
+		log.error({ err: e }, "startShift failed");
+		return { err: "Internal server error" };
+	}
+};
+
+export const goOffline = async (techId: string, organizationId: string) => {
+	try {
+		const sdb = getScopedDb(organizationId);
+		const tech = await sdb.technician.findUnique({ where: { id: techId } });
+		if (!tech) return { err: "Technician not found" };
+
+		const openEntry = await sdb.visit_tech_time_entry.findFirst({
+			where: { tech_id: techId, clocked_out_at: null },
+		});
+		if (openEntry)
+			return { err: "Cannot end shift while clocked into a visit" };
+
+		// Cancel any pending WrappingUp auto-transition before status changes
+		import("../services/wrappingUpTimer.js")
+			.then(({ cancelWrappingUpTimer }) => {
+				cancelWrappingUpTimer(techId);
+			})
+			.catch(() => {});
+
+		const now = new Date();
+		const updated = await sdb.$transaction(async (tx) => {
+			// Close open break if any; track its unpaid hours explicitly so the
+			// subsequent findMany doesn't miss it under any isolation level.
+			let closedBreakUnpaidHrs = 0;
+			const openBreak = await tx.technician_shift_break.findFirst({
+				where: { tech_id: techId, ended_at: null },
+			});
+			if (openBreak) {
+				const durationMs =
+					now.getTime() - openBreak.started_at.getTime();
+				const durationHrs = parseFloat(
+					(durationMs / 3_600_000).toFixed(4),
+				);
+				if (!openBreak.is_paid) closedBreakUnpaidHrs = durationHrs;
+				await tx.technician_shift_break.update({
+					where: { id: openBreak.id },
+					data: { ended_at: now, duration_hrs: durationHrs },
+				});
+			}
+
+			// Close open shift
+			const openShift = await tx.technician_shift.findFirst({
+				where: { tech_id: techId, ended_at: null },
+			});
+			if (openShift) {
+				const allBreaks = await tx.technician_shift_break.findMany({
+					where: {
+						shift_id: openShift.id,
+						is_paid: false,
+						ended_at: { not: null },
+					},
+					select: { duration_hrs: true },
+				});
+				// Sum previously closed breaks + the one just closed above
+				const breakHours =
+					allBreaks.reduce(
+						(s, b) => s + Number(b.duration_hrs ?? 0),
+						0,
+					) + closedBreakUnpaidHrs;
+				const grossMs = now.getTime() - openShift.started_at.getTime();
+				const grossHours = parseFloat((grossMs / 3_600_000).toFixed(4));
+				const payableHours = parseFloat(
+					Math.max(0, grossHours - breakHours).toFixed(4),
+				);
+				await tx.technician_shift.update({
+					where: { id: openShift.id },
+					data: {
+						ended_at: now,
+						gross_hours: grossHours,
+						break_hours: parseFloat(breakHours.toFixed(4)),
+						payable_hours: payableHours,
+					},
+				});
+			}
+
+			return tx.technician.update({
+				where: { id: techId },
+				data: { status: "Offline" },
+				include: {
+					visit_techs: {
+						include: {
+							visit: {
+								include: { job: { include: { client: true } } },
+							},
+						},
+					},
+				},
+			});
+		});
+
+		return { err: "", item: updated };
+	} catch (e) {
+		log.error({ err: e }, "goOffline failed");
+		return { err: "Internal server error" };
+	}
+};
+
+export const goOnBreak = async (
+	techId: string,
+	organizationId: string,
+	reason: string,
+) => {
+	try {
+		const sdb = getScopedDb(organizationId);
+		const tech = await sdb.technician.findUnique({ where: { id: techId } });
+		if (!tech) return { err: "Technician not found" };
+
+		const openEntry = await sdb.visit_tech_time_entry.findFirst({
+			where: { tech_id: techId, clocked_out_at: null },
+		});
+		if (openEntry)
+			return {
+				err: "Cannot take a break while clocked into a visit — use visit-level pause instead",
+			};
+
+		// Cancel WrappingUp timer if applicable
+		if (tech.status === "WrappingUp") {
+			import("../services/wrappingUpTimer.js")
+				.then(({ cancelWrappingUpTimer }) => {
+					cancelWrappingUpTimer(techId);
+				})
+				.catch(() => {});
+		}
+
+		const openShift = await sdb.technician_shift.findFirst({
+			where: { tech_id: techId, ended_at: null },
+		});
+		if (!openShift)
+			return { err: "No active shift found — start your shift first" };
+
+		const validReason = toBreakReason(reason);
+		if (!validReason) return { err: "Invalid break reason" };
+		const isPaid = PAID_BREAK_REASONS.has(reason);
+		const now = new Date();
+
+		const updated = await sdb.$transaction(async (tx) => {
+			await tx.technician_shift_break.create({
+				data: {
+					shift_id: openShift.id,
+					tech_id: techId,
+					reason: validReason,
+					is_paid: isPaid,
+					pre_break_status: tech.status,
+					started_at: now,
+				},
+			});
+			return tx.technician.update({
+				where: { id: techId },
+				data: { status: "Break" },
+				include: {
+					visit_techs: {
+						include: {
+							visit: {
+								include: { job: { include: { client: true } } },
+							},
+						},
+					},
+				},
+			});
+		});
+
+		return { err: "", item: updated };
+	} catch (e) {
+		log.error({ err: e }, "goOnBreak failed");
+		return { err: "Internal server error" };
+	}
+};
+
+export const returnFromBreak = async (
+	techId: string,
+	organizationId: string,
+) => {
+	try {
+		const sdb = getScopedDb(organizationId);
+		const tech = await sdb.technician.findUnique({ where: { id: techId } });
+		if (!tech) return { err: "Technician not found" };
+		if (tech.status !== "Break")
+			return { err: "Technician is not on break" };
+
+		const openBreak = await sdb.technician_shift_break.findFirst({
+			where: { tech_id: techId, ended_at: null },
+		});
+		if (!openBreak) return { err: "No open break record found" };
+
+		const now = new Date();
+		const durationMs = now.getTime() - openBreak.started_at.getTime();
+		const durationHrs = parseFloat((durationMs / 3_600_000).toFixed(4));
+
+		const restoreStatus = toTechnicianStatus(openBreak.pre_break_status);
+		if (!restoreStatus) return { err: "Invalid break status record" };
+
+		const updated = await sdb.$transaction(async (tx) => {
+			await tx.technician_shift_break.update({
+				where: { id: openBreak.id },
+				data: { ended_at: now, duration_hrs: durationHrs },
+			});
+			return tx.technician.update({
+				where: { id: techId },
+				data: { status: restoreStatus },
+				include: {
+					visit_techs: {
+						include: {
+							visit: {
+								include: { job: { include: { client: true } } },
+							},
+						},
+					},
+				},
+			});
+		});
+
+		// If the visit completed while the tech was on break, pre_break_status was updated to
+		// WrappingUp. Arm the timer now (starting from when the break ended) so the tech
+		// transitions to Available after the normal wrapping-up window.
+		if (restoreStatus === "WrappingUp") {
+			const org = await sdb.organization.findFirst({
+				where: { id: organizationId },
+				select: { wrapping_up_minutes: true },
+			});
+			const wrappingMinutes = org?.wrapping_up_minutes ?? 15;
+			import("../services/wrappingUpTimer.js")
+				.then(({ scheduleWrappingUpClear }) => {
+					scheduleWrappingUpClear(
+						techId,
+						organizationId,
+						now,
+						wrappingMinutes,
+					);
+				})
+				.catch(() => {});
+		}
+
+		return { err: "", item: updated };
+	} catch (e) {
+		log.error({ err: e }, "returnFromBreak failed");
+		return { err: "Internal server error" };
+	}
+};
+
+export const changeTechnicianPassword = async (
+	id: string, 
+	organization_id: string, 
+	data: unknown, 
+	context?: UserContext
+) => {
+	const parsed = changePasswordSchema.parse(data);
+	const sdb = getScopedDb(organization_id);
+	const technician = await sdb.technician.findFirst({
+		where: { id },
+	});
+
+	if (!technician) {
+		return { err: "Technician not found" };
+	}
+
+	const valid = await bcrypt.compare(parsed.current_password, technician.password);
+	if (!valid) {
+		return { err: "Current password is incorrect" };
+	}
+	const hashedPassword = await bcrypt.hash(parsed.new_password, 10);
+	await sdb.$transaction(async (tx) => {
+		await tx.technician.update({
+			where: { id },
+			data: {
+				password: hashedPassword,
+			},
+		});
+
+		await logActivity({
+			event_type: "dispatcher.password.changed",
+			action: "changed",
+			entity_type: "dispatcher",
+			entity_id: id,
+			organization_id: organization_id,
+			actor_type: context?.techId
+				? "technician"
+				: context?.dispatcherId
+				? "dispatcher"
+				: "system",
+			actor_id: context?.techId || context?.dispatcherId,
+			changes: {
+				password: { old: technician.password, new: hashedPassword },
+			},
+			ip_address: context?.ipAddress,
+			user_agent: context?.userAgent,
+		});
+	});
+	return { message: "Password updated successfully", err: ""};
 };

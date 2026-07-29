@@ -75,6 +75,25 @@ export const useUpdateDispatcherMutation = (): UseMutationResult<
 	});
 };
 
+export const useChangeDispatcherPasswordMutation = (): UseMutationResult<
+	Dispatcher,
+	Error,
+	{ id: string; data: { current_password: string; new_password: string } }
+> => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({ id, data }: { id: string; data: { current_password: string; new_password: string } }) =>
+			dispatcherApi.changeDispatcherPassword(id, data),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["dispatchers"] });
+		},
+		onError: (error: Error) => {
+			console.error(`Failed to change dispatcher password:`, error.message);
+		},
+	});
+};
+
 export const useDeleteDispatcherMutation = (): UseMutationResult<
 	{ message: string; id: string },
 	Error,
@@ -85,15 +104,18 @@ export const useDeleteDispatcherMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: dispatcherApi.deleteDispatcher,
 		onMutate: async (deletedId: string) => {
-			await queryClient.cancelQueries({
-				queryKey: ["dispatchers", deletedId],
-			});
+			await queryClient.cancelQueries({ queryKey: ["dispatchers"] });
+			const previousList = queryClient.getQueryData<Dispatcher[]>(["dispatchers"]);
+			queryClient.setQueryData<Dispatcher[]>(["dispatchers"], (old) =>
+				(old ?? []).filter((d) => d.id !== deletedId)
+			);
+			return { previousList };
 		},
 		onSuccess: (_, deletedId) => {
-			queryClient.invalidateQueries({ queryKey: ["dispatchers"] });
 			queryClient.removeQueries({ queryKey: ["dispatchers", deletedId] });
 		},
-		onError: (error: Error) => {
+		onError: (error: Error, _id, context) => {
+			queryClient.setQueryData(["dispatchers"], context?.previousList);
 			console.error(`Failed to delete dispatcher:`, error.message);
 		},
 	});

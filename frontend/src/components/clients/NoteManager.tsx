@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Plus, Edit2, Trash2, X } from "lucide-react";
 import Card from "../ui/Card";
 import type { ClientNote } from "../../types/clients";
@@ -8,6 +8,7 @@ import {
 	useUpdateClientNoteMutation,
 	useDeleteClientNoteMutation,
 } from "../../hooks/useClients";
+import { usePermission } from "../../hooks/usePermission";
 
 interface NoteManagerProps {
 	clientId: string;
@@ -25,6 +26,9 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 	const createNote = useCreateClientNoteMutation();
 	const updateNote = useUpdateClientNoteMutation();
 	const deleteNote = useDeleteClientNoteMutation();
+
+	// permissions
+	const EDIT_NOTES = usePermission("edit_clients");
 
 	const resetForm = () => {
 		setContent("");
@@ -51,6 +55,7 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (!EDIT_NOTES) return;
 		setErrorMessage(null);
 
 		if (!content.trim()) return;
@@ -77,12 +82,14 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 	};
 
 	const handleEdit = (note: ClientNote) => {
+		if (!EDIT_NOTES) return;
 		setContent(note.content);
 		setEditingId(note.id);
 		setIsAdding(true);
 	};
 
 	const handleDelete = async (noteId: string) => {
+		if (!EDIT_NOTES) return;
 		if (deleteConfirmId !== noteId) {
 			setDeleteConfirmId(noteId);
 			return;
@@ -99,7 +106,7 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 	if (isLoading) {
 		return (
 			<Card title="Notes">
-				<div className="text-zinc-400">Loading notes...</div>
+				<div className="text-text-tertiary">Loading notes...</div>
 			</Card>
 		);
 	}
@@ -109,8 +116,13 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 			title="Notes"
 			headerAction={
 				<button
-					onClick={() => setIsAdding(true)}
-					className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+					disabled={!EDIT_NOTES}
+					title={!EDIT_NOTES ? "You don't have permission to perform this action" : ""}
+					onClick={() => {
+						if (!EDIT_NOTES) return;
+						setIsAdding(true)
+					}}
+					className="flex items-center gap-2 px-3 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Plus size={14} />
 					Add Note
@@ -120,19 +132,19 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 		>
 			<div className="space-y-4">
 				{isAdding && !editingId && (
-					<div ref={formRef} className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+					<div ref={formRef} className="p-4 bg-surface rounded-lg border border-border">
 						<div className="flex justify-between items-center mb-4">
-							<h3 className="text-white font-semibold">New Note</h3>
+							<h3 className="text-text-primary font-semibold">New Note</h3>
 							<button
 								onClick={resetForm}
-								className="text-zinc-400 hover:text-white transition-colors"
+								className="text-text-tertiary hover:text-text-primary transition-colors"
 							>
 								<X size={20} />
 							</button>
 						</div>
 						
 						{errorMessage && (
-							<div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
+							<div className="mb-4 p-3 bg-error-bg border border-error-border rounded-md text-error-text text-sm">
 								{errorMessage}
 							</div>
 						)}
@@ -143,13 +155,13 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 								onChange={(e) => setContent(e.target.value)}
 								placeholder="Enter your note..."
 								rows={4}
-								className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full px-3 py-2 bg-surface-inset border border-input rounded-md text-primary placeholder:text-faint text-sm focus:outline-none focus:ring-1 focus:ring-primary-border"
 								required
 							/>
 							<button
 								type="submit"
 								disabled={createNote.isPending || updateNote.isPending}
-								className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
+								className="w-full px-4 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded-md text-sm font-medium transition-colors"
 							>
 								{createNote.isPending || updateNote.isPending
 									? "Saving..."
@@ -163,23 +175,25 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 					{notes && notes.length > 0 ? (
 						notes.map((note) => (
 							<div key={note.id}>
-								<div className="p-3 bg-zinc-800 rounded-lg border border-zinc-700 group hover:border-zinc-600 transition-colors">
+								<div className="p-3 bg-surface rounded-lg border border-border group hover:border-border-strong transition-colors">
 									<div className="flex justify-between items-start mb-2">
-										<p className="text-white text-sm flex-1">{note.content}</p>
+										<p className="text-text-primary text-sm flex-1">{note.content}</p>
 										<div className="flex gap-2 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
 											<button
 												onClick={() => handleEdit(note)}
-												className="text-zinc-400 hover:text-blue-400 transition-colors"
+												disabled={!EDIT_NOTES}
+												className="text-text-tertiary hover:text-primary-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<Edit2 size={14} />
 											</button>
 											<button
 												onClick={() => handleDelete(note.id)}
+												disabled={!EDIT_NOTES}
 												onMouseLeave={() => setDeleteConfirmId(null)}
-												className={`transition-colors ${
+												className={`transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 													deleteConfirmId === note.id
-														? "text-red-500 hover:text-red-600"
-														: "text-zinc-400 hover:text-red-400"
+														? "text-error-text hover:text-error"
+														: "text-text-tertiary hover:text-error-text"
 												}`}
 												title={
 													deleteConfirmId === note.id
@@ -189,12 +203,12 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 											>
 												<Trash2 
 													size={14} 
-													className={deleteConfirmId === note.id ? "fill-red-500" : ""} 
+													className={deleteConfirmId === note.id ? "fill-error" : ""}
 												/>
 											</button>
 										</div>
 									</div>
-									<p className="text-xs text-zinc-500">
+									<p className="text-xs text-text-muted">
 										{new Date(note.created_at).toLocaleDateString()}
 										{note.updated_at && new Date(note.updated_at).getTime() !== new Date(note.created_at).getTime() && " (edited)"}
 									</p>
@@ -202,19 +216,19 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 								
 								{/* Edit form appears below the note being edited */}
 								{editingId === note.id && (
-									<div ref={formRef} className="mt-2 p-4 bg-zinc-800 rounded-lg border border-zinc-700">
+									<div ref={formRef} className="mt-2 p-4 bg-surface rounded-lg border border-border">
 										<div className="flex justify-between items-center mb-4">
-											<h3 className="text-white font-semibold">Edit Note</h3>
+											<h3 className="text-text-primary font-semibold">Edit Note</h3>
 											<button
 												onClick={resetForm}
-												className="text-zinc-400 hover:text-white transition-colors"
+												className="text-text-tertiary hover:text-text-primary transition-colors"
 											>
 												<X size={20} />
 											</button>
 										</div>
 										
 										{errorMessage && (
-											<div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-md text-red-200 text-sm">
+											<div className="mb-4 p-3 bg-error-bg border border-error-border rounded-md text-error-text text-sm">
 												{errorMessage}
 											</div>
 										)}
@@ -225,13 +239,13 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 												onChange={(e) => setContent(e.target.value)}
 												placeholder="Enter your note..."
 												rows={4}
-												className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+												className="w-full px-3 py-2 bg-surface-inset border border-input rounded-md text-primary placeholder:text-faint text-sm focus:outline-none focus:ring-1 focus:ring-primary-border"
 												required
 											/>
 											<button
 												type="submit"
 												disabled={createNote.isPending || updateNote.isPending}
-												className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
+												className="w-full px-4 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-primary-disabled disabled:cursor-not-allowed text-on-primary rounded-md text-sm font-medium transition-colors"
 											>
 												{createNote.isPending || updateNote.isPending
 													? "Saving..."
@@ -243,7 +257,7 @@ export default function NoteManager({ clientId }: NoteManagerProps) {
 							</div>
 						))
 					) : (
-						<p className="text-zinc-400 text-sm">No notes available</p>
+						<p className="text-text-tertiary text-sm">No notes available</p>
 					)}
 				</div>
 			</div>

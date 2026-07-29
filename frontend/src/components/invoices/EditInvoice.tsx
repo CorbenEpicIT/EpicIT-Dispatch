@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import {
 	type Invoice,
 	type UpdateInvoiceInput,
@@ -16,6 +16,8 @@ import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useDirtyTracking } from "../../hooks/forms/useDirtyTracking";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
+import { isEditable } from "../../types/invoices";
 import type { SourceJob } from "../ui/forms/LineItemCard";
 
 type Step = 1 | 2 | 3;
@@ -37,9 +39,9 @@ const PAYMENT_TERM_OPTIONS = [
 	{ label: "Net 90", value: "90" },
 ];
 
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
 
 interface EditInvoiceProps {
 	isModalOpen: boolean;
@@ -50,6 +52,7 @@ interface EditInvoiceProps {
 const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps) => {
 	const { mutateAsync: updateInvoice } = useUpdateInvoiceMutation();
 	const [isLoading, setIsLoading] = useState(false);
+	const [submitError, setSubmitError] = useState<string | null>(null);
 
 	type FormFields = {
 		memo: string;
@@ -71,6 +74,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 	const [originalPaymentTermsDays, setOriginalPaymentTermsDays] = useState<string>("");
 
 	// ── Line items ────────────────────────────────────────────────────────
+	const { data: taxGroups = [] } = useTaxGroups();
+	const clientExempt = invoice.client?.is_tax_exempt ?? false;
+	const taxEditable = isEditable(invoice.status);
+
 	const {
 		activeLineItems,
 		addLineItem,
@@ -84,7 +91,20 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		undoLineItemField,
 		clearLineItemField,
 		originalLineItems,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 	} = useLineItems({ minItems: 0, mode: "edit" });
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems]
+	);
 
 	// ── Financials ────────────────────────────────────────────────────────
 	const {
@@ -97,6 +117,11 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		setDiscountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
@@ -106,6 +131,9 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		initialTaxRate: invoice.tax_rate ? Number(invoice.tax_rate) * 100 : 0,
 		initialDiscountType: invoice.discount_type || "amount",
 		initialDiscountValue: invoice.discount_value ? Number(invoice.discount_value) : 0,
+		taxGroups,
+		lineItemsForCalc,
+		clientExempt,
 	});
 
 	// ── Wizard ────────────────────────────────────────────────────────────
@@ -122,6 +150,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 	useEffect(() => {
 		if (!isModalOpen || !invoice) return;
 
+		setSubmitError(null);
 		resetWizard();
 
 		setOriginals({
@@ -151,9 +180,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				unit_price: Number(item.unit_price),
 				item_type: (item.item_type ?? "") as LineItemType | "",
 				total: Number(item.total),
-				// Preserve existing source attribution
-				source_job_id: (item as any).source_job_id ?? null,
-				source_visit_id: (item as any).source_visit_id ?? null,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+				source_job_id: item.source_job_id ?? null,
+				source_visit_id: item.source_visit_id ?? null,
 				isNew: false,
 				isDeleted: false,
 			})
@@ -282,11 +312,15 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 					item_type: (item.item_type || undefined) as
 						| LineItemType
 						| undefined,
+					taxable: item.taxable,
+					tax_group_id: item.tax_group_id ?? undefined,
 					sort_order: index,
-					source_job_id: (item as any).source_job_id ?? undefined,
-					source_visit_id: (item as any).source_visit_id ?? undefined,
+					source_job_id: item.source_job_id ?? undefined,
+					source_visit_id: item.source_visit_id ?? undefined,
 				};
 			});
+
+
 
 		const updates: UpdateInvoiceInput = {
 			memo: getValue("memo").trim() || undefined,
@@ -297,21 +331,23 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				? parseInt(paymentTermsDays, 10)
 				: undefined,
 			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			total,
+			total: resolvedTotal,
 			line_items: preparedLineItems,
 		};
 
 		setIsLoading(true);
 		try {
 			await updateInvoice({ id: invoice.id, updates });
+			setSubmitError(null);
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to update invoice:", error);
+			setSubmitError(error instanceof Error ? error.message : "Failed to update invoice. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -343,11 +379,11 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 								<label className={LABEL}>
 									Client
 								</label>
-								<div className="border border-zinc-700 px-2.5 h-[34px] flex items-center w-full rounded bg-zinc-800/50 text-zinc-400 text-sm min-w-0 truncate">
+								<div className="border border-border px-2.5 h-[34px] flex items-center w-full rounded bg-surface/50 text-text-tertiary text-sm min-w-0 truncate">
 									{invoice.client?.name ??
 										"—"}
 								</div>
-								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+								<p className="text-[10px] text-text-muted mt-0.5 leading-tight">
 									Cannot be changed
 								</p>
 							</div>
@@ -423,7 +459,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Due Date{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(auto or override)
 									</span>
 								</label>
@@ -449,7 +485,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 						<div className="min-w-0">
 							<label className={LABEL}>
 								Internal Notes{" "}
-								<span className="text-zinc-500 normal-case font-normal">
+								<span className="text-text-muted normal-case font-normal">
 									(not shown to client)
 								</span>
 							</label>
@@ -466,7 +502,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -489,7 +525,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							<div className="min-w-0">
 								<label className={LABEL}>
 									Linked Jobs &amp; Visits{" "}
-									<span className="text-zinc-500 normal-case font-normal">
+									<span className="text-text-muted normal-case font-normal">
 										(read-only)
 									</span>
 								</label>
@@ -509,10 +545,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 												key={
 													sj.id
 												}
-												className="rounded-md border border-zinc-700 bg-zinc-900 overflow-hidden"
+												className="rounded-md border border-border bg-base overflow-hidden"
 											>
 												{/* Job row */}
-												<div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
+												<div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
 													<svg
 														width="12"
 														height="12"
@@ -520,7 +556,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 														fill="none"
 														stroke="currentColor"
 														strokeWidth="2"
-														className="text-zinc-500 flex-shrink-0"
+														className="text-text-muted flex-shrink-0"
 													>
 														<rect
 															x="2"
@@ -531,7 +567,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 														/>
 														<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
 													</svg>
-													<span className="text-sm font-medium text-white truncate flex-1">
+													<span className="text-sm font-medium text-text-primary truncate flex-1">
 														{
 															sj.job_number
 														}{" "}
@@ -544,7 +580,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 														undefined &&
 														jobLink.billed_amount !==
 															null && (
-															<span className="text-xs text-zinc-500 flex-shrink-0">
+															<span className="text-xs text-text-muted flex-shrink-0">
 																billed{" "}
 																{Number(
 																	jobLink.billed_amount
@@ -579,7 +615,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																key={
 																	sv.id
 																}
-																className="flex items-center gap-2 pl-7 pr-3 py-1.5 border-t border-zinc-800 bg-zinc-800/40"
+																className="flex items-center gap-2 pl-7 pr-3 py-1.5 border-t border-border-subtle bg-surface/40"
 															>
 																<svg
 																	width="11"
@@ -588,7 +624,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																	fill="none"
 																	stroke="currentColor"
 																	strokeWidth="2"
-																	className="text-zinc-500 flex-shrink-0"
+																	className="text-text-muted flex-shrink-0"
 																>
 																	<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
 																	<circle
@@ -597,7 +633,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																		r="3"
 																	/>
 																</svg>
-																<span className="text-xs text-zinc-300 flex-1">
+																<span className="text-xs text-text-secondary flex-1">
 																	{
 																		sj.job_number
 																	}{" "}
@@ -614,7 +650,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																		}
 																	)}
 																</span>
-																<span className="text-[10px] text-zinc-500 flex-shrink-0">
+																<span className="text-[10px] text-text-muted flex-shrink-0">
 																	{
 																		sv.status
 																	}
@@ -623,7 +659,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 																	undefined &&
 																	visitLink.billed_amount !==
 																		null && (
-																		<span className="text-[10px] text-zinc-500 flex-shrink-0 ml-1">
+																		<span className="text-[10px] text-text-muted flex-shrink-0 ml-1">
 																			billed{" "}
 																			{Number(
 																				visitLink.billed_amount
@@ -669,6 +705,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							originalLineItemsMap={originalLineItems}
 							sourceJobs={sourceJobs}
 							stickyHeader
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={taxEditable ? setLineItemTaxGroup : undefined}
+							onTaxGroupBulkSet={taxEditable ? setAllLineItemsTaxGroup : undefined}
 						/>
 					</div>
 				);
@@ -677,40 +717,40 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
 						{/* Summary */}
-						<div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 text-sm space-y-1.5">
+						<div className="p-3 bg-surface/50 rounded-lg border border-border/50 text-sm space-y-1.5">
 							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Invoice
 								</span>
-								<span className="text-white font-medium">
+								<span className="text-text-primary font-medium">
 									{invoice.invoice_number}
 								</span>
 							</div>
 							<div className="flex justify-between items-center">
-								<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 									Client
 								</span>
-								<span className="text-white">
+								<span className="text-text-primary">
 									{invoice.client?.name ??
 										"—"}
 								</span>
 							</div>
 							{getValue("memo") && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Memo
 									</span>
-									<span className="text-white truncate max-w-[60%] text-right">
+									<span className="text-text-primary truncate max-w-[60%] text-right">
 										{getValue("memo")}
 									</span>
 								</div>
 							)}
 							{issueDate && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Issue Date
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{issueDate.toLocaleDateString(
 											"en-US",
 											{
@@ -724,10 +764,10 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							)}
 							{dueDate && (
 								<div className="flex justify-between items-center">
-									<span className="text-zinc-400 text-xs uppercase tracking-wide font-semibold">
+									<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">
 										Due Date
 									</span>
-									<span className="text-white">
+									<span className="text-text-primary">
 										{dueDate.toLocaleDateString(
 											"en-US",
 											{
@@ -748,10 +788,13 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 							discountType={discountType}
 							discountValue={discountValue}
 							discountAmount={discountAmount}
-							total={total}
+							total={resolvedTotal}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
+							clientExempt={clientExempt}
 							isLoading={isLoading}
 							mode="edit"
-							onTaxRateChange={setTaxRate}
+							onTaxRateChange={groupsSummary.length > 0 ? undefined : setTaxRate}
 							onDiscountTypeChange={setDiscountType}
 							onDiscountValueChange={setDiscountValue}
 							totalLabel="Invoice Total"
@@ -798,6 +841,13 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		discountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		taxEditable,
+		taxGroups,
+		clientExempt,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
@@ -822,7 +872,14 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 			submitLabel="Save Changes"
 			isEditMode={true}
 		>
-			{stepContent}
+			<>
+				{submitError && (
+					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
+						{submitError}
+					</div>
+				)}
+				{stepContent}
+			</>
 		</FormWizardContainer>
 	);
 };

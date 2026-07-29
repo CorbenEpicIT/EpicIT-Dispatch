@@ -1,9 +1,18 @@
 import { log } from "../services/appLogger.js";
 import { logActivity } from "../services/logger.js";
+import type { pause_reason_type, technician_status } from "../../generated/prisma/client.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { getSocket } from "../services/socketService.js";
+import { buildVisitStatusPayload, buildSecondaryEventPayload } from "./jobVisitsController.js";
 
 const CLOCK_IN_ALLOWED = ["OnSite", "InProgress", "Paused"];
 const CLOCK_IN_AUTO_ADVANCE = ["OnSite", "Paused"];
+
+const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
+function toPauseReason(v: string | undefined): pause_reason_type | undefined {
+	if (!v || !VALID_PAUSE_REASONS.has(v)) return undefined;
+	return v as pause_reason_type;
+}
 
 export const clockInVisit = async (
 	visitId: string,
@@ -38,6 +47,7 @@ export const clockInVisit = async (
 		}
 
 		const now = new Date();
+		const isPrimaryAdvance = CLOCK_IN_AUTO_ADVANCE.includes(visit.status);
 
 		const entry = await sdb.$transaction(async (tx) => {
 			const newEntry = await tx.visit_tech_time_entry.create({
@@ -46,7 +56,7 @@ export const clockInVisit = async (
 			});
 
 			// Auto-advance: OnSite → InProgress (begin), Paused → InProgress (resume)
-			if (CLOCK_IN_AUTO_ADVANCE.includes(visit.status)) {
+			if (isPrimaryAdvance) {
 				await tx.job_visit.update({
 					where: { id: visitId },
 					data: {
@@ -59,6 +69,16 @@ export const clockInVisit = async (
 					data: { status: "InProgress" },
 				});
 			}
+
+			// Update global tech status
+			await tx.technician.update({
+				where: { id: techId },
+				data: { status: "Working" },
+			});
+			// Cancel any pending WrappingUp timer — tech is now actively working
+			import("../services/wrappingUpTimer.js").then(({ cancelWrappingUpTimer }) => {
+				cancelWrappingUpTimer(techId);
+			}).catch(() => {});
 
 			await logActivity({
 				event_type: "visit_time_entry.clocked_in",
@@ -77,6 +97,39 @@ export const clockInVisit = async (
 			return newEntry;
 		});
 
+		const updatedVisit = await sdb.job_visit.findFirst({
+			where: { id: visitId },
+			include: {
+				job: { include: { client: true } },
+				visit_techs: { include: { tech: true } },
+			},
+		});
+
+		if (updatedVisit) {
+			if (isPrimaryAdvance) {
+				getSocket().emit(
+					"job_visit:status_changed",
+					buildVisitStatusPayload(updatedVisit, visit.status, true, context),
+				);
+				await logActivity({
+					event_type: "job_visit.updated",
+					action: "updated",
+					entity_type: "job_visit",
+					entity_id: visitId,
+					organization_id: organizationId,
+					actor_type: "technician",
+					actor_id: techId,
+					changes: { status: { old: visit.status, new: "InProgress" } },
+				});
+			} else {
+				// Secondary: tech clocked into an already-InProgress visit
+				getSocket().emit(
+					"job_visit:status_changed",
+					buildSecondaryEventPayload(updatedVisit, "InProgress", context),
+				);
+			}
+		}
+
 		return { err: "", item: entry };
 	} catch (e) {
 		log.error({ err: e }, "clockInVisit failed");
@@ -89,6 +142,7 @@ export const clockOutVisit = async (
 	techId: string,
 	organizationId: string,
 	context?: UserContext,
+	pauseReason?: string,
 ): Promise<{ err: string; item?: any }> => {
 	try {
 		const sdb = getScopedDb(organizationId);
@@ -162,7 +216,7 @@ export const clockOutVisit = async (
 				},
 			});
 
-			// Auto-Paused when last tech clocks out of an InProgress visit
+			// Auto-pause when last tech clocks out of an InProgress visit
 			let statusChangedToPaused = false;
 			if (remainingOpen === null) {
 				const currentVisit = await tx.job_visit.findUnique({
@@ -174,6 +228,23 @@ export const clockOutVisit = async (
 					statusChangedToPaused = true;
 				}
 			}
+
+			// Save pause reason only when this clock-out actually caused the visit to pause
+			if (statusChangedToPaused) {
+				await tx.visit_tech_time_entry.update({
+					where: { id: closedEntry.id },
+					data: { pause_reason: toPauseReason(pauseReason) },
+				});
+			}
+
+			// Update global tech status.
+			// Paused only when this tech's clock-out left no one working (visit pauses).
+			// If others are still clocked in, this tech is still on-site but no longer working.
+			const newGlobalStatus: technician_status = remainingOpen === null ? "Paused" : "OnSite";
+			await tx.technician.update({
+				where: { id: techId },
+				data: { status: newGlobalStatus },
+			});
 
 			await logActivity({
 				event_type: "visit_time_entry.clocked_out",
@@ -191,6 +262,39 @@ export const clockOutVisit = async (
 
 			return { entry: closedEntry, line_item: lineItem, is_last_tech: remainingOpen === null, statusChangedToPaused };
 		});
+
+		const updatedVisit = await sdb.job_visit.findFirst({
+			where: { id: visitId },
+			include: {
+				job: { include: { client: true } },
+				visit_techs: { include: { tech: true } },
+			},
+		});
+
+		if (updatedVisit) {
+			if (result.statusChangedToPaused) {
+				getSocket().emit(
+					"job_visit:status_changed",
+					buildVisitStatusPayload(updatedVisit, "InProgress", true, context),
+				);
+				await logActivity({
+					event_type: "job_visit.updated",
+					action: "updated",
+					entity_type: "job_visit",
+					entity_id: visitId,
+					organization_id: organizationId,
+					actor_type: "technician",
+					actor_id: techId,
+					changes: { status: { old: "InProgress", new: "Paused" } },
+				});
+			} else if (!result.is_last_tech) {
+				// Secondary: tech clocked out but visit stays InProgress
+				getSocket().emit(
+					"job_visit:status_changed",
+					buildSecondaryEventPayload(updatedVisit, "Paused", context),
+				);
+			}
+		}
 
 		return { err: "", item: result };
 	} catch (e) {

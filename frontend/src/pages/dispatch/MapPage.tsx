@@ -23,17 +23,17 @@ export default function MapPage() {
 	if (isLoading) return <p>Loading map data...</p>;
 
 	return (
-		<div className="flex flex-col lg:flex-row gap-4 h-fit">
-			<div className="flex-1 min-w-0">
+		<div className="flex flex-col lg:flex-row gap-4 lg:h-[840px]">
+			<div className="flex-1 min-w-0 lg:h-full">
 				<Card
 					title="Map View"
-					className="h-fit"
+					className="h-full"
 					headerAction={
 						<button
-							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+							className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:bg-primary-active text-on-primary rounded-md text-sm font-medium transition-colors"
 							onClick={() => nav("/map")}
 						>
-							<Expand size={16} className="text-white" />
+							<Expand size={16} className="text-on-primary" />
 							View Fullscreen
 						</button>
 					}
@@ -41,7 +41,7 @@ export default function MapPage() {
 					<div className="space-y-4">
 						<div
 							ref={mapContainerRef}
-							className="w-full h-[700px] bg-zinc-800 rounded-lg border border-zinc-700 overflow-hidden"
+							className="w-full h-[700px] bg-surface rounded-lg border border-border overflow-hidden"
 						>
 							<DynamicMap
 								containerRef={mapContainerRef}
@@ -51,7 +51,7 @@ export default function MapPage() {
 							/>
 						</div>
 
-						<div className="flex items-center justify-between text-sm text-zinc-400">
+						<div className="flex items-center justify-between text-sm text-text-tertiary">
 							<span>Live Tracking Active</span>
 							<span>
 								Last Pulse: {new Date().toLocaleTimeString()}
@@ -61,7 +61,7 @@ export default function MapPage() {
 				</Card>
 			</div>
 
-			<div className="lg:w-80 lg:flex-shrink-0 lg:h-[784px]">
+			<div className="lg:w-80 lg:flex-shrink-0 lg:h-full">
 				<MapPanel
 					allClients={allClients}
 					allTechnicians={allTechnicians}

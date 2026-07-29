@@ -8,18 +8,24 @@ import {
 	ChevronDown,
 	ChevronUp,
 	AlertTriangle,
+	Check,
+	Trash2,
 } from "lucide-react";
-import { useVehicleStockQuery, useAddPartsUsedMutation } from "../../hooks/useVehicles";
+import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation } from "../../hooks/useVehicleStock";
 import { useUpdateJobVisitMutation } from "../../hooks/useJobs";
+import { useToast } from "../ui/useToast";
 
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
 import { useAuthStore } from "../../auth/authStore";
-import type { VehicleStockItem } from "../../types/vehicles";
+import { usePermission } from "../../hooks/usePermission";
+import ExistingUnitPicker from "../vehicles/ExistingUnitPicker";
+import ExistingBatchPicker from "../vehicles/ExistingBatchPicker";
+import type { VehicleStockItem, SupplierPartUsedInput, AddPartsUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 
-type Mode = "edit" | "stock" | "free";
+type Mode = "edit" | "stock" | "supplier";
 
-// ── Edit Parts Tab ─────────────────────────────────────────────────────────────
+// -- Edit Parts Tab -------------------------------------------------------------
 
 function EditPartsTab({
 	lineItems,
@@ -56,13 +62,13 @@ function EditPartsTab({
 	if (lineItems.length === 0) {
 		return (
 			<div className="px-4 py-5 text-center">
-				<p className="text-sm text-zinc-600">No parts added yet</p>
+				<p className="text-sm text-text-faint">No parts added yet</p>
 			</div>
 		);
 	}
 
 	return (
-		<div className="divide-y divide-zinc-800/60">
+		<div className="divide-y divide-border-subtle/60">
 			{lineItems.map((item, idx) => {
 				const qty = Number(item.quantity);
 				const unitPrice = Number(item.unit_price);
@@ -75,13 +81,13 @@ function EditPartsTab({
 					<div
 						key={item.id ?? idx}
 						className={`flex items-center justify-between px-4 py-2.5 gap-3 transition-colors ${
-							isHighlighted ? "ring-1 ring-blue-500/40 bg-blue-600/[.06]" : ""
+							isHighlighted ? "ring-1 ring-primary/40 bg-primary-hover/[.06]" : ""
 						}`}
 					>
 						<div className="flex-1 min-w-0">
-							<p className="text-sm text-white line-clamp-2">{item.name}</p>
+							<p className="text-sm text-text-primary line-clamp-2">{item.name}</p>
 							{item.description && (
-								<p className="text-xs text-zinc-600 truncate">
+								<p className="text-xs text-text-faint truncate">
 									{item.description}
 								</p>
 							)}
@@ -97,16 +103,16 @@ function EditPartsTab({
 									disabled={isPending}
 									className={`flex items-center justify-center w-5 h-5 rounded text-xs font-bold border transition-colors disabled:opacity-40 ${
 										isArmed
-											? "border-red-500 bg-red-500/30 text-red-300"
+											? "border-error bg-error/30 text-error-text"
 											: isOne
-												? "border-red-500/30 bg-red-500/8 text-red-400 hover:bg-red-500/15"
-												: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+												? "border-error/30 bg-error-bg text-error-text hover:bg-error/15"
+												: "border-border bg-surface text-text-tertiary hover:bg-surface-raised"
 									}`}
 									aria-label={isOne ? "Remove part" : "Decrease quantity"}
 								>
-									{isOne ? "✕" : "−"}
+									{isOne ? <Trash2 size={10} /> : "-"}
 								</button>
-								<span className="text-sm font-semibold text-white tabular-nums min-w-[18px] text-center">
+								<span className="text-sm font-semibold text-text-primary tabular-nums min-w-[18px] text-center">
 									{qty}
 								</span>
 								<button
@@ -117,16 +123,16 @@ function EditPartsTab({
 										onUpdateQty(item, qty + 1);
 									}}
 									disabled={isPending}
-									className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors disabled:opacity-40"
+									className="flex items-center justify-center w-5 h-5 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors disabled:opacity-40"
 									aria-label="Increase quantity"
 								>
-									＋
+									+
 								</button>
-								<span className="text-sm text-white tabular-nums">
+								<span className="text-sm text-text-primary tabular-nums">
 									× ${unitPrice.toFixed(2)}
 								</span>
 							</div>
-							<span className="text-xs text-zinc-500 tabular-nums">
+							<span className="text-xs text-text-muted tabular-nums">
 								${rowTotal.toFixed(2)}
 							</span>
 						</div>
@@ -137,7 +143,7 @@ function EditPartsTab({
 	);
 }
 
-// ── Stock Mode ────────────────────────────────────────────────────────────────
+// -- Stock Mode ----------------------------------------------------------------
 
 function StockPartPicker({
 	stockItems,
@@ -161,9 +167,13 @@ function StockPartPicker({
 	onClose: () => void;
 }) {
 	const addParts = useAddPartsUsedMutation();
+	const toast = useToast();
 	const [selected, setSelected] = useState<VehicleStockItem | null>(null);
 	const [qty, setQty] = useState("1");
 	const [err, setErr] = useState<string | null>(null);
+	const [targetCount, setTargetCount] = useState(1);
+	const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
+	const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
 
 	const filtered = useMemo(() => {
 		const q = search.toLowerCase();
@@ -171,74 +181,153 @@ function StockPartPicker({
 		return stockItems.filter(
 			(i) =>
 				i.inventory_item.name.toLowerCase().includes(q) ||
-				(i.inventory_item.category?.toLowerCase().includes(q) ?? false)
+				(i.inventory_item.category?.toLowerCase().includes(q) ?? false) ||
+				(i.inventory_item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false)
 		);
 	}, [stockItems, search]);
 
-	const isAlreadyAdded = (stockItem: VehicleStockItem): VisitLineItem | undefined =>
-		lineItems.find(
-			(li) =>
-				li.name.toLowerCase() === stockItem.inventory_item.name.toLowerCase()
-		);
+	const findExistingLineItem = (stockItem: VehicleStockItem): VisitLineItem | undefined =>
+		lineItems.find((li) => li.inventory_item_id === stockItem.inventory_item.id);
 
 	const handleConfirm = async () => {
 		if (!selected) return;
-		const parsedQty = Number(qty);
-		if (!parsedQty || parsedQty <= 0) {
-			setErr("Enter a valid quantity.");
-			return;
-		}
-		if (parsedQty > Number(selected.qty_on_hand)) {
-			setErr("Not enough stock on hand.");
-			return;
-		}
-		setErr(null);
-		await addParts.mutateAsync({
-			visitId,
-			vehicleId,
-			data: {
+		const isSerialized = selected.inventory_item.is_serialized;
+		const isBatchTracked = selected.inventory_item.is_batch_tracked;
+
+		let data: AddPartsUsedInput;
+		if (isSerialized) {
+			if (selectedUnits.length !== targetCount) {
+				setErr("Select exactly the target number of units.");
+				return;
+			}
+			data = {
+				stock_item_id: selected.id,
+				qty_used: targetCount,
+				technician_id: technicianId,
+				serial_unit_ids: selectedUnits,
+			};
+		} else {
+			const parsedQty = Number(qty);
+			if (!parsedQty || parsedQty <= 0) {
+				setErr("Enter a valid quantity.");
+				return;
+			}
+			if (parsedQty > Number(selected.qty_on_hand)) {
+				setErr("Not enough stock on hand.");
+				return;
+			}
+			data = {
 				stock_item_id: selected.id,
 				qty_used: parsedQty,
 				technician_id: technicianId,
-			},
-		});
-		onClose();
+				...(isBatchTracked && selectedBatchId ? { batch_id: selectedBatchId } : {}),
+			};
+		}
+
+		setErr(null);
+		try {
+			await addParts.mutateAsync({ visitId, vehicleId, data });
+			toast.success(`Added ${selected.inventory_item.name}`);
+			onClose();
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : "Failed to add part");
+		}
 	};
 
 	if (selected) {
+		const isSerialized = selected.inventory_item.is_serialized;
+		const isBatchTracked = selected.inventory_item.is_batch_tracked;
+		const confirmDisabled =
+			addParts.isPending || (isSerialized && selectedUnits.length !== targetCount);
+
 		return (
 			<div className="p-4">
-				<p className="text-sm font-semibold text-white mb-1">
+				<p className="text-sm font-semibold text-text-primary mb-1">
 					{selected.inventory_item.name}
 				</p>
-				<p className="text-xs text-zinc-500 mb-4">
+				<p className="text-xs text-text-muted mb-4">
 					On hand: {Number(selected.qty_on_hand)}{" "}
 					{selected.inventory_item.unit}
 				</p>
-				<label className="text-xs text-zinc-400 mb-1 block">
-					Quantity Used
-				</label>
-				<input
-					type="number"
-					min="1"
-					max={Number(selected.qty_on_hand)}
-					value={qty}
-					onChange={(e) => setQty(e.target.value)}
-					autoFocus
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 mb-3 tabular-nums"
-				/>
-				{err && <p className="text-xs text-red-400 mb-2">{err}</p>}
+				{isSerialized ? (
+					<div className="mb-3">
+						<div className="flex items-center justify-between mb-2">
+							<label className="text-xs text-text-tertiary">
+								Units to use
+							</label>
+							<div className="flex items-center gap-1.5">
+								<button
+									type="button"
+									onClick={() =>
+										setTargetCount((c) => Math.max(1, c - 1))
+									}
+									className="flex items-center justify-center w-6 h-6 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors"
+									aria-label="Decrease units to use"
+								>
+									-
+								</button>
+								<span className="text-sm font-semibold text-text-primary tabular-nums min-w-[18px] text-center">
+									{targetCount}
+								</span>
+								<button
+									type="button"
+									onClick={() => setTargetCount((c) => c + 1)}
+									className="flex items-center justify-center w-6 h-6 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors"
+									aria-label="Increase units to use"
+								>
+									+
+								</button>
+							</div>
+						</div>
+						<ExistingUnitPicker
+							itemId={selected.inventory_item.id}
+							itemName={selected.inventory_item.name}
+							statusFilter="on_vehicle"
+							vehicleId={vehicleId}
+							targetCount={targetCount}
+							value={selectedUnits}
+							onChange={setSelectedUnits}
+						/>
+					</div>
+				) : (
+					<>
+						<label className="text-xs text-text-tertiary mb-1 block">
+							Quantity Used
+						</label>
+						<input
+							type="number"
+							min="1"
+							max={Number(selected.qty_on_hand)}
+							value={qty}
+							onChange={(e) => setQty(e.target.value)}
+							autoFocus
+							className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong mb-3 tabular-nums"
+						/>
+						{isBatchTracked && (
+							<div className="mb-3">
+								<ExistingBatchPicker
+									itemId={selected.inventory_item.id}
+									vehicleId={vehicleId}
+									direction="vehicle_out"
+									value={selectedBatchId}
+									onChange={setSelectedBatchId}
+								/>
+							</div>
+						)}
+					</>
+				)}
+				{err && <p className="text-xs text-error-text mb-2">{err}</p>}
 				<div className="flex gap-2">
 					<button
 						onClick={() => setSelected(null)}
-						className="flex-1 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+						className="flex-1 py-2 text-sm rounded-lg border border-border text-text-tertiary hover:bg-surface"
 					>
 						Back
 					</button>
 					<button
 						onClick={handleConfirm}
-						disabled={addParts.isPending}
-						className="flex-1 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-40"
+						disabled={confirmDisabled}
+						className="flex-1 py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40"
 					>
 						{addParts.isPending ? "Adding…" : "Add Part"}
 					</button>
@@ -252,7 +341,7 @@ function StockPartPicker({
 			<div className="relative mb-3">
 				<Search
 					size={13}
-					className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600"
+					className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-faint"
 				/>
 				<input
 					type="text"
@@ -260,33 +349,33 @@ function StockPartPicker({
 					value={search}
 					onChange={(e) => onSearchChange(e.target.value)}
 					autoFocus
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
-			<div className="divide-y divide-zinc-800/40 overflow-y-auto max-h-56 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-zinc-900 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+			<div className="divide-y divide-border-subtle/40 overflow-y-auto max-h-56">
 				{filtered.length === 0 && (
-					<p className="px-4 py-4 text-center text-sm text-zinc-600">
+					<p className="px-4 py-4 text-center text-sm text-text-faint">
 						No matching parts
 					</p>
 				)}
 				{filtered.map((item) => (
 					<div
 						key={item.id}
-						className="flex items-center justify-between px-4 py-2.5 hover:bg-zinc-800/40 transition-colors"
+						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface/40 transition-colors"
 					>
 						<div className="min-w-0 flex-1">
-							<p className="text-sm text-white">
+							<p className="text-sm text-text-primary">
 								{item.inventory_item.name}
 							</p>
-							<p className="text-[10px] text-zinc-500 mt-0.5">
+							<p className="text-[10px] text-text-muted mt-0.5">
 								{item.inventory_item.category
-									? `${item.inventory_item.category} · `
+									? `${item.inventory_item.category} — `
 									: ""}
 								<span
 									className={
 										Number(item.qty_on_hand) <=
 										Number(item.qty_min)
-											? "text-amber-400"
+											? "text-warning-text"
 											: ""
 									}
 								>
@@ -295,28 +384,40 @@ function StockPartPicker({
 										Number(item.qty_min) && (
 										<AlertTriangle
 											size={10}
-											className="inline text-amber-400 ml-0.5"
+											className="inline text-warning-text ml-0.5"
 											aria-hidden="true"
 										/>
 									)}
 								</span>
+								{item.inventory_item.alt_ids && item.inventory_item.alt_ids.length > 0 && (
+									<span>
+										{" · "}{item.inventory_item.alt_ids.join(" · ")}
+									</span>
+								)}
 							</p>
 						</div>
 						{(() => {
-							const existing = isAlreadyAdded(item);
+							const existing = findExistingLineItem(item);
 							return existing ? (
 								<button
 									onClick={() =>
 										onSwitchToEdit(existing.id ?? "")
 									}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-emerald-900/30 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-success-bg text-success-text border border-success-border hover:bg-success/25 transition-colors flex items-center gap-1"
 								>
-									✓ Added
+									<Check size={10} /> Added
 								</button>
 							) : (
 								<button
-									onClick={() => setSelected(item)}
-									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-blue-900/50 text-blue-300 hover:bg-blue-800/60 hover:text-blue-200 transition-colors border border-blue-700/30"
+									onClick={() => {
+										setSelected(item);
+										setQty("1");
+										setTargetCount(1);
+										setSelectedUnits([]);
+										setSelectedBatchId(null);
+										setErr(null);
+									}}
+									className="ml-3 shrink-0 px-2.5 py-1 rounded text-[10px] font-semibold bg-primary-bg text-primary-text hover:bg-primary-bg-subtle hover:text-primary-text transition-colors border border-primary-border"
 								>
 									+ Add
 								</button>
@@ -329,18 +430,21 @@ function StockPartPicker({
 	);
 }
 
-// ── Free Entry Form ───────────────────────────────────────────────────────────
+// -- Supplier Part Form --------------------------------------------------------
 
-function FreeEntryForm({
+function SupplierPartForm({
 	visitId,
-	lineItems,
+	vehicleId,
+	technicianId,
 	onClose,
 }: {
 	visitId: string;
-	lineItems: VisitLineItem[];
+	vehicleId: string | null;
+	technicianId: string;
 	onClose: () => void;
 }) {
-	const updateVisit = useUpdateJobVisitMutation();
+	const mutation = useAddSupplierPartUsedMutation(visitId, vehicleId);
+	const toast = useToast();
 	const [name, setName] = useState("");
 	const [qty, setQty] = useState("1");
 	const [unitCost, setUnitCost] = useState("");
@@ -349,115 +453,68 @@ function FreeEntryForm({
 	const handleSubmit = async () => {
 		const parsedQty = Number(qty);
 		const parsedCost = Number(unitCost);
-		if (!name.trim()) {
-			setErr("Part name required.");
-			return;
-		}
-		if (!parsedQty || parsedQty <= 0) {
-			setErr("Enter a valid quantity.");
-			return;
-		}
+		if (!name.trim()) { setErr("Part name required."); return; }
+		if (!parsedQty || parsedQty <= 0) { setErr("Enter a valid quantity."); return; }
 		setErr(null);
-
-		await updateVisit.mutateAsync({
-			id: visitId,
-			data: {
-				line_items: [
-					...lineItems.map((li) => ({
-						id: li.id,
-						name: li.name,
-						description: li.description ?? null,
-						quantity: Number(li.quantity),
-						unit_price: Number(li.unit_price),
-						total: parseFloat(
-							(
-								Number(li.quantity) * Number(li.unit_price)
-							).toFixed(2)
-						),
-						item_type: li.item_type ?? null,
-						source: li.source,
-					})),
-					{
-						name: name.trim(),
-						quantity: parsedQty,
-						unit_price: parsedCost || 0,
-						total: parseFloat(
-							(parsedQty * (parsedCost || 0)).toFixed(2)
-						),
-					},
-				],
-			},
-		});
-		onClose();
+		try {
+			await mutation.mutateAsync({
+				technician_id: technicianId,
+				qty_used: parsedQty,
+				new_item: { name: name.trim(), cost: parsedCost || 0 },
+			} satisfies SupplierPartUsedInput);
+			toast.success(`Added ${name.trim()}`);
+			onClose();
+		} catch (e: unknown) {
+			const message = e instanceof Error ? e.message : "Failed to add part";
+			setErr(message);
+			toast.error(message);
+		}
 	};
 
 	return (
 		<div className="p-4 space-y-3">
 			<div>
-				<label className="text-xs text-zinc-400 mb-1 block">
-					Part / Material Name
-				</label>
-				<input
-					type="text"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					autoFocus
+				<label className="text-xs text-text-tertiary mb-1 block">Part / Material Name</label>
+				<input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus
 					placeholder="e.g. 1/2 inch copper fitting"
-					className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-				/>
+					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong" />
 			</div>
 			<div className="flex gap-2">
 				<div className="flex-1">
-					<label className="text-xs text-zinc-400 mb-1 block">Qty</label>
-					<input
-						type="number"
-						min="1"
-						value={qty}
-						onChange={(e) => setQty(e.target.value)}
-						className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 tabular-nums"
-					/>
+					<label className="text-xs text-text-tertiary mb-1 block">Qty</label>
+					<input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)}
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong tabular-nums" />
 				</div>
 				<div className="flex-1">
-					<label className="text-xs text-zinc-400 mb-1 block">
-						Unit Cost ($)
-					</label>
-					<input
-						type="number"
-						min="0"
-						step="0.01"
-						value={unitCost}
-						onChange={(e) => setUnitCost(e.target.value)}
+					<label className="text-xs text-text-tertiary mb-1 block">Unit Cost ($)</label>
+					<input type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)}
 						placeholder="0.00"
-						className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 tabular-nums"
-					/>
+						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong tabular-nums" />
 				</div>
 			</div>
-			{err && <p className="text-xs text-red-400">{err}</p>}
+			{err && <p className="text-xs text-error-text">{err}</p>}
 			<div className="pt-1">
-				<button
-					onClick={handleSubmit}
-					disabled={updateVisit.isPending}
-					className="w-full py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-40"
-				>
-					{updateVisit.isPending ? "Adding…" : "Add Part"}
+				<button onClick={handleSubmit} disabled={mutation.isPending}
+					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40">
+					{mutation.isPending ? "Adding…" : "Add Part"}
 				</button>
 			</div>
 		</div>
 	);
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// -- Main Component ------------------------------------------------------------
 
 export default function PartsUsedSection({
 	visitId,
 	lineItems = [],
-	total,
 }: {
 	visitId: string;
 	lineItems: VisitLineItem[];
-	total: number;
 }) {
+	const runningTotal = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unit_price), 0);
 	const { user } = useAuthStore();
+	const canUseInventory = usePermission("use_inventory");
 	const { data: techProfile } = useTechnicianByIdQuery(user?.userId ?? null);
 	const vehicleId = techProfile?.current_vehicle_id ?? null;
 	const { data: stockItems = [] } = useVehicleStockQuery(vehicleId);
@@ -536,28 +593,28 @@ export default function PartsUsedSection({
 	return (
 		<div
 			ref={containerRef}
-			className="rounded-xl border border-zinc-800 overflow-hidden"
+			className="rounded-xl border border-border-subtle overflow-hidden"
 		>
 			{/* Header */}
 			<button
 				onClick={() => setExpanded((p) => !p)}
 				aria-expanded={expanded}
 				aria-controls="parts-used-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-b border-zinc-800"
+				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
 			>
-				<span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide">
-					{adding && <span className="text-blue-400">Editing </span>}
+				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+					{adding && <span className="text-primary-text">Editing </span>}
 					Parts Used
 					{lineItems.length > 0 && (
-						<span className="ml-2 text-zinc-500 font-normal normal-case tracking-normal">
+						<span className="ml-2 text-text-muted font-normal normal-case tracking-normal">
 							({lineItems.length})
 						</span>
 					)}
 				</span>
 				{expanded ? (
-					<ChevronUp size={14} className="text-zinc-500" />
+					<ChevronUp size={14} className="text-text-muted" />
 				) : (
-					<ChevronDown size={14} className="text-zinc-500" />
+					<ChevronDown size={14} className="text-text-muted" />
 				)}
 			</button>
 
@@ -565,58 +622,62 @@ export default function PartsUsedSection({
 				<div id="parts-used-panel">
 					{/* Add part trigger */}
 					{!adding ? (
-						<div className="px-4 py-3 border-b border-zinc-800">
+						<div className="px-4 py-3 border-b border-border-subtle">
 							<button
 								onClick={() => {
 									setAdding(true);
 									setStockSearch("");
 								}}
-								className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+								className="flex items-center gap-2 text-sm text-primary-text hover:text-primary-text transition-colors"
 							>
 								<Plus size={14} />
 								Add / Edit Parts
 							</button>
 						</div>
 					) : (
-						<div className="border-b border-zinc-800">
+						<div className="border-b border-border-subtle">
 							{/* Mode toggle — three tabs */}
 							<div className="flex px-4 pt-3 gap-2 mb-0">
 								<button
 									onClick={() => setMode("edit")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
-											? "bg-zinc-700 text-white"
-											: "text-zinc-500 hover:text-zinc-300"
+											? "bg-surface-raised text-on-primary"
+											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
 									<Pencil size={12} />
 									Edit Parts
 								</button>
-								<button
-									onClick={() => setMode("stock")}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
-										mode === "stock"
-											? "bg-zinc-700 text-white"
-											: "text-zinc-500 hover:text-zinc-300"
-									}`}
-								>
-									<Package size={12} />
-									Vehicle Stock
-								</button>
-								<button
-									onClick={() => {
-										setMode("free");
-										setStockSearch("");
-									}}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
-										mode === "free"
-											? "bg-zinc-700 text-white"
-											: "text-zinc-500 hover:text-zinc-300"
-									}`}
-								>
-									<Wrench size={12} />
-									Free Entry
-								</button>
+								{canUseInventory && (
+									<button
+										onClick={() => setMode("stock")}
+										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+											mode === "stock"
+												? "bg-surface-raised text-on-primary"
+												: "text-text-muted hover:text-text-secondary"
+										}`}
+									>
+										<Package size={12} />
+										Vehicle Stock
+									</button>
+								)}
+								{canUseInventory && (
+									<button
+										onClick={() => {
+											setMode("supplier");
+											setStockSearch("");
+										}}
+										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+											mode === "supplier"
+												? "bg-surface-raised text-on-primary"
+												: "text-text-muted hover:text-text-secondary"
+										}`}
+									>
+										<Wrench size={12} />
+										Supplier part
+									</button>
+								)}
 							</div>
 
 							{mode === "edit" ? (
@@ -645,20 +706,21 @@ export default function PartsUsedSection({
 								/>
 							) : mode === "stock" && !hasStock ? (
 								<div className="px-4 py-4">
-									<p className="text-sm text-zinc-500">
+									<p className="text-sm text-text-muted">
 										No vehicle stock available.{" "}
 										<button
-											onClick={() => setMode("free")}
-											className="text-blue-400 hover:underline"
+											onClick={() => setMode("supplier")}
+											className="text-primary-text hover:underline"
 										>
-											Use free entry
+											Use supplier part
 										</button>
 									</p>
 								</div>
 							) : (
-								<FreeEntryForm
+								<SupplierPartForm
 									visitId={visitId}
-									lineItems={lineItems}
+									vehicleId={vehicleId}
+									technicianId={user?.userId ?? ""}
 									onClose={() => {
 										setAdding(false);
 										setStockSearch("");
@@ -667,13 +729,13 @@ export default function PartsUsedSection({
 							)}
 
 							{/* Done strip — persistent close, always visible */}
-							<div className="px-4 py-2.5 bg-zinc-900 border-t border-zinc-800">
+							<div className="px-4 py-2.5 bg-base border-t border-border-subtle">
 								<button
 									onClick={() => {
 										setAdding(false);
 										setStockSearch("");
 									}}
-									className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors"
+									className="w-full py-2.5 rounded-lg bg-primary-hover hover:bg-primary text-on-primary text-sm font-bold transition-colors"
 								>
 									Done
 								</button>
@@ -685,11 +747,11 @@ export default function PartsUsedSection({
 					{!adding && (
 						<>
 							{lineItems.length === 0 ? (
-								<p className="px-4 py-5 text-center text-sm text-zinc-600">
+								<p className="px-4 py-5 text-center text-sm text-text-faint">
 									No parts added yet
 								</p>
 							) : (
-								<div className="divide-y divide-zinc-800/60">
+								<div className="divide-y divide-border-subtle/60">
 									{lineItems.map((item, idx) => {
 										const qty = Number(item.quantity);
 										const unitPrice = Number(item.unit_price);
@@ -701,20 +763,20 @@ export default function PartsUsedSection({
 												className="flex items-center justify-between px-4 py-2.5"
 											>
 												<div className="flex-1 min-w-0">
-													<p className="text-sm text-white line-clamp-2">
+													<p className="text-sm text-text-primary line-clamp-2">
 														{item.name}
 													</p>
 													{item.description && (
-														<p className="text-xs text-zinc-600 truncate">
+														<p className="text-xs text-text-faint truncate">
 															{item.description}
 														</p>
 													)}
 												</div>
 												<div className="text-right shrink-0 ml-4">
-													<p className="text-sm text-white tabular-nums">
+													<p className="text-sm text-text-primary tabular-nums">
 														{qty} × ${unitPrice.toFixed(2)}
 													</p>
-													<p className="text-xs text-zinc-500 tabular-nums">
+													<p className="text-xs text-text-muted tabular-nums">
 														${rowTotal.toFixed(2)}
 													</p>
 												</div>
@@ -728,12 +790,12 @@ export default function PartsUsedSection({
 
 					{/* Running total — shown only when not editing */}
 					{!adding && lineItems.length > 0 && (
-						<div className="flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-t border-zinc-800">
-							<span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+						<div className="flex items-center justify-between px-4 py-3 bg-base/60 border-t border-border-subtle">
+							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
 								Running Total
 							</span>
-							<span className="text-base font-bold text-white tabular-nums">
-								${total.toFixed(2)}
+							<span className="text-base font-bold text-text-primary tabular-nums">
+								${runningTotal.toFixed(2)}
 							</span>
 						</div>
 					)}

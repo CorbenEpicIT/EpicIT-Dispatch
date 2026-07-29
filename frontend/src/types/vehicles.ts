@@ -38,6 +38,7 @@ export interface VehicleStockItem {
 	inventory_item: InventoryItem;
 	qty_on_hand: number;
 	qty_min: number;
+	qty_standard: number | null;
 	updated_at: string;
 	created_at: string;
 }
@@ -64,26 +65,287 @@ export interface CreateVehicleInput {
 	notes?: string | null;
 }
 
-export interface UpdateVehicleInput extends Partial<CreateVehicleInput> {}
+export type UpdateVehicleInput = Partial<CreateVehicleInput>;
 
 export interface AddVehicleStockItemInput {
 	inventory_item_id: string;
 	qty_on_hand?: number;
 	qty_min?: number;
+	qty_standard?: number | null;
 }
 
 export interface UpdateVehicleStockItemInput {
 	qty_on_hand?: number;
 	qty_min?: number;
+	qty_standard?: number | null;
 }
+
+export interface StockShortfallItem {
+	inventoryItemId: string;
+	itemName: string;
+	qtyNeeded: number;
+	qtyOnHand: number;
+}
+
+export type VehicleStockConflictItem = StockShortfallItem;
+
+export interface VehicleStockConflict {
+	visitId: string;
+	jobId: string;
+	vehicleId: string;
+	vehicleName: string;
+	techNames: string[];
+	visitName: string;
+	clientName: string;
+	scheduledAt: string;
+	severity: "out" | "low";
+	conflicts: VehicleStockConflictItem[];
+}
+
+export interface VehicleUsageTodayItem {
+	itemName: string;
+	qtyUsed: number;
+}
+
+export interface VehicleUsageTodayGroup {
+	visitId: string;
+	visitName: string;
+	scheduledAt: string | null;
+	items: VehicleUsageTodayItem[];
+}
+
+export type StockHealthStatus = "ok" | "low" | "out";
 
 export interface AddPartsUsedInput {
 	stock_item_id: string;
 	qty_used: number;
 	technician_id: string;
+	serial_unit_ids?: string[];
+	batch_id?: string;
+}
+
+export interface SupplierPartUsedInput {
+	technician_id: string;
+	qty_used: number;
+	inventory_item_id?: string;
+	new_item?: { name: string; cost: number };
 }
 
 export interface RestockRequestInput {
 	qty_requested?: number | null;
 	note?: string | null;
 }
+
+export interface BulkRestockInput {
+	items: Array<{ stock_item_id: string; qty_requested?: number | null; note?: string | null }>;
+}
+
+export type RestockRequestStatus = "pending" | "acknowledged" | "resolved" | "dismissed";
+
+export interface RestockRequest {
+	id: string;
+	stock_item_id: string;
+	technician_id: string;
+	technician: { id: string; name: string } | null;
+	qty_requested: number | null;
+	note: string | null;
+	status: RestockRequestStatus;
+	created_at: string;
+	acknowledged_at: string | null;
+	resolved_at: string | null;
+	resolved_note: string | null;
+	dismissed_reason: string | null;
+	stock_item: {
+		id: string;
+		vehicle_id: string;
+		inventory_item_id: string;
+		qty_on_hand: number;
+		inventory_item: { id: string; name: string; unit: string | null; quantity: number };
+		vehicle: { id: string; name: string };
+	};
+}
+
+export interface VehicleRestockLine {
+	id: string;
+	restock_record_id: string;
+	stock_item_id: string;
+	qty_restocked: number;
+	qty_shortfall: number;
+}
+
+// Mirrors backend's RestockLineDetail (vehiclesController.ts) — a sibling
+// array returned alongside completeRestock's VehicleRestockRecord, joinable
+// via stock_item_id (same key as VehicleRestockLine.stock_item_id). A line is
+// "needs attention" (worth surfacing in an acknowledgment UI) whenever the
+// joined VehicleRestockLine.qty_shortfall > 0 OR reason_code !== "ok" —
+// reason_code === "ok" does NOT by itself mean nothing to show, since a real
+// warehouse/lot shortfall also reports "ok" with a descriptive message. Fully
+// clean lines have message: undefined and should be filtered out of any summary.
+export interface RestockLineDetail {
+	stock_item_id: string;
+	reason_code: "ok" | "no_tracking_gap" | "cache_drift_detected";
+	message?: string;
+	serial_codes?: string[];
+	lot_codes?: string[];
+}
+
+export interface DualActor {
+	dispatcher: { id: string; name: string } | null;
+	technician: { id: string; name: string } | null;
+}
+
+export interface VehicleRestockRecord {
+	id: string;
+	vehicle_id: string;
+	organization_id: string;
+	completed_at: string;
+	mode: "restock" | "prepare";
+	completed_by_id: string | null;
+	completed_by: DualActor["dispatcher"];
+	completed_by_tech_id: string | null;
+	completed_by_tech: DualActor["technician"];
+	notes: string | null;
+	restock_lines: VehicleRestockLine[];
+	created_at: string;
+	// Only present on the completeRestock response — endpoints that were never
+	// touched by this task (getVehicleRestockToday/getVehicleRestockHistory)
+	// won't have it.
+	line_details?: RestockLineDetail[];
+}
+
+export interface CompleteRestockInput {
+	notes?: string | null;
+	mode?: "restock" | "prepare";
+	restock_lines: Array<{
+		stock_item_id: string;
+		qty_to_restock: number;
+		serial_unit_ids?: string[];
+		batch_picks?: Array<{ batch_id: string; qty: number }>;
+	}>;
+}
+
+export type TomorrowRequirementItem = StockShortfallItem;
+
+export interface TomorrowRequirementVisit {
+	visitId: string;
+	visitName: string;
+	scheduledAt: string;
+	jobName: string;
+	clientName: string;
+	items: TomorrowRequirementItem[];
+}
+
+export type VehicleAdjustmentType = "warehouse_exchange" | "field_loss" | "transfer" | "audit" | "supplier_purchase";
+
+export const ADJUSTMENT_TYPE_LABELS: Record<VehicleAdjustmentType, string> = {
+	warehouse_exchange: "Warehouse Exchange",
+	field_loss:         "Field Loss",
+	transfer:           "Transfer In",
+	audit:              "Audit Correction",
+	supplier_purchase:  "Supplier Purchase",
+};
+
+export interface AdjustStockInput {
+	type: VehicleAdjustmentType;
+	note?: string | null;
+	lines: Array<{
+		stock_item_id?: string;
+		inventory_item_id?: string;
+		new_item?: { name: string; cost: number };
+		qty_after: number;
+		// Serial/batch tracking (F-T4) — which of these apply depends on the
+		// resolved item's is_serialized/is_batch_tracked flags and the adjustment
+		// type; see AdjustStockModal's tracking step for how they're populated.
+		serial_unit_ids?: string[];
+		new_serials?: string[];
+		batch_picks?: Array<{ batch_id: string; qty: number }>;
+		new_batch?: { batch_number: string; expires_at?: string | null; supplier?: string };
+	}>;
+}
+
+export interface VehicleStockAdjustmentLine {
+	id: string;
+	adjustment_id: string;
+	stock_item_id: string;
+	qty_before: number;
+	qty_after: number;
+	inventory_impact: number;
+}
+
+export interface VehicleStockAdjustment {
+	id: string;
+	vehicle_id: string;
+	organization_id: string;
+	type: VehicleAdjustmentType;
+	note: string | null;
+	created_by_id: string | null;
+	created_by: DualActor["dispatcher"];
+	created_by_tech_id: string | null;
+	created_by_tech: DualActor["technician"];
+	created_at: string;
+	lines: VehicleStockAdjustmentLine[];
+}
+
+export type ReadinessState =
+	| "not_applicable"
+	| "unknown"
+	| "auto_ready"
+	| "needs_action"
+	| "confirmed";
+
+export type ReadinessGap = {
+	inventory_item_id: string;
+	name: string;
+	qty_needed: number;
+	qty_on_hand: number;
+	gap: number;
+	visit_ids: string[];
+};
+
+export type VehicleReadiness = {
+	state: ReadinessState;
+	date: string;
+	gaps: ReadinessGap[];
+	confirmed?: {
+		id: string;
+		confirmed_by: string;
+		confirmed_by_type: "dispatcher" | "technician" | "restock_auto";
+		confirmed_at: string;
+		notes: string | null;
+	};
+};
+
+export interface FillPlanLine {
+	inventory_item_id: string;
+	name: string;
+	unit: string;
+	on_hand: number;
+	target: number;
+	suggested_qty: number;
+	warehouse_available: number;
+}
+export interface FillPlan {
+	standard: FillPlanLine[];
+	visits: FillPlanLine[];
+}
+export interface ApplyFillInput {
+	lines: Array<{ inventory_item_id: string; qty: number }>;
+}
+export interface FillResultLine {
+	inventory_item_id: string;
+	qty_moved: number;
+	shortfall: number;
+	// Mirrors backend's FillToStandardLine — carries these directly (no sibling
+	// array to join, unlike RestockLineDetail). A line "needs attention" whenever
+	// shortfall > 0 || reason_code !== "ok"; fully clean lines have message: undefined.
+	reason_code: "ok" | "no_tracking_gap" | "cache_drift_detected";
+	message?: string;
+	serial_codes?: string[];
+	lot_codes?: string[];
+}
+
+export interface BulkRestockResult {
+	created: RestockRequest[];
+	skipped: { stock_item_id: string; reason: string }[];
+}
+

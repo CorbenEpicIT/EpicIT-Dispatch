@@ -1,24 +1,15 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import type {
-	Vehicle,
-	VehicleStockItem,
-	VehicleStockUsage,
-	CreateVehicleInput,
-	UpdateVehicleInput,
-	AddVehicleStockItemInput,
-	UpdateVehicleStockItemInput,
-	AddPartsUsedInput,
-	RestockRequestInput,
-} from "../types/vehicles";
-import type { VisitLineItem } from "../types/jobs";
+import type { Vehicle, CreateVehicleInput, UpdateVehicleInput, VehicleReadiness } from "../types/vehicles";
 import * as vehiclesApi from "../api/vehicles";
+import { qk, invalidate } from "../lib/queryKeys";
 
 // ── Vehicle queries ────────────────────────────────────────────────────────────
 
 export const useVehiclesQuery = (status?: string): UseQueryResult<Vehicle[], Error> => {
 	return useQuery({
-		queryKey: ["vehicles", { status }],
+		queryKey: qk.vehicles.list(status),
 		queryFn: () => vehiclesApi.getVehicles(status),
+		staleTime: 30_000,
 	});
 };
 
@@ -29,7 +20,7 @@ export const useCreateVehicleMutation = () => {
 	return useMutation<Vehicle, Error, CreateVehicleInput>({
 		mutationFn: vehiclesApi.createVehicle,
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+			invalidate.vehicleStock(queryClient);
 		},
 	});
 };
@@ -38,74 +29,8 @@ export const useUpdateVehicleMutation = () => {
 	const queryClient = useQueryClient();
 	return useMutation<Vehicle, Error, { id: string; data: UpdateVehicleInput }>({
 		mutationFn: ({ id, data }) => vehiclesApi.updateVehicle(id, data),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-		},
-	});
-};
-
-// ── Vehicle stock queries ──────────────────────────────────────────────────────
-
-export const useVehicleStockQuery = (vehicleId: string | null | undefined): UseQueryResult<VehicleStockItem[], Error> => {
-	return useQuery({
-		queryKey: ["vehicle-stock", vehicleId],
-		queryFn: () => vehiclesApi.getVehicleStock(vehicleId!),
-		enabled: !!vehicleId,
-	});
-};
-
-// ── Vehicle stock mutations ───────────────────────────────────────────────────
-
-export const useAddVehicleStockItemMutation = () => {
-	const queryClient = useQueryClient();
-	return useMutation<VehicleStockItem, Error, { vehicleId: string; data: AddVehicleStockItemInput }>({
-		mutationFn: ({ vehicleId, data }) => vehiclesApi.addVehicleStockItem(vehicleId, data),
-		onSuccess: (_result, { vehicleId }) => {
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] });
-		},
-	});
-};
-
-export const useUpdateVehicleStockItemMutation = () => {
-	const queryClient = useQueryClient();
-	return useMutation<VehicleStockItem, Error, { vehicleId: string; itemId: string; data: UpdateVehicleStockItemInput }>({
-		mutationFn: ({ vehicleId, itemId, data }) => vehiclesApi.updateVehicleStockItem(vehicleId, itemId, data),
-		onSuccess: (_result, { vehicleId }) => {
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] });
-		},
-	});
-};
-
-export const useDeleteVehicleStockItemMutation = () => {
-	const queryClient = useQueryClient();
-	return useMutation<void, Error, { vehicleId: string; itemId: string }>({
-		mutationFn: ({ vehicleId, itemId }) => vehiclesApi.deleteVehicleStockItem(vehicleId, itemId),
-		onSuccess: (_result, { vehicleId }) => {
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] });
-		},
-	});
-};
-
-export const useRestockRequestMutation = () => {
-	return useMutation<void, Error, { vehicleId: string; itemId: string; data: RestockRequestInput }>({
-		mutationFn: ({ vehicleId, itemId, data }) => vehiclesApi.createRestockRequest(vehicleId, itemId, data),
-	});
-};
-
-// ── Parts used mutation ───────────────────────────────────────────────────────
-
-export const useAddPartsUsedMutation = () => {
-	const queryClient = useQueryClient();
-	return useMutation<
-		{ lineItem: VisitLineItem; usage: VehicleStockUsage },
-		Error,
-		{ visitId: string; vehicleId: string; data: AddPartsUsedInput }
-	>({
-		mutationFn: ({ visitId, data }) => vehiclesApi.addPartsUsed(visitId, data),
-		onSuccess: (_result, { visitId, vehicleId }) => {
-			queryClient.invalidateQueries({ queryKey: ["jobVisits", visitId] });
-			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
-			queryClient.invalidateQueries({ queryKey: ["vehicle-stock", vehicleId] });
+		onSuccess: (_result, { id }) => {
+			invalidate.vehicleStock(queryClient, id);
 		},
 	});
 };
@@ -118,6 +43,46 @@ export const useSetTechnicianVehicleMutation = () => {
 		mutationFn: ({ technicianId, vehicleId }) => vehiclesApi.setTechnicianVehicle(technicianId, vehicleId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+			invalidate.vehicleStock(queryClient);
+		},
+	});
+};
+
+// ── Readiness queries & mutations ─────────────────────────────────────────────
+
+export const useVehicleReadinessQuery = (vehicleId: string | undefined, date?: string) =>
+	useQuery({
+		queryKey: qk.vehicles.readiness(vehicleId ?? "", date),
+		queryFn: () => vehiclesApi.getVehicleReadiness(vehicleId!, date),
+		enabled: !!vehicleId,
+		staleTime: 30_000,
+	});
+
+export const useConfirmReadinessMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			vehicleId,
+			body,
+		}: {
+			vehicleId: string;
+			body: { date: string; notes?: string };
+		}) => vehiclesApi.confirmVehicleReadiness(vehicleId, body),
+		onSuccess: (data: VehicleReadiness, { vehicleId, body }) => {
+			qc.setQueryData(qk.vehicles.readiness(vehicleId, body.date), data);
+			qc.invalidateQueries({ queryKey: qk.fleetReadiness(body.date) });
+		},
+	});
+};
+
+export const useRevokeReadinessMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ vehicleId, date }: { vehicleId: string; date: string }) =>
+			vehiclesApi.revokeVehicleReadiness(vehicleId, date),
+		onSuccess: (data: VehicleReadiness, { vehicleId, date }) => {
+			qc.setQueryData(qk.vehicles.readiness(vehicleId, date), data);
+			qc.invalidateQueries({ queryKey: qk.fleetReadiness(date) });
 		},
 	});
 };

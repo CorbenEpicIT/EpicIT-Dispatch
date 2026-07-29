@@ -1,17 +1,102 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 @import "tailwindcss";
+@import "./styles/theme.css";
 
 :root {
-	--main: #18181b;
+	--main: var(--color-base);
+	/* Animation-only vars — intentionally mirror primary; not Tailwind tokens */
+	--anim-primary-80: rgba(59, 130, 246, 0.8);
+	--anim-primary-30: rgba(59, 130, 246, 0.3);
+	/* Light default — dark override lives in [data-theme="dark"] in theme.css */
+	--anim-surface-flash: rgba(0, 0, 0, 0.08);
 }
 
+/* Scrollbar */
 * {
 	font-family: "Inter";
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: var(--color-border);
+	border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-border-strong);
+}
+
+/* Side nav — hide the scrollbar so it never consumes layout width and shifts
+   the centered icon rail off-center. Scrolling still works via wheel/trackpad. */
+.sidebar-nav {
+	scrollbar-width: none; /* Firefox */
+	-ms-overflow-style: none; /* legacy Edge */
+}
+.sidebar-nav::-webkit-scrollbar {
+	display: none; /* Chromium / WebKit */
+}
+
+/* Hover-reveal scrollbar — thumb hidden until container is hovered */
+.scrollbar-on-hover {
+	scrollbar-color: transparent transparent;
+	transition: scrollbar-color 0.2s ease;
+}
+.scrollbar-on-hover:hover {
+	scrollbar-color: var(--color-border) transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	transition: background-color 0.2s ease;
+}
+.scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+	background-color: var(--color-border);
+}
+
+/* Hide scrollbar entirely while keeping scroll behavior */
+.scrollbar-hide::-webkit-scrollbar {
+	display: none;
+}
+.scrollbar-hide {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
 }
 
 .mapboxgl-marker {
 	transition: transform 0.1s ease-out;
 	will-change: transform;
+}
+
+/* Chrome on Windows overrides bg and text color on form elements with native
+     Field/FieldText colors. Unlayered rule with explicit CSS vars beats the UA
+     override while correctly responding to data-theme light/dark switches. */
+textarea.bg-base,
+select.bg-base,
+input.bg-base {
+	background-color: var(--color-base);
+	color: var(--color-text-primary);
+}
+textarea.bg-surface,
+select.bg-surface,
+input.bg-surface {
+	background-color: var(--color-surface);
+	color: var(--color-text-primary);
+}
+textarea.bg-surface-inset,
+select.bg-surface-inset,
+input.bg-surface-inset {
+	background-color: var(--color-surface-inset);
+	color: var(--color-text-primary);
+}
+/* Native checkbox adjacent span — same Chrome injection fix via CSS var. */
+.bg-base label > input + span {
+	color: var(--color-text-secondary);
 }
 
 /* Remove increment/decrement arrows from all number inputs globally */
@@ -24,21 +109,35 @@ input[type="number"] {
 	-moz-appearance: textfield;
 }
 
-/* Sidebar nav scrollbar */
-.sidebar-nav::-webkit-scrollbar {
-	width: 4px;
+/* Inventory card highlight — persists until the user hovers then unhovers the card */
+.highlight-active {
+	outline: 2px solid var(--anim-primary-80);
+	outline-offset: -2px;
 }
-.sidebar-nav::-webkit-scrollbar-track {
-	background: transparent;
+
+@keyframes feedFlash {
+	from {
+		background-color: var(--anim-surface-flash);
+	}
+	to {
+		background-color: transparent;
+	}
 }
-.sidebar-nav::-webkit-scrollbar-thumb {
-	background: #3f3f46;
-	border-radius: 2px;
+
+@keyframes scanSweep {
+	from {
+		top: 0%;
+	}
+	to {
+		top: 100%;
+	}
 }
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
-	background: #52525b;
-}
-.sidebar-nav {
-	scrollbar-width: thin;
-	scrollbar-color: #3f3f46 transparent;
+
+@keyframes scanFoundFlash {
+	from {
+		background-color: var(--color-success-bg);
+	}
+	to {
+		background-color: transparent;
+	}
 }

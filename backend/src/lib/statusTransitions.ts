@@ -19,6 +19,16 @@ const QUOTE_TRANSITIONS: Record<string, readonly string[]> = {
 	Cancelled: [],
 };
 
+const REQUEST_TRANSITIONS: Record<string, readonly string[]> = {
+	New:            ["Reviewing", "Cancelled"],
+	Reviewing:      ["Quoted", "New", "Cancelled"],
+	Quoted:         ["QuoteApproved", "QuoteRejected", "Reviewing"],
+	QuoteApproved:  ["ConvertedToJob", "Cancelled"],
+	QuoteRejected:  ["Reviewing", "Quoted"],
+	ConvertedToJob: [],
+	Cancelled:      [],
+};
+
 const INVOICE_TRANSITIONS: Record<string, readonly string[]> = {
 	Draft:        ["Issued", "Void"],
 	Issued:       ["Sent", "Void"],
@@ -35,6 +45,17 @@ export class InvalidTransitionError extends Error {
 	constructor(from: string, to: string) {
 		super(`Invalid status transition: ${from} → ${to}`);
 		this.name = "InvalidTransitionError";
+	}
+}
+
+export function assertValidRequestTransition(from: string, to: string): void {
+	if (from === to) return;
+	const allowed = REQUEST_TRANSITIONS[from];
+	if (!allowed) {
+		throw new InvalidTransitionError(from, to);
+	}
+	if (!allowed.includes(to)) {
+		throw new InvalidTransitionError(from, to);
 	}
 }
 

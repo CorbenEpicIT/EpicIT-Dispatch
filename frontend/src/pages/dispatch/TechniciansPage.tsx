@@ -1,14 +1,22 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Search, Plus, Share, X, LayoutGrid, LayoutList, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAllTechniciansQuery, useCreateTechnicianMutation } from "../../hooks/useTechnicians";
 import CreateTechnician from "../../components/technicians/CreateTechnician";
 import TechnicianCard from "../../components/technicians/TechnicianCard";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";
 import ErrSvg from "../../assets/icons/error.svg?react";
+import SearchBar from "../../components/ui/SearchBar";
+import FilterChips from "../../components/ui/FilterChips";
+import ViewToggle from "../../components/ui/ViewToggle";
+import PageControls from "../../components/ui/PageControls";
+import StatusFilter from "../../components/ui/StatusFilter";
+import PageHeader from "../../components/ui/PageHeader";
+import { useMultiSearch } from "../../hooks/useMultiSearch";
+import { usePermission } from "../../hooks/usePermission";
 
-type viewMode = "list" | "card"; 
+type viewMode = "list" | "card";
 
 export default function TechniciansPage() {
 	const navigate = useNavigate();
@@ -17,7 +25,6 @@ export default function TechniciansPage() {
 		data: technicians,
 		isLoading: isFetchLoading,
 		error: fetchError,
-		refetch: refetchTechnicians,
 	} = useAllTechniciansQuery();
 	const { mutateAsync: createTechnician } = useCreateTechnicianMutation();
 	const [searchInput, setSearchInput] = useState("");
@@ -25,248 +32,158 @@ export default function TechniciansPage() {
 	const [viewMode, setViewMode] = useState<viewMode>("card");
 	const [perPage, setPerPage] = useState(12);
 	const [currentPage, setCurrentPage] = useState(1);
-	const [showAvailable, setShowAvailable] = useState(true);
-	const [showBusy, setShowBusy] = useState(true);
-	const [showBreak, setShowBreak] = useState(true);
-	const [showOffline, setShowOffline] = useState(true);
+
+	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
+	const termsKey = terms.join(" ");
 
 	const queryParams = new URLSearchParams(location.search);
-	const searchFilter = queryParams.get('search');
-	const statusFilter = queryParams.get('status');
+	const statusFilter = queryParams.get("status");
 
-	useEffect(() => {
-		setSearchInput(searchFilter || "");
-	}, [searchFilter]);
+	// permissions
+	const MANAGE_TECHNICIANS = usePermission("manage_technicians");
 
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [searchFilter, searchInput, statusFilter, perPage, showAvailable, showBusy, showBreak, showOffline]);
+	}, [termsKey, searchInput, statusFilter, perPage]);
 
-	// Use searchInput for instant preview, searchFilter for committed filter
-	const activeSearch = searchInput || searchFilter;
+	const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
 
-	const filteredTechnicians = technicians
-		?.filter((t) => {
-			if (activeSearch) {
-				const searchLower = activeSearch.toLowerCase();
-				const matchesSearch = 
-					t.name.toLowerCase().includes(searchLower) ||
-					t.email?.toLowerCase().includes(searchLower) ||
-					t.phone?.toLowerCase().includes(searchLower) ||
-					t.title?.toLowerCase().includes(searchLower);
-				if (!matchesSearch) return false;
-			}
-			if (statusFilter) {
-				return t.status.toLowerCase() === statusFilter.toLowerCase();
-			}
+	const filteredTechnicians =
+		technicians
+			?.filter((tech) => {
+				if (activeTerms.length > 0) {
+					const matches = activeTerms.every((term) => {
+						const lower = term.toLowerCase();
+						return (
+							tech.name.toLowerCase().includes(lower) ||
+							(tech.email
+								?.toLowerCase()
+								.includes(lower) ??
+								false) ||
+							(tech.phone
+								?.toLowerCase()
+								.includes(lower) ??
+								false) ||
+							(tech.title
+								?.toLowerCase()
+								.includes(lower) ??
+								false)
+						);
+					});
+					if (!matches) return false;
+				}
+				if (statusFilter)
+					return (
+						tech.status.toLowerCase() ===
+						statusFilter.toLowerCase()
+					);
+				return true;
+			})
+			.sort((a, b) => {
+				const statusOrder: Record<string, number> = {
+					Available: 0,
+					Working: 1,
+					EnRoute: 2,
+					OnSite: 3,
+					Paused: 4,
+					WrappingUp: 5,
+					Break: 6,
+					Offline: 7,
+				};
+				return (statusOrder[a.status] ?? 8) - (statusOrder[b.status] ?? 8);
+			}) ?? [];
 
-			return true;
-		})
-		.sort((a, b) => {
-			const statusOrder = { Available: 0, Busy: 1, Break: 2, Offline: 3 };
-			return statusOrder[a.status] - statusOrder[b.status];
-		})
-		.filter(t =>
-			(t.status === "Available" && showAvailable) ||
-			(t.status === "Busy" && showBusy) ||
-			(t.status === "Break" && showBreak) ||
-			(t.status === "Offline" && showOffline)
-		) ?? [];
+	const totalPages = perPage === 0 ? 1 : Math.ceil(filteredTechnicians.length / perPage);
+	const pagedTechnicians =
+		perPage === 0
+			? filteredTechnicians
+			: filteredTechnicians.slice(
+					(currentPage - 1) * perPage,
+					currentPage * perPage
+				);
 
-	const totalPages = perPage === 0 ? 1: Math.ceil(filteredTechnicians.length / perPage);
-	const pagedTechnicians = perPage === 0 ? filteredTechnicians : filteredTechnicians.slice((currentPage - 1) * perPage, currentPage * perPage);
-
-	const handleSearchSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-		const newParams = new URLSearchParams(location.search);
-		if (searchInput.trim()) {
-			newParams.set('search', searchInput.trim());
-		} else {
-			newParams.delete('search');
-		}
-		navigate(`/dispatch/technicians?${newParams.toString()}`);
-	};
-
-	const removeFilter = (filterType: 'search' | 'status') => {
-		const newParams = new URLSearchParams(location.search);
-		newParams.delete(filterType);
-		if (filterType === 'search') {
-			setSearchInput("");
-		}
-		navigate(`/dispatch/technicians${newParams.toString() ? `?${newParams.toString()}` : ''}`);
-	};
-
-	const clearAllFilters = () => {
-		setSearchInput("");
-		navigate('/dispatch/technicians');
-	};
-
-	const hasFilters = searchFilter || statusFilter;
-
-	const statusCounts = technicians?.reduce((acc, t) => {
-		acc[t.status] = (acc[t.status] || 0) + 1;
-		return acc;
-	}, {} as Record<string, number>) || {};
+	const statusCounts =
+		technicians?.reduce(
+			(acc, t) => {
+				acc[t.status] = (acc[t.status] || 0) + 1;
+				return acc;
+			},
+			{} as Record<string, number>
+		) || {};
 
 	return (
-		<div className="text-white">
-			<div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-				<div>
-					<h2 className="text-2xl font-semibold">Technicians</h2>
-					<div className="flex gap-3 text-xs mt-0.5">
-						<span className="text-green-400">
-							● Available: {statusCounts.Available || 0}
-						</span>
-						<span className="text-yellow-400">
-							● Busy: {statusCounts.Busy || 0}
-						</span>
-						<span className="text-blue-400">
-							● Break: {statusCounts.Break || 0}
-						</span>
-						<span className="text-red-400">
-							● Offline: {statusCounts.Offline || 0}
-						</span>
+		<div className="text-text-primary">
+			<PageHeader
+				title="Technicians"
+				subtitle={
+					<div className="flex flex-wrap gap-3 text-xs">
+						<span className="text-success-text">● Available: {statusCounts.Available || 0}</span>
+						<span className="text-reviewing-text">● Working: {statusCounts.Working || 0}</span>
+						<span className="text-info-text">● En Route: {statusCounts.EnRoute || 0}</span>
+						<span className="text-warning-text">● On Site: {statusCounts.OnSite || 0}</span>
+						<span className="text-orange-text">● Paused: {statusCounts.Paused || 0}</span>
+						<span className="text-text-tertiary">● Offline: {statusCounts.Offline || 0}</span>
 					</div>
-				</div>
-
-				<div className="flex flex-wrap items-center gap-2">
+				}
+			>
 					<button
-						className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => setIsModalOpen(true)}
+						title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
+						disabled={!MANAGE_TECHNICIANS}
+						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						onClick={() => {
+							if (!MANAGE_TECHNICIANS) return;
+							setIsModalOpen(true);
+						}}
 					>
-						<Plus size={16} className="text-white" />
+						<Plus size={16} />
 						New Technician
 					</button>
-					<button
-						className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-md text-sm font-medium cursor-pointer transition-colors"
-						onClick={() => { refetchTechnicians(); }}
-					>
-						Refresh
-					</button>
-					<button className="flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors">
-						<Share size={16} className="text-white" />
-						Export
-					</button>
-				</div>
-			</div>
-			<div className="flex flex-wrap items-center gap-2 mb-4">
-				<form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-[180px]">
-						<Search
-							size={18}
-							className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-						/>
-						<input
-							type="text"
-							placeholder="Search technicians..."
-							value={searchInput}
-							onChange={(e) => setSearchInput(e.target.value)}
-							className="w-full pl-11 pr-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-sm 
-							text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 
-							focus:ring-blue-500"
-						/>
-					</form>
-
-					<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
-
-					<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
-						{([
-							{ label: "Available", state: showAvailable, set: setShowAvailable, active: "bg-green-600" },
-							{ label: "Busy", state: showBusy, set: setShowBusy, active: "bg-yellow-600" },
-							{ label: "Break", state: showBreak, set: setShowBreak, active: "bg-blue-600" },
-							{ label: "Offline", state: showOffline, set: setShowOffline, active: "bg-red-600" },
-						] as const).map(({ label, state, set, active }) => (
-							<button
-								key={label}
-								onClick={() => set(!state)}
-								className={`px-3 py-1 text-xs rounded font-medium cursor-pointer transition-colors ${
-									state ? `${active} text-white` : "text-zinc-400 hover:text-white"
-								}`}
-							>
-								{label}
-							</button>
-						))}
-					</div>
-
-					<div className="h-8 w-px bg-zinc-700 hidden sm:block" />
-
-					<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
-						<button
-							onClick={() => setViewMode("card")}
-							title="Card View"
-							className={`p-1.5 rounded cursor-pointer transition-colors ${
-								viewMode === "card" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-							}`}
-						>
-							<LayoutGrid size={15} />
-						</button>
-						<button
-							onClick={() => setViewMode("list")}
-							title="List View"
-							className={`p-1.5 rounded cursor-pointer transition-colors ${
-								viewMode === "list" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"
-							}`}
-						>
-							<LayoutList size={15} />
-						</button>
-					</div>
-			</div>
+			</PageHeader>
+			<PageControls
+				className="mb-4"
+				left={
+					<SearchBar
+						paramKey="search"
+						placeholder="Search technicians..."
+						onValueChange={setSearchInput}
+						onSubmit={addTerm}
+					/>
+				}
+				middle={
+					<StatusFilter
+						paramKey="status"
+						placeholder="Status"
+						options={[
+							{ value: "Available", label: "Available" },
+							{ value: "Working", label: "Working" },
+							{ value: "EnRoute", label: "En Route" },
+							{ value: "OnSite", label: "On Site" },
+							{ value: "Paused", label: "Paused" },
+							{ value: "WrappingUp", label: "Wrapping Up" },
+							{ value: "Break", label: "Break" },
+							{ value: "Offline", label: "Offline" },
+						]}
+					/>
+				}
+				right={<ViewToggle value={viewMode} onChange={setViewMode} />}
+			/>
 
 			{/*Filter Bar with Chips*/}
-			{hasFilters && (
-				<div className="mb-2 p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 flex-wrap">
-							<span className="text-sm text-zinc-400">Active filters:</span>
-							
-							{/* Search Filter Chip */}
-							{searchFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-md">
-									<span className="text-sm text-purple-300">
-										Search: <span className="font-medium text-white">"{searchFilter}"</span>
-									</span>
-									<button
-										onClick={() => removeFilter('search')}
-										className="text-purple-300 hover:text-white transition-colors"
-										aria-label="Remove search filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Status Filter Chip */}
-							{statusFilter && (
-								<div className="flex items-center gap-2 px-3 py-1.5 bg-green-600/20 border border-green-500/30 rounded-md">
-									<span className="text-sm text-green-300">
-										Status: <span className="font-medium text-white capitalize">{statusFilter}</span>
-									</span>
-									<button
-										onClick={() => removeFilter('status')}
-										className="text-green-300 hover:text-white transition-colors"
-										aria-label="Remove status filter"
-									>
-										<X size={14} />
-									</button>
-								</div>
-							)}
-
-							{/* Results Count */}
-							<span className="text-sm text-zinc-500">
-								• {filteredTechnicians?.length || 0} {filteredTechnicians?.length === 1 ? 'result' : 'results'}
-							</span>
-						</div>
-
-						{/* Clear All Button */}
-						<button
-							onClick={clearAllFilters}
-							className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700/50 rounded-md transition-colors"
-						>
-							Clear All
-							<X size={14} />
-						</button>
-					</div>
-				</div>
-			)}
+			<FilterChips
+				filters={[
+					...terms.map((term) => ({
+						label: `Search: "${term}"`,
+						color: "purple" as const,
+						onRemove: () => removeTerm(term),
+						highlighted: duplicateTerm === term,
+					})),
+				]}
+				resultCount={filteredTechnicians.length}
+				onClearAll={() => {
+					clearAll();
+					setSearchInput("");
+				}}
+			/>
 
 			{/* Loading State */}
 			{isFetchLoading && (
@@ -283,7 +200,7 @@ export default function TechniciansPage() {
 					<h1 className="text-center text-xl mt-1">
 						An error has occurred.
 					</h1>
-					<h2 className="text-center text-zinc-500 mt-1">
+					<h2 className="text-center text-text-muted mt-1">
 						{fetchError.message}
 					</h2>
 				</div>
@@ -294,10 +211,12 @@ export default function TechniciansPage() {
 				<div className="w-full h-[400px] flex flex-col justify-center items-center">
 					<BoxSvg className="w-15 h-15 mb-1" />
 					<h1 className="text-center text-xl mt-1">
-						{activeSearch ? "No technicians found." : "No technicians yet."}
+						{activeTerms.length > 0
+							? "No technicians found."
+							: "No technicians yet."}
 					</h1>
-					{activeSearch && (
-						<p className="text-center text-zinc-500 mt-2">
+					{activeTerms.length > 0 && (
+						<p className="text-center text-text-muted mt-2">
 							Try adjusting your search terms
 						</p>
 					)}
@@ -318,36 +237,51 @@ export default function TechniciansPage() {
 							<TechnicianCard
 								key={technician.id}
 								technician={technician}
-								onClick={() => navigate(`/dispatch/technicians/${technician.id}`)}
+								onClick={() =>
+									navigate(
+										`/dispatch/technicians/${technician.id}`
+									)
+								}
 								viewMode={viewMode}
 							/>
 						))}
 					</div>
 
 					{/* Pagination footer */}
-					<div className="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-zinc-800">
+					<div className="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-border-subtle">
 						<div className="flex items-center gap-4">
-							<span className="text-sm text-zinc-400">
+							<span className="text-sm text-text-tertiary">
 								{perPage === 0
 									? `Showing all ${filteredTechnicians.length}`
 									: `Showing ${(currentPage - 1) * perPage + 1}–${Math.min(currentPage * perPage, filteredTechnicians.length)} of ${filteredTechnicians.length}`}
 							</span>
-							<div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-md p-1">
+							<div className="flex items-center gap-1 bg-surface border border-border rounded-md p-1">
 								{[12, 24, 48].map((n) => (
 									<button
 										key={n}
-										onClick={() => setPerPage(n)}
+										onClick={() =>
+											setPerPage(
+												n
+											)
+										}
 										className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
-											perPage === n ? "bg-zinc-600 text-white" : "text-zinc-400 hover:text-white"
+											perPage ===
+											n
+												? "bg-border text-text-primary"
+												: "text-text-tertiary hover:text-text-primary"
 										}`}
 									>
 										{n}
 									</button>
 								))}
 								<button
-									onClick={() => setPerPage(0)}
+									onClick={() =>
+										setPerPage(0)
+									}
 									className={`px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors ${
-										perPage === 0 ? "bg-zinc-600 text-white" : "text-zinc-400 hover:text-white"
+										perPage === 0
+											? "bg-border text-text-primary"
+											: "text-text-tertiary hover:text-text-primary"
 									}`}
 								>
 									All
@@ -358,30 +292,83 @@ export default function TechniciansPage() {
 						{perPage !== 0 && totalPages > 1 && (
 							<div className="flex items-center gap-1.5">
 								<button
-									onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+									onClick={() =>
+										setCurrentPage(
+											(p) =>
+												Math.max(
+													1,
+													p -
+														1
+												)
+										)
+									}
 									disabled={currentPage === 1}
-									className="p-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 								>
 									<ChevronLeft size={16} />
 								</button>
-								{Array.from({ length: totalPages }, (_, i) => i + 1)
-									.filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
-									.reduce<(number | "...")[]>((acc, p, i, arr) => {
-										if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
-										acc.push(p);
-										return acc;
-									}, [])
+								{Array.from(
+									{ length: totalPages },
+									(_, i) => i + 1
+								)
+									.filter(
+										(p) =>
+											p === 1 ||
+											p ===
+												totalPages ||
+											Math.abs(
+												p -
+													currentPage
+											) <= 1
+									)
+									.reduce<(number | "...")[]>(
+										(
+											acc,
+											p,
+											i,
+											arr
+										) => {
+											if (
+												i >
+													0 &&
+												p -
+													(arr[
+														i -
+															1
+													] as number) >
+													1
+											)
+												acc.push(
+													"..."
+												);
+											acc.push(p);
+											return acc;
+										},
+										[]
+									)
 									.map((p, i) =>
 										p === "..." ? (
-											<span key={`ellipsis-${i}`} className="px-1.5 text-zinc-500 text-sm">…</span>
+											<span
+												key={`ellipsis-${i}`}
+												className="px-1.5 text-text-muted text-sm"
+											>
+												…
+											</span>
 										) : (
 											<button
-												key={p}
-												onClick={() => setCurrentPage(p as number)}
+												key={
+													p
+												}
+												onClick={() =>
+													setCurrentPage(
+														p as number
+													)
+												}
 												className={`min-w-[36px] px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
-													currentPage === p
-														? "bg-blue-600 border-blue-600 text-white"
-														: "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white"
+													currentPage ===
+													p
+														? "bg-primary border-primary text-black font-semibold"
+														: "bg-surface border-border text-text-tertiary hover:text-text-primary"
 												}`}
 											>
 												{p}
@@ -389,9 +376,21 @@ export default function TechniciansPage() {
 										)
 									)}
 								<button
-									onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-									disabled={currentPage === totalPages}
-									className="p-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+									onClick={() =>
+										setCurrentPage(
+											(p) =>
+												Math.min(
+													totalPages,
+													p +
+														1
+												)
+										)
+									}
+									disabled={
+										currentPage ===
+										totalPages
+									}
+									className="p-2 rounded-md bg-surface border border-border text-text-tertiary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 								>
 									<ChevronRight size={16} />
 								</button>

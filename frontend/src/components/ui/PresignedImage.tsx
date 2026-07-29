@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
 import { usePresignedUrls } from "../../hooks/useStorage";
 
 interface PresignedImageProps {
@@ -24,7 +24,7 @@ export default function PresignedImage({
 
 	if (isLoading) {
 		return (
-			<div className={`animate-pulse bg-zinc-800 rounded-md ${skeletonClassName || className}`} />
+			<div className={`animate-pulse bg-surface rounded-md ${skeletonClassName || className}`} />
 		);
 	}
 

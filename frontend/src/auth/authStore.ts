@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useRememberedAccountsStore } from "../stores/rememberedAccountsStore";
 
 interface User {
 	role: "dispatcher" | "technician" | "admin";
@@ -7,26 +8,39 @@ interface User {
 	userId: string;
 	orgId: string | null;
 	orgTimezone: string; // IANA timezone, e.g. "America/Chicago"
+	permissions: string[];
 }
 
 interface AuthState {
 	user: User | null;
-	login: (role: User["role"], name: string, userId: string, orgId: string | null, orgTimezone: string) => void;
-	logout: () => void;
+	_hasHydrated: boolean;
+	login: (role: User["role"], name: string, userId: string, orgId: string | null, orgTimezone: string, permissions: string[]) => void;
+	logout: (remember?: boolean) => void;
+	setHasHydrated: (v: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
 	persist(
 		(set) => ({
 			user: null,
-			login: (role, name, userId, orgId, orgTimezone) =>
-				set({ user: { role, name, userId, orgId, orgTimezone } }),
-			logout: () => {
+			_hasHydrated: false,
+			login: (role, name, userId, orgId, orgTimezone, permissions) =>
+				set({ user: { role, name, userId, orgId, orgTimezone, permissions } }),
+			logout: (remember?: boolean) => {
 				localStorage.removeItem("accessToken");
+				if (!remember) {
+					useRememberedAccountsStore.getState().removeAccount(useAuthStore.getState().user?.userId || "");
+				}
 				set({ user: null });
 			},
+			setHasHydrated: (v) => set({ _hasHydrated: v }),
 		}),
-		{ name: "auth-storage" }
+		{
+			name: "auth-storage",
+			onRehydrateStorage: () => (state) => {
+				state?.setHasHydrated(true);
+			},
+		}
 	)
 );
 

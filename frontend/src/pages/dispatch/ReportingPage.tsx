@@ -1,177 +1,525 @@
-import { useState, useMemo } from "react";
-import { startOfMonth, endOfMonth, format } from "date-fns";
-import { AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
-	useOverviewQuery,
-	useRevenueYTDQuery,
-	useRevenueByJobTypeQuery,
-	useUnscheduledRevenueQuery,
-	useQuotePipelineQuery,
-	useArrivalPerformanceQuery,
-} from "../../hooks/useReports";
-import OverviewSection from "../../components/reports/OverviewSection";
-import RevenueOverviewSection from "../../components/reports/RevenueOverviewSection";
-import RevenueByJobTypeChart from "../../components/reports/RevenueByJobTypeChart";
-import QuotePipeline from "../../components/reports/QuotePipeline";
-import ArrivalPerformanceChart from "../../components/reports/ArrivalPerformanceChart";
-import DatePicker from "../../components/ui/DatePicker";
+	Briefcase,
+	DollarSign,
+	Eye,
+	EyeOff,
+	Gauge,
+	GripVertical,
+	HardHat,
+	Plus,
+	SlidersHorizontal,
+	Star,
+	Trash2,
+	User,
+	Users,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import PageHeader from "../../components/ui/PageHeader";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import NewReportModal from "../../components/reports/NewReportModal";
+import FavoritesButton from "../../components/reports/FavoritesButton";
+import type { FavoriteLink } from "../../components/reports/FavoritesButton";
+import {
+	useSavedReportsQuery,
+	useReportFavoritesQuery,
+	useAddFavoriteMutation,
+	useRemoveFavoriteMutation,
+	useDeleteSavedReportMutation,
+} from "../../hooks/useSavedReports";
+import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
+import { useAuthStore } from "../../auth/authStore";
+import { getReportSource } from "../../reports/reportSources";
+import type { ReportCategoryId, ReportFavoriteKind } from "../../types/reports";
+import type { ReportLayout } from "../../types/dispatchers";
 
-export default function ReportingPage() {
-	const now = new Date();
-	const [startDate, setStartDate] = useState<Date | null>(startOfMonth(now));
-	const [endDate, setEndDate] = useState<Date | null>(endOfMonth(now));
+interface ReportLink {
+	title: string;
+	description: string;
+	to: string;
+}
 
-	const startDateStr = useMemo(
-		() => startDate?.toISOString() ?? startOfMonth(now).toISOString(),
-		[startDate],
+interface HubEntry extends ReportLink {
+	kind: ReportFavoriteKind;
+	ref: string;
+	type: "standard" | "custom";
+}
+
+interface ReportCategory {
+	id: ReportCategoryId;
+	label: string;
+	icon: LucideIcon;
+	entries: ReportLink[];
+}
+
+// Hub Categories
+const REPORT_CATEGORIES: ReportCategory[] = [
+	{
+		id: "financial",
+		label: "Financial Reports",
+		icon: DollarSign,
+		entries: [
+			{
+				title: "Aged Receivables",
+				description: "Outstanding invoice balances by age",
+				to: "/dispatch/reporting/aged-receivables",
+			},
+			{
+				title: "Tax Liability",
+				description: "Tax collected by jurisdiction",
+				to: "/dispatch/reporting/tax-liability",
+			},
+			{
+				title: "Payments Collected",
+				description: "Payments received by method and recorder",
+				to: "/dispatch/reporting/payments",
+			},
+			{
+				title: "Quote Conversion",
+				description: "Win rate and quote pipeline conversion",
+				to: "/dispatch/reporting/quote-funnel",
+			},
+		],
+	},
+	{
+		id: "operational",
+		label: "Operational Reports",
+		icon: Gauge,
+		entries: [
+			{
+				title: "Reorder Forecast",
+				description: "Predicted stockouts by usage",
+				to: "/dispatch/inventory/reorder-forecast",
+			},
+			{
+				title: "First-Time Fix Rate",
+				description: "Jobs resolved on the first visit",
+				to: "/dispatch/reporting/first-time-fix",
+			},
+		],
+	},
+	{
+		id: "technician",
+		label: "Technician Reports",
+		icon: HardHat,
+		entries: [
+			{
+				title: "Timesheets Report",
+				description: "Hours logged per technician and job",
+				to: "/dispatch/timesheets",
+			},
+			{
+				title: "Technician Scorecard",
+				description: "Revenue, hours, and on-time rate per technician",
+				to: "/dispatch/reporting/technician-scorecard",
+			},
+		],
+	},
+	{
+		id: "client",
+		label: "Client Reports",
+		icon: Users,
+		entries: [
+			{
+				title: "Client Retention",
+				description: "Active clients with no recent activity",
+				to: "/dispatch/reporting/client-retention",
+			},
+		],
+	},
+];
+
+const CATEGORY_IDS: ReportCategoryId[] = REPORT_CATEGORIES.map((c) => c.id);
+const BUILTIN_LINKS: ReportLink[] = REPORT_CATEGORIES.flatMap((c) => c.entries);
+const CARD_CAP = 5;
+
+const favKey = (kind: ReportFavoriteKind, ref: string) => `${kind}:${ref}`;
+const entryKey = (e: HubEntry) => favKey(e.kind, e.ref);
+
+
+
+
+function applyOrder(entries: HubEntry[], order: string[] | undefined): HubEntry[] {
+	if (!order || order.length === 0) return entries;
+	const rank = new Map(order.map((k, i) => [k, i]));
+	return [...entries].sort((a, b) => {
+		const ra = rank.get(entryKey(a)) ?? Number.POSITIVE_INFINITY;
+		const rb = rank.get(entryKey(b)) ?? Number.POSITIVE_INFINITY;
+		return ra - rb;
+	});
+}
+
+function StarButton({
+	active,
+	onClick,
+}: {
+	active: boolean;
+	onClick: (e: React.MouseEvent) => void;
+}) {
+	return (
+		<button
+			onClick={onClick}
+			aria-label={active ? "Remove from favorites" : "Add to favorites"}
+			aria-pressed={active}
+			className={`shrink-0 p-1 rounded transition-colors ${
+				active
+					? "text-warning hover:text-warning"
+					: "text-text-faint hover:text-text-secondary"
+			}`}
+		>
+			<Star size={15} fill={active ? "currentColor" : "none"} />
+		</button>
 	);
-	const endDateStr = useMemo(
-		() => endDate?.toISOString() ?? endOfMonth(now).toISOString(),
-		[endDate],
-	);
+}
 
-	const rangeLabel =
-		startDate && endDate
-			? `${format(startDate, "MMM d, yyyy")} - ${format(endDate, "MMM d, yyyy")}`
-			: "";
+function TypeBadge({ type }: { type: HubEntry["type"] }) {
+	if (type === "custom") {
+		return (
+			<span className="inline-flex items-center gap-1 shrink-0 rounded-full bg-surface-raised px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-tertiary">
+				<User size={10} />
+				Custom
+			</span>
+		);
+	}
+	return <Briefcase size={13} className="shrink-0 text-text-faint" aria-label="Standard report" />;
+}
 
-	const {
-		data: overview,
-		isLoading: overviewLoading,
-		error: overviewError,
-	} = useOverviewQuery(startDateStr, endDateStr);
+function CategoryCard({
+	category,
+	entries,
+	hidden,
+	editing,
+	expanded,
+	onToggleExpand,
+	isFavorited,
+	onToggleFavorite,
+	onToggleHidden,
+	onDeleteReport,
+	onDragStartEntry,
+	onDropEntry,
+}: {
+	category: ReportCategory;
+	entries: HubEntry[];
+	hidden: Set<string>;
+	editing: boolean;
+	expanded: boolean;
+	onToggleExpand: () => void;
+	isFavorited: (kind: ReportFavoriteKind, ref: string) => boolean;
+	onToggleFavorite: (kind: ReportFavoriteKind, ref: string) => void;
+	onToggleHidden: (catId: ReportCategoryId, key: string) => void;
+	onDeleteReport: (id: string) => void;
+	onDragStartEntry: (catId: ReportCategoryId, key: string) => void;
+	onDropEntry: (catId: ReportCategoryId, key: string) => void;
+}) {
+	const Icon = category.icon;
 
-	const {
-		data: revenueYTD,
-		isLoading: revenueLoading,
-		error: revenueError,
-	} = useRevenueYTDQuery();
-
-	const {
-		data: revenueByJobType,
-		isLoading: byTypeLoading,
-		error: byTypeError,
-	} = useRevenueByJobTypeQuery(startDateStr, endDateStr);
-
-	const {
-		data: unscheduledRevenue,
-		isLoading: unscheduledRevenueLoading,
-		error: unscheduledRevenueError,
-	} = useUnscheduledRevenueQuery();
-
-	const {
-		data: quotePipeline,
-		isLoading: pipelineLoading,
-		error: pipelineError,
-	} = useQuotePipelineQuery(startDateStr, endDateStr);
-
-	const {
-		data: arrivalPerformance,
-		isLoading: arrivalLoading,
-		error: arrivalError,
-	} = useArrivalPerformanceQuery(startDateStr, endDateStr);
+	// Editing becomes visible
+	const visible = editing ? entries : entries.filter((e) => !hidden.has(entryKey(e)));
+	const capped = expanded || editing ? visible : visible.slice(0, CARD_CAP);
+	const overflow = visible.length - CARD_CAP;
 
 	return (
-		<div className="min-h-0 bg-zinc-950 text-zinc-100 w-full">
-			<div className="w-full px-4 sm:px-5 lg:px-6 py-4">
-				{/* Header Section */}
-				<div className="flex items-center justify-between mb-5">
-					<h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-						Reports
-					</h1>
-					<div className="flex items-center gap-2">
-						<div className="w-56"><DatePicker value={startDate} onChange={setStartDate} required /></div>
-						<span className="text-zinc-500 text-sm">to</span>
-						<div className="w-56"><DatePicker value={endDate} onChange={setEndDate} required align="right" /></div>
-					</div>
-				</div>
-
-				{/* Overview Section */}
-				{overviewError ? (
-					<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg mb-5">
-						<AlertCircle size={16} className="text-red-400" />
-						<p className="text-sm text-red-400">
-							Failed to load overview metrics
-						</p>
-					</div>
-				) : overview ? (
-					<div className="mb-5">
-						<OverviewSection data={overview} />
-					</div>
-				) : overviewLoading ? (
-					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
-						{Array.from({ length: 4 }).map((_, i) => (
-							<div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 h-24 animate-pulse" />
-						))}
-					</div>
-				) : null}
-
-				{/* Revenue Chart + Unscheduled Revenue */}
-				<div className="mb-5">
-					<RevenueOverviewSection
-						revenueYTD={revenueYTD}
-						revenueLoading={revenueLoading}
-						revenueError={revenueError}
-						unscheduledRevenue={unscheduledRevenue}
-						unscheduledRevenueLoading={unscheduledRevenueLoading}
-						unscheduledRevenueError={unscheduledRevenueError}
-					/>
-				</div>
-
-				{/* Bottom Row */}
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-					<div className="min-w-0 h-full">
-						{byTypeError ? (
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle size={16} className="text-red-400" />
-								<p className="text-sm text-red-400">
-									Failed to load revenue by job type
-								</p>
-							</div>
-						) : byTypeLoading ? (
-							<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-[400px] animate-pulse" />
-						) : revenueByJobType ? (
-							<RevenueByJobTypeChart
-								data={revenueByJobType.data}
-								total={revenueByJobType.total}
-							/>
-						) : null}
-					</div>
-
-					<div className="min-w-0 h-full">
-						{pipelineError ? (
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle size={16} className="text-red-400" />
-								<p className="text-sm text-red-400">
-									Failed to load quote pipeline
-								</p>
-							</div>
-						) : pipelineLoading ? (
-							<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-[400px] animate-pulse" />
-						) : quotePipeline ? (
-							<QuotePipeline data={quotePipeline} />
-						) : null}
-					</div>
-
-					<div className="min-w-0 h-full">
-						{arrivalError ? (
-							<div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-								<AlertCircle size={16} className="text-red-400" />
-								<p className="text-sm text-red-400">
-									Failed to load arrival performance
-								</p>
-							</div>
-						) : arrivalLoading ? (
-							<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-[400px] animate-pulse" />
-						) : arrivalPerformance ? (
-							<ArrivalPerformanceChart
-								data={arrivalPerformance}
-								rangeLabel={rangeLabel}
-							/>
-						) : null}
-					</div>
-				</div>
+		<div className="bg-base border border-border-subtle rounded-xl overflow-hidden">
+			<div className="flex items-center gap-2 p-4 border-b border-border-subtle">
+				<Icon size={16} className="text-text-tertiary" />
+				<h3 className="font-semibold text-text-primary">{category.label}</h3>
 			</div>
+			<div className="p-2 flex flex-col gap-0.5">
+				{visible.length === 0 ? (
+					<p className="text-sm text-text-muted px-3 py-2.5">No reports yet</p>
+				) : (
+					capped.map((entry) => {
+						const key = entryKey(entry);
+						const isHidden = hidden.has(key);
+						return (
+							<div
+								key={key}
+								draggable={editing}
+								onDragStart={() => editing && onDragStartEntry(category.id, key)}
+								onDragOver={(e) => {
+									if (editing) e.preventDefault();
+								}}
+								onDrop={(e) => {
+									if (!editing) return;
+									e.preventDefault();
+									onDropEntry(category.id, key);
+								}}
+								className={`flex items-center gap-2 rounded-lg px-3 py-2.5 border border-transparent transition-all ${
+									editing
+										? "bg-surface/40 cursor-grab active:cursor-grabbing"
+										: "hover:bg-surface hover:border-border-subtle hover:shadow-sm"
+								} ${isHidden ? "opacity-50" : ""}`}
+							>
+								{editing && (
+									<GripVertical size={15} className="shrink-0 text-text-faint" />
+								)}
+								{editing ? (
+									<div className="flex-1 min-w-0">
+										<p className="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+											<span className="truncate">{entry.title}</span>
+											<TypeBadge type={entry.type} />
+										</p>
+										<p className="text-xs text-text-muted mt-0.5 truncate">
+											{entry.description}
+										</p>
+									</div>
+								) : (
+									<Link to={entry.to} className="block flex-1 min-w-0">
+										<p className="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+											<span className="truncate">{entry.title}</span>
+											<TypeBadge type={entry.type} />
+										</p>
+										<p className="text-xs text-text-muted mt-0.5 truncate">
+											{entry.description}
+										</p>
+									</Link>
+								)}
+								{editing ? (
+									<>
+										<button
+											onClick={() => onToggleHidden(category.id, key)}
+											aria-label={isHidden ? "Show report" : "Hide report"}
+											className="shrink-0 p-1 rounded text-text-faint hover:text-text-secondary transition-colors"
+										>
+											{isHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+										</button>
+										{entry.type === "custom" && entry.kind === "saved" && (
+											<button
+												onClick={() => onDeleteReport(entry.ref)}
+												aria-label="Delete report"
+												className="shrink-0 p-1 rounded text-text-faint hover:text-error-text transition-colors"
+											>
+												<Trash2 size={15} />
+											</button>
+										)}
+									</>
+								) : (
+									<StarButton
+										active={isFavorited(entry.kind, entry.ref)}
+										onClick={(e) => {
+											e.preventDefault();
+											onToggleFavorite(entry.kind, entry.ref);
+										}}
+									/>
+								)}
+							</div>
+						);
+					})
+				)}
+				{!editing && overflow > 0 && (
+					<button
+						onClick={onToggleExpand}
+						className="text-left text-xs font-semibold text-primary-text hover:underline px-3 py-2"
+					>
+						{expanded ? "Show less" : `Show all ${visible.length} →`}
+					</button>
+				)}
+			</div>
+		</div>
+	);
+}
+
+export default function ReportingPage() {
+	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [editing, setEditing] = useState(false);
+	const [deleteReportId, setDeleteReportId] = useState<string | null>(null);
+	const [expanded, setExpanded] = useState<Partial<Record<ReportCategoryId, boolean>>>({});
+
+	const { user } = useAuthStore();
+	const { data: dispatcher } = useDispatcherByIdQuery(user?.userId);
+	const updateDispatcher = useUpdateDispatcherMutation();
+
+	const { data: savedReports = [] } = useSavedReportsQuery();
+	const { data: favorites = [] } = useReportFavoritesQuery();
+	const addFavorite = useAddFavoriteMutation();
+	const removeFavorite = useRemoveFavoriteMutation();
+	const deleteSavedReport = useDeleteSavedReportMutation();
+
+	// Per-user reorder/hide preferences, seeded from the dispatcher record.
+	const [layout, setLayout] = useState<ReportLayout>({});
+	useEffect(() => {
+		if (dispatcher?.report_layout) setLayout(dispatcher.report_layout);
+	}, [dispatcher?.report_layout]);
+
+	const dragKeyRef = useRef<{ catId: ReportCategoryId; key: string } | null>(null);
+
+	const favByKey = new Map(favorites.map((f) => [favKey(f.kind, f.ref), f]));
+	const isFavorited = (kind: ReportFavoriteKind, ref: string) =>
+		favByKey.has(favKey(kind, ref));
+	const toggleFavorite = (kind: ReportFavoriteKind, ref: string) => {
+		const existing = favByKey.get(favKey(kind, ref));
+		if (existing) removeFavorite.mutate(existing.id);
+		else addFavorite.mutate({ kind, ref });
+	};
+
+	const handleDeleteReport = (id: string) => {
+		setDeleteReportId(id);
+	};
+
+	const confirmDeleteReport = () => {
+		if (!deleteReportId) return;
+		deleteSavedReport.mutate(deleteReportId, {
+			onSuccess: () => setDeleteReportId(null),
+		});
+	};
+
+	const entriesByCategory = useMemo(() => {
+		const map = {} as Record<ReportCategoryId, HubEntry[]>;
+		for (const cat of REPORT_CATEGORIES) {
+			map[cat.id] = cat.entries.map((e) => ({
+				...e,
+				kind: "built_in" as const,
+				ref: e.to,
+				type: "standard" as const,
+			}));
+		}
+		for (const report of savedReports) {
+			const source = getReportSource(report.source);
+			const catId: ReportCategoryId = source?.category ?? "operational";
+			map[catId].push({
+				title: report.name,
+				description: source?.label ?? "Saved report",
+				to: `/dispatch/reporting/builder?reportId=${report.id}`,
+				kind: "saved",
+				ref: report.id,
+				type: "custom",
+			});
+		}
+		for (const catId of CATEGORY_IDS) {
+			map[catId] = applyOrder(map[catId], layout[catId]?.order);
+		}
+		return map;
+	}, [savedReports, layout]);
+
+	const hiddenByCategory = useMemo(() => {
+		const map = {} as Record<ReportCategoryId, Set<string>>;
+		for (const catId of CATEGORY_IDS) {
+			map[catId] = new Set(layout[catId]?.hidden ?? []);
+		}
+		return map;
+	}, [layout]);
+
+	const persistLayout = (next: ReportLayout) => {
+		setLayout(next);
+		if (dispatcher?.id) {
+			updateDispatcher.mutate({ id: dispatcher.id, data: { report_layout: next } });
+		}
+	};
+
+	const updateCategory = (
+		catId: ReportCategoryId,
+		updater: (cur: { order: string[]; hidden: string[] }) => { order: string[]; hidden: string[] },
+	) => {
+		const cur = layout[catId] ?? { order: [], hidden: [] };
+		persistLayout({ ...layout, [catId]: updater({ order: cur.order ?? [], hidden: cur.hidden ?? [] }) });
+	};
+
+	const toggleHidden = (catId: ReportCategoryId, key: string) => {
+		updateCategory(catId, (cur) => {
+			const hidden = cur.hidden.includes(key)
+				? cur.hidden.filter((k) => k !== key)
+				: [...cur.hidden, key];
+			return { ...cur, hidden };
+		});
+	};
+
+	const handleDrop = (catId: ReportCategoryId, targetKey: string) => {
+		const dragged = dragKeyRef.current;
+		dragKeyRef.current = null;
+		if (!dragged || dragged.catId !== catId || dragged.key === targetKey) return;
+		const keys = entriesByCategory[catId].map(entryKey);
+		const from = keys.indexOf(dragged.key);
+		const to = keys.indexOf(targetKey);
+		if (from < 0 || to < 0) return;
+		keys.splice(to, 0, keys.splice(from, 1)[0]);
+		updateCategory(catId, (cur) => ({ ...cur, order: keys }));
+	};
+
+	const favoriteLinks: FavoriteLink[] = favorites
+		.map((f) => {
+			if (f.kind === "built_in") {
+				const link = BUILTIN_LINKS.find((l) => l.to === f.ref);
+				return link ? { ...link, kind: f.kind, ref: f.ref } : null;
+			}
+			const report = savedReports.find((r) => r.id === f.ref);
+			if (!report) return null;
+			return {
+				title: report.name,
+				description: getReportSource(report.source)?.label ?? "Saved report",
+				to: `/dispatch/reporting/builder?reportId=${report.id}`,
+				kind: f.kind,
+				ref: f.ref,
+			};
+		})
+		.filter((l): l is FavoriteLink => l !== null);
+
+	return (
+		<div className="text-text-primary">
+			<PageHeader title="Reporting">
+				<FavoritesButton favorites={favoriteLinks} onRemove={toggleFavorite} />
+				<button
+					onClick={() => setEditing((v) => !v)}
+					aria-pressed={editing}
+					className={`flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium transition-colors border ${
+						editing
+							? "bg-primary-bg border-primary text-primary-text"
+							: "border-border text-text-tertiary hover:bg-surface hover:text-text-primary"
+					}`}
+				>
+					<SlidersHorizontal size={15} />
+					{editing ? "Done" : "Edit"}
+				</button>
+				<button
+					onClick={() => setIsModalOpen(true)}
+					className="flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary hover:bg-primary-hover text-on-primary text-sm font-medium transition-colors"
+				>
+					<Plus size={15} />
+					New Report
+				</button>
+			</PageHeader>
+
+			{editing && (
+				<p className="text-sm text-text-muted mb-4">
+					Drag reports to reorder them within a category, or hide ones you don't use. Changes
+					save automatically.
+				</p>
+			)}
+
+			<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
+				{REPORT_CATEGORIES.map((category) => (
+					<CategoryCard
+						key={category.id}
+						category={category}
+						entries={entriesByCategory[category.id]}
+						hidden={hiddenByCategory[category.id]}
+						editing={editing}
+						expanded={!!expanded[category.id]}
+						onToggleExpand={() =>
+							setExpanded((prev) => ({ ...prev, [category.id]: !prev[category.id] }))
+						}
+						isFavorited={isFavorited}
+						onToggleFavorite={toggleFavorite}
+						onToggleHidden={toggleHidden}
+						onDeleteReport={handleDeleteReport}
+						onDragStartEntry={(catId, key) => {
+							dragKeyRef.current = { catId, key };
+						}}
+						onDropEntry={handleDrop}
+					/>
+				))}
+			</div>
+			<NewReportModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+			<ConfirmDialog
+				open={deleteReportId !== null}
+				title="Delete Report"
+				body="Delete this saved report? This cannot be undone."
+				confirmLabel="Delete"
+				tone="destructive"
+				pending={deleteSavedReport.isPending}
+				onConfirm={confirmDeleteReport}
+				onCancel={() => setDeleteReportId(null)}
+			/>
 		</div>
 	);
 }

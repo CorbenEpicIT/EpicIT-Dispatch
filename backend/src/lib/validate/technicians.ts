@@ -1,6 +1,6 @@
 import z from "zod";
 
-const technicianStatusEnum = z.enum(["Offline", "Available", "Busy", "Break"]);
+const technicianStatusEnum = z.enum(["Offline", "Available", "Break", "EnRoute", "OnSite", "Working", "Paused", "WrappingUp"]);
 
 export const createTechnicianSchema = z.object({
 	name: z.string().min(1, "Technician name is required"),
@@ -9,6 +9,7 @@ export const createTechnicianSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
+	organization_role_id: z.string().uuid("Valid role ID is required").nullable().optional(),
 	status: technicianStatusEnum.default("Offline"),
 	coords: z.object({
 		lat: z.number(),
@@ -30,13 +31,10 @@ export const updateTechnicianSchema = z
 		name: z.string().min(1, "Technician name is required").optional(),
 		email: z.string().email("Valid email is required").optional(),
 		phone: z.string().min(1, "Phone number is required").optional(),
-		password: z
-			.string()
-			.min(8, "Password must be at least 8 characters")
-			.optional(),
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
 		status: technicianStatusEnum.optional(),
+		theme: z.enum(["dark", "light", "system"]).optional(),
 		coords: z.object({ lat: z.number(), lon: z.number() }).optional(),
 		hire_date: z
 			.preprocess(
@@ -62,15 +60,21 @@ export const updateTechnicianSchema = z
 			data.name !== undefined ||
 			data.email !== undefined ||
 			data.phone !== undefined ||
-			data.password !== undefined ||
 			data.title !== undefined ||
 			data.description !== undefined ||
 			data.status !== undefined ||
+			data.theme !== undefined ||
 			data.coords !== undefined ||
 			data.hire_date !== undefined ||
 			data.last_login !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
 
+export const changePasswordSchema = z.object({
+	current_password: z.string().min(1, "Current password is required"),
+	new_password: z.string().min(8, "New password must be at least 8 characters"),
+});
+
 export type CreateTechnicianInput = z.infer<typeof createTechnicianSchema>;
 export type UpdateTechnicianInput = z.infer<typeof updateTechnicianSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

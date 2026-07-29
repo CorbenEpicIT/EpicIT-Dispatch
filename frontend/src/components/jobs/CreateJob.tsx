@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import {
 	CreateJobSchema,
@@ -13,6 +13,7 @@ import {
 	PriorityValues,
 } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
 import { useAllJobsQuery } from "../../hooks/useJobs";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import {
@@ -63,8 +64,8 @@ const PRIORITY_ENTRIES = (
 );
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) => {
 	const [name, setName] = useState("");
@@ -102,7 +103,28 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 	} = useLineItems({ minItems: 0, mode: "create" });
+
+	const { data: taxGroups = [] } = useTaxGroups();
+
+	const selectedClient = useMemo(
+		() => clients?.find((c) => c.id === clientId) ?? null,
+		[clients, clientId],
+	);
+	const clientExempt = selectedClient?.is_tax_exempt ?? false;
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: Number(item.total),
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems],
+	);
 
 	const {
 		taxRate,
@@ -120,7 +142,18 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
-	} = useFinancialCalculations(subtotal);
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
+	} = useFinancialCalculations(subtotal, {
+		taxGroups,
+		lineItemsForCalc,
+		clientExempt,
+		initialDiscountType: "amount",
+		initialDiscountValue: 0,
+	});
 
 	const {
 		currentStep,
@@ -238,11 +271,17 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 
 			setName(source.name);
 			setDescription(source.description);
+			setClientId(source.client_id ?? "");
 			setPriority(source.priority as Priority);
-			if (source.address && source.coords) {
-				setGeoData({ address: source.address, coords: source.coords });
-			} else if (source.address) {
-				setGeoData({ address: source.address, coords: { lat: 0, lon: 0 } });
+			const lat = source.coords?.lat;
+			const lon = source.coords?.lon;
+			if (
+				source.address &&
+				Number.isFinite(lat) &&
+				Number.isFinite(lon) &&
+				(lat !== 0 || lon !== 0)
+			) {
+				setGeoData({ address: source.address, coords: { lat, lon } });
 			}
 
 			if (source.line_items?.length) {
@@ -255,6 +294,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 						item_type: (li.item_type ?? "") as
 							| LineItemType
 							| "",
+						taxable: li.taxable ?? true,
+						tax_group_id: li.tax_group_id ?? null,
 					}))
 				);
 			} else {
@@ -301,6 +342,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							item_type: (li.item_type ?? "") as
 								| LineItemType
 								| "",
+							taxable: li.taxable ?? true,
+							tax_group_id: li.tax_group_id ?? null,
 						}))
 					);
 				}
@@ -338,13 +381,15 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 				unit_price: item.unit_price,
 				item_type: item.item_type,
 				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
 			})),
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			estimated_total: total,
+			estimated_total: resolvedTotal,
 		};
 		try {
 			if (currentDraftId) {
@@ -371,12 +416,12 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		priority,
 		geoData,
 		activeLineItems,
-		taxRate,
-		taxAmount,
 		discountType,
 		discountValue,
 		discountAmount,
-		total,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		currentDraftId,
 		createDraftMutation,
 		updateDraftMutation,
@@ -484,6 +529,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 				item_type: (item.item_type || undefined) as
 					| LineItemType
 					| undefined,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
 			}));
 
 		const newJob: CreateJobInput = {
@@ -494,12 +541,12 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 			description: description.trim(),
 			priority: priority as Priority,
 			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			estimated_total: total,
+			estimated_total: resolvedTotal,
 			line_items: preparedLineItems.length ? preparedLineItems : undefined,
 		};
 
@@ -551,7 +598,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-xs leading-tight">
+					<p key={idx} className="text-error-text text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -681,7 +728,7 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 									);
 									markDirty();
 								}}
-								className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
@@ -725,9 +772,19 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							onUndo={undoLineItemField}
 							onClear={clearLineItemField}
 							inventoryItems={inventoryItems}
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={(id, groupId, taxable) => {
+								setLineItemTaxGroup(id, groupId, taxable);
+								markDirty();
+							}}
+							onTaxGroupBulkSet={(groupId, taxable) => {
+								setAllLineItemsTaxGroup(groupId, taxable);
+								markDirty();
+							}}
 						/>
-					</div>
-				);
+				</div>
+			);
 
 			case 3:
 				return (
@@ -759,6 +816,8 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 							isDiscountDirty={isDiscountDirty}
 							onTaxUndo={undoTax}
 							onDiscountUndo={undoDiscount}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
 						/>
 					</div>
 				);
@@ -786,9 +845,6 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		geoData,
 		errors,
 		activeLineItems,
-		addLineItem,
-		removeLineItem,
-		updateLineItem,
 		subtotal,
 		dirtyLineItemFields,
 		undoLineItemField,
@@ -804,6 +860,12 @@ const CreateJob = ({ isModalOpen, setIsModalOpen, createJob }: CreateJobProps) =
 		undoTax,
 		undoDiscount,
 		inventoryItems,
+		taxGroups,
+		clientExempt,
+		groupsSummary,
+		totalTax,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 	]);
 
 	return (

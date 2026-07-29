@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
 	Edit,
@@ -26,6 +26,7 @@ import {
 	type JobStatus,
 	type VisitStatus,
 } from "../../types/jobs";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function TechnicianDetailsPage() {
 	const { technicianId } = useParams<{ technicianId: string }>();
@@ -47,6 +48,12 @@ export default function TechnicianDetailsPage() {
 	const deleteTechnician = useDeleteTechnicianMutation();
 
 	const { data: technician, isLoading, error } = useTechnicianByIdQuery(technicianId);
+	const lastLogin = technician?.last_login ?
+								`${new Date(technician.last_login).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, ${new Date(technician.last_login).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+								: "Never";
+
+	// permissions
+	const MANAGE_TECHNICIANS = usePermission("manage_technicians");
 
 	useEffect(() => {
 		const handleClickOutside = (e: MouseEvent) => {
@@ -63,6 +70,7 @@ export default function TechnicianDetailsPage() {
 	}, []);
 
 	const handleDelete = async () => {
+		if (!MANAGE_TECHNICIANS) return;
 		if (!deleteConfirm) {
 			setDeleteConfirm(true);
 			return;
@@ -78,7 +86,7 @@ export default function TechnicianDetailsPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
-				<div className="text-zinc-400">Loading...</div>
+				<div className="text-text-tertiary">Loading...</div>
 			</div>
 		);
 	}
@@ -88,11 +96,11 @@ export default function TechnicianDetailsPage() {
 			<div className="p-6">
 				<button
 					onClick={() => navigate("/dispatch/technicians")}
-					className="text-zinc-400 hover:text-white mb-4 transition-colors"
+					className="text-text-tertiary hover:text-text-primary mb-4 transition-colors"
 				>
 					← Back to Technicians
 				</button>
-				<div className="text-white">Technician not found</div>
+				<div className="text-text-primary">Technician not found</div>
 			</div>
 		);
 	}
@@ -122,6 +130,9 @@ export default function TechnicianDetailsPage() {
 	});
 
 	const ACTIVE_STATUSES = ["InProgress", "OnSite", "Driving", "Paused", "Delayed"];
+	const hasActiveVisits = visitTechs.some((vt) =>
+		["Scheduled", "InProgress", "OnSite", "Driving", "Paused", "Delayed"].includes(vt.visit.status)
+	);
 	const activeVisit =
 		visitTechs
 			.map((vt) => vt.visit)
@@ -147,42 +158,42 @@ export default function TechnicianDetailsPage() {
 		});
 
 	const statCards = [
-		{ label: "Total Jobs", value: groupedJobs.length, color: "text-white" },
+		{ label: "Total Jobs", value: groupedJobs.length, color: "text-text-primary" },
 		{
 			label: "Completed",
 			value: visitTechs.filter((vt) => vt.visit.status === "Completed").length,
-			color: "text-emerald-400",
+			color: "text-success-text",
 		},
 		{
 			label: "In Progress",
 			value: visitTechs.filter((vt) => vt.visit.status === "InProgress").length,
-			color: "text-amber-400",
+			color: "text-warning-text",
 		},
 		{
 			label: "Scheduled",
 			value: visitTechs.filter((vt) => vt.visit.status === "Scheduled").length,
-			color: "text-blue-400",
+			color: "text-primary-text",
 		},
 	];
 
 	return (
-		<div className="text-white space-y-6 p-6">
+		<div className="text-text-primary space-y-6 p-6">
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex items-center gap-4 min-w-0">
 					<div className="relative flex-shrink-0">
-						<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-white font-bold text-xl">
+						<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-border to-border-strong flex items-center justify-center text-white font-bold text-xl">
 							{technician.name.charAt(0).toUpperCase()}
 						</div>
 						<div
-							className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 ${TechnicianStatusDotColors[technician.status]} rounded-full border-2 border-zinc-950`}
+							className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 ${TechnicianStatusDotColors[technician.status]} rounded-full border-2 border-canvas`}
 						/>
 					</div>
 					<div className="min-w-0">
-						<h1 className="text-2xl sm:text-3xl font-bold text-white truncate">
+						<h1 className="text-2xl sm:text-3xl font-bold text-text-primary truncate">
 							{technician.name}
 						</h1>
-						<p className="text-zinc-400 text-sm mt-0.5">
+						<p className="text-text-tertiary text-sm mt-0.5">
 							{technician.title}
 						</p>
 					</div>
@@ -200,56 +211,63 @@ export default function TechnicianDetailsPage() {
 								setIsOptionsMenuOpen((v) => !v);
 								setDeleteConfirm(false);
 							}}
-							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+							className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 						>
 							<MoreVertical size={18} />
 						</button>
 						{isOptionsMenuOpen && (
-							<div className="absolute right-0 mt-2 w-52 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+							<div className="absolute right-0 mt-2 w-52 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={() => {
-											setIsEditModalOpen(
-												true
-											);
-											setIsOptionsMenuOpen(
-												false
-											);
-											setDeleteConfirm(
-												false
-											);
-										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 text-zinc-200"
-									>
-										<Edit size={14} />
-										Edit Technician
-									</button>
-									<div className="my-1 border-t border-zinc-800" />
-									<button
-										onClick={
-											handleDelete
-										}
-										onMouseLeave={() =>
-											setDeleteConfirm(
-												false
-											)
-										}
-										disabled={
-											deleteTechnician.isPending
-										}
-										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-											deleteConfirm
-												? "bg-red-600 hover:bg-red-700 text-white"
-												: "text-red-400 hover:bg-zinc-800 hover:text-red-300"
-										} disabled:opacity-50 disabled:cursor-not-allowed`}
-									>
-										<Trash2 size={14} />
-										{deleteTechnician.isPending
-											? "Deleting..."
-											: deleteConfirm
-												? "Click Again to Confirm"
-												: "Delete Technician"}
-									</button>
+										<button
+											title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
+											disabled={!MANAGE_TECHNICIANS}
+											onClick={() => {
+												if (!MANAGE_TECHNICIANS) return;
+												setIsEditModalOpen(
+													true
+												);
+												setIsOptionsMenuOpen(
+													false
+												);
+												setDeleteConfirm(
+													false
+												);
+											}}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit size={14} />
+											Edit Technician
+										</button>
+									{MANAGE_TECHNICIANS && !hasActiveVisits && (
+									  <>
+									  	<div className="my-1 border-t border-border-subtle" />
+									  	<button
+											onClick={
+												handleDelete
+											}
+											onMouseLeave={() =>
+												setDeleteConfirm(
+													false
+												)
+											}
+											disabled={
+												deleteTechnician.isPending
+											}
+											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+												deleteConfirm
+													? "bg-error hover:bg-error-strong text-on-primary"
+													: "text-error-text hover:bg-surface hover:text-error-text"
+											} disabled:opacity-40 disabled:cursor-not-allowed`}
+										>
+											<Trash2 size={14} />
+											{deleteTechnician.isPending
+												? "Deleting..."
+												: deleteConfirm
+													? "Click Again to Confirm"
+													: "Delete Technician"}
+										</button>
+									  </>
+									)}
 								</div>
 							</div>
 						)}
@@ -262,12 +280,12 @@ export default function TechnicianDetailsPage() {
 				{statCards.map((s) => (
 					<div
 						key={s.label}
-						className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 text-center"
+						className="bg-base border border-border-subtle rounded-lg p-4 text-center"
 					>
 						<p className={`text-2xl font-bold mb-1 ${s.color}`}>
 							{s.value}
 						</p>
-						<p className="text-xs text-zinc-500 uppercase tracking-wider">
+						<p className="text-xs text-text-muted uppercase tracking-wider">
 							{s.label}
 						</p>
 					</div>
@@ -304,35 +322,35 @@ export default function TechnicianDetailsPage() {
 							{
 								icon: Clock,
 								label: "Last Login",
-								value: `${new Date(technician.last_login).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, ${new Date(technician.last_login).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
+								value: lastLogin,
 							},
 						].map(({ icon: Icon, label, value }) => (
 							<div
 								key={label}
 								className="flex items-center gap-3"
 							>
-								<div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
+								<div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center flex-shrink-0">
 									<Icon
 										size={14}
-										className="text-zinc-400"
+										className="text-text-tertiary"
 									/>
 								</div>
 								<div className="min-w-0">
-									<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
+									<p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">
 										{label}
 									</p>
-									<p className="text-sm text-white truncate">
+									<p className="text-sm text-text-primary truncate">
 										{value}
 									</p>
 								</div>
 							</div>
 						))}
 						{technician.description && (
-							<div className="pt-3 border-t border-zinc-800">
-								<p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">
+							<div className="pt-3 border-t border-border-subtle">
+								<p className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5">
 									Description
 								</p>
-								<p className="text-sm text-zinc-300 leading-relaxed">
+								<p className="text-sm text-text-secondary leading-relaxed">
 									{technician.description}
 								</p>
 							</div>
@@ -342,30 +360,20 @@ export default function TechnicianDetailsPage() {
 
 				{/* Jobs Accordion */}
 				<Card title="Jobs">
-					<style>{`
-						.tech-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.2s ease; }
-						.tech-scroll:hover { scrollbar-color: #52525b #27272a; }
-						.tech-scroll::-webkit-scrollbar { width: 6px; }
-						.tech-scroll::-webkit-scrollbar-track { background: transparent; }
-						.tech-scroll:hover::-webkit-scrollbar-track { background: #27272a; border-radius: 3px; }
-						.tech-scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; }
-						.tech-scroll:hover::-webkit-scrollbar-thumb { background-color: #52525b; }
-						.tech-scroll::-webkit-scrollbar-thumb:hover { background-color: #71717a; }
-					`}</style>
 					{groupedJobs.length === 0 ? (
 						<div className="py-10 text-center">
-							<div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-800 rounded-full mb-3">
+							<div className="inline-flex items-center justify-center w-12 h-12 bg-surface rounded-full mb-3">
 								<Briefcase
 									size={20}
-									className="text-zinc-500"
+									className="text-text-muted"
 								/>
 							</div>
-							<p className="text-sm text-zinc-400">
+							<p className="text-sm text-text-tertiary">
 								No jobs assigned
 							</p>
 						</div>
 					) : (
-						<div className="overflow-y-auto tech-scroll max-h-[520px] -mt-4 -mx-4">
+						<div className="overflow-y-auto scrollbar-on-hover max-h-[520px] -mt-4 -mx-4">
 							{groupedJobs.map(({ job, visits }) => {
 								const isExpanded = expandedJobs.has(
 									job.id
@@ -374,7 +382,7 @@ export default function TechnicianDetailsPage() {
 									JobStatusColors[
 										job.status as JobStatus
 									] ??
-									"bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+									"bg-neutral/20 text-text-tertiary border-border-strong/30";
 								const jobLabel =
 									JobStatusLabels[
 										job.status as JobStatus
@@ -382,7 +390,7 @@ export default function TechnicianDetailsPage() {
 								return (
 									<div
 										key={job.id}
-										className="border-b border-zinc-800"
+										className="border-b border-border-subtle"
 									>
 										{/* Job row*/}
 										<div className="flex items-stretch">
@@ -392,21 +400,21 @@ export default function TechnicianDetailsPage() {
 														`/dispatch/jobs/${job.id}`
 													)
 												}
-												className="w-1/4 flex items-center gap-2 pl-4 pr-3 py-2.5 border-r border-zinc-800 hover:bg-zinc-800/60 transition-colors text-left group flex-shrink-0"
+												className="w-1/4 flex items-center gap-2 pl-4 pr-3 py-2.5 border-r border-border-subtle hover:bg-surface/60 transition-colors text-left group flex-shrink-0"
 											>
 												<Briefcase
 													size={
 														14
 													}
-													className="text-zinc-500 group-hover:text-zinc-300 transition-colors flex-shrink-0"
+													className="text-text-muted group-hover:text-text-secondary transition-colors flex-shrink-0"
 												/>
 												<div className="min-w-0">
-													<p className="text-xs font-medium text-zinc-300 group-hover:text-white transition-colors truncate leading-tight">
+													<p className="text-xs font-medium text-text-secondary group-hover:text-text-primary transition-colors truncate leading-tight">
 														{
 															job.name
 														}
 													</p>
-													<p className="text-[11px] text-zinc-500 truncate leading-tight">
+													<p className="text-[11px] text-text-muted truncate leading-tight">
 														{
 															job
 																.client
@@ -422,11 +430,11 @@ export default function TechnicianDetailsPage() {
 														job.id
 													)
 												}
-												className="flex-1 flex items-center gap-2 px-3 py-2.5 hover:bg-zinc-800/40 transition-colors text-left group min-w-0"
+												className="flex-1 flex items-center gap-2 px-3 py-2.5 hover:bg-surface/40 transition-colors text-left group min-w-0"
 											>
 												<div className="flex-1 min-w-0">
 													{job.address && (
-														<p className="text-xs text-zinc-500 truncate flex items-center gap-1">
+														<p className="text-xs text-text-muted truncate flex items-center gap-1">
 															<MapPin
 																size={
 																	10
@@ -439,7 +447,7 @@ export default function TechnicianDetailsPage() {
 														</p>
 													)}
 												</div>
-												<span className="text-[10px] text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap flex-shrink-0">
+												<span className="text-[10px] text-text-muted bg-surface border border-border rounded px-1.5 py-0.5 whitespace-nowrap flex-shrink-0">
 													{
 														visits.length
 													}{" "}
@@ -460,14 +468,14 @@ export default function TechnicianDetailsPage() {
 													size={
 														13
 													}
-													className={`text-zinc-500 group-hover:text-zinc-300 transition-transform duration-200 flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`}
+													className={`text-text-muted group-hover:text-text-secondary transition-transform duration-200 flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`}
 												/>
 											</button>
 										</div>
 
 										{/* Expanded visit rows */}
 										{isExpanded && (
-											<div className="border-t border-zinc-800">
+											<div className="border-t border-border-subtle">
 												{visits.map(
 													(
 														visit
@@ -476,7 +484,7 @@ export default function TechnicianDetailsPage() {
 															VisitStatusColors[
 																visit.status as VisitStatus
 															] ??
-															"bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+															"bg-neutral/20 text-text-tertiary border-border-strong/30";
 														const visitLabel =
 															VisitStatusLabels[
 																visit.status as VisitStatus
@@ -492,19 +500,19 @@ export default function TechnicianDetailsPage() {
 																		`/dispatch/jobs/${job.id}/visits/${visit.id}`
 																	)
 																}
-																className="w-full flex items-center gap-3 pl-10 pr-4 py-2 border-b border-zinc-800/60 last:border-b-0 hover:bg-zinc-800/40 transition-colors text-left group"
+																className="w-full flex items-center gap-3 pl-10 pr-4 py-2 border-b border-border-subtle/60 last:border-b-0 hover:bg-surface/40 transition-colors text-left group"
 															>
 																<div className="flex-1 min-w-0">
 																	<div className="flex items-center gap-1.5 flex-wrap">
-																		<span className="text-xs font-medium text-zinc-300 group-hover:text-white transition-colors">
+																		<span className="text-xs font-medium text-text-secondary group-hover:text-text-primary transition-colors">
 																			{fmtDate(
 																				visit.scheduled_start_at
 																			)}
 																		</span>
-																		<span className="text-zinc-700">
+																		<span className="text-border">
 																			·
 																		</span>
-																		<span className="text-xs text-zinc-500">
+																		<span className="text-xs text-text-muted">
 																			{fmtTime(
 																				visit.scheduled_start_at
 																			)}{" "}
@@ -515,7 +523,7 @@ export default function TechnicianDetailsPage() {
 																		</span>
 																	</div>
 																	{visit.actual_start_at && (
-																		<p className="text-[11px] text-zinc-600 mt-0.5">
+																		<p className="text-[11px] text-text-faint mt-0.5">
 																			Actual:{" "}
 																			{fmtTime(
 																				visit.actual_start_at
@@ -538,7 +546,7 @@ export default function TechnicianDetailsPage() {
 																		size={
 																			11
 																		}
-																		className="text-zinc-600 group-hover:text-zinc-400 transition-colors"
+																		className="text-text-faint group-hover:text-text-tertiary transition-colors"
 																	/>
 																</div>
 															</button>
@@ -557,14 +565,14 @@ export default function TechnicianDetailsPage() {
 
 			{/* Location placeholder */}
 			<Card title="Current Location">
-				<div className="w-full h-48 bg-zinc-800/50 rounded-lg border border-zinc-700 flex items-center justify-center">
+				<div className="w-full h-48 bg-surface/50 rounded-lg border border-border flex items-center justify-center">
 					<div className="text-center">
 						<MapPin
 							size={36}
-							className="text-zinc-600 mx-auto mb-2"
+							className="text-text-faint mx-auto mb-2"
 						/>
-						<p className="text-zinc-400 text-sm">Map view</p>
-						<p className="text-zinc-500 text-xs mt-1">
+						<p className="text-text-tertiary text-sm">Map view</p>
+						<p className="text-text-muted text-xs mt-1">
 							Location tracking integration pending
 						</p>
 					</div>

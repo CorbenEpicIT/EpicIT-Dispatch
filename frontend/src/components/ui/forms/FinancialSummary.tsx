@@ -1,20 +1,45 @@
 import { RotateCcw } from "lucide-react";
 import { useState, useEffect } from "react";
+import type { GroupTaxSummary } from "../../../hooks/forms/useFinancialCalculations";
+import type { TaxSnapshot } from "../../../types/tax";
+import { formatTaxGroupLabel } from "../../../types/tax";
+import { formatRatePercentLabel } from "../../../lib/formatTax";
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface FinancialSummaryProps {
 	subtotal: number;
-	taxRate: number;
-	taxAmount: number;
 	discountType: "percent" | "amount";
 	discountValue: number;
 	discountAmount: number;
 	total: number;
 	isLoading: boolean;
-	onTaxRateChange: (rate: number) => void;
 	onDiscountTypeChange: (type: "percent" | "amount") => void;
 	onDiscountValueChange: (value: number) => void;
 	totalLabel?: string;
 
+	// ── Legacy single-rate props (kept for backward compat) ─────────────────
+	/** @deprecated Use groupsSummary + totalTax for new callers */
+	taxRate?: number;
+	/** @deprecated Use groupsSummary + totalTax for new callers */
+	taxAmount?: number;
+	/** @deprecated Use groupsSummary + totalTax for new callers */
+	onTaxRateChange?: (rate: number) => void;
+
+	// ── Multi-group additions (optional — new callers) ───────────────────────
+	/** Per-group tax breakdown from useFinancialCalculations */
+	groupsSummary?: GroupTaxSummary[];
+	/** Total tax across all groups */
+	totalTax?: number;
+
+	// ── Snapshot display (issued invoices) ───────────────────────────────────
+	/** When set, all financial values are read from the snapshot (readonly display) */
+	snapshot?: TaxSnapshot | null;
+
+	// ── Context ───────────────────────────────────────────────────────────────
+	clientExempt?: boolean;
+
+	// ── Edit mode ─────────────────────────────────────────────────────────────
 	mode?: "create" | "edit";
 	isTaxDirty?: boolean;
 	isDiscountDirty?: boolean;
@@ -22,19 +47,40 @@ interface FinancialSummaryProps {
 	onDiscountUndo?: () => void;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a decimal rate (0–1) as a percentage string, e.g. 0.085 → "8.5%" */
+const fmtRate = formatRatePercentLabel;
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 const FinancialSummary = ({
 	subtotal,
-	taxRate,
-	taxAmount,
 	discountType,
 	discountValue,
 	discountAmount,
 	total,
 	isLoading,
-	onTaxRateChange,
 	onDiscountTypeChange,
 	onDiscountValueChange,
 	totalLabel = "Total Amount",
+
+	// legacy
+	taxRate = 0,
+	taxAmount = 0,
+	onTaxRateChange,
+
+	// multi-group
+	groupsSummary,
+	totalTax,
+
+	// snapshot
+	snapshot = null,
+
+	// context
+	clientExempt = false,
+
+	// edit mode
 	mode = "create",
 	isTaxDirty = false,
 	isDiscountDirty = false,
@@ -58,7 +104,7 @@ const FinancialSummary = ({
 	const handleTaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const val = e.target.value;
 		setTaxDisplay(val);
-		if (val !== "") onTaxRateChange(parseFloat(val) || 0);
+		if (val !== "" && onTaxRateChange) onTaxRateChange(parseFloat(val) || 0);
 	};
 
 	const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,174 +116,281 @@ const FinancialSummary = ({
 	const taxRowDirty = showDirty && isTaxDirty;
 	const discountRowDirty = showDirty && isDiscountDirty;
 
+	// ── Determine display mode ─────────────────────────────────────────────────
+
+	const isSnapshotDisplay = snapshot !== null;
+
+	// Values to actually render (snapshot overrides live props)
+	const displaySubtotal = isSnapshotDisplay ? snapshot.subtotal_cents / 100 : subtotal;
+	const displayDiscountAmount = isSnapshotDisplay
+		? snapshot.discount_cents / 100
+		: discountAmount;
+	const displayTotal = isSnapshotDisplay ? snapshot.total_cents / 100 : total;
+
+	// ── Resolve tax rows ───────────────────────────────────────────────────────
+
+	type TaxRow = { label: string; amount: number; key: string };
+
+	const taxRows: TaxRow[] = (() => {
+		if (clientExempt) return [];
+
+		// Snapshot mode: derive rows from snapshot.groups
+		if (isSnapshotDisplay) {
+			if (snapshot.groups.length === 0) return [];
+			return snapshot.groups.map((sg) => {
+				const rateStr = sg.rates
+					.map((r) => fmtRate(r.rate))
+					.join(" + ");
+				const label =
+					sg.rates.length > 0
+						? `Tax — ${sg.name} (${rateStr})`
+						: `Tax — ${sg.name}`;
+				return {
+					label,
+					amount: sg.tax_amount_cents / 100,
+					key: sg.id,
+				};
+			});
+		}
+
+		// Multi-group live mode
+		if (groupsSummary && groupsSummary.length > 0) {
+			if (groupsSummary.length === 1) {
+				const gs = groupsSummary[0];
+				return [
+					{
+						label: `Tax (${fmtRate(gs.group.combined_rate)})`,
+						amount: gs.tax_amount,
+						key: gs.group.id,
+					},
+				];
+			}
+			return groupsSummary.map((gs) => ({
+				label: `Tax — ${formatTaxGroupLabel(gs.group)}`,
+				amount: gs.tax_amount,
+				key: gs.group.id,
+			}));
+		}
+
+		// Legacy single-rate mode: show editable rate row if onTaxRateChange exists.
+		// Return [] here — useLegacyTaxRow (below) distinguishes this from "truly no tax".
+		return [];
+	})();
+
+	// Whether we should fall back to the legacy editable tax-rate row
+	const useLegacyTaxRow =
+		!isSnapshotDisplay &&
+		(!groupsSummary || groupsSummary.length === 0) &&
+		onTaxRateChange !== undefined;
+
+	// Effective total tax for display
+	const displayTotalTax = isSnapshotDisplay
+		? snapshot.total_tax_cents / 100
+		: (totalTax ?? taxAmount);
+
 	return (
-		<div className="relative w-full bg-zinc-900 rounded-lg border border-zinc-700 shadow-xl overflow-hidden">
+		<div className="relative w-full bg-base rounded-lg border border-border shadow-xl overflow-hidden">
 			{/* Loading overlay */}
 			{isLoading && (
-				<div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-					<div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+				<div className="absolute inset-0 bg-base/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+					<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
 				</div>
 			)}
 
 			{/* Header */}
-			<div className="flex items-center justify-between px-3 py-2 bg-zinc-800 border-b border-zinc-700">
-				<h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">
+			<div className="flex items-center justify-between px-3 py-2 bg-surface border-b border-border">
+				<h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
 					Financial Summary
 				</h3>
 				<div className="text-right">
-					<span className="text-[10px] text-zinc-500 uppercase font-semibold block leading-none">
+					<span className="text-[10px] text-text-muted uppercase font-semibold block leading-none">
 						Subtotal
 					</span>
-					<span className="text-sm font-semibold text-zinc-300 font-mono tabular-nums">
-						${subtotal.toFixed(2)}
+					<span className="text-sm font-semibold text-text-secondary font-mono tabular-nums">
+						${displaySubtotal.toFixed(2)}
 					</span>
 				</div>
 			</div>
 
 			{/* Body */}
 			<div className="p-2 space-y-2">
-				{/* Tax Row */}
-				<div
-					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
-						taxRowDirty
-							? "bg-blue-500/5 border-l-2 border-l-blue-500"
-							: "hover:bg-zinc-800/30"
-					}`}
-				>
-					<div className="flex items-center gap-3 flex-1">
-						<div className="relative flex items-center">
-							<input
-								type="number"
-								step="0.01"
-								min="0"
-								max="100"
-								value={taxDisplay}
-								onChange={handleTaxChange}
-								onBlur={() => {
-									if (
-										taxDisplay === "" ||
-										isNaN(
-											parseFloat(
-												taxDisplay
-											)
-										)
-									) {
-										setTaxDisplay(
-											String(
-												taxRate
-											)
-										);
-									}
-								}}
-								className="w-20 h-7 bg-zinc-950 border border-zinc-700 rounded text-zinc-200 text-xs pl-2 pr-6 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none transition-all disabled:opacity-50"
-								disabled={isLoading}
-							/>
-							<span className="absolute right-2 text-zinc-500 text-[10px] font-medium">
-								%
-							</span>
-						</div>
-						<div className="flex flex-col">
-							<span className="text-xs font-medium text-zinc-300">
-								Tax Rate
-							</span>
-							{taxRowDirty && (
-								<span className="text-[10px] text-blue-400 font-medium">
-									Modified
+				{/* ── Tax Section ────────────────────────────────────────────── */}
+				{clientExempt ? (
+					/* Client exempt badge */
+					<div className="flex items-center justify-between p-2 rounded-md">
+						<span className="text-xs font-medium text-text-secondary">Tax</span>
+						<span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-success/15 text-success-text border border-success/25">
+							Exempt
+						</span>
+					</div>
+				) : useLegacyTaxRow ? (
+					/* Legacy editable single-rate tax row */
+					<div
+						className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
+							taxRowDirty
+								? "bg-primary/5 border-l-2 border-l-primary"
+								: "hover:bg-surface/30"
+						}`}
+					>
+						<div className="flex items-center gap-3 flex-1">
+							<div className="relative flex items-center">
+								<input
+									type="number"
+									step="0.01"
+									min="0"
+									max="100"
+									value={taxDisplay}
+									onChange={handleTaxChange}
+									onBlur={() => {
+										if (
+											taxDisplay === "" ||
+											isNaN(parseFloat(taxDisplay))
+										) {
+											setTaxDisplay(String(taxRate));
+										}
+									}}
+									className="w-20 h-7 bg-canvas border border-border rounded text-text-primary text-xs pl-2 pr-6 font-mono focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all disabled:opacity-50"
+									disabled={isLoading}
+								/>
+								<span className="absolute right-2 text-text-muted text-[10px] font-medium">
+									%
 								</span>
+							</div>
+							<div className="flex flex-col">
+								<span className="text-xs font-medium text-text-secondary">
+									Tax Rate
+								</span>
+								{taxRowDirty && (
+									<span className="text-[10px] text-primary-text font-medium">
+										Modified
+									</span>
+								)}
+							</div>
+						</div>
+						<div className="flex items-center gap-3">
+							<span className="text-sm font-mono text-text-secondary tabular-nums w-20 text-right">
+								${taxAmount.toFixed(2)}
+							</span>
+							{taxRowDirty && onTaxUndo && (
+								<button
+									type="button"
+									onClick={onTaxUndo}
+									className="p-1.5 rounded-full hover:bg-surface-raised text-text-muted hover:text-primary-text transition-colors"
+									title="Revert Tax Rate"
+								>
+									<RotateCcw size={12} />
+								</button>
 							)}
 						</div>
 					</div>
-					<div className="flex items-center gap-3">
-						<span className="text-sm font-mono text-zinc-300 tabular-nums w-20 text-right">
-							${taxAmount.toFixed(2)}
-						</span>
-						{taxRowDirty && onTaxUndo && (
-							<button
-								type="button"
-								onClick={onTaxUndo}
-								className="p-1.5 rounded-full hover:bg-zinc-700 text-zinc-500 hover:text-blue-400 transition-colors"
-								title="Revert Tax Rate"
+				) : taxRows.length > 0 ? (
+					/* Multi-group / snapshot tax rows */
+					<div className="space-y-1">
+						{taxRows.map((row) => (
+							<div
+								key={row.key}
+								className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-surface/30 transition-colors"
 							>
-								<RotateCcw size={12} />
-							</button>
+								<span className="text-xs font-medium text-text-secondary">
+									{row.label}
+								</span>
+								<span className="text-sm font-mono text-text-secondary tabular-nums w-20 text-right">
+									${row.amount.toFixed(2)}
+								</span>
+							</div>
+						))}
+						{taxRows.length > 1 && (
+							<div className="flex items-center justify-between px-2 py-1 border-t border-border-subtle mt-1">
+								<span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">
+									Total Tax
+								</span>
+								<span className="text-xs font-mono text-text-muted tabular-nums w-20 text-right">
+									${displayTotalTax.toFixed(2)}
+								</span>
+							</div>
 						)}
 					</div>
-				</div>
+				) : (
+					/* No tax groups, no legacy rate — show zero tax row */
+					<div className="flex items-center justify-between px-2 py-1.5 rounded-md">
+						<span className="text-xs font-medium text-text-secondary">Tax</span>
+						<span className="text-sm font-mono text-text-secondary tabular-nums w-20 text-right">
+							$0.00
+						</span>
+					</div>
+				)}
 
-				{/* Discount Row */}
+				{/* ── Discount Row ────────────────────────────────────────────── */}
 				<div
 					className={`group relative flex items-center justify-between p-2 rounded-md transition-all ${
 						discountRowDirty
-							? "bg-blue-500/5 border-l-2 border-l-blue-500"
-							: "hover:bg-zinc-800/30"
+							? "bg-primary/5 border-l-2 border-l-primary"
+							: "hover:bg-surface/30"
 					}`}
 				>
 					<div className="flex items-center gap-3 flex-1">
-						<div className="flex items-center bg-zinc-950 rounded border border-zinc-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all h-7">
-							<button
-								type="button"
-								onClick={() =>
-									onDiscountTypeChange(
-										discountType ===
-											"amount"
-											? "percent"
-											: "amount"
-									)
-								}
-								className="h-full px-2 text-[10px] font-bold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-l transition-colors border-r border-zinc-800"
-								disabled={isLoading}
-							>
-								{discountType === "amount"
-									? "$"
-									: "%"}
-							</button>
-							<input
-								type="number"
-								step="0.01"
-								min="0"
-								value={discountDisplay}
-								onChange={handleDiscountChange}
-								onBlur={() => {
-									if (
-										discountDisplay ===
-											"" ||
-										isNaN(
-											parseFloat(
-												discountDisplay
-											)
+						{isSnapshotDisplay ? (
+							/* Snapshot: show discount as read-only */
+							<div className="flex flex-col">
+								<span className="text-xs font-medium text-text-secondary">
+									Discount
+								</span>
+							</div>
+						) : (
+							<div className="flex items-center bg-canvas rounded border border-border focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all h-7">
+								<button
+									type="button"
+									onClick={() =>
+										onDiscountTypeChange(
+											discountType === "amount"
+												? "percent"
+												: "amount"
 										)
-									) {
-										setDiscountDisplay(
-											String(
-												discountValue
-											)
-										);
 									}
-								}}
-								className="w-16 bg-transparent border-none text-zinc-200 text-xs pl-2 pr-2 font-mono outline-none disabled:opacity-50"
-								disabled={isLoading}
-							/>
-						</div>
+									className="h-full px-2 text-[10px] font-bold text-text-tertiary hover:text-text-primary hover:bg-surface rounded-l transition-colors border-r border-border-subtle"
+									disabled={isLoading}
+								>
+									{discountType === "amount" ? "$" : "%"}
+								</button>
+								<input
+									type="number"
+									step="0.01"
+									min="0"
+									value={discountDisplay}
+									onChange={handleDiscountChange}
+									onBlur={() => {
+										if (
+											discountDisplay === "" ||
+											isNaN(parseFloat(discountDisplay))
+										) {
+											setDiscountDisplay(String(discountValue));
+										}
+									}}
+									className="w-16 bg-transparent border-none text-text-primary text-xs pl-2 pr-2 font-mono outline-none disabled:opacity-50"
+									disabled={isLoading}
+								/>
+							</div>
+						)}
 						<div className="flex flex-col">
-							<span className="text-xs font-medium text-zinc-300">
+							<span className="text-xs font-medium text-text-secondary">
 								Discount
 							</span>
 							{discountRowDirty && (
-								<span className="text-[10px] text-blue-400 font-medium">
+								<span className="text-[10px] text-primary-text font-medium">
 									Modified
 								</span>
 							)}
 						</div>
 					</div>
 					<div className="flex items-center gap-3">
-						<span className="text-sm font-mono text-emerald-400/90 tabular-nums w-20 text-right">
-							-${discountAmount.toFixed(2)}
+						<span className="text-sm font-mono text-success-text/90 tabular-nums w-20 text-right">
+							-${displayDiscountAmount.toFixed(2)}
 						</span>
 						{discountRowDirty && onDiscountUndo && (
 							<button
 								type="button"
 								onClick={onDiscountUndo}
-								className="p-1.5 rounded-full hover:bg-zinc-700 text-zinc-500 hover:text-blue-400 transition-colors"
+								className="p-1.5 rounded-full hover:bg-surface-raised text-text-muted hover:text-primary-text transition-colors"
 								title="Revert Discount"
 							>
 								<RotateCcw size={12} />
@@ -248,12 +401,12 @@ const FinancialSummary = ({
 			</div>
 
 			{/* Footer / Total */}
-			<div className="bg-zinc-800/80 px-4 py-2 border-t border-zinc-700 flex items-center justify-between">
-				<span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+			<div className="bg-surface/80 px-4 py-2 border-t border-border flex items-center justify-between">
+				<span className="text-xs font-bold text-text-tertiary uppercase tracking-wider">
 					{totalLabel}
 				</span>
-				<span className="text-lg font-bold text-white font-mono tabular-nums tracking-tight">
-					${total.toFixed(2)}
+				<span className="text-lg font-bold text-text-primary font-mono tabular-nums tracking-tight">
+					${displayTotal.toFixed(2)}
 				</span>
 			</div>
 		</div>

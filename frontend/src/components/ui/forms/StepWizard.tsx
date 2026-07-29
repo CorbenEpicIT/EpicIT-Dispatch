@@ -47,6 +47,11 @@ const StepWizard = <T extends number>({
 	const stepStates = useMemo(() => {
 		return steps.map((step, index) => {
 			const isCurrent = currentStep === step.id;
+			// Completed (green) = positionally before the current step.
+			// Pending (yellow) = ahead of the current step but already
+			// visited/filled — only reachable by navigating backward, and
+			// signals "this step has content" distinctly from a step that's
+			// accessible-but-untouched.
 			const isCompleted = currentStep > step.id;
 			const isAccessible = canGoToStep(step.id);
 			const isLocked = !isAccessible && !isCompleted;
@@ -67,31 +72,31 @@ const StepWizard = <T extends number>({
 
 	const getStepStyles = (state: (typeof stepStates)[0]) => {
 		if (state.isCurrent)
-			return "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/50";
+			return "bg-primary-hover border-primary text-on-primary shadow-lg shadow-primary-bg";
 		if (state.isCompleted)
-			return "bg-green-600 border-green-600 text-white hover:bg-green-500";
+			return "bg-confirm border-confirm text-on-primary hover:bg-confirm-hover";
 		if (state.isPending)
-			return "bg-yellow-500 border-yellow-500 text-zinc-900 hover:bg-yellow-400 font-bold";
+			return "bg-warning border-warning-border text-on-primary hover:bg-warning font-bold";
 		if (state.isAccessible && !state.isCompleted && !state.isCurrent)
-			return "bg-zinc-900 border-zinc-800 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400";
-		return "bg-zinc-900 border-zinc-800 text-zinc-600";
+			return "bg-base border-border-subtle text-text-faint hover:bg-surface hover:text-text-tertiary";
+		return "bg-base border-border-subtle text-text-faint";
 	};
 
 	const getLabelColor = (state: (typeof stepStates)[0]) => {
-		if (state.isCurrent) return "text-white";
-		if (state.isCompleted) return "text-green-400";
-		if (state.isPending) return "text-yellow-400";
-		return "text-zinc-600";
+		if (state.isCurrent) return "text-primary-text";
+		if (state.isCompleted) return "text-success-text";
+		if (state.isPending) return "text-warning-text";
+		return "text-text-faint";
 	};
 
 	const getLineColor = (index: number) => {
 		if (index >= steps.length - 1) return "";
 		const nextState = stepStates[index + 1];
-		if (!nextState) return "bg-zinc-800";
-		if (nextState.isCompleted) return "bg-green-600";
-		if (nextState.isCurrent) return "bg-blue-600";
-		if (nextState.isPending) return "bg-yellow-500";
-		return "bg-zinc-800";
+		if (!nextState) return "bg-border-subtle";
+		if (nextState.isCompleted) return "bg-confirm";
+		if (nextState.isCurrent) return "bg-primary-hover";
+		if (nextState.isPending) return "bg-warning";
+		return "bg-border-subtle";
 	};
 
 	const getCursorStyle = (state: (typeof stepStates)[0]) => {
@@ -148,8 +153,8 @@ const StepWizard = <T extends number>({
 								</button>
 								<span
 									className={`
-										mt-2 text-xs font-medium transition-colors duration-300 
-										whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]
+										mt-2 text-xs font-medium transition-colors duration-300
+										max-w-[96px] leading-tight text-center
 										${getLabelColor(state)}
 									`}
 									title={state.label}
@@ -172,21 +177,21 @@ const StepWizard = <T extends number>({
 
 			{/* Content Area  */}
 			{children && (
-				<div className="flex-1 overflow-y-auto custom-scrollbar">
+				<div className="flex-1 overflow-y-auto">
 					{children}
 				</div>
 			)}
 
 			{/* Navigation Footer */}
 			{showNavigation && (
-				<div className="flex items-center justify-between border-t border-zinc-700 bg-zinc-900/50">
+				<div className="flex items-center justify-between border-t border-border bg-base/50">
 					<div>
 						{!isFirstStep && onBack && (
 							<button
 								type="button"
 								onClick={onBack}
 								disabled={isLoading}
-								className="flex items-center gap-1 px-4 py-2 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
+								className="flex items-center gap-1 px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-surface rounded-md transition-colors disabled:opacity-50"
 							>
 								<ChevronLeft size={18} />
 								{backLabel}
@@ -200,7 +205,7 @@ const StepWizard = <T extends number>({
 								type="button"
 								onClick={onCancel}
 								disabled={isLoading}
-								className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
+								className="px-4 py-2 text-text-tertiary hover:text-text-primary hover:bg-surface rounded-md transition-colors disabled:opacity-50"
 							>
 								{cancelLabel}
 							</button>
@@ -211,7 +216,7 @@ const StepWizard = <T extends number>({
 								type="button"
 								onClick={onNext}
 								disabled={!canGoNext || isLoading}
-								className="flex items-center gap-1 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-400 text-white rounded-md font-medium transition-colors"
+								className="flex items-center gap-1 px-5 py-2 bg-primary-hover hover:bg-primary-active disabled:bg-surface-raised disabled:text-text-tertiary text-on-primary rounded-md font-medium transition-colors"
 							>
 								{nextLabel}
 								<ChevronRight size={18} />
@@ -223,7 +228,7 @@ const StepWizard = <T extends number>({
 								disabled={isLoading}
 								className={`
 									flex items-center gap-2 px-5 py-2 rounded-md font-bold transition-colors
-									${isLoading ? "bg-green-700 text-green-100 cursor-wait" : "bg-green-600 hover:bg-green-700 text-white"}
+									${isLoading ? "bg-confirm text-on-primary cursor-wait" : "bg-confirm hover:bg-confirm-hover text-on-primary"}
 								`}
 							>
 								{isLoading ? (

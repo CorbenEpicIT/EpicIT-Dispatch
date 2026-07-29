@@ -1,5 +1,6 @@
 import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
+import { triggerDownload } from "../util/download";
 import type {
 	InventoryItem,
 	InventoryTag,
@@ -72,6 +73,18 @@ export const adjustStock = async (
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to adjust stock");
+	}
+
+	return response.data.data!;
+};
+
+export const scanInventoryItem = async (code: string): Promise<InventoryItem> => {
+	const response = await api.get<ApiResponse<InventoryItem>>("/inventory/scan", {
+		params: { code },
+	});
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "No item found");
 	}
 
 	return response.data.data!;
@@ -158,15 +171,6 @@ export const setItemTags = async (itemId: string, tagIds: string[]): Promise<Inv
 	const response = await api.put<ApiResponse<InventoryItem>>(`/inventory/${itemId}/tags`, { tag_ids: tagIds });
 	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to set tags");
 	return response.data.data!;
-};
-
-const triggerDownload = (blob: Blob, filename: string) => {
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = filename;
-	a.click();
-	URL.revokeObjectURL(url);
 };
 
 export const downloadInventoryTemplate = async (): Promise<void> => {

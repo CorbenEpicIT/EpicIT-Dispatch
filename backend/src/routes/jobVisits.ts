@@ -5,6 +5,7 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import { getUserContext } from '../lib/context.js';
+import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 import {
     getAllJobVisits,
     getJobVisitById,
@@ -17,14 +18,16 @@ import {
     deleteJobVisit,
     applyVisitTransition,
     LIFECYCLE_TRANSITIONS,
+    getRecentStatusEvents,
 } from '../controllers/jobVisitsController.js';
 import { clockInVisit, clockOutVisit } from "../controllers/visitTimeEntriesController.js";
-import { addPartsUsed } from "../controllers/vehiclesController.js";
+import { addPartsUsed, addSupplierPartUsed } from "../controllers/vehiclesController.js";
+import { db } from "../db.js";
 
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requireAnyPermission("view_jobs", "view_visits", "view_assigned_jobs"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const visits = await getAllJobVisits(orgId);
@@ -34,9 +37,19 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/recent-status-events", requireAnyPermission("view_jobs", "view_visits", "view_assigned_jobs"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
+        const events = await getRecentStatusEvents(orgId);
+        res.json(createSuccessResponse(events));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id", requireAnyPermission("view_jobs", "view_visits", "view_assigned_jobs"), async (req, res, next) => {
+    try {
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const visit = await getJobVisitById(id, orgId);
 
@@ -59,9 +72,10 @@ router.get("/:id", async (req, res, next) => {
 
 router.get(
     "/date-range/:startDate/:endDate",
+    requireAnyPermission("view_jobs", "view_visits", "view_assigned_jobs"),
     async (req, res, next) => {
         try {
-            const { startDate, endDate } = req.params;
+            const { startDate, endDate } = req.params as { startDate: string; endDate: string };
             const start = new Date(startDate);
             const end = new Date(endDate);
             const orgId = req.user!.organization_id as string;
@@ -85,7 +99,7 @@ router.get(
     },
 );
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireAnyPermission("create_jobs", "edit_jobs"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -108,7 +122,7 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -131,9 +145,9 @@ router.put("/:id", async (req, res, next) => {
     }
 });
 
-router.put("/:id/technicians", async (req, res, next) => {
+router.put("/:id/technicians", requirePermission("edit_jobs"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const { tech_ids } = req.body;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -170,9 +184,9 @@ router.put("/:id/technicians", async (req, res, next) => {
     }
 });
 
-router.post("/:id/accept", async (req, res, next) => {
+router.post("/:id/accept", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const { tech_id } = req.body;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -211,7 +225,7 @@ router.post("/:id/accept", async (req, res, next) => {
 
 // ── Time tracking ─────────────────────────────────────────────────────────────
 
-router.post("/:id/clock-in", async (req, res, next) => {
+router.post("/:id/clock-in", requirePermission("check_in"), async (req, res, next) => {
     try {
         const { tech_id } = req.body as { tech_id?: string };
         if (!tech_id) {
@@ -220,7 +234,8 @@ router.post("/:id/clock-in", async (req, res, next) => {
             );
         }
         const orgId = req.user!.organization_id as string;
-        const result = await clockInVisit(req.params.id, tech_id, orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await clockInVisit(id, tech_id, orgId, getUserContext(req));
         if (result.err) {
             if (result.err.startsWith("ALREADY_CLOCKED_IN:")) {
                 return res.status(409).json(createErrorResponse(ErrorCodes.CONFLICT, result.err));
@@ -233,16 +248,17 @@ router.post("/:id/clock-in", async (req, res, next) => {
     }
 });
 
-router.post("/:id/clock-out", async (req, res, next) => {
+router.post("/:id/clock-out", requirePermission("check_out"), async (req, res, next) => {
     try {
-        const { tech_id } = req.body as { tech_id?: string };
+        const { tech_id, pause_reason } = req.body as { tech_id?: string; pause_reason?: string };
         if (!tech_id) {
             return res.status(400).json(
                 createErrorResponse(ErrorCodes.INVALID_INPUT, "tech_id is required", null, "tech_id"),
             );
         }
         const orgId = req.user!.organization_id as string;
-        const result = await clockOutVisit(req.params.id, tech_id, orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await clockOutVisit(id, tech_id, orgId, getUserContext(req), pause_reason);
         if (result.err) {
             return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -254,10 +270,11 @@ router.post("/:id/clock-out", async (req, res, next) => {
 
 // ── Lifecycle actions ────────────────────────────────────────────────────────
 
-router.post("/:id/start", async (req, res, next) => {
+router.post("/:id/start", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const result = await applyVisitTransition(req.params.id, "start", orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await applyVisitTransition(id, "start", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -267,10 +284,11 @@ router.post("/:id/start", async (req, res, next) => {
     }
 });
 
-router.post("/:id/pause", async (req, res, next) => {
+router.post("/:id/pause", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const result = await applyVisitTransition(req.params.id, "pause", orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await applyVisitTransition(id, "pause", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -280,10 +298,11 @@ router.post("/:id/pause", async (req, res, next) => {
     }
 });
 
-router.post("/:id/resume", async (req, res, next) => {
+router.post("/:id/resume", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const result = await applyVisitTransition(req.params.id, "resume", orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await applyVisitTransition(id, "resume", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -293,10 +312,11 @@ router.post("/:id/resume", async (req, res, next) => {
     }
 });
 
-router.post("/:id/complete", async (req, res, next) => {
+router.post("/:id/complete", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const result = await applyVisitTransition(req.params.id, "complete", orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await applyVisitTransition(id, "complete", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -306,11 +326,12 @@ router.post("/:id/complete", async (req, res, next) => {
     }
 });
 
-router.post("/:id/cancel", async (req, res, next) => {
+router.post("/:id/cancel", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
         const { cancellation_reason } = req.body as { cancellation_reason?: string };
         const orgId = req.user!.organization_id as string;
-        const result = await cancelJobVisit(req.params.id, cancellation_reason ?? "", orgId, getUserContext(req));
+        const id = req.params.id as string;
+        const result = await cancelJobVisit(id, cancellation_reason ?? "", orgId, getUserContext(req));
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
@@ -320,9 +341,23 @@ router.post("/:id/cancel", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.post("/:id/delay", requireAnyPermission("edit_jobs", "update_visit_status"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const result = await applyVisitTransition(id, "delay", orgId, getUserContext(req));
+        if (result.err) {
+            return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+        res.json(createSuccessResponse(result.item));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.delete("/:id", requirePermission("delete_jobs"), async (req, res, next) => {
+    try {
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteJobVisit(id, orgId, context);
@@ -344,9 +379,9 @@ router.delete("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/:id/parts-used", async (req, res, next) => {
+router.post("/:id/parts-used", requireAnyPermission("edit_jobs", "use_inventory"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const result = await addPartsUsed(id, req.body, orgId);
         if (result.err) {
@@ -355,28 +390,59 @@ router.post("/:id/parts-used", async (req, res, next) => {
             }
             return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
-        res.status(201).json(createSuccessResponse(result.item));
+        res.status(201).json(createSuccessResponse("item" in result ? result.item : null));
     } catch (err) {
         next(err);
     }
+});
+
+router.post("/:id/parts-used/supplier", requirePermission("use_inventory"), async (req, res, next) => {
+    try {
+        const visitId = req.params.id as string;
+        const orgId = req.user?.organization_id as string;
+        const context = getUserContext(req);
+        // Resolve the caller's current vehicle
+        const tech = await db.technician.findFirst({
+            where: { id: req.user?.uid as string, organization_id: orgId },
+            select: { current_vehicle_id: true },
+        });
+        if (!tech?.current_vehicle_id) {
+            return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No current vehicle"));
+        }
+        const result = await addSupplierPartUsed(tech.current_vehicle_id, visitId, req.body, orgId, context);
+        if (result.err) {
+            if (result.err.includes("not assigned") || result.err.includes("Only technicians")) {
+                return res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, result.err));
+            }
+            const status = result.err.includes("not found") ? 404 : 400;
+            return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
+        }
+        res.status(201).json(createSuccessResponse("item" in result ? result.item : null));
+    } catch (err) { next(err); }
 });
 
 // ── Visit lifecycle routes ────────────────────────────────────────────────────
 
 const LIFECYCLE_ACTIONS = Object.keys(LIFECYCLE_TRANSITIONS) as (keyof typeof LIFECYCLE_TRANSITIONS)[];
 
-router.post("/:id/transition", async (req, res, next) => {
+router.post("/:id/transition", requireAnyPermission("edit_jobs", "update_visit_status", "check_in", "check_out"), async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { action } = req.body;
+        const id = req.params.id as string;
+        const { action, pause_reason, tech_coords } = req.body;
         if (!action || !LIFECYCLE_ACTIONS.includes(action)) {
             return res
                 .status(400)
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, `Invalid action. Must be one of: ${LIFECYCLE_ACTIONS.join(", ")}.`));
         }
+        const rawLat = Number(tech_coords?.lat);
+        const rawLon = Number(tech_coords?.lon);
+        const techCoords =
+            Number.isFinite(rawLat) && Number.isFinite(rawLon)
+                ? { lat: rawLat, lon: rawLon }
+                : null;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
-        const result = await applyVisitTransition(id, action, orgId, context);
+        const result = await applyVisitTransition(id, action, orgId, context, pause_reason, techCoords);
         if (result.err) {
             return res.status(409).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }

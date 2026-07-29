@@ -62,7 +62,7 @@ export default function TimePicker({
 	const anchorRef = useRef<HTMLDivElement>(null);
 	const lastAppliedRef = useRef<number | null>(value?.getTime() ?? null);
 
-	// ── Sync from external value changes (draft restore, undo) ────────────
+	// -- Sync from external value changes (draft restore, undo) ------------
 	useEffect(() => {
 		const incoming = value?.getTime() ?? null;
 		if (incoming === lastAppliedRef.current) return;
@@ -75,7 +75,7 @@ export default function TimePicker({
 		}
 	}, [value]);
 
-	// ── Commit: build a Date from current display state and fire onChange ──
+	// -- Commit: build a Date from current display state and fire onChange --
 	// Tolerates incomplete entries — resolves them to nearest valid value.
 	// Always fires so blur/navigation never silently drops a partial edit.
 	const commit = useCallback(
@@ -105,7 +105,7 @@ export default function TimePicker({
 		[value, onChange]
 	);
 
-	// ── Blur: commit when focus leaves the entire component ───────────────
+	// -- Blur: commit when focus leaves the entire component ---------------
 	const handleBlur = useCallback(
 		(e: React.FocusEvent) => {
 			const related = e.relatedTarget as Node | null;
@@ -120,7 +120,7 @@ export default function TimePicker({
 		[focusedSection, hour, minute, period, commit]
 	);
 
-	// ── Portal positioning ─────────────────────────────────────────────────
+	// -- Portal positioning -------------------------------------------------
 	const openPopup = useCallback(() => {
 		if (!anchorRef.current) return;
 		const rect = anchorRef.current.getBoundingClientRect();
@@ -165,14 +165,14 @@ export default function TimePicker({
 		};
 	}, [open]);
 
-	// ── Keyboard handler ──────────────────────────────────────────────────
+	// -- Keyboard handler --------------------------------------------------
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (!containerRef.current?.contains(e.target as HTMLElement)) return;
 			if (!focusedSection) return;
 			const key = e.key;
 
-			// ── Digits ────────────────────────────────────────────────────
+			// -- Digits ----------------------------------------------------
 			if (/^[0-9]$/.test(key)) {
 				e.preventDefault();
 				const n = parseInt(key);
@@ -225,7 +225,7 @@ export default function TimePicker({
 				return;
 			}
 
-			// ── Period keys ────────────────────────────────────────────────
+			// -- Period keys ------------------------------------------------
 			if (focusedSection === "period") {
 				if (key === "a" || key === "A") {
 					e.preventDefault();
@@ -239,7 +239,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Arrow Up/Down: increment/decrement value ───────────────────
+			// -- Arrow Up/Down: increment/decrement value -------------------
 			if (key === "ArrowUp" || key === "ArrowDown") {
 				e.preventDefault();
 				const delta = key === "ArrowUp" ? 1 : -1;
@@ -262,7 +262,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Navigation ─────────────────────────────────────────────────
+			// -- Navigation -------------------------------------------------
 			if (key === "ArrowRight" || key === "Tab" || key === ":" || key === " ") {
 				e.preventDefault();
 				if (focusedSection === "hour") {
@@ -294,7 +294,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Backspace: clear section and step back ─────────────────────
+			// -- Backspace: clear section and step back ---------------------
 			if (key === "Backspace") {
 				e.preventDefault();
 				if (focusedSection === "hour") {
@@ -308,7 +308,7 @@ export default function TimePicker({
 				}
 			}
 
-			// ── Enter: commit and release focus ───────────────────────────
+			// -- Enter: commit and release focus ---------------------------
 			if (key === "Enter" || key === "Escape") {
 				e.preventDefault();
 				commit(hour, minute, period);
@@ -379,10 +379,10 @@ export default function TimePicker({
 				small ? "px-0.5 text-[10px]" : "px-1 text-sm"
 			} ${
 				focusedSection === sec
-					? "bg-blue-600 text-white"
+					? "bg-primary-hover text-on-primary"
 					: isIncomplete && (label === "--" || label.includes("_"))
-						? "text-zinc-500"
-						: "text-zinc-200"
+						? "text-text-muted"
+						: "text-text-primary"
 			}`}
 		>
 			{label}
@@ -401,7 +401,7 @@ export default function TimePicker({
 							width: "152px",
 							zIndex: 9999,
 						}}
-						className="bg-zinc-900 border border-zinc-700 rounded shadow-xl p-1.5"
+						className="bg-base border border-border rounded shadow-xl p-1.5"
 					>
 						<div className="flex gap-1">
 							{/* Hours */}
@@ -432,8 +432,8 @@ export default function TimePicker({
 											}
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												active
-													? "bg-blue-600 text-white"
-													: "text-zinc-200 hover:bg-zinc-800"
+													? "bg-primary-hover text-on-primary"
+													: "text-text-primary hover:bg-surface"
 											}`}
 										>
 											{h
@@ -474,8 +474,8 @@ export default function TimePicker({
 											}
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												active
-													? "bg-blue-600 text-white"
-													: "text-zinc-200 hover:bg-zinc-800"
+													? "bg-primary-hover text-on-primary"
+													: "text-text-primary hover:bg-surface"
 											}`}
 										>
 											{m
@@ -509,8 +509,8 @@ export default function TimePicker({
 											className={`w-full px-1.5 py-1 text-xs rounded text-center transition-colors ${
 												period ===
 												p
-													? "bg-blue-600 text-white"
-													: "text-zinc-200 hover:bg-zinc-800"
+													? "bg-primary-hover text-on-primary"
+													: "text-text-primary hover:bg-surface"
 											}`}
 										>
 											{p}
@@ -530,8 +530,8 @@ export default function TimePicker({
 				<div
 					ref={anchorRef}
 					style={{
-						background: "#27272a",
-						border: `1px solid ${focusedSection ? "#3b82f6" : "#3f3f46"}`,
+						background: "var(--color-surface)",
+						border: `1px solid ${focusedSection ? "var(--color-primary)" : "var(--color-border)"}`,
 						borderRadius: 4,
 						display: "flex",
 						alignItems: "center",
@@ -548,15 +548,15 @@ export default function TimePicker({
 						if (!focusedSection)
 							(
 								e.currentTarget as HTMLElement
-							).style.borderColor = "#52525b";
+							).style.borderColor = "var(--color-border-strong)";
 					}}
 					onMouseLeave={(e) => {
 						if (!focusedSection)
 							(
 								e.currentTarget as HTMLElement
 							).style.borderColor = open
-								? "#52525b"
-								: "#3f3f46";
+								? "var(--color-border-strong)"
+								: "var(--color-border)";
 					}}
 				>
 					<div
@@ -569,7 +569,7 @@ export default function TimePicker({
 						{seg(hour, "hour", true)}
 						<span
 							style={{
-								color: "#52525b",
+								color: "var(--color-text-faint)",
 								fontSize: 10,
 								userSelect: "none",
 								lineHeight: 1,
@@ -584,7 +584,7 @@ export default function TimePicker({
 					<Clock
 						size={10}
 						style={{
-							color: "#c9c9c9",
+							color: "var(--color-text-secondary)",
 							flexShrink: 0,
 							marginLeft: 4,
 						}}
@@ -593,23 +593,23 @@ export default function TimePicker({
 			) : (
 				<div
 					ref={anchorRef}
-					className="border border-zinc-700 bg-zinc-900 rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-zinc-600 focus-within:border-blue-500 transition-colors cursor-default"
+					className="border border-border bg-base rounded h-[34px] px-2.5 flex items-center gap-1.5 hover:border-border-strong focus-within:border-primary transition-colors cursor-default"
 					tabIndex={0}
 				>
 					<Clock
 						size={14}
-						className="text-zinc-400 flex-shrink-0 cursor-pointer hover:text-zinc-200 transition-colors"
+						className="text-text-tertiary flex-shrink-0 cursor-pointer hover:text-text-primary transition-colors"
 						onClick={() =>
 							open ? setOpen(false) : openPopup()
 						}
 					/>
 					<div className="flex items-center gap-0.5">
 						{seg(hour, "hour")}
-						<span className="text-zinc-400 text-sm select-none">
+						<span className="text-text-tertiary text-sm select-none">
 							:
 						</span>
 						{seg(minute, "minute")}
-						<span className="text-zinc-400 text-sm select-none mx-0.5">
+						<span className="text-text-tertiary text-sm select-none mx-0.5">
 							{" "}
 						</span>
 						{seg(period, "period")}
@@ -619,10 +619,6 @@ export default function TimePicker({
 
 			{popup}
 
-			<style>{`
-				.scrollbar-hide::-webkit-scrollbar { display: none; }
-				.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-			`}</style>
 		</div>
 	);
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleBoardCard, { type AssignedTech } from "./ScheduleBoardCard";
@@ -25,6 +25,7 @@ import type { UpdateJobVisitInput } from "../../../types/jobs";
 import type { Technician } from "../../../types/technicians";
 import type { OccurrenceWithPlan, VisitWithJob } from "./dashboardCalendarUtils";
 import type { RescheduleOccurrenceInput, VisitGenerationResult } from "../../../types/recurringPlans";
+import { useVehicleStockConflictsQuery } from "../../../hooks/useVehicleStock";
 
 // Shared across all column instances — only one drag is ever active at a time.
 let sharedDragOffsetY = 0;
@@ -159,6 +160,18 @@ export default function ScheduleBoardDayColumn({
 	const popupRef           = useRef<HTMLDivElement>(null);
 	const occurrencePopupRef = useRef<HTMLDivElement>(null);
 	const dragOffsetY        = useRef(0);
+
+	const { data: stockConflicts = [] } = useVehicleStockConflictsQuery();
+	const conflictsByVisitId = useMemo(() => {
+		const map = new Map<string, "out" | "low">();
+		for (const c of stockConflicts) {
+			const existing = map.get(c.visitId);
+			if (!existing || (existing === "low" && c.severity === "out")) {
+				map.set(c.visitId, c.severity);
+			}
+		}
+		return map;
+	}, [stockConflicts]);
 
 	const totalSlots  = DAY_END - DAY_START;
 	const columnHeight = totalSlots * SLOT_H;
@@ -364,7 +377,7 @@ export default function ScheduleBoardDayColumn({
 		const raw = e.dataTransfer.getData("text/plain");
 		if (!raw) return;
 
-		const parsed = JSON.parse(raw) as {
+		let parsed: {
 			type?: string;
 			visitId?: string;
 			occurrenceId?: string;
@@ -380,6 +393,11 @@ export default function ScheduleBoardDayColumn({
 			isRecurring?: boolean;
 			entityName?: string;
 		};
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			return;
+		}
 
 		const rect = columnRef.current.getBoundingClientRect();
 		const y = e.clientY - rect.top - sharedDragOffsetY;
@@ -643,8 +661,8 @@ export default function ScheduleBoardDayColumn({
 					position: "relative",
 					height: columnHeight,
 					backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent",
-					borderLeft: "1px solid #3f3f46",
-					borderBottom: "1px solid #3f3f46",
+					borderLeft: "1px solid var(--color-border)",
+					borderBottom: "1px solid var(--color-border)",
 					overflow: "visible",
 				}}
 				onDragOver={handleDragOver}
@@ -661,7 +679,7 @@ export default function ScheduleBoardDayColumn({
 							left: 0,
 							right: 0,
 							height: 1,
-							backgroundColor: "#3f3f46",
+							backgroundColor: "var(--color-border)",
 						}}
 					/>
 				))}
@@ -676,7 +694,7 @@ export default function ScheduleBoardDayColumn({
 							left: 0,
 							right: 0,
 							height: 1,
-							backgroundColor: "#27272a",
+							backgroundColor: "var(--color-surface)",
 						}}
 					/>
 				))}
@@ -691,7 +709,7 @@ export default function ScheduleBoardDayColumn({
 								left: LEFT_PAD,
 								right: RIGHT_PAD,
 								height: 2,
-								backgroundColor: "#3b82f6",
+								backgroundColor: "var(--color-primary)",
 								borderRadius: 1,
 								zIndex: 50,
 								pointerEvents: "none",
@@ -704,7 +722,7 @@ export default function ScheduleBoardDayColumn({
 								left: LEFT_PAD,
 								fontSize: 8,
 								fontWeight: 700,
-								color: "#60a5fa",
+								color: "var(--color-visit-driving-text)",
 								lineHeight: 1,
 								pointerEvents: "none",
 								zIndex: 51,
@@ -727,7 +745,7 @@ export default function ScheduleBoardDayColumn({
 					const assignedTechs: AssignedTech[] = (visit.visit_techs ?? []).map((vt) => ({
 						id: vt.tech_id,
 						name: technicians.find((t) => t.id === vt.tech_id)?.name ?? vt.tech_id,
-						color: techColorMap.get(vt.tech_id) ?? "#6b7280",
+						color: techColorMap.get(vt.tech_id) ?? "var(--color-tech-unassigned)",
 						inFilter: isAllSelected || selectedTechs.has(vt.tech_id),
 					}));
 
@@ -751,6 +769,7 @@ export default function ScheduleBoardDayColumn({
 							left={left}
 							width={width}
 							zIndex={zIndex}
+							stockWarning={conflictsByVisitId.get(visit.id)}
 							onClick={(e) => {
 								setClickedOccurrenceId(null);
 								setClickedOccurrenceRect(null);
@@ -822,7 +841,7 @@ export default function ScheduleBoardDayColumn({
 								width: occWidth,
 								height,
 								zIndex: isHov ? 30 : 1,
-								backgroundColor: "#252838",
+								backgroundColor: "var(--color-occurrence-bg)",
 								borderRadius: 4,
 								overflow: "hidden",
 								boxSizing: "border-box",
@@ -857,7 +876,7 @@ export default function ScheduleBoardDayColumn({
 									<span style={{
 										fontSize: 10,
 										fontWeight: 600,
-										color: "#c4b5fd",
+										color: "var(--color-sched-occurrence-title)",
 										fontStyle: "italic",
 										lineHeight: 1.2,
 										overflow: "hidden",
@@ -974,12 +993,12 @@ export default function ScheduleBoardDayColumn({
 							gap: 3,
 							height: 20,
 							padding: "0 7px",
-							background: "#1c1c1f",
-							border: "1px solid #3f3f46",
+							background: "var(--color-canvas)",
+							border: "1px solid var(--color-border)",
 							borderRadius: 999,
 							fontSize: 10,
 							fontWeight: 600,
-							color: "#a1a1aa",
+							color: "var(--color-text-tertiary)",
 							cursor: "pointer",
 							whiteSpace: "nowrap",
 							boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
@@ -1006,12 +1025,12 @@ export default function ScheduleBoardDayColumn({
 							gap: 3,
 							height: 20,
 							padding: "0 7px",
-							background: "#1c1c1f",
-							border: "1px solid #3f3f46",
+							background: "var(--color-canvas)",
+							border: "1px solid var(--color-border)",
 							borderRadius: 999,
 							fontSize: 10,
 							fontWeight: 600,
-							color: "#a1a1aa",
+							color: "var(--color-text-tertiary)",
 							cursor: "pointer",
 							whiteSpace: "nowrap",
 							boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
@@ -1071,9 +1090,9 @@ export default function ScheduleBoardDayColumn({
 								width: pendingDrop.type === "occurrence" ? colWidth - LEFT_PAD - RIGHT_PAD : ghostWidth,
 								height: ghostHeight,
 								opacity: 0.5,
-								border: "1px dashed #3b82f6",
+								border: "1px dashed var(--color-primary)",
 								borderRadius: 4,
-								backgroundColor: pendingDrop.type === "occurrence" ? "#252838" : "#1e2433",
+								backgroundColor: pendingDrop.type === "occurrence" ? "var(--color-occurrence-bg)" : "var(--color-sched-today-bg)",
 								boxShadow: "inset 0 0 0 999px rgba(59,130,246,0.08)",
 								zIndex: 25,
 								pointerEvents: "none",
@@ -1103,7 +1122,7 @@ export default function ScheduleBoardDayColumn({
 								<span style={{
 									fontSize: 10,
 									fontWeight: 600,
-									color: pendingDrop.type === "occurrence" ? "#c4b5fd" : "#e4e4e7",
+									color: pendingDrop.type === "occurrence" ? "var(--color-sched-occurrence-title)" : "var(--color-text-on-surface)",
 									fontStyle: pendingDrop.type === "occurrence" ? "italic" : "normal",
 									overflow: "hidden",
 									whiteSpace: "nowrap",
@@ -1115,7 +1134,7 @@ export default function ScheduleBoardDayColumn({
 								{ghostHeight >= 34 && (
 									<span style={{
 										fontSize: 9,
-										color: "#60a5fa",
+										color: "var(--color-visit-driving-text)",
 										lineHeight: 1.2,
 										whiteSpace: "nowrap",
 									}}>

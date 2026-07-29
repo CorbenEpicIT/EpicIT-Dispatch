@@ -1,4 +1,4 @@
-import type { ClientDetailsProps } from "../components/clients/ClientDetailsCard";
+﻿import type { ClientDetailsProps } from "../components/clients/ClientDetailsCard";
 import type { BaseNote, TechReference, DispatcherReference, PricingBreakdown } from "./common";
 
 // ============================================================================
@@ -30,14 +30,14 @@ export const InvoiceStatusLabels: Record<InvoiceStatus, string> = {
 };
 
 export const InvoiceStatusColors: Record<InvoiceStatus, string> = {
-	Draft:        "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Issued:       "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Sent:         "bg-green-500/20 text-green-400 border-green-500/30",
-	Viewed:       "bg-teal-500/20 text-teal-400 border-teal-500/30",
-	PartiallyPaid:"bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Paid:         "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-	Disputed:     "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Void:         "bg-red-500/20 text-red-400 border-red-500/30",
+	Draft:        "bg-neutral/20 text-text-tertiary border-border-strong/30",
+	Issued:       "bg-primary/20 text-primary-text border-primary/30",
+	Sent:         "bg-success/20 text-success-text border-success/30",
+	Viewed:       "bg-info/20 text-info-text border-info/30",
+	PartiallyPaid:"bg-warning/20 text-warning-text border-warning/30",
+	Paid:         "bg-success/20 text-success-text border-success/30",
+	Disputed:     "bg-orange/20 text-orange-text border-orange/30",
+	Void:         "bg-error/20 text-error-text border-error/30",
 };
 
 // Which statuses are auto-set by the system vs manually set by staff
@@ -111,6 +111,10 @@ export interface InvoiceLineItem {
 	// Soft traceability
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 }
 
 export interface CreateInvoiceLineItemInput {
@@ -123,6 +127,8 @@ export interface CreateInvoiceLineItemInput {
 	sort_order?: number;
 	source_job_id?: string | null;
 	source_visit_id?: string | null;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateInvoiceLineItemInput extends CreateInvoiceLineItemInput {
@@ -223,8 +229,13 @@ export interface Invoice extends PricingBreakdown {
 	updated_at: Date | string;
 	created_by_dispatcher_id?: string | null;
 
+	// QuickBooks
+	qb_sync_status?: "not_synced" | "synced" | "failed";
+	qb_invoice_id?: string | null;
+	account_id?: string | null;
+
 	// Relations
-	client?: (ClientDetailsProps["client"] & { id: string }) | null;
+	client?: (ClientDetailsProps["client"] & { id: string; is_tax_exempt?: boolean; tax_group_id?: string | null }) | null;
 	created_by_dispatcher?: { id: string; name: string; email: string } | null;
 	recurring_plan?: RecurringPlanReference | null;
 	recurring_plan_id?: string | null;
@@ -311,4 +322,42 @@ export function getPaymentProgress(invoice: Pick<Invoice, "total" | "amount_paid
 	const total = invoice.total ?? 0;
 	if (total <= 0) return 0;
 	return Math.min(1, invoice.amount_paid / total);
+}
+
+// ============================================================================
+// PIPELINE TYPES
+// ============================================================================
+
+export interface OverlapWarning {
+	visit_id: string;
+	scheduled_start_at: string;
+	existing_invoices: Array<{
+		invoice_id: string;
+		invoice_number: string;
+		status: string;
+		billed_amount: number | null;
+	}>;
+}
+
+export interface BillingRef {
+	billed_amount: number | null;
+	invoice: {
+		id: string;
+		invoice_number: string;
+		status: InvoiceStatus;
+		issue_date: string | null;
+	};
+}
+
+export interface GenerateInvoiceInput {
+	source: "recurring_plan";
+	plan_id: string;
+	memo?: string;
+	payment_terms_days?: number;
+}
+
+export interface GenerateInvoiceResponse {
+	invoice: Invoice;
+	warnings: OverlapWarning[];
+	note?: string;
 }

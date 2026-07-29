@@ -1,12 +1,17 @@
-import { Phone, Mail, Briefcase, Clock, MoreHorizontal } from "lucide-react";
+﻿import { Phone, Mail, Briefcase, Clock, MoreHorizontal, Trash2, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Technician } from "../../types/technicians";
+import { TechnicianStatusColors, TechnicianStatusDotColors, TechnicianStatusLabels } from "../../types/technicians";
 import { useRef, useState, useEffect } from "react";
+import { usePermission } from "../../hooks/usePermission";
+import { useDeleteTechnicianMutation } from "../../hooks/useTechnicians";
+import { useResetMfaMutation } from "../../hooks/useMfa";
 
 interface TechnicianCardProps {
   technician: Technician;
   onClick?: () => void;
   onEdit?: (technician: Technician) => void;
+  onAssignRole?: (technician: Technician) => void;
   viewMode?: "card" | "list";
 }
 
@@ -14,20 +19,6 @@ function capitalizeWords(str: string) {
   return str
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function getStatusColor(status: string) {
-  switch (status) {
-    case "Available":
-      return "bg-green-500/10 text-green-400 border-green-500/20";
-    case "Busy":
-      return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-    case "Break":
-      return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-    case "Offline":
-    default:
-      return "bg-red-500/10 text-red-400 border-red-500/20";
-  }
 }
 
 function formatLastLogin(raw: unknown) {
@@ -64,14 +55,71 @@ function formatLastLogin(raw: unknown) {
   });
 }
 
-export default function TechnicianCard({ technician, onClick, onEdit, viewMode }: TechnicianCardProps) {
+export default function TechnicianCard({ technician, onClick, onEdit, onAssignRole, viewMode }: TechnicianCardProps) {
   const navigate = useNavigate();
 
   const displayName = capitalizeWords(technician.name);
   const lastLoginText = formatLastLogin(technician.last_login);
-  const statusColorClass = getStatusColor(technician.status);
+  const statusColorClass = TechnicianStatusColors[technician.status];
+  const mfaBadge = technician.mfaEnabled ? (
+    <span
+      title="Two-factor authentication enabled"
+      className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-xs font-medium text-success-text"
+    >
+      <ShieldCheck size={12} /> MFA
+    </span>
+  ) : null;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [confirmResetMFA, setConfirmResetMFA] = useState(false);
+  const { mutateAsync: deleteTechnician, isPending: isDeleting } = useDeleteTechnicianMutation();
+  const { mutateAsync: resetMFA, isPending: isResetingMFA } = useResetMfaMutation();
+
+  // permissions
+  const MANAGE_TECHNICIAN = usePermission("manage_technicians");
+  const VIEW_TECHNICIAN = usePermission("view_technicians");
+
+  const hasActiveVisits = (technician.visit_techs ?? []).some((vt) =>
+    ["Scheduled", "InProgress", "OnSite", "Driving", "Paused", "Delayed"].includes(vt.visit.status)
+  );
+
+  const handleDelete = async () => {
+		if (!MANAGE_TECHNICIAN) return;
+		if (!technician) return;
+		if (!deleteConfirm) {
+			setDeleteConfirm(true);
+			return;
+		}
+		try {
+			await deleteTechnician(technician.id);
+			setDeleteConfirm(false);
+		} catch (error) {
+			console.error("Failed to delete technician:", error);
+		}
+	};
+
+  const handleResetMFA = async (technician: Technician) => {
+    if (!MANAGE_TECHNICIAN) return;
+    if (!technician) return;
+        if (!confirmResetMFA) {
+            setConfirmResetMFA(true);
+            return;
+        }
+        try {
+            await resetMFA({userId: technician.id, role: "technician"});
+            setConfirmResetMFA(false);
+            setDropdownOpen(false);
+        }catch (error) {
+      console.error("Failed to reset MFA:", error);
+      setConfirmResetMFA(false);
+      alert(
+        error instanceof Error
+          ? "Failed to reset MFA: " + error.message
+          : "Failed to reset MFA."
+      );
+    }
+  }
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -88,11 +136,98 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
     navigate(`/dispatch/technicians/${technician.id}/assign`);
   };
 
+  const OPTIONS = (
+                  <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+                      <button
+                          onClick={(e) => {
+                              e.stopPropagation();
+                              setDropdownOpen(false);
+                              onClick?.();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                      >
+                          View Details
+                      </button>
+                      <button
+                          onClick={(e) => {
+                              e.stopPropagation();
+                              setDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                      >
+                          Reset Password
+                      </button>
+                      <button
+                          onClick={(e) => {
+                              e.stopPropagation();
+                              setDropdownOpen(false);
+                              onEdit?.(technician);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                      >
+                          Update User
+                      </button>
+                      <button
+                          onClick={(e) => {
+                              e.stopPropagation();
+                              setDropdownOpen(false);
+                              onAssignRole?.(technician);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                      >
+                          Assign Role
+                      </button>
+                      {technician.mfaEnabled && (
+                        <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleResetMFA(technician)
+                        }}
+                        onMouseLeave={()=> setConfirmResetMFA(false)}
+                        disabled={isResetingMFA}
+                        className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                            confirmResetMFA
+                                ? "bg-error hover:bg-error-strong text-on-primary"
+                                : "text-text-primary hover:bg-surface-raised hover:text-error-text"
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                            {isResetingMFA
+                                ? "Reseting MFA..."
+                                : confirmResetMFA
+                                    ? "Click Again to Confirm"
+                                    : "Reset MFA"}
+                        </button>
+                      )}
+                      {!hasActiveVisits && (
+                        <>
+                          <div className="my-1 border-t border-border-subtle" />
+                          <button
+                            onClick={handleDelete}
+                            onMouseLeave={() => setDeleteConfirm(false)}
+                            disabled={isDeleting}
+                            className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                              deleteConfirm
+                                ? "bg-error hover:bg-error-strong text-on-primary"
+                                : "text-error-text hover:bg-surface-raised hover:text-error-text"
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                          >
+                            <Trash2 size={16} />
+                            {isDeleting
+                              ? "Deleting..."
+                              : deleteConfirm
+                                ? "Click Again to Confirm"
+                                : "Delete Technician"}
+                          </button>
+                        </>
+                      )}
+                  </div>
+                );
+
   if (viewMode === "list") {
       return (
-          <div 
-              onClick={onClick} 
-              className="w-full bg-zinc-900 rounded-lg border border-[#3a3a3f] shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
+          <div
+              onClick={VIEW_TECHNICIAN ? onClick : undefined}
+              className="w-full bg-base rounded-lg border border-border shadow-sm px-5 py-3 flex items-center gap-4 cursor-pointer hover:shadow-md transition"
           >
               {/* Avatar */}
               <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
@@ -101,81 +236,57 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
 
               {/* Name */}
               <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
+                  <h3 className="text-text-primary font-semibold text-lg truncate">{displayName}</h3>
               </div>
 
-              {/* Status */}
-              <div className="w-24 flex-shrink-0 flex items-center">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
-                      {technician.status}
-                  </span>
+              {/* Status + role */}
+              <div className="w-40 flex-shrink-0 flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border w-fit ${statusColorClass}`}>
+                          {TechnicianStatusLabels[technician.status]}
+                      </span>
+                      {mfaBadge}
+                  </div>
+                  {technician.organization_role && (
+                      <span className="text-xs text-text-tertiary truncate">{technician.organization_role.name}</span>
+                  )}
               </div>
 
               {/* Email */}
-              <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 text-sm text-zinc-300">
-                  <Mail size={16} className="text-zinc-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 text-sm text-text-secondary">
+                  <Mail size={16} className="text-text-tertiary flex-shrink-0" />
                   <span className="truncate">{technician.email}</span>
               </div>
 
               {/* Title */}
-              <div className="flex-1 min-w-0 hidden md:flex items-center gap-2 text-sm text-zinc-300">
-                  <Briefcase size={16} className="text-zinc-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0 hidden md:flex items-center gap-2 text-sm text-text-secondary">
+                  <Briefcase size={16} className="text-text-tertiary flex-shrink-0" />
                   <span className="truncate">{technician.title}</span>
               </div>
 
               {/* Last Login */}
-              <div className="flex-1 min-w-0 hidden lg:flex items-center gap-2 text-sm text-zinc-300">
+              <div className="flex-1 min-w-0 hidden lg:flex items-center gap-2 text-sm text-text-secondary">
                   <Clock size={13} className="opacity-70 flex-shrink-0" />
                   <span className="truncate">Last login: {lastLoginText}</span>
               </div>
 
               {/* Actions */}
-              <div className="flex-shrink-0 relative" ref={dropdownRef}>
-                  <button
-                      onClick={(e) => {
-                          e.stopPropagation();
-                          setDropdownOpen((prev) => !prev);
-                      }}
-                      className="flex items-center gap-2 p-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
-                  >
-                      <MoreHorizontal size={18} />
-                      <span className="text-sm font-medium">Options</span>
-                  </button>
+              {MANAGE_TECHNICIAN && (
+                <div className="flex-shrink-0 relative" ref={dropdownRef}>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setDropdownOpen((prev) => !prev);
+                        }}
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+                    >
+                        <MoreHorizontal size={18} />
+                        <span className="text-sm font-medium">Options</span>
+                    </button>
 
-                  {dropdownOpen && (
-                      <div className="absolute right-0 mt-1 w-44 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg z-50 overflow-hidden">
-                          <button
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDropdownOpen(false);
-                                  onClick?.();
-                              }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
-                          >
-                              View Details
-                          </button>
-                          <button
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDropdownOpen(false);
-                              }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
-                          >
-                              Reset Password
-                          </button>
-                          <button
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDropdownOpen(false);
-                                  onEdit?.(technician);
-                              }}
-                              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
-                          >
-                              Update User
-                          </button>
-                      </div>
-                  )}
-              </div>
+                    {dropdownOpen && OPTIONS}
+                </div>
+              )}
           </div>
       );
   }
@@ -183,8 +294,8 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
   return (
     <div
       className="
-        bg-zinc-900 border border-[#3a3a3f] rounded-lg p-5
-        hover:border-zinc-500 hover:shadow-lg transition-all
+        bg-base border border-border rounded-lg p-5
+        hover:border-border-strong hover:shadow-lg transition-all
         w-full max-w-[360px] flex flex-col gap-4
       "
     >
@@ -194,40 +305,40 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
             {technician.name.charAt(0).toUpperCase()}
           </div>
           
-          {technician.status === "Available" && (
-            <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-zinc-900 rounded-full" />
-          )}
+            <div className={`absolute bottom-0 right-0 w-4 h-4 border-2 border-base rounded-full ${TechnicianStatusDotColors[technician.status]}`} />
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-white font-semibold text-lg truncate">
-            {displayName}
-          </h3>
-          <span
-            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}
-          >
-            {technician.status}
-          </span>
+          <h3 className="text-text-primary font-semibold text-lg truncate">{displayName}</h3>
+          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+              {TechnicianStatusLabels[technician.status]}
+            </span>
+            {mfaBadge}
+            {technician.organization_role && (
+              <span className="text-xs text-text-tertiary">{technician.organization_role.name}</span>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="space-y-2.5">
-        <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Phone size={16} className="text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <Phone size={16} className="text-text-tertiary flex-shrink-0" />
           <span className="truncate">{technician.phone}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Mail size={16} className="text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <Mail size={16} className="text-text-tertiary flex-shrink-0" />
           <span className="truncate">{technician.email}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Briefcase size={16} className="text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <Briefcase size={16} className="text-text-tertiary flex-shrink-0" />
           <span className="truncate">{technician.title}</span>
         </div>
         
-        <div className="flex items-start gap-2 text-sm text-zinc-400 min-h-[1.2rem]">
+        <div className="flex items-start gap-2 text-sm text-text-tertiary min-h-[1.2rem]">
           <div className="w-4 flex-shrink-0" /> 
           <p className="line-clamp-2 text-xs leading-relaxed">
             {technician.description}
@@ -235,63 +346,48 @@ export default function TechnicianCard({ technician, onClick, onEdit, viewMode }
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-zinc-400 pt-2 border-t border-zinc-800 mt-auto">
+      <div className="flex items-center gap-2 text-xs text-text-tertiary pt-2 border-t border-border-subtle mt-auto">
         <Clock size={13} className="opacity-70" />
         <span>Last login: {lastLoginText}</span>
       </div>
-
+      
+      
       <div className="flex gap-2 mt-1">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick?.();
-          }}
-          className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium rounded-md transition-colors"
-        >
-          View Details
-        </button>
-        <button
-          onClick={handleAssignClick}
-          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
-        >
-          Assign Visits
-        </button>
-
-        <div className="relative" ref={dropdownRef}>
+        {VIEW_TECHNICIAN && (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setDropdownOpen((prev) => !prev);
+              onClick?.();
             }}
-            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
+            className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors"
           >
-            <MoreHorizontal size={18} />
+            View Details
           </button>
+        )}
+        {MANAGE_TECHNICIAN && (
+          <button
+            onClick={handleAssignClick}
+            className="flex-1 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active text-on-primary text-sm font-medium rounded-md transition-colors"
+          >
+            Assign Visits
+          </button>
+        )}
 
-          {dropdownOpen && (
-            <div className="absolute right-0 bottom-full mb-1 w-44 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg z-50 overflow-hidden">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDropdownOpen(false);
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
-              >
-                Reset Password
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDropdownOpen(false);
-                  onEdit?.(technician);
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
-              >
-                Update User
-              </button>
-            </div>
-          )}
-        </div>
+        {MANAGE_TECHNICIAN && (
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen((prev) => !prev);
+              }}
+              className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+
+            {dropdownOpen && OPTIONS}
+          </div>  
+        )}
       </div>
     </div>
   );

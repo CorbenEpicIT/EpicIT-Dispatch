@@ -1,9 +1,8 @@
-import { useParams, useNavigate } from "react-router-dom";
+﻿import { useParams, useNavigate } from "react-router-dom";
 import {
 	Edit2,
 	Clock,
 	Users,
-	DollarSign,
 	CheckCircle2,
 	XCircle,
 	Pause,
@@ -11,7 +10,8 @@ import {
 	MoreVertical,
 	Receipt,
 	Calendar,
-	ExternalLink,
+	Briefcase,
+	Plus,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -21,17 +21,22 @@ import {
 	useResumeJobVisitMutation,
 	useCompleteJobVisitMutation,
 	useCancelJobVisitMutation,
+	useDelayJobVisitMutation,
 	useJobByIdQuery,
 } from "../../hooks/useJobs";
 import { useInvoicesByVisitIdQuery } from "../../hooks/useInvoices";
 import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import Card from "../../components/ui/Card";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
+import CreateInvoice from "../../components/invoices/CreateInvoice";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
 import { formatCurrency, formatDate, formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
+import FinancialSummary from "../../components/pagesections/FinancialSummary";
 import { useAuthStore } from "../../auth/authStore";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function JobVisitDetailPage() {
 	const { jobId, visitId } = useParams<{ jobId: string; visitId: string }>();
@@ -42,6 +47,8 @@ export default function JobVisitDetailPage() {
 	const { data: job, isLoading: jobLoading } = useJobByIdQuery(jobId!);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+	const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
+	const [pendingConfirm, setPendingConfirm] = useState<"complete" | "delay" | null>(null);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
 	const { data: linkedInvoices = [] } = useInvoicesByVisitIdQuery(jobId!, visitId!);
@@ -51,8 +58,13 @@ export default function JobVisitDetailPage() {
 	const resumeVisitMutation = useResumeJobVisitMutation();
 	const completeVisitMutation = useCompleteJobVisitMutation();
 	const cancelVisitMutation = useCancelJobVisitMutation();
+	const delayVisitMutation = useDelayJobVisitMutation();
 
 	const isLoading = visitLoading || jobLoading;
+
+	// permissions
+	const EDIT_VISIT = usePermission("edit_jobs");
+	const CREATE_INVOICE = usePermission("create_invoices");
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -70,7 +82,7 @@ export default function JobVisitDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading visit details...</div>
+				<div className="text-text-primary text-lg">Loading visit details...</div>
 			</div>
 		);
 	}
@@ -78,7 +90,7 @@ export default function JobVisitDetailPage() {
 	if (!visit) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Visit not found</div>
+				<div className="text-text-primary text-lg">Visit not found</div>
 			</div>
 		);
 	}
@@ -110,19 +122,8 @@ export default function JobVisitDetailPage() {
 		}
 	};
 
-	const handleCompleteVisit = async () => {
-		if (
-			window.confirm(
-				"Are you sure you want to mark this visit as completed? This will record the actual end time."
-			)
-		) {
-			try {
-				await completeVisitMutation.mutateAsync(visitId!);
-				setIsOptionsMenuOpen(false);
-			} catch (error) {
-				console.error("Failed to complete visit:", error);
-			}
-		}
+	const handleCompleteVisit = () => {
+		setPendingConfirm("complete");
 	};
 
 	const handleCancelVisit = async () => {
@@ -137,6 +138,24 @@ export default function JobVisitDetailPage() {
 			} catch (error) {
 				console.error("Failed to cancel visit:", error);
 			}
+		}
+	};
+
+	const handleDelayVisit = () => {
+		setPendingConfirm("delay");
+	};
+
+	const confirmPendingAction = async () => {
+		try {
+			if (pendingConfirm === "complete") {
+				await completeVisitMutation.mutateAsync(visitId!);
+			} else if (pendingConfirm === "delay") {
+				await delayVisitMutation.mutateAsync(visitId!);
+			}
+			setIsOptionsMenuOpen(false);
+			setPendingConfirm(null);
+		} catch (error) {
+			console.error(`Failed to ${pendingConfirm} visit:`, error);
 		}
 	};
 
@@ -232,16 +251,28 @@ export default function JobVisitDetailPage() {
 	const duration = calculateDuration();
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
-					<h1 className="text-3xl font-bold text-white mb-2">
+					<h1 className="text-3xl font-bold text-text-primary mb-1">
 						{visit.name || "Job Visit"}
 					</h1>
-					<p className="text-zinc-400 text-sm">
-						{formatDate(visit.scheduled_start_at, tz)}
-					</p>
+					<div className="flex items-center text-sm text-text-tertiary">
+						<span>{formatDate(visit.scheduled_start_at, tz)}</span>
+						{job && (
+							<>
+								<span className="mx-2 text-border-strong">·</span>
+								<button
+									onClick={() => navigate(`/dispatch/jobs/${jobId}`)}
+									className="inline-flex items-center gap-1 text-primary-text hover:text-text-primary transition-colors"
+								>
+									<Briefcase size={12} className="opacity-70" />
+									<span>Job #{job.job_number} · {job.name}</span>
+								</button>
+							</>
+						)}
+					</div>
 				</div>
 
 				<div className="justify-self-end flex items-center gap-3">
@@ -250,7 +281,7 @@ export default function JobVisitDetailPage() {
 							VisitStatusColors[
 								visit.status as VisitStatus
 							] ||
-							"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+							"bg-surface-raised text-text-tertiary border-border-strong"
 						}`}
 					>
 						{visit.status}
@@ -263,60 +294,64 @@ export default function JobVisitDetailPage() {
 									!isOptionsMenuOpen
 								)
 							}
-							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+							className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 						>
 							<MoreVertical size={20} />
 						</button>
 
 						{isOptionsMenuOpen && (
-							<div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={() => {
-											setIsEditModalOpen(
-												true
-											);
-											setIsOptionsMenuOpen(
-												false
-											);
-										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										<Edit2 size={16} />
-										Edit Visit
-									</button>
-
+										<button
+											title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+											disabled={!EDIT_VISIT}
+											onClick={() => {
+												if (!EDIT_VISIT) return;
+												setIsEditModalOpen(
+													true
+												);
+												setIsOptionsMenuOpen(
+													false
+												);
+											}}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit2 size={16} />
+											Edit Visit
+										</button>
 									{visit.status ===
 										"Scheduled" && (
-										<button
-											onClick={
-												handleStartVisit
-											}
-											disabled={
-												startVisitMutation.isPending
-											}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50"
-										>
-											<Play
-												size={
-													16
+											<button
+												title ={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+												onClick={
+													handleStartVisit
 												}
-											/>
-											Start Visit
-										</button>
+												disabled={
+													startVisitMutation.isPending || !EDIT_VISIT
+												}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Play
+													size={
+														16
+													}
+												/>
+												Start Visit
+											</button>
 									)}
 
 									{visit.status ===
 										"InProgress" && (
 										<>
 											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
 												onClick={
 													handlePauseVisit
 												}
 												disabled={
-													pauseVisitMutation.isPending
+													pauseVisitMutation.isPending || !EDIT_VISIT
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<Pause
 													size={
@@ -331,9 +366,9 @@ export default function JobVisitDetailPage() {
 													handleCompleteVisit
 												}
 												disabled={
-													completeVisitMutation.isPending
+													completeVisitMutation.isPending || !EDIT_VISIT
 												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<CheckCircle2
 													size={
@@ -348,40 +383,56 @@ export default function JobVisitDetailPage() {
 
 									{visit.status ===
 										"Paused" && (
-										<button
-											onClick={
-												handleResumeVisit
-											}
-											disabled={
-												resumeVisitMutation.isPending
-											}
-											className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50"
-										>
-											<Play
-												size={
-													16
+										<>
+											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+												onClick={
+													handleResumeVisit
 												}
-											/>
-											Resume Visit
-										</button>
+												disabled={
+													resumeVisitMutation.isPending || !EDIT_VISIT
+												}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Play
+													size={
+														16
+													}
+												/>
+												Resume Visit
+											</button>
+										</>
 									)}
 
-									{(visit.status ===
-										"Scheduled" ||
-										visit.status ===
-											"InProgress" ||
-										visit.status ===
-											"Paused") && (
-										<>
-											<div className="border-t border-zinc-800 my-1" />
+									{(visit.status === "Scheduled" ||
+										visit.status === "Driving" ||
+										visit.status === "OnSite") && (
 											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
+												onClick={handleDelayVisit}
+												disabled={delayVisitMutation.isPending || !EDIT_VISIT}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<Clock size={16} />
+												Mark Delayed
+											</button>
+									)}
+
+									{(visit.status === "Scheduled" ||
+										visit.status === "InProgress" ||
+										visit.status === "Paused" ||
+										visit.status === "Delayed") && (
+										<>
+											<div className="border-t border-border-subtle my-1" />
+											<button
+												title={!EDIT_VISIT ? "You don't have permission to perform this action" : ""}
 												onClick={
 													handleCancelVisit
 												}
 												disabled={
-													cancelVisitMutation.isPending
+													cancelVisitMutation.isPending || !EDIT_VISIT
 												}
-												className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+												className="w-full px-4 py-2 text-left text-sm text-error-text hover:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 											>
 												<XCircle
 													size={
@@ -403,127 +454,142 @@ export default function JobVisitDetailPage() {
 			{/* Visit Information (2/3) + Client Details (1/3) */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<div className="lg:col-span-2">
-					<Card
-						title="Visit Information"
-						className="h-full"
-						headerAction={
-							<button
-								onClick={() => navigate(`/dispatch/jobs/${jobId}`)}
-								className="flex items-center gap-1 text-xs text-zinc-400 hover:text-blue-400 transition-colors"
-							>
-								<ExternalLink size={12} />
-								View Job
-							</button>
-						}
-					>
+					<Card title="Visit Information" className="h-full">
 						<div className="space-y-4">
+							{/* Description — full width */}
 							{visit.description && (
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1">
+									<h3 className="text-text-tertiary text-sm mb-1">
 										Description
 									</h3>
-									<p className="text-white break-words">
+									<p className="text-text-primary break-words">
 										{visit.description}
 									</p>
 								</div>
 							)}
 
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-1">
-									Schedule Constraints
-								</h3>
-								<p className="text-white font-medium">
-									{formatVisitConstraints()}
-								</p>
-							</div>
-
-							<div>
-								<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
-									<Clock size={14} />
-									Scheduled Time
-								</h3>
-								<div className="space-y-1">
-									<p className="text-white">
-										{formatDate(visit.scheduled_start_at, tz)}
-									</p>
-
-									{visit.arrival_constraint === "at" && visit.arrival_time && (
-										<p className="text-zinc-400 text-sm">
-											Arrive at: {formatConstraintTime(visit.arrival_time)}
+							{/* Scheduling fields — 2-col grid */}
+							<div className="grid grid-cols-2 gap-x-6 gap-y-4">
+								{/* Left: Constraints + Duration */}
+								<div className="space-y-4">
+									<div>
+										<h3 className="text-text-tertiary text-sm mb-1">
+											Schedule Constraints
+										</h3>
+										<p className="text-text-primary font-medium">
+											{formatVisitConstraints()}
 										</p>
-									)}
-									{visit.arrival_constraint === "between" &&
-										visit.arrival_window_start &&
-										visit.arrival_window_end && (
-											<p className="text-zinc-400 text-sm">
-												Arrival window: {formatConstraintTime(visit.arrival_window_start)} – {formatConstraintTime(visit.arrival_window_end)}
+									</div>
+									{duration !== null && (
+										<div>
+											<h3 className="text-text-tertiary text-sm mb-1">
+												{duration.label}
+											</h3>
+											<p className="text-text-primary font-medium">
+												{formatDuration(duration.minutes)}
 											</p>
-										)}
-									{visit.arrival_constraint === "by" && visit.arrival_window_end && (
-										<p className="text-zinc-400 text-sm">
-											Arrive by: {formatConstraintTime(visit.arrival_window_end)}
-										</p>
-									)}
-									{visit.finish_constraint === "at" && visit.finish_time && (
-										<p className="text-zinc-400 text-sm">
-											Finish at: {formatConstraintTime(visit.finish_time)}
-										</p>
-									)}
-									{visit.finish_constraint === "by" && visit.finish_time && (
-										<p className="text-zinc-400 text-sm">
-											Finish by: {formatConstraintTime(visit.finish_time)}
-										</p>
+										</div>
 									)}
 								</div>
-							</div>
 
-							{duration !== null && (
+								{/* Right: Scheduled Time */}
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1">
-										{duration.label}
-									</h3>
-									<p className="text-white font-medium">
-										{formatDuration(duration.minutes)}
-									</p>
-								</div>
-							)}
-
-							{(visit.actual_start_at ||
-								visit.actual_end_at) && (
-								<div className="pt-4 border-t border-zinc-700">
-									<h3 className="text-zinc-400 text-sm mb-2">
-										Actual Times
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
+										<Clock size={14} />
+										Scheduled Time
 									</h3>
 									<div className="space-y-1">
-										{visit.actual_start_at && (
-											<p className="text-white text-sm">
-												Started:{" "}
-												{formatDateTime(
-													visit.actual_start_at, tz
-												)}
+										<p className="text-text-primary">
+											{formatDate(visit.scheduled_start_at, tz)}
+										</p>
+										{visit.arrival_constraint === "at" && visit.arrival_time && (
+											<p className="text-text-tertiary text-sm">
+												Arrive at: {formatConstraintTime(visit.arrival_time)}
 											</p>
 										)}
-										{visit.actual_end_at && (
-											<p className="text-white text-sm">
-												Ended:{" "}
-												{formatDateTime(
-													visit.actual_end_at, tz
-												)}
+										{visit.arrival_constraint === "between" &&
+											visit.arrival_window_start &&
+											visit.arrival_window_end && (
+												<p className="text-text-tertiary text-sm">
+													Arrival window: {formatConstraintTime(visit.arrival_window_start)} –{" "}
+													{formatConstraintTime(visit.arrival_window_end)}
+												</p>
+											)}
+										{visit.arrival_constraint === "by" && visit.arrival_window_end && (
+											<p className="text-text-tertiary text-sm">
+												Arrive by: {formatConstraintTime(visit.arrival_window_end)}
 											</p>
+										)}
+										{visit.finish_constraint === "at" && visit.finish_time && (
+											<p className="text-text-tertiary text-sm">
+												Finish at: {formatConstraintTime(visit.finish_time)}
+											</p>
+										)}
+										{visit.finish_constraint === "by" && visit.finish_time && (
+											<p className="text-text-tertiary text-sm">
+												Finish by: {formatConstraintTime(visit.finish_time)}
+											</p>
+										)}
+									</div>
+								</div>
+							</div>
+
+							{/* Footer: Actual Times — 2-col grid */}
+							{(visit.actual_start_at || visit.actual_end_at) && (
+								<div className="pt-4 border-t border-border">
+									<h3 className="text-text-tertiary text-sm mb-2">
+										Actual Times
+									</h3>
+									<div className="grid grid-cols-2 gap-x-6">
+										{visit.actual_start_at && (
+											<div>
+												<p className="text-text-tertiary text-xs mb-0.5">
+													Started
+												</p>
+												<p className="text-text-primary text-sm">
+													{formatDateTime(visit.actual_start_at, tz)}
+												</p>
+											</div>
+										)}
+										{visit.actual_end_at && (
+											<div>
+												<p className="text-text-tertiary text-xs mb-0.5">
+													Ended
+												</p>
+												<p className="text-text-primary text-sm">
+													{formatDateTime(visit.actual_end_at, tz)}
+												</p>
+											</div>
 										)}
 									</div>
 								</div>
 							)}
 
+							{/* Footer: Drive Mileage */}
+							{visit.estimated_drive_miles != null && visit.estimated_drive_miles > 0 && (
+								<div className="pt-4 border-t border-border">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-1">
+										Drive Distance
+									</h3>
+									<p className="text-text-primary font-medium">
+										{visit.estimated_drive_miles.toFixed(1)} mi
+										{visit.visit_techs && visit.visit_techs.length > 0 && (
+											<span className="text-text-tertiary font-normal ml-2">
+												· {visit.visit_techs.map((vt) => vt.tech.name).join(", ")}
+											</span>
+										)}
+									</p>
+								</div>
+							)}
+
+							{/* Footer: Cancellation Reason — full width */}
 							{visit.cancellation_reason && (
-								<div className="pt-4 border-t border-zinc-700">
-									<h3 className="text-zinc-400 text-sm mb-1">
+								<div className="pt-4 border-t border-border">
+									<h3 className="text-text-tertiary text-sm mb-1">
 										Cancellation Reason
 									</h3>
-									<p className="text-white">
-										{
-											visit.cancellation_reason
-										}
+									<p className="text-text-primary">
+										{visit.cancellation_reason}
 									</p>
 								</div>
 							)}
@@ -539,7 +605,7 @@ export default function JobVisitDetailPage() {
 						/>
 					) : (
 						<Card title="Client Details" className="h-full">
-							<p className="text-zinc-500 text-sm">
+							<p className="text-text-muted text-sm">
 								Loading client details...
 							</p>
 						</Card>
@@ -548,184 +614,88 @@ export default function JobVisitDetailPage() {
 			</div>
 
 			{/* Visit Financial Summary */}
-			<Card title="Visit Financial Summary">
-				{!hasLineItems ? (
-					<div className="text-center py-8">
-						<DollarSign
-							size={40}
-							className="mx-auto text-zinc-600 mb-3"
-						/>
-						<h3 className="text-zinc-400 text-sm font-medium mb-1">
-							No Line Items
-						</h3>
-						<p className="text-zinc-500 text-xs">
-							No line items have been added to this visit
-							yet.
+			<FinancialSummary
+				lineItems={lineItems}
+				taxSnapshot={visit.tax_snapshot}
+				legacyTaxRate={visit.tax_rate != null ? Number(visit.tax_rate) : null}
+				legacyTaxAmount={visit.tax_amount != null ? Number(visit.tax_amount) : null}
+				subtotal={visit.subtotal != null ? Number(visit.subtotal) : null}
+				discountAmount={visit.discount_amount != null ? Number(visit.discount_amount) : null}
+				discountType={visit.discount_type ?? null}
+				discountValue={visit.discount_value != null ? Number(visit.discount_value) : null}
+				metaLabel="Visit Date"
+				metaValue={formatDateTime(visit.scheduled_start_at, tz).split(" at ")[0]}
+				cardTitle="Visit Financial Summary"
+				noLineItemsDescription="No line items have been added to this visit yet."
+				totalsContent={
+					<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+						<div>
+							<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+								Visit Total
+							</p>
+							<p className="text-xs text-text-muted">Final amount</p>
+						</div>
+						<p className="text-2xl font-bold text-primary-text tabular-nums">
+							{formatCurrency(Number(visit.total ?? 0))}
 						</p>
 					</div>
-				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-						<div className="lg:col-span-2">
-							<h3 className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-4">
-								Line Items
-							</h3>
-							<div className="space-y-1">
-								<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
-									<div className="col-span-5">
-										Description
-									</div>
-									<div className="col-span-1 text-center">
-										Type
-									</div>
-									<div className="col-span-2 text-right">
-										Qty
-									</div>
-									<div className="col-span-2 text-right">
-										Unit Price
-									</div>
-									<div className="col-span-2 text-right">
-										Amount
-									</div>
-								</div>
-								{lineItems.map((item, index) => (
-									<div
-										key={
-											item.id ||
-											index
-										}
-										className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-									>
-										<div className="col-span-5 text-sm">
-											<p className="text-white font-medium">
-												{
-													item.name
-												}
-											</p>
-											{item.description && (
-												<p className="text-zinc-400 text-xs mt-0.5">
-													{
-														item.description
-													}
-												</p>
-											)}
-										</div>
-										<div className="col-span-1 flex items-center justify-center">
-											{item.item_type && (
-												<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
-													{
-														item.item_type
-													}
-												</span>
-											)}
-										</div>
-										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-											{Number(
-												item.quantity
-											).toLocaleString(
-												"en-US",
-												{
-													minimumFractionDigits: 0,
-													maximumFractionDigits: 2,
-												}
-											)}
-										</div>
-										<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-											{formatCurrency(
-												Number(
-													item.unit_price
-												)
-											)}
-										</div>
-										<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
-											{formatCurrency(
-												Number(
-													item.total
-												)
-											)}
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-
-						<div className="lg:col-span-1 space-y-6">
-							<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
-								<div className="flex justify-between text-sm">
-									<span className="text-zinc-400">
-										Total Items:
-									</span>
-									<span className="text-white font-medium tabular-nums">
-										{lineItems.length}
-									</span>
-								</div>
-								<div className="flex justify-between text-sm">
-									<span className="text-zinc-400">
-										Visit Date:
-									</span>
-									<span className="text-white font-medium">
-										{
-											formatDateTime(
-												visit.scheduled_start_at, tz
-											).split(
-												" at "
-											)[0]
-										}
-									</span>
-								</div>
-							</div>
-
-							<div className="flex items-center justify-between px-4 py-3 bg-blue-500/10 rounded-lg border-2 border-blue-500/30">
-								<div>
-									<p className="text-zinc-300 text-xs uppercase tracking-wide font-semibold mb-0.5">
-										Visit Total
-									</p>
-									<p className="text-xs text-blue-300">
-										Total charges
-									</p>
-								</div>
-								<p className="text-2xl font-bold text-blue-400 tabular-nums">
-									{formatCurrency(
-										lineItems.reduce(
-											(
-												sum,
-												item
-											) =>
-												sum +
-												Number(
-													item.total
-												),
-											0
-										)
-									)}
-								</p>
-							</div>
-
-							<div className="px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg">
-								<p className="text-xs text-zinc-400 italic">
-									Line items represent work
-									performed during this visit.
-								</p>
-							</div>
-						</div>
-					</div>
-				)}
-			</Card>
+				}
+			/>
 
 			<div className={`flex flex-col lg:flex-row gap-6 ${linkedInvoices.length >= 2 ? "items-start" : ""}`}>
 				<div className="w-full lg:w-80 flex-shrink-0 flex flex-col">
 				{/* Linked Invoices */}
 				<Card
 					title="Linked Invoices" className="h-full"
-				headerAction={
-					linkedInvoices.length > 0 ? (
-						<span className="text-sm text-zinc-400">
-							{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
-						</span>
-					) : undefined
-				}
-			>
+					headerAction={
+						CREATE_INVOICE && (
+						<button
+							onClick={() => setIsCreateInvoiceOpen(true)}
+							className="flex items-center gap-1 text-xs text-primary-text hover:text-primary-text transition-colors"
+						>
+							<Plus size={12} />
+							Create Invoice
+						</button>
+					)}
+				>
+				{(() => {
+					const committedRefs = visit.invoice_visits?.filter(
+						(iv) => !["Draft", "Void"].includes(iv.invoice.status)
+					) ?? [];
+					const totalCommitted = committedRefs.reduce(
+						(sum, iv) => sum + (iv.billed_amount ?? 0),
+						0
+					);
+					const visitTotal = visit.line_items?.reduce(
+						(sum, item) => sum + Number(item.total ?? 0),
+						0
+					) ?? 0;
+					const billingStatus =
+						committedRefs.length === 0
+							? "unbilled"
+							: visitTotal > 0 && totalCommitted >= visitTotal
+							? "fully-billed"
+							: "partially-billed";
+
+					return committedRefs.length > 0 ? (
+						<div className="mb-3 flex items-center gap-2 text-xs">
+							<span
+								className={`inline-flex items-center px-2 py-0.5 rounded font-medium border ${
+									billingStatus === "fully-billed"
+										? "bg-success-bg text-success-text border-success-border"
+										: "bg-warning-bg text-warning-text border-warning-border"
+								}`}
+							>
+								{billingStatus === "fully-billed" ? "Fully Billed" : "Partially Billed"}
+							</span>
+							<span className="text-text-tertiary">
+								{formatCurrency(totalCommitted)} committed on {committedRefs.length} invoice{committedRefs.length !== 1 ? "s" : ""}
+							</span>
+						</div>
+					) : null;
+				})()}
 				{linkedInvoices.length === 0 ? (
-					<div className="flex items-center gap-2 text-zinc-500 text-sm py-1">
+					<div className="flex items-center gap-2 text-text-muted text-sm py-1">
 						<Receipt size={14} className="flex-shrink-0" />
 						<span>No invoices linked to this visit</span>
 					</div>
@@ -740,22 +710,22 @@ export default function JobVisitDetailPage() {
 								<button
 									key={invoice.id}
 									onClick={() => navigate(`/dispatch/invoices/${invoice.id}`)}
-									className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group w-full"
+									className="bg-surface border border-border rounded-lg p-3 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group w-full"
 								>
 									<div className="flex items-center justify-between gap-6 mb-2">
-										<span className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors tabular-nums">
+										<span className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
 											{invoice.invoice_number}
 										</span>
 										<span
 											className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
 												InvoiceStatusColors[invoice.status as InvoiceStatus] ??
-												"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+												"bg-surface-raised text-text-tertiary border-border-strong"
 											}`}
 										>
 											{InvoiceStatusLabels[invoice.status as InvoiceStatus] ?? invoice.status}
 										</span>
 									</div>
-									<div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2">
+									<div className="flex items-center gap-1.5 text-xs text-text-tertiary mb-2">
 										<Calendar size={11} />
 										<span>
 											{invoice.issue_date
@@ -770,13 +740,13 @@ export default function JobVisitDetailPage() {
 									<div className="flex items-baseline gap-2">
 										{billedAmount !== null ? (
 											<>
-												<span className="text-white font-semibold text-sm tabular-nums">
+												<span className="text-text-primary font-semibold text-sm tabular-nums">
 													{formatCurrency(billedAmount)}
 												</span>
-												<span className="text-xs text-zinc-500">billed this visit</span>
+												<span className="text-xs text-text-muted">billed this visit</span>
 											</>
 										) : (
-											<span className="text-white font-semibold text-sm tabular-nums">
+											<span className="text-text-primary font-semibold text-sm tabular-nums">
 												{formatCurrency(Number(invoice.total))}
 											</span>
 										)}
@@ -795,7 +765,7 @@ export default function JobVisitDetailPage() {
 				title="Assigned Technicians" className="h-full"
 				headerAction={
 					visit.visit_techs && visit.visit_techs.length > 0 ? (
-						<span className="text-sm text-zinc-400">
+						<span className="text-sm text-text-tertiary">
 							{visit.visit_techs.length}{" "}
 							{visit.visit_techs.length === 1
 								? "technician"
@@ -808,12 +778,12 @@ export default function JobVisitDetailPage() {
 					<div className="text-center py-8">
 						<Users
 							size={40}
-							className="mx-auto text-zinc-600 mb-3"
+							className="mx-auto text-text-faint mb-3"
 						/>
-						<h3 className="text-zinc-400 text-sm font-medium mb-1">
+						<h3 className="text-text-tertiary text-sm font-medium mb-1">
 							No Technicians Assigned
 						</h3>
-						<p className="text-zinc-500 text-xs">
+						<p className="text-text-muted text-xs">
 							Edit this visit to assign technicians.
 						</p>
 					</div>
@@ -824,21 +794,21 @@ export default function JobVisitDetailPage() {
 						
 								key={vt.tech_id}
 								onClick={() => navigate(`/dispatch/technicians/${vt.tech_id}`)}
-								className="relative bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group w-52 flex-shrink-0"
+								className="relative bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg p-3 transition-all cursor-pointer text-left group w-52 flex-shrink-0"
 							>
-								<div className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${vt.tech.status === "Available" ? "bg-green-400" : vt.tech.status === "Busy" ? "bg-red-400" : vt.tech.status === "Offline" ? "bg-zinc-500" : "bg-blue-400"}`} />
+								<div className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${vt.tech.status === "Available" ? "bg-success" : vt.tech.status === "Busy" ? "bg-error" : vt.tech.status === "Offline" ? "bg-border" : "bg-info"}`} />
 								<div className="flex items-center gap-2 mb-2">
 									<div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold">
 										{vt.tech.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
 									</div>
 									<div className="flex-1 min-w-0 pr-3">
-										<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors">{vt.tech.name}</h4>
-										<p className="text-zinc-400 text-xs truncate">{vt.tech.title}</p>
+										<h4 className="text-text-primary font-medium text-sm truncate group-hover:text-primary-text transition-colors">{vt.tech.name}</h4>
+										<p className="text-text-tertiary text-xs truncate">{vt.tech.title}</p>
 									</div>
 								</div>
 								<div className="space-y-1 text-xs">
-									{vt.tech.email && <p className="text-zinc-400 truncate">{vt.tech.email}</p>}
-									{vt.tech.phone && <p className="text-zinc-400">{vt.tech.phone}</p>}
+									{vt.tech.email && <p className="text-text-tertiary truncate">{vt.tech.email}</p>}
+									{vt.tech.phone && <p className="text-text-tertiary">{vt.tech.phone}</p>}
 								</div>
 							</button>
 						))}
@@ -856,8 +826,31 @@ export default function JobVisitDetailPage() {
 					setIsModalOpen={setIsEditModalOpen}
 					visit={visit}
 					jobId={jobId!}
+					clientExempt={job?.client?.is_tax_exempt ?? false}
 				/>
 			)}
+
+			<CreateInvoice
+				isModalOpen={isCreateInvoiceOpen}
+				setIsModalOpen={setIsCreateInvoiceOpen}
+				initialVisitIds={visitId ? [visitId] : []}
+				initialJobId={jobId}
+				defaultClientId={job?.client_id}
+			/>
+
+			<ConfirmDialog
+				open={pendingConfirm !== null}
+				title={pendingConfirm === "complete" ? "Complete Visit" : "Delay Visit"}
+				body={
+					pendingConfirm === "complete"
+						? "Are you sure you want to mark this visit as completed? This will record the actual end time."
+						: "Mark this visit as Delayed? The technician will remain in their current state until the visit is resumed."
+				}
+				confirmLabel={pendingConfirm === "complete" ? "Complete" : "Delay"}
+				pending={completeVisitMutation.isPending || delayVisitMutation.isPending}
+				onConfirm={confirmPendingAction}
+				onCancel={() => setPendingConfirm(null)}
+			/>
 		</div>
 	);
 }

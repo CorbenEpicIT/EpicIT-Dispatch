@@ -3,15 +3,15 @@ import type { Coordinates } from "../types/location";
 // Paul Tol "light" qualitative palette — colorblind-safe and readable on dark UI.
 // Reference: https://personal.sron.nl/~pault/
 export const TECH_COLOR_PALETTE: readonly string[] = [
-	"#77AADD",
-	"#EE8866",
-	"#EEDD88",
-	"#FFAABB",
-	"#99DDFF",
-	"#44BB99",
-	"#BBCC33",
-	"#AAAA00",
-	"#DDDDDD",
+	"var(--color-tech-1)",
+	"var(--color-tech-2)",
+	"var(--color-tech-3)",
+	"var(--color-tech-4)",
+	"var(--color-tech-5)",
+	"var(--color-tech-6)",
+	"var(--color-tech-7)",
+	"var(--color-tech-8)",
+	"var(--color-tech-9)",
 ] as const;
 
 export function getTechColor(techId: string, orderedIds: string[]): string {

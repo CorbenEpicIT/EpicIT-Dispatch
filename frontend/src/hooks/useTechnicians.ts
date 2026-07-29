@@ -76,6 +76,25 @@ export const useUpdateTechnicianMutation = (): UseMutationResult<
 	});
 };
 
+export const useChangeTechnicianPasswordMutation = (): UseMutationResult<
+	Technician,
+	Error,
+	{ id: string; data: { current_password: string; new_password: string } }
+> => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({ id, data }: { id: string; data: { current_password: string; new_password: string } }) =>
+			technicianApi.changeTechnicianPassword(id, data),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+		onError: (error: Error) => {
+			console.error(`Failed to change technician password:`, error.message);
+		},
+	});
+};
+
 export const useDeleteTechnicianMutation = (): UseMutationResult<
 	{ message: string; id: string },
 	Error,
@@ -86,15 +105,18 @@ export const useDeleteTechnicianMutation = (): UseMutationResult<
 	return useMutation({
 		mutationFn: technicianApi.deleteTechnician,
 		onMutate: async (deletedId: string) => {
-			await queryClient.cancelQueries({
-				queryKey: ["technicians", deletedId],
-			});
+			await queryClient.cancelQueries({ queryKey: ["technicians"] });
+			const previousList = queryClient.getQueryData<Technician[]>(["technicians"]);
+			queryClient.setQueryData<Technician[]>(["technicians"], (old) =>
+				(old ?? []).filter((t) => t.id !== deletedId)
+			);
+			return { previousList };
 		},
 		onSuccess: (_, deletedId) => {
-			queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			queryClient.removeQueries({ queryKey: ["technicians", deletedId] });
 		},
-		onError: (error: Error) => {
+		onError: (error: Error, _id, context) => {
+			queryClient.setQueryData(["technicians"], context?.previousList);
 			console.error(`Failed to delete technician:`, error.message);
 		},
 	});
@@ -107,6 +129,51 @@ export const useSetTechnicianVehicleMutation = () => {
 		mutationFn: ({ technicianId, vehicleId }) =>
 			technicianApi.setTechnicianCurrentVehicle(technicianId, vehicleId),
 		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+			queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+		},
+	});
+};
+
+export const useGoAvailableMutation = (): UseMutationResult<Technician, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (techId: string) => technicianApi.goAvailable(techId),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+export const useGoOfflineMutation = (): UseMutationResult<Technician, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (techId: string) => technicianApi.goOffline(techId),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+export const useGoOnBreakMutation = (): UseMutationResult<Technician, Error, { techId: string; reason: string }> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ techId, reason }) => technicianApi.goOnBreak(techId, reason),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
+			queryClient.invalidateQueries({ queryKey: ["technicians"] });
+		},
+	});
+};
+
+export const useMarkDoneMutation = (): UseMutationResult<Technician, Error, string> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (techId: string) => technicianApi.markDone(techId),
+		onSuccess: (updated) => {
+			queryClient.setQueryData(["technicians", updated.id], updated);
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });
 		},
 	});

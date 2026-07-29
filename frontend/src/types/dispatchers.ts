@@ -1,4 +1,9 @@
 import z from "zod";
+import type { Layout } from "react-grid-layout";
+import type { ReportCategoryId } from "./reports";
+
+export type ReportLayoutEntry = { order: string[]; hidden: string[] };
+export type ReportLayout = Partial<Record<ReportCategoryId, ReportLayoutEntry>>;
 
 // ============================================================================
 // INTERFACES
@@ -13,9 +18,16 @@ export interface Dispatcher {
   phone: string | null;
   title: string;
   description: string;
-  last_login: string; 
+  last_login: string;
   email_verified_at: Date | null;
   email_verification_token: string | null;
+  role_id: string | null;
+  organization_role: { id: string; name: string } | null;
+  permissions: string[];
+  theme: "dark" | "light" | "system";
+  dashboard_layout: Layout | null;
+  report_layout: ReportLayout | null;
+  mfaEnabled?: boolean;
 }
 
 export interface CreateDispatcherInput {
@@ -27,6 +39,7 @@ export interface CreateDispatcherInput {
   title: string;
   description: string;
   role?: string;
+  organization_role_id?: string | null;
 }
  
 export interface UpdateDispatcherInput {
@@ -37,6 +50,9 @@ export interface UpdateDispatcherInput {
   title?: string;
   description?: string;
   role?: string;
+  theme?: "dark" | "light" | "system";
+  dashboard_layout?: Layout | null;
+  report_layout?: ReportLayout | null;
 }
  
 export interface ChangeDispatcherPasswordInput {
@@ -57,6 +73,7 @@ export const CreateDispatcherSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
+	organization_role_id: z.string().uuid("Invalid role ID").nullable().optional(),
 });
  
 export const UpdateDispatcherSchema = z
@@ -69,6 +86,15 @@ export const UpdateDispatcherSchema = z
 		title: z.string().min(1, "Title is required").optional(),
 		description: z.string().optional(),
 		last_login: z.coerce.date().optional(),
+		theme: z.enum(["dark", "light", "system"]).optional(),
+		dashboard_layout: z.array(z.any()).nullable().optional(),
+		report_layout: z
+			.record(
+				z.string(),
+				z.object({ order: z.array(z.string()), hidden: z.array(z.string()) }),
+			)
+			.nullable()
+			.optional(),
 	})
 	.refine(
 		(data) =>
@@ -79,6 +105,9 @@ export const UpdateDispatcherSchema = z
 			data.password !== undefined ||
 			data.title !== undefined ||
 			data.description !== undefined ||
-			data.last_login !== undefined,
+			data.last_login !== undefined ||
+			data.theme !== undefined ||
+			data.dashboard_layout !== undefined ||
+			data.report_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);

@@ -18,12 +18,14 @@ import {
 } from "../controllers/quotesController.js";
 import { generateQuotePdf } from "../lib/pdf/pdfService.js";
 import { sendQuoteEmail } from "../services/emailService.js";
+import { onQuoteSent } from "../services/followupTriggers.js";
 import { getUserContext } from '../lib/context.js';
 import * as quoteNotesController from '../controllers/quoteNotesController.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requirePermission("view_quotes"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const quotes = await getAllQuotes(orgId);
@@ -33,9 +35,9 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requirePermission("view_quotes"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const quote = await getQuoteById(id, orgId);
 
@@ -56,11 +58,13 @@ router.get("/:id", async (req, res, next) => {
     }
 });
 
-router.get("/:id/pdf", async (req, res, next) => {
+router.get("/:id/pdf", requirePermission("view_quotes"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
-        const buffer = await generateQuotePdf(req.params.id, orgId);
-        res.setHeader("Content-Type", "routerlication/pdf");
+        const id = req.params.id as string;
+        const buffer = await generateQuotePdf(id, orgId);
+        // changed routerlication to application - Max
+        res.setHeader("Content-Type", "application/pdf");
         res.setHeader(
             "Content-Disposition",
             `attachment; filename="quote-${req.params.id}.pdf"`,
@@ -77,9 +81,9 @@ router.get("/:id/pdf", async (req, res, next) => {
 
 
 
-router.post("/:id/send", async (req, res, next) => {
+router.post("/:id/send", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const recipientEmail: string | undefined = req.body?.recipient_email;
         if (!recipientEmail) {
             return res
@@ -101,6 +105,8 @@ router.post("/:id/send", async (req, res, next) => {
                 .status(status)
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
+        // Best-effort: auto-enroll into any active quote_sent followup sequences.
+        onQuoteSent(id, orgId);
         res.json(createSuccessResponse(result.item));
     } catch (err: any) {
         if (err?.status === 404)
@@ -111,7 +117,7 @@ router.post("/:id/send", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("create_quotes"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -134,7 +140,7 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -158,9 +164,9 @@ router.put("/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("delete_quotes"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteQuote(id, orgId, context);
@@ -182,9 +188,9 @@ router.delete("/:id", async (req, res, next) => {
 // QUOTE LINE ITEM ROUTES
 // ============================================
 
-router.get("/:quoteId/line-items", async (req, res, next) => {
+router.get("/:quoteId/line-items", requirePermission("view_quotes"), async (req, res, next) => {
     try {
-        const { quoteId } = req.params;
+        const quoteId = req.params.quoteId as string;
         const orgId = req.user!.organization_id as string;
         const items = await getQuoteItems(quoteId, orgId);
         res.json(createSuccessResponse(items, { count: items.length }));
@@ -193,9 +199,9 @@ router.get("/:quoteId/line-items", async (req, res, next) => {
     }
 });
 
-router.get("/:quoteId/line-items/:itemId", async (req, res, next) => {
+router.get("/:quoteId/line-items/:itemId", requirePermission("view_quotes"), async (req, res, next) => {
     try {
-        const { quoteId, itemId } = req.params;
+        const { quoteId, itemId } = req.params as { quoteId: string; itemId: string };
         const orgId = req.user!.organization_id as string;
         const item = await getQuoteItemById(quoteId, itemId, orgId);
 
@@ -216,9 +222,9 @@ router.get("/:quoteId/line-items/:itemId", async (req, res, next) => {
     }
 });
 
-router.post("/:quoteId/line-items", async (req, res, next) => {
+router.post("/:quoteId/line-items", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { quoteId } = req.params;
+        const quoteId = req.params.quoteId as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await insertQuoteItem(quoteId, req.body, orgId, context);
@@ -241,9 +247,9 @@ router.post("/:quoteId/line-items", async (req, res, next) => {
     }
 });
 
-router.put("/:quoteId/line-items/:itemId", async (req, res, next) => {
+router.put("/:quoteId/line-items/:itemId", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { quoteId, itemId } = req.params;
+        const { quoteId, itemId } = req.params as { quoteId: string; itemId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await updateQuoteItem(
@@ -272,9 +278,9 @@ router.put("/:quoteId/line-items/:itemId", async (req, res, next) => {
     }
 });
 
-router.delete("/:quoteId/line-items/:itemId", async (req, res, next) => {
+router.delete("/:quoteId/line-items/:itemId", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { quoteId, itemId } = req.params;
+        const { quoteId, itemId } = req.params as { quoteId: string; itemId: string };
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await deleteQuoteItem(quoteId, itemId, orgId, context);
@@ -298,9 +304,9 @@ router.delete("/:quoteId/line-items/:itemId", async (req, res, next) => {
 // QUOTE NOTE ROUTES
 // ============================================
 
-router.get("/:quoteId/notes", async (req, res, next) => {
+router.get("/:quoteId/notes", requirePermission("view_quotes"), async (req, res, next) => {
     try {
-        const { quoteId } = req.params;
+        const quoteId = req.params.quoteId as string;
         const orgId = req.user!.organization_id as string;
         const notes = await quoteNotesController.getQuoteNotes(quoteId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -309,9 +315,9 @@ router.get("/:quoteId/notes", async (req, res, next) => {
     }
 });
 
-router.get("/:quoteId/notes/:noteId", async (req, res, next) => {
+router.get("/:quoteId/notes/:noteId", requirePermission("view_quotes"), async (req, res, next) => {
     try {
-        const { quoteId, noteId } = req.params;
+        const { quoteId, noteId } = req.params as { quoteId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const note = await quoteNotesController.getNoteById(quoteId, noteId, orgId);
 
@@ -329,9 +335,9 @@ router.get("/:quoteId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.post("/:quoteId/notes", async (req, res, next) => {
+router.post("/:quoteId/notes", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { quoteId } = req.params;
+        const quoteId = req.params.quoteId as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await quoteNotesController.insertQuoteNote(
@@ -359,9 +365,9 @@ router.post("/:quoteId/notes", async (req, res, next) => {
     }
 });
 
-router.put("/:quoteId/notes/:noteId", async (req, res, next) => {
+router.put("/:quoteId/notes/:noteId", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { quoteId, noteId } = req.params;
+        const { quoteId, noteId } = req.params as { quoteId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await quoteNotesController.updateQuoteNote(
@@ -390,9 +396,9 @@ router.put("/:quoteId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.delete("/:quoteId/notes/:noteId", async (req, res, next) => {
+router.delete("/:quoteId/notes/:noteId", requirePermission("edit_quotes"), async (req, res, next) => {
     try {
-        const { quoteId, noteId } = req.params;
+        const { quoteId, noteId } = req.params as { quoteId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await quoteNotesController.deleteQuoteNote(

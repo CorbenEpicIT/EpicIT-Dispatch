@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+﻿import { useParams, useNavigate } from "react-router-dom";
 import {
 	Edit2,
 	Calendar,
@@ -24,6 +24,7 @@ import ConvertToQuote from "../../components/requests/ConvertToQuote";
 import ConvertToJob from "../../components/requests/ConvertToJob";
 import NoteManager from "../../components/requests/RequestNoteManager";
 import { useState, useRef, useEffect } from "react";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function RequestDetailPage() {
 	const { requestId } = useParams<{ requestId: string }>();
@@ -40,6 +41,11 @@ export default function RequestDetailPage() {
 	const [hasManualStatusChange, setHasManualStatusChange] = useState(false);
 	const [hasAutoUpdated, setHasAutoUpdated] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+
+	// permissions
+	const EDIT_REQUEST = usePermission("edit_requests");
+	const CREATE_QUOTE = usePermission("create_quotes");
+	const CREATE_JOB = usePermission("create_jobs");
 
 	// Auto-update: New → Reviewing after 5 seconds
 	useEffect(() => {
@@ -69,7 +75,7 @@ export default function RequestDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading request details...</div>
+				<div className="text-text-primary text-lg">Loading request details...</div>
 			</div>
 		);
 	}
@@ -77,7 +83,7 @@ export default function RequestDetailPage() {
 	if (!request) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Request not found</div>
+				<div className="text-text-primary text-lg">Request not found</div>
 			</div>
 		);
 	}
@@ -88,46 +94,46 @@ export default function RequestDetailPage() {
 	const getStatusColor = (status: string) => {
 		switch (status) {
 			case "New":
-				return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+				return "bg-primary/20 text-primary-text border-primary/30";
 			case "Reviewing":
-				return "bg-purple-500/20 text-purple-400 border-purple-500/30";
+				return "bg-reviewing/20 text-reviewing-text border-reviewing/30";
 			case "Quoted":
-				return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+				return "bg-warning/20 text-warning-text border-warning/30";
 			case "QuoteApproved":
-				return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+				return "bg-success/20 text-success-text border-success/30";
 			case "QuoteRejected":
-				return "bg-rose-500/20 text-rose-400 border-rose-500/30";
+				return "bg-rejected/20 text-rejected-text border-rejected/30";
 			case "ConvertedToJob":
-				return "bg-green-500/20 text-green-400 border-green-500/30";
+				return "bg-success/20 text-success-text border-success/30";
 			case "Cancelled":
-				return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+				return "bg-neutral/20 text-text-tertiary border-border-strong/30";
 			case "Unscheduled":
-				return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+				return "bg-neutral/20 text-text-tertiary border-neutral/30";
 			case "Scheduled":
-				return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+				return "bg-primary/20 text-primary-text border-primary/30";
 			case "InProgress":
-				return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+				return "bg-warning-bg text-warning-text border-warning-border";
 			case "Completed":
-				return "bg-green-500/20 text-green-400 border-green-500/30";
+				return "bg-success/20 text-success-text border-success/30";
 			default:
-				return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+				return "bg-neutral/20 text-text-tertiary border-border-strong/30";
 		}
 	};
 
 	const getPriorityColor = (priority: string) => {
 		switch (priority?.toLowerCase()) {
 			case "emergency":
-				return "text-red-500";
+				return "text-error";
 			case "urgent":
-				return "text-orange-400";
+				return "text-orange-text";
 			case "high":
-				return "text-red-400";
+				return "text-error-text";
 			case "medium":
-				return "text-amber-400";
+				return "text-warning-text";
 			case "low":
-				return "text-green-400";
+				return "text-success-text";
 			default:
-				return "text-blue-400";
+				return "text-primary-text";
 		}
 	};
 
@@ -145,28 +151,32 @@ export default function RequestDetailPage() {
 	};
 
 	const handleEdit = () => {
+		if (!EDIT_REQUEST) return;
 		setShowActionsMenu(false);
 		setIsEditModalOpen(true);
 	};
 	const handleConvertToQuote = () => {
+		if (!CREATE_QUOTE) return;
 		setShowActionsMenu(false);
 		setIsConvertToQuoteModalOpen(true);
 	};
 	const handleConvertToJob = () => {
+		if (!CREATE_JOB) return;
 		setShowActionsMenu(false);
 		setIsConvertToJobModalOpen(true);
 	};
 	const handleResetToNew = async () => {
+		if (!EDIT_REQUEST) return;
 		setShowActionsMenu(false);
 		setHasManualStatusChange(true);
 		await updateRequest({ id: request.id, data: { status: "New" } });
 	};
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
-				<h1 className="text-3xl font-bold text-white">{request.title}</h1>
+				<h1 className="text-3xl font-bold text-text-primary">{request.title}</h1>
 
 				<div className="justify-self-end flex items-center gap-3">
 					<span
@@ -180,62 +190,53 @@ export default function RequestDetailPage() {
 							onClick={() =>
 								setShowActionsMenu(!showActionsMenu)
 							}
-							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+							className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 						>
 							<MoreVertical size={20} />
 						</button>
 
 						{showActionsMenu && (
-							<div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
-									<button
-										onClick={handleEdit}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										<Edit2 size={16} />{" "}
-										Edit Request
-									</button>
-									<button
-										onClick={
-											handleConvertToQuote
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										<FileText
-											size={16}
-										/>{" "}
-										Convert to Quote
-									</button>
-									<button
-										onClick={
-											handleConvertToJob
-										}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
-									>
-										<Briefcase
-											size={16}
-										/>{" "}
-										Convert to Job
-									</button>
-									{request.status ===
-										"Reviewing" && (
+										<button
+											title={!EDIT_REQUEST ? "You don't have permission to perform this action" : undefined}
+											disabled={!EDIT_REQUEST}
+											onClick={handleEdit}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Edit2 size={16} />{" "}
+											Edit Request
+										</button>
+										<button
+											title={!CREATE_QUOTE ? "You don't have permission to perform this action" : undefined}
+											onClick={handleConvertToQuote}
+											disabled={!CREATE_QUOTE}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<FileText size={16} />{" "}
+											Convert to Quote
+										</button>
+										<button
+											title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+											onClick={handleConvertToJob}
+											disabled={!CREATE_JOB}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<Briefcase size={16} />{" "}
+											Convert to Job
+										</button>
+									{request.status === "Reviewing" && (
 										<>
-											<div className="border-t border-zinc-800 my-1" />
-											<button
-												onClick={
-													handleResetToNew
-												}
-												className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 text-zinc-400"
-											>
-												<RotateCcw
-													size={
-														16
-													}
-												/>{" "}
-												Reset
-												to
-												New
-											</button>
+											<div className="border-t border-border-subtle my-1" />
+												<button
+													title={!EDIT_REQUEST ? "You don't have permission to perform this action" : undefined}
+													onClick={handleResetToNew}
+													disabled={!EDIT_REQUEST}
+													className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 text-text-tertiary disabled:opacity-40 disabled:cursor-not-allowed"
+												>
+													<RotateCcw size={16} />{" "}
+													Reset to New
+												</button>
 										</>
 									)}
 								</div>
@@ -251,10 +252,10 @@ export default function RequestDetailPage() {
 					<Card title="Request Information">
 						<div className="space-y-4">
 							<div>
-								<h3 className="text-zinc-400 text-sm mb-1">
+								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{request.description ||
 										"No description provided"}
 								</p>
@@ -262,11 +263,11 @@ export default function RequestDetailPage() {
 
 							{request.address && (
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<MapPin size={14} />{" "}
 										Address
 									</h3>
-									<p className="text-white break-words">
+									<p className="text-text-primary break-words">
 										{request.address}
 									</p>
 								</div>
@@ -274,7 +275,7 @@ export default function RequestDetailPage() {
 
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<TrendingUp
 											size={14}
 										/>{" "}
@@ -287,13 +288,13 @@ export default function RequestDetailPage() {
 									</p>
 								</div>
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<Calendar
 											size={14}
 										/>{" "}
 										Created
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											request.created_at
 										).toLocaleDateString(
@@ -310,13 +311,13 @@ export default function RequestDetailPage() {
 
 							{request.estimated_value && (
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<DollarSign
 											size={14}
 										/>{" "}
 										Estimated Value
 									</h3>
-									<p className="text-white font-medium">
+									<p className="text-text-primary font-medium">
 										$
 										{Number(
 											request.estimated_value
@@ -333,24 +334,24 @@ export default function RequestDetailPage() {
 
 							{request.source && (
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										{getSourceIcon(
 											request.source
 										)}{" "}
 										Source
 									</h3>
 									<div className="flex items-center gap-2">
-										<span className="text-white capitalize">
+										<span className="text-text-primary capitalize">
 											{
 												request.source
 											}
 										</span>
 										{request.source_reference && (
 											<>
-												<span className="text-zinc-600">
+												<span className="text-text-faint">
 													•
 												</span>
-												<span className="text-zinc-400 text-sm">
+												<span className="text-text-tertiary text-sm">
 													{
 														request.source_reference
 													}
@@ -363,19 +364,19 @@ export default function RequestDetailPage() {
 
 							{request.requires_quote && (
 								<div>
-									<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+									<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-warning/20 text-warning-text border border-warning/30">
 										Quote Required
 									</span>
 								</div>
 							)}
 
 							{request.cancelled_at && (
-								<div className="pt-4 border-t border-zinc-700">
-									<h3 className="text-zinc-400 text-sm mb-2">
+								<div className="pt-4 border-t border-border">
+									<h3 className="text-text-tertiary text-sm mb-2">
 										Cancellation Details
 									</h3>
 									<div className="space-y-2">
-										<p className="text-sm text-zinc-300">
+										<p className="text-sm text-text-secondary">
 											Cancelled
 											on:{" "}
 											{new Date(
@@ -392,7 +393,7 @@ export default function RequestDetailPage() {
 											)}
 										</p>
 										{request.cancellation_reason && (
-											<p className="text-sm text-zinc-400">
+											<p className="text-sm text-text-tertiary">
 												Reason:{" "}
 												{
 													request.cancellation_reason
@@ -424,21 +425,21 @@ export default function RequestDetailPage() {
 								`/dispatch/quotes/${firstQuote.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Quote
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{firstQuote.quote_number}
 								</h4>
-								<p className="text-zinc-400 text-xs mb-2">
+								<p className="text-text-tertiary text-xs mb-2">
 									{firstQuote.title ||
 										"Quote"}
 								</p>
-								<div className="flex items-center gap-2 text-xs text-zinc-500">
+								<div className="flex items-center gap-2 text-xs text-text-muted">
 									<Calendar size={12} />
 									<span>
 										{new Date(
@@ -455,7 +456,7 @@ export default function RequestDetailPage() {
 								</div>
 							</div>
 							<div className="flex flex-col items-end gap-2 flex-shrink-0">
-								<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+								<span className="text-success-text font-semibold text-sm whitespace-nowrap">
 									$
 									{Number(
 										firstQuote.total
@@ -473,13 +474,13 @@ export default function RequestDetailPage() {
 						</div>
 					</button>
 				) : (
-					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+					<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
 						<div className="grid grid-cols-3 gap-4">
 							<div className="col-span-2 flex flex-col gap-2">
-								<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold">
+								<p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
 									Related Quote
 								</p>
-								<div className="flex items-center gap-2 text-zinc-600 text-sm">
+								<div className="flex items-center gap-2 text-text-faint text-sm">
 									<Link2Off
 										size={14}
 										className="flex-shrink-0"
@@ -490,16 +491,18 @@ export default function RequestDetailPage() {
 								</div>
 							</div>
 							<div className="col-span-1 flex items-center justify-end">
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										handleConvertToQuote();
-									}}
-									className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
-								>
-									<FileText size={12} />{" "}
-									Convert to Quote
-								</button>
+									<button
+										title={!CREATE_QUOTE ? "You don't have permission to perform this action" : undefined}
+										onClick={(e) => {
+											e.stopPropagation();
+											handleConvertToQuote();
+										}}
+										disabled={!CREATE_QUOTE}
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium text-on-primary transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+									>
+										<FileText size={12} />{" "}
+										Convert to Quote
+									</button>
 							</div>
 						</div>
 					</div>
@@ -511,20 +514,20 @@ export default function RequestDetailPage() {
 						onClick={() =>
 							navigate(`/dispatch/jobs/${firstJob.id}`)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Job
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{firstJob.job_number}
 								</h4>
-								<p className="text-zinc-400 text-xs mb-2">
+								<p className="text-text-tertiary text-xs mb-2">
 									{firstJob.name}
 								</p>
-								<div className="flex items-center gap-2 text-xs text-zinc-500">
+								<div className="flex items-center gap-2 text-xs text-text-muted">
 									<Calendar size={12} />
 									<span>
 										{new Date(
@@ -548,13 +551,13 @@ export default function RequestDetailPage() {
 						</div>
 					</button>
 				) : (
-					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
+					<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
 						<div className="grid grid-cols-3 gap-4">
 							<div className="col-span-2 flex flex-col gap-2">
-								<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold">
+								<p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
 									Related Job
 								</p>
-								<div className="flex items-center gap-2 text-zinc-600 text-sm">
+								<div className="flex items-center gap-2 text-text-faint text-sm">
 									<Link2Off
 										size={14}
 										className="flex-shrink-0"
@@ -565,16 +568,18 @@ export default function RequestDetailPage() {
 								</div>
 							</div>
 							<div className="col-span-1 flex items-center justify-end">
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										handleConvertToJob();
-									}}
-									className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md text-xs font-medium transition-colors whitespace-nowrap"
-								>
-									<Briefcase size={12} />{" "}
-									Convert to Job
-								</button>
+									<button
+										title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+										onClick={(e) => {
+											e.stopPropagation();
+											handleConvertToJob();
+										}}
+										disabled={!CREATE_JOB}
+										className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-xs font-medium text-on-primary transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+									>
+										<Briefcase size={12} />{" "}
+										Convert to Job
+									</button>
 							</div>
 						</div>
 					</div>

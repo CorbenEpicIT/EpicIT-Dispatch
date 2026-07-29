@@ -116,8 +116,7 @@ type RecurringRuleWithWeekdays = Prisma.recurring_ruleGetPayload<{
 async function generateOccurrencesForPlan(
 	planId: string,
 	daysAhead: number,
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	tx: any,
+	tx: Prisma.TransactionClient,
 ): Promise<OccurrenceGenerationResult> {
 	const plan = await tx.recurring_plan.findUnique({
 		where: { id: planId },
@@ -568,7 +567,7 @@ export const insertRecurringPlan = async (
 			await generateOccurrencesForPlan(
 				plan.id,
 				parsed.generation_window_days,
-				tx,
+				tx as unknown as Prisma.TransactionClient,
 			);
 
 			// Update client activity
@@ -793,7 +792,7 @@ export const updateRecurringPlan = async (
 				await generateOccurrencesForPlan(
 					existing.id,
 					plan.generation_window_days,
-					tx,
+					tx as unknown as Prisma.TransactionClient,
 				);
 			}
 
@@ -887,14 +886,26 @@ export const updateRecurringPlan = async (
 						data: { is_active: false },
 					});
 				} else {
+					// Preserve next_invoice_at when frequency/day anchor unchanged so
+					// editing memo, auto_send, etc. doesn't silently reset the billing date.
+					const existingSchedule = sched.frequency !== "on_visit_completion"
+						? await tx.invoice_schedule.findFirst({ where: { recurring_plan_id: existing.id } })
+						: null;
+					const anchorChanged = !existingSchedule ||
+						existingSchedule.frequency !== sched.frequency ||
+						existingSchedule.day_of_month !== (sched.day_of_month ?? null) ||
+						existingSchedule.day_of_week !== (sched.day_of_week ?? null) ||
+						existingSchedule.generate_days_before !== (sched.generate_days_before ?? 0);
 					const nextInvoiceAt =
 						sched.frequency !== "on_visit_completion"
-							? calculateNextInvoiceAt(
-									sched.frequency as ScheduleFrequency,
-									sched.day_of_month ?? null,
-									sched.day_of_week ?? null,
-									sched.generate_days_before ?? 0,
-								)
+							? anchorChanged
+								? calculateNextInvoiceAt(
+										sched.frequency as ScheduleFrequency,
+										sched.day_of_month ?? null,
+										sched.day_of_week ?? null,
+										sched.generate_days_before ?? 0,
+									)
+								: existingSchedule!.next_invoice_at
 							: null;
 					await tx.invoice_schedule.upsert({
 						where: { recurring_plan_id: existing.id },
@@ -1164,14 +1175,25 @@ export const upsertInvoiceSchedule = async (
 
 		if (!plan) return { err: "Recurring plan not found" };
 
+		// Preserve next_invoice_at when frequency/day anchor unchanged
+		const existingSchedule = parsed.frequency !== "on_visit_completion"
+			? await sdb.invoice_schedule.findFirst({ where: { recurring_plan_id: plan.id } })
+			: null;
+		const anchorChanged = !existingSchedule ||
+			existingSchedule.frequency !== parsed.frequency ||
+			existingSchedule.day_of_month !== (parsed.day_of_month ?? null) ||
+			existingSchedule.day_of_week !== (parsed.day_of_week ?? null) ||
+			existingSchedule.generate_days_before !== (parsed.generate_days_before ?? 0);
 		const nextInvoiceAt =
 			parsed.frequency !== "on_visit_completion"
-				? calculateNextInvoiceAt(
-						parsed.frequency as ScheduleFrequency,
-						parsed.day_of_month ?? null,
-						parsed.day_of_week ?? null,
-						parsed.generate_days_before ?? 0,
-					)
+				? anchorChanged
+					? calculateNextInvoiceAt(
+							parsed.frequency as ScheduleFrequency,
+							parsed.day_of_month ?? null,
+							parsed.day_of_week ?? null,
+							parsed.generate_days_before ?? 0,
+						)
+					: existingSchedule!.next_invoice_at
 				: null;
 
 		const schedule = await sdb.invoice_schedule.upsert({
@@ -1395,7 +1417,7 @@ export const generateOccurrences = async (
 			return await generateOccurrencesForPlan(
 				plan.id,
 				parsed.days_ahead,
-				tx,
+				tx as unknown as Prisma.TransactionClient,
 			);
 		});
 
@@ -1774,6 +1796,7 @@ export const generateVisitFromOccurrence = async (
 								source: "recurring_plan",
 								item_type: item.item_type,
 								sort_order: idx,
+								inventory_item_id: item.inventory_item_id ?? null,
 							})),
 						},
 					},

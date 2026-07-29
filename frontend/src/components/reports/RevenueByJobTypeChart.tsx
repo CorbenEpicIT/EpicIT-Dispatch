@@ -1,4 +1,4 @@
-import { PieChart, Pie, Tooltip, ResponsiveContainer } from "recharts";
+﻿import { PieChart, Pie, Tooltip, ResponsiveContainer } from "recharts";
 import Card from "../ui/Card";
 import { formatCurrency } from "../../util/util";
 import type { RevenueByJobTypeItem } from "../../types/reports";
@@ -8,14 +8,14 @@ interface RevenueByJobTypeChartProps {
 	total: number;
 }
 
-const BG_COLOR = "#121212";
+const BG_COLOR = "var(--color-chart-hole-bg)";
 
 const TYPE_COLORS: Record<string, string> = {
-	"One-Time": "#3b82f6",
-	Recurring: "#10b981",
+	"One-Time": "var(--color-chart-primary)",
+	Recurring: "var(--color-chart-success)",
 };
 
-const FALLBACK_COLOR = "#3f3f46";
+const FALLBACK_COLOR = "var(--color-chart-fallback)";
 
 function CustomTooltip({
 	active,
@@ -27,9 +27,9 @@ function CustomTooltip({
 	if (!active || !payload?.length) return null;
 	const { name, value } = payload[0];
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/80 backdrop-blur-md shadow-lg">
-			<p className="text-xs text-zinc-400">{name}</p>
-			<p className="text-sm font-semibold text-white">
+		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
+			<p className="text-xs text-text-tertiary">{name}</p>
+			<p className="text-sm font-semibold text-primary">
 				{formatCurrency(value)}
 			</p>
 		</div>
@@ -49,25 +49,25 @@ export default function RevenueByJobTypeChart({
 			className="h-full"
 			title="Revenue by Job Type"
 			headerAction={
-				<span className="text-xl font-bold text-white">
+				<span className="text-xl font-bold text-primary">
 					{formatCurrency(total)}
 				</span>
 			}
 		>
-			<div className="relative">
+			<div className="relative flex-1 min-h-0">
 				{/* Center label */}
 				<div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
 					<div className="text-center">
-						<p className="text-xs uppercase tracking-wider text-zinc-400">
+						<p className="text-xs uppercase tracking-wider text-text-tertiary">
 							Total
 						</p>
-						<p className="text-xl font-bold text-white">
+						<p className="text-xl font-bold text-primary">
 							{formatCurrency(total)}
 						</p>
 					</div>
 				</div>
 
-				<ResponsiveContainer width="100%" aspect={1} minWidth={0}>
+				<ResponsiveContainer width="100%" height="100%" minWidth={0}>
 					<PieChart>
 						<Pie
 							data={chartData}
@@ -91,7 +91,7 @@ export default function RevenueByJobTypeChart({
 			</div>
 
 			{/* Legend for the user to see */}
-			<div className="flex items-center justify-center gap-4 pt-2">
+			<div className="flex items-center justify-center gap-4 pt-2 shrink-0">
 				{data.map((entry) => (
 					<div
 						key={entry.type}
@@ -104,10 +104,10 @@ export default function RevenueByJobTypeChart({
 									TYPE_COLORS[entry.type] || FALLBACK_COLOR,
 							}}
 						/>
-						<span className="text-sm text-zinc-400">
+						<span className="text-sm text-text-tertiary">
 							{entry.type}
 						</span>
-						<span className="text-sm font-medium text-white">
+						<span className="text-sm font-medium text-primary">
 							{formatCurrency(entry.revenue)}
 						</span>
 					</div>

@@ -1,5 +1,6 @@
-import z from "zod";
+﻿import z from "zod";
 import type { ClientSummary, ClientWithPrimaryContact } from "./clients";
+import type { BillingRef } from "./invoices";
 import type { Coordinates } from "./location";
 import type {
 	Priority,
@@ -52,11 +53,11 @@ export const JobStatusLabels: Record<JobStatus, string> = {
 };
 
 export const JobStatusColors: Record<JobStatus, string> = {
-	Unscheduled: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	InProgress: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Completed: "bg-green-500/20 text-green-400 border-green-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Unscheduled: "bg-neutral/20 text-text-tertiary border-border-strong/30",
+	Scheduled: "bg-primary/20 text-primary-text border-primary/30",
+	InProgress: "bg-warning/20 text-warning-text border-warning/30",
+	Completed: "bg-success/20 text-success-text border-success/30",
+	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
 
 export const VisitStatusValues = [
@@ -84,39 +85,17 @@ export const VisitStatusLabels: Record<VisitStatus, string> = {
 };
 
 export const VisitStatusColors: Record<VisitStatus, string> = {
-	Scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Driving: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-	OnSite: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-	InProgress: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Paused: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Delayed: "bg-red-500/20 text-red-400 border-red-500/30",
-	Completed: "bg-green-500/20 text-green-400 border-green-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Scheduled:  "bg-surface-raised/40 text-text-tertiary border-border-strong/40",
+	Driving:    "bg-info/20 text-info-text border-info/30",
+	OnSite:     "bg-reviewing/20 text-reviewing-text border-reviewing/30",
+	InProgress: "bg-primary/20 text-primary-text border-primary/30",
+	Paused:     "bg-warning/20 text-warning-text border-warning/30",
+	Delayed:    "bg-orange/20 text-orange-text border-orange/30",
+	Completed:  "bg-success/20 text-success-text border-success/30",
+	Cancelled:  "bg-surface-raised/40 text-text-muted border-border-strong/40",
 };
 
-export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete";
-
-export interface LifecycleTransition {
-	action: LifecycleAction;
-	label: string;
-	confirmLabel: string;
-	needsConfirm: boolean;
-	color: string;
-	confirmColor: string;
-}
-
-export const LIFECYCLE_TRANSITIONS: Partial<Record<VisitStatus, LifecycleTransition[]>> = {
-	Scheduled: [
-		{ action: "drive", label: "I'm Driving", confirmLabel: "Confirm Driving", needsConfirm: true, color: "bg-cyan-700 hover:bg-cyan-600 text-white", confirmColor: "bg-cyan-500 hover:bg-cyan-400 animate-pulse text-white" },
-	],
-	Driving: [
-		{ action: "arrive", label: "I've Arrived", confirmLabel: "Confirm Arrived", needsConfirm: true, color: "bg-purple-700 hover:bg-purple-600 text-white", confirmColor: "bg-purple-500 hover:bg-purple-400 animate-pulse text-white" },
-	],
-	InProgress: [
-		{ action: "pause", label: "Pause", confirmLabel: "Pause", needsConfirm: false, color: "bg-amber-600 hover:bg-amber-700 text-white", confirmColor: "bg-amber-600 hover:bg-amber-700 text-white" },
-		{ action: "complete", label: "Complete", confirmLabel: "Confirm Complete", needsConfirm: true, color: "bg-green-700 hover:bg-green-600 text-white", confirmColor: "bg-green-500 hover:bg-green-400 animate-pulse text-white" },
-	],
-};
+export type LifecycleAction = "drive" | "arrive" | "start" | "pause" | "resume" | "complete" | "delay";
 
 // Re-export constraint types from recurringPlans for convenience
 export { ArrivalConstraintValues, FinishConstraintValues };
@@ -129,6 +108,7 @@ export type { ArrivalConstraint, FinishConstraint };
 export interface JobVisitTechnician {
 	visit_id: string;
 	tech_id: string;
+	tech_status: string;
 	tech: {
 		id: string;
 		name: string;
@@ -148,6 +128,7 @@ export interface VisitTechTimeEntry {
 	clocked_out_at: Date | string | null;
 	hours_worked: number | null;
 	line_item_id: string | null;
+	pause_reason: string | null;
 	created_at: Date | string;
 }
 
@@ -265,6 +246,12 @@ export interface JobLineItem {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
 }
@@ -277,6 +264,8 @@ export interface CreateJobLineItemInput {
 	total?: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateJobLineItemInput {
@@ -288,6 +277,8 @@ export interface UpdateJobLineItemInput {
 	total: number;
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface VisitLineItem {
@@ -298,7 +289,14 @@ export interface VisitLineItem {
 	unit_price: number;
 	total: number;
 	item_type?: LineItemType | null;
+	inventory_item_id?: string | null;
 	source?: LineItemSource;
+	source_job_id?: string | null;
+	source_visit_id?: string | null;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
 }
@@ -312,6 +310,8 @@ export interface CreateVisitLineItemInput {
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateVisitLineItemInput {
@@ -324,6 +324,8 @@ export interface UpdateVisitLineItemInput {
 	item_type?: LineItemType | null;
 	source?: LineItemSource;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 // ============================================================================
@@ -348,6 +350,7 @@ export interface JobVisit extends PricingBreakdown {
 
 	actual_start_at?: Date | string | null;
 	actual_end_at?: Date | string | null;
+	estimated_drive_miles?: number | null;
 	status: VisitStatus;
 	cancellation_reason?: string | null;
 
@@ -359,6 +362,10 @@ export interface JobVisit extends PricingBreakdown {
 	notes?: JobNote[];
 	line_items?: VisitLineItem[];
 	time_entries?: VisitTechTimeEntry[];
+	invoice_visits?: BillingRef[];
+	_count?: {
+		invoice_visits: number;
+	};
 }
 
 export interface CreateJobVisitInput {
@@ -579,6 +586,8 @@ export const CreateJobVisitSchema = z
 					source: z.enum(LineItemSourceValues).optional(),
 					item_type: z.enum(LineItemTypeValues).optional().nullable(),
 					sort_order: z.number().nonnegative().default(0),
+					taxable: z.boolean().optional(),
+					tax_group_id: z.string().uuid().nullable().optional(),
 				})
 			)
 			.optional(),
@@ -697,6 +706,8 @@ export const UpdateJobVisitSchema = z
 					source: z.enum(LineItemSourceValues).optional(),
 					item_type: z.enum(LineItemTypeValues).optional().nullable(),
 					sort_order: z.number().nonnegative().default(0),
+					taxable: z.boolean().optional(),
+					tax_group_id: z.string().uuid().nullable().optional(),
 				})
 			)
 			.optional(),
@@ -794,3 +805,28 @@ export const UpdateJobNoteSchema = z.object({
 	content: z.string().min(1, "Note content is required"),
 	visit_id: z.string().uuid().optional().nullable(),
 });
+
+// ============================================================================
+// SOCKET EVENT TYPES
+// ============================================================================
+
+export interface VisitStatusEvent {
+	visitStatusChanged: boolean;
+	visitStatus: VisitStatus;
+	previousVisitStatus: VisitStatus;
+	actor: {
+		type: "technician" | "dispatcher";
+		name: string | null;
+		id: string;
+	} | null;
+	visit: {
+		id: string;
+		name?: string | null;
+		scheduledAt: string;
+		job: {
+			id: string;
+			client: { name: string };
+		};
+	};
+	changedAt: string;
+}

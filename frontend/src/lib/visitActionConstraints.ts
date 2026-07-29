@@ -1,4 +1,3 @@
-// frontend/src/lib/visitActionConstraints.ts
 import type { VisitStatus } from "../types/jobs";
 
 export type TechnicianStatus = {
@@ -17,27 +16,37 @@ export type VisitActionConstraints = {
 };
 
 const DISABLED_REASON = "Clock out of your current job first";
+const ACTIVE_VISIT_STATUSES: VisitStatus[] = [
+	"Scheduled", "Delayed", "Driving", "OnSite", "InProgress", "Paused",
+];
 
 export function getActionConstraints(
 	visit: { id: string; status: VisitStatus },
 	techStatus: TechnicianStatus,
+	myTechVisitStatus: string = "Assigned",
 ): VisitActionConstraints {
+	const visitIsActive = (ACTIVE_VISIT_STATUSES as string[]).includes(visit.status);
+
 	const driveEnabled =
-		(visit.status === "Scheduled" || visit.status === "Delayed") &&
-		!techStatus.isClockedIn;
+		myTechVisitStatus === "Assigned" &&
+		!techStatus.isClockedIn &&
+		visitIsActive &&
+		!["Completed", "Cancelled"].includes(visit.status);
 
 	const requiresSwitchConfirm =
 		driveEnabled &&
 		techStatus.isDriving &&
 		techStatus.drivingVisitId !== visit.id;
 
-	const arriveEnabled = visit.status === "Driving" && !techStatus.isClockedIn;
+	const arriveEnabled =
+		myTechVisitStatus === "EnRoute" &&
+		!techStatus.isClockedIn &&
+		!["Completed", "Cancelled"].includes(visit.status);
 
 	const clockInEnabled =
-		(visit.status === "OnSite" ||
-			visit.status === "InProgress" ||
-			visit.status === "Paused") &&
-		!techStatus.isClockedIn;
+		myTechVisitStatus === "OnSite" &&
+		!techStatus.isClockedIn &&
+		(visit.status === "OnSite" || visit.status === "InProgress" || visit.status === "Paused");
 
 	return {
 		drive: {

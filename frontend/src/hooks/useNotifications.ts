@@ -1,37 +1,34 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { io } from "socket.io-client";
+import { socket } from "../lib/socket";
 import type { TechnicianNotification } from "../types/notifications";
 import * as notificationsApi from "../api/notifications";
-
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL as string;
 
 export const useNotificationsQuery = (
 	technicianId: string | null | undefined,
 	unreadOnly = false,
+	onNew?: (notif: TechnicianNotification) => void,
 ): UseQueryResult<TechnicianNotification[], Error> => {
 	const queryClient = useQueryClient();
-	const queryKey = ["notifications", technicianId, { unreadOnly }];
+	const queryKey = useMemo(
+		() => ["notifications", technicianId, { unreadOnly }],
+		[technicianId, unreadOnly],
+	);
+	const onNewRef = useRef(onNew);
+	useEffect(() => { onNewRef.current = onNew; }, [onNew]);
 
-	// Real-time: prepend incoming notifications to the cache
+	// Shared socket singleton (lib/socket.ts) — job/inventory sync lives in useSocketQuerySync now.
 	useEffect(() => {
 		if (!technicianId) return;
 
-		const socket = io(SOCKET_URL, {
-			transports: ["websocket"],
-			query: { techId: technicianId },
-		});
-
-		socket.on("notification:new", (notif: TechnicianNotification) => {
+		const handler = (notif: TechnicianNotification) => {
 			queryClient.setQueryData<TechnicianNotification[]>(queryKey, (prev = []) => [notif, ...prev]);
-		});
-
-		return () => {
-			socket.off("notification:new");
-			socket.disconnect();
+			onNewRef.current?.(notif);
 		};
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [technicianId]);
+
+		socket.on("notification:new", handler);
+		return () => { socket.off("notification:new", handler); };
+	}, [technicianId, queryClient, queryKey]);
 
 	return useQuery({
 		queryKey,

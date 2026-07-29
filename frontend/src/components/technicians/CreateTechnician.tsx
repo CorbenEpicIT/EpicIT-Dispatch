@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import { CreateTechnicianSchema, type CreateTechnicianInput } from "../../types/technicians";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import DatePicker from "../ui/DatePicker";
+import { useOrgRolesQuery } from "../../hooks/useOrgRoles";
 
 interface CreateTechnicianProps {
 	isModalOpen: boolean;
@@ -11,8 +12,9 @@ interface CreateTechnicianProps {
 }
 
 const INPUT =
-	"border border-zinc-700 px-2.5 h-[34px] w-full rounded bg-zinc-900 text-white text-sm lg:text-base focus:border-blue-500 focus:outline-none transition-colors min-w-0";
-const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-zinc-400 uppercase tracking-wider";
+	"border border-border px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0";
+const LABEL =
+	"block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 const CreateTechnician = ({
 	isModalOpen,
@@ -28,8 +30,19 @@ const CreateTechnician = ({
 	const [hireDate, setHireDate] = useState<Date>(new Date());
 	const [password, setPassword] = useState("");
 	const [choosePassword, setChoosePassword] = useState(false);
+	const [organizationRoleId, setOrganizationRoleId] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
+
+	const { data: roles } = useOrgRolesQuery();
+	const technicianRoles = useMemo(() => (roles ?? []).filter((r) => r.base_tier === "technician"), [roles]);
+
+	useEffect(() => {
+		if (isModalOpen && technicianRoles.length > 0 && organizationRoleId === null) {
+			const defaultRole = technicianRoles.find((r) => r.is_default);
+			if (defaultRole) setOrganizationRoleId(defaultRole.id);
+		}
+	}, [isModalOpen, technicianRoles]);
 
 	const resetForm = useCallback(() => {
 		setName("");
@@ -41,6 +54,7 @@ const CreateTechnician = ({
 		setErrors(null);
 		setPassword("");
 		setChoosePassword(false);
+		setOrganizationRoleId(null);
 	}, []);
 
 	useEffect(() => {
@@ -60,6 +74,7 @@ const CreateTechnician = ({
 			password: choosePassword ? password.trim() : undefined,
 			title: title.trim(),
 			description: description.trim(),
+			organization_role_id: organizationRoleId,
 			status,
 			hire_date: hireDate,
 		};
@@ -90,7 +105,10 @@ const CreateTechnician = ({
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-xs leading-tight">
+					<p
+						key={idx}
+						className="text-error-text text-xs leading-tight"
+					>
 						{err.message}
 					</p>
 				))}
@@ -99,7 +117,14 @@ const CreateTechnician = ({
 	};
 
 	const isFormValid = useMemo(
-		() => !!(name.trim() && email.trim() && phone.trim() && title.trim() && (!choosePassword || password.trim())),
+		() =>
+			!!(
+				name.trim() &&
+				email.trim() &&
+				phone.trim() &&
+				title.trim() &&
+				(!choosePassword || password.trim())
+			),
 		[name, email, phone, title, choosePassword, password]
 	);
 
@@ -169,13 +194,27 @@ const CreateTechnician = ({
 						placeholder="Brief description or notes..."
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="border border-zinc-700 px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-zinc-900 text-white text-sm lg:text-base resize-none focus:border-blue-500 focus:outline-none transition-colors min-w-0"
+						className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-primary text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 						disabled={isLoading}
 					/>
 				</div>
 
-				{/* Hire Date — half width */}
+				{/* Role + Hire Date */}
 				<div className="grid grid-cols-2 gap-2 lg:gap-3 min-w-0">
+					<div className="min-w-0">
+						<label className={LABEL}>Role</label>
+						<select
+							value={organizationRoleId ?? ""}
+							onChange={(e) => setOrganizationRoleId(e.target.value || null)}
+							className={INPUT}
+							disabled={isLoading}
+						>
+							<option value="">— No Role —</option>
+							{technicianRoles.map((r) => (
+								<option key={r.id} value={r.id}>{r.name}</option>
+							))}
+						</select>
+					</div>
 					<div className="min-w-0">
 						<label className={LABEL}>Hire Date</label>
 						<DatePicker
@@ -196,8 +235,10 @@ const CreateTechnician = ({
 						<input
 							type="checkbox"
 							checked={choosePassword}
-							onChange={(e) => setChoosePassword(e.target.checked)}
-							className="form-checkbox h-[28px] w-4 text-blue-500 focus:ring-blue-500 border-zinc-700 bg-zinc-900"
+							onChange={(e) =>
+								setChoosePassword(e.target.checked)
+							}
+							className="form-checkbox h-[28px] w-4 text-primary focus:ring-primary border-border bg-base"
 							disabled={isLoading}
 						/>
 					</div>
@@ -208,7 +249,9 @@ const CreateTechnician = ({
 								type="password"
 								placeholder="Enter password"
 								value={password}
-								onChange={(e) => setPassword(e.target.value)}
+								onChange={(e) =>
+									setPassword(e.target.value)
+								}
 								className={INPUT}
 								disabled={isLoading}
 							/>
@@ -218,7 +261,7 @@ const CreateTechnician = ({
 				</div>
 			</div>
 		),
-		[name, email, phone, title, description, hireDate, isLoading, errors, choosePassword, password]
+		[name, email, phone, title, description, hireDate, isLoading, errors, choosePassword, password, organizationRoleId, technicianRoles]
 	);
 
 	return (

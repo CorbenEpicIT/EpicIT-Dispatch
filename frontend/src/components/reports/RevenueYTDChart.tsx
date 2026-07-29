@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import {
 	AreaChart,
 	Area,
@@ -8,6 +8,7 @@ import {
 	Legend,
 	ResponsiveContainer,
 } from "recharts";
+import Card from "../ui/Card";
 import { formatCurrency } from "../../util/util";
 import type { RevenueMonthData } from "../../types/reports";
 
@@ -49,15 +50,15 @@ function CustomTooltip({
 	const hasActual = actual?.value != null;
 
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/80 backdrop-blur-md shadow-lg">
-			<p className="text-xs text-zinc-400 mb-1">{label}</p>
+		<div className="rounded-lg px-3 py-2 bg-base/80 backdrop-blur-md shadow-lg">
+			<p className="text-xs text-text-tertiary mb-1">{label}</p>
 			{hasActual && (
-				<p className="text-sm font-semibold text-white">
+				<p className="text-sm font-semibold text-primary">
 					Actuals: {formatCurrency(actual.value!)}
 				</p>
 			)}
 			{!hasActual && forecast?.value != null && (
-				<p className="text-sm font-semibold text-white">
+				<p className="text-sm font-semibold text-primary">
 					Forecast: {formatCurrency(forecast.value)}
 				</p>
 			)}
@@ -104,56 +105,56 @@ export default function RevenueYTDChart({
 	}, [data, year]);
 
 	return (
-		<div className="flex flex-col h-full">
-			<div className="flex items-center justify-between mb-4">
-				<h3 className="font-semibold text-white">
-					Revenue Year to Date
-				</h3>
-				<span className="text-2xl font-bold text-white">
+		<Card
+			className="h-full"
+			title="Revenue Year to Date"
+			headerAction={
+				<span className="text-2xl font-bold text-primary">
 					{formatCurrency(total)}
 				</span>
-			</div>
+			}
+		>
 			<div className="flex-1 min-h-0">
-				<ResponsiveContainer width="100%" aspect={3} minWidth={0}>
+				<ResponsiveContainer width="100%" height="100%">
 					<AreaChart
 						data={chartData}
 						margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
 					>
 						<defs>
 							<linearGradient id="actualsFill" x1="0" y1="0" x2="0" y2="1">
-								<stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-								<stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+								<stop offset="5%" stopColor="var(--color-chart-primary)" stopOpacity={0.3} />
+								<stop offset="95%" stopColor="var(--color-chart-primary)" stopOpacity={0} />
 							</linearGradient>
 							<linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-								<stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
-								<stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+								<stop offset="5%" stopColor="var(--color-chart-primary)" stopOpacity={0.1} />
+								<stop offset="95%" stopColor="var(--color-chart-primary)" stopOpacity={0} />
 							</linearGradient>
 						</defs>
 						<XAxis
 							dataKey="month"
 							axisLine={false}
 							tickLine={false}
-							tick={{ fill: "#a1a1aa", fontSize: 12 }}
+							tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
 						/>
 						<YAxis
 							axisLine={false}
 							tickLine={false}
-							tick={{ fill: "#a1a1aa", fontSize: 12 }}
+							tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
 							tickFormatter={formatYAxis}
-							width={60}
+							width={48}
 						/>
 						<Tooltip
 							content={<CustomTooltip />}
 							cursor={false}
 						/>
 						<Legend
-							wrapperStyle={{ color: "#a1a1aa", fontSize: 12 }}
+							wrapperStyle={{ color: "var(--color-chart-axis)", fontSize: 12 }}
 						/>
 						<Area
 							type="monotone"
 							dataKey="actual"
 							name="Actuals"
-							stroke="#3b82f6"
+							stroke="var(--color-chart-primary)"
 							strokeWidth={2}
 							fill="url(#actualsFill)"
 							dot={false}
@@ -163,7 +164,7 @@ export default function RevenueYTDChart({
 							type="monotone"
 							dataKey="forecast"
 							name="Forecast"
-							stroke="#3b82f6"
+							stroke="var(--color-chart-primary)"
 							strokeWidth={2}
 							strokeDasharray="5 5"
 							fill="url(#forecastFill)"
@@ -173,6 +174,6 @@ export default function RevenueYTDChart({
 					</AreaChart>
 				</ResponsiveContainer>
 			</div>
-		</div>
+		</Card>
 	);
 }

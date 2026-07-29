@@ -11,51 +11,51 @@
 // ── Surfaces ─────────────────────────────────────────────────────────────────
 
 /** Visit card and month mini-card background (slightly blue-tinted zinc). */
-export const CARD_BG             = "#2a2d38";
+export const CARD_BG             = "var(--color-card-bg)";
 /** Occurrence card background (month view) — slightly more purple-tinted. */
-export const OCCURRENCE_CARD_BG  = "#2d2f45";
+export const OCCURRENCE_CARD_BG  = "var(--color-occurrence-bg)";
 /** Floating popup background — zinc-950. */
-export const POPUP_BG            = "#18181b";
+export const POPUP_BG            = "var(--color-popup-bg)";
 /** Secondary surface (e.g., popup secondary button) — zinc-800. */
-export const SURFACE             = "#27272a";
+export const SURFACE             = "var(--color-surface)";
 
 // ── Text ─────────────────────────────────────────────────────────────────────
 
 /** Primary text — card titles, popup headings. zinc-100. */
-export const TEXT_PRIMARY        = "#f4f4f5";
+export const TEXT_PRIMARY        = "var(--color-sched-text-primary)";
 /** Secondary text — popup time/date labels. zinc-300. */
-export const TEXT_SECONDARY      = "#d4d4d8";
+export const TEXT_SECONDARY      = "var(--color-sched-text-secondary)";
 /** Muted text — month mini-card time labels. ~38% white. */
-export const TEXT_MUTED          = "rgba(255,255,255,0.38)";
+export const TEXT_MUTED          = "var(--color-sched-text-muted)";
 /** Client name label in board cards. ~42% white. */
-export const TEXT_CLIENT         = "rgba(255,255,255,0.42)";
+export const TEXT_CLIENT         = "var(--color-sched-text-client)";
 /** Time range label in board cards. ~58% white. */
-export const TEXT_TIME           = "rgba(255,255,255,0.58)";
+export const TEXT_TIME           = "var(--color-sched-text-time)";
 /** Faint text — close buttons, placeholder labels. zinc-600. */
-export const TEXT_FAINT          = "#52525b";
+export const TEXT_FAINT          = "var(--color-sched-text-faint)";
 /** Visit card title in month view. slate-200. */
-export const VISIT_TITLE         = "#e2e8f0";
+export const VISIT_TITLE         = "var(--color-sched-visit-title)";
 /** Occurrence card title in month view. violet-300. */
-export const OCCURRENCE_TITLE    = "#c4b5fd";
+export const OCCURRENCE_TITLE    = "var(--color-sched-occurrence-title)";
 
 // ── Status badge (visit popup) ────────────────────────────────────────────────
 
 /** Visit status badge background — blue-500 at 15% opacity. */
-export const STATUS_BG           = "rgba(59,130,246,0.15)";
+export const STATUS_BG           = "var(--color-sched-status-badge-bg)";
 /** Visit status badge text — blue-300. */
-export const STATUS_TEXT         = "#93c5fd";
+export const STATUS_TEXT         = "var(--color-sched-status-badge-text)";
 
 // ── Borders ──────────────────────────────────────────────────────────────────
 
 /** Popup and sticky header border — zinc-700. */
-export const BORDER              = "#3f3f46";
+export const BORDER              = "var(--color-border)";
 
 // ── Accent ───────────────────────────────────────────────────────────────────
 
 /** Primary action button background — blue-500. */
-export const ACCENT_BG           = "#3b82f6";
+export const ACCENT_BG           = "var(--color-primary)";
 /** Primary action button hover background — blue-600. */
-export const ACCENT_BG_HOVER     = "#2563eb";
+export const ACCENT_BG_HOVER     = "var(--color-primary-hover)";
 
 // ── Card shadows ─────────────────────────────────────────────────────────────
 
@@ -69,4 +69,4 @@ export const CARD_SHADOW_HOVERED = "0 0 0 1px rgba(255,255,255,0.12), 0 4px 16px
 /** Fade gradient at the bottom of open-ended cards. */
 export const OPEN_ENDED_GRADIENT = "linear-gradient(to bottom, transparent, rgba(0,0,0,0.32))";
 /** Dashed bottom border color for open-ended cards. */
-export const OPEN_ENDED_DASH     = "rgba(255,255,255,0.38)";
+export const OPEN_ENDED_DASH     = "var(--color-sched-open-ended-dash)";

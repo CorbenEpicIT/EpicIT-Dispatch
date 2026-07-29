@@ -16,7 +16,7 @@ export const getAllDispatchers = async (): Promise<Dispatcher[]> => {
 }
 
 export const getDispatcherById = async (id: string): Promise<Dispatcher> => {
-    const response = await api.get<ApiResponse<Dispatcher>>(`/Dispatchers/${id}`);
+    const response = await api.get<ApiResponse<Dispatcher>>(`/dispatchers/${id}`);
     
     if (!response.data.data) {
         throw new Error('Dispatcher not found');
@@ -59,3 +59,17 @@ export const deleteDispatcher = async (id: string): Promise<{ message: string; i
     
     return response.data.data || { message: 'Dispatcher deleted successfully', id };
 };
+
+export const changeDispatcherPassword = async (id: string, data: { current_password: string; new_password: string }): Promise<Dispatcher> => {
+    try {
+        const response = await api.post<ApiResponse<Dispatcher>>(`/dispatchers/${id}/change-password`, data);
+
+        if (!response.data.success) {
+            throw new Error(response.data.error?.message || 'Failed to change password');
+        }
+        return response.data.data!;
+    } catch (err: any) {
+        const message = err.response?.data?.error?.message || err.message || 'Failed to change password';
+        throw new Error(message);
+    }
+}

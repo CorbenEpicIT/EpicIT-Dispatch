@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+﻿import { useNavigate } from "react-router-dom";
 import { User, Mail, Phone } from "lucide-react";
 import Card from "../ui/Card";
 
@@ -41,8 +41,8 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 					<span
 						className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
 							client.is_active
-								? "bg-green-500/20 text-green-400 border-green-500/30"
-								: "bg-red-500/20 text-red-400 border-red-500/30"
+								? "bg-success/20 text-success-text border-success/30"
+								: "bg-error/20 text-error-text border-error/30"
 						}`}
 					>
 						{client.is_active ? "Active" : "Inactive"}
@@ -52,17 +52,17 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 		>
 			<div className="space-y-4">
 				<div>
-					<h3 className="text-zinc-400 text-sm mb-2 flex items-center gap-2">
+					<h3 className="text-text-tertiary text-sm mb-2 flex items-center gap-2">
 						<User size={14} />
 						Client Name
 					</h3>
-					<p className="text-white mb-2">
+					<p className="text-text-primary mb-2">
 						{client?.name || "Unknown Client"}
 					</p>
 					{(client?.phone || client?.email) && (
 						<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
 							{client.phone && (
-								<div className="flex items-center gap-1.5 text-xs text-zinc-400">
+								<div className="flex items-center gap-1.5 text-xs text-text-tertiary">
 									<Phone
 										size={12}
 										className="flex-shrink-0"
@@ -71,7 +71,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 								</div>
 							)}
 							{client.email && (
-								<div className="flex items-center gap-1.5 text-xs text-zinc-400 min-w-0">
+								<div className="flex items-center gap-1.5 text-xs text-text-tertiary min-w-0">
 									<Mail
 										size={12}
 										className="flex-shrink-0"
@@ -87,41 +87,41 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 
 				{client?.address && (
 					<div>
-						<h3 className="text-zinc-400 text-sm mb-1">
+						<h3 className="text-text-tertiary text-sm mb-1">
 							Address
 						</h3>
-						<p className="text-white text-sm break-words">
+						<p className="text-text-primary text-sm break-words">
 							{client.address}
 						</p>
 					</div>
 				)}
 
 				{primaryContact && (
-					<div className="pt-4 border-t border-zinc-700">
+					<div className="pt-4 border-t border-border">
 						<div className="flex items-center justify-between mb-1">
-							<h3 className="text-zinc-400 text-sm">
+							<h3 className="text-text-tertiary text-sm">
 								Primary Contact
 							</h3>
 							{primaryContact.title && (
-								<span className="inline-flex items-center px-2  rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
+								<span className="inline-flex items-center px-2  rounded-full text-xs font-medium bg-surface text-text-secondary border border-border">
 									{primaryContact.title}
 								</span>
 							)}
 						</div>
 						<div className="space-y-1.5">
-							<p className="text-white font-medium pb-2">
+							<p className="text-text-primary font-medium pb-2">
 								{primaryContact.name}
 							</p>
 							{(primaryContact.phone ||
 								primaryContact.email) && (
 								<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
 									{primaryContact.phone && (
-										<div className="flex items-center gap-2 text-sm text-white pr-6">
+										<div className="flex items-center gap-2 text-sm text-text-primary pr-6">
 											<Phone
 												size={
 													14
 												}
-												className="text-zinc-400 flex-shrink-0"
+												className="text-text-tertiary flex-shrink-0"
 											/>
 											<span>
 												{
@@ -131,12 +131,12 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 										</div>
 									)}
 									{primaryContact.email && (
-										<div className="flex items-center gap-2 text-sm text-white min-w-0">
+										<div className="flex items-center gap-2 text-sm text-text-primary min-w-0">
 											<Mail
 												size={
 													14
 												}
-												className="text-zinc-400 flex-shrink-0"
+												className="text-text-tertiary flex-shrink-0"
 											/>
 											<span className="truncate">
 												{
@@ -154,7 +154,7 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 				{showDispatchLink && (
 					<button
 						onClick={() => navigate(`/dispatch/clients/${client_id}`)}
-						className="w-full mt-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm font-medium transition-colors cursor-pointer"
+						className="w-full mt-2 px-4 py-2 border border-border rounded-md text-sm font-medium text-text-secondary hover:border-border-strong hover:text-text-primary hover:bg-surface-raised transition-colors cursor-pointer"
 					>
 						View Full Client Profile
 					</button>

@@ -1,4 +1,4 @@
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
 	success: boolean;
 	data: T | null;
 	error: ErrorDetails | null;
@@ -8,7 +8,7 @@ export interface ApiResponse<T = any> {
 export interface ErrorDetails {
 	code: string;
 	message: string;
-	details?: any;
+	details?: unknown;
 	field?: string;
 }
 
@@ -16,9 +16,12 @@ export interface ErrorDetails {
 export interface ResponseMeta {
 	timestamp?: string;
 	count?: number;
+	hasMore?: boolean;
+	page?: number;
+	pageSize?: number;
 }
 
-export interface ControllerResult<T = any> {
+export interface ControllerResult<T = unknown> {
 	err: string;
 	item?: T | null;
 	message?: string;
@@ -33,7 +36,9 @@ export const ErrorCodes = {
 	SERVER_ERROR: 'SERVER_ERROR',
 	INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
 	INVALID_TOKEN: 'INVALID_TOKEN',
-	TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS'
+	TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
+	FORBIDDEN: 'FORBIDDEN',
+	BAD_REQUEST: 'BAD_REQUEST',
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
@@ -54,7 +59,7 @@ export const createSuccessResponse = <T>(
 export const createErrorResponse = (
 	code: ErrorCode | string,
 	message: string,
-	details?: any,
+	details?: unknown,
 	field?: string
 ): ApiResponse<null> => ({
 	success: false,
@@ -69,3 +74,22 @@ export const createErrorResponse = (
 		timestamp: new Date().toISOString(),
 	},
 });
+
+// Error carrying an HTTP status + error code. The global errorHandler reads
+// `statusCode` and `code` off the thrown error, so `throw httpError(...)`
+// surfaces the right status instead of a blanket 500.
+export interface HttpError extends Error {
+	statusCode: number;
+	code: ErrorCode | string;
+}
+
+export const httpError = (
+	statusCode: number,
+	code: ErrorCode | string,
+	message: string,
+): HttpError => {
+	const err = new Error(message) as HttpError;
+	err.statusCode = statusCode;
+	err.code = code;
+	return err;
+};

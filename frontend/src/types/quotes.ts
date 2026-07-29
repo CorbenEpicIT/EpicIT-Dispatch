@@ -1,4 +1,4 @@
-import z from "zod";
+﻿import z from "zod";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
 import type {
@@ -11,6 +11,7 @@ import type {
 	DiscountType,
 } from "./common";
 import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
+import type { TaxSnapshot } from "./tax";
 
 // ============================================================================
 // QUOTE-SPECIFIC TYPES
@@ -43,16 +44,20 @@ export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 };
 
 export const QuoteStatusColors: Record<QuoteStatus, string> = {
-	Draft:     "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-	Issued:    "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Sent:      "bg-green-500/20 text-green-400 border-green-500/30",
-	Viewed:    "bg-teal-500/20 text-teal-400 border-teal-500/30",
-	Approved:  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-	Rejected:  "bg-red-500/20 text-red-400 border-red-500/30",
-	Revised:   "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Expired:   "bg-orange-500/20 text-orange-400 border-orange-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Draft:     "bg-neutral/20 text-text-tertiary border-border-strong/30",
+	Issued:    "bg-primary/20 text-primary-text border-primary/30",
+	Sent:      "bg-success/20 text-success-text border-success/30",
+	Viewed:    "bg-info/20 text-info-text border-info/30",
+	Approved:  "bg-success/20 text-success-text border-success/30",
+	Rejected:  "bg-error/20 text-error-text border-error/30",
+	Revised:   "bg-warning/20 text-warning-text border-warning/30",
+	Expired:   "bg-orange/20 text-orange-text border-orange/30",
+	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
+
+export function isQuoteEditable(status: QuoteStatus): boolean {
+	return ["Draft", "Issued", "Sent", "Viewed", "Revised"].includes(status);
+}
 
 // ============================================================================
 // QUOTE SUMMARY TYPES (for listings and references)
@@ -99,6 +104,7 @@ export interface Quote {
 	discount_type?: DiscountType | null;
 	discount_value?: number | null;
 	discount_amount: number;
+	tax_snapshot?: TaxSnapshot | null;
 	total: number;
 
 	created_at: Date;
@@ -215,6 +221,10 @@ export interface QuoteLineItem {
 	total: number;
 	item_type: LineItemType | null;
 	sort_order: number;
+	taxable: boolean;
+	tax_group_id: string | null;
+	tax_amount: number | null;
+	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 }
 
 export interface CreateQuoteLineItemInput {
@@ -225,6 +235,8 @@ export interface CreateQuoteLineItemInput {
 	total: number;
 	item_type?: LineItemType;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 export interface UpdateQuoteLineItemInput {
@@ -235,6 +247,8 @@ export interface UpdateQuoteLineItemInput {
 	total?: number;
 	item_type?: LineItemType | null;
 	sort_order?: number;
+	taxable?: boolean;
+	tax_group_id?: string | null;
 }
 
 // ============================================================================

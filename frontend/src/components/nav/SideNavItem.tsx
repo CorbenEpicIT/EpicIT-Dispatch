@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+﻿import { NavLink } from "react-router-dom";
 
 export default function SideNavItem({
 	to,
@@ -19,7 +19,7 @@ export default function SideNavItem({
 				`
 				group relative flex items-center h-10 rounded-md mx-2
 				transition-colors duration-200
-				${isActive ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800"}
+				${isActive ? "bg-primary-bg text-primary-text" : "text-text-tertiary hover:text-text-primary hover:bg-surface-raised"}
 				`
 			}
 		>
@@ -31,9 +31,9 @@ export default function SideNavItem({
 			{/* Label - constrained width to reduce right-side empty space */}
 			<div
 				className={`
-					absolute left-12 flex items-center h-full overflow-hidden
-					transition-all duration-200 ease-in-out
-					${expanded ? "opacity-100 translate-x-0 w-24" : "opacity-0 -translate-x-2 pointer-events-none w-0"}
+					absolute left-12 w-24 flex items-center h-full overflow-hidden
+					transition-[opacity,transform] duration-200 ease-in-out
+					${expanded ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 pointer-events-none"}
 				`}
 			>
 				<span className="text-sm whitespace-nowrap truncate w-full pr-2">

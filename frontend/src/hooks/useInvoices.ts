@@ -14,6 +14,9 @@ import type {
 	InvoiceNote,
 	CreateInvoiceNoteInput,
 	UpdateInvoiceNoteInput,
+	GenerateInvoiceInput,
+	GenerateInvoiceResponse,
+	OverlapWarning,
 } from "../types/invoices";
 import * as invoiceApi from "../api/invoices";
 
@@ -88,6 +91,19 @@ export const useCreateInvoiceMutation = (): UseMutationResult<
 					queryKey: ["recurringPlans", newInvoice.recurring_plan_id],
 				});
 			}
+
+			// Invalidate job and visit caches so billing badges and "Billed on"
+			// sections refresh without a manual page reload.
+			for (const ij of newInvoice.jobs ?? []) {
+				await queryClient.invalidateQueries({ queryKey: ["jobs", ij.job.id] });
+				await queryClient.invalidateQueries({ queryKey: ["jobs", ij.job.id, "visits"] });
+				await queryClient.invalidateQueries({ queryKey: ["jobs", ij.job.id, "invoices"] });
+			}
+			for (const iv of newInvoice.visits ?? []) {
+				await queryClient.invalidateQueries({ queryKey: ["jobVisits", iv.visit.id] });
+			}
+			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 
 			// Prime the detail cache so navigating to the invoice is instant
 			queryClient.setQueryData(["invoices", newInvoice.id], newInvoice);
@@ -300,6 +316,53 @@ export const useDeleteInvoiceNoteMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({
 				queryKey: ["invoices", variables.invoiceId],
 			});
+		},
+	});
+};
+
+// ============================================================================
+// PIPELINE MUTATIONS
+// ============================================================================
+
+export const useOverlapCheckMutation = (): UseMutationResult<
+	{ warnings: OverlapWarning[] },
+	Error,
+	string[]
+> => {
+	return useMutation({
+		mutationFn: async (visitIds: string[]) => {
+			const result = await invoiceApi.overlapCheck(visitIds);
+			return { warnings: result.warnings };
+		},
+	});
+};
+
+export const useGenerateInvoiceMutation = (): UseMutationResult<
+	GenerateInvoiceResponse,
+	Error,
+	GenerateInvoiceInput
+> => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (input: GenerateInvoiceInput) => invoiceApi.generateInvoice(input),
+		onSuccess: async (data) => {
+			queryClient.setQueryData(["invoices", data.invoice.id], data.invoice);
+			await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+			if (data.invoice.recurring_plan_id) {
+				await queryClient.invalidateQueries({
+					queryKey: ["recurringPlans", data.invoice.recurring_plan_id],
+				});
+			}
+			for (const ij of data.invoice.jobs ?? []) {
+				await queryClient.invalidateQueries({ queryKey: ["jobs", ij.job.id] });
+				await queryClient.invalidateQueries({ queryKey: ["jobs", ij.job.id, "visits"] });
+				await queryClient.invalidateQueries({ queryKey: ["jobs", ij.job.id, "invoices"] });
+			}
+			for (const iv of data.invoice.visits ?? []) {
+				await queryClient.invalidateQueries({ queryKey: ["jobVisits", iv.visit.id] });
+			}
+			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 		},
 	});
 };

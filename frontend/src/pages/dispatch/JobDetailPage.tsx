@@ -1,5 +1,5 @@
-import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+﻿import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Edit2,
 	Calendar,
@@ -7,9 +7,8 @@ import {
 	Clock,
 	Users,
 	TrendingUp,
-	Map,
+	Map as MapIcon,
 	Plus,
-	FileText,
 	DollarSign,
 	ChevronRight,
 	MoreVertical,
@@ -30,11 +29,11 @@ import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJob from "../../components/jobs/EditJob";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
+import CreateInvoice from "../../components/invoices/CreateInvoice";
 import {
 	JobStatusColors,
 	VisitStatusColors,
 	type VisitStatus,
-	type JobLineItem,
 } from "../../types/jobs";
 import { RecurringPlanStatusColors, RecurringPlanStatusLabels } from "../../types/recurringPlans";
 import { QuoteStatusColors } from "../../types/quotes";
@@ -42,6 +41,8 @@ import { RequestStatusColors } from "../../types/requests";
 import { getGenericStatusColor, PriorityColors } from "../../types/common";
 import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "../../types/invoices";
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
+import FinancialSummary, { type FinancialSummaryLineItem } from "../../components/pagesections/FinancialSummary";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function JobDetailPage() {
 	const { jobId } = useParams<{ jobId: string }>();
@@ -51,13 +52,68 @@ export default function JobDetailPage() {
 	const { data: linkedInvoices = [] } = useInvoicesByJobIdQuery(jobId!);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isCreateVisitModalOpen, setIsCreateVisitModalOpen] = useState(false);
+	const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
 	const { mutateAsync: createJobVisitMutation } = useCreateJobVisitMutation();
 
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
 
+	// permissions
+	const CREATE_JOB = usePermission("create_jobs");
+	const EDIT_JOB = usePermission("edit_jobs");
+	const DELETE_JOB = usePermission("delete_jobs");
+	const CREATE_INVOICE = usePermission("create_invoices");
+
 	const deleteJobMutation = useDeleteJobMutation();
+
+	// Derive per-visit billed totals from job invoices for the 3-state billing badge.
+	const visitBilledMap = useMemo(() => {
+		const record: Record<string, number> = {};
+		for (const inv of linkedInvoices) {
+			if (inv.status === "Void" || inv.status === "Draft") continue;
+			for (const iv of inv.visits ?? []) {
+				record[iv.visit.id] = (record[iv.visit.id] ?? 0) + Number(iv.billed_amount ?? 0);
+			}
+		}
+		return record;
+	}, [linkedInvoices]);
+
+	const lineItems = useMemo((): FinancialSummaryLineItem[] => {
+		const jobItems: FinancialSummaryLineItem[] = (job?.line_items ?? []).map((item) => ({
+			...item,
+			sourceLabel: "Job Charges",
+			isVisitSource: false,
+		}));
+		const visitItems: FinancialSummaryLineItem[] = (visits ?? [])
+			.filter((v) => v.status === "Completed")
+			.flatMap((v) =>
+				(v.line_items ?? []).map((li) => ({
+					...li,
+					sourceLabel: v.scheduled_start_at
+						? `Visit · ${new Date(v.scheduled_start_at).toLocaleDateString("en-US", {
+							month: "short",
+							day: "numeric",
+						})}`
+						: "Visit",
+					isVisitSource: true,
+				}))
+			);
+		return [...jobItems, ...visitItems];
+	}, [job?.line_items, visits]);
+
+	// Merged subtotal from all line items (job + completed visits).
+	// Used instead of job.subtotal so the sidebar reflects the full merged picture.
+	const mergedSubtotal = useMemo(() => {
+		if (lineItems.length === 0) return null;
+		const total = lineItems.reduce((sum, li) => {
+			const t = li.total != null
+				? Number(li.total)
+				: Number(li.quantity) * Number(li.unit_price);
+			return sum + (isNaN(t) ? 0 : t);
+		}, 0);
+		return total > 0 ? total : null;
+	}, [lineItems]);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -91,7 +147,7 @@ export default function JobDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Loading job details...</div>
+				<div className="text-text-primary text-lg">Loading job details...</div>
 			</div>
 		);
 	}
@@ -99,7 +155,7 @@ export default function JobDetailPage() {
 	if (!job) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<div className="text-white text-lg">Job not found</div>
+				<div className="text-text-primary text-lg">Job not found</div>
 			</div>
 		);
 	}
@@ -110,7 +166,6 @@ export default function JobDetailPage() {
 			new Date(b.scheduled_start_at).getTime()
 	);
 
-	const lineItems: JobLineItem[] = job.line_items || [];
 	const hasLineItems = lineItems.length > 0;
 	const recurringPlan = job.recurring_plan ?? null;
 
@@ -157,14 +212,14 @@ export default function JobDetailPage() {
 	};
 
 	return (
-		<div className="text-white space-y-6">
+		<div className="text-text-primary space-y-6">
 			{/* Header */}
 			<div className="grid grid-cols-2 gap-4 mb-6 items-center">
 				<div>
-					<h1 className="text-3xl font-bold text-white mb-2">
+					<h1 className="text-3xl font-bold text-text-primary mb-2">
 						{job.name}
 					</h1>
-					<p className="text-zinc-400 text-sm">
+					<p className="text-text-tertiary text-sm">
 						{new Date(job.created_at).toLocaleDateString(
 							"en-US",
 							{
@@ -180,7 +235,7 @@ export default function JobDetailPage() {
 					<span
 						className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 							JobStatusColors[job.status] ||
-							"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+							"bg-neutral/20 text-text-tertiary border-border-strong/30"
 						}`}
 					>
 						{job.status}
@@ -192,57 +247,57 @@ export default function JobDetailPage() {
 								setIsOptionsMenuOpen((v) => !v);
 								setDeleteConfirm(false);
 							}}
-							className="p-2 hover:bg-zinc-800 rounded-md transition-colors border border-zinc-700 hover:border-zinc-600"
+							className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong"
 						>
 							<MoreVertical size={20} />
 						</button>
 
 						{isOptionsMenuOpen && (
-							<div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+							<div className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50">
 								<div className="py-1">
 									<button
+										title={!EDIT_JOB ? "You don't have permission to perform this action" : ""}
 										onClick={() => {
-											setIsEditModalOpen(
-												true
-											);
-											setIsOptionsMenuOpen(
-												false
-											);
-											setDeleteConfirm(
-												false
-											);
+											if (!EDIT_JOB) return;
+											setIsEditModalOpen(true);
+											setIsOptionsMenuOpen(false);
+											setDeleteConfirm(false);
 										}}
-										className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2"
+										disabled={!EDIT_JOB}
+										className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
 									>
 										<Edit2 size={16} />
 										Edit Job
 									</button>
-									<div className="my-1 border-t border-zinc-800" />
-									<button
-										onClick={
-											handleDeleteJob
-										}
-										onMouseLeave={() =>
-											setDeleteConfirm(
-												false
-											)
-										}
-										disabled={
-											deleteJobMutation.isPending
-										}
-										className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-											deleteConfirm
-												? "bg-red-600 hover:bg-red-700 text-white"
-												: "text-red-400 hover:bg-zinc-800 hover:text-red-300"
-										} disabled:opacity-50 disabled:cursor-not-allowed`}
-									>
-										<Trash2 size={16} />
-										{deleteJobMutation.isPending
-											? "Deleting..."
-											: deleteConfirm
-												? "Click Again to Confirm"
-												: "Delete Job"}
-									</button>
+									
+									{DELETE_JOB && (
+										<div className="my-1 border-t border-border-subtle" />
+									)}
+									{DELETE_JOB && (
+										<button
+											onClick={
+												handleDeleteJob
+											}
+											onMouseLeave={() =>
+												setDeleteConfirm(false)
+											}
+											disabled={
+												deleteJobMutation.isPending
+											}
+											className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+												deleteConfirm
+													? "bg-error hover:bg-error-strong text-on-primary"
+													: "text-error-text hover:bg-surface hover:text-error-text"
+											} disabled:opacity-50 disabled:cursor-not-allowed`}
+										>
+											<Trash2 size={16} />
+											{deleteJobMutation.isPending
+												? "Deleting..."
+												: deleteConfirm
+													? "Click Again to Confirm"
+													: "Delete Job"}
+										</button>
+									)}
 								</div>
 							</div>
 						)}
@@ -256,26 +311,26 @@ export default function JobDetailPage() {
 					<Card title="Job Information" className="h-full">
 						<div className="space-y-4">
 							<div>
-								<h3 className="text-zinc-400 text-sm mb-1">
+								<h3 className="text-text-tertiary text-sm mb-1">
 									Description
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{job.description ||
 										"No description provided"}
 								</p>
 							</div>
 							<div>
-								<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+								<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 									<MapPin size={14} />
 									Address
 								</h3>
-								<p className="text-white break-words">
+								<p className="text-text-primary break-words">
 									{job.address}
 								</p>
 							</div>
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<TrendingUp
 											size={14}
 										/>
@@ -292,7 +347,7 @@ export default function JobDetailPage() {
 													""
 												)
 												.trim() ||
-											"text-blue-400"
+											"text-primary-text"
 										}`}
 									>
 										{job.priority ||
@@ -300,13 +355,13 @@ export default function JobDetailPage() {
 									</p>
 								</div>
 								<div>
-									<h3 className="text-zinc-400 text-sm mb-1 flex items-center gap-2">
+									<h3 className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
 										<Calendar
 											size={14}
 										/>
 										Created
 									</h3>
-									<p className="text-white">
+									<p className="text-text-primary">
 										{new Date(
 											job.created_at
 										).toLocaleDateString(
@@ -333,331 +388,114 @@ export default function JobDetailPage() {
 			</div>
 
 			{/* Financial Summary */}
-			<Card title="Financial Summary">
-				{!job.estimated_total && !job.actual_total && !hasLineItems ? (
+			{!job.estimated_total && !job.actual_total && !hasLineItems ? (
+				<Card title="Financial Summary">
 					<div className="text-center py-8">
-						<DollarSign
-							size={40}
-							className="mx-auto text-zinc-600 mb-3"
-						/>
-						<h3 className="text-zinc-400 text-sm font-medium mb-1">
-							No Financial Data
-						</h3>
-						<p className="text-zinc-500 text-xs">
-							Edit this job to add estimated costs and
-							line items.
-						</p>
+						<DollarSign size={40} className="mx-auto text-text-faint mb-3" />
+						<h3 className="text-text-tertiary text-sm font-medium mb-1">No Financial Data</h3>
+						<p className="text-text-muted text-xs">Edit this job to add estimated costs and line items.</p>
 					</div>
-				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-						<div className="lg:col-span-2">
-							<h3 className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-4">
-								Line Items
-							</h3>
-							{!hasLineItems ? (
-								<div className="text-center py-8">
-									<FileText
-										size={40}
-										className="mx-auto text-zinc-600 mb-3"
-									/>
-									<h3 className="text-zinc-400 text-sm font-medium mb-1">
-										No Line Items
-									</h3>
-									<p className="text-zinc-500 text-xs">
-										No line items have
-										been added to this
-										job yet.
+				</Card>
+			) : (
+				<FinancialSummary
+					lineItems={lineItems}
+					taxSnapshot={null}
+					legacyTaxRate={job.tax_rate != null ? Number(job.tax_rate) : null}
+					legacyTaxAmount={job.tax_amount != null ? Number(job.tax_amount) : null}
+					subtotal={mergedSubtotal}
+					discountAmount={job.discount_amount != null ? Number(job.discount_amount) : null}
+					discountType={job.discount_type ?? null}
+					discountValue={job.discount_value != null ? Number(job.discount_value) : null}
+					metaLabel="Job Number"
+					metaValue={job.job_number}
+					noLineItemsDescription="No line items have been added to this job yet."
+					totalsContent={
+						<>
+							{job.estimated_total && (
+								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+									<div>
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+											Estimated Total
+										</p>
+										<p className="text-xs text-text-muted">Initial estimate</p>
+									</div>
+									<p className="text-2xl font-bold text-primary-text tabular-nums">
+										{formatCurrency(Number(job.estimated_total))}
 									</p>
 								</div>
-							) : (
-								<div className="space-y-1">
-									<div className="grid grid-cols-12 gap-2 pb-2 border-b border-zinc-700 text-xs uppercase tracking-wide font-semibold text-zinc-400">
-										<div className="col-span-5">
-											Description
-										</div>
-										<div className="col-span-1 text-center">
-											Type
-										</div>
-										<div className="col-span-2 text-right">
-											Qty
-										</div>
-										<div className="col-span-2 text-right">
-											Unit Price
-										</div>
-										<div className="col-span-2 text-right">
-											Amount
-										</div>
+							)}
+
+							{/* Running Cost — shown while in progress, actual_total accumulating */}
+							{job.actual_total != null && Number(job.actual_total) > 0 && job.status !== "Completed" && (
+								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+									<div>
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+											Running Cost
+										</p>
+										<p className="text-xs text-text-muted">Completed visits so far</p>
 									</div>
-									{lineItems.map(
-										(
-											item: JobLineItem,
-											index: number
-										) => (
-											<div
-												key={
-													item.id ||
-													index
-												}
-												className="grid grid-cols-12 gap-2 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-											>
-												<div className="col-span-5 text-sm">
-													<p className="text-white font-medium">
-														{
-															item.name
-														}
-													</p>
-													{item.description && (
-														<p className="text-zinc-400 text-xs mt-0.5">
-															{
-																item.description
-															}
-														</p>
-													)}
-												</div>
-												<div className="col-span-1 flex items-center justify-center">
-													{item.item_type && (
-														<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-300 border border-zinc-600">
-															{
-																item.item_type
-															}
-														</span>
-													)}
-												</div>
-												<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-													{Number(
-														item.quantity
-													).toLocaleString(
-														"en-US",
-														{
-															minimumFractionDigits: 0,
-															maximumFractionDigits: 2,
-														}
-													)}
-												</div>
-												<div className="col-span-2 text-right text-sm text-white tabular-nums flex items-center justify-end">
-													{formatCurrency(
-														Number(
-															item.unit_price
-														)
-													)}
-												</div>
-												<div className="col-span-2 text-right text-sm text-white font-medium tabular-nums flex items-center justify-end">
-													{formatCurrency(
-														Number(
-															item.total
-														)
-													)}
-												</div>
-											</div>
-										)
-									)}
+									<p className="text-2xl font-bold text-primary-text tabular-nums">
+										{formatCurrency(Number(job.actual_total))}
+									</p>
 								</div>
 							)}
-						</div>
 
-						<div className="lg:col-span-1 space-y-6">
-							<div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 space-y-2">
-								<div className="flex justify-between text-sm">
-									<span className="text-zinc-400">
-										Total Items:
-									</span>
-									<span className="text-white font-medium tabular-nums">
-										{lineItems.length ||
-											0}
-									</span>
-								</div>
-								<div className="flex justify-between text-sm">
-									<span className="text-zinc-400">
-										Job Number:
-									</span>
-									<span className="text-white font-medium">
-										{job.job_number}
-									</span>
-								</div>
-							</div>
-
-							<div className="space-y-3">
-								{job.estimated_total && (
-									<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
-										<div>
-											<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-0.5">
-												Estimated
-												Total
-											</p>
-											<p className="text-xs text-zinc-500">
-												Initial
-												estimate
-											</p>
-										</div>
-										<p className="text-2xl font-bold text-blue-400 tabular-nums">
-											{formatCurrency(
-												Number(
-													job.estimated_total
-												)
-											)}
+							{/* Actual Total — shown only when job is fully Completed */}
+							{job.actual_total != null && Number(job.actual_total) > 0 && job.status === "Completed" && (
+								<div className="flex items-center justify-between px-4 py-3 bg-surface rounded-lg border border-border">
+									<div>
+										<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-0.5">
+											Actual Total
 										</p>
+										<p className="text-xs text-text-muted">Final cost</p>
 									</div>
-								)}
+									<p className="text-2xl font-bold text-success-text tabular-nums">
+										{formatCurrency(Number(job.actual_total))}
+									</p>
+								</div>
+							)}
 
-								{job.actual_total && (
-									<div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-lg border border-zinc-700">
-										<div>
-											<p className="text-zinc-400 text-xs uppercase tracking-wide font-semibold mb-0.5">
-												Actual
-												Total
-											</p>
-											<p className="text-xs text-zinc-500">
-												Final
-												cost
-											</p>
-										</div>
-										<p className="text-2xl font-bold text-green-400 tabular-nums">
-											{formatCurrency(
-												Number(
-													job.actual_total
-												)
-											)}
-										</p>
-									</div>
-								)}
-
-								{job.estimated_total &&
-									job.actual_total && (
-										<>
-											<div className="border-t border-zinc-700 my-2" />
-											<div
-												className={`px-4 py-3 rounded-lg border-2 ${
-													Number(
-														job.actual_total
-													) >
-													Number(
-														job.estimated_total
-													)
-														? "bg-red-500/10 border-red-500/30"
-														: "bg-green-500/10 border-green-500/30"
-												}`}
-											>
-												<div className="flex items-center justify-between">
-													<div>
-														<p className="text-zinc-300 text-xs uppercase tracking-wide font-semibold mb-0.5">
-															Budget
-															Variance
-														</p>
-														<p
-															className={`text-xs ${
-																Number(
-																	job.actual_total
-																) >
-																Number(
-																	job.estimated_total
-																)
-																	? "text-red-300"
-																	: "text-green-300"
-															}`}
-														>
-															{Number(
-																job.actual_total
-															) >
-															Number(
-																job.estimated_total
-															)
-																? "Over Budget"
-																: "Under Budget"}
-														</p>
-													</div>
-													<div className="text-right">
-														<p
-															className={`text-xl font-bold tabular-nums ${
-																Number(
-																	job.actual_total
-																) >
-																Number(
-																	job.estimated_total
-																)
-																	? "text-red-400"
-																	: "text-green-400"
-															}`}
-														>
-															{Number(
-																job.actual_total
-															) >
-															Number(
-																job.estimated_total
-															)
-																? "+"
-																: ""}
-															{formatCurrency(
-																Number(
-																	job.actual_total
-																) -
-																	Number(
-																		job.estimated_total
-																	)
-															)}
-														</p>
-														<p
-															className={`text-sm font-semibold tabular-nums ${
-																Number(
-																	job.actual_total
-																) >
-																Number(
-																	job.estimated_total
-																)
-																	? "text-red-300"
-																	: "text-green-300"
-															}`}
-														>
-															{(
-																((Number(
-																	job.actual_total
-																) -
-																	Number(
-																		job.estimated_total
-																	)) /
-																	Number(
-																		job.estimated_total
-																	)) *
-																100
-															).toFixed(
-																1
-															)}
-
-															%
-														</p>
-													</div>
-												</div>
+							{/* Budget Variance — only when job Completed and both values exist */}
+							{job.estimated_total != null && Number(job.estimated_total) > 0 && job.actual_total != null && Number(job.actual_total) > 0 && job.status === "Completed" && (
+								<>
+									<div className="border-t border-border my-2" />
+									<div className={`px-4 py-3 rounded-lg border-2 ${Number(job.actual_total) > Number(job.estimated_total) ? "bg-error/10 border-error/30" : "bg-success/10 border-success/30"}`}>
+										<div className="flex items-center justify-between">
+											<div>
+												<p className="text-text-secondary text-xs uppercase tracking-wide font-semibold mb-0.5">
+													Budget Variance
+												</p>
+												<p className={`text-xs ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-success-text"}`}>
+													{Number(job.actual_total) > Number(job.estimated_total) ? "Over Budget" : "Under Budget"}
+												</p>
 											</div>
-										</>
-									)}
-
-								{!job.actual_total &&
-									job.estimated_total &&
-									job.status !==
-										"Completed" && (
-										<div className="px-4 py-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-											<p className="text-xs text-blue-300 italic">
-												<span className="font-semibold">
-													Note:
-												</span>{" "}
-												Actual
-												total
-												will
-												be
-												recorded
-												when
-												job
-												is
-												marked
-												as
-												completed
-											</p>
+											<div className="text-right">
+												<p className={`text-xl font-bold tabular-nums ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-success-text"}`}>
+													{Number(job.actual_total) > Number(job.estimated_total) ? "+" : ""}
+													{formatCurrency(Number(job.actual_total) - Number(job.estimated_total))}
+												</p>
+												<p className={`text-sm font-semibold tabular-nums ${Number(job.actual_total) > Number(job.estimated_total) ? "text-error-text" : "text-success-text"}`}>
+													{(((Number(job.actual_total) - Number(job.estimated_total)) / Number(job.estimated_total)) * 100).toFixed(1)}%
+												</p>
+											</div>
 										</div>
-									)}
-							</div>
-						</div>
-					</div>
-				)}
-			</Card>
+									</div>
+								</>
+							)}
+
+							{/* Note — no completed visits yet */}
+							{job.estimated_total != null && (job.actual_total == null || Number(job.actual_total) === 0) && job.status !== "Completed" && (
+								<div className="px-4 py-3 bg-primary/10 border border-primary/30 rounded-lg">
+									<p className="text-xs text-primary-text italic">
+										<span className="font-semibold">Note:</span>{" "}
+										Running cost accumulates as visits are completed
+									</p>
+								</div>
+							)}
+						</>
+					}
+				/>
+			)}
 
 			{/* Relations Row: Request + Quote + (optional) Recurring Plan */}
 			<div
@@ -673,17 +511,17 @@ export default function JobDetailPage() {
 								`/dispatch/requests/${job.request!.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Request
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{job.request.title}
 								</h4>
-								<div className="flex items-center gap-2 text-xs text-zinc-500 mt-2">
+								<div className="flex items-center gap-2 text-xs text-text-muted mt-2">
 									<Calendar size={12} />
 									<span>
 										{new Date(
@@ -716,11 +554,11 @@ export default function JobDetailPage() {
 						</div>
 					</button>
 				) : (
-					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+					<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Request
 						</p>
-						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+						<div className="flex items-center gap-2 text-text-faint text-sm">
 							<Link2Off size={14} />
 							<span>No request linked</span>
 						</div>
@@ -735,20 +573,20 @@ export default function JobDetailPage() {
 								`/dispatch/quotes/${job.quote!.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all cursor-pointer text-left group"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Quote
 						</p>
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h4 className="text-white font-medium text-sm mb-1 group-hover:text-blue-400 transition-colors">
+								<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
 									{job.quote.quote_number}
 								</h4>
-								<p className="text-zinc-400 text-xs mb-2">
+								<p className="text-text-tertiary text-xs mb-2">
 									{job.quote.title}
 								</p>
-								<div className="flex items-center gap-2 text-xs text-zinc-500">
+								<div className="flex items-center gap-2 text-xs text-text-muted">
 									<Calendar size={12} />
 									<span>
 										{new Date(
@@ -766,7 +604,7 @@ export default function JobDetailPage() {
 								</div>
 							</div>
 							<div className="flex flex-col items-end gap-2 flex-shrink-0">
-								<span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+								<span className="text-success-text font-semibold text-sm whitespace-nowrap">
 									$
 									{Number(
 										job.quote.total
@@ -793,11 +631,11 @@ export default function JobDetailPage() {
 						</div>
 					</button>
 				) : (
-					<div className="p-4 bg-zinc-900/40 rounded-lg border border-dashed border-zinc-800">
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+					<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Related Quote
 						</p>
-						<div className="flex items-center gap-2 text-zinc-600 text-sm">
+						<div className="flex items-center gap-2 text-text-faint text-sm">
 							<Link2Off size={14} />
 							<span>No quote linked</span>
 						</div>
@@ -812,18 +650,18 @@ export default function JobDetailPage() {
 								`/dispatch/recurring-plans/${recurringPlan.id}`
 							)
 						}
-						className="w-full p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-all text-left group cursor-pointer"
+						className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all text-left group cursor-pointer"
 					>
-						<p className="text-zinc-500 text-xs uppercase tracking-wide font-semibold mb-2">
+						<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
 							Recurring Plan
 						</p>
 						<div className="flex items-start justify-between gap-3 mb-3">
 							<div className="flex items-center gap-2 min-w-0">
 								<Repeat
 									size={14}
-									className="text-blue-400 flex-shrink-0"
+									className="text-primary-text flex-shrink-0"
 								/>
-								<h4 className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors truncate">
+								<h4 className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors truncate">
 									{recurringPlan.name}
 								</h4>
 							</div>
@@ -832,7 +670,7 @@ export default function JobDetailPage() {
 									RecurringPlanStatusColors[
 										recurringPlan.status
 									] ||
-									"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+									"bg-neutral/20 text-text-tertiary border-border-strong/30"
 								}`}
 							>
 								{RecurringPlanStatusLabels[
@@ -840,7 +678,7 @@ export default function JobDetailPage() {
 								] || recurringPlan.status}
 							</span>
 						</div>
-						<div className="flex items-center gap-2 text-xs text-zinc-400">
+						<div className="flex items-center gap-2 text-xs text-text-tertiary">
 							<Calendar
 								size={12}
 								className="flex-shrink-0"
@@ -864,15 +702,29 @@ export default function JobDetailPage() {
 			<Card
 				title="Linked Invoices"
 				headerAction={
-					linkedInvoices.length > 0 ? (
-						<span className="text-sm text-zinc-400">
-							{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
-						</span>
-					) : undefined
+					<div className="flex items-center gap-3">
+						{linkedInvoices.length > 0 && (
+							<span className="text-sm text-text-tertiary">
+								{linkedInvoices.length} invoice{linkedInvoices.length !== 1 ? "s" : ""}
+							</span>
+						)}
+							<button
+								title={!CREATE_INVOICE ? "You don't have permission to perform this action" : undefined}
+								onClick={() => {
+									if (!CREATE_INVOICE) return;
+									setIsCreateInvoiceOpen(true)
+								}}
+								disabled={!CREATE_INVOICE}
+								className="flex items-center gap-1.5 rounded-md bg-primary-hover px-3 py-1.5 text-sm font-medium text-on-primary transition-colors hover:enabled:bg-primary-active disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={14} />
+								Create Invoice
+							</button>
+					</div>
 				}
 			>
 				{linkedInvoices.length === 0 ? (
-					<div className="flex items-center gap-2 text-zinc-500 text-sm py-1">
+					<div className="flex items-center gap-2 text-text-muted text-sm py-1">
 						<Receipt size={14} className="flex-shrink-0" />
 						<span>No invoices linked to this job</span>
 					</div>
@@ -882,32 +734,32 @@ export default function JobDetailPage() {
 							<button
 								key={invoice.id}
 								onClick={() => navigate(`/dispatch/invoices/${invoice.id}`)}
-								className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group"
+								className="bg-surface border border-border rounded-lg p-3 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group"
 							>
 								<div className="flex items-center justify-between gap-6 mb-2">
-									<span className="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors tabular-nums">
+									<span className="text-text-primary font-semibold text-sm group-hover:text-primary-text transition-colors tabular-nums">
 										{invoice.invoice_number}
 									</span>
 									<span
 										className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-											InvoiceStatusColors[invoice.status as InvoiceStatus] ?? "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+											InvoiceStatusColors[invoice.status as InvoiceStatus] ?? "bg-neutral/20 text-text-tertiary border-border-strong/30"
 										}`}
 									>
 										{InvoiceStatusLabels[invoice.status as InvoiceStatus] ?? invoice.status}
 									</span>
 								</div>
-								<div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2">
+								<div className="flex items-center gap-1.5 text-xs text-text-tertiary mb-2">
 									<Calendar size={11} />
 									<span>
 										{invoice.issue_date ? new Date(invoice.issue_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
 									</span>
 								</div>
 								<div className="flex items-baseline gap-2">
-									<span className="text-white font-semibold text-sm tabular-nums">
+									<span className="text-text-primary font-semibold text-sm tabular-nums">
 										{formatCurrency(Number(invoice.total))}
 									</span>
 									{Number(invoice.balance_due) > 0 && (
-										<span className="text-xs text-amber-400 tabular-nums">
+										<span className="text-xs text-warning-text tabular-nums">
 											{formatCurrency(Number(invoice.balance_due))} due
 										</span>
 									)}
@@ -923,15 +775,18 @@ export default function JobDetailPage() {
 				title="Scheduled Visits"
 				headerAction={
 					visits.length > 0 ? (
-						<button
-							onClick={() =>
-								setIsCreateVisitModalOpen(true)
-							}
-							className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors cursor-pointer"
-						>
-							<Plus size={16} />
-							Create Visit
-						</button>
+							<button
+								title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+								onClick={() =>{
+									if (!CREATE_JOB) return;
+									setIsCreateVisitModalOpen(true)
+								}}
+								disabled={!CREATE_JOB}
+								className="flex items-center gap-2 px-4 py-2 bg-primary-hover rounded-md text-sm font-medium text-on-primary transition-colors hover:enabled:bg-primary-active disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={16} />
+								Create Visit
+							</button>
 					) : undefined
 				}
 			>
@@ -939,23 +794,26 @@ export default function JobDetailPage() {
 					<div className="text-center py-12">
 						<Calendar
 							size={48}
-							className="mx-auto mb-3 opacity-50 text-zinc-600"
+							className="mx-auto mb-3 opacity-50 text-text-faint"
 						/>
-						<p className="text-lg font-medium mb-2 text-zinc-400">
+						<p className="text-lg font-medium mb-2 text-text-tertiary">
 							No visits scheduled
 						</p>
-						<p className="text-sm text-zinc-500 mb-4">
+						<p className="text-sm text-text-muted mb-4">
 							Create a visit to schedule this job
 						</p>
-						<button
-							onClick={() =>
-								setIsCreateVisitModalOpen(true)
-							}
-							className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-						>
-							<Plus size={16} />
-							Create First Visit
-						</button>
+							<button
+								title={!CREATE_JOB ? "You don't have permission to perform this action" : undefined}
+								onClick={() => {
+									if (!CREATE_JOB) return;
+									setIsCreateVisitModalOpen(true);
+								}}
+								disabled={!CREATE_JOB}
+								className="inline-flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								<Plus size={16} />
+								Create First Visit
+							</button>
 					</div>
 				) : (
 					<div className="flex flex-wrap gap-3">
@@ -967,10 +825,10 @@ export default function JobDetailPage() {
 										`/dispatch/jobs/${jobId}/visits/${visit.id}`
 									)
 								}
-								className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 hover:border-blue-500 hover:bg-zinc-700 transition-all cursor-pointer text-left group w-fit"
+								className="bg-surface border border-border rounded-lg p-4 hover:border-primary hover:bg-surface-raised transition-all cursor-pointer text-left group w-fit"
 							>
 								{visit.name && (
-									<h4 className="text-white font-semibold text-base mb-2 group-hover:text-blue-400 transition-colors">
+									<h4 className="text-text-primary font-semibold text-base mb-2 group-hover:text-primary-text transition-colors">
 										{visit.name}
 									</h4>
 								)}
@@ -982,17 +840,33 @@ export default function JobDetailPage() {
 												VisitStatusColors[
 													visit.status as VisitStatus
 												] ||
-												"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+												"bg-neutral/20 text-text-tertiary border-border-strong/30"
 											}`}
 										>
 											{
 												visit.status
 											}
 										</div>
-										<span className="text-zinc-500 text-sm">
+										{(() => {
+											const count = visit._count?.invoice_visits ?? 0;
+											if (count === 0) return null;
+											const billed = visitBilledMap[visit.id] ?? 0;
+											const visitTotal = Number((visit as any).total ?? 0);
+											const isPartial = visitTotal > 0 && billed < visitTotal;
+											return (
+												<span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
+													isPartial
+														? "border-warning-border bg-warning-bg text-warning-text"
+														: "border-success-border bg-success-bg text-success-text"
+												}`}>
+													{isPartial ? "Partial" : "Billed"}
+												</span>
+											);
+										})()}
+										<span className="text-text-muted text-sm">
 											•
 										</span>
-										<span className="text-xs text-zinc-400">
+										<span className="text-xs text-text-tertiary">
 											{formatVisitTimeConstraints(
 												visit
 											)}
@@ -1000,7 +874,7 @@ export default function JobDetailPage() {
 									</div>
 									<ChevronRight
 										size={16}
-										className="text-zinc-400 group-hover:text-blue-400 group-hover:translate-x-1 transition-all flex-shrink-0"
+										className="text-text-tertiary group-hover:text-primary-text group-hover:translate-x-1 transition-all flex-shrink-0"
 									/>
 								</div>
 
@@ -1008,9 +882,9 @@ export default function JobDetailPage() {
 									<div className="flex items-center gap-2 text-sm">
 										<Clock
 											size={16}
-											className="text-zinc-400 flex-shrink-0"
+											className="text-text-tertiary flex-shrink-0"
 										/>
-										<span className="text-zinc-300 whitespace-nowrap">
+										<span className="text-text-secondary whitespace-nowrap">
 											{
 												formatDateTime(
 													visit.scheduled_start_at
@@ -1038,9 +912,9 @@ export default function JobDetailPage() {
 													size={
 														16
 													}
-													className="text-zinc-400 flex-shrink-0"
+													className="text-text-tertiary flex-shrink-0"
 												/>
-												<span className="text-zinc-300">
+												<span className="text-text-secondary">
 													{visit.visit_techs
 														.map(
 															(
@@ -1059,7 +933,7 @@ export default function JobDetailPage() {
 
 									{visit.description &&
 										!visit.name && (
-											<div className="text-xs text-zinc-400 italic mt-2 line-clamp-2">
+											<div className="text-xs text-text-tertiary italic mt-2 line-clamp-2">
 												{
 													visit.description
 												}
@@ -1068,7 +942,7 @@ export default function JobDetailPage() {
 
 									{visit.actual_start_at &&
 										visit.actual_end_at && (
-											<div className="mt-2 pt-2 border-t border-zinc-700 text-xs text-zinc-400">
+											<div className="mt-2 pt-2 border-t border-border text-xs text-text-tertiary">
 												Actual:{" "}
 												{formatTime(
 													visit.actual_start_at
@@ -1097,7 +971,7 @@ export default function JobDetailPage() {
 								v.visit_techs &&
 								v.visit_techs.length > 0
 						) ? (
-							<span className="text-sm text-zinc-400">
+							<span className="text-sm text-text-tertiary">
 								{visits.reduce(
 									(acc, v) =>
 										acc +
@@ -1116,12 +990,12 @@ export default function JobDetailPage() {
 							<div className="text-center">
 								<Users
 									size={48}
-									className="mx-auto text-zinc-600 mb-3"
+									className="mx-auto text-text-faint mb-3"
 								/>
-								<h3 className="text-zinc-400 text-lg font-medium mb-2">
+								<h3 className="text-text-tertiary text-lg font-medium mb-2">
 									No Visits Created
 								</h3>
-								<p className="text-zinc-500 text-sm max-w-sm mx-auto">
+								<p className="text-text-muted text-sm max-w-sm mx-auto">
 									Create a visit to assign
 									technicians to this job.
 								</p>
@@ -1135,12 +1009,12 @@ export default function JobDetailPage() {
 						<div className="text-center py-12">
 							<Users
 								size={48}
-								className="mx-auto text-zinc-600 mb-3"
+								className="mx-auto text-text-faint mb-3"
 							/>
-							<h3 className="text-zinc-400 text-lg font-medium mb-2">
+							<h3 className="text-text-tertiary text-lg font-medium mb-2">
 								No Technicians Assigned
 							</h3>
-							<p className="text-zinc-500 text-sm max-w-sm mx-auto">
+							<p className="text-text-muted text-sm max-w-sm mx-auto">
 								Edit a visit to assign technicians
 								to the job.
 							</p>
@@ -1165,7 +1039,7 @@ export default function JobDetailPage() {
 													`/dispatch/jobs/${jobId}/visits/${visit.id}`
 												)
 											}
-											className="w-full flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-300 mb-2 transition-colors group"
+											className="w-full flex items-center gap-2 text-xs text-text-tertiary hover:text-text-secondary mb-2 transition-colors group"
 										>
 											<Calendar
 												size={
@@ -1194,7 +1068,7 @@ export default function JobDetailPage() {
 													VisitStatusColors[
 														visit.status as VisitStatus
 													] ||
-													"bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+													"bg-neutral/20 text-text-tertiary border-border-strong/30"
 												}`}
 											>
 												{
@@ -1205,7 +1079,7 @@ export default function JobDetailPage() {
 												size={
 													14
 												}
-												className="text-zinc-500 group-hover:text-zinc-300 group-hover:translate-x-0.5 transition-all"
+												className="text-text-muted group-hover:text-text-secondary group-hover:translate-x-0.5 transition-all"
 											/>
 										</button>
 
@@ -1223,10 +1097,10 @@ export default function JobDetailPage() {
 															`/dispatch/technicians/${vt.tech_id}`
 														);
 													}}
-													className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 rounded-lg p-3 transition-all cursor-pointer text-left group"
+													className="w-full bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg p-3 transition-all cursor-pointer text-left group"
 												>
 													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
+														<div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-plan flex items-center justify-center flex-shrink-0 text-on-primary font-semibold text-sm">
 															{vt.tech.name
 																.split(
 																	" "
@@ -1247,14 +1121,14 @@ export default function JobDetailPage() {
 																)}
 														</div>
 														<div className="flex-1 min-w-0">
-															<h4 className="text-white font-medium text-sm truncate group-hover:text-blue-400 transition-colors mb-1">
+															<h4 className="text-text-primary font-medium text-sm truncate group-hover:text-primary-text transition-colors mb-1">
 																{
 																	vt
 																		.tech
 																		.name
 																}
 															</h4>
-															<div className="flex items-center gap-2 text-xs text-zinc-400">
+															<div className="flex items-center gap-2 text-xs text-text-tertiary">
 																<span className="truncate">
 																	{
 																		vt
@@ -1287,18 +1161,18 @@ export default function JobDetailPage() {
 																		.tech
 																		.status ===
 																	"Available"
-																		? "bg-green-500/20 text-green-400 border border-green-500/30"
+																		? "bg-success/20 text-success-text border border-success/30"
 																		: vt
 																					.tech
 																					.status ===
 																			  "Busy"
-																			? "bg-red-500/20 text-red-400 border border-red-500/30"
+																			? "bg-error/20 text-error-text border border-error/30"
 																			: vt
 																						.tech
 																						.status ===
 																				  "Offline"
-																				? "bg-zinc-500/20 text-zinc-400 border border-zinc-500/30"
-																				: "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+																				? "bg-neutral/20 text-text-tertiary border border-border-strong/30"
+																				: "bg-primary/20 text-primary-text border border-primary/30"
 																}`}
 															>
 																{
@@ -1311,7 +1185,7 @@ export default function JobDetailPage() {
 																size={
 																	16
 																}
-																className="text-zinc-400 group-hover:translate-x-1 transition-transform"
+																className="text-text-tertiary group-hover:translate-x-1 transition-transform"
 															/>
 														</div>
 													</div>
@@ -1326,25 +1200,25 @@ export default function JobDetailPage() {
 
 				<Card title="Technician Location" className="h-fit">
 					<div className="text-center py-12">
-						<Map
+						<MapIcon
 							size={48}
-							className="mx-auto text-zinc-600 mb-3"
+							className="mx-auto text-text-faint mb-3"
 						/>
-						<h3 className="text-zinc-400 text-lg font-medium mb-2">
+						<h3 className="text-text-tertiary text-lg font-medium mb-2">
 							GPS Tracking
 						</h3>
-						<p className="text-zinc-500 text-sm max-w-sm mx-auto mb-4">
+						<p className="text-text-muted text-sm max-w-sm mx-auto mb-4">
 							Real-time GPS tracking will display
 							technician locations on an interactive map.
 						</p>
-						<div className="flex items-center justify-center gap-2 text-xs text-zinc-500 mt-4">
+						<div className="flex items-center justify-center gap-2 text-xs text-text-muted mt-4">
 							<MapPin size={14} />
 							<span>Live GPS tracking coming soon</span>
 						</div>
-						<div className="mt-4 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-							<p className="text-xs text-zinc-400">
+						<div className="mt-4 p-3 bg-surface/50 rounded-lg border border-border/50">
+							<p className="text-xs text-text-tertiary">
 								Job Address:{" "}
-								<span className="text-white">
+								<span className="text-text-primary">
 									{job.address}
 								</span>
 							</p>
@@ -1368,6 +1242,14 @@ export default function JobDetailPage() {
 				setIsModalOpen={setIsCreateVisitModalOpen}
 				jobId={jobId!}
 				createVisit={createJobVisitMutation}
+				clientExempt={job?.client?.is_tax_exempt ?? false}
+			/>
+
+			<CreateInvoice
+				isModalOpen={isCreateInvoiceOpen}
+				setIsModalOpen={setIsCreateInvoiceOpen}
+				initialJobId={jobId}
+				defaultClientId={job?.client_id}
 			/>
 		</div>
 	);

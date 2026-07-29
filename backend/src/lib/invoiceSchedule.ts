@@ -82,6 +82,8 @@ function nextBillingDate(
 			return nextMonthDay(dayOfMonth ?? 1, from, 1);
 		case "quarterly":
 			return nextMonthDay(dayOfMonth ?? 1, from, 3);
+		default:
+			throw new Error(`calculateNextInvoiceAt called with unsupported frequency: ${frequency}`);
 	}
 }
 

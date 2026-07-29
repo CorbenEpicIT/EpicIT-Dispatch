@@ -1,13 +1,16 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
+import { getAllPermissions } from "../lib/permissionCatalogs.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 import {
 	generateAccessToken,
-	gererateRefreshToken,
+	generateRefreshToken,
 	verifyToken,
 	verifyRefreshToken,
 	generateOTPToken,
+	verifyOTPToken,
+	generatePendingToken,
 } from "../services/jwtService.js";
 import { createOTP, OTP_DISABLED } from "../services/otpServce.js";
 import { Response } from "express";
@@ -17,8 +20,8 @@ import {
 	sendPasswordResetEmail,
 } from "../services/emailService.js";
 import crypto from "crypto";
-import { UserContext } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
+import { logActivity } from "../services/logger.js";
 
 interface AuthResponse {
 	token: string;
@@ -31,69 +34,28 @@ interface AuthResponse {
 	};
 }
 
-// will only need email and password for now
-// get organization by parsing email if needed
-// might change later
-export const login = async (
-	res: Response,
-	email: string,
-	password: string,
-	role: string,
-) => {
+export const login = async (res: Response, email: string, password: string) => {
 	try {
-		// just for testing
-		if (email === "user" && password === "") {
-			const user = {
-				id: "0",
-				name: email,
-				organization_id: "epic",
-				title: "admin",
-				description: "admin",
-				email: email,
-				phone: null,
-				password: "",
-				last_login: new Date(),
-			};
-			const otp = await createOTP(user.id, role);
-
-			const pendingToken = generateOTPToken(user, role);
-			if (!pendingToken) {
-				return createErrorResponse(
-					ErrorCodes.SERVER_ERROR,
-					"Error generating OTP token",
-				);
-			}
-
-			return { data: { pendingToken } };
-
-			//return issueAuthTokens(res, user.id, role);
-		}
-		// user already has pending token and otp
-		// resend the opt token to user
-		/*if (req.header.authorization?.split(" ")[0] === "Bearer") {
-			
-		}*/
 		const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 		if (!isValidEmail) {
 			return createErrorResponse(
-				"INVALID_CREDENTIALS",
+				ErrorCodes.INVALID_CREDENTIALS,
 				"Invalid credentials",
 			);
 		}
 
 		// ask if last login updates automatically or if I have to add that here
-		const user =
-			role === "technician"
-				? await db.technician.findUnique({
-						where: {
-							email: email,
-						},
-					})
-				: await db.dispatcher.findUnique({
-						where: {
-							email: email,
-						},
-					});
+		let user =
+			(await db.technician.findUnique({
+				where: {
+					email: email,
+				},
+			})) ??
+			(await db.dispatcher.findUnique({
+				where: {
+					email: email,
+				},
+			}));
 		if (!user) {
 			return createErrorResponse(
 				ErrorCodes.INVALID_CREDENTIALS,
@@ -101,7 +63,7 @@ export const login = async (
 			);
 		}
 		// if dispatcher, use role from db (admin or dispatch)
-		const effectiveRole = "role" in user ? user.role : role;
+		const effectiveRole = "role" in user ? user.role : "technician";
 
 		let match = await bcrypt.compare(password, user.password);
 		if (!user || !match) {
@@ -116,15 +78,52 @@ export const login = async (
 			return await issueAuthTokens(res, user.id, effectiveRole);
 		}
 
-		// OTP disabled: bypass the verification step and issue tokens directly.
+		// MFA takes precedence over email OTP 
+		const mfa_cred = await db.mfa_credential.findFirst({
+			where: {
+				user_id: user.id,
+				role: effectiveRole,
+			},
+		});
+
+		if (mfa_cred?.enabled) {
+			return {
+				data: {
+					challenge: "totp",
+					pendingToken: generatePendingToken(user, effectiveRole, "pending_totp"),
+				},
+			};
+		}
+
+		// Org enforces MFA but this user hasn't enrolled → force 
+		// enrollment at login before any session is issued
+		if (user.organization_id) {
+			const org = await db.organization.findUnique({
+				where: { id: user.organization_id },
+				select: { mfa_required: true },
+			});
+			if (org?.mfa_required) {
+				return {
+					data: {
+						challenge: "enroll",
+						pendingToken: generatePendingToken(user, effectiveRole, "pending_mfa_enroll"),
+					},
+				};
+			}
+		}
+
+		// OTP disabled: bypass the verification step and issue tokens directly
 		if (OTP_DISABLED) {
-			log.info({ userId: user.id, role: effectiveRole }, "[OTP DISABLED] Bypassing OTP step on login");
+			log.info(
+				{ userId: user.id, role: effectiveRole },
+				"[OTP DISABLED] Bypassing OTP step on login",
+			);
 			return await issueAuthTokens(res, user.id, effectiveRole);
 		}
 
 		const otp = await createOTP(user.id, effectiveRole);
 
-		const pendingToken = generateOTPToken(user, role);
+		const pendingToken = generateOTPToken(user, effectiveRole);
 		if (!pendingToken) {
 			return createErrorResponse(
 				ErrorCodes.SERVER_ERROR,
@@ -229,16 +228,47 @@ export const issueAuthTokens = async (
 			});
 			orgTimezone = org?.timezone ?? null;
 		}
-		const accessToken = generateAccessToken(user, role, orgTimezone);
-		const refreshToken = gererateRefreshToken(user, role);
+
+		let rolePermissions: string[];
+		if (role === "admin") {
+			rolePermissions = getAllPermissions("dispatcher");
+		} else {
+			const roleId = (user as { organization_role_id?: string | null }).organization_role_id;
+			if (roleId) {
+				const orgRole = await db.organization_role.findUnique({
+					where: { id: roleId },
+					select: { permissions: true },
+				});
+				rolePermissions = (orgRole?.permissions as string[]) ?? [];
+			} else {
+				rolePermissions = [];
+			}
+		}
+
+		const accessToken = generateAccessToken(user, role, orgTimezone, rolePermissions);
+		const refreshToken = await generateRefreshToken(user, role);
 		// set refresh token in httpOnly cookie
 		res.cookie("refreshToken", refreshToken, {
 			httpOnly: true,
-			secure: true,
+			secure: process.env.NODE_ENV === "production",
 			sameSite: "strict",
 			maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 		});
 
+		await logActivity({
+			event_type: forcePasswordReset ? "auth.first_login" : "auth.login",
+			action: "updated",
+			entity_type: "user",
+			entity_id: userId,
+			organization_id: user.organization_id ?? null,
+			actor_type: role,
+			actor_id: userId,
+			...(forcePasswordReset && {
+				changes: {
+					password_reset: { old: "temporary", new: "user_set" },
+				},
+			}),
+		});
 		let AuthResponse = {
 			token: accessToken,
 			expiresIn: 86400,
@@ -265,9 +295,13 @@ export const issueAuthTokens = async (
 // access token is cleared on front end
 export const logout = async (res: Response, userData: any, token: string) => {
 	try {
-		await db.jwt_refresh_token.deleteMany({ where: { token: token } });
-		res.clearCookie("refreshToken");
+		const decoded = token ? checkToken(token) : null;
+		const userId = decoded?.uid ?? userData?.userId;
+		if (userId) {
+			await db.jwt_refresh_token.deleteMany({ where: { userId } });
+		}
 	} catch (e) {
+		log.error({ err: e }, "Logout error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -280,34 +314,15 @@ export const logout = async (res: Response, userData: any, token: string) => {
 			"Internal server error",
 		);
 	}
-};
-
-// check if user has permission to do whatever they doing
-// not to sure how to structure this yet
-// just here if needed
-export const checkRole = async (userData: UserContext) => {
-	try {
-	} catch (e) {
-		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
-		}
-		return createErrorResponse(
-			ErrorCodes.SERVER_ERROR,
-			"Internal server error",
-		);
-	}
+	res.clearCookie("refreshToken");
 };
 
 export const checkToken = (token: string) => {
 	return verifyToken(token);
 };
 
-export const checkRefreshToken = (token: string) => {
-	return verifyRefreshToken(token);
+export const checkRefreshToken = async (token: string) => {
+	return await verifyRefreshToken(token);
 };
 
 export const requestPasswordReset = async (email: string, role: string) => {
@@ -349,8 +364,18 @@ export const requestPasswordReset = async (email: string, role: string) => {
 		if (!sent.success) {
 			return { err: "Error sending password reset email" };
 		}
+		await logActivity({
+			event_type: "auth.password_reset_requested",
+			action: "updated",
+			entity_type: "user",
+			entity_id: user.id,
+			organization_id: user.organization_id ?? null,
+			actor_type: role,
+			actor_id: user.id,
+		});
 		return { err: "" };
 	} catch (e) {
+		log.error({ err: e }, "Password reset request error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -407,8 +432,19 @@ export const resetPassword = async (
 				});
 			}
 		});
-		return { err: "" };
+		await logActivity({
+			event_type: "auth.password_reset",
+			action: "updated",
+			entity_type: "user",
+			entity_id: user.id,
+			organization_id: user.organization_id ?? null,
+			actor_type: role,
+			actor_id: user.id,
+			changes: { password: { old: "[hashed]", new: "[hashed]" } },
+		});
+		return { err: "", userId: user.id, role};
 	} catch (e) {
+		log.error({ err: e }, "Password reset error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues

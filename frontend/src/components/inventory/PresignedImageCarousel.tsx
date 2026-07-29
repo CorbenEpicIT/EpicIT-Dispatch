@@ -1,4 +1,4 @@
-import { ImageOff } from "lucide-react";
+﻿import { ImageOff } from "lucide-react";
 import { usePresignedUrls } from "../../hooks/useStorage";
 import ImageCarousel from "./ImageCarousel";
 
@@ -19,9 +19,9 @@ export default function PresignedImageCarousel({
 	if (!imageKeys.length) {
 		return (
 			<div
-				className={`flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded-md ${height} ${className}`}
+				className={`flex items-center justify-center bg-surface border border-border rounded-md ${height} ${className}`}
 			>
-				<ImageOff size={compact ? 24 : 32} className="text-zinc-600" />
+				<ImageOff size={compact ? 24 : 32} className="text-text-faint" />
 			</div>
 		);
 	}
@@ -29,7 +29,7 @@ export default function PresignedImageCarousel({
 	if (isLoading) {
 		return (
 			<div
-				className={`animate-pulse bg-zinc-800 border border-zinc-700 rounded-md ${height} ${className}`}
+				className={`animate-pulse bg-surface border border-border rounded-md ${height} ${className}`}
 			/>
 		);
 	}

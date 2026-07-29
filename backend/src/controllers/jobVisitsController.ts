@@ -1,4 +1,7 @@
 import { ZodError } from "zod";
+import { Prisma } from "../../generated/prisma/client.js";
+import type { tech_visit_status, technician_status, pause_reason_type } from "../../generated/prisma/client.js";
+import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import {
 	createJobVisitSchema,
@@ -8,9 +11,121 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
+import { onVisitScheduled, onVisitRescheduled, onVisitCancelled } from "../services/followupTriggers.js";
+import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
 import { createNotification } from "./notificationsController.js";
+import { getSocket } from "../services/socketService.js";
+import { buildRecurringPlanInvoicePayload } from "../services/invoiceGenerator.js";
+import { createInvoiceRecord } from "../services/invoiceService.js";
+import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
+
+const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
+function toPauseReason(v: string | undefined): pause_reason_type | undefined {
+	if (!v || !VALID_PAUSE_REASONS.has(v)) return undefined;
+	return v as pause_reason_type;
+}
+
+export const buildSecondaryEventPayload = (
+	visit: {
+		id: string;
+		name: string | null;
+		scheduled_start_at: Date;
+		status: string;
+		job_id: string;
+		job: { id?: string; client: { name: string } };
+		visit_techs: Array<{ tech_id: string; tech: { name: string } }>;
+	},
+	techAction: string,
+	context?: UserContext,
+) => {
+	let actor: { type: "technician" | "dispatcher"; name: string | null; id: string } | null = null;
+	if (context?.techId) {
+		const techEntry = visit.visit_techs.find((vt) => vt.tech_id === context.techId);
+		actor = { type: "technician", name: techEntry?.tech.name ?? null, id: context.techId };
+	}
+	return {
+		visitStatusChanged: false,
+		visitStatus: techAction,
+		previousVisitStatus: visit.status,
+		actor,
+		visit: {
+			id: visit.id,
+			name: visit.name,
+			scheduledAt: visit.scheduled_start_at.toISOString(),
+			job: { id: visit.job_id, client: { name: visit.job.client.name } },
+		},
+		changedAt: new Date().toISOString(),
+	};
+};
 
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
+
+interface MapboxDirectionsResponse {
+	routes: Array<{ distance: number }>;
+	code: string;
+	message?: string;
+}
+
+async function fetchRouteDistanceMiles(
+	techCoords: { lat: number; lon: number } | null | undefined,
+	jobCoords: { lat: number; lon: number } | null | undefined,
+): Promise<number | null> {
+	const token = process.env.MAPBOX_TOKEN;
+	if (!token || !techCoords?.lat || !techCoords?.lon || !jobCoords?.lat || !jobCoords?.lon) {
+		if (!token) console.error("Missing MAPBOX_TOKEN; cannot fetch route distance.");
+		return null;
+	}
+	const coords = `${techCoords.lon},${techCoords.lat};${jobCoords.lon},${jobCoords.lat}`;
+	const url =
+		`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}` +
+		`?overview=false&access_token=${token}`;
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 8_000);
+	try {
+		const resp = await fetch(url, { signal: controller.signal });
+		if (!resp.ok) return null;
+		const data = (await resp.json()) as MapboxDirectionsResponse;
+		if (data.code !== "Ok" || !data.routes.length) return null;
+		return data.routes[0].distance / 1609.34;
+	} catch { return null; }
+	finally { clearTimeout(timeoutId); }
+}
+
+export const buildVisitStatusPayload = (
+	visit: {
+		id: string;
+		name: string | null;
+		scheduled_start_at: Date;
+		status: string;
+		job_id: string;
+		job: { id?: string; client: { name: string } };
+		visit_techs: Array<{ tech_id: string; tech: { name: string } }>;
+	},
+	previousStatus: string,
+	visitStatusChanged: boolean,
+	context?: UserContext,
+) => {
+	let actor: { type: "technician" | "dispatcher"; name: string | null; id: string } | null = null;
+	if (context?.techId) {
+		const techEntry = visit.visit_techs.find((vt) => vt.tech_id === context.techId);
+		actor = { type: "technician", name: techEntry?.tech.name ?? null, id: context.techId };
+	} else if (context?.dispatcherId) {
+		actor = { type: "dispatcher", name: null, id: context.dispatcherId };
+	}
+	return {
+		visitStatusChanged,
+		visitStatus: visit.status,
+		previousVisitStatus: previousStatus,
+		actor,
+		visit: {
+			id: visit.id,
+			name: visit.name,
+			scheduledAt: visit.scheduled_start_at.toISOString(),
+			job: { id: visit.job_id, client: { name: visit.job.client.name } },
+		},
+		changedAt: new Date().toISOString(),
+	};
+};
 
 export const getAllJobVisits = async (organization_id: string, filters?: { clientId?: string; limit?: number; sort?: "asc" | "desc" }) => {
 	const sdb = getScopedDb(organization_id);
@@ -52,7 +167,25 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 		include: {
 			job: {
 				include: {
-					client: true,
+					client: {
+						include: {
+							contacts: {
+								where: { is_primary: true },
+								include: {
+									contact: {
+										select: {
+											id: true,
+											name: true,
+											email: true,
+											phone: true,
+											type: true,
+										},
+									},
+								},
+								take: 1,
+							},
+						},
+					},
 					quote: true,
 				},
 			},
@@ -63,6 +196,22 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 			},
 			line_items: {
 				orderBy: { sort_order: "asc" },
+				include: {
+					tax_group: {
+						select: {
+							id: true,
+							name: true,
+							rates: {
+								include: {
+									tax_rate: {
+										select: { id: true, name: true, rate: true },
+									},
+								},
+								orderBy: { sort_order: "asc" as const },
+							},
+						},
+					},
+				},
 			},
 			time_entries: {
 				orderBy: { clocked_in_at: "asc" },
@@ -71,6 +220,19 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 				},
 			},
 			notes: true,
+			invoice_visits: {
+				select: {
+					billed_amount: true,
+					invoice: {
+						select: {
+							id: true,
+							invoice_number: true,
+							status: true,
+							issue_date: true,
+						},
+					},
+				},
+			},
 		},
 	});
 };
@@ -87,8 +249,33 @@ export const getJobVisitsByJobId = async (jobId: string, organization_id: string
 			},
 			line_items: {
 				orderBy: { sort_order: "asc" },
+				include: {
+					tax_group: {
+						select: {
+							id: true,
+							name: true,
+							rates: {
+								include: {
+									tax_rate: {
+										select: { id: true, name: true, rate: true },
+									},
+								},
+								orderBy: { sort_order: "asc" as const },
+							},
+						},
+					},
+				},
 			},
 			notes: true,
+			_count: {
+				select: {
+					invoice_visits: {
+						where: {
+							invoice: { status: { notIn: ["Draft", "Void"] } },
+						},
+					},
+				},
+			},
 		},
 		orderBy: {
 			scheduled_start_at: "asc",
@@ -235,6 +422,26 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 				});
 			}
 
+			// ── Create line items ─────────────────────────────────────────────
+			if (parsed.line_items && parsed.line_items.length > 0) {
+				await tx.job_visit_line_item.createMany({
+					data: parsed.line_items.map((li, index) => ({
+						visit_id: visit.id,
+						name: li.name,
+						description: li.description ?? null,
+						quantity: li.quantity,
+						unit_price: li.unit_price,
+						total: li.total ?? parseFloat((li.quantity * li.unit_price).toFixed(2)),
+						item_type: li.item_type ?? null,
+						sort_order: li.sort_order ?? index,
+						source: "manual" as const,
+						tax_group_id: li.tax_group_id ?? null,
+						taxable: li.taxable ?? true,
+					})),
+				});
+				await recomputeVisitTotals(visit.id, organization_id, tx as unknown as Prisma.TransactionClient);
+			}
+
 			if (job.status === "Unscheduled") {
 				await tx.job.update({
 					where: { id: parsed.job_id },
@@ -292,11 +499,35 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 					visit_techs: {
 						include: { tech: true },
 					},
+					line_items: {
+						orderBy: { sort_order: "asc" },
+						include: {
+							tax_group: {
+								select: {
+									id: true,
+									name: true,
+									rates: {
+										select: {
+											tax_rate: {
+												select: { id: true, name: true, rate: true },
+											},
+										},
+										orderBy: { sort_order: "asc" as const },
+									},
+								},
+							},
+						},
+					},
 					notes: true,
 				},
 			});
 		});
 
+		if (created) {
+			getSocket().emit("job_visit:created", { visitId: created.id, organizationId: organization_id });
+			// Best-effort: schedule client reminders from any active visit_scheduled sequences.
+			onVisitScheduled(created.id, organization_id);
+		}
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -328,6 +559,24 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			return { err: "Job visit not found" };
 		}
 
+		// G22: verify all supplied tax_group_ids belong to this org before mutating
+		if (parsed.line_items && parsed.line_items.length > 0) {
+			const incomingTaxGroupIds = [
+				...new Set(parsed.line_items.map((li) => li.tax_group_id).filter(Boolean) as string[]),
+			];
+			if (incomingTaxGroupIds.length > 0) {
+				const validGroups = await sdb.tax_group.findMany({
+					where: { id: { in: incomingTaxGroupIds }, organization_id: organizationId },
+					select: { id: true },
+				});
+				const validIds = new Set(validGroups.map((g) => g.id));
+				const foreign = incomingTaxGroupIds.find((id) => !validIds.has(id));
+				if (foreign) {
+					return { err: `Tax group not found: ${foreign}` };
+				}
+			}
+		}
+
 		const changes = buildChanges(existingVisit, parsed, [
 			"name",
 			"description",
@@ -343,6 +592,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			"actual_end_at",
 			"status",
 		] as const);
+		let deductLowStockIds: string[] = [];
 		const updated = await sdb.$transaction(async (tx) => {
 			// ── Scalar field update ───────────────────────────────────────
 			const visit = await tx.job_visit.update({
@@ -433,6 +683,8 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 										Number(item.unit_price),
 								item_type: item.item_type ?? null,
 								sort_order: item.sort_order ?? 0,
+								tax_group_id: item.tax_group_id ?? null,
+								taxable: item.taxable ?? true,
 							},
 						});
 					} else {
@@ -451,10 +703,17 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 								source: "manual",
 								item_type: item.item_type ?? null,
 								sort_order: item.sort_order ?? 0,
+								tax_group_id: item.tax_group_id ?? null,
+								taxable: item.taxable ?? true,
 							},
 						});
 					}
 				}
+			}
+
+			// ── Recompute visit totals ────────────────────────────────────
+			if (parsed.line_items !== undefined) {
+				await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
 			}
 
 			// ── Job status sync ───────────────────────────────────────────
@@ -464,7 +723,9 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				});
 
 				let newJobStatus = existingVisit.job.status;
-				if (allVisits.every((v) => v.status === "Completed")) {
+				if (allVisits.every((v) => v.status === "Cancelled")) {
+					newJobStatus = "Cancelled";
+				} else if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
 					newJobStatus = "Completed";
 				} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
 					newJobStatus = "InProgress";
@@ -479,24 +740,32 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 					});
 				}
 
-				const deductOn = existingVisit.job.deduct_inventory_on;
-				if (
-					parsed.status === "Completed" &&
-					existingVisit.status !== "Completed" &&
-					deductOn === "visit_completion"
-				) {
-					await deductInventoryForVisit(id, tx, context);
+				// Inventory consumption is event-driven: it fires once per visit on
+				// its Completed transition (ledger model — see services/stockMovements).
+				if (parsed.status === "Completed" && existingVisit.status !== "Completed") {
+					const deductResult = await deductInventoryForVisit(
+						id,
+						tx as unknown as Prisma.TransactionClient,
+						organizationId,
+						context,
+					);
+					deductLowStockIds = deductResult.lowStockItemIds;
 				}
 
-				// Inventory deduction on job completion (all visits done)
+				// ── Actual total rollup ────────────────────────────────────────────────────────────────────
+				// allVisits was queried AFTER the visit update, so statuses are current.
+				// Fires on any Completed ↔ non-Completed transition in either direction.
 				if (
-					newJobStatus === "Completed" &&
-					existingVisit.job.status !== "Completed" &&
-					deductOn === "job_completion"
+					(parsed.status === "Completed" && existingVisit.status !== "Completed") ||
+					(existingVisit.status === "Completed" && parsed.status !== "Completed")
 				) {
-					for (const v of allVisits) {
-						await deductInventoryForVisit(v.id, tx, context);
-					}
+					const actualTotal = allVisits
+						.filter((v) => v.status === "Completed")
+						.reduce((sum, v) => sum + Number(v.total), 0);
+					await tx.job.update({
+						where: { id: existingVisit.job_id },
+						data: { actual_total: actualTotal },
+					});
 				}
 			}
 
@@ -530,11 +799,104 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				include: {
 					job: { include: { client: true, quote: true } },
 					visit_techs: { include: { tech: true } },
-					line_items: { orderBy: { sort_order: "asc" } },
+					line_items: {
+						orderBy: { sort_order: "asc" },
+						include: {
+							tax_group: {
+								select: {
+									id: true,
+									name: true,
+									rates: {
+										select: {
+											tax_rate: {
+												select: { id: true, name: true, rate: true },
+											},
+										},
+										orderBy: { sort_order: "asc" as const },
+									},
+								},
+							},
+						},
+					},
 					notes: true,
 				},
 			});
 		});
+
+		fireLowStockAlerts(deductLowStockIds, organizationId).catch(() => {});
+
+		// ── on_visit_completion: auto-invoice (post-commit, non-blocking) ──
+		if (
+			parsed.status === "Completed" &&
+			existingVisit.status !== "Completed" &&
+			existingVisit.job.recurring_plan_id
+		) {
+			const planId = existingVisit.job.recurring_plan_id;
+			const schedule = await sdb.invoice_schedule.findFirst({
+				where: { recurring_plan_id: planId },
+			});
+			if (schedule?.frequency === "on_visit_completion" && schedule.is_active) {
+				buildRecurringPlanInvoicePayload(planId, sdb, { last_invoiced_at: schedule.last_invoiced_at })
+					.then(async ({ payload, warnings }) => {
+						if (warnings.length > 0) {
+							payload.internal_notes = `[Auto on completion] Overlap:\n${warnings
+								.map(
+									(w) =>
+										`Visit ${new Date(w.scheduled_start_at).toLocaleDateString()} already billed on: ${w.existing_invoices.map((i) => i.invoice_number).join(", ")}`,
+								)
+								.join("\n")}`;
+						}
+						const created = await sdb.$transaction(async (innerTx) => {
+							const inv = await createInvoiceRecord(
+								payload,
+								organizationId,
+								null,
+								innerTx as unknown as Prisma.TransactionClient,
+							);
+							const casResult = await (innerTx as unknown as Prisma.TransactionClient).invoice_schedule.updateMany({
+								where: { id: schedule.id, last_invoiced_at: schedule.last_invoiced_at },
+								data: { last_invoiced_at: new Date() },
+							});
+							if (casResult.count === 0) {
+								throw new Error(`on_visit_completion: schedule ${schedule.id} already updated by concurrent completion`);
+							}
+							return inv;
+						});
+						await logActivity({
+							event_type: "invoice.created",
+							action: "created",
+							entity_type: "invoice",
+							entity_id: created.id,
+							organization_id: organizationId,
+							actor_type: "system",
+							actor_id: null,
+							changes: {
+								invoice_number: { old: null, new: created.invoice_number },
+								client_id: { old: null, new: created.client_id },
+								total: { old: null, new: created.total },
+								status: { old: null, new: created.status },
+								recurring_plan_id: { old: null, new: created.recurring_plan_id ?? null },
+							},
+						});
+					})
+					.catch(async (err) => {
+						log.error({ err, plan_id: planId }, "on_visit_completion invoice creation failed");
+						await logActivity({
+							event_type: "invoice.auto_creation_failed",
+							action: "failed",
+							entity_type: "job_visit",
+							entity_id: existingVisit.id,
+							organization_id: organizationId,
+							actor_type: "system",
+							actor_id: null,
+							changes: {
+								error: { old: null, new: String(err) },
+								recurring_plan_id: { old: null, new: planId },
+							},
+						});
+					});
+			}
+		}
 
 		// ── "This & all future" — shift future visits by the same delta ─────
 		if (parsed.reschedule_scope === "future" && existingVisit.job.recurring_plan_id) {
@@ -571,6 +933,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 							}),
 						),
 					);
+					getSocket().emit("job_visit:updated", { visitId: null, organizationId });
 				}
 			}
 		}
@@ -598,6 +961,29 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			}
 		}
 
+		if (
+			updated &&
+			parsed.status !== undefined &&
+			existingVisit.status !== updated.status
+		) {
+			const io = getSocket();
+			io.emit(
+				"job_visit:status_changed",
+				buildVisitStatusPayload(updated as any, existingVisit.status, true, context),
+			);
+		}
+		if (updated && Object.keys(changes).length > 0) {
+			getSocket().emit("job_visit:updated", { visitId: updated.id, organizationId });
+		}
+		// Best-effort: keep visit reminders in sync with reschedules / cancellations.
+		if (parsed.status === "Cancelled" && existingVisit.status !== "Cancelled") {
+			onVisitCancelled(id, organizationId);
+		} else if (
+			parsed.scheduled_start_at !== undefined &&
+			existingVisit.scheduled_start_at.getTime() !== parsed.scheduled_start_at.getTime()
+		) {
+			onVisitRescheduled(id, organizationId, parsed.scheduled_start_at);
+		}
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -722,6 +1108,7 @@ export const assignTechniciansToVisit = async (
 					actionUrl:    `/technician/visits/${visitId}`,
 				}, organizationId);
 			}
+			getSocket().emit("job_visit:updated", { visitId: updated.id, organizationId });
 		}
 
 		return { err: "", item: updated };
@@ -754,6 +1141,21 @@ export const acceptJobVisit = async (
 
 		if (!tech) {
 			return { err: "Technician not found" };
+		}
+
+		const alreadyAssigned = await sdb.job_visit_technician.findFirst({
+			where: { visit_id: visitId, tech_id: techId },
+		});
+		if (alreadyAssigned) {
+			const visit = await sdb.job_visit.findFirst({
+				where: { id: visitId },
+				include: {
+					job: { include: { client: true } },
+					visit_techs: { include: { tech: true } },
+					notes: true,
+				},
+			});
+			return { err: "", item: visit ?? undefined };
 		}
 
 		await sdb.$transaction(async (tx) => {
@@ -815,10 +1217,12 @@ export const LIFECYCLE_TRANSITIONS = {
 	pause: { from: ["InProgress"], to: "Paused" as const },
 	resume: { from: ["Paused"], to: "InProgress" as const },
 	complete: { from: ["InProgress", "Paused", "OnSite"], to: "Completed" as const },
+	delay: { from: ["Scheduled", "Driving", "OnSite"], to: "Delayed" as const },
 };
 
 const LIFECYCLE_ORDER: Record<string, number> = {
 	Scheduled: 0,
+	Delayed: 0,
 	Driving: 1,
 	OnSite: 2,
 	InProgress: 3,
@@ -833,6 +1237,8 @@ export const applyVisitTransition = async (
 	action: LifecycleAction,
 	organizationId: string,
 	context?: UserContext,
+	pauseReason?: string,
+	techCoords?: { lat: number; lon: number } | null,
 ) => {
 	try {
 		const { from, to } = LIFECYCLE_TRANSITIONS[action];
@@ -844,6 +1250,11 @@ export const applyVisitTransition = async (
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
+		// Guard: delay is dispatcher-only
+		if (action === "delay" && context?.techId) {
+			return { err: "Only dispatchers can mark a visit as Delayed." };
+		}
+
 		// Guard: drive and arrive require the technician to not be clocked in
 		if ((action === "drive" || action === "arrive") && context?.techId) {
 			const openEntry = await sdb.visit_tech_time_entry.findFirst({
@@ -854,10 +1265,46 @@ export const applyVisitTransition = async (
 			}
 		}
 
-		if (!from.includes(existingVisit.status)) {
+		if (!(from as string[]).includes(existingVisit.status)) {
 			const currentOrder = LIFECYCLE_ORDER[existingVisit.status] ?? -1;
 			const targetOrder = LIFECYCLE_ORDER[to] ?? -1;
 			if (targetOrder >= 0 && currentOrder >= targetOrder) {
+				// Secondary transition: drive or arrive for a tech whose visit is already past that state
+				if ((action === "drive" || action === "arrive") && context?.techId) {
+					const techVisitStatus: tech_visit_status = action === "drive" ? "EnRoute" : "OnSite";
+					const techGlobalStatus: technician_status = action === "drive" ? "EnRoute" : "OnSite";
+					const assignment = await sdb.job_visit_technician.findUnique({
+						where: { visit_id_tech_id: { visit_id: id, tech_id: context.techId } },
+					});
+					if (assignment && (assignment.tech_status === "Assigned" || (action === "arrive" && assignment.tech_status === "EnRoute"))) {
+						const currentVisit = await sdb.job_visit.findFirst({
+							where: { id },
+							include: {
+								job: { include: { client: true, quote: true } },
+								visit_techs: { include: { tech: true } },
+								line_items: { orderBy: { sort_order: "asc" } },
+								notes: true,
+							},
+						});
+						if (currentVisit) {
+							await sdb.$transaction([
+								sdb.job_visit_technician.update({
+									where: { visit_id_tech_id: { visit_id: id, tech_id: context.techId } },
+									data: { tech_status: techVisitStatus },
+								}),
+								sdb.technician.update({
+									where: { id: context.techId },
+									data: { status: techGlobalStatus },
+								}),
+							]);
+							getSocket().emit(
+								"job_visit:status_changed",
+								buildSecondaryEventPayload(currentVisit, techVisitStatus, context),
+							);
+						}
+						return { err: "", item: currentVisit ?? undefined };
+					}
+				}
 				const currentVisit = await sdb.job_visit.findUnique({
 					where: { id },
 					include: {
@@ -867,6 +1314,13 @@ export const applyVisitTransition = async (
 						notes: true,
 					},
 				});
+				if (action === "drive" && existingVisit.status === "Driving" && currentVisit) {
+					const io = getSocket();
+					io.emit(
+						"job_visit:status_changed",
+						buildVisitStatusPayload(currentVisit as any, existingVisit.status, false, context),
+					);
+				}
 				return { err: "", item: currentVisit ?? undefined };
 			}
 			return {
@@ -884,7 +1338,8 @@ export const applyVisitTransition = async (
 			if (!existingVisit.actual_start_at) timestampData.actual_start_at = now;
 		}
 
-		const updated = await sdb.$transaction(async (tx) => {
+		let deductLowStockIds: string[] = [];
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
 				data: {
@@ -908,6 +1363,14 @@ export const applyVisitTransition = async (
 						where: { id: other.id },
 						data: { status: "Scheduled" },
 					});
+					await tx.job_visit_technician.updateMany({
+						where: {
+							visit_id: other.id,
+							tech_id: context.techId,
+							tech_status: "EnRoute",
+						},
+						data: { tech_status: "Assigned" },
+					})
 					// Re-sync job status for the reverted visit
 					const otherJobVisits = await tx.job_visit.findMany({
 						where: { job_id: other.job_id },
@@ -940,15 +1403,15 @@ export const applyVisitTransition = async (
 				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
 			}
 
-			// ── Inventory deduction ───────────────────────────────────
-			const deductOn = existingVisit.job.deduct_inventory_on;
-			if (action === "complete" && existingVisit.status !== "Completed" && deductOn === "visit_completion") {
-				await deductInventoryForVisit(id, tx, context);
-			}
-			if (newJobStatus === "Completed" && existingVisit.job.status !== "Completed" && deductOn === "job_completion") {
-				for (const v of allVisits) {
-					await deductInventoryForVisit(v.id, tx, context);
-				}
+			// ── Inventory consumption (once, on this visit's Completed transition) ──
+			if (action === "complete" && existingVisit.status !== "Completed") {
+				const deductResult = await deductInventoryForVisit(
+					id,
+					tx as unknown as Prisma.TransactionClient,
+					organizationId,
+					context,
+				);
+				deductLowStockIds = deductResult.lowStockItemIds;
 			}
 
 			// ── Auto-close open time entries on pause or complete ─────────────
@@ -982,23 +1445,131 @@ export const applyVisitTransition = async (
 
 					await tx.visit_tech_time_entry.update({
 						where: { id: entry.id },
-						data: { clocked_out_at: closeTime, hours_worked: hoursWorked, line_item_id: lineItem.id },
+						data: {
+							clocked_out_at: closeTime,
+							hours_worked: hoursWorked,
+							line_item_id: lineItem.id,
+							...(action === "pause" ? { pause_reason: toPauseReason(pauseReason) } : {}),
+						},
 					});
 				}
 
 				if (openEntries.length > 0) {
-					const allItems = await tx.job_visit_line_item.findMany({ where: { visit_id: id } });
-					const newSubtotal = allItems.reduce((s, li) => s + Number(li.total), 0);
-					const taxRate = Number(existingVisit.tax_rate ?? 0);
-					const newTaxAmount = parseFloat((newSubtotal * taxRate).toFixed(2));
-					await tx.job_visit.update({
-						where: { id },
-						data: {
-							subtotal: newSubtotal,
-							tax_amount: newTaxAmount,
-							total: parseFloat((newSubtotal + newTaxAmount).toFixed(2)),
-						},
+					await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
+				}
+			}
+
+			// ── Actual total rollup ────────────────────────────────────────────────────────────────────
+			// v1: fires on every complete action. Uses a fresh query (post time-entry recompute) so
+			// the current visit's total reflects any auto-generated labor line items.
+			// Note: un-completing a visit (via PATCH) does NOT decrement actual_total — same v1 semantics as PATCH path.
+			if (action === "complete") {
+				const completedVisits = await tx.job_visit.findMany({
+					where: { job_id: existingVisit.job_id, status: "Completed" },
+					select: { total: true },
+				});
+				const actualTotal = completedVisits.reduce((sum, v) => sum + Number(v.total), 0);
+				await tx.job.update({
+					where: { id: existingVisit.job_id },
+					data: { actual_total: actualTotal },
+				});
+			}
+
+			// ── Tech status updates ───────────────────────────────────────────
+			const TECH_VISIT_STATUS_MAP: Partial<Record<LifecycleAction, tech_visit_status>> = {
+				drive: "EnRoute",
+				arrive: "OnSite",
+				complete: "Done",
+			};
+			const TECH_GLOBAL_STATUS_MAP: Partial<Record<LifecycleAction, technician_status>> = {
+				drive: "EnRoute",
+				arrive: "OnSite",
+				start: "Working",
+				resume: "Working",
+				pause: "Paused",
+				complete: "WrappingUp",
+			};
+			const newTechVisitStatus = TECH_VISIT_STATUS_MAP[action];
+			const newTechGlobalStatus = TECH_GLOBAL_STATUS_MAP[action];
+
+			if (action === "complete") {
+				// Only techs who actually participated (not no-shows sitting at Assigned)
+				const activeTechs = await tx.job_visit_technician.findMany({
+					where: { visit_id: id, tech_status: { not: "Assigned" } },
+				});
+				// Fetch current global status for each tech so we can handle Break correctly
+				const techStatuses = await tx.technician.findMany({
+					where: { id: { in: activeTechs.map((vt) => vt.tech_id) } },
+					select: { id: true, status: true },
+				});
+				const techStatusMap = new Map(techStatuses.map((t) => [t.id, t.status]));
+				// Techs NOT on break get WrappingUp; techs on break get their pre_break_status updated
+				const wrappingUpTechIds: string[] = [];
+				for (const vt of activeTechs) {
+					await tx.job_visit_technician.update({
+						where: { visit_id_tech_id: { visit_id: id, tech_id: vt.tech_id } },
+						data: { tech_status: newTechVisitStatus! },
 					});
+					if (techStatusMap.get(vt.tech_id) === "Break") {
+						// Tech is on break — update their pre_break_status so returning from
+						// break will restore WrappingUp (not the stale OnSite/Working value)
+						await tx.technician_shift_break.updateMany({
+							where: { tech_id: vt.tech_id, ended_at: null },
+							data: { pre_break_status: "WrappingUp" },
+						});
+					} else {
+						await tx.technician.update({
+							where: { id: vt.tech_id },
+							data: { status: newTechGlobalStatus! },
+						});
+						wrappingUpTechIds.push(vt.tech_id);
+					}
+				}
+				// Arm per-tech WrappingUp timers after transaction commits (only for non-break techs)
+				if (wrappingUpTechIds.length > 0) {
+					const org = await tx.organization.findUnique({
+						where: { id: organizationId },
+						select: { wrapping_up_minutes: true },
+					});
+					const wrappingMinutes = org?.wrapping_up_minutes ?? 15;
+					const now = new Date();
+					// Import lazily to avoid circular dependency at module load time
+					import("../services/wrappingUpTimer.js").then(({ scheduleWrappingUpClear }) => {
+						for (const techId of wrappingUpTechIds) {
+							scheduleWrappingUpClear(techId, organizationId, now, wrappingMinutes);
+						}
+					}).catch(() => {});
+				}
+			} else if (action === "pause") {
+				// Only update global tech status to Paused — tech_visit_status stays OnSite
+				const activeTechs = await tx.job_visit_technician.findMany({
+					where: { visit_id: id, tech_status: { notIn: ["Done", "Assigned"] } },
+				});
+				for (const vt of activeTechs) {
+					await tx.technician.update({
+						where: { id: vt.tech_id },
+						data: { status: newTechGlobalStatus! },
+					});
+				}
+			} else if (context?.techId && (newTechVisitStatus || newTechGlobalStatus)) {
+				// Only the calling tech
+				if (newTechVisitStatus) {
+					await tx.job_visit_technician.update({
+						where: { visit_id_tech_id: { visit_id: id, tech_id: context.techId } },
+						data: { tech_status: newTechVisitStatus },
+					});
+				}
+				if (newTechGlobalStatus) {
+					await tx.technician.update({
+						where: { id: context.techId },
+						data: { status: newTechGlobalStatus },
+					});
+				}
+				// Cancel any pending WrappingUp timer when tech transitions to an active state
+				if (["drive", "arrive", "start", "resume"].includes(action)) {
+					import("../services/wrappingUpTimer.js").then(({ cancelWrappingUpTimer }) => {
+						cancelWrappingUpTimer(context.techId!);
+					}).catch(() => {});
 				}
 			}
 
@@ -1023,17 +1594,39 @@ export const applyVisitTransition = async (
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findFirst({
-				where: { id },
-				include: {
-					job: { include: { client: true, quote: true } },
-					visit_techs: { include: { tech: true } },
-					line_items: { orderBy: { sort_order: "asc" } },
-					notes: true,
-				},
-			});
 		});
 
+		fireLowStockAlerts(deductLowStockIds, organizationId).catch(() => {});
+
+		const updated = await sdb.job_visit.findFirst({
+			where: { id },
+			include: {
+				job: { include: { client: true, quote: true } },
+				visit_techs: { include: { tech: true } },
+				line_items: { orderBy: { sort_order: "asc" } },
+				notes: true,
+			},
+		});
+
+		if (updated) {
+			getSocket().emit(
+				"job_visit:status_changed",
+				buildVisitStatusPayload(updated, existingVisit.status, true, context),
+			);
+		}
+
+		if (action === "drive" && updated) {
+			const jobCoords = existingVisit.job.coords as { lat?: number; lon?: number; lng?: number } | null;
+			const jobLon = jobCoords?.lon ?? jobCoords?.lng;
+			const miles = await fetchRouteDistanceMiles(
+				techCoords ?? null,
+				jobCoords?.lat && jobLon ? { lat: jobCoords.lat, lon: jobLon } : null,
+			);
+			if (miles !== null) {
+				await sdb.job_visit.update({ where: { id }, data: { estimated_drive_miles: miles } });
+				updated.estimated_drive_miles = miles;
+			}
+		}
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {
 		log.error({ err: e }, `Failed to apply visit transition: ${action}`);
@@ -1058,7 +1651,7 @@ export const cancelJobVisit = async (
 
 		if (!existingVisit) return { err: "Job visit not found" };
 
-		const updated = await sdb.$transaction(async (tx) => {
+		await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
 				data: { status: "Cancelled", cancellation_reason: cancellationReason },
@@ -1066,7 +1659,9 @@ export const cancelJobVisit = async (
 
 			const allVisits = await tx.job_visit.findMany({ where: { job_id: existingVisit.job_id } });
 			let newJobStatus = existingVisit.job.status;
-			if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
+			if (allVisits.every((v) => v.status === "Cancelled")) {
+				newJobStatus = "Cancelled";
+			} else if (allVisits.every((v) => v.status === "Completed" || v.status === "Cancelled")) {
 				newJobStatus = "Completed";
 			} else if (allVisits.some((v) => (ACTIVE_VISIT_STATUSES as readonly string[]).includes(v.status))) {
 				newJobStatus = "InProgress";
@@ -1075,6 +1670,96 @@ export const cancelJobVisit = async (
 			}
 			if (newJobStatus !== existingVisit.job.status) {
 				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
+			}
+
+			// ── Step 1: Close open time entries ──────────────────────────────────
+			const openEntries = await tx.visit_tech_time_entry.findMany({
+				where: { visit_id: id, clocked_out_at: null },
+				include: { tech: { select: { name: true, hourly_rate: true } } },
+			});
+
+			const cancelTime = new Date();
+
+			for (const entry of openEntries) {
+				const elapsedMs = cancelTime.getTime() - entry.clocked_in_at.getTime();
+				const hoursWorked = parseFloat((elapsedMs / (1000 * 60 * 60)).toFixed(4));
+				const hourlyRate = Number(entry.tech.hourly_rate);
+				const laborTotal = parseFloat((hoursWorked * hourlyRate).toFixed(2));
+
+				const lineItem = await tx.job_visit_line_item.create({
+					data: {
+						visit_id: id,
+						name: `Labor – ${entry.tech.name}`,
+						description: `${hoursWorked.toFixed(2)} hrs @ $${hourlyRate.toFixed(2)}/hr`,
+						quantity: hoursWorked,
+						unit_price: hourlyRate,
+						total: laborTotal,
+						source: "field_addition",
+						item_type: "labor",
+						sort_order: 0,
+					},
+				});
+
+				await tx.visit_tech_time_entry.update({
+					where: { id: entry.id },
+					data: {
+						clocked_out_at: cancelTime,
+						hours_worked: hoursWorked,
+						line_item_id: lineItem.id,
+					},
+				});
+			}
+
+			if (openEntries.length > 0) {
+				await recomputeVisitTotals(id, organizationId, tx as unknown as Prisma.TransactionClient);
+			}
+
+			// ── Step 2: Reset tech_status for non-Done techs ─────────────────────
+			// Snapshot the active set BEFORE the reset so Step 3 can use it.
+			// "Active" means the tech had progressed past Assigned (EnRoute, OnSite,
+			// Working, etc.) — no-shows sitting at Assigned don't need global updates.
+			const activeTechRows = await tx.job_visit_technician.findMany({
+				where: {
+					visit_id: id,
+					tech_status: { notIn: ["Assigned", "Done"] },
+				},
+				select: { tech_id: true },
+			});
+
+			await tx.job_visit_technician.updateMany({
+				where: { visit_id: id, tech_status: { not: "Done" } },
+				data: { tech_status: "Assigned" },
+			});
+
+			// ── Step 3: Update global technician.status for actively-working techs ─
+			// Union: techs who were actively progressed on this visit (captured above)
+			// plus any who had an open time entry (definitely Working).
+			const openEntryTechIds = openEntries.map((e) => e.tech_id);
+			const activeTechIds = [
+				...new Set([
+					...activeTechRows.map((r) => r.tech_id),
+					...openEntryTechIds,
+				]),
+			];
+
+			for (const techId of activeTechIds) {
+				const openShift = await tx.technician_shift.findFirst({
+					where: { tech_id: techId, ended_at: null },
+				});
+				const onBreak = await tx.technician.findUnique({
+					where: { id: techId },
+					select: { status: true },
+				});
+
+				// If the tech is currently on Break, leave their global status alone —
+				// the break will restore their status when they return.
+				if (onBreak?.status === "Break") continue;
+
+				const newGlobalStatus: technician_status = openShift ? "Available" : "Offline";
+				await tx.technician.update({
+					where: { id: techId },
+					data: { status: newGlobalStatus },
+				});
 			}
 
 			await logActivity({
@@ -1095,15 +1780,16 @@ export const cancelJobVisit = async (
 				user_agent: context?.userAgent,
 			});
 
-			return tx.job_visit.findFirst({
-				where: { id },
-				include: {
-					job: { include: { client: true, quote: true } },
-					visit_techs: { include: { tech: true } },
-					line_items: { orderBy: { sort_order: "asc" } },
-					notes: true,
-				},
-			});
+		});
+
+		const updated = await sdb.job_visit.findFirst({
+			where: { id },
+			include: {
+				job: { include: { client: true, quote: true } },
+				visit_techs: { include: { tech: true } },
+				line_items: { orderBy: { sort_order: "asc" } },
+				notes: true,
+			},
 		});
 
 		// Notify assigned technicians of cancellation
@@ -1121,6 +1807,13 @@ export const cancelJobVisit = async (
 			}
 		}
 
+		if (updated) {
+			const io = getSocket();
+			io.emit(
+				"job_visit:status_changed",
+				buildVisitStatusPayload(updated as any, existingVisit.status, true, context),
+			);
+		}
 		return { err: "", item: updated ?? undefined };
 	} catch (e) {
 		log.error({ err: e }, "Failed to cancel job visit");
@@ -1190,9 +1883,58 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 			}
 		});
 
+		getSocket().emit("job_visit:deleted", { visitId: id, organizationId });
 		return { err: "", message: "Job visit deleted successfully" };
 	} catch (e) {
 		log.error({ err: e }, "Failed to delete job visit");
 		return { err: "Failed to delete job visit" };
 	}
+};
+
+export const getRecentStatusEvents = async (organizationId: string) => {
+	const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+	const logs = await db.log.findMany({
+		where: {
+			event_type: "job_visit.updated",
+			organization_id: organizationId,
+			timestamp: { gte: cutoff },
+		},
+		orderBy: { timestamp: "desc" },
+		take: 30,
+	});
+
+	if (logs.length === 0) return [];
+
+	const visitIds = [...new Set(logs.map((l) => l.entity_id))];
+	const visits = await db.job_visit.findMany({
+		where: { id: { in: visitIds } },
+		include: { job: { include: { client: { select: { name: true } } } } },
+	});
+	const visitMap = new Map(visits.map((v) => [v.id, v]));
+
+	return logs
+		.map((entry) => {
+			const changes = entry.changes as Record<string, { old: string; new: string }>;
+			const visit = visitMap.get(entry.entity_id);
+			if (!visit || !changes.status) return null;
+			return {
+				visitStatusChanged: true,
+				visitStatus: changes.status.new,
+				previousVisitStatus: changes.status.old,
+				actor:
+					entry.actor_id && entry.actor_type !== "system"
+						? { type: entry.actor_type as "technician" | "dispatcher", name: entry.actor_name, id: entry.actor_id }
+						: null,
+				changedAt: entry.timestamp.toISOString(),
+				visit: {
+					id: visit.id,
+					name: visit.name,
+					scheduledAt: visit.scheduled_start_at.toISOString(),
+					job: { id: visit.job_id, client: { name: visit.job.client.name } },
+				},
+			};
+		})
+		.filter((e) => e !== null)
+		.slice(0, 9);
 };

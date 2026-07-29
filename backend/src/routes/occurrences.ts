@@ -6,12 +6,13 @@ import {
 } from "../types/responses.js";
 import * as recurringPlansController from '../controllers/recurringPlansController.js';
 import { getUserContext } from '../lib/context.js';
+import { requirePermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.post("/:occurrenceId/skip", async (req, res, next) => {
+router.post("/:occurrenceId/skip", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { occurrenceId } = req.params;
+        const occurrenceId = req.params.occurrenceId as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await recurringPlansController.skipOccurrence(
@@ -39,9 +40,9 @@ router.post("/:occurrenceId/skip", async (req, res, next) => {
     }
 });
 
-router.put("/:occurrenceId/reschedule", async (req, res, next) => {
+router.put("/:occurrenceId/reschedule", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
-        const { occurrenceId } = req.params;
+        const occurrenceId = req.params.occurrenceId as string;
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
         const result = await recurringPlansController.rescheduleOccurrence(
@@ -69,7 +70,7 @@ router.put("/:occurrenceId/reschedule", async (req, res, next) => {
     }
 });
 
-router.post("/bulk-skip", async (req, res, next) => {
+router.post("/bulk-skip", requirePermission("manage_recurring_plans"), async (req, res, next) => {
     try {
         const context = getUserContext(req);
         const orgId = req.user!.organization_id as string;
@@ -98,9 +99,10 @@ router.post("/bulk-skip", async (req, res, next) => {
 
 router.post(
     "/:occurrenceId/generate-visit",
+    requirePermission("manage_recurring_plans"),
     async (req, res, next) => {
         try {
-            const { occurrenceId } = req.params;
+            const occurrenceId = req.params.occurrenceId as string;
             const context = getUserContext(req);
             const orgId = req.user!.organization_id as string;
             const result =

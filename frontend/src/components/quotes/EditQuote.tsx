@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ZodError } from "zod";
 import {
 	UpdateQuoteSchema,
 	type Quote,
 	type UpdateQuoteInput,
 	type UpdateQuoteLineItemInput,
+	isQuoteEditable,
 } from "../../types/quotes";
 import { type EditableLineItem, type Priority, PriorityValues } from "../../types/common";
 import type { GeocodeResult } from "../../types/location";
@@ -25,6 +26,7 @@ import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useDirtyTracking } from "../../hooks/forms/useDirtyTracking";
+import { useTaxGroups } from "../../hooks/useTaxGroups";
 
 type Step = 1 | 2 | 3;
 
@@ -59,6 +61,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 	const [geoData, setGeoData] = useState<GeocodeResult>();
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
+	const [submitError, setSubmitError] = useState<string | null>(null);
 
 	type FormFields = {
 		title: string;
@@ -74,6 +77,10 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		});
 
 	// Shared hooks
+	const { data: taxGroups = [] } = useTaxGroups();
+	const clientExempt = quote.client?.is_tax_exempt ?? false;
+	const taxEditable = isQuoteEditable(quote.status);
+
 	const {
 		lineItems,
 		activeLineItems,
@@ -85,10 +92,23 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		setLineItemTaxGroup,
+		setAllLineItemsTaxGroup,
 	} = useLineItems({
 		minItems: 1,
 		mode: "edit",
 	});
+
+	const lineItemsForCalc = useMemo(
+		() =>
+			activeLineItems.map((item) => ({
+				id: item.id,
+				total: item.total,
+				taxable: item.taxable ?? true,
+				tax_group_id: item.tax_group_id ?? null,
+			})),
+		[activeLineItems]
+	);
 
 	const {
 		taxRate,
@@ -100,15 +120,23 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		setDiscountValue,
 		discountAmount,
 		total,
+		groupsSummary,
+		totalTax,
+		resolvedTaxRate,
+		resolvedTaxAmount,
+		resolvedTotal,
 		isTaxDirty,
 		isDiscountDirty,
 		undoTax,
 		undoDiscount,
 		setOriginals: setFinancialOriginals,
 	} = useFinancialCalculations(subtotal, {
-		initialTaxRate: 0,
-		initialDiscountType: "amount",
-		initialDiscountValue: 0,
+		initialTaxRate: quote.tax_rate ? Number(quote.tax_rate) * 100 : 0,
+		initialDiscountType: (quote.discount_type as "percent" | "amount") ?? "amount",
+		initialDiscountValue: quote.discount_value ? Number(quote.discount_value) : 0,
+		taxGroups,
+		lineItemsForCalc,
+		clientExempt,
 	});
 
 	const [validUntilDate, setValidUntilDate] = useState<Date | null>(null);
@@ -196,6 +224,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					unit_price: Number(item.unit_price),
 					item_type: item.item_type || "",
 					total: Number(item.total),
+					taxable: item.taxable ?? true,
+					tax_group_id: item.tax_group_id ?? null,
 					isNew: false,
 					isDeleted: false,
 				})) || [];
@@ -217,6 +247,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			}
 
 			setErrors(null);
+			setSubmitError(null);
 
 			setFinancialOriginals(
 				quote.tax_rate ? Number(quote.tax_rate) * 100 : 0,
@@ -240,6 +271,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 	const invokeUpdate = async () => {
 		if (isLoading) return;
 
+
+
 		const updates: UpdateQuoteInput = {
 			title: getValue("title") !== quote.title ? getValue("title") : undefined,
 			description:
@@ -250,12 +283,12 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			coords: geoData?.coords !== quote.coords ? geoData?.coords : undefined,
 			priority: getValue("priority") as Priority,
 			subtotal,
-			tax_rate: taxRate / 100,
-			tax_amount: taxAmount,
+			tax_rate: resolvedTaxRate / 100,
+			tax_amount: resolvedTaxAmount,
 			discount_type: discountType,
 			discount_value: discountValue,
 			discount_amount: discountAmount,
-			total,
+			total: resolvedTotal,
 			valid_until: validUntilDate ? validUntilDate.toISOString() : null,
 			expires_at: expiresAtDate ? expiresAtDate.toISOString() : null,
 		};
@@ -294,6 +327,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							unit_price: Number(item.unit_price),
 							total: item.total,
 							item_type: item.item_type || undefined,
+							taxable: item.taxable,
+							tax_group_id: item.tax_group_id ?? undefined,
 						},
 					});
 				} else if (editableItem.entity_line_item_id) {
@@ -304,6 +339,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						unit_price: Number(item.unit_price),
 						total: item.total,
 						item_type: item.item_type || undefined,
+						taxable: item.taxable,
+						tax_group_id: item.tax_group_id ?? undefined,
 					};
 
 					await updateLineItem.mutateAsync({
@@ -318,6 +355,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to update quote:", error);
+			setSubmitError(error instanceof Error ? error.message : "Failed to update quote. Please try again.");
 			setIsLoading(false);
 		}
 	};
@@ -329,7 +367,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		return (
 			<div className="mt-0.5">
 				{fieldErrors.map((err, idx) => (
-					<p key={idx} className="text-red-300 text-xs leading-tight">
+					<p key={idx} className="text-error-text text-xs leading-tight">
 						{err.message}
 					</p>
 				))}
@@ -344,7 +382,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					<div className="space-y-2 min-w-0">
 						{/* Title */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Title *
 							</label>
 							<div className="relative">
@@ -359,7 +397,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1 w-full rounded bg-zinc-900 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1 w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButton
@@ -376,20 +414,20 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						{/* Client and Priority Row */}
 						<div className="grid grid-cols-2 gap-2 min-w-0">
 							<div className="min-w-0">
-								<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Client
 								</label>
-								<div className="border border-zinc-700 px-2.5 pt-1.5 pb-1 w-full rounded bg-zinc-800/50 text-zinc-400 text-sm">
+								<div className="border border-border px-2.5 pt-1.5 pb-1 w-full rounded bg-surface/50 text-text-tertiary text-sm">
 									{quote.client?.name ||
 										"Unknown Client"}
 								</div>
-								<p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+								<p className="text-[10px] text-text-muted mt-0.5 leading-tight">
 									Client cannot be changed
 								</p>
 							</div>
 
 							<div className="min-w-0">
-								<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Priority
 								</label>
 								<div className="relative">
@@ -435,7 +473,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 						{/* Description */}
 						<div className="min-w-0">
-							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Description *
 							</label>
 							<div className="relative">
@@ -451,7 +489,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 												.value
 										)
 									}
-									className="border border-zinc-700 px-2.5 py-1 w-full h-14 rounded bg-zinc-900 text-white text-sm resize-none focus:border-blue-500 focus:outline-none transition-colors pr-10 min-w-0"
+									className="border border-border px-2.5 py-1 w-full h-14 rounded bg-base text-text-primary text-sm resize-none focus:border-primary focus:outline-none transition-colors pr-10 min-w-0"
 									disabled={isLoading}
 								/>
 								<UndoButtonTop
@@ -474,7 +512,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							className="relative min-w-0"
 							style={{ zIndex: 50 }}
 						>
-							<label className="block mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+							<label className="block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 								Address *
 							</label>
 							<div className="relative">
@@ -517,6 +555,10 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							dirtyFields={dirtyLineItemFields}
 							onUndo={undoLineItemField}
 							onClear={clearLineItemField}
+							taxGroups={taxGroups}
+							clientExempt={clientExempt}
+							onTaxChange={taxEditable ? setLineItemTaxGroup : undefined}
+							onTaxGroupBulkSet={taxEditable ? setAllLineItemsTaxGroup : undefined}
 						/>
 					</div>
 				);
@@ -531,9 +573,12 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							discountType={discountType}
 							discountValue={discountValue}
 							discountAmount={discountAmount}
-							total={total}
+							total={resolvedTotal}
+							groupsSummary={groupsSummary}
+							totalTax={totalTax}
+							clientExempt={clientExempt}
 							isLoading={isLoading}
-							onTaxRateChange={setTaxRate}
+							onTaxRateChange={groupsSummary.length > 0 ? undefined : setTaxRate}
 							onDiscountTypeChange={setDiscountType}
 							onDiscountValueChange={setDiscountValue}
 							totalLabel="Total"
@@ -545,7 +590,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 
 						<div className="grid grid-cols-2 gap-2">
 							<div className="min-w-0">
-								<p className="mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<p className="mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Valid Until (Optional)
 								</p>
 								<DatePicker
@@ -565,7 +610,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							</div>
 
 							<div className="min-w-0">
-								<p className="mb-0.5 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+								<p className="mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider">
 									Expires At (Optional)
 								</p>
 								<DatePicker
@@ -640,7 +685,14 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			submitLabel="Save Changes"
 			isEditMode={true}
 		>
-			{stepContent}
+			<>
+				{submitError && (
+					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
+						{submitError}
+					</div>
+				)}
+				{stepContent}
+			</>
 		</FormWizardContainer>
 	);
 };

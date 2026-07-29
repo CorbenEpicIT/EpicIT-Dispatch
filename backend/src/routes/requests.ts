@@ -13,11 +13,11 @@ import {
 } from "../controllers/requestsController.js";
 import { getUserContext } from '../lib/context.js';
 import * as requestNotesController from '../controllers/requestNotesController.js';
-
+import { requirePermission } from '../lib/requirePermissions.js';
 
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requirePermission("view_requests"), async (req, res, next) => {
     // requireRole("dispatcher"),           temp removal until further implementation
     try {
         const orgId = req.user!.organization_id as string;
@@ -28,9 +28,9 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requirePermission("view_requests"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const request = await getRequestById(id, orgId);
 
@@ -53,7 +53,7 @@ router.get("/:id", async (req, res, next) => {
 
 
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePermission("create_requests"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -76,7 +76,7 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requirePermission("edit_requests"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
@@ -100,9 +100,9 @@ router.put("/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requirePermission("delete_requests"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await deleteRequest(id, orgId, context);
@@ -124,9 +124,9 @@ router.delete("/:id", async (req, res, next) => {
 // REQUEST NOTE ROUTES
 // ============================================
 
-router.get("/:requestId/notes", async (req, res, next) => {
+router.get("/:requestId/notes", requirePermission("view_requests"), async (req, res, next) => {
     try {
-        const { requestId } = req.params;
+        const requestId = req.params.requestId as string;
         const orgId = req.user!.organization_id as string;
         const notes = await requestNotesController.getRequestNotes(requestId, orgId);
         res.json(createSuccessResponse(notes, { count: notes.length }));
@@ -135,9 +135,9 @@ router.get("/:requestId/notes", async (req, res, next) => {
     }
 });
 
-router.get("/:requestId/notes/:noteId", async (req, res, next) => {
+router.get("/:requestId/notes/:noteId", requirePermission("view_requests"), async (req, res, next) => {
     try {
-        const { requestId, noteId } = req.params;
+        const { requestId, noteId } = req.params as { requestId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const note = await requestNotesController.getNoteById(
             requestId,
@@ -159,9 +159,9 @@ router.get("/:requestId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.post("/:requestId/notes", async (req, res, next) => {
+router.post("/:requestId/notes", requirePermission("edit_requests"), async (req, res, next) => {
     try {
-        const { requestId } = req.params;
+        const requestId = req.params.requestId as string;
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await requestNotesController.insertRequestNote(
@@ -189,9 +189,9 @@ router.post("/:requestId/notes", async (req, res, next) => {
     }
 });
 
-router.put("/:requestId/notes/:noteId", async (req, res, next) => {
+router.put("/:requestId/notes/:noteId", requirePermission("edit_requests"), async (req, res, next) => {
     try {
-        const { requestId, noteId } = req.params;
+        const { requestId, noteId } = req.params as { requestId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await requestNotesController.updateRequestNote(
@@ -220,9 +220,9 @@ router.put("/:requestId/notes/:noteId", async (req, res, next) => {
     }
 });
 
-router.delete("/:requestId/notes/:noteId", async (req, res, next) => {
+router.delete("/:requestId/notes/:noteId", requirePermission("edit_requests"), async (req, res, next) => {
     try {
-        const { requestId, noteId } = req.params;
+        const { requestId, noteId } = req.params as { requestId: string; noteId: string };
         const orgId = req.user!.organization_id as string;
         const context = getUserContext(req);
         const result = await requestNotesController.deleteRequestNote(

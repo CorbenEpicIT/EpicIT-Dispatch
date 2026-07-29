@@ -5,9 +5,11 @@ import {
     createErrorResponse,
 } from "../types/responses.js";
 import * as draftsController from "../controllers/draftsController.js";
+import { requireAnyPermission } from '../lib/requirePermissions.js';
+
 const router = Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/", requireAnyPermission("create_jobs", "create_quotes", "create_requests"), async (req, res, next) => {
     try {
         const result = await draftsController.getAllDrafts(req);
 
@@ -32,9 +34,9 @@ router.get("/", async (req, res, next) => {
     }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", requireAnyPermission("create_jobs", "create_quotes", "create_requests"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const result = await draftsController.getDraftById(id, orgId);
 
@@ -51,7 +53,7 @@ router.get("/:id", async (req, res, next) => {
     }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireAnyPermission("create_jobs", "create_quotes", "create_requests"), async (req, res, next) => {
     try {
         const result = await draftsController.insertDraft(req);
 
@@ -72,9 +74,9 @@ router.post("/", async (req, res, next) => {
     }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requireAnyPermission("create_jobs", "create_quotes", "create_requests"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const result = await draftsController.updateDraft(id, req);
 
         if (result.err) {
@@ -95,9 +97,9 @@ router.put("/:id", async (req, res, next) => {
     }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requireAnyPermission("create_jobs", "create_quotes", "create_requests"), async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
         const result = await draftsController.deleteDraft(id, orgId);
 

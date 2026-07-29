@@ -1,18 +1,8 @@
 import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
-import type { Decimal } from "@prisma/client/runtime/client";
+import type { TaxSnapshot } from "../../services/taxEngine.js";
+import { type Numeric, type OrgPdfProps, toNum, fmt, fmtDate, fmtRatePct } from "./pdfHelpers.js";
 
 // ── PDF prop types ────────────────────────────────────────────────────────────
-
-type Numeric = Decimal | number | string | null | undefined;
-
-interface OrgPdfProps {
-	name: string;
-	logo_url?: string | null;
-	phone?: string | null;
-	address?: string | null;
-	email?: string | null;
-	website?: string | null;
-}
 
 interface InvoicePdfLineItem {
 	id?: string;
@@ -21,6 +11,8 @@ interface InvoicePdfLineItem {
 	quantity: Numeric;
 	unit_price: Numeric;
 	total: Numeric;
+	taxable?: boolean | null;
+	tax_group?: { name: string } | null;
 }
 
 interface InvoicePdfPayment {
@@ -57,9 +49,11 @@ interface InvoicePdfProps {
 	memo?: string | null;
 	subtotal?: Numeric;
 	discount_value?: Numeric;
+	discount_amount?: Numeric;
 	discount_type?: string | null;
 	tax_amount?: Numeric;
 	tax_rate?: Numeric;
+	tax_snapshot?: TaxSnapshot | null;
 	total?: Numeric;
 	amount_paid?: Numeric;
 	balance_due?: Numeric;
@@ -68,22 +62,6 @@ interface InvoicePdfProps {
 	payments?: InvoicePdfPayment[] | null;
 	notes?: InvoicePdfNote[] | null;
 }
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const toNum = (v: unknown): number => (v == null ? 0 : Number(v));
-
-const fmt = (v: unknown): string =>
-	`$${toNum(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-const fmtDate = (d: unknown): string => {
-	if (!d) return "—";
-	return new Date(d as string).toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
-};
 
 const METHOD_LABEL: Record<string, string> = {
 	Cash: "Cash",
@@ -265,8 +243,16 @@ const s = StyleSheet.create({
 	colTotal: { width: "12%", textAlign: "right" },
 
 	// totals
-	totalsWrapper: { alignItems: "flex-end", paddingBottom: 16 },
-	totalRow: { flexDirection: "row", width: 230, paddingVertical: 2 },
+	tableDivider: {
+		borderTopWidth: 2,
+		borderTopColor: "#1e3a5f",
+		marginBottom: 12,
+	},
+	totalsWrapper: {
+		alignItems: "flex-end",
+		paddingBottom: 16,
+	},
+	totalRow: { flexDirection: "row", width: 230, paddingVertical: 3 },
 	totalLabel: {
 		width: 140,
 		fontSize: 9,
@@ -277,6 +263,13 @@ const s = StyleSheet.create({
 	totalValue: {
 		width: 90,
 		fontSize: 9,
+		color: "#111827",
+		textAlign: "right",
+	},
+	totalValueBold: {
+		width: 90,
+		fontSize: 9,
+		fontFamily: "Helvetica-Bold",
 		color: "#111827",
 		textAlign: "right",
 	},
@@ -469,11 +462,23 @@ export function InvoicePdfTemplate({ invoice, org }: { invoice: InvoicePdfProps;
 
 	const subtotal = toNum(invoice.subtotal);
 	const discountValue = toNum(invoice.discount_value);
+	// discount_amount is the calculated dollar discount (for percent discounts, discount_value is
+	// the raw percentage input like 20, not the dollar amount); fall back to discount_value for
+	// backward-compat with amount-type discounts where both fields equal the same dollar figure.
+	const discountDisplayAmount = toNum(invoice.discount_amount ?? invoice.discount_value);
 	const taxAmount = toNum(invoice.tax_amount);
 	const total = toNum(invoice.total);
 	const amountPaid = toNum(invoice.amount_paid);
 	const balanceDue = toNum(invoice.balance_due);
 	const taxRate = toNum(invoice.tax_rate);
+
+	// Map group name → combined rate for line item subtitles; falls back gracefully when
+	// no snapshot exists (draft docs or legacy records).
+	const groupRateMap = new Map<string, number>();
+	for (const group of invoice.tax_snapshot?.groups ?? []) {
+		const combined = (group.rates ?? []).reduce((sum, r) => sum + r.rate, 0);
+		if (combined > 0) groupRateMap.set(group.name, combined);
+	}
 
 	const payments: InvoicePdfPayment[] = invoice.payments ?? [];
 	const isPastDue =
@@ -608,6 +613,19 @@ export function InvoicePdfTemplate({ invoice, org }: { invoice: InvoicePdfProps;
 						>
 							<View style={s.colName}>
 								<Text style={s.tdText}>{item.name}</Text>
+								{item.tax_group?.name && (
+									<Text style={{ fontSize: 7, color: "#9ca3af", marginTop: 1 }}>
+										{item.tax_group.name}
+										{groupRateMap.has(item.tax_group.name)
+											? ` (${fmtRatePct(groupRateMap.get(item.tax_group.name)!)})`
+											: ""}
+									</Text>
+								)}
+								{item.taxable === false && !item.tax_group?.name && (
+									<Text style={{ fontSize: 7, color: "#9ca3af", marginTop: 1 }}>
+										Non-taxable
+									</Text>
+								)}
 							</View>
 							<View style={s.colDesc}>
 								{item.description ? (
@@ -634,31 +652,69 @@ export function InvoicePdfTemplate({ invoice, org }: { invoice: InvoicePdfProps;
 				</View>
 
 				{/* ── Totals ── */}
+				<View style={s.tableDivider} />
 				<View style={s.totalsWrapper}>
 					<View style={s.totalRow}>
 						<Text style={s.totalLabel}>Subtotal</Text>
-						<Text style={s.totalValue}>{fmt(subtotal)}</Text>
+						<Text style={s.totalValueBold}>{fmt(subtotal)}</Text>
 					</View>
 
-					{discountValue > 0 && (
+					{discountDisplayAmount > 0 && (
 						<View style={s.totalRow}>
 							<Text style={s.totalLabel}>
 								Discount
 								{invoice.discount_type === "percent"
-									? ` (${toNum(invoice.discount_value)}%)`
+									? ` (${discountValue}%)`
 									: ""}
 							</Text>
 							<Text style={[s.totalValue, { color: "#059669" }]}>
-								-{fmt(discountValue)}
+								-{fmt(discountDisplayAmount)}
 							</Text>
 						</View>
 					)}
 
-					{taxAmount > 0 && (
-						<View style={s.totalRow}>
-							<Text style={s.totalLabel}>Tax ({taxRate}%)</Text>
-							<Text style={s.totalValue}>{fmt(taxAmount)}</Text>
-						</View>
+					{invoice.tax_snapshot != null ? (
+						invoice.tax_snapshot.client_exempt ? (
+							<View style={s.totalRow}>
+								<Text style={s.totalLabel}>Tax</Text>
+								<Text style={s.totalValue}>Tax Exempt</Text>
+							</View>
+						) : (
+							<>
+								{(invoice.tax_snapshot.groups ?? []).map((group) => {
+									const combinedRate = (group.rates ?? []).reduce(
+										(sum, r) => sum + r.rate,
+										0,
+									);
+									return (
+										<View key={group.id} style={s.totalRow}>
+											<Text style={s.totalLabel}>
+												{group.name}
+												{combinedRate > 0 ? ` (${fmtRatePct(combinedRate)})` : ""}
+											</Text>
+											<Text style={s.totalValue}>
+												{fmt((group.tax_amount_cents ?? 0) / 100)}
+											</Text>
+										</View>
+									);
+								})}
+								{(invoice.tax_snapshot.groups ?? []).length > 1 && (
+									<View style={s.totalRow}>
+										<Text style={s.totalLabel}>Total Tax</Text>
+										<Text style={s.totalValueBold}>
+											{fmt((invoice.tax_snapshot.total_tax_cents ?? 0) / 100)}
+										</Text>
+									</View>
+								)}
+							</>
+						)
+					) : (
+						taxAmount > 0 && (
+							<View style={s.totalRow}>
+								<Text style={s.totalLabel}>Tax ({fmtRatePct(taxRate)})</Text>
+								<Text style={s.totalValue}>{fmt(taxAmount)}</Text>
+							</View>
+						)
 					)}
 
 					<View style={s.grandRow}>

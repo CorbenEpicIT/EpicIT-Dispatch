@@ -17,16 +17,20 @@ export interface InventoryItem {
 	unit_price: number | null;
 	cost: number | null;
 	sku: string | null;
+	barcode: string | null;
 	is_active: boolean;
 	low_stock_threshold: number | null;
 	image_urls: string[];
+	alt_ids?: string[];
 	alert_emails_enabled: boolean;
 	alert_email: string | null;
 	category: string | null;
 	unit: string;
+	is_serialized: boolean;
+	is_batch_tracked: boolean;
 	created_at: string;
 	updated_at: string;
-	stock_status?: StockStatus;
+	stock_status: StockStatus;
 	tags?: InventoryTag[];
 	_count?: {
 		visit_line_items: number;
@@ -45,25 +49,33 @@ export interface CreateInventoryItemInput {
 	description: string;
 	location: string;
 	quantity: number;
+	unit?: string;
 	unit_price?: number | null;
 	cost?: number | null;
 	sku?: string | null;
+	barcode?: string | null;
 	low_stock_threshold?: number | null;
 	image_urls: string[];
+	alt_ids?: string[];
 	alert_emails_enabled: boolean;
 	alert_email?: string | null;
+	is_serialized?: boolean;
+	is_batch_tracked?: boolean;
 }
 
-export interface UpdateInventoryItemInput {
-	name?: string;
-	description?: string;
-	location?: string;
-	quantity?: number;
-	unit_price?: number | null;
-	cost?: number | null;
-	sku?: string | null;
-	low_stock_threshold?: number | null;
-	image_urls?: string[];
-	alert_emails_enabled?: boolean;
-	alert_email?: string | null;
+export type UpdateInventoryItemInput = Partial<CreateInventoryItemInput>;
+
+export interface ProvisionalItem {
+	id: string;
+	name: string;
+	cost: number | null;
+	unit_price: number | null;
+	unit: string | null;
+	provisional: boolean;
+	created_at: string;
+	created_by_tech: { id: string; name: string } | null;
+	vehicle_stocks: Array<{
+		qty_on_hand: number;
+		vehicle: { id: string; name: string };
+	}>;
 }

@@ -1,5 +1,5 @@
-import z from "zod";
-import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint } from "./jobs";
+﻿import z from "zod";
+import type { JobStatus, VisitStatus, ArrivalConstraint, FinishConstraint, VisitStatusEvent } from "./jobs";
 import type { Priority } from "./common";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
@@ -9,21 +9,42 @@ import type { JobVisit } from "./jobs";
 // STATUS
 // ============================================================================
 
-export const TechnicianStatusValues = ["Offline", "Available", "Busy", "Break"] as const;
+export const TechnicianStatusValues = [
+	"Available", "Working", "OnSite", "EnRoute", "Paused", "WrappingUp", "Break", "Offline",
+] as const;
 export type TechnicianStatus = (typeof TechnicianStatusValues)[number];
 
+export const TechnicianStatusLabels: Record<TechnicianStatus, string> = {
+	Available:  "Available",
+	Working:    "Working",
+	EnRoute:    "En Route",
+	OnSite:     "On Site",
+	Paused:     "Paused",
+	WrappingUp: "Wrapping Up",
+	Break:      "Break",
+	Offline:    "Offline",
+};
+
 export const TechnicianStatusColors: Record<TechnicianStatus, string> = {
-	Available: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-	Busy: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-	Break: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-	Offline: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+	Available:  "bg-success/10 text-success-text border-success/20",
+	Working:    "bg-reviewing/10 text-reviewing-text border-reviewing/20",
+	EnRoute:    "bg-sky-500/10 text-sky-400 border-sky-500/20",
+	OnSite:     "bg-warning/10 text-warning-text border-warning/20",
+	Paused:     "bg-orange/10 text-orange-text border-orange/20",
+	WrappingUp: "bg-teal-400/10 text-teal-300 border-teal-400/20",
+	Break:      "bg-amber-400/10 text-amber-300 border-amber-400/20",
+	Offline:    "bg-neutral/10 text-text-tertiary border-border-strong/20",
 };
 
 export const TechnicianStatusDotColors: Record<TechnicianStatus, string> = {
-	Available: "bg-emerald-500",
-	Busy: "bg-amber-500",
-	Break: "bg-blue-500",
-	Offline: "bg-zinc-500",
+	Available:  "bg-success",
+	Working:    "bg-reviewing",
+	EnRoute:    "bg-sky-500",
+	OnSite:     "bg-warning",
+	Paused:     "bg-orange",
+	WrappingUp: "bg-teal-400",
+	Break:      "bg-amber-400",
+	Offline:    "bg-neutral",
 };
 
 // ============================================================================
@@ -95,7 +116,7 @@ export interface Technician {
 	coords: Coordinates;
 	status: TechnicianStatus;
 	hire_date: Date;
-	last_login: Date;
+	last_login: Date | null;
 	current_vehicle_id: string | null;
 	current_vehicle?: { id: string; name: string; type: string; license_plate: string | null; color: string | null; notes: string | null } | null;
 	visit_techs?: VisitTechnician[];
@@ -104,6 +125,10 @@ export interface Technician {
 	last_edited_client_notes?: unknown[];
 	created_job_notes?: unknown[];
 	last_edited_job_notes?: unknown[];
+	role_id: string | null;
+	organization_role: { id: string; name: string } | null;
+	theme: "dark" | "light" | "system";
+	mfaEnabled?: boolean;
 }
 
 export interface CreateTechnicianInput {
@@ -113,6 +138,7 @@ export interface CreateTechnicianInput {
 	password?: string;
 	title: string;
 	description?: string;
+	organization_role_id?: string | null;
 	status?: TechnicianStatus;
 	hire_date?: Date;
 	coords?: {
@@ -131,6 +157,7 @@ export interface UpdateTechnicianInput {
 	status?: TechnicianStatus;
 	hire_date?: Date;
 	last_login?: Date;
+	theme?: "dark" | "light" | "system";
 }
 
 // ============================================================================
@@ -144,6 +171,7 @@ export const CreateTechnicianSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters").optional(),
 	title: z.string().min(1, "Title is required"),
 	description: z.string().default(""),
+	organization_role_id: z.string().uuid("Invalid role ID").nullable().optional(),
 	status: z.enum(TechnicianStatusValues).default("Offline"),
 	hire_date: z.coerce
 		.date()
@@ -168,6 +196,7 @@ export const UpdateTechnicianSchema = z
 		status: z.enum(TechnicianStatusValues).optional(),
 		hire_date: z.coerce.date().optional(),
 		last_login: z.coerce.date().optional(),
+		theme: z.enum(["dark", "light", "system"]).optional(),
 	})
 	.refine(
 		(data) =>
@@ -179,6 +208,30 @@ export const UpdateTechnicianSchema = z
 			data.description !== undefined ||
 			data.status !== undefined ||
 			data.hire_date !== undefined ||
-			data.last_login !== undefined,
+			data.last_login !== undefined ||
+			data.theme !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
+
+// ============================================================================
+// LIVE FEED EVENT TYPES
+// ============================================================================
+
+export type TechStatusChangeType =
+	| "shift_start"
+	| "shift_end"
+	| "break_start"
+	| "break_end"
+	| "wrapping_up_cleared";
+
+export interface TechStatusEvent {
+	kind: "tech";
+	techId: string;
+	techName: string;
+	newStatus: TechnicianStatus;
+	changeType: TechStatusChangeType;
+	changedAt: string;
+}
+
+export type VisitFeedEvent = VisitStatusEvent & { kind: "visit" };
+export type FeedEvent = VisitFeedEvent | TechStatusEvent;

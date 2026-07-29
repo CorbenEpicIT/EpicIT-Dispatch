@@ -1,4 +1,4 @@
-import z from "zod";
+﻿import z from "zod";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Coordinates } from "./location";
 import type { Priority, BaseNote, LineItemType, DispatcherReference } from "./common";
@@ -21,10 +21,10 @@ export const RecurringPlanStatusLabels: Record<RecurringPlanStatus, string> = {
 };
 
 export const RecurringPlanStatusColors: Record<RecurringPlanStatus, string> = {
-	Active: "bg-green-500/20 text-green-400 border-green-500/30",
-	Paused: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	Completed: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	Cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+	Active: "bg-success/20 text-success-text border-success/30",
+	Paused: "bg-warning/20 text-warning-text border-warning/30",
+	Completed: "bg-primary/20 text-primary-text border-primary/30",
+	Cancelled: "bg-error/20 text-error-text border-error/30",
 };
 
 export const RecurringFrequencyValues = ["daily", "weekly", "monthly", "yearly"] as const;
@@ -183,11 +183,11 @@ export const OccurrenceStatusLabels: Record<OccurrenceStatus, string> = {
 };
 
 export const OccurrenceStatusColors: Record<OccurrenceStatus, string> = {
-	planned: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-	generated: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-	skipped: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
-	completed: "bg-green-500/20 text-green-400 border-green-500/30",
+	planned: "bg-primary/20 text-primary-text border-primary/30",
+	generated: "bg-reviewing/20 text-reviewing-text border-reviewing/30",
+	skipped: "bg-warning/20 text-warning-text border-warning/30",
+	cancelled: "bg-error/20 text-error-text border-error/30",
+	completed: "bg-success/20 text-success-text border-success/30",
 };
 
 // ============================================================================

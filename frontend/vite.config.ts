@@ -3,8 +3,11 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import svgr from "vite-plugin-svgr";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
 	plugins: [react(), tailwindcss(), svgr()],
+	define: {
+		"process.env.NODE_ENV": JSON.stringify(mode),
+	},
 	server: {
 		proxy: {
 			"/api": {
@@ -24,6 +27,8 @@ export default defineConfig({
 		environment: "jsdom",
 		setupFiles: ["./src/test/setup.ts"],
 		css: true,
+		include: ["src/**/*.{test,spec}.{ts,tsx}"],
+		exclude: ["tests/**", "node_modules/**", "dist/**"],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "json", "html"],
@@ -37,4 +42,4 @@ export default defineConfig({
 			],
 		},
 	},
-});
+}));

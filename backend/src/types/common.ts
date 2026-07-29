@@ -7,6 +7,8 @@ export type LineItemToCreate = {
 	source: "quote" | "recurring_plan" | "manual" | "field_addition";
 	item_type: "labor" | "material" | "equipment" | "other" | null;
 	sort_order?: number; // Optional - defaulted by context
+	tax_group_id?: string | null;
+	taxable?: boolean;
 };
 
 // For logging

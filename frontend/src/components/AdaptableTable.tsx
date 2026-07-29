@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { camelCaseToRegular, formatter } from "../util/util";
 import LoadSvg from "../assets/icons/loading.svg?react";
@@ -16,6 +16,14 @@ interface AdaptableTableProps {
 		header: string;
 		cell: (row: Record<string, unknown>) => React.ReactNode;
 	};
+	// Per-column visibility keyed by column id and missing keys default to visible
+	columnVisibility?: Record<string, boolean>;
+	// Per-column header text keyed by column id
+	headerLabels?: Record<string, string>;
+	// Per-column horizontal alignment keyed by column id
+	columnAlign?: Record<string, "left" | "right">;
+	// Optional totals row keyed by column id
+	footerRow?: Record<string, React.ReactNode>;
 }
 
 const PADDING = "p-3";
@@ -33,14 +41,22 @@ const AdaptableTable = ({
 	errListener,
 	onRowClick,
 	actionColumn,
+	columnVisibility,
+	headerLabels,
+	columnAlign,
+	footerRow,
 }: AdaptableTableProps) => {
+	const alignClass = (colId: string) => {
+		if (!columnAlign) return "";
+		return columnAlign[colId] === "right" ? "text-right tabular-nums" : "text-left";
+	};
 	const columns = React.useMemo(() => {
 		if (data.length == 0) return [];
 
 		const dataColumns = Object.keys(data[0])
-			.filter((key) => !IGNORED_HEADERS[key])
+			.filter((key) => !IGNORED_HEADERS[key] && !key.startsWith("_"))
 			.map((key) => ({
-				header: camelCaseToRegular(key),
+				header: headerLabels?.[key] ?? camelCaseToRegular(key),
 				accessorKey: key,
 			})) satisfies ColumnDef<Record<string, unknown>>[];
 
@@ -57,15 +73,16 @@ const AdaptableTable = ({
 		}
 
 		return dataColumns;
-	}, [data, actionColumn]);
+	}, [data, actionColumn, headerLabels]);
 
 	const table = useReactTable({
 		data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
+		...(columnVisibility ? { state: { columnVisibility } } : {}),
 	});
 
-	if (!borderColor) borderColor = " border-zinc-800 ";
+	if (!borderColor) borderColor = " border-border-subtle ";
 
 	if (errListener) {
 		return (
@@ -80,7 +97,7 @@ const AdaptableTable = ({
 					</h1>
 
 					{/* this should be taken out in prod, just for debug purposes */}
-					<h2 className="m-auto text-center text-zinc-500">
+					<h2 className="m-auto text-center text-text-muted">
 						{errListener.message}
 					</h2>
 				</div>
@@ -129,7 +146,7 @@ const AdaptableTable = ({
 											key={
 												header.id
 											}
-											className={`sticky top-0 border-b font-bold text-zinc-400 ${borderColor} ${PADDING}`}
+											className={`sticky top-0 border-b font-bold text-text-tertiary ${borderColor} ${PADDING} ${alignClass(header.column.id)}`}
 										>
 											{flexRender(
 												typeof header
@@ -159,7 +176,7 @@ const AdaptableTable = ({
 						{table.getRowModel().rows.map((row) => (
 							<tr
 								key={row.id}
-								className={`text-left ${borderColor} ${onRowClick ? 'cursor-pointer hover:bg-zinc-800 transition-colors' : ''}`}
+								className={`text-left ${borderColor} ${onRowClick ? 'cursor-pointer hover:bg-surface transition-colors' : ''}`}
 								onClick={() => onRowClick?.(row.original)}
 							>
 								{row
@@ -169,7 +186,7 @@ const AdaptableTable = ({
 											key={
 												cell.id
 											}
-											className={`border-t border-zinc-800 font-normal ${PADDING}`}
+											className={`border-t border-border-subtle font-normal ${PADDING} ${alignClass(cell.column.id)}`}
 										>
 											{(() => {
 												// If this is the actions column, render the action cell
@@ -220,6 +237,20 @@ const AdaptableTable = ({
 							</tr>
 						))}
 					</tbody>
+					{footerRow && (
+						<tfoot>
+							<tr className="font-semibold text-text-primary">
+								{table.getVisibleLeafColumns().map((col) => (
+									<td
+										key={col.id}
+										className={`border-t-2 border-border ${PADDING} ${alignClass(col.id)}`}
+									>
+										{footerRow[col.id] ?? ""}
+									</td>
+								))}
+							</tr>
+						</tfoot>
+					)}
 				</table>
 			)}
 		</>

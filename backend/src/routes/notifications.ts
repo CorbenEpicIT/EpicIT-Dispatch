@@ -10,7 +10,7 @@ const router = Router();
 
 router.get("/:id/notifications", async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id = req.params.id as string;
 		const unreadOnly = req.query.unread === "true";
 		const orgId = req.user!.organization_id as string;
 		const notifications = await listNotifications(id, unreadOnly, orgId);
@@ -23,7 +23,7 @@ router.get("/:id/notifications", async (req, res, next) => {
 // read-all MUST be before /:notifId/read to avoid Express treating "read-all" as a notifId
 router.patch("/:id/notifications/read-all", async (req, res, next) => {
 	try {
-		const { id } = req.params;
+		const id  = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
 		const result = await markAllNotificationsRead(id, orgId);
 		if (result.err) {
@@ -37,7 +37,7 @@ router.patch("/:id/notifications/read-all", async (req, res, next) => {
 
 router.patch("/:id/notifications/:notifId/read", async (req, res, next) => {
 	try {
-		const { id, notifId } = req.params;
+		const { id, notifId } = req.params as { id: string; notifId: string };
 		const orgId = req.user!.organization_id as string;
 		const result = await markNotificationRead(id, notifId, orgId);
 		if (result.err) {

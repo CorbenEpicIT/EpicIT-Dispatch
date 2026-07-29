@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, Users } from "lucide-react";
 import type { Technician } from "../../../types/technicians";
 
@@ -74,14 +74,14 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 					onClick={selectAll}
 					className={`h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						selected.size === 0
-							? "bg-blue-500/10 border-blue-500/25 text-blue-300"
-							: "border-transparent text-zinc-500 hover:text-zinc-300"
+							? "bg-primary/10 border-primary/25 text-primary-text"
+							: "border-transparent text-text-muted hover:text-text-secondary"
 					}`}
 				>
 					All
 				</button>
 				{technicians.map((tech) => {
-					const color     = techColorMap.get(tech.id) ?? "#6b7280";
+					const color     = techColorMap.get(tech.id) ?? "var(--color-tech-unassigned)";
 					const isSel     = selected.has(tech.id);
 					return (
 						<button
@@ -91,7 +91,7 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 							style={
 								isSel
 									? { backgroundColor: color + "22", borderColor: color + "55", color }
-									: { borderColor: "transparent", color: "#71717a" }
+									: { borderColor: "transparent", color: "var(--color-text-muted)" }
 							}
 						>
 							<span
@@ -115,8 +115,8 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 					onClick={() => setDropdownOpen((v) => !v)}
 					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
 						isFiltered
-							? "bg-blue-500/10 border-blue-500/25 text-blue-300"
-							: "border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+							? "bg-primary/10 border-primary/25 text-primary-text"
+							: "border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
 					}`}
 				>
 					<Users size={11} className="shrink-0" />
@@ -128,7 +128,7 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 								<span
 									key={t.id}
 									className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-									style={{ backgroundColor: techColorMap.get(t.id) ?? "#6b7280" }}
+									style={{ backgroundColor: techColorMap.get(t.id) ?? "var(--color-tech-unassigned)" }}
 								/>
 							))}
 						</span>
@@ -140,53 +140,53 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 
 					<ChevronDown
 						size={10}
-						className="shrink-0 text-zinc-500"
+						className="shrink-0 text-text-muted"
 						style={{ transform: dropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
 					/>
 				</button>
 
 				{dropdownOpen && (
-					<div className="absolute left-0 top-full mt-1 z-50 w-52 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden">
+					<div className="absolute left-0 top-full mt-1 z-50 w-52 bg-base border border-border-subtle rounded-lg shadow-2xl overflow-hidden">
 						{/* All technicians */}
 						<div className="p-1">
 							<button
 								onClick={selectAll}
-								className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] text-left transition-colors hover:bg-zinc-800"
+								className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] text-left transition-colors hover:bg-surface"
 							>
 								<span
 									className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
 										selected.size === 0
-											? "bg-blue-500 border-blue-500"
-											: "border-zinc-600"
+											? "bg-primary border-primary"
+											: "border-border-strong"
 									}`}
 								>
 									{selected.size === 0 && <Check size={9} strokeWidth={3} className="text-white" />}
 								</span>
-								<span className={selected.size === 0 ? "text-blue-300 font-medium" : "text-zinc-300"}>
+								<span className={selected.size === 0 ? "text-primary-text font-medium" : "text-text-secondary"}>
 									All technicians
 								</span>
 							</button>
 						</div>
 
-						<div className="h-px bg-zinc-800" />
+						<div className="h-px bg-surface" />
 
 						{/* Scrollable tech list */}
 						<div className="p-1 overflow-y-auto" style={{ maxHeight: 272 }}>
 							{technicians.map((tech) => {
-								const color = techColorMap.get(tech.id) ?? "#6b7280";
+								const color = techColorMap.get(tech.id) ?? "var(--color-tech-unassigned)";
 								const isSel = selected.has(tech.id);
 								return (
 									<button
 										key={tech.id}
 										onClick={() => toggleTech(tech.id)}
-										className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] text-left transition-colors hover:bg-zinc-800 text-zinc-300"
+										className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] text-left transition-colors hover:bg-surface text-text-secondary"
 									>
 										<span
 											className="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors"
 											style={
 												isSel
 													? { backgroundColor: color, borderColor: color }
-													: { borderColor: "#52525b" }
+													: { borderColor: "var(--color-text-faint)" }
 											}
 										>
 											{isSel && <Check size={9} strokeWidth={3} className="text-white" />}
@@ -204,11 +204,11 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 						{/* Footer: clear selection */}
 						{isFiltered && (
 							<>
-								<div className="h-px bg-zinc-800" />
+								<div className="h-px bg-surface" />
 								<div className="p-1">
 									<button
 										onClick={selectAll}
-										className="w-full px-2.5 py-1.5 rounded text-[10px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 text-left transition-colors"
+										className="w-full px-2.5 py-1.5 rounded text-[10px] text-text-muted hover:text-text-secondary hover:bg-surface text-left transition-colors"
 									>
 										Clear selection
 									</button>

@@ -10,6 +10,8 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { assertValidRequestTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
+import { onRequestCreated } from "../services/followupTriggers.js";
 
 export const getAllRequests = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -219,6 +221,8 @@ export const insertRequest = async (req: Request, organizationId: string, contex
 			});
 		});
 
+		// Best-effort: auto-enroll into any active request_created followup sequences.
+		if (created) onRequestCreated(created.id, organizationId);
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
 		if (e instanceof ZodError) {
@@ -255,6 +259,17 @@ export const updateRequest = async (req: Request, organizationId: string, contex
 			return {
 				err: "Cannot modify request that has been converted to a job",
 			};
+		}
+
+		if (parsed.status && parsed.status !== existing.status) {
+			try {
+				assertValidRequestTransition(existing.status, parsed.status);
+			} catch (e) {
+				if (e instanceof InvalidTransitionError) {
+					return { err: e.message };
+				}
+				throw e;
+			}
 		}
 
 		const changes = buildChanges(existing, parsed, [

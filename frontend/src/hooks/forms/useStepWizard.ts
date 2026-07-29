@@ -43,6 +43,14 @@ export const useStepWizard = <T extends number>({
 		setVisitedSteps(new Set([initialStep]));
 	}, [initialStep]);
 
+	// Drop visited markers that no longer make sense. Used when the step set
+	// itself changes shape (e.g. an inserted/removed step renumbers later ids):
+	// a step id that was visited under the old layout can point at a different
+	// step under the new one, so its stale "seen" flag must be pruned.
+	const pruneVisited = useCallback((keep: (step: T) => boolean) => {
+		setVisitedSteps((prev) => new Set(Array.from(prev).filter(keep)));
+	}, []);
+
 	return {
 		currentStep,
 		visitedSteps,
@@ -50,5 +58,6 @@ export const useStepWizard = <T extends number>({
 		goBack,
 		goToStep,
 		reset,
+		pruneVisited,
 	};
 };

@@ -64,25 +64,25 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 		<div ref={ref} className="relative">
 			<button
 				onClick={() => setOpen((o) => !o)}
-				className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-sm transition-colors ${
+				className={`inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border text-sm font-medium transition-colors ${
 					hasFilter
-						? "bg-blue-600/20 border-blue-500 text-blue-300"
-						: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
+						? "bg-primary-bg border-primary-border text-primary-text"
+						: "bg-surface hover:bg-surface-raised border-border text-text-secondary"
 				}`}
 			>
 				<Tag size={13} />
 				<span>Tags</span>
 				{hasFilter ? (
-					<span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-xs font-medium leading-none">
+					<span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-primary text-on-primary text-xs font-medium leading-none">
 						{selectedIds.length}
 					</span>
 				) : (
-					<ChevronDown size={12} className="text-zinc-500" />
+					<ChevronDown size={12} className="text-text-muted" />
 				)}
 				{hasFilter && (
 					<span
 						onClick={clearAll}
-						className="ml-0.5 p-0.5 rounded hover:bg-blue-500/40 transition-colors cursor-pointer"
+						className="ml-0.5 p-0.5 rounded hover:bg-primary-bg transition-colors cursor-pointer"
 					>
 						<X size={11} />
 					</span>
@@ -90,11 +90,11 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 			</button>
 
 			{open && (
-				<div className="absolute top-full mt-1 left-0 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl flex flex-col min-w-[200px] w-max max-w-[280px]">
+				<div className="absolute top-full mt-1 left-0 z-50 bg-surface border border-border rounded-lg shadow-xl flex flex-col min-w-[200px] w-max max-w-[280px]">
 					{/* Scrollable tag list */}
 					<div className="overflow-y-auto max-h-[200px] py-1">
 						{tags.length === 0 ? (
-							<p className="px-3 py-2 text-xs text-zinc-500">No tags yet — create one below.</p>
+							<p className="px-3 py-2 text-xs text-text-muted">No tags yet — create one below.</p>
 						) : (
 							tags.map((tag) => {
 								const checked = selectedIds.includes(tag.id);
@@ -102,11 +102,11 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 									<div key={tag.id} className="flex items-center group">
 										<button
 											onClick={() => toggle(tag.id)}
-											className="flex-1 flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-zinc-800 transition-colors min-w-0"
+											className="flex-1 flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-surface-raised transition-colors min-w-0"
 										>
 											<span
 												className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
-													checked ? "bg-blue-600 border-blue-600" : "border-zinc-600"
+													checked ? "bg-primary border-primary" : "border-border-strong"
 												}`}
 											>
 												{checked && (
@@ -121,14 +121,14 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 													</svg>
 												)}
 											</span>
-											<span className={`truncate ${checked ? "text-white" : "text-zinc-300"}`}>
+											<span className={`truncate ${checked ? "text-text-primary font-medium" : "text-text-secondary"}`}>
 												{tag.label}
 											</span>
 										</button>
 										<button
 											onClick={(e) => handleDelete(e, tag.id)}
 											disabled={deleteMutation.isPending}
-											className="mr-1.5 p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-zinc-800 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+											className="mr-1.5 p-1 rounded text-text-muted hover:text-error hover:bg-surface-raised opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
 										>
 											<Trash2 size={12} />
 										</button>
@@ -139,7 +139,7 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 					</div>
 
 					{/* Always-visible create row */}
-					<div className="border-t border-zinc-800 p-2 flex gap-1.5">
+					<div className="border-t border-border-subtle p-2 flex gap-1.5">
 						<input
 							ref={inputRef}
 							type="text"
@@ -147,14 +147,14 @@ export default function TagPicker({ tags, selectedIds, onChange }: TagPickerProp
 							onChange={(e) => setNewLabel(e.target.value)}
 							onKeyDown={(e) => e.key === "Enter" && handleCreate()}
 							placeholder="New tag..."
-							className="flex-1 min-w-0 h-7 px-2 rounded bg-zinc-800 border border-zinc-700 text-xs text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+							className="flex-1 min-w-0 h-7 px-2 rounded bg-surface-inset border border-input text-xs text-primary placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary-border"
 						/>
 						<button
 							onClick={handleCreate}
 							disabled={!newLabel.trim() || createMutation.isPending}
-							className="h-7 w-7 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 transition-colors flex-shrink-0"
+							className="h-7 w-7 flex items-center justify-center rounded bg-primary hover:bg-primary-hover disabled:opacity-40 transition-colors flex-shrink-0"
 						>
-							<Plus size={13} className="text-white" />
+							<Plus size={13} className="text-on-primary" />
 						</button>
 					</div>
 				</div>

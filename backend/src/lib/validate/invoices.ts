@@ -1,7 +1,9 @@
 import z from "zod";
+import { baseLineItemSchema, discountTypeEnum, validateDiscountRange } from "./shared.js";
+import { qb_sync_status } from "../../../generated/prisma/enums.js";
 
 // ============================================================================
-// ENUMS (mirrors schema exactly)
+// ENUMS
 // ============================================================================
 
 const invoiceStatusEnum = z.enum([
@@ -15,25 +17,24 @@ const invoiceStatusEnum = z.enum([
 	"Void",
 ]);
 
-const discountTypeEnum = z.enum(["percent", "amount"]);
-
-const lineItemTypeEnum = z.enum(["labor", "material", "equipment", "other"]);
+const invoiceQBSyncStatus = z.enum([
+	"not_synced",
+	"synced",
+	"failed",
+]);
 
 // ============================================================================
 // LINE ITEM (reusable sub-schema)
 // ============================================================================
 
-const invoiceLineItemInputSchema = z.object({
-	name: z.string().min(1, "Item name is required"),
-	description: z.string().optional().nullable(),
-	quantity: z.number().positive("Quantity must be positive"),
-	unit_price: z.number().min(0, "Unit price must be non-negative"),
-	total: z.number().min(0, "Total must be non-negative").optional(),
-	item_type: lineItemTypeEnum.optional().nullable(),
-	sort_order: z.number().int().optional(),
+// Invoice line items extend the base with soft traceability fields.
+const invoiceLineItemInputSchema = baseLineItemSchema.extend({
+	// Tax fields — server resolves tax group if omitted (already in base)
 	// Soft traceability — informational only
 	source_job_id: z.string().uuid().optional().nullable(),
 	source_visit_id: z.string().uuid().optional().nullable(),
+	// Inventory linkage — drives QB ItemRef resolution on sync
+	inventory_item_id: z.string().uuid().optional().nullable(),
 });
 
 // ============================================================================
@@ -94,6 +95,7 @@ export const createInvoiceSchema = z
 			)
 			.optional(),
 	})
+	.superRefine(validateDiscountRange)
 	.transform((data) => ({
 		...data,
 		recurring_plan_id: data.recurring_plan_id ?? undefined,
@@ -151,8 +153,11 @@ export const updateInvoiceSchema = z
 				}),
 			)
 			.optional(),
+
+		//QuickBooks sync status
+		qb_sync_status: invoiceQBSyncStatus.optional(),
 	})
-	;
+	.superRefine(validateDiscountRange);
 
 // ============================================================================
 // PAYMENT
@@ -198,3 +203,22 @@ export type CreateInvoicePaymentInput = z.infer<
 >;
 export type CreateInvoiceNoteInput = z.infer<typeof createInvoiceNoteSchema>;
 export type UpdateInvoiceNoteInput = z.infer<typeof updateInvoiceNoteSchema>;
+
+// ============================================================================
+// OVERLAP CHECK
+// ============================================================================
+
+export const overlapCheckSchema = z.object({
+	visit_ids: z.array(z.string().uuid()).min(1),
+});
+
+// ============================================================================
+// GENERATE INVOICE (recurring plan)
+// ============================================================================
+
+export const generateInvoiceSchema = z.object({
+	source: z.literal("recurring_plan"),
+	plan_id: z.string().uuid(),
+	memo: z.string().optional(),
+	payment_terms_days: z.number().int().min(0).optional(),
+});

@@ -8,6 +8,24 @@ export const ArrivalConstraintValues = [
 ] as const;
 export const FinishConstraintValues = ["when_done", "at", "by"] as const;
 
+// ── Line item sub-schema (reused in both create and update contexts) ──────────
+const visitLineItemInputSchema = z.object({
+	// Present on existing items being updated; absent on new items being created
+	id: z.string().uuid().optional(),
+	name: z.string().min(1, "Item name is required"),
+	description: z.string().optional().nullable(),
+	quantity: z.number().positive("Quantity must be positive"),
+	unit_price: z.number().min(0, "Unit price must be non-negative"),
+	total: z.number().min(0, "Total must be non-negative").optional(),
+	item_type: z
+		.enum(["labor", "material", "equipment", "other"])
+		.optional()
+		.nullable(),
+	sort_order: z.number().int().min(0).optional(),
+	tax_group_id: z.string().uuid().nullable().optional(),
+	taxable: z.boolean().optional(),
+});
+
 export const createJobVisitSchema = z
 	.object({
 		job_id: z.string().uuid("Invalid job ID"),
@@ -47,6 +65,7 @@ export const createJobVisitSchema = z
 			.optional()
 			.nullable(),
 		tech_ids: z.array(z.string().uuid("Invalid technician ID")).optional(),
+		line_items: z.array(visitLineItemInputSchema).optional(),
 	})
 	.refine(
 		(data) => {
@@ -135,22 +154,6 @@ export const createJobVisitSchema = z
 			path: ["arrival_window_end"],
 		},
 	);
-
-// ── Line item sub-schema (reused in both create and update contexts) ──────────
-const visitLineItemInputSchema = z.object({
-	// Present on existing items being updated; absent on new items being created
-	id: z.string().uuid().optional(),
-	name: z.string().min(1, "Item name is required"),
-	description: z.string().optional().nullable(),
-	quantity: z.number().positive("Quantity must be positive"),
-	unit_price: z.number().min(0, "Unit price must be non-negative"),
-	total: z.number().min(0, "Total must be non-negative").optional(),
-	item_type: z
-		.enum(["labor", "material", "equipment", "other"])
-		.optional()
-		.nullable(),
-	sort_order: z.number().int().min(0).optional(),
-});
 
 export const updateJobVisitSchema = z
 	.object({

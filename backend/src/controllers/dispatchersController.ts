@@ -1,33 +1,45 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
-import bcrypt from "bcrypt";
+import { Prisma } from "../../generated/prisma/client.js";
+import bcrypt from "bcryptjs";
 import { randomBytes, randomUUID } from "crypto";
 import {
     createDispatcherSchema,
     updateDispatcherSchema,
+    changePasswordSchema
 } from "../lib/validate/dispatchers.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
-
+import { getAllPermissions } from "../lib/permissionCatalogs.js";
+import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
+import { db } from "../db.js"
 
 export const getAllDispatchers = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-    return await sdb.dispatcher.findMany({
+    const dispatchers = await sdb.dispatcher.findMany({
         include: {
-
+            organization_role: { select: { id: true, name: true } },
         },
     });
+    const mfaEnabledIds = await getMfaEnabledUserIds(dispatchers.map((d) => d.id));
+    return dispatchers.map((d) => ({ ...d, mfaEnabled: mfaEnabledIds.has(d.id) }));
 };
 
 export const getDispatcherById = async (id: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
-    return await sdb.dispatcher.findFirst({
+    const dispatcher = await sdb.dispatcher.findFirst({
         where: { id },
-        /*include: {
-            Default for now
-        },*/
+        include: {
+            organization_role: { select: { id: true, name: true, permissions: true } },
+        },
     });
+    if (!dispatcher) return null;
+    const permissions: string[] =
+        dispatcher.role === "admin"
+            ? getAllPermissions("dispatcher")
+            : (dispatcher.organization_role?.permissions as string[] | null) ?? [];
+    return { ...dispatcher, permissions, mfaEnabled: await isMfaEnabled(id) };
 };
 
 export const insertDispatcher = async (
@@ -39,9 +51,8 @@ export const insertDispatcher = async (
         const parsed = createDispatcherSchema.parse(data);
         const passwordProvided = parsed.password ? true : false;
         const sdb = getScopedDb(organizationId);
-        const existing = await sdb.dispatcher.findFirst({
-            where: { email: parsed.email },
-        });
+        const existing = (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+                         (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
         if (existing) {
             return { err: "Email already exists" };
@@ -60,9 +71,6 @@ export const insertDispatcher = async (
                     email_verification_token: randomUUID(),
                     // if password provided dispatcher doesn't need to reset password on first login
                     ...(passwordProvided && { last_login: new Date() }),
-                },
-                include: {
-                    // not sure if anything needs to be included 
                 },
             });
 
@@ -130,9 +138,9 @@ export const updateDispatcher = async (
         }
 
         if (parsed.email && parsed.email !== existing.email) {
-            const emailTaken = await sdb.dispatcher.findFirst({
-                where: { email: parsed.email },
-            });
+            const emailTaken =
+                (await db.technician.findFirst({ where: { email: parsed.email } })) ??
+                (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
 
             if (emailTaken) {
                 return { err: "Email already exists" };
@@ -147,14 +155,24 @@ export const updateDispatcher = async (
             "description",
             "role",
             "last_login",
+            "theme",
         ] as const);
 
+        const { report_layout, ...rest } = parsed;
         const updated = await sdb.$transaction(async (tx) => {
             const dispatcher = await tx.dispatcher.update({
                 where: { id },
-                data: parsed,
+                data: {
+                    ...rest,
+                    ...(report_layout !== undefined && {
+                        report_layout:
+                            report_layout === null
+                                ? Prisma.JsonNull
+                                : (report_layout as Prisma.InputJsonValue),
+                    }),
+                },
                 include: {
-                    // not sure what needs to be included yet
+                    // Nothing needed to be included for now
                 },
             });
 
@@ -232,8 +250,61 @@ export const deleteDispatcher = async (id: string, organization_id: string, cont
                 user_agent: context?.userAgent,
             });
         });
+
+        return { message: "Dispatcher deleted successfully" };
     } catch (error) {
         log.error({ err: error }, "Error deleting dispatcher");
         return { err: "Internal server error" };
     }
+};
+
+export const changeDispatcherPassword = async (
+    id: string, 
+    organization_id: string, 
+    data: unknown, 
+    context?: UserContext
+) => {
+    const parsed = changePasswordSchema.parse(data);
+    const sdb = getScopedDb(organization_id);
+    const dispatcher = await sdb.dispatcher.findFirst({
+        where: { id },
+    });
+
+    if (!dispatcher) {
+        return { err: "Dispatcher not found" };
+    }
+
+    const valid = await bcrypt.compare(parsed.current_password, dispatcher.password);
+    if (!valid) {
+        return { err: "Current password is incorrect" };
+    }
+    const hashedPassword = await bcrypt.hash(parsed.new_password, 10);
+    await sdb.$transaction(async (tx) => {
+        await tx.dispatcher.update({
+            where: { id },
+            data: {
+                password: hashedPassword,
+            },
+        });
+
+        await logActivity({
+            event_type: "dispatcher.password.changed",
+            action: "changed",
+            entity_type: "dispatcher",
+            entity_id: id,
+            organization_id: organization_id,
+            actor_type: context?.techId
+                ? "technician"
+                : context?.dispatcherId
+                ? "dispatcher"
+                : "system",
+            actor_id: context?.techId || context?.dispatcherId,
+            changes: {
+                password: { old: dispatcher.password, new: hashedPassword },
+            },
+            ip_address: context?.ipAddress,
+            user_agent: context?.userAgent,
+        });
+    });
+    return { message: "Password updated successfully", err: ""};
 };

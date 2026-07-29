@@ -1,4 +1,4 @@
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+﻿import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import Card from "../ui/Card";
 import type { ArrivalPerformanceResponse } from "../../types/reports";
 
@@ -8,9 +8,9 @@ interface ArrivalPerformanceChartProps {
 }
 
 const COLORS = {
-	Early: "#22c55e",
-	"On-Time": "#3b82f6",
-	Late: "#ef4444",
+	Early: "var(--color-success)",
+	"On-Time": "var(--color-chart-primary)",
+	Late: "var(--color-error)",
 } as const;
 
 type SliceName = keyof typeof COLORS;
@@ -24,17 +24,17 @@ interface Slice {
 
 function buildSlices(data: ArrivalPerformanceResponse): Slice[] {
 	if (data.total === 0) {
-		return [{ name: "No Data", value: 1, pct: 0, color: "#27272a" }];
+		return [{ name: "No Data", value: 1, pct: 0, color: "var(--color-chart-fallback)" }];
 	}
 
 	const pct = (n: number) =>
 		data.total > 0 ? Math.round((n / data.total) * 100) : 0;
 
-	return [
-		{ name: "Early", value: data.early, pct: pct(data.early), color: COLORS.Early },
-		{ name: "On-Time", value: data.onTime, pct: pct(data.onTime), color: COLORS["On-Time"] },
-		{ name: "Late", value: data.late, pct: pct(data.late), color: COLORS.Late },
-	];
+	return ([
+		{ name: "Early" as const, value: data.early, pct: pct(data.early), color: COLORS.Early },
+		{ name: "On-Time" as const, value: data.onTime, pct: pct(data.onTime), color: COLORS["On-Time"] },
+		{ name: "Late" as const, value: data.late, pct: pct(data.late), color: COLORS.Late },
+	] satisfies Slice[]).filter(s => s.value > 0);
 }
 
 function CustomTooltip({
@@ -49,10 +49,10 @@ function CustomTooltip({
 	if (d.name === "No Data") return null;
 
 	return (
-		<div className="rounded-lg px-3 py-2 bg-zinc-900/90 backdrop-blur-md shadow-lg border border-zinc-800">
-			<p className="text-xs text-zinc-400">{d.name}</p>
-			<p className="text-sm font-semibold text-white">{d.value} visits</p>
-			<p className="text-xs text-zinc-400">{d.pct}% of total</p>
+		<div className="rounded-lg px-3 py-2 bg-base/90 backdrop-blur-md shadow-lg border border-border-subtle">
+			<p className="text-xs text-text-tertiary">{d.name}</p>
+			<p className="text-sm font-semibold text-primary">{d.value} visits</p>
+			<p className="text-xs text-text-tertiary">{d.pct}% of total</p>
 		</div>
 	);
 }
@@ -68,19 +68,19 @@ export default function ArrivalPerformanceChart({
 			className="h-full"
 			title="On-Time Arrival Performance"
 			headerAction={
-				<p className="text-xs font-medium text-zinc-400">{rangeLabel}</p>
+				<p className="text-xs font-medium text-text-tertiary">{rangeLabel}</p>
 			}
 		>
 			{/* Circle chart */}
-			<div className="relative">
-				<ResponsiveContainer width="100%" aspect={2} minWidth={0}>
+			<div className="flex-1 min-h-0">
+				<ResponsiveContainer width="100%" height="100%" minWidth={0}>
 					<PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
 						<Pie
 							data={slices}
 							startAngle={180}
 							endAngle={0}
 							cx="50%"
-							cy="85%"
+							cy="75%"
 							outerRadius="100%"
 							innerRadius="65%"
 							dataKey="value"
@@ -97,24 +97,10 @@ export default function ArrivalPerformanceChart({
 						/>
 					</PieChart>
 				</ResponsiveContainer>
-
-				{/* On-time rate is shown in the middle of the chart */}
-				<div className="absolute bottom-3 left-0 right-0 flex flex-col items-center pointer-events-none">
-					{data.total > 0 ? (
-						<>
-							<p className="text-3xl font-bold text-white leading-none">
-								{data.onTimeRate}%
-							</p>
-							<p className="text-xs text-zinc-500 mt-1">on-time rate</p>
-						</>
-					) : (
-						<p className="text-xs text-zinc-500">No data</p>
-					)}
-				</div>
 			</div>
 
 			{/* Information about the metrics for the user */}
-			<div className="grid grid-cols-3 gap-2 mt-5 px-1">
+			<div className="grid grid-cols-3 gap-2 mt-3 px-1 shrink-0">
 				{(
 					[
 						{ label: "Early", value: data.early, color: COLORS.Early, sub: "≥15 min early" },
@@ -129,13 +115,25 @@ export default function ArrivalPerformanceChart({
 						>
 							{value}
 						</span>
-						<span className="text-xs font-medium text-zinc-300">{label}</span>
-						<span className="text-[10px] text-zinc-600">{sub}</span>
+						<span className="text-xs font-medium text-text-secondary">{label}</span>
+						<span className="text-[10px] text-text-faint">{sub}</span>
 					</div>
 				))}
 			</div>
 
-			<p className="text-center text-[11px] text-zinc-600 mt-3">
+			{/* On-time rate percentage below early,late, on-time */}
+			<div className="flex flex-col items-center mt-3 shrink-0">
+				{data.total > 0 ? (
+					<>
+						<p className="text-2xl font-bold text-primary leading-none">{data.onTimeRate}%</p>
+						<p className="text-xs text-text-muted mt-1">on-time rate</p>
+					</>
+				) : (
+					<p className="text-xs text-text-muted">No data</p>
+				)}
+			</div>
+
+			<p className="text-center text-[11px] text-text-faint mt-2 shrink-0">
 				{data.total} visits with recorded arrival
 			</p>
 		</Card>
