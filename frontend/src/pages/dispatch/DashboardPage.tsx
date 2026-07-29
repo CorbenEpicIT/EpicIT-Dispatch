@@ -31,6 +31,7 @@ import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, getActiveCols, fitDashboard, randomizeLayout } from "../../lib/DashboardConfig";
+import { QUICKBOOKS_ENABLED } from "../../config/features";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import OverviewWidget from "../../components/widgets/OverviewWidget";
 import RevenueYTDWidget from "../../components/widgets/RevenueYTDWidget";
@@ -457,7 +458,7 @@ export default function DashboardPage() {
 						</Card>;
 			case "low-stock": 			   return <LowStockWidget className="h-full" />;
 			case "map":  				   return <MapWidget />;
-			case "quickbooks": 			   return <QBWidget />;
+			case "quickbooks": 			   return QUICKBOOKS_ENABLED ? <QBWidget /> : null;
 			case "report-overview":        return <OverviewWidget />;
 			case "report-revenue-ytd":     return <RevenueYTDWidget />;
 			case "report-unscheduled-revenue": return <UnscheduledRevenueWidget />;

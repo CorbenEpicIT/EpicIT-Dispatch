@@ -1,4 +1,5 @@
 import type { Layout, LayoutItem, ResponsiveLayouts } from "react-grid-layout";
+import { QUICKBOOKS_ENABLED } from "../config/features";
 
 export const BREAKPOINTS = { lg: 0, md: 0, sm: 0 };
 export const COLS       = { lg: 12,   md: 12,   sm: 12 };
@@ -182,6 +183,12 @@ export const WIDGET_CATALOG: Record<string, {
                             },
 
 };
+
+// QuickBooks temporarily disabled — drop its widget from the catalog so it can't
+// be added and any previously-placed instance stops rendering (see config/features).
+if (!QUICKBOOKS_ENABLED) {
+    delete WIDGET_CATALOG.quickbooks;
+}
 
 export function addWidget(id: string, currentLayout: Layout, cols = 12): Layout {
     if (currentLayout.find(l => l.i === id)) return currentLayout;

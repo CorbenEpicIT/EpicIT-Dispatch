@@ -3,6 +3,14 @@ import { getScopedDb } from "../lib/context.js";
 import { db } from "../db.js";
 import { httpError, ErrorCodes } from "../types/responses.js";
 
+// ============================================================================
+// QUICKBOOKS TEMPORARILY DISABLED — integration not ready for production.
+// While disabled: the /connection status route still answers { connected: false }
+// (so every QB consumer cleanly hides its UI), and every other QB route — plus the
+// OAuth callback and webhook — short-circuits. To re-enable, flip QB_ENABLED to true.
+// ============================================================================
+export const QB_ENABLED = false;
+
 const QB_ENV = (process.env.QB_ENVIRONMENT ?? "sandbox") as "sandbox" | "production";
 export const QB_BASE =
 	QB_ENV === "production"

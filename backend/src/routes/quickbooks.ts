@@ -7,6 +7,7 @@ import {
 	disconnectOrg,
 	getQBStatus,
 	getOrgRealmId,
+	QB_ENABLED,
 } from "../services/quickbooksService.js";
 import { 
 	pushInvoice,
@@ -38,6 +39,19 @@ import { queryProfitAndLossQBReport } from "../services/qb/qbReports.js";
 import type { ProfitAndLossQuery } from "../services/qb/qbReports.js";
 
 const router = Router();
+
+// QuickBooks temporarily disabled (see quickbooksService.QB_ENABLED). The
+// connection-status probe still answers { connected: false } so every QB
+// consumer cleanly hides its UI; every other QB route short-circuits with 404.
+router.use((req, res, next) => {
+	if (QB_ENABLED) return next();
+	if (req.method === "GET" && req.path === "/connection") {
+		return res.json(createSuccessResponse({ connected: false }));
+	}
+	return res
+		.status(404)
+		.json(createErrorResponse(ErrorCodes.NOT_FOUND, "QuickBooks is disabled"));
+});
 
 // Connection status for this org (the QB "connection" resource)
 router.get("/connection", async (req, res, next) => {

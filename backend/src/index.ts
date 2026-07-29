@@ -67,7 +67,7 @@ const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 // ============================================
 // MIDDLEWARE
 // ============================================
-import { handleCallback } from "./services/quickbooksService.js";
+import { handleCallback, QB_ENABLED } from "./services/quickbooksService.js";
 import { handleQBWebhook } from "./services/qb/qbWebhook.js"
 import { handlePostmarkWebhook } from "./services/postmarkWebhook.js";
 
@@ -427,6 +427,9 @@ app.post("/refresh-token", async (req, res, next) => {
 // QUICKBOOKS OAUTH CALLBACK (public — no verifyToken, browser redirect from Intuit)
 // ================================================================================
 app.get("/integrations/quickbooks/callback", async (req, res, next) => {
+	// QuickBooks temporarily disabled (see quickbooksService.QB_ENABLED).
+	if (!QB_ENABLED)
+		return res.redirect(`${process.env.FRONTEND_URL}/quickbooks/callback?qb=error`);
 	try {
 		const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
 		const realmId = req.query.realmId as string;
@@ -437,7 +440,11 @@ app.get("/integrations/quickbooks/callback", async (req, res, next) => {
 		res.redirect(`${process.env.FRONTEND_URL}/quickbooks/callback?qb=error`);
 	}
 });
-app.post("/integrations/quickbooks/webhook", handleQBWebhook);
+app.post("/integrations/quickbooks/webhook", (req, res) => {
+	// QuickBooks temporarily disabled (see quickbooksService.QB_ENABLED).
+	if (!QB_ENABLED) return res.sendStatus(404);
+	return handleQBWebhook(req, res);
+});
 app.post("/integrations/postmark/webhook", handlePostmarkWebhook);
 
 // ================================================================================
