@@ -13,6 +13,13 @@ vi.mock("../../services/logger.js", () => ({ logActivity: vi.fn(), buildChanges:
 vi.mock("../../services/appLogger.js", () => ({
 	log: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }));
+// vehiclesController transitively imports lowStockAlerts -> emailService, which
+// throws at import when EMAIL_DISABLED=false and no Postmark env is set. Mock it
+// out like the sibling vehicle suites (vehiclesStock/Adjust/Restock) do.
+vi.mock("../../services/lowStockAlerts.js", () => ({
+	fireLowStockAlerts: vi.fn().mockResolvedValue(undefined),
+	sendLowStockAlert: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { getVehicleReadiness, getFleetReadiness, confirmReadiness, revokeReadiness } from "../vehiclesController.js";
 import { getScopedDb } from "../../lib/context.js";
