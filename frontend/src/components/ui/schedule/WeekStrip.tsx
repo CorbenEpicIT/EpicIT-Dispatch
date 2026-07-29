@@ -68,7 +68,6 @@ function getThisMonday(): Date {
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE       = 3;
 const MAX_VISIBLE_TODAY = 8;
-const TODAY_BODY_HEIGHT = 180;
 const POPUP_W           = 224;
 
 function colMaxLines(pxWidth: number): number {
@@ -546,6 +545,8 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		<div ref={containerRef} style={{
 			display: "flex",
 			flexDirection: "column",
+			height: "100%",
+			minHeight: 0,
 			backgroundColor: "var(--color-popup-bg)",
 			border: "1px solid var(--color-border-subtle)",
 			borderRadius: 8,
@@ -564,20 +565,20 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					Today
 				</button>
 
-				{/* Prev / Next */}
-				<div className="flex items-center shrink-0">
+				{/* Prev / Next — nav can shrink so the tech filter always fits */}
+				<div className="flex items-center min-w-0">
 					<button
 						onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; })}
-						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors shrink-0"
 					>
 						<ChevronLeft size={14} />
 					</button>
-					<span className={`text-[13px] font-semibold text-text-primary text-center tracking-tight ${isNarrow ? "min-w-[100px]" : "min-w-[176px]"}`}>
+					<span className={`text-[13px] font-semibold text-text-primary text-center tracking-tight truncate ${isNarrow ? "min-w-0" : "min-w-[176px]"}`}>
 						{weekLabel}
 					</span>
 					<button
 						onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; })}
-						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors"
+						className="h-7 w-7 flex items-center justify-center rounded text-text-muted hover:bg-surface hover:text-text-secondary transition-colors shrink-0"
 					>
 						<ChevronRight size={14} />
 					</button>
@@ -624,9 +625,10 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 			</div>
 
 			{/* ── Week grid ────────────────────────────────────────────────────── */}
+			<div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
 			<div
 				ref={weekGridRef}
-				style={{ display: "grid", gridTemplateColumns: visibleDays.map(d => d === todayStr ? "2fr" : "1fr").join(" "), position: "relative" }}
+				style={{ display: "grid", gridTemplateColumns: visibleDays.map(d => d === todayStr ? "2fr" : "1fr").join(" "), gridTemplateRows: "minmax(0, 1fr)", flex: 1, minHeight: 0, position: "relative" }}
 				onDragOver={handleGridDragOver}
 				onDragLeave={handleGridDragLeave}
 			>
@@ -644,10 +646,15 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 							key={dateStr}
 							style={{
 								borderRight: i < visibleDays.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
+								display: "flex",
+								flexDirection: "column",
+								minHeight: 0,
+								overflow: "hidden",
 							}}
 						>
 							{/* Day header */}
 							<div style={{
+								flexShrink: 0,
 								display: "flex",
 								alignItems: "center",
 								justifyContent: "space-between",
@@ -671,10 +678,9 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 							{/* Day body — drop zone + cards */}
 							<div
 								style={{
-									...(isToday
-										? { minHeight: TODAY_BODY_HEIGHT }
-										: { minHeight: 72 }
-									),
+									flex: 1,
+									minHeight: 0,
+									overflowY: "auto",
 									padding: 4,
 									display: "flex",
 									flexDirection: "column",
@@ -883,6 +889,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none",
 					}}>›</div>
 				</div>
+			</div>
 			</div>
 
 		{/* ── Visit detail popup ───────────────────────────────────────────── */}
