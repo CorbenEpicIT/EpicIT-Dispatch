@@ -7,9 +7,10 @@ export interface RecentLogsResult {
 	hasMore: boolean;
 }
 
-export const getRecentLogs = async (limit = 25, cursor?: string): Promise<RecentLogsResult> => {
+export const getRecentLogs = async (limit = 25, cursor?: string, userId?: string): Promise<RecentLogsResult> => {
 	const params = new URLSearchParams({ limit: String(limit) });
 	if (cursor) params.set("cursor", cursor);
+	if (userId) params.set("userId", userId);
 	const response = await api.get<ApiResponse<ActivityLog[]>>(`/logs/recent?${params}`);
 	return {
 		data: response.data.data || [],

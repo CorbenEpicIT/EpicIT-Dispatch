@@ -559,6 +559,7 @@ app.get("/logs/recent", async (req, res, next) => {
 	try {
 		const limit = Math.min(Number(req.query.limit) || 25, 50);
 		const cursor = req.query.cursor as string | undefined;
+		const userId = req.query.userId as string | undefined;
 		const orgId = req.user!.organization_id as string;
 		const sdb = getScopedDb(orgId);
 		const FEED_EVENTS = [
@@ -581,6 +582,7 @@ app.get("/logs/recent", async (req, res, next) => {
 			where: {
 				event_type: { in: FEED_EVENTS },
 				...(cursor ? { timestamp: { lt: new Date(cursor) } } : {}),
+				...(userId ? { OR: [{ actor_id: userId }, { entity_id: userId }]} : {}),
 			},
 			orderBy: { timestamp: "desc" },
 			take: limit,

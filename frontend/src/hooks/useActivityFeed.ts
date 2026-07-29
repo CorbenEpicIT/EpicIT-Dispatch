@@ -18,7 +18,8 @@ export interface UseActivityFeedResult {
 
 const ALL_FILTER_KEYS = ["technicians", "requests", "quotes", "jobs", "recurring", "invoices"];
 
-export function useActivityFeed(): UseActivityFeedResult {
+export function useActivityFeed(options?: { userId?: string }): UseActivityFeedResult {
+	const userId = options?.userId;
 	const [logs, setLogs] = useState<ActivityLog[]>([]);
 	const [activeFilters, setActiveFilters] = useState<Set<string>>(
 		() => new Set(ALL_FILTER_KEYS)
@@ -35,7 +36,7 @@ export function useActivityFeed(): UseActivityFeedResult {
 		setIsLoading(true);
 		setIsError(false);
 		try {
-			const result = await logApi.getRecentLogs(30);
+			const result = await logApi.getRecentLogs(30, undefined, userId);
 			setLogs(result.data);
 			setCursor(result.data[result.data.length - 1]?.timestamp ?? null);
 			setHasMore(result.hasMore);
@@ -44,7 +45,7 @@ export function useActivityFeed(): UseActivityFeedResult {
 		} finally {
 			setIsLoading(false);
 		}
-	}, []);
+	}, [userId]);
 
 	useEffect(() => {
 		fetchInitial();
@@ -52,6 +53,7 @@ export function useActivityFeed(): UseActivityFeedResult {
 
 	useEffect(() => {
 		const handleActivity = (newLog: ActivityLog) => {
+			if (userId && newLog.actor_id !== userId && newLog.entity_id !== userId) return;
 			setLogs((prev) => [newLog, ...prev]);
 			setNewItemSignal((n) => n + 1);
 		};
@@ -70,20 +72,20 @@ export function useActivityFeed(): UseActivityFeedResult {
 			socket.off("connect", handleConnect);
 			socket.off("disconnect", handleDisconnect);
 		};
-	}, [fetchInitial]);
+	}, [fetchInitial, userId]);
 
 	const loadMore = useCallback(async () => {
 		if (!cursor || !hasMore || isFetchingMore) return;
 		setIsFetchingMore(true);
 		try {
-			const result = await logApi.getRecentLogs(30, cursor);
+			const result = await logApi.getRecentLogs(30, cursor, userId);
 			setLogs((prev) => [...prev, ...result.data]);
 			setCursor(result.data[result.data.length - 1]?.timestamp ?? cursor);
 			setHasMore(result.hasMore);
 		} finally {
 			setIsFetchingMore(false);
 		}
-	}, [cursor, hasMore, isFetchingMore]);
+	}, [cursor, hasMore, isFetchingMore, userId]);
 
 	const toggleFilter = useCallback((key: string) => {
 		setActiveFilters((prev) => {
