@@ -11,6 +11,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
+import { onVisitScheduled, onVisitRescheduled, onVisitCancelled } from "../services/followupTriggers.js";
 import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
 import { createNotification } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
@@ -524,6 +525,8 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 
 		if (created) {
 			getSocket().emit("job_visit:created", { visitId: created.id, organizationId: organization_id });
+			// Best-effort: schedule client reminders from any active visit_scheduled sequences.
+			onVisitScheduled(created.id, organization_id);
 		}
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
@@ -971,6 +974,15 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 		}
 		if (updated && Object.keys(changes).length > 0) {
 			getSocket().emit("job_visit:updated", { visitId: updated.id, organizationId });
+		}
+		// Best-effort: keep visit reminders in sync with reschedules / cancellations.
+		if (parsed.status === "Cancelled" && existingVisit.status !== "Cancelled") {
+			onVisitCancelled(id, organizationId);
+		} else if (
+			parsed.scheduled_start_at !== undefined &&
+			existingVisit.scheduled_start_at.getTime() !== parsed.scheduled_start_at.getTime()
+		) {
+			onVisitRescheduled(id, organizationId, parsed.scheduled_start_at);
 		}
 		return { err: "", item: updated };
 	} catch (e) {

@@ -10,6 +10,7 @@ import {
 import * as notificationsController from "./controllers/notificationsController.js";
 import { startVisitReminderInterval } from "./services/notifications.js";
 import { startInvoiceSchedulerInterval } from "./services/invoiceScheduler.js";
+import { startFollowupSchedulerInterval } from "./services/followupScheduler.js";
 import { rearmWrappingUpTimers } from "./services/wrappingUpTimer.js";
 import multer from "multer";
 import {
@@ -59,6 +60,7 @@ import quickbooksRouter from "./routes/quickbooks.js";
 import oauthRouter from "./routes/oauth.js";
 import mfaRouter from "./routes/mfa.js";
 import ssoRouter from "./routes/sso.js"
+import followupsRouter from "./routes/followups.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -67,6 +69,7 @@ const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 // ============================================
 import { handleCallback } from "./services/quickbooksService.js";
 import { handleQBWebhook } from "./services/qb/qbWebhook.js"
+import { handlePostmarkWebhook } from "./services/postmarkWebhook.js";
 
 const errorHandler = (
 	err: any,
@@ -233,6 +236,7 @@ initSocket(io);
 notificationsController.setSocketIo(io);
 startVisitReminderInterval();
 startInvoiceSchedulerInterval();
+startFollowupSchedulerInterval();
 rearmWrappingUpTimers().catch((e) =>
 	log.error(e, "Failed to rearm WrappingUp timers"),
 );
@@ -434,6 +438,7 @@ app.get("/integrations/quickbooks/callback", async (req, res, next) => {
 	}
 });
 app.post("/integrations/quickbooks/webhook", handleQBWebhook);
+app.post("/integrations/postmark/webhook", handlePostmarkWebhook);
 
 // ================================================================================
 // OAUTH2 AUTHORIZATION SERVER 
@@ -543,6 +548,11 @@ app.use("/tax", verifyToken, taxRouter);
 // QUICKBOOKS
 // ============================================
 app.use("/integrations/quickbooks", verifyToken, quickbooksRouter);
+
+// ============================================
+// AUTOMATED FOLLOWUPS
+// ============================================
+app.use("/followups", verifyToken, followupsRouter);
 
 // ============================================
 // CLIENTS + CONTACTS

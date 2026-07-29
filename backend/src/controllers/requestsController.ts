@@ -11,6 +11,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { assertValidRequestTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
+import { onRequestCreated } from "../services/followupTriggers.js";
 
 export const getAllRequests = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
@@ -220,6 +221,8 @@ export const insertRequest = async (req: Request, organizationId: string, contex
 			});
 		});
 
+		// Best-effort: auto-enroll into any active request_created followup sequences.
+		if (created) onRequestCreated(created.id, organizationId);
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
 		if (e instanceof ZodError) {
