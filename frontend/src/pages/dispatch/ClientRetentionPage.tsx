@@ -64,7 +64,7 @@ export default function ClientRetentionPage() {
 	);
 
 	const { data, isLoading, isFetching, error } = useClientRetentionQuery(queryParams);
-	const rows = useMemo(() => (data?.rows ?? []) as ClientRetentionRow[], [data]);
+	const rows = useMemo(() => (data?.rows ?? []) as unknown as ClientRetentionRow[], [data]);
 	const total = data?.total ?? 0;
 	const hasMore = data?.hasMore ?? false;
 

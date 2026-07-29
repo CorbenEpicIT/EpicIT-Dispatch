@@ -37,7 +37,7 @@ export default function OverviewWidget() {
 	return (
 		<Card className="h-full" scrollable>
 			<div ref={containerRef} className="flex-1 flex items-center w-full">
-				<OverviewSection data={data} />
+				<OverviewSection data={data} showComparison={true} />
 			</div>
 		</Card>
 	);
