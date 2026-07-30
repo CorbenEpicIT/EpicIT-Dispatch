@@ -18,6 +18,7 @@ import {
 } from "../controllers/quotesController.js";
 import { generateQuotePdf } from "../lib/pdf/pdfService.js";
 import { sendQuoteEmail } from "../services/emailService.js";
+import { onQuoteSent } from "../services/followupTriggers.js";
 import { getUserContext } from '../lib/context.js';
 import * as quoteNotesController from '../controllers/quoteNotesController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
@@ -104,6 +105,8 @@ router.post("/:id/send", requirePermission("edit_quotes"), async (req, res, next
                 .status(status)
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
+        // Best-effort: auto-enroll into any active quote_sent followup sequences.
+        onQuoteSent(id, orgId);
         res.json(createSuccessResponse(result.item));
     } catch (err: any) {
         if (err?.status === 404)

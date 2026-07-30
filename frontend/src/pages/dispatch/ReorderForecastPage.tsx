@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
 import AdaptableTable from "../../components/AdaptableTable";
 import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
@@ -10,12 +9,14 @@ import PageHeader from "../../components/ui/PageHeader";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import ReorderPriorityChart from "../../components/reports/ReorderPriorityChart";
+import ReportPagination from "../../components/reports/ReportPagination";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { useColumnVisibility, type ColumnOption } from "../../hooks/useColumnVisibility";
 import { camelCaseToRegular } from "../../util/util";
 import { useReorderForecastQuery } from "../../hooks/useReports";
-import { exportReport } from "../../api/reports";
+import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
+import type { ReorderForecastRow, ReportFetchParams } from "../../types/reports";
 
 /** Build column options (label derived from the key) in display order. */
 const cols = (...keys: string[]): ColumnOption[] =>
@@ -30,43 +31,35 @@ const COLS = cols(
 	"projectedStockout",
 );
 
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-
 export default function ReorderForecastPage() {
 	const navigate = useNavigate();
 
 	const [searchInput, setSearchInput] = useState("");
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 
-	const { data, isLoading, error } = useReorderForecastQuery();
-	const records = useMemo(() => data ?? [], [data]);
+	const [page, setPage] = useState(0);
+	const [pageSize, setPageSize] = useState(50);
 
-	const rows = useMemo(() => {
-		const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
+	const searchTerms = useMemo(() => {
+		const t = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
+		return t.length ? t : undefined;
+	}, [terms, searchInput]);
 
-		const filtered = records.filter((r) =>
-			activeTerms.every((term) => {
-				const q = term.toLowerCase();
-				return (
-					r.itemName.toLowerCase().includes(q) ||
-					(r.sku ?? "").toLowerCase().includes(q) ||
-					(r.category ?? "").toLowerCase().includes(q)
-				);
-			}),
-		);
+	const queryParams = useMemo<ReportFetchParams>(
+		() => ({ searchTerms, page, limit: pageSize }),
+		[searchTerms, page, pageSize],
+	);
 
-		return filtered.map((r) => ({
-			id: r.itemId,
-			item: r.itemName,
-			sku: r.sku ?? "—",
-			category: r.category ?? "—",
-			currentQuantity: fmtQty(r.currentQuantity),
-			avgDailyUsage: r.avgDailyUsage > 0 ? r.avgDailyUsage.toFixed(2) : "—",
-			projectedStockout: r.projectedStockoutDate
-				? format(new Date(r.projectedStockoutDate), "MMM d, yyyy")
-				: "—",
-		}));
-	}, [records, searchInput, terms]);
+	const { data, isLoading, isFetching, error } = useReorderForecastQuery(queryParams);
+	const rows = useMemo(() => data?.rows ?? [], [data]);
+	const total = data?.total ?? 0;
+	const hasMore = data?.hasMore ?? false;
+	const chartRows = (data?.summary?.chartRows ?? []) as ReorderForecastRow[];
+
+	const filterKey = JSON.stringify([searchTerms, pageSize]);
+	useEffect(() => {
+		setPage(0);
+	}, [filterKey]);
 
 	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
 		"reorder-forecast",
@@ -79,15 +72,15 @@ export default function ReorderForecastPage() {
 	};
 
 	const hasActiveFilters = terms.length > 0;
-	const showEmpty = rows.length === 0 && !isLoading && !error;
+	const showEmpty = total === 0 && !isLoading && !error;
 
 	return (
 		<div className="text-text-primary">
 			<PageHeader title="Reorder Forecast" />
 
-			{records.length > 0 && (
+			{chartRows.length > 0 && (
 				<div className="mb-4 h-96">
-					<ReorderPriorityChart data={records} />
+					<ReorderPriorityChart data={chartRows} />
 				</div>
 			)}
 
@@ -105,21 +98,17 @@ export default function ReorderForecastPage() {
 					<>
 						<ExportExcelButton
 							onExport={() =>
-								exportReport({
+								exportReportServer({
+									report: "reorder-forecast",
 									filename: datedFilename("reorder-forecast"),
 									sheetName: "Reorder Forecast",
 									columns: visibleColumns,
-									rows,
+									params: { searchTerms },
 								})
 							}
-							disabled={rows.length === 0}
+							disabled={total === 0}
 						/>
-						<ColumnsButton
-							columns={COLS}
-							hidden={hidden}
-							onToggle={toggle}
-							onReset={reset}
-						/>
+						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
 					</>
 				}
 			/>
@@ -131,7 +120,7 @@ export default function ReorderForecastPage() {
 					onRemove: () => removeTerm(term),
 					highlighted: duplicateTerm === term,
 				}))}
-				resultCount={rows.length}
+				resultCount={total}
 				onClearAll={clearAllFilters}
 			/>
 
@@ -149,15 +138,24 @@ export default function ReorderForecastPage() {
 						</p>
 					</div>
 				) : (
-					<AdaptableTable
-						data={rows}
-						loadListener={isLoading}
-						errListener={error}
-						columnVisibility={columnVisibility}
-						onRowClick={(row) =>
-							navigate(`/dispatch/inventory?highlight=${row.id as string}`)
-						}
-					/>
+					<>
+						<AdaptableTable
+							data={rows}
+							loadListener={isLoading}
+							errListener={error}
+							columnVisibility={columnVisibility}
+							onRowClick={(row) => navigate(`/dispatch/inventory?highlight=${row.id as string}`)}
+						/>
+						<ReportPagination
+							page={page}
+							pageSize={pageSize}
+							total={total}
+							hasMore={hasMore}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							isFetching={isFetching}
+						/>
+					</>
 				)}
 			</div>
 		</div>

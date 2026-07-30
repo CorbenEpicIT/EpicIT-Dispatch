@@ -27,9 +27,11 @@ import MileageReportPage from "./pages/dispatch/MileageReportPage";
 import TimesheetsReportPage from "./pages/dispatch/TimesheetsReportPage";
 import ReorderForecastPage from "./pages/dispatch/ReorderForecastPage";
 import AgedReceivablesPage from "./pages/dispatch/AgedReceivablesPage";
+import ClientRetentionPage from "./pages/dispatch/ClientRetentionPage";
 import TaxLiabilityPage from "./pages/dispatch/TaxLiabilityPage";
 import PaymentsReportPage from "./pages/dispatch/PaymentsReportPage";
 import QuoteFunnelPage from "./pages/dispatch/QuoteFunnelPage";
+import FirstTimeFixRatePage from "./pages/dispatch/FirstTimeFixRatePage";
 import TechnicianScorecardPage from "./pages/dispatch/TechnicianScorecardPage";
 import QuotesPage from "./pages/dispatch/QuotesPage";
 import QuoteDetailPage from "./pages/dispatch/QuoteDetailPage";
@@ -45,6 +47,7 @@ import FullMapPage from "./pages/dispatch/FullMapPage";
 import InvoicesPage from "./pages/dispatch/InvoicesPage";
 import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
 import AdminPage from "./pages/dispatch/AdminPage";
+import FollowupsPage from "./pages/dispatch/FollowupsPage";
 import VehiclesPage from "./pages/dispatch/VehiclesPage";
 import VehicleStockPage from "./pages/dispatch/VehicleStockPage";
 import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
@@ -146,9 +149,11 @@ export default function AppRoutes() {
 				<Route path="reporting" element={<RequirePermission permission="view_reports"><ReportingPage /></RequirePermission>} />
 				<Route path="reporting/builder" element={<RequirePermission permission="view_reports"><ReportBuilderPage /></RequirePermission>} />
 				<Route path="reporting/aged-receivables" element={<RequirePermission permission="view_reports"><AgedReceivablesPage /></RequirePermission>} />
+				<Route path="reporting/client-retention" element={<RequirePermission permission="view_reports"><ClientRetentionPage /></RequirePermission>} />
 				<Route path="reporting/tax-liability" element={<RequirePermission permission="view_reports"><TaxLiabilityPage /></RequirePermission>} />
 				<Route path="reporting/payments" element={<RequirePermission permission="view_reports"><PaymentsReportPage /></RequirePermission>} />
 				<Route path="reporting/quote-funnel" element={<RequirePermission permission="view_reports"><QuoteFunnelPage /></RequirePermission>} />
+				<Route path="reporting/first-time-fix" element={<RequirePermission permission="view_reports"><FirstTimeFixRatePage /></RequirePermission>} />
 				<Route path="reporting/technician-scorecard" element={<RequirePermission permission="view_reports"><TechnicianScorecardPage /></RequirePermission>} />
 				<Route path="kpi" element={<RequirePermission permission="view_reports"><KPIPage /></RequirePermission>} />
 				<Route path="mileage" element={<MileageReportPage />} />
@@ -170,6 +175,7 @@ export default function AppRoutes() {
 				<Route path="invoices/:invoiceId" element={<RequirePermission permission="view_invoices"><InvoiceDetailPage /></RequirePermission>} />
 				<Route path="profile" element={<RequireAuth><MyProfilePage /></RequireAuth>} />
 				<Route path="admin" element={<RequireAnyPermission permissions={["view_admin", "manage_organization", "manage_roles"]}><AdminPage /></RequireAnyPermission>} />
+				<Route path="followups" element={<RequirePermission permission="view_followups"><FollowupsPage /></RequirePermission>} />
 				<Route path="vehicles" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehiclesPage /></RequireAnyPermission>} />
 				<Route path="vehicles/:id/stock" element={<RequireAnyPermission permissions={["view_inventory", "manage_technicians"]}><VehicleStockPage /></RequireAnyPermission>} />
 			</Route>

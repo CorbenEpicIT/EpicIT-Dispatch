@@ -100,12 +100,13 @@ export const getBuffer = async (
 
 export const signImageUrl = async (
 	url: string | null | undefined,
+	expiresIn: number = SIGNED_URL_TTL_SECONDS,
 ): Promise<string | null> => {
 	if (!url) return null;
 	return getSignedUrl(
 		getClient(),
 		new GetObjectCommand({ Bucket: WASABI_BUCKET!, Key: keyFromUrl(url) }),
-		{ expiresIn: SIGNED_URL_TTL_SECONDS },
+		{ expiresIn },
 	);
 };
 

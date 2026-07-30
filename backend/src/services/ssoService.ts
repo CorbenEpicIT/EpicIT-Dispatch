@@ -2,6 +2,14 @@ import { db } from "../db.js"
 import * as client from "openid-client"
 import crypto from "crypto";
 
+// ============================================================================
+// SSO TEMPORARILY DISABLED — feature not ready for production.
+// While disabled: getAvailableProviders() returns [] (the login page hides all
+// SSO buttons), and the /auth/sso/* initiation routes short-circuit (see
+// routes/sso.ts). To re-enable, flip SSO_ENABLED to true.
+// ============================================================================
+export const SSO_ENABLED = false;
+
 const BACKEND_URL = "http://localhost:3000"
 
 export type Provider = "google" | "microsoft";
@@ -27,6 +35,7 @@ function getProvider(provider: Provider) {
 }
 
 export function getAvailableProviders(): Provider[] {
+    if (!SSO_ENABLED) return [];
     return (Object.keys(PROVIDERS) as Provider[]).filter(
         (p) => !!PROVIDERS[p].clientId && !!PROVIDERS[p].clientSecret
     );

@@ -12,6 +12,7 @@ import * as invoicesController from '../controllers/invoicesController.js';
 import { createInvoiceRecord } from '../services/invoiceService.js';
 import { generateInvoicePdf } from '../lib/pdf/pdfService.js';
 import { sendInvoiceEmail } from '../services/emailService.js';
+import { onInvoiceSent } from '../services/followupTriggers.js';
 import { buildVisitInvoicePayload, buildRecurringPlanInvoicePayload } from '../services/invoiceGenerator.js';
 import { overlapCheckSchema, generateInvoiceSchema } from '../lib/validate/invoices.js';
 import { advanceNextInvoiceAt, calculateNextInvoiceAt, type ScheduleFrequency } from '../lib/invoiceSchedule.js';
@@ -96,6 +97,8 @@ router.post("/:id/send", requirePermission("edit_invoices"), async (req, res, ne
                 .status(status)
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
         }
+        // Best-effort: auto-enroll into any active invoice_sent followup sequences.
+        onInvoiceSent(id, orgId);
         res.json(createSuccessResponse(result.item));
     } catch (err: any) {
         if (err?.status === 404)

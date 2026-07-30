@@ -6,19 +6,10 @@ import {
     type ErrorCode,
 } from "../types/responses.js";
 import { getAgedReceivables,
-    getAgedReceivablesByClient,
     getArrivalPerformance,
-    getClientsReport,
-    getInventoryReorderForecast,
-    getInventoryReport,
-    getInvoicesReport,
-    getJobsReport,
     getLeadsBySource,
     getMileageReport,
     getOverviewMetrics,
-    getPaymentsReport,
-    getTaxLiabilityReport,
-    getQuoteFunnelReport,
     getQuotePipeline,
     getRevenueByJobType,
     getRevenueYTD,
@@ -29,11 +20,74 @@ import { getAgedReceivables,
 } from '../controllers/reportsController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
 import { rowsToXlsxBuffer } from '../lib/excel/reportExcel.js';
-import { exportReportSchema } from '../lib/validate/reportExport.js';
+import { exportReportSchema, exportServerSchema } from '../lib/validate/reportExport.js';
+import { parsePaginateQuery } from "../lib/validate/reportQuery.js";
+import { filterRows, slicePage, type ReportRow } from "../lib/reports/filterEngine.js";
+import { getReportDefinition, type ReportQuery } from "../lib/reports/reportRegistry.js";
 import * as savedReports from "../controllers/savedReportsController.js";
 import { getUserContext } from "../lib/context.js";
 
 const router = Router();
+
+// Runs a registered report, applies the shared filter/sort engine over the full
+// result set, and returns just the requested page plus a full-set/filtered summary.
+const buildReportQuery = (q: Record<string, unknown>): ReportQuery => {
+	const lookback = typeof q.lookbackDays === "string" ? Number(q.lookbackDays) : NaN;
+	return {
+		startDate: typeof q.startDate === "string" ? q.startDate : undefined,
+		endDate: typeof q.endDate === "string" ? q.endDate : undefined,
+		includeInactive: q.include_inactive === "true" ? true : undefined,
+		lookbackDays: Number.isFinite(lookback) && lookback > 0 ? lookback : undefined,
+	};
+};
+
+const handlePaginatedReport = async (
+	reportKey: string,
+	orgId: string,
+	reqQuery: Record<string, unknown>,
+) => {
+	const def = getReportDefinition(reportKey)!;
+	const query = buildReportQuery(reqQuery);
+	const params = parsePaginateQuery(reqQuery);
+
+	// Fast path: push filter/sort/pagination into SQL (id-prefilter). Returns null
+	// only if the request can't be expressed in SQL → falls through to in-memory.
+	const fast = def.loadPage ? await def.loadPage(orgId, query, params) : null;
+
+	let result: {
+		rows: ReportRow[];
+		total: number;
+		page: number;
+		pageSize: number;
+		summary?: Record<string, unknown>;
+	};
+	if (fast) {
+		result = fast;
+	} else {
+		// Fallback: fetch-all then filter/sort/paginate in memory (computed-column
+		// filters/sorts, or reports without a pushdown path).
+		const { rows, summary } = await def.load(orgId, query);
+		const filtered = filterRows(rows, params);
+		const page = slicePage(filtered, params);
+		const filteredSummary = def.filteredSummary?.(filtered);
+		const mergedSummary =
+			summary || filteredSummary ? { ...(summary ?? {}), ...(filteredSummary ?? {}) } : undefined;
+		result = { rows: page.rows, total: page.total, page: page.page, pageSize: page.pageSize, summary: mergedSummary };
+	}
+
+	const hasMore = (result.page + 1) * result.pageSize < result.total;
+	return {
+		data: {
+			rows: result.rows,
+			total: result.total,
+			page: result.page,
+			pageSize: result.pageSize,
+			hasMore,
+			...(result.summary ? { summary: result.summary } : {}),
+		},
+		meta: { count: result.total, page: result.page, pageSize: result.pageSize, hasMore },
+	};
+};
 
 // Maps a controller-result error string to the matching HTTP status + ErrorCode.
 const sendControllerError = (
@@ -224,12 +278,12 @@ router.get("/mileage", requirePermission("view_reports"), async (req, res, next)
 router.get("/tax-liability", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { startDate, endDate } = req.query as {
-			startDate?: string;
-			endDate?: string;
-		};
-		const data = await getTaxLiabilityReport(startDate, endDate, orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"tax-liability",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -252,12 +306,12 @@ router.get("/timesheets", requirePermission("view_reports"), async (req, res, ne
 router.get("/jobs", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { startDate, endDate } = req.query as {
-			startDate?: string;
-			endDate?: string;
-		};
-		const data = await getJobsReport(startDate, endDate, orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"jobs",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -266,12 +320,12 @@ router.get("/jobs", requirePermission("view_reports"), async (req, res, next) =>
 router.get("/invoices", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { startDate, endDate } = req.query as {
-			startDate?: string;
-			endDate?: string;
-		};
-		const data = await getInvoicesReport(startDate, endDate, orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"invoices",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -280,8 +334,26 @@ router.get("/invoices", requirePermission("view_reports"), async (req, res, next
 router.get("/clients", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const data = await getClientsReport(orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"clients",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/clients/retention", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"client-retention",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -290,12 +362,12 @@ router.get("/clients", requirePermission("view_reports"), async (req, res, next)
 router.get("/payments", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { startDate, endDate } = req.query as {
-			startDate?: string;
-			endDate?: string;
-		};
-		const data = await getPaymentsReport(startDate, endDate, orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"payments",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -304,12 +376,26 @@ router.get("/payments", requirePermission("view_reports"), async (req, res, next
 router.get("/quote-funnel", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { startDate, endDate } = req.query as {
-			startDate?: string;
-			endDate?: string;
-		};
-		const data = await getQuoteFunnelReport(startDate, endDate, orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"quotes",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/first-time-fix", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"first-time-fix",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -332,14 +418,12 @@ router.get("/technician-scorecard", requirePermission("view_reports"), async (re
 router.get("/inventory/reorder-forecast", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { lookbackDays } = req.query as { lookbackDays?: string };
-
-		// Parse with a safe default; require >= 1 day to avoid div-by-zero.
-		const n = lookbackDays != null ? Number(lookbackDays) : NaN;
-		const data = await getInventoryReorderForecast(orgId, {
-			lookbackDays: Number.isFinite(n) && n > 0 ? n : 90,
-		});
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"reorder-forecast",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -348,23 +432,12 @@ router.get("/inventory/reorder-forecast", requirePermission("view_reports"), asy
 router.get("/inventory/full", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { startDate, endDate, include_inactive } = req.query as {
-			startDate?: string;
-			endDate?: string;
-			include_inactive?: string;
-		};
-
-		const from = startDate ? new Date(startDate) : undefined;
-		const to = endDate ? new Date(endDate) : undefined;
-		const validRange =
-			from && to && !isNaN(from.getTime()) && !isNaN(to.getTime());
-
-		const data = await getInventoryReport(orgId, {
-			from: validRange ? from : undefined,
-			to: validRange ? to : undefined,
-			includeInactive: include_inactive === "true",
-		});
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"inventory",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -383,8 +456,12 @@ router.get("/receivables/aging", requirePermission("view_reports"), async (req, 
 router.get("/receivables/aging/by-client", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const data = await getAgedReceivablesByClient(orgId);
-		res.json(createSuccessResponse(data));
+		const { data, meta } = await handlePaginatedReport(
+			"aged-receivables-by-client",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
 	} catch (err) {
 		next(err);
 	}
@@ -402,6 +479,59 @@ router.post("/export", requirePermission("view_reports"), async (req, res, next)
 		const { filename, sheetName, columns, rows } = parsed.data;
 
 		const mapped = rows.map((row) =>
+			Object.fromEntries(columns.map((col) => [col.label, row[col.key] ?? ""])),
+		);
+		const buffer = rowsToXlsxBuffer(mapped, [], sheetName ?? "Report");
+
+		const safeFilename = filename.replace(/["\\\r\n]/g, "_");
+		res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"`);
+		res.setHeader(
+			"Content-Type",
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		);
+		res.send(buffer);
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Server-side export for paginated reports: regenerates the full filtered set
+// (all pages) from the report key + active filters, so the sheet is complete.
+router.post("/export/server", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const parsed = exportServerSchema.safeParse(req.body);
+		if (!parsed.success) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.message));
+		}
+
+		const { report, filename, sheetName, columns, ...rest } = parsed.data;
+		const def = getReportDefinition(report);
+		if (!def) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, `Unknown report: ${report}`));
+		}
+
+		const orgId = req.user!.organization_id as string;
+		const { rows } = await def.load(orgId, {
+			startDate: rest.startDate,
+			endDate: rest.endDate,
+			includeInactive: rest.includeInactive,
+			lookbackDays: rest.lookbackDays,
+		});
+		const filtered = filterRows(rows, {
+			search: rest.search,
+			searchTerms: rest.searchTerms,
+			conditions: rest.conditions,
+			join: rest.join,
+			sortKey: rest.sortKey,
+			sortDir: rest.sortDir,
+			sortType: rest.sortType,
+		});
+
+		const mapped = filtered.map((row) =>
 			Object.fromEntries(columns.map((col) => [col.label, row[col.key] ?? ""])),
 		);
 		const buffer = rowsToXlsxBuffer(mapped, [], sheetName ?? "Report");

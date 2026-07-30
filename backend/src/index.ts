@@ -10,6 +10,7 @@ import {
 import * as notificationsController from "./controllers/notificationsController.js";
 import { startVisitReminderInterval } from "./services/notifications.js";
 import { startInvoiceSchedulerInterval } from "./services/invoiceScheduler.js";
+import { startFollowupSchedulerInterval } from "./services/followupScheduler.js";
 import { rearmWrappingUpTimers } from "./services/wrappingUpTimer.js";
 import multer from "multer";
 import {
@@ -59,14 +60,16 @@ import quickbooksRouter from "./routes/quickbooks.js";
 import oauthRouter from "./routes/oauth.js";
 import mfaRouter from "./routes/mfa.js";
 import ssoRouter from "./routes/sso.js"
+import followupsRouter from "./routes/followups.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
 // ============================================
 // MIDDLEWARE
 // ============================================
-import { handleCallback } from "./services/quickbooksService.js";
+import { handleCallback, QB_ENABLED } from "./services/quickbooksService.js";
 import { handleQBWebhook } from "./services/qb/qbWebhook.js"
+import { handlePostmarkWebhook } from "./services/postmarkWebhook.js";
 
 const errorHandler = (
 	err: any,
@@ -233,6 +236,7 @@ initSocket(io);
 notificationsController.setSocketIo(io);
 startVisitReminderInterval();
 startInvoiceSchedulerInterval();
+startFollowupSchedulerInterval();
 rearmWrappingUpTimers().catch((e) =>
 	log.error(e, "Failed to rearm WrappingUp timers"),
 );
@@ -423,6 +427,9 @@ app.post("/refresh-token", async (req, res, next) => {
 // QUICKBOOKS OAUTH CALLBACK (public — no verifyToken, browser redirect from Intuit)
 // ================================================================================
 app.get("/integrations/quickbooks/callback", async (req, res, next) => {
+	// QuickBooks temporarily disabled (see quickbooksService.QB_ENABLED).
+	if (!QB_ENABLED)
+		return res.redirect(`${process.env.FRONTEND_URL}/quickbooks/callback?qb=error`);
 	try {
 		const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
 		const realmId = req.query.realmId as string;
@@ -433,7 +440,12 @@ app.get("/integrations/quickbooks/callback", async (req, res, next) => {
 		res.redirect(`${process.env.FRONTEND_URL}/quickbooks/callback?qb=error`);
 	}
 });
-app.post("/integrations/quickbooks/webhook", handleQBWebhook);
+app.post("/integrations/quickbooks/webhook", (req, res) => {
+	// QuickBooks temporarily disabled (see quickbooksService.QB_ENABLED).
+	if (!QB_ENABLED) return res.sendStatus(404);
+	return handleQBWebhook(req, res);
+});
+app.post("/integrations/postmark/webhook", handlePostmarkWebhook);
 
 // ================================================================================
 // OAUTH2 AUTHORIZATION SERVER 
@@ -543,6 +555,11 @@ app.use("/tax", verifyToken, taxRouter);
 // QUICKBOOKS
 // ============================================
 app.use("/integrations/quickbooks", verifyToken, quickbooksRouter);
+
+// ============================================
+// AUTOMATED FOLLOWUPS
+// ============================================
+app.use("/followups", verifyToken, followupsRouter);
 
 // ============================================
 // CLIENTS + CONTACTS

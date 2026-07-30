@@ -47,6 +47,9 @@ function SettingRow({ title, description, action, children }: SettingRowProps) {
 const inputBase =
 	"w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-faint outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary-border";
 
+const DEFAULT_BRAND_COLOR = "#1e3a5f";
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
 function OrgSettingsSection() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,6 +59,7 @@ function OrgSettingsSection() {
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saveSuccess, setSaveSuccess] = useState(false);
 	const [nameError, setNameError] = useState<string | null>(null);
+	const [brandColorError, setBrandColorError] = useState<string | null>(null);
 
 	const { data: org, isLoading } = useOrgSettings();
 	const uploadMutation = useUploadOrgLogo();
@@ -70,6 +74,8 @@ function OrgSettingsSection() {
 		email: "",
 		website: "",
 		mfa_required: false,
+		brand_color: DEFAULT_BRAND_COLOR,
+		followups_enabled: false,
 	});
 
 	useEffect(() => {
@@ -83,6 +89,8 @@ function OrgSettingsSection() {
 				website: org.website ?? "",
 				restock_mode: org.restock_mode,
 				mfa_required: org.mfa_required,
+				brand_color: org.brand_color ?? DEFAULT_BRAND_COLOR,
+				followups_enabled: org.followups_enabled,
 			});
 			setLogoImgError(false);
 		}
@@ -130,9 +138,15 @@ function OrgSettingsSection() {
 		setSaveError(null);
 		setSaveSuccess(false);
 		setNameError(null);
+		setBrandColorError(null);
 
 		if (!form.name?.trim()) {
 			setNameError("Organization name is required.");
+			return;
+		}
+
+		if (form.brand_color && !HEX_COLOR_RE.test(form.brand_color)) {
+			setBrandColorError("Enter a valid 6-digit hex color, e.g. #1e3a5f.");
 			return;
 		}
 
@@ -146,6 +160,8 @@ function OrgSettingsSection() {
 				website: form.website || null,
 				...(form.restock_mode ? { restock_mode: form.restock_mode } : {}),
 				mfa_required: !!form.mfa_required,
+				brand_color: form.brand_color || null,
+				followups_enabled: form.followups_enabled ?? false,
 			});
 			setSaveSuccess(true);
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -455,6 +471,82 @@ function OrgSettingsSection() {
 						}
 						label="Require two-factor authentication"
 					/>
+				</div>
+
+				{/* Branding */}
+				<div className="mt-5">
+					<span className="mb-1 block text-xs font-medium text-text-tertiary">
+						Brand Color
+					</span>
+					<p className="mb-2 text-xs text-text-muted">
+						Used as the accent color in outgoing client emails.
+					</p>
+					<div className="flex items-center gap-2">
+						<input
+							type="color"
+							aria-label="Brand color picker"
+							value={
+								// The native color input requires lowercase hex; an uppercase
+								// saved value (e.g. "#1E3A5F") would otherwise reset it to black.
+								form.brand_color && HEX_COLOR_RE.test(form.brand_color)
+									? form.brand_color.toLowerCase()
+									: DEFAULT_BRAND_COLOR
+							}
+							onChange={(e) => {
+								setForm((prev) => ({ ...prev, brand_color: e.target.value }));
+								setBrandColorError(null);
+							}}
+							className="h-8 w-10 cursor-pointer rounded border border-border bg-surface p-0.5"
+						/>
+						<input
+							type="text"
+							value={form.brand_color ?? ""}
+							onChange={(e) => {
+								setForm((prev) => ({ ...prev, brand_color: e.target.value }));
+								setBrandColorError(null);
+							}}
+							placeholder="#1e3a5f"
+							className={`${inputBase} max-w-[140px] font-mono ${brandColorError ? "!border-error focus:!border-error focus:!ring-error" : ""}`}
+						/>
+					</div>
+					{brandColorError && (
+						<p className="mt-1 text-xs text-error-text">{brandColorError}</p>
+					)}
+				</div>
+
+				{/* Automated Client Followups */}
+				<div className="mt-5">
+					<label
+						className="flex cursor-pointer items-start gap-2.5"
+						onClick={() =>
+							setForm((prev) => ({
+								...prev,
+								followups_enabled: !prev.followups_enabled,
+							}))
+						}
+					>
+						<div
+							className={`relative mt-0.5 h-4 w-7 flex-shrink-0 rounded-full border transition-colors ${
+								form.followups_enabled
+									? "border-primary bg-primary"
+									: "border-border bg-surface-inset"
+							}`}
+						>
+							<span
+								className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+									form.followups_enabled ? "translate-x-3" : "translate-x-0.5"
+								}`}
+							/>
+						</div>
+						<span>
+							<span className="block text-xs font-medium text-text-primary">
+								Automated Client Followups
+							</span>
+							<span className="block text-xs text-text-muted">
+								Enable scheduled follow-up email sequences for quotes, invoices, and requests.
+							</span>
+						</span>
+					</label>
 				</div>
 
 				<div className="mt-5 flex items-center gap-3">

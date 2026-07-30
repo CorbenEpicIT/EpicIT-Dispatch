@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Banknote } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import SearchBar from "../../components/ui/SearchBar";
@@ -10,7 +10,8 @@ import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import PaymentsByMethodChart from "../../components/reports/PaymentsByMethodChart";
-import { exportReport } from "../../api/reports";
+import ReportPagination from "../../components/reports/ReportPagination";
+import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import {
@@ -19,9 +20,10 @@ import {
 	useColumnVisibility,
 	type ColumnOption,
 } from "../../hooks/useColumnVisibility";
-import { formatCurrency, formatDate } from "../../util/util";
+import { formatCurrency } from "../../util/util";
 import { parseDateRangeFromParams, resolveDateRange } from "../../util/dateRangeUtils";
 import { usePaymentsReportQuery } from "../../hooks/useReports";
+import type { ReportFetchParams } from "../../types/reports";
 
 const COLS: ColumnOption[] = [
 	{ key: "paidAt", label: "Paid" },
@@ -34,10 +36,15 @@ const COLS: ColumnOption[] = [
 	{ key: "note", label: "Note" },
 ];
 
-const TEXT_KEYS = ["invoiceNumber", "clientName", "method", "recordedBy"] as const;
-
 const HEADER_LABELS = buildHeaderLabels(COLS);
 const COLUMN_ALIGN = buildColumnAlign(COLS, ["amount"]);
+
+interface PaymentsSummary {
+	totalCollected?: number;
+	count?: number;
+	avg?: number;
+	byMethod?: { method: string; amount: number; count: number }[];
+}
 
 export default function PaymentsReportPage() {
 	const navigate = useNavigate();
@@ -50,48 +57,45 @@ export default function PaymentsReportPage() {
 	const startDate = resolved?.start.toISOString();
 	const endDate = resolved?.end.toISOString();
 
-	const { data, isLoading, error } = usePaymentsReportQuery(startDate, endDate);
-	const records = useMemo(() => data ?? [], [data]);
+	const [page, setPage] = useState(0);
+	const [pageSize, setPageSize] = useState(50);
 
-	const rows = useMemo(() => {
-		const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
-		return records.filter((r) =>
-			activeTerms.every((term) => {
-				const t = term.toLowerCase();
-				return TEXT_KEYS.some((key) => String(r[key] ?? "").toLowerCase().includes(t));
-			}),
-		);
-	}, [records, searchInput, terms]);
+	const searchTerms = useMemo(() => {
+		const t = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
+		return t.length ? t : undefined;
+	}, [terms, searchInput]);
+
+	const queryParams = useMemo<ReportFetchParams>(
+		() => ({ startDate, endDate, searchTerms, page, limit: pageSize }),
+		[startDate, endDate, searchTerms, page, pageSize],
+	);
+
+	const { data, isLoading, isFetching, error } = usePaymentsReportQuery(queryParams);
+	const rows = useMemo(() => data?.rows ?? [], [data]);
+	const total = data?.total ?? 0;
+	const hasMore = data?.hasMore ?? false;
+	const summary = useMemo(() => (data?.summary ?? {}) as PaymentsSummary, [data]);
+
+	const filterKey = JSON.stringify([startDate, endDate, searchTerms, pageSize]);
+	useEffect(() => {
+		setPage(0);
+	}, [filterKey]);
 
 	const stats = useMemo(() => {
-		const total = rows.reduce((s, r) => s + r.amount, 0);
-		const count = rows.length;
+		const count = summary.count ?? 0;
 		return [
 			{
 				label: "Total Collected",
-				value: formatCurrency(total),
+				value: formatCurrency(summary.totalCollected ?? 0),
 				hint: `${count} ${count === 1 ? "payment" : "payments"}`,
 			},
 			{ label: "Payments", value: String(count) },
-			{ label: "Avg Payment", value: formatCurrency(count > 0 ? total / count : 0) },
+			{ label: "Avg Payment", value: formatCurrency(summary.avg ?? 0) },
 		];
-	}, [rows]);
+	}, [summary]);
 
-	const byMethod = useMemo(() => {
-		const map = new Map<string, { amount: number; count: number }>();
-		for (const r of rows) {
-			const method = r.method || "Unspecified";
-			const bucket = map.get(method) ?? { amount: 0, count: 0 };
-			bucket.amount += r.amount;
-			bucket.count++;
-			map.set(method, bucket);
-		}
-		return [...map.entries()]
-			.map(([method, b]) => ({ method, ...b }))
-			.sort((a, b) => b.amount - a.amount);
-	}, [rows]);
-
-	const totalCollected = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows]);
+	const byMethod = summary.byMethod ?? [];
+	const totalCollected = summary.totalCollected ?? 0;
 
 	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
 		"payments-report",
@@ -101,15 +105,16 @@ export default function PaymentsReportPage() {
 	const displayRows = useMemo(
 		() =>
 			rows.map((r) => ({
-				id: r.invoiceId,
-				paidAt: formatDate(r.paidAt),
+				id: r.id,
+				_invoiceId: r._invoiceId,
+				paidAt: r.paidAt,
 				invoiceNumber: r.invoiceNumber,
 				clientName: r.clientName,
-				amount: formatCurrency(r.amount),
-				method: r.method || "—",
-				recordedBy: r.recordedBy ?? "—",
-				qbSynced: r.qbSynced ? "Synced" : "—",
-				note: r.note || "—",
+				amount: formatCurrency(Number(r.amount)),
+				method: r.method,
+				recordedBy: r.recordedBy,
+				qbSynced: r.qbSynced === "Synced" ? "Synced" : "—",
+				note: r.note,
 			})),
 		[rows],
 	);
@@ -120,7 +125,7 @@ export default function PaymentsReportPage() {
 	};
 
 	const hasActiveFilters = terms.length > 0 || dateRange.option !== "all";
-	const showEmpty = rows.length === 0 && !isLoading && !error;
+	const showEmpty = total === 0 && !isLoading && !error;
 
 	return (
 		<div className="text-text-primary">
@@ -140,7 +145,7 @@ export default function PaymentsReportPage() {
 				))}
 			</div>
 
-			{!isLoading && !error && rows.length > 0 && (
+			{!isLoading && !error && total > 0 && (
 				<div className="mb-4 h-72">
 					<PaymentsByMethodChart data={byMethod} total={totalCollected} />
 				</div>
@@ -161,14 +166,15 @@ export default function PaymentsReportPage() {
 						<DateRangeFilter paramKey="period" />
 						<ExportExcelButton
 							onExport={() =>
-								exportReport({
+								exportReportServer({
+									report: "payments",
 									filename: datedFilename("payments-collected"),
 									sheetName: "Payments",
 									columns: visibleColumns,
-									rows: displayRows,
+									params: { startDate, endDate, searchTerms },
 								})
 							}
-							disabled={rows.length === 0}
+							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
 					</>
@@ -182,7 +188,7 @@ export default function PaymentsReportPage() {
 					onRemove: () => removeTerm(term),
 					highlighted: duplicateTerm === term,
 				}))}
-				resultCount={rows.length}
+				resultCount={total}
 				onClearAll={clearAllFilters}
 			/>
 
@@ -200,16 +206,27 @@ export default function PaymentsReportPage() {
 						</p>
 					</div>
 				) : (
-					<AdaptableTable
-						data={displayRows}
-						loadListener={isLoading}
-						errListener={error}
-						formatNums={false}
-						columnVisibility={columnVisibility}
-						headerLabels={HEADER_LABELS}
-						columnAlign={COLUMN_ALIGN}
-						onRowClick={(row) => navigate(`/dispatch/invoices/${row.id as string}`)}
-					/>
+					<>
+						<AdaptableTable
+							data={displayRows}
+							loadListener={isLoading}
+							errListener={error}
+							formatNums={false}
+							columnVisibility={columnVisibility}
+							headerLabels={HEADER_LABELS}
+							columnAlign={COLUMN_ALIGN}
+							onRowClick={(row) => navigate(`/dispatch/invoices/${row._invoiceId as string}`)}
+						/>
+						<ReportPagination
+							page={page}
+							pageSize={pageSize}
+							total={total}
+							hasMore={hasMore}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							isFetching={isFetching}
+						/>
+					</>
 				)}
 			</div>
 		</div>

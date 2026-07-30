@@ -18,6 +18,7 @@ import {
 	Truck,
 	UserRoundCog,
 	Plus,
+	Mail,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
@@ -55,6 +56,7 @@ export default function DispatchLayout() {
 		"manage_organization",
 		"manage_roles",
 	]);
+	const canViewFollowups = usePermission("view_followups");
 
 	useSocketQuerySync();
 
@@ -256,6 +258,14 @@ export default function DispatchLayout() {
 								to="/dispatch/reporting"
 								icon={<FileText size={ICON_SIZE} />}
 								label="Reporting"
+							/>
+						)}
+						{canViewFollowups && (
+							<SideNavItem
+								expanded={expanded}
+								to="/dispatch/followups"
+								icon={<Mail size={ICON_SIZE} />}
+								label="Followups"
 							/>
 						)}
 						<SideNavItem

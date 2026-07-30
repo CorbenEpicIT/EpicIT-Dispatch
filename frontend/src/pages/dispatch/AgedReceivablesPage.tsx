@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DollarSign } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchBar from "../../components/ui/SearchBar";
@@ -9,7 +9,8 @@ import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
 import AgedReceivablesColumnChart from "../../components/reports/AgedReceivablesColumnChart";
-import { exportReport } from "../../api/reports";
+import ReportPagination from "../../components/reports/ReportPagination";
+import { exportReportServer } from "../../api/reports";
 import { datedFilename } from "../../util/download";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import {
@@ -23,6 +24,7 @@ import {
 	useAgedReceivablesQuery,
 	useAgedReceivablesByClientQuery,
 } from "../../hooks/useReports";
+import type { ReportFetchParams } from "../../types/reports";
 
 const COLS: ColumnOption[] = [
 	{ key: "clientName", label: "Client" },
@@ -38,35 +40,37 @@ const AMOUNT_KEYS = ["bucket0_30", "bucket31_60", "bucket61_90", "bucket90plus",
 const HEADER_LABELS = buildHeaderLabels(COLS);
 const COLUMN_ALIGN = buildColumnAlign(COLS, AMOUNT_KEYS);
 
+type BucketSummary = Partial<Record<(typeof AMOUNT_KEYS)[number], number>>;
+
 export default function AgedReceivablesPage() {
 	const navigate = useNavigate();
 	const [searchInput, setSearchInput] = useState("");
 	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
 
-	const summary = useAgedReceivablesQuery();
-	const { data, isLoading, error } = useAgedReceivablesByClientQuery();
-	const records = useMemo(() => data ?? [], [data]);
+	const [page, setPage] = useState(0);
+	const [pageSize, setPageSize] = useState(50);
 
-	const rows = useMemo(() => {
-		const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
-		return records.filter((r) =>
-			activeTerms.every((term) => r.clientName.toLowerCase().includes(term.toLowerCase())),
-		);
-	}, [records, searchInput, terms]);
+	const searchTerms = useMemo(() => {
+		const t = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
+		return t.length ? t : undefined;
+	}, [terms, searchInput]);
 
-	const totals = useMemo(() => {
-		const acc: Record<(typeof AMOUNT_KEYS)[number], number> = {
-			bucket0_30: 0,
-			bucket31_60: 0,
-			bucket61_90: 0,
-			bucket90plus: 0,
-			total: 0,
-		};
-		for (const r of rows) {
-			for (const key of AMOUNT_KEYS) acc[key] += r[key];
-		}
-		return acc;
-	}, [rows]);
+	const queryParams = useMemo<ReportFetchParams>(
+		() => ({ searchTerms, page, limit: pageSize }),
+		[searchTerms, page, pageSize],
+	);
+
+	const summaryChart = useAgedReceivablesQuery();
+	const { data, isLoading, isFetching, error } = useAgedReceivablesByClientQuery(queryParams);
+	const rows = useMemo(() => data?.rows ?? [], [data]);
+	const total = data?.total ?? 0;
+	const hasMore = data?.hasMore ?? false;
+	const totals = useMemo(() => (data?.summary ?? {}) as BucketSummary, [data]);
+
+	const filterKey = JSON.stringify([searchTerms, pageSize]);
+	useEffect(() => {
+		setPage(0);
+	}, [filterKey]);
 
 	const { hidden, toggle, reset, columnVisibility, visibleColumns } = useColumnVisibility(
 		"aged-receivables",
@@ -76,13 +80,13 @@ export default function AgedReceivablesPage() {
 	const displayRows = useMemo(
 		() =>
 			rows.map((r) => ({
-				id: r.clientId,
+				id: r.id,
 				clientName: r.clientName,
-				bucket0_30: formatCurrency(r.bucket0_30),
-				bucket31_60: formatCurrency(r.bucket31_60),
-				bucket61_90: formatCurrency(r.bucket61_90),
-				bucket90plus: formatCurrency(r.bucket90plus),
-				total: formatCurrency(r.total),
+				bucket0_30: formatCurrency(Number(r.bucket0_30)),
+				bucket31_60: formatCurrency(Number(r.bucket31_60)),
+				bucket61_90: formatCurrency(Number(r.bucket61_90)),
+				bucket90plus: formatCurrency(Number(r.bucket90plus)),
+				total: formatCurrency(Number(r.total)),
 			})),
 		[rows],
 	);
@@ -90,7 +94,7 @@ export default function AgedReceivablesPage() {
 	const footerRow = useMemo(
 		() => ({
 			clientName: "Total",
-			...Object.fromEntries(AMOUNT_KEYS.map((k) => [k, formatCurrency(totals[k])])),
+			...Object.fromEntries(AMOUNT_KEYS.map((k) => [k, formatCurrency(totals[k] ?? 0)])),
 		}),
 		[totals],
 	);
@@ -101,15 +105,15 @@ export default function AgedReceivablesPage() {
 	};
 
 	const hasActiveFilters = terms.length > 0;
-	const showEmpty = rows.length === 0 && !isLoading && !error;
+	const showEmpty = total === 0 && !isLoading && !error;
 
 	return (
 		<div className="text-text-primary">
 			<PageHeader title="Aged Receivables" />
 
-			{summary.data && (
+			{summaryChart.data && (
 				<div className="mb-4 h-72">
-					<AgedReceivablesColumnChart data={summary.data} />
+					<AgedReceivablesColumnChart data={summaryChart.data} />
 				</div>
 			)}
 
@@ -127,14 +131,15 @@ export default function AgedReceivablesPage() {
 					<>
 						<ExportExcelButton
 							onExport={() =>
-								exportReport({
+								exportReportServer({
+									report: "aged-receivables-by-client",
 									filename: datedFilename("aged-receivables"),
 									sheetName: "Aged Receivables",
 									columns: visibleColumns,
-									rows: displayRows,
+									params: { searchTerms },
 								})
 							}
-							disabled={rows.length === 0}
+							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
 					</>
@@ -148,7 +153,7 @@ export default function AgedReceivablesPage() {
 					onRemove: () => removeTerm(term),
 					highlighted: duplicateTerm === term,
 				}))}
-				resultCount={rows.length}
+				resultCount={total}
 				onClearAll={clearAllFilters}
 			/>
 
@@ -166,17 +171,28 @@ export default function AgedReceivablesPage() {
 						</p>
 					</div>
 				) : (
-					<AdaptableTable
-						data={displayRows}
-						loadListener={isLoading}
-						errListener={error}
-						formatNums={false}
-						columnVisibility={columnVisibility}
-						headerLabels={HEADER_LABELS}
-						columnAlign={COLUMN_ALIGN}
-						footerRow={footerRow}
-						onRowClick={(row) => navigate(`/dispatch/clients/${row.id as string}`)}
-					/>
+					<>
+						<AdaptableTable
+							data={displayRows}
+							loadListener={isLoading}
+							errListener={error}
+							formatNums={false}
+							columnVisibility={columnVisibility}
+							headerLabels={HEADER_LABELS}
+							columnAlign={COLUMN_ALIGN}
+							footerRow={footerRow}
+							onRowClick={(row) => navigate(`/dispatch/clients/${row.id as string}`)}
+						/>
+						<ReportPagination
+							page={page}
+							pageSize={pageSize}
+							total={total}
+							hasMore={hasMore}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							isFetching={isFetching}
+						/>
+					</>
 				)}
 			</div>
 		</div>

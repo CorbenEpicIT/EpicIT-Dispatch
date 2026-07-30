@@ -2,21 +2,80 @@ import { getScopedDb } from "../lib/context.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { centsToDollars, dollarsToCents, type TaxSnapshot } from "../services/taxEngine.js";
 import { getStockStatus } from "../lib/inventory.js";
+import {
+	buildSqlParts,
+	type ColumnDef,
+	type ColumnMap,
+	type DefaultOrder,
+} from "../lib/reports/pushdown.js";
+import type { PaginateParams } from "../lib/reports/filterEngine.js";
+import { round2 } from "../lib/reports/numbers.js";
 import { getOrgRealmId } from "../services/quickbooksService.js";
 import { log } from "../services/appLogger.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 
-// Cap on the rows that a report can have would require a change in dates
+// Upper bound on rows pulled into memory for the in-JS report aggregations
 const REPORT_ROW_CAP = 10000;
 
-const warnIfCapped = (count: number, report: string, organizationId: string) => {
-	if (count >= REPORT_ROW_CAP) {
-		log.warn(
-			{ report, organizationId, cap: REPORT_ROW_CAP },
-			"Report row cap reached; results may be truncated",
-		);
-	}
-};
+// Only text is searchable
+const t = (expr: string): ColumnDef => ({ expr, type: "text", filterable: true, sortable: true, searchable: true });
+const n = (expr: string): ColumnDef => ({ expr, type: "number", filterable: true, sortable: true, searchable: false });
+const cur = (expr: string): ColumnDef => ({ expr, type: "currency", filterable: true, sortable: true, searchable: false });
+const dt = (expr: string): ColumnDef => ({ expr, type: "date", filterable: true, sortable: true, searchable: false });
+
+export interface PageResult<T> {
+	rows: T[];
+	total: number;
+	page: number;
+	pageSize: number;
+}
+
+// SQL id-prefilter: fetch a page of ids (+ total) via WHERE/ORDER/LIMIT, then
+// hydrate just those ids through Prisma and re-order to match. Returns null if
+// the request can't be expressed in SQL → caller uses the in-memory fallback.
+async function runIdPrefilter<T>(opts: {
+	sdb: ReturnType<typeof getScopedDb>;
+	from: string;
+	baseWhere: string;
+	baseParams: unknown[];
+	idExpr: string;
+	columns: ColumnMap;
+	defaultOrder: DefaultOrder;
+	params: PaginateParams;
+	hydrate: (ids: string[]) => Promise<T[]>;
+	rowId: (row: T) => string;
+}): Promise<(PageResult<T> & { whereSql: string; whereParams: unknown[] }) | null> {
+	const parts = buildSqlParts(opts.params, opts.columns, {
+		defaultOrder: opts.defaultOrder,
+		idExpr: opts.idExpr,
+		paramOffset: opts.baseParams.length,
+	});
+	if (!parts) return null;
+
+	const whereFull = opts.baseWhere + (parts.whereSql ? ` AND ${parts.whereSql}` : "");
+	const whereParams = [...opts.baseParams, ...parts.whereParams];
+	const idSql = `SELECT ${opts.idExpr} AS id FROM ${opts.from} WHERE ${whereFull} ORDER BY ${parts.orderSql} LIMIT $${whereParams.length + 1} OFFSET $${whereParams.length + 2}`;
+	const countSql = `SELECT COUNT(*)::int AS count FROM ${opts.from} WHERE ${whereFull}`;
+
+	const [idRows, countRows] = await Promise.all([
+		opts.sdb.$queryRawUnsafe<{ id: string }[]>(idSql, ...whereParams, parts.limit, parts.offset),
+		opts.sdb.$queryRawUnsafe<{ count: number }[]>(countSql, ...whereParams),
+	]);
+
+	const ids = idRows.map((r) => r.id);
+	const hydrated = await opts.hydrate(ids);
+	const byId = new Map(hydrated.map((r) => [opts.rowId(r), r]));
+	const rows = ids.map((id) => byId.get(id)).filter((r): r is T => r !== undefined);
+	return {
+		rows,
+		total: countRows[0]?.count ?? 0,
+		page: parts.page,
+		pageSize: parts.pageSize,
+		// base + dynamic, so callers can run matching aggregates
+		whereSql: whereFull,
+		whereParams,
+	};
+}
 
 // ============================================================================
 // OVERVIEW METRICS
@@ -630,9 +689,7 @@ export const getMileageReport = async (
 			},
 		},
 		orderBy: { scheduled_start_at: "desc" },
-		take: REPORT_ROW_CAP,
 	});
-	warnIfCapped(visits.length, "mileage", organizationId);
 
 	return visits.map((v) => ({
 		visitId: v.id,
@@ -692,9 +749,7 @@ export const getTimesheetReport = async (
 			tech: { select: { id: true, name: true } },
 		},
 		orderBy: { started_at: "desc" },
-		take: REPORT_ROW_CAP,
 	});
-	warnIfCapped(shifts.length, "timesheets", organizationId);
 
 	return shifts.map((s) => ({
 		shiftId: s.id,
@@ -752,9 +807,7 @@ export const getInventoryReorderForecast = async (
 		FROM inventory_item ii
 		WHERE ii.organization_id = ${organizationId}
 			AND ii.is_active = true
-		LIMIT ${REPORT_ROW_CAP}
 	`;
-	warnIfCapped(rows.length, "inventory-reorder-forecast", organizationId);
 
 	const now = Date.now();
 
@@ -782,7 +835,7 @@ export const getInventoryReorderForecast = async (
 		};
 	});
 
-	// Soonest projected stockout first with items with no recent last
+	// Shortest projected stockout first and items with no usage last
 	built.sort((a, b) => {
 		const aT = a.projectedStockoutDate ? new Date(a.projectedStockoutDate).getTime() : Infinity;
 		const bT = b.projectedStockoutDate ? new Date(b.projectedStockoutDate).getTime() : Infinity;
@@ -790,6 +843,75 @@ export const getInventoryReorderForecast = async (
 	});
 
 	return built;
+};
+
+const INVENTORY_INCLUDE = {
+	tags: { orderBy: { label: "asc" } },
+	vehicle_stocks: { select: { qty_on_hand: true, qty_standard: true } },
+} satisfies Prisma.inventory_itemInclude;
+
+const inventoryBaseWhere = (includeInactive: boolean): Record<string, unknown> => ({
+	provisional: false,
+	...(includeInactive ? {} : { is_active: true }),
+});
+
+// Usage totals (qty consumed) per item, keyed by item id, over an optional range.
+const inventoryUsageByItem = async (
+	sdb: ReturnType<typeof getScopedDb>,
+	organizationId: string,
+	from?: Date,
+	to?: Date,
+	itemIds?: string[],
+): Promise<Map<string, number>> => {
+	const usage = await sdb.stock_movement.groupBy({
+		by: ["inventory_item_id"],
+		where: {
+			organization_id: organizationId,
+			reason: { in: ["parts_used", "direct_consumption"] },
+			...(from && to ? { created_at: { gte: from, lte: to } } : {}),
+			...(itemIds ? { inventory_item_id: { in: itemIds } } : {}),
+		},
+		_sum: { qty: true },
+	});
+	return new Map(usage.map((u) => [u.inventory_item_id, Number(u._sum.qty ?? 0)]));
+};
+
+const mapInventoryItem = (
+	item: Prisma.inventory_itemGetPayload<{ include: typeof INVENTORY_INCLUDE }>,
+	usageByItem: Map<string, number>,
+) => {
+	const fleetQty = item.vehicle_stocks.reduce((sum, vs) => sum + Number(vs.qty_on_hand ?? 0), 0);
+	const fleetStandard = item.vehicle_stocks.reduce(
+		(sum, vs) => sum + Number(vs.qty_standard ?? 0),
+		0,
+	);
+	const warehouseQty = item.quantity;
+	const totalQty = warehouseQty + fleetQty;
+	const cost = item.cost != null ? Number(item.cost) : null;
+
+	return {
+		id: item.id,
+		name: item.name,
+		sku: item.sku ?? null,
+		category: item.category ?? null,
+		description: item.description,
+		unit: item.unit,
+		isActive: item.is_active,
+		quantity: warehouseQty,
+		fleetQty,
+		fleetStandard,
+		totalQty,
+		lowStockThreshold: item.low_stock_threshold,
+		cost,
+		unitPrice: item.unit_price != null ? Number(item.unit_price) : null,
+		assetValue: cost != null ? cost * totalQty : null,
+		qtyUsed: usageByItem.get(item.id) ?? 0,
+		stockStatus: getStockStatus(warehouseQty, item.low_stock_threshold),
+		location: item.location,
+		tags: item.tags,
+		altIds: item.alt_ids,
+		updatedAt: item.updated_at,
+	};
 };
 
 export const getInventoryReport = async (
@@ -800,64 +922,76 @@ export const getInventoryReport = async (
 	const sdb = getScopedDb(organizationId);
 
 	const items = await sdb.inventory_item.findMany({
-		where: {
-			provisional: false,
-			...(includeInactive ? {} : { is_active: true }),
-		},
+		where: inventoryBaseWhere(includeInactive),
 		orderBy: { name: "asc" },
-		include: {
-			tags: { orderBy: { label: "asc" } },
-			vehicle_stocks: { select: { qty_on_hand: true, qty_standard: true } },
-		},
-		take: REPORT_ROW_CAP,
+		include: INVENTORY_INCLUDE,
 	});
-	warnIfCapped(items.length, "inventory-full", organizationId);
+	const usageByItem = await inventoryUsageByItem(sdb, organizationId, from, to);
+	return items.map((item) => mapInventoryItem(item, usageByItem));
+};
 
-	const usage = await sdb.stock_movement.groupBy({
-		by: ["inventory_item_id"],
-		where: {
-			organization_id: organizationId,
-			reason: { in: ["parts_used", "direct_consumption"] },
-			...(from && to ? { created_at: { gte: from, lte: to } } : {}),
-		},
-		_sum: { qty: true },
+const FLEET_ON_HAND =
+	'(SELECT COALESCE(SUM(vs.qty_on_hand), 0) FROM "vehicle_stock_item" vs WHERE vs.inventory_item_id = ii.id)';
+
+const INVENTORY_SQL_COLUMNS: ColumnMap = {
+	itemName: t("ii.name"),
+	sku: t("ii.sku"),
+	category: t("ii.category"),
+	description: t("ii.description"),
+	unit: t("ii.unit"),
+	location: t("ii.location"),
+	status: t("CASE WHEN ii.is_active THEN 'Active' ELSE 'Discontinued' END"),
+	quantity: n("ii.quantity"),
+	lowStockThreshold: n("ii.low_stock_threshold"),
+	cost: cur("ii.cost"),
+	unitPrice: cur("ii.unit_price"),
+	fleetQty: n(FLEET_ON_HAND),
+	fleetStandard: n(
+		'(SELECT COALESCE(SUM(vs.qty_standard), 0) FROM "vehicle_stock_item" vs WHERE vs.inventory_item_id = ii.id)',
+	),
+	totalQty: n(`(ii.quantity + ${FLEET_ON_HAND})`),
+	assetValue: cur(`(ii.cost * (ii.quantity + ${FLEET_ON_HAND}))`),
+	updatedAt: dt("ii.updated_at"),
+};
+
+export const getInventoryReportPage = async (
+	organizationId: string,
+	opts: { from?: Date; to?: Date; includeInactive: boolean },
+	params: PaginateParams,
+) => {
+	const { from, to, includeInactive } = opts;
+	const sdb = getScopedDb(organizationId);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "ii.organization_id = $1 AND ii.provisional = false";
+	if (!includeInactive) baseWhere += " AND ii.is_active = true";
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"inventory_item" ii',
+		baseWhere,
+		baseParams,
+		idExpr: "ii.id",
+		columns: INVENTORY_SQL_COLUMNS,
+		defaultOrder: { expr: "ii.name", dir: "asc" },
+		params,
+		hydrate: (ids) =>
+			sdb.inventory_item.findMany({ where: { id: { in: ids } }, include: INVENTORY_INCLUDE }),
+		rowId: (r) => r.id,
 	});
-	const usageByItem = new Map(usage.map((u) => [u.inventory_item_id, Number(u._sum.qty ?? 0)]));
-
-	return items.map((item) => {
-		const fleetQty = item.vehicle_stocks.reduce((sum, vs) => sum + Number(vs.qty_on_hand ?? 0), 0);
-		const fleetStandard = item.vehicle_stocks.reduce(
-			(sum, vs) => sum + Number(vs.qty_standard ?? 0),
-			0,
-		);
-		const warehouseQty = item.quantity;
-		const totalQty = warehouseQty + fleetQty;
-		const cost = item.cost != null ? Number(item.cost) : null;
-
-		return {
-			id: item.id,
-			name: item.name,
-			sku: item.sku ?? null,
-			category: item.category ?? null,
-			description: item.description,
-			unit: item.unit,
-			isActive: item.is_active,
-			quantity: warehouseQty,
-			fleetQty,
-			fleetStandard,
-			totalQty,
-			lowStockThreshold: item.low_stock_threshold,
-			cost,
-			unitPrice: item.unit_price != null ? Number(item.unit_price) : null,
-			assetValue: cost != null ? cost * totalQty : null,
-			qtyUsed: usageByItem.get(item.id) ?? 0,
-			stockStatus: getStockStatus(warehouseQty, item.low_stock_threshold),
-			location: item.location,
-			tags: item.tags,
-			altIds: item.alt_ids,
-			updatedAt: item.updated_at,
-		};
-	});
+	if (!res) return null;
+	const usageByItem = await inventoryUsageByItem(
+		sdb,
+		organizationId,
+		from,
+		to,
+		res.rows.map((i) => i.id),
+	);
+	return {
+		rows: res.rows.map((item) => mapInventoryItem(item, usageByItem)),
+		total: res.total,
+		page: res.page,
+		pageSize: res.pageSize,
+	};
 };
 
 // ============================================================================
@@ -945,11 +1079,7 @@ export const getAgedReceivablesByClient = async (organizationId: string) => {
 			AND COALESCE(i.due_date, i.created_at) <= NOW()
 		GROUP BY c.id, c.name
 		ORDER BY "total" DESC
-		LIMIT ${REPORT_ROW_CAP}
 	`;
-	warnIfCapped(rows.length, "receivables-aging-by-client", organizationId);
-
-	const round2 = (n: number | null) => Math.round(Number(n ?? 0) * 100) / 100;
 
 	return rows.map((r) => ({
 		clientId: r.clientId,
@@ -1017,9 +1147,7 @@ export const getTaxLiabilityReport = async (
 			subtotal: true,
 			discount_amount: true,
 		},
-		take: REPORT_ROW_CAP,
 	});
-	warnIfCapped(invoices.length, "tax-liability", organizationId);
 
 	const acc = new Map<
 		string,
@@ -1129,68 +1257,212 @@ export const getTaxLiabilityReport = async (
 // JOBS
 // ============================================================================
 
+const JOBS_INCLUDE = {
+	client: { select: { name: true } },
+	_count: { select: { visits: true } },
+} satisfies Prisma.jobInclude;
+
+const jobsBaseWhere = (
+	organizationId: string,
+	startDate?: string,
+	endDate?: string,
+): Record<string, unknown> => {
+	const dateFilter = buildDateFilter(startDate, endDate);
+	return {
+		organization_id: organizationId,
+		...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+	};
+};
+
+const mapJobRaw = (job: Prisma.jobGetPayload<{ include: typeof JOBS_INCLUDE }>) => {
+	const estimatedTotal = job.estimated_total != null ? Number(job.estimated_total) : null;
+	const actualTotal = job.actual_total != null ? Number(job.actual_total) : null;
+	const variance =
+		estimatedTotal != null && actualTotal != null ? actualTotal - estimatedTotal : null;
+	const source = job.quote_id
+		? "Quote"
+		: job.recurring_plan_id
+			? "Recurring Plan"
+			: job.request_id
+				? "Request"
+				: "Manual";
+
+	return {
+		id: job.id,
+		jobNumber: job.job_number,
+		name: job.name,
+		clientName: job.client.name,
+		status: job.status,
+		priority: job.priority,
+		jobType: job.recurring_plan_id ? "Recurring" : "One-off",
+		source,
+		address: job.address,
+		createdAt: job.created_at,
+		completedAt: job.completed_at,
+		cancelledAt: job.cancelled_at,
+		estimatedTotal,
+		actualTotal,
+		variance,
+		subtotal: Number(job.subtotal),
+		taxAmount: Number(job.tax_amount),
+		discountAmount: job.discount_amount != null ? Number(job.discount_amount) : null,
+		visitCount: job._count.visits,
+	};
+};
+
 export const getJobsReport = async (
 	startDate: string | undefined,
 	endDate: string | undefined,
 	organizationId: string,
 ) => {
 	const sdb = getScopedDb(organizationId);
-	const dateFilter = buildDateFilter(startDate, endDate);
+	const jobs = await sdb.job.findMany({
+		where: jobsBaseWhere(organizationId, startDate, endDate),
+		orderBy: { created_at: "desc" },
+		include: JOBS_INCLUDE,
+	});
+	return jobs.map(mapJobRaw);
+};
 
+// j = job, c = client
+const JOBS_SQL_COLUMNS: ColumnMap = {
+	jobNumber: t("j.job_number"),
+	name: t("j.name"),
+	clientName: t("c.name"),
+	status: t("j.status::text"),
+	priority: t("j.priority::text"),
+	jobType: t("CASE WHEN j.recurring_plan_id IS NOT NULL THEN 'Recurring' ELSE 'One-off' END"),
+	source: t(
+		"CASE WHEN j.quote_id IS NOT NULL THEN 'Quote' WHEN j.recurring_plan_id IS NOT NULL THEN 'Recurring Plan' WHEN j.request_id IS NOT NULL THEN 'Request' ELSE 'Manual' END",
+	),
+	address: t("j.address"),
+	createdAt: dt("j.created_at"),
+	completedAt: dt("j.completed_at"),
+	cancelledAt: dt("j.cancelled_at"),
+	estimatedTotal: cur("j.estimated_total"),
+	actualTotal: cur("j.actual_total"),
+	variance: cur("(j.actual_total - j.estimated_total)"),
+	subtotal: cur("j.subtotal"),
+	taxAmount: cur("j.tax_amount"),
+	discountAmount: cur("j.discount_amount"),
+	visitCount: n('(SELECT COUNT(*) FROM "job_visit" v WHERE v.job_id = j.id)'),
+};
+
+export const getJobsReportPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+): Promise<PageResult<ReturnType<typeof mapJobRaw>> | null> => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "j.organization_id = $1";
+	if (df.gte) baseWhere += ` AND j.created_at >= $${baseParams.push(df.gte)}`;
+	if (df.lte) baseWhere += ` AND j.created_at <= $${baseParams.push(df.lte)}`;
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"job" j JOIN "client" c ON c.id = j.client_id',
+		baseWhere,
+		baseParams,
+		idExpr: "j.id",
+		columns: JOBS_SQL_COLUMNS,
+		defaultOrder: { expr: "j.created_at", dir: "desc" },
+		params,
+		hydrate: (ids) => sdb.job.findMany({ where: { id: { in: ids } }, include: JOBS_INCLUDE }),
+		rowId: (r) => r.id,
+	});
+	if (!res) return null;
+	return { rows: res.rows.map(mapJobRaw), total: res.total, page: res.page, pageSize: res.pageSize };
+};
+
+// ============================================================================
+// FIRST-TIME FIX RATE
+// ============================================================================
+
+const FTFR_INCLUDE = {
+	client: { select: { name: true } },
+	_count: { select: { visits: true } },
+} satisfies Prisma.jobInclude;
+
+const mapFtfrRaw = (job: Prisma.jobGetPayload<{ include: typeof FTFR_INCLUDE }>) => ({
+	id: job.id,
+	jobNumber: job.job_number,
+	name: job.name,
+	clientName: job.client.name,
+	completedAt: job.completed_at,
+	visitCount: job._count.visits,
+	firstTimeFix: job._count.visits === 1,
+});
+
+export const getFirstTimeFixReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
 	const jobs = await sdb.job.findMany({
 		where: {
 			organization_id: organizationId,
-			...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+			status: "Completed",
+			visits: { some: {} },
+			...(Object.keys(dateFilter).length && { completed_at: dateFilter }),
 		},
-		orderBy: { created_at: "desc" },
-		include: {
-			client: { select: { name: true } },
-			_count: { select: { visits: true } },
-		},
-		take: REPORT_ROW_CAP,
+		orderBy: { completed_at: "desc" },
+		include: FTFR_INCLUDE,
 	});
-	warnIfCapped(jobs.length, "jobs", organizationId);
-
-	return jobs.map((job) => {
-		const estimatedTotal = job.estimated_total != null ? Number(job.estimated_total) : null;
-		const actualTotal = job.actual_total != null ? Number(job.actual_total) : null;
-		const variance =
-			estimatedTotal != null && actualTotal != null ? actualTotal - estimatedTotal : null;
-		const source = job.quote_id
-			? "Quote"
-			: job.recurring_plan_id
-				? "Recurring Plan"
-				: job.request_id
-					? "Request"
-					: "Manual";
-
-		return {
-			id: job.id,
-			jobNumber: job.job_number,
-			name: job.name,
-			clientName: job.client.name,
-			status: job.status,
-			priority: job.priority,
-			jobType: job.recurring_plan_id ? "Recurring" : "One-off",
-			source,
-			address: job.address,
-			createdAt: job.created_at,
-			completedAt: job.completed_at,
-			cancelledAt: job.cancelled_at,
-			estimatedTotal,
-			actualTotal,
-			variance,
-			subtotal: Number(job.subtotal),
-			taxAmount: Number(job.tax_amount),
-			discountAmount: job.discount_amount != null ? Number(job.discount_amount) : null,
-			visitCount: job._count.visits,
-		};
-	});
+	return jobs.map(mapFtfrRaw);
 };
 
 // ============================================================================
 // INVOICES
 // ============================================================================
+
+const INVOICES_INCLUDE = { client: { select: { name: true } } } satisfies Prisma.invoiceInclude;
+
+const invoicesBaseWhere = (
+	organizationId: string,
+	startDate?: string,
+	endDate?: string,
+): Record<string, unknown> => {
+	const dateFilter = buildDateFilter(startDate, endDate);
+	return {
+		organization_id: organizationId,
+		...(Object.keys(dateFilter).length && {
+			OR: [{ issue_date: dateFilter }, { issue_date: null, created_at: dateFilter }],
+		}),
+	};
+};
+
+const mapInvoiceRaw = (invoice: Prisma.invoiceGetPayload<{ include: typeof INVOICES_INCLUDE }>) => {
+	const balanceDue = Number(invoice.balance_due);
+	const dueDate = invoice.due_date;
+	const now = Date.now();
+	const daysOverdue =
+		balanceDue > 0 && dueDate && dueDate.getTime() < now
+			? Math.floor((now - dueDate.getTime()) / DAY_MS)
+			: 0;
+
+	return {
+		id: invoice.id,
+		invoiceNumber: invoice.invoice_number,
+		clientName: invoice.client.name,
+		status: invoice.status,
+		issueDate: invoice.issue_date,
+		dueDate: invoice.due_date,
+		paidAt: invoice.paid_at,
+		sentAt: invoice.sent_at,
+		total: Number(invoice.total),
+		amountPaid: Number(invoice.amount_paid),
+		balanceDue,
+		subtotal: Number(invoice.subtotal),
+		taxAmount: Number(invoice.tax_amount),
+		daysOverdue,
+		qbSyncStatus: invoice.qb_sync_status,
+	};
+};
 
 export const getInvoicesReport = async (
 	startDate: string | undefined,
@@ -1198,49 +1470,73 @@ export const getInvoicesReport = async (
 	organizationId: string,
 ) => {
 	const sdb = getScopedDb(organizationId);
-	const dateFilter = buildDateFilter(startDate, endDate);
-
 	const invoices = await sdb.invoice.findMany({
-		where: {
-			organization_id: organizationId,
-			...(Object.keys(dateFilter).length && {
-				OR: [{ issue_date: dateFilter }, { issue_date: null, created_at: dateFilter }],
-			}),
-		},
+		where: invoicesBaseWhere(organizationId, startDate, endDate),
 		orderBy: { created_at: "desc" },
-		include: { client: { select: { name: true } } },
-		take: REPORT_ROW_CAP,
+		include: INVOICES_INCLUDE,
 	});
-	warnIfCapped(invoices.length, "invoices", organizationId);
+	return invoices.map(mapInvoiceRaw);
+};
 
-	const now = Date.now();
+const INVOICES_SQL_COLUMNS: ColumnMap = {
+	invoiceNumber: t("i.invoice_number"),
+	clientName: t("c.name"),
+	status: t("i.status::text"),
+	issueDate: dt("i.issue_date"),
+	dueDate: dt("i.due_date"),
+	paidAt: dt("i.paid_at"),
+	sentAt: dt("i.sent_at"),
+	total: cur("i.total"),
+	amountPaid: cur("i.amount_paid"),
+	balanceDue: cur("i.balance_due"),
+	subtotal: cur("i.subtotal"),
+	taxAmount: cur("i.tax_amount"),
+	daysOverdue: n(
+		"CASE WHEN i.balance_due > 0 AND i.due_date IS NOT NULL AND i.due_date < NOW() THEN FLOOR(EXTRACT(EPOCH FROM (NOW() - i.due_date)) / 86400) ELSE 0 END",
+	),
+	qbSyncStatus: t("i.qb_sync_status::text"),
+};
 
-	return invoices.map((invoice) => {
-		const balanceDue = Number(invoice.balance_due);
-		const dueDate = invoice.due_date;
-		const daysOverdue =
-			balanceDue > 0 && dueDate && dueDate.getTime() < now
-				? Math.floor((now - dueDate.getTime()) / DAY_MS)
-				: 0;
+export const getInvoicesReportPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+): Promise<PageResult<ReturnType<typeof mapInvoiceRaw>> | null> => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "i.organization_id = $1";
+	if (df.gte || df.lte) {
+		const issueConds: string[] = [];
+		const createdConds: string[] = ["i.issue_date IS NULL"];
+		if (df.gte) {
+			const idx = baseParams.push(df.gte);
+			issueConds.push(`i.issue_date >= $${idx}`);
+			createdConds.push(`i.created_at >= $${idx}`);
+		}
+		if (df.lte) {
+			const idx = baseParams.push(df.lte);
+			issueConds.push(`i.issue_date <= $${idx}`);
+			createdConds.push(`i.created_at <= $${idx}`);
+		}
+		baseWhere += ` AND ((${issueConds.join(" AND ")}) OR (${createdConds.join(" AND ")}))`;
+	}
 
-		return {
-			id: invoice.id,
-			invoiceNumber: invoice.invoice_number,
-			clientName: invoice.client.name,
-			status: invoice.status,
-			issueDate: invoice.issue_date,
-			dueDate: invoice.due_date,
-			paidAt: invoice.paid_at,
-			sentAt: invoice.sent_at,
-			total: Number(invoice.total),
-			amountPaid: Number(invoice.amount_paid),
-			balanceDue,
-			subtotal: Number(invoice.subtotal),
-			taxAmount: Number(invoice.tax_amount),
-			daysOverdue,
-			qbSyncStatus: invoice.qb_sync_status,
-		};
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"invoice" i JOIN "client" c ON c.id = i.client_id',
+		baseWhere,
+		baseParams,
+		idExpr: "i.id",
+		columns: INVOICES_SQL_COLUMNS,
+		defaultOrder: { expr: "i.created_at", dir: "desc" },
+		params,
+		hydrate: (ids) => sdb.invoice.findMany({ where: { id: { in: ids } }, include: INVOICES_INCLUDE }),
+		rowId: (r) => r.id,
 	});
+	if (!res) return null;
+	return { rows: res.rows.map(mapInvoiceRaw), total: res.total, page: res.page, pageSize: res.pageSize };
 };
 
 // ============================================================================
@@ -1321,11 +1617,7 @@ export const getClientsReport = async (organizationId: string) => {
 		) inv ON inv.client_id = c.id
 		WHERE c.organization_id = ${organizationId}
 		ORDER BY "lifetimeRevenue" DESC
-		LIMIT ${REPORT_ROW_CAP}
 	`;
-	warnIfCapped(rows.length, "clients", organizationId);
-
-	const round2 = (n: number | null) => Math.round(Number(n ?? 0) * 100) / 100;
 
 	return rows.map((r) => ({
 		id: r.id,
@@ -1349,8 +1641,155 @@ export const getClientsReport = async (organizationId: string) => {
 };
 
 // ============================================================================
+// CLIENT RETENTION
+// ============================================================================
+
+// Active clients with no purchase, service, or communication within #
+export const getClientRetentionReport = async (
+	organizationId: string,
+	opts: { lookbackDays: number },
+) => {
+	const sdb = getScopedDb(organizationId);
+	const cutoff = new Date(Date.now() - opts.lookbackDays * DAY_MS);
+
+	const rows = await sdb.$queryRaw<
+		{
+			id: string;
+			name: string;
+			primaryContact: string | null;
+			email: string | null;
+			phone: string | null;
+			lastActivityAt: Date | null;
+			jobCount: number;
+			lifetimeRevenue: number | null;
+		}[]
+	>`
+		WITH purchase AS (
+			SELECT i.client_id, MAX(ip.paid_at) AS ts
+			FROM invoice i
+			JOIN invoice_payment ip ON ip.invoice_id = i.id
+			WHERE i.organization_id = ${organizationId}
+			GROUP BY i.client_id
+		),
+		service AS (
+			SELECT client_id, MAX(created_at) AS ts FROM (
+				SELECT client_id, created_at FROM request WHERE organization_id = ${organizationId}
+				UNION ALL
+				SELECT client_id, created_at FROM job WHERE organization_id = ${organizationId}
+				UNION ALL
+				SELECT client_id, created_at FROM quote WHERE organization_id = ${organizationId}
+			) s
+			GROUP BY client_id
+		),
+		comm AS (
+			SELECT client_id, MAX(ts) AS ts FROM (
+				SELECT client_id, created_at AS ts FROM client_note WHERE organization_id = ${organizationId}
+				UNION ALL
+				SELECT client_id, sent_at AS ts FROM quote WHERE organization_id = ${organizationId} AND sent_at IS NOT NULL
+				UNION ALL
+				SELECT client_id, viewed_at AS ts FROM quote WHERE organization_id = ${organizationId} AND viewed_at IS NOT NULL
+				UNION ALL
+				SELECT client_id, sent_at AS ts FROM invoice WHERE organization_id = ${organizationId} AND sent_at IS NOT NULL
+				UNION ALL
+				SELECT client_id, viewed_at AS ts FROM invoice WHERE organization_id = ${organizationId} AND viewed_at IS NOT NULL
+			) c
+			GROUP BY client_id
+		)
+		SELECT * FROM (
+			SELECT
+				c.id   AS "id",
+				c.name AS "name",
+				pc.name  AS "primaryContact",
+				pc.email AS "email",
+				pc.phone AS "phone",
+				GREATEST(p.ts, s.ts, cm.ts) AS "lastActivityAt",
+				COALESCE(j.job_count, 0)::int           AS "jobCount",
+				COALESCE(inv.lifetime_revenue, 0)::float AS "lifetimeRevenue"
+			FROM client c
+			LEFT JOIN LATERAL (
+				SELECT ct.name, ct.email, ct.phone
+				FROM client_contact cc
+				JOIN contact ct ON ct.id = cc.contact_id
+				WHERE cc.client_id = c.id
+				ORDER BY cc.is_primary DESC, cc.is_billing DESC
+				LIMIT 1
+			) pc ON true
+			LEFT JOIN purchase p ON p.client_id = c.id
+			LEFT JOIN service s ON s.client_id = c.id
+			LEFT JOIN comm cm ON cm.client_id = c.id
+			LEFT JOIN (
+				SELECT client_id, COUNT(*) AS job_count
+				FROM job
+				WHERE organization_id = ${organizationId}
+				GROUP BY client_id
+			) j ON j.client_id = c.id
+			LEFT JOIN (
+				SELECT client_id, SUM(amount_paid) AS lifetime_revenue
+				FROM invoice
+				WHERE organization_id = ${organizationId}
+				GROUP BY client_id
+			) inv ON inv.client_id = c.id
+			WHERE c.organization_id = ${organizationId}
+				AND c.is_active = true
+		) t
+		WHERE t."lastActivityAt" < ${cutoff}
+		ORDER BY t."lastActivityAt" DESC
+	`;
+
+	return rows.map((r) => ({
+		id: r.id,
+		name: r.name,
+		primaryContact: r.primaryContact,
+		email: r.email,
+		phone: r.phone,
+		lastActivityAt: r.lastActivityAt,
+		jobCount: r.jobCount,
+		lifetimeRevenue: round2(r.lifetimeRevenue),
+	}));
+};
+
+// ============================================================================
 // PAYMENTS COLLECTED
 // ============================================================================
+
+const PAYMENTS_INCLUDE = {
+	invoice: {
+		select: {
+			id: true,
+			invoice_number: true,
+			client: { select: { name: true } },
+		},
+	},
+	recorded_by_dispatcher: { select: { name: true } },
+	recorded_by_tech: { select: { name: true } },
+} satisfies Prisma.invoice_paymentInclude;
+
+const paymentsBaseWhere = (
+	organizationId: string,
+	startDate?: string,
+	endDate?: string,
+): Record<string, unknown> => {
+	const dateFilter = buildDateFilter(startDate, endDate);
+	return {
+		invoice: { organization_id: organizationId },
+		...(Object.keys(dateFilter).length && { paid_at: dateFilter }),
+	};
+};
+
+const mapPaymentRaw = (
+	p: Prisma.invoice_paymentGetPayload<{ include: typeof PAYMENTS_INCLUDE }>,
+) => ({
+	paymentId: p.id,
+	paidAt: p.paid_at,
+	invoiceId: p.invoice.id,
+	invoiceNumber: p.invoice.invoice_number,
+	clientName: p.invoice.client.name,
+	amount: Number(p.amount),
+	method: p.method,
+	note: p.note,
+	recordedBy: p.recorded_by_dispatcher?.name ?? p.recorded_by_tech?.name ?? null,
+	qbSynced: !!p.qb_payment_id,
+});
 
 export const getPaymentsReport = async (
 	startDate: string | undefined,
@@ -1358,41 +1797,96 @@ export const getPaymentsReport = async (
 	organizationId: string,
 ) => {
 	const sdb = getScopedDb(organizationId);
-	const dateFilter = buildDateFilter(startDate, endDate);
-
 	const payments = await sdb.invoice_payment.findMany({
-		where: {
-			invoice: { organization_id: organizationId },
-			...(Object.keys(dateFilter).length && { paid_at: dateFilter }),
-		},
+		where: paymentsBaseWhere(organizationId, startDate, endDate),
 		orderBy: { paid_at: "desc" },
-		include: {
-			invoice: {
-				select: {
-					id: true,
-					invoice_number: true,
-					client: { select: { name: true } },
-				},
-			},
-			recorded_by_dispatcher: { select: { name: true } },
-			recorded_by_tech: { select: { name: true } },
-		},
-		take: REPORT_ROW_CAP,
+		include: PAYMENTS_INCLUDE,
 	});
-	warnIfCapped(payments.length, "payments", organizationId);
+	return payments.map(mapPaymentRaw);
+};
 
-	return payments.map((p) => ({
-		paymentId: p.id,
-		paidAt: p.paid_at,
-		invoiceId: p.invoice.id,
-		invoiceNumber: p.invoice.invoice_number,
-		clientName: p.invoice.client.name,
-		amount: Number(p.amount),
-		method: p.method,
-		note: p.note,
-		recordedBy: p.recorded_by_dispatcher?.name ?? p.recorded_by_tech?.name ?? null,
-		qbSynced: !!p.qb_payment_id,
-	}));
+const PAYMENTS_FROM =
+	'"invoice_payment" p JOIN "invoice" i ON i.id = p.invoice_id JOIN "client" c ON c.id = i.client_id LEFT JOIN "dispatcher" disp ON disp.id = p.recorded_by_dispatcher_id LEFT JOIN "technician" tech ON tech.id = p.recorded_by_tech_id';
+
+const PAYMENTS_SQL_COLUMNS: ColumnMap = {
+	invoiceNumber: t("i.invoice_number"),
+	clientName: t("c.name"),
+	method: t("p.method"),
+	note: t("p.note"),
+	recordedBy: t("COALESCE(disp.name, tech.name)"),
+	qbSynced: t("CASE WHEN p.qb_payment_id IS NOT NULL THEN 'Synced' ELSE 'Not synced' END"),
+	amount: cur("p.amount"),
+	paidAt: dt("p.paid_at"),
+};
+
+const getPaymentsSummarySql = async (
+	sdb: ReturnType<typeof getScopedDb>,
+	whereSql: string,
+	whereParams: unknown[],
+) => {
+	const [totals] = await sdb.$queryRawUnsafe<{ total: number; count: number }[]>(
+		`SELECT COALESCE(SUM(p.amount), 0)::float AS total, COUNT(*)::int AS count FROM ${PAYMENTS_FROM} WHERE ${whereSql}`,
+		...whereParams,
+	);
+	const byMethodRaw = await sdb.$queryRawUnsafe<{ method: string | null; amount: number; count: number }[]>(
+		`SELECT p.method AS method, COALESCE(SUM(p.amount), 0)::float AS amount, COUNT(*)::int AS count FROM ${PAYMENTS_FROM} WHERE ${whereSql} GROUP BY p.method`,
+		...whereParams,
+	);
+	const total = totals?.total ?? 0;
+	const count = totals?.count ?? 0;
+	const byMethodMap = new Map<string, { amount: number; count: number }>();
+	for (const g of byMethodRaw) {
+		const method = g.method ? String(g.method) : "Unspecified";
+		const bucket = byMethodMap.get(method) ?? { amount: 0, count: 0 };
+		bucket.amount += g.amount;
+		bucket.count += g.count;
+		byMethodMap.set(method, bucket);
+	}
+	return {
+		totalCollected: total,
+		count,
+		avg: count > 0 ? total / count : 0,
+		byMethod: [...byMethodMap.entries()]
+			.map(([method, b]) => ({ method, ...b }))
+			.sort((a, b) => b.amount - a.amount),
+	};
+};
+
+export const getPaymentsReportPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "i.organization_id = $1";
+	if (df.gte) baseWhere += ` AND p.paid_at >= $${baseParams.push(df.gte)}`;
+	if (df.lte) baseWhere += ` AND p.paid_at <= $${baseParams.push(df.lte)}`;
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: PAYMENTS_FROM,
+		baseWhere,
+		baseParams,
+		idExpr: "p.id",
+		columns: PAYMENTS_SQL_COLUMNS,
+		defaultOrder: { expr: "p.paid_at", dir: "desc" },
+		params,
+		hydrate: (ids) =>
+			sdb.invoice_payment.findMany({ where: { id: { in: ids } }, include: PAYMENTS_INCLUDE }),
+		rowId: (r) => r.id,
+	});
+	if (!res) return null;
+	const summary = await getPaymentsSummarySql(sdb, res.whereSql, res.whereParams);
+	return {
+		rows: res.rows.map(mapPaymentRaw),
+		total: res.total,
+		page: res.page,
+		pageSize: res.pageSize,
+		summary,
+	};
 };
 
 // ============================================================================
@@ -1401,27 +1895,56 @@ export const getPaymentsReport = async (
 
 const LOST_QUOTE_STATUSES = ["Rejected", "Expired", "Cancelled"] as const;
 
+const QUOTE_INCLUDE = {
+	client: { select: { name: true } },
+	request: { select: { source: true } },
+} satisfies Prisma.quoteInclude;
+
+const quotesBaseWhere = (
+	startDate?: string,
+	endDate?: string,
+): Record<string, unknown> => {
+	const dateFilter = buildDateFilter(startDate, endDate);
+	return {
+		is_active: true,
+		...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+	};
+};
+
+const mapQuoteRaw = (q: Prisma.quoteGetPayload<{ include: typeof QUOTE_INCLUDE }>) => {
+	const approvalBaseline = q.sent_at ?? q.issued_at ?? q.created_at;
+	const daysToApprove = q.approved_at
+		? Math.round(((q.approved_at.getTime() - approvalBaseline.getTime()) / DAY_MS) * 10) / 10
+		: null;
+	return {
+		quoteId: q.id,
+		quoteNumber: q.quote_number,
+		title: q.title,
+		clientName: q.client.name,
+		status: q.status,
+		source: q.request?.source ?? "manual",
+		total: Number(q.total),
+		createdAt: q.created_at,
+		issuedAt: q.issued_at,
+		sentAt: q.sent_at,
+		viewedAt: q.viewed_at,
+		approvedAt: q.approved_at,
+		daysToApprove,
+	};
+};
+
 export const getQuoteFunnelReport = async (
 	startDate: string | undefined,
 	endDate: string | undefined,
 	organizationId: string,
 ) => {
 	const sdb = getScopedDb(organizationId);
-	const dateFilter = buildDateFilter(startDate, endDate);
 
 	const quotes = await sdb.quote.findMany({
-		where: {
-			is_active: true,
-			...(Object.keys(dateFilter).length && { created_at: dateFilter }),
-		},
+		where: quotesBaseWhere(startDate, endDate),
 		orderBy: { created_at: "desc" },
-		include: {
-			client: { select: { name: true } },
-			request: { select: { source: true } },
-		},
-		take: REPORT_ROW_CAP,
+		include: QUOTE_INCLUDE,
 	});
-	warnIfCapped(quotes.length, "quote-funnel", organizationId);
 
 	const funnel = { created: quotes.length, issued: 0, sent: 0, viewed: 0, approved: 0 };
 	let valueWon = 0;
@@ -1447,11 +1970,8 @@ export const getQuoteFunnelReport = async (
 			lostCount++;
 		}
 
-		const approvalBaseline = q.sent_at ?? q.issued_at ?? q.created_at;
-		const daysToApprove = q.approved_at
-			? Math.round(((q.approved_at.getTime() - approvalBaseline.getTime()) / DAY_MS) * 10) / 10
-			: null;
-		if (daysToApprove != null) approveDays.push(daysToApprove);
+		const row = mapQuoteRaw(q);
+		if (row.daysToApprove != null) approveDays.push(row.daysToApprove);
 
 		const source = q.request?.source ?? "manual";
 		const bucket = bySourceMap.get(source) ?? { quotes: 0, approved: 0 };
@@ -1459,25 +1979,10 @@ export const getQuoteFunnelReport = async (
 		if (approved) bucket.approved++;
 		bySourceMap.set(source, bucket);
 
-		return {
-			quoteId: q.id,
-			quoteNumber: q.quote_number,
-			title: q.title,
-			clientName: q.client.name,
-			status: q.status,
-			source,
-			total,
-			createdAt: q.created_at,
-			issuedAt: q.issued_at,
-			sentAt: q.sent_at,
-			viewedAt: q.viewed_at,
-			approvedAt: q.approved_at,
-			daysToApprove,
-		};
+		return row;
 	});
 
 	const decided = funnel.approved + lostCount;
-	const round2 = (n: number) => Math.round(n * 100) / 100;
 
 	return {
 		funnel,
@@ -1494,6 +1999,143 @@ export const getQuoteFunnelReport = async (
 			rate: b.quotes > 0 ? Math.round((b.approved / b.quotes) * 100) : 0,
 		})),
 		quotes: rows,
+	};
+};
+
+const QUOTES_SQL_COLUMNS: ColumnMap = {
+	quoteNumber: t("q.quote_number"),
+	title: t("q.title"),
+	clientName: t("c.name"),
+	status: t("q.status::text"),
+	source: t("COALESCE(r.source, 'manual')"),
+	total: cur("q.total"),
+	createdAt: dt("q.created_at"),
+	issuedAt: dt("q.issued_at"),
+	sentAt: dt("q.sent_at"),
+	viewedAt: dt("q.viewed_at"),
+	approvedAt: dt("q.approved_at"),
+	daysToApprove: n(
+		"CASE WHEN q.approved_at IS NOT NULL THEN ROUND((EXTRACT(EPOCH FROM (q.approved_at - COALESCE(q.sent_at, q.issued_at, q.created_at))) / 86400.0)::numeric, 1) ELSE NULL END",
+	),
+};
+
+export const getQuoteRowsPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+): Promise<PageResult<ReturnType<typeof mapQuoteRaw>> | null> => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "q.organization_id = $1 AND q.is_active = true";
+	if (df.gte) baseWhere += ` AND q.created_at >= $${baseParams.push(df.gte)}`;
+	if (df.lte) baseWhere += ` AND q.created_at <= $${baseParams.push(df.lte)}`;
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"quote" q JOIN "client" c ON c.id = q.client_id LEFT JOIN "request" r ON r.id = q.request_id',
+		baseWhere,
+		baseParams,
+		idExpr: "q.id",
+		columns: QUOTES_SQL_COLUMNS,
+		defaultOrder: { expr: "q.created_at", dir: "desc" },
+		params,
+		hydrate: (ids) => sdb.quote.findMany({ where: { id: { in: ids } }, include: QUOTE_INCLUDE }),
+		rowId: (r) => r.id,
+	});
+	if (!res) return null;
+	return { rows: res.rows.map(mapQuoteRaw), total: res.total, page: res.page, pageSize: res.pageSize };
+};
+
+interface FunnelScalarRow {
+	created: number;
+	issued: number;
+	sent: number;
+	viewed: number;
+	approved: number;
+	valueWon: number;
+	valueLost: number;
+	lostCount: number;
+	avgDays: number | null;
+}
+
+interface BySourceRow {
+	source: string;
+	quotes: number;
+	approved: number;
+}
+
+export const getQuoteFunnelSummary = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	const conds: string[] = [`q.organization_id = $1`, `q.is_active = true`];
+	const params: unknown[] = [organizationId];
+	if (dateFilter.gte) {
+		params.push(dateFilter.gte);
+		conds.push(`q.created_at >= $${params.length}`);
+	}
+	if (dateFilter.lte) {
+		params.push(dateFilter.lte);
+		conds.push(`q.created_at <= $${params.length}`);
+	}
+	const whereSql = conds.join(" AND ");
+
+	const [scalar] = await sdb.$queryRawUnsafe<FunnelScalarRow[]>(
+		`SELECT
+			COUNT(*)::int AS created,
+			COUNT(*) FILTER (WHERE q.issued_at IS NOT NULL OR q.sent_at IS NOT NULL OR q.viewed_at IS NOT NULL OR q.approved_at IS NOT NULL)::int AS issued,
+			COUNT(*) FILTER (WHERE q.sent_at IS NOT NULL OR q.viewed_at IS NOT NULL OR q.approved_at IS NOT NULL)::int AS sent,
+			COUNT(*) FILTER (WHERE q.viewed_at IS NOT NULL OR q.approved_at IS NOT NULL)::int AS viewed,
+			COUNT(*) FILTER (WHERE q.approved_at IS NOT NULL)::int AS approved,
+			COALESCE(SUM(q.total) FILTER (WHERE q.status = 'Approved'), 0)::float AS "valueWon",
+			COALESCE(SUM(q.total) FILTER (WHERE q.status IN ('Rejected','Expired','Cancelled')), 0)::float AS "valueLost",
+			COUNT(*) FILTER (WHERE q.status IN ('Rejected','Expired','Cancelled'))::int AS "lostCount",
+			AVG(ROUND((EXTRACT(EPOCH FROM (q.approved_at - COALESCE(q.sent_at, q.issued_at, q.created_at))) / 86400.0)::numeric, 1)) FILTER (WHERE q.approved_at IS NOT NULL)::float AS "avgDays"
+		FROM quote q
+		WHERE ${whereSql}`,
+		...params,
+	);
+
+	const bySourceRaw = await sdb.$queryRawUnsafe<BySourceRow[]>(
+		`SELECT
+			COALESCE(r.source, 'manual') AS source,
+			COUNT(*)::int AS quotes,
+			COUNT(*) FILTER (WHERE q.approved_at IS NOT NULL)::int AS approved
+		FROM quote q
+		LEFT JOIN request r ON r.id = q.request_id
+		WHERE ${whereSql}
+		GROUP BY COALESCE(r.source, 'manual')`,
+		...params,
+	);
+
+	const funnel = {
+		created: scalar?.created ?? 0,
+		issued: scalar?.issued ?? 0,
+		sent: scalar?.sent ?? 0,
+		viewed: scalar?.viewed ?? 0,
+		approved: scalar?.approved ?? 0,
+	};
+	const lostCount = scalar?.lostCount ?? 0;
+	const decided = funnel.approved + lostCount;
+
+	return {
+		funnel,
+		winRate: decided > 0 ? Math.round((funnel.approved / decided) * 100) : null,
+		avgDaysToApprove: scalar?.avgDays != null ? round2(scalar.avgDays) : null,
+		valueWon: round2(scalar?.valueWon ?? 0),
+		valueLost: round2(scalar?.valueLost ?? 0),
+		bySource: bySourceRaw.map((b) => ({
+			source: b.source,
+			quotes: b.quotes,
+			approved: b.approved,
+			rate: b.quotes > 0 ? Math.round((b.approved / b.quotes) * 100) : 0,
+		})),
 	};
 };
 
@@ -1528,11 +2170,8 @@ export const getTechnicianScorecard = async (
 			visit_techs: { select: { tech: { select: { id: true, name: true } } } },
 			time_entries: { select: { tech_id: true, hours_worked: true } },
 		},
-		take: REPORT_ROW_CAP,
 	});
-	warnIfCapped(visits.length, "technician-scorecard", organizationId);
 
-	const round2 = (n: number) => Math.round(n * 100) / 100;
 	const rows: {
 		techId: string;
 		techName: string;

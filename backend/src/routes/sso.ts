@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { Request } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import {
     ErrorCodes,
     createSuccessResponse,
@@ -10,7 +10,8 @@ import {
     buildAuthorizationUrl,
     mintHandoffCode,
     consumeHandoffCode,
-    getAvailableProviders
+    getAvailableProviders,
+    SSO_ENABLED,
 } from "../services/ssoService.js";
 import { getScopedDb } from '../lib/context.js';
 import { issueAuthTokens } from '../controllers/authenticationController.js';
@@ -19,6 +20,18 @@ const router = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:5173";
 const isProd = process.env.NODE_ENV === "production";
+
+// SSO is temporarily disabled (see ssoService.SSO_ENABLED). /providers still
+// responds (getAvailableProviders returns []) so the login page renders cleanly;
+// the initiation/exchange routes short-circuit with a 404.
+function requireSsoEnabled(_req: Request, res: Response, next: NextFunction) {
+    if (!SSO_ENABLED) {
+        return res
+            .status(404)
+            .json(createErrorResponse(ErrorCodes.NOT_FOUND, "SSO is disabled"));
+    }
+    next();
+}
 
 function readCookie(req: Request, name: string): string | undefined {
     const header = req.headers.cookie ?? "";
@@ -32,7 +45,7 @@ router.get("/providers", (_req, res) => {
     return res.json(createSuccessResponse({ providers: getAvailableProviders() }));
 });
 
-router.get("/start", async (req, res) => {
+router.get("/start", requireSsoEnabled, async (req, res) => {
     const provider = req.query.provider as "google" | "microsoft";
     if (!provider) {
         return res
@@ -52,7 +65,7 @@ router.get("/start", async (req, res) => {
     return res.redirect(url);
 });
 
-router.get("/callback", async (req, res) => {
+router.get("/callback", requireSsoEnabled, async (req, res) => {
     const raw = readCookie(req, "sso_state");
     res.clearCookie("sso_state");
     const ssoState = raw ? JSON.parse(raw) : null;
@@ -83,7 +96,7 @@ router.get("/callback", async (req, res) => {
     return res.redirect(`${FRONTEND_URL}/auth/sso/complete?code=${code}`);
 });
 
-router.post("/exchange", async (req, res) => {
+router.post("/exchange", requireSsoEnabled, async (req, res) => {
     const code = req.body.code as string;
     const response = await consumeHandoffCode(code);
     if (!response) {

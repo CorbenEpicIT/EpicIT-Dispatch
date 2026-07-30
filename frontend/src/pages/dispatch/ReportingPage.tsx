@@ -92,6 +92,11 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 				description: "Predicted stockouts by usage",
 				to: "/dispatch/inventory/reorder-forecast",
 			},
+			{
+				title: "First-Time Fix Rate",
+				description: "Jobs resolved on the first visit",
+				to: "/dispatch/reporting/first-time-fix",
+			},
 		],
 	},
 	{
@@ -111,7 +116,18 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 			},
 		],
 	},
-	{ id: "client", label: "Client Reports", icon: Users, entries: [] },
+	{
+		id: "client",
+		label: "Client Reports",
+		icon: Users,
+		entries: [
+			{
+				title: "Client Retention",
+				description: "Active clients with no recent activity",
+				to: "/dispatch/reporting/client-retention",
+			},
+		],
+	},
 ];
 
 const CATEGORY_IDS: ReportCategoryId[] = REPORT_CATEGORIES.map((c) => c.id);

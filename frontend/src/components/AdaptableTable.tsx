@@ -54,7 +54,7 @@ const AdaptableTable = ({
 		if (data.length == 0) return [];
 
 		const dataColumns = Object.keys(data[0])
-			.filter((key) => !IGNORED_HEADERS[key])
+			.filter((key) => !IGNORED_HEADERS[key] && !key.startsWith("_"))
 			.map((key) => ({
 				header: headerLabels?.[key] ?? camelCaseToRegular(key),
 				accessorKey: key,

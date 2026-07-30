@@ -268,6 +268,42 @@ enum qb_sync_status {
   failed
 }
 
+enum followup_trigger_type {
+  manual
+  date_based
+  quote_sent
+  invoice_sent
+  request_created
+  visit_scheduled
+}
+
+enum followup_step_condition {
+  always
+  if_previous_not_opened
+}
+
+enum followup_enrollment_status {
+  active
+  completed
+  stopped
+  failed
+}
+
+enum followup_send_status {
+  sent
+  skipped
+  failed
+}
+
+enum email_template_category {
+  followup
+  reminder
+  quote_chase
+  invoice_chase
+  request_ack
+  custom
+}
+
 model organization {
   id        String  @id @default(uuid())
   name      String
@@ -284,6 +320,9 @@ model organization {
   mfa_required        Boolean @default(false) // Require MFA for all users in this org
 
   logo_key String?
+
+  brand_color       String?  @default("#1e3a5f")
+  followups_enabled Boolean  @default(false)
 
   // quickbooks integration fields
   qb_realm_id           String?
@@ -324,6 +363,11 @@ model organization {
 
   saved_reports         saved_report[]
   report_favorites      report_favorite[]
+
+  followup_sequences   followup_sequence[]
+  followup_enrollments followup_enrollment[]
+  followup_sends       followup_send[]
+  email_templates      email_template[]
 }
 
 model saved_report {
@@ -443,6 +487,7 @@ model client {
   invoices        invoice[]
   client_external_mapping client_external_mapping[]
   serial_units    serial_unit[]
+  followup_enrollments followup_enrollment[]
 
   @@index([is_active])
   @@index([is_tax_exempt])
@@ -531,6 +576,7 @@ model request {
   @@index([updated_at])
   @@index([created_by_dispatcher_id])
   @@index([status, priority]) // Composite for "urgent pending requests"
+  @@index([organization_id, created_at])
 }
 
 model request_note {
@@ -619,6 +665,7 @@ model quote {
   @@index([created_at])
   @@index([client_id, is_active])
   @@index([request_id, is_active])
+  @@index([organization_id, created_at])
   @@unique([organization_id, quote_number])
 }
 
@@ -724,6 +771,7 @@ model job {
   @@index([updated_at])
 
   @@index([client_id, status])
+  @@index([organization_id, created_at])
   @@unique([organization_id, job_number])
 }
 
@@ -804,6 +852,7 @@ model job_visit {
   @@index([scheduled_start_at])
   @@index([scheduled_end_at])
   @@index([job_id, scheduled_start_at])
+  @@index([status, actual_end_at])
 }
 
 model job_visit_line_item {
@@ -1732,6 +1781,7 @@ model technician_shift {
   @@index([tech_id])
   @@index([org_id])
   @@index([tech_id, ended_at])
+  @@index([org_id, started_at])
 }
 
 model technician_shift_break {
@@ -1882,6 +1932,8 @@ model invoice {
   @@index([due_date])
   @@index([recurring_plan_id])
   @@index([client_id, status])
+  @@index([organization_id, created_at])
+  @@index([organization_id, issue_date])
   @@unique([organization_id, invoice_number])
   @@unique([account_id, qb_invoice_id])
 }
@@ -1979,7 +2031,131 @@ model invoice_note {
 }
 
 // ============================================================================
-// Verification tokens 
+// AUTOMATED FOLLOWUPS
+// ============================================================================
+
+model followup_sequence {
+  id              String        @id @default(uuid())
+  organization_id String?
+  organization    organization? @relation(fields: [organization_id], references: [id])
+  name            String
+  description     String?
+  trigger_type    followup_trigger_type @default(manual)
+  trigger_config  Json?
+  stop_on_open    Boolean       @default(true)
+  is_active       Boolean       @default(true)
+  created_by_dispatcher_id String?
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  steps       followup_step[]
+  enrollments followup_enrollment[]
+
+  @@index([trigger_type])
+  @@index([organization_id, trigger_type, is_active])
+}
+
+model followup_step {
+  id                String   @id @default(uuid())
+  sequence_id       String
+  sequence          followup_sequence @relation(fields: [sequence_id], references: [id], onDelete: Cascade)
+  step_order        Int
+  // The category IS the Postmark template alias sent for this step; org branding
+  // (logo, accent) is passed as template-model variables at send time.
+  category          email_template_category @default(followup)
+  delay_amount      Int      @default(0)
+  delay_unit        String   @default("days") // "hours" | "days"
+  condition         followup_step_condition @default(if_previous_not_opened)
+  created_at        DateTime @default(now())
+
+  sends followup_send[]
+
+  @@unique([sequence_id, step_order])
+  @@index([sequence_id])
+}
+
+model followup_enrollment {
+  id                 String   @id @default(uuid())
+  organization_id    String?
+  organization       organization? @relation(fields: [organization_id], references: [id])
+  sequence_id        String
+  sequence           followup_sequence @relation(fields: [sequence_id], references: [id], onDelete: Cascade)
+  client_id          String
+  client             client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  contact_id         String?
+  recipient_email    String
+  status             followup_enrollment_status @default(active)
+  current_step_order Int      @default(0)
+  next_send_at       DateTime?
+  anchor_entity_type String?  // "quote" | "invoice" | "request" | "job_visit"
+  anchor_entity_id   String?
+  anchor_at          DateTime? // anchor datetime: visit start (reminders) or target date (date_based)
+  enrolled_by_dispatcher_id String? // null = system/auto
+  started_at         DateTime @default(now())
+  completed_at       DateTime?
+  stopped_at         DateTime?
+  stop_reason        String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  sends followup_send[]
+
+  @@index([organization_id])
+  @@index([status, next_send_at])
+  @@index([anchor_entity_type, anchor_entity_id])
+  @@index([sequence_id])
+  @@index([client_id])
+}
+
+model followup_send {
+  id                  String   @id @default(uuid())
+  organization_id     String?
+  organization        organization? @relation(fields: [organization_id], references: [id])
+  enrollment_id       String
+  enrollment          followup_enrollment @relation(fields: [enrollment_id], references: [id], onDelete: Cascade)
+  step_id             String?
+  step                followup_step? @relation(fields: [step_id], references: [id], onDelete: SetNull)
+  template_alias      String?  // the Postmark alias (step category) actually sent
+  recipient_email     String
+  postmark_message_id String?  @unique
+  status              followup_send_status @default(sent)
+  sent_at             DateTime @default(now())
+  opened_at           DateTime?
+  open_count          Int      @default(0)
+  error               String?
+  created_at          DateTime @default(now())
+
+  @@index([enrollment_id])
+  @@index([organization_id])
+  @@index([step_id])
+}
+
+// One editable email template per org+category. The category matches a followup
+// step's category; at send time we render this template's subject/html with the
+// org branding + client variables and send it via Postmark HtmlBody (no hosted
+// Postmark template). A missing row falls back to a built-in default in code
+// (services/followupTemplateDefaults.ts).
+model email_template {
+  id                       String   @id @default(uuid())
+  organization_id          String
+  organization             organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  category                 email_template_category
+  name                     String
+  subject                  String
+  html                     String   @db.Text
+  // Editable plain-text alternative (text/plain MIME part). NULL = auto-generate
+  // from the HTML at send time.
+  text                     String?  @db.Text
+  updated_by_dispatcher_id String?
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  @@unique([organization_id, category])
+  @@index([organization_id])
+}
+
+// ============================================================================
+// Verification tokens
 // ============================================================================
 
 model otp_verification {

@@ -97,7 +97,7 @@ export function useColumnVisibility(
 		[columns, hidden],
 	);
 
-	return { hidden, toggle, reset, hideAll, columnVisibility, visibleColumns };
+	return { hidden, setHidden, toggle, reset, hideAll, columnVisibility, visibleColumns };
 }
 
 export function clearColumnVisibility(storageKey: string) {

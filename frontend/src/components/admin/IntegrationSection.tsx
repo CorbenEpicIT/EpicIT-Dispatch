@@ -4,6 +4,7 @@ import QuickBooksSection from "../quickbooks/QuickBooksSection";
 import ZapierSection from "../zapier/ZapierSection";
 import { usePermission } from "../../hooks/usePermission";
 import { useQBStatusQuery } from "../../hooks/useQuickbooks";
+import { QUICKBOOKS_ENABLED } from "../../config/features";
 
 const INTEGRATIONS = [
 	{
@@ -66,7 +67,10 @@ export default function IntegrationSection() {
 			<div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
 				{INTEGRATIONS.map((int) => {
                     // Will need to change once more integrations with connections are added
-					const connected = int.id === "quickbooks" && qbConnected;  
+					const connected = int.id === "quickbooks" && qbConnected;
+						// QuickBooks temporarily disabled (see config/features)
+						const qbUnavailable = int.id === "quickbooks" && !QUICKBOOKS_ENABLED;
+
 					return (
 						<button
 							type="button"
@@ -88,27 +92,27 @@ export default function IntegrationSection() {
 									/>
 									{int.label}
 								</span>
-								{int.kind === "connection" ? (
-									connected ? (
-										<StatusBadge tone="success" dot>
-											Connected
-										</StatusBadge>
-									) : (
-										<StatusBadge tone="warning" dot>
-											Not connected
-										</StatusBadge>
-									)
-								) : (
+								{qbUnavailable || int.kind !== "connection" ? (
 									<StatusBadge tone="error">Unavailable</StatusBadge>
+								) : connected ? (
+									<StatusBadge tone="success" dot>
+										Connected
+									</StatusBadge>
+								) : (
+									<StatusBadge tone="warning" dot>
+										Not connected
+									</StatusBadge>
 								)}
 							</div>
 							<p className="text-sm text-text-muted leading-relaxed flex-1">{int.desc}</p>
 							<span className="text-[12.5px] font-semibold text-primary-text">
-								{int.kind === "connection"
-									? connected
-										? "Manage →"
-										: "Set up →"
-									: "Open →"}
+								{qbUnavailable
+									? "Unavailable"
+									: int.kind === "connection"
+										? connected
+											? "Manage →"
+											: "Set up →"
+										: "Open →"}
 							</span>
 						</button>
 					);

@@ -62,6 +62,10 @@ const ORG_SCOPED_MODELS = new Set([
 	"organization_role",
 	"saved_report",
 	"report_favorite",
+	"followup_sequence",
+	"followup_enrollment",
+	"followup_send",
+	"email_template",
 ]);
 
 /**

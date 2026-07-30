@@ -16,11 +16,12 @@ interface DrawerProps {
 	 */
 	side?: "right" | "bottom" | "center";
 	children: ReactNode;
+	footer?: ReactNode;
 }
 
 const baseClasses = "bg-surface border-border-card shadow-xl flex flex-col duration-200 ease-out";
 
-export default function Drawer({ isOpen, onClose, title, side = "right", children }: DrawerProps) {
+export default function Drawer({ isOpen, onClose, title, side = "right", children, footer }: DrawerProps) {
 	const [mounted, setMounted] = useState(false);
 	const [visible, setVisible] = useState(false);
 	// Gated on `mounted`, not `isOpen` — `isOpen` flips a render before
@@ -75,6 +76,9 @@ export default function Drawer({ isOpen, onClose, title, side = "right", childre
 				</button>
 			</div>
 			<div className="flex-1 overflow-y-auto">{children}</div>
+			{footer && (
+				<div className="shrink-0 border-t border-border-subtle px-5 py-3">{footer}</div>
+			)}
 		</div>
 	);
 

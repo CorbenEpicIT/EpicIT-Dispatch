@@ -33,6 +33,8 @@ const orgSelect = {
 	// Never read by any backend guard (capability is permission-driven).
 	restock_mode: true,
 	mfa_required: true,
+	brand_color: true,
+	followups_enabled: true,
 } as const;
 
 async function withSignedLogo<T extends { logo_url: string | null }>(
@@ -97,6 +99,8 @@ router.patch("/", requirePermission("manage_organization"), async (req, res, nex
 			website: z.string().max(100).nullable().optional(),
 			restock_mode: z.enum(["tech_self_serve", "dispatch_prepared"]).optional(),
 			mfa_required: z.boolean().optional(),
+			brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color like #1e3a5f").nullable().optional(),
+			followups_enabled: z.boolean().optional(),
 		});
 		const parsed = schema.safeParse(req.body);
 		if (!parsed.success)
