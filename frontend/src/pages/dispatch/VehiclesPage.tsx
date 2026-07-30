@@ -147,17 +147,23 @@ function FleetPulse({
 }
 
 export default function VehiclesPage() {
-	const [pageSearchParams] = useSearchParams();
+	const [pageSearchParams, setPageSearchParams] = useSearchParams();
 	const [searchInput, setSearchInput] = useState("");
 	const [stockFilter, setStockFilter] = useState<string | null>(null);
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
-	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
+	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 
 	const raw = pageSearchParams.get("status");
 	const statusParam = raw === "active" || raw === "inactive" ? raw : null;
+
+	const clearStatus = () => {
+		const next = new URLSearchParams(pageSearchParams);
+		next.delete("status");
+		setPageSearchParams(next);
+	};
 
 	const { data: vehicles, isLoading, error } = useVehiclesQuery(statusParam ?? undefined);
 	const { mutateAsync: createVehicle } = useCreateVehicleMutation();
@@ -250,16 +256,28 @@ export default function VehiclesPage() {
 				/>
 
 				<FilterChips
-					filters={terms.map((term) => ({
-						label: `Search: "${term}"`,
-						color: "purple" as const,
-						onRemove: () => removeTerm(term),
-						highlighted: duplicateTerm === term,
-					}))}
+					filters={[
+						statusParam
+							? {
+									label: `Status: ${statusParam === "active" ? "Active" : "Inactive"}`,
+									color: "green" as const,
+									onRemove: clearStatus,
+							  }
+							: null,
+						...terms.map((term) => ({
+							label: `Search: "${term}"`,
+							color: "purple" as const,
+							onRemove: () => removeTerm(term),
+							highlighted: duplicateTerm === term,
+						})),
+					]}
 					resultCount={filteredVehicles?.length ?? 0}
 					onClearAll={() => {
-						clearAll();
 						setSearchInput("");
+						const next = new URLSearchParams(pageSearchParams);
+						next.delete("search");
+						next.delete("status");
+						setPageSearchParams(next);
 					}}
 				/>
 

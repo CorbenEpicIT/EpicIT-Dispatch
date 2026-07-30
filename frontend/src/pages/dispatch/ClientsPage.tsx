@@ -19,7 +19,7 @@ import PageReportSection from "../../components/reports/PageReportSection";
 
 export default function ClientsPage() {
 	const navigate = useNavigate();
-	const [pageSearchParams] = useSearchParams();
+	const [pageSearchParams, setPageSearchParams] = useSearchParams();
 	const {
 		data: clients,
 		isLoading: isFetchLoading,
@@ -27,7 +27,7 @@ export default function ClientsPage() {
 	} = useAllClientsQuery();
 	const { mutateAsync: createClient } = useCreateClientMutation();
 	const [searchInput, setSearchInput] = useState("");
-	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
+	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const [viewMode, setViewMode] = useState<"card" | "list">("card");
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
@@ -49,6 +49,12 @@ export default function ClientsPage() {
 	}, [showActionsMenu]);
 
 	const statusFilter = pageSearchParams.get("status");
+
+	const clearStatus = () => {
+		const next = new URLSearchParams(pageSearchParams);
+		next.delete("status");
+		setPageSearchParams(next);
+	};
 
 	const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
 
@@ -157,14 +163,29 @@ export default function ClientsPage() {
 
 			{/* Single Filter Bar with Chips */}
 			<FilterChips
-				filters={terms.map((term) => ({
-					label: `Search: "${term}"`,
-					color: "purple" as const,
-					onRemove: () => removeTerm(term),
-					highlighted: duplicateTerm === term,
-				}))}
+				filters={[
+					statusFilter
+						? {
+								label: `Status: ${statusFilter === "active" ? "Active" : "Inactive"}`,
+								color: "green" as const,
+								onRemove: clearStatus,
+						  }
+						: null,
+					...terms.map((term) => ({
+						label: `Search: "${term}"`,
+						color: "purple" as const,
+						onRemove: () => removeTerm(term),
+						highlighted: duplicateTerm === term,
+					})),
+				]}
 				resultCount={filteredClients?.length ?? 0}
-				onClearAll={() => { clearAll(); setSearchInput(""); }}
+				onClearAll={() => {
+					setSearchInput("");
+					const next = new URLSearchParams(pageSearchParams);
+					next.delete("search");
+					next.delete("status");
+					setPageSearchParams(next);
+				}}
 			/>
 
 			{/* Loading State */}

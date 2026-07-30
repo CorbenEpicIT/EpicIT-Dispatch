@@ -15,12 +15,21 @@ import { useMultiSearch } from "../../hooks/useMultiSearch";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
+import SortControl from "../../components/ui/SortControl";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import ContextToggle, { type JobsView } from "../../components/ui/ContextToggle";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
 import PageReportSection from "../../components/reports/PageReportSection";
+import type { SortDir } from "../../util/sortUtil";
+import { 
+	withDir,
+	compareByOrder,
+	compareDate,
+	comparePriority
+} from "../../util/sortUtil";
+import { PriorityLabels, PriorityValues } from "../../types/common";
 
 const jobStatusOptions = JobStatusValues.map((s) => ({
 	value: s,
@@ -31,6 +40,17 @@ const planStatusOptions = RecurringPlanStatusValues.map((s) => ({
 	value: s,
 	label: addSpacesToCamelCase(s),
 }));
+
+const jobPriorityOptions = PriorityValues.map((s) => ({
+	value: s,
+	label: PriorityLabels[s as keyof typeof PriorityLabels] ?? s,
+}));
+
+const sortLabels: Record<string, string> = {
+	priority: "Priority",
+	status: "Status",
+	date: "Date",
+};
 
 export default function JobsPage() {
 	const navigate = useNavigate();
@@ -52,17 +72,24 @@ export default function JobsPage() {
 	const [searchInput, setSearchInput] = useState("");
 	const [viewMode, setViewMode] = useState<JobsView>("jobs");
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
+	const { removeTerm: removeStatus } = useMultiSearch("status");
+	const { removeTerm: removePriority } = useMultiSearch("priority");
 	const termsKey = terms.join("");
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
-	const statusFilter = queryParams.get("status");
+	const statusFilter = queryParams.getAll("status");
+	const statusKey = statusFilter.join(",");
+	const priorityFilter = queryParams.getAll("priority");
+	const priorityKey = priorityFilter.join(",");
 	const viewParam = queryParams.get("view") as JobsView | null;
 	const dateParamKey = queryParams.get("date");
 	const dateParamFrom = queryParams.get("dateFrom");
 	const dateParamTo = queryParams.get("dateTo");
+	const sortParam = queryParams.get("sort");
+	const dirParam = queryParams.get("dir");
 
 	const { data: filterClient } = useClientByIdQuery(clientFilter);
 
@@ -164,9 +191,9 @@ export default function JobsPage() {
 				);
 			}
 
-			if (statusFilter) {
+			if (statusFilter.length > 0) {
 				templatesData = templatesData.filter(
-					(item) => item._rawStatus === statusFilter
+					(item) => statusFilter.includes(item._rawStatus)
 				);
 			}
 
@@ -286,6 +313,7 @@ export default function JobsPage() {
 						property: j.address || "No address",
 						schedule: scheduleDisplay,
 						status: addSpacesToCamelCase(j.status),
+						priority: PriorityLabels[j.priority] || j.priority,
 						total: formatCurrency(
 							Number(
 								j.estimated_total ||
@@ -294,6 +322,7 @@ export default function JobsPage() {
 							)
 						),
 						_rawStatus: j.status,
+						_rawPriority: j.priority,
 						_rawTotal: Number(
 							j.estimated_total || j.actual_total || 0
 						),
@@ -310,9 +339,15 @@ export default function JobsPage() {
 				);
 			}
 
-			if (statusFilter) {
+			if (statusFilter.length > 0) {
 				jobsData = jobsData.filter(
-					(item) => item._rawStatus === statusFilter
+					(item) => statusFilter.includes(item._rawStatus)
+				);
+			}
+
+			if (priorityFilter.length > 0) {
+				jobsData = jobsData.filter(
+					(item) => priorityFilter.includes(item._rawPriority)
 				);
 			}
 
@@ -336,30 +371,35 @@ export default function JobsPage() {
 				);
 			}
 
+			type JobRow = (typeof jobsData)[number];
+			const dir: SortDir = dirParam === "asc" ? "asc" : "desc";
+			const comparator: (a: JobRow, b: JobRow) => number =
+				sortParam === "priority"
+					? withDir((a, b) => comparePriority(a._rawPriority, b._rawPriority), dir)
+					: sortParam === "status"
+					? withDir((a, b) => compareByOrder(a._rawStatus, b._rawStatus, JobStatusValues), dir)
+					: sortParam === "date"
+					? withDir((a, b) => compareDate(a._scheduleDate, b._scheduleDate), dir)
+					: (a, b) => {
+							// default: status, then schedule date (nulls last)
+							const statusDiff =
+								JobStatusValues.indexOf(a._rawStatus as JobStatus) -
+								JobStatusValues.indexOf(b._rawStatus as JobStatus);
+							if (statusDiff !== 0) return statusDiff;
+							if (a._scheduleDate && b._scheduleDate)
+								return a._scheduleDate.getTime() - b._scheduleDate.getTime();
+							if (a._scheduleDate) return -1;
+							if (b._scheduleDate) return 1;
+							return 0;
+					  };
+
 			return jobsData
-				.sort((a, b) => {
-					// Sort by status
-					const statusDiff =
-						JobStatusValues.indexOf(a._rawStatus as JobStatus) -
-						JobStatusValues.indexOf(b._rawStatus as JobStatus);
-					if (statusDiff !== 0) return statusDiff;
-
-					// Then by schedule date (nulls last)
-					if (a._scheduleDate && b._scheduleDate) {
-						return (
-							a._scheduleDate.getTime() -
-							b._scheduleDate.getTime()
-						);
-					}
-					if (a._scheduleDate) return -1;
-					if (b._scheduleDate) return 1;
-
-					return 0;
-				})
+				.sort(comparator)
 				.map(
 					// eslint-disable-next-line @typescript-eslint/no-unused-vars
 					({
 						_rawStatus,
+						_rawPriority,
 						_rawTotal,
 						_scheduleDate,
 						_rawJobNumber,
@@ -375,7 +415,7 @@ export default function JobsPage() {
 					})
 				);
 		}
-	}, [jobs, recurringPlans, searchInput, termsKey, clientFilter, statusFilter, viewMode, dateParamKey, dateParamFrom, dateParamTo]);
+	}, [jobs, recurringPlans, searchInput, termsKey, clientFilter, statusKey, priorityKey, viewMode, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam]);
 
 	const handleViewModeChange = (mode: JobsView) => {
 		setViewMode(mode);
@@ -386,6 +426,9 @@ export default function JobsPage() {
 			newParams.delete("view");
 		}
 		newParams.delete("status");
+		newParams.delete("priority");
+		newParams.delete("sort");
+		newParams.delete("dir");
 		newParams.delete("date");
 		newParams.delete("dateFrom");
 		newParams.delete("dateTo");
@@ -398,14 +441,25 @@ export default function JobsPage() {
 		navigate(`/dispatch/jobs${newParams.toString() ? `?${newParams.toString()}` : ""}`);
 	};
 
+	const clearSort = () => {
+		const next = new URLSearchParams(location.search);
+		next.delete("sort");
+		next.delete("dir");
+		navigate(`/dispatch/jobs${next.toString() ? `?${next.toString()}` : ""}`);
+	};
+
 	const clearAllFilters = () => {
 		setSearchInput("");
 		const next = new URLSearchParams(location.search);
 		next.delete("search");
 		next.delete("client");
+		next.delete("status");
+		next.delete("priority");
 		next.delete("date");
 		next.delete("dateFrom");
 		next.delete("dateTo");
+		next.delete("sort");
+		next.delete("dir");
 		navigate(`/dispatch/jobs${next.toString() ? `?${next.toString()}` : ""}`);
 	};
 
@@ -495,7 +549,24 @@ export default function JobsPage() {
 									: planStatusOptions
 							}
 						/>
+						{viewMode === "jobs" && (
+							<StatusFilter
+								paramKey="priority"
+								placeholder="Priority"
+								options={jobPriorityOptions}
+							/>
+						)}
 						<DateRangeFilter paramKey="date" />
+						{viewMode === "jobs" && (
+							<SortControl
+								options={[
+									{ value: "priority", label: "Priority" },
+									{ value: "status", label: "Status" },
+									{ value: "date", label: "Date" },
+								]}
+								defaultDirByField={{ priority: "desc", status: "asc", date: "desc" }}
+							/>
+						)}
 					</div>
 				}
 				right={null}
@@ -513,6 +584,23 @@ export default function JobsPage() {
 						onRemove: () => removeTerm(term),
 						highlighted: duplicateTerm === term,
 					})),
+					...statusFilter.map((status) => ({
+						label: `Status: ${addSpacesToCamelCase(status)}`,
+						color: "green" as const,
+						onRemove: () => removeStatus(status),
+					})),
+					...priorityFilter.map((pri) => ({
+						label: `Priority: ${PriorityLabels[pri as keyof typeof PriorityLabels] ?? pri}`,
+						color: "orange" as const,
+						onRemove: () => removePriority(pri),
+					})),
+					sortParam
+						? {
+								label: `Sort: ${sortLabels[sortParam] ?? sortParam} (${dirParam === "asc" ? "asc" : "desc"})`,
+								color: "cyan" as const,
+								onRemove: clearSort,
+						  }
+						: null,
 				]}
 				resultCount={display.length}
 				onClearAll={clearAllFilters}

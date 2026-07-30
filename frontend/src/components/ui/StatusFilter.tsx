@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, X } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useMultiSearch } from "../../hooks/useMultiSearch";
 
 export interface StatusOption {
 	value: string;
@@ -19,7 +19,7 @@ interface StatusFilterUrlProps extends BaseProps {
 }
 
 interface StatusFilterControlledProps extends BaseProps {
-	value: string | null;
+	values: string[] | null;
 	onChange: (value: string | null) => void;
 }
 
@@ -33,26 +33,22 @@ export default function StatusFilter(props: StatusFilterProps) {
 }
 
 function UrlStatusFilter({ paramKey, ...rest }: StatusFilterUrlProps) {
-	const [searchParams, setSearchParams] = useSearchParams();
-	const value = searchParams.get(paramKey);
+	const { terms, addTerm, removeTerm, clearAll } = useMultiSearch(paramKey);
 
 	const handleChange = (newValue: string | null) => {
-		setSearchParams((prev) => {
-			const next = new URLSearchParams(prev);
-			if (newValue) {
-				next.set(paramKey, newValue);
-			} else {
-				next.delete(paramKey);
-			}
-			return next;
-		});
+		if (!newValue) {
+			clearAll();
+			return;
+		}
+		if (terms.includes(newValue)) removeTerm(newValue);
+		else addTerm(newValue);
 	};
 
-	return <DropdownFilter value={value} onChange={handleChange} {...rest} />;
+	return <DropdownFilter values={terms} onChange={handleChange} {...rest} />;
 }
 
-function DropdownFilter({
-	value,
+export function DropdownFilter({
+	values,
 	onChange,
 	options,
 	allLabel = "All",
@@ -61,8 +57,8 @@ function DropdownFilter({
 }: StatusFilterControlledProps) {
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
-	const selectedOption = options.find((o) => o.value === value) ?? null;
-	const isActive = value !== null;
+	const selectedOptions = options.filter((o) => values?.includes(o.value) ?? false);
+	const isActive = selectedOptions.length > 0;
 
 	useEffect(() => {
 		if (!open) return;
@@ -83,8 +79,17 @@ function DropdownFilter({
 	}, [open]);
 
 	const handleSelect = (optionValue: string | null) => {
-		onChange(optionValue === value ? null : optionValue);
-		setOpen(false);
+		if (optionValue === null) {
+			onChange(null); // selects "All"
+			return;
+		}
+		const alreadySelected = selectedOptions.some((o) => o.value === optionValue);
+		// if all select clears selection
+		if (!alreadySelected && selectedOptions.length + 1 >= options.length) {
+			onChange(null);
+			return;
+		}
+		onChange(optionValue); 
 	};
 
 	return (
@@ -101,8 +106,8 @@ function DropdownFilter({
 				}`}
 			>
 				<span>
-					{isActive && selectedOption
-						? `${placeholder}: ${selectedOption.label}`
+					{isActive && selectedOptions
+						? `${placeholder}` // + selectedOptions.map((o) =>  ` ${o.label}` )
 						: placeholder}
 				</span>
 				{!(isActive && !hideAll) && (
@@ -149,16 +154,16 @@ function DropdownFilter({
 							<button
 								key={option.value}
 								role="option"
-								aria-selected={value === option.value}
+								aria-selected={selectedOptions?.includes(option)}
 								onClick={() => handleSelect(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
-									value === option.value
+									selectedOptions?.includes(option)
 										? "bg-primary-bg text-primary-text"
 										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
 								<span>{option.label}</span>
-								{value === option.value && <Check size={14} />}
+								{selectedOptions?.includes(option) && <Check size={14} />}
 							</button>
 						))}
 					</div>

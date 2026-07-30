@@ -50,27 +50,38 @@ function ReportBody(
 	const { data, isLoading, error } = usePageSummaryQuery(page, startDate, endDate, groupBy);
 	const navigate = useNavigate();
 	const getHref = (label: string): string | null => {
-		if (groupBy !== "status") return null;
+		if (groupBy === "status") {
+			let statusValue: string | null = null;
+			if (page === "clients") {
+				statusValue = label === "Active" ? "active" : label === "Inactive" ? "inactive" : null;
+			} else if (["jobs", "quotes", "requests", "invoices"].includes(page)) {
+				statusValue = label;
+			}
+			if (!statusValue) return null;
 
-		let statusValue: string | null = null;
-		if (page === "clients") {
-			statusValue = label === "Active" ? "active" : label === "Inactive" ? "inactive" : null;
-		} else if (["jobs", "quotes", "requests", "invoices"].includes(page)) {
-			statusValue = label;
+			let params = new URLSearchParams({ status: statusValue });
+			// The Jobs list filters by SCHEDULED date, so Unscheduled/Cancelled jobs get dropped
+			const noScheduleDate = ["Unscheduled", "Cancelled"].includes(statusValue);
+			const carryDate =
+				page === "jobs"
+					? !noScheduleDate
+					: ["quotes", "requests", "invoices"].includes(page);
+			if (carryDate) {
+				params = serializeDateRange(range, "date", params);
+			}
+			return `/dispatch/${page}?${params.toString()}`;
 		}
-		if (!statusValue) return null; 
 
-		let params = new URLSearchParams({ status: statusValue });
-		// The Jobs list filters by SCHEDULED date, so Unscheduled/Cancelled jobs get dropped
-		const noScheduleDate = ["Unscheduled", "Cancelled"].includes(statusValue);
-		const carryDate =
-			page === "jobs"
-				? !noScheduleDate
-				: ["quotes", "requests", "invoices"].includes(page);
-		if (carryDate) {
-			params = serializeDateRange(range, "date", params);
+		if (groupBy === "priority") {
+			if (!["jobs", "quotes", "requests"].includes(page)) return null;
+			let params = new URLSearchParams({ priority: label });
+			if (["quotes", "requests"].includes(page)) {
+				params = serializeDateRange(range, "date", params);
+			}
+			return `/dispatch/${page}?${params.toString()}`;
 		}
-		return `/dispatch/${page}?${params.toString()}`;
+
+		return null;
 	};
 
 	if (error)
@@ -82,15 +93,17 @@ function ReportBody(
 	if (isLoading || !data)
 		return <div className="min-h-40 animate-pulse rounded-md bg-surface-raised" />;
 
-	const canFilter = groupBy === "status" 
-					&& ["jobs", "quotes", "requests", "invoices", "clients"].includes(page);
+	const canFilter =
+		(groupBy === "status" &&
+			["jobs", "quotes", "requests", "invoices", "clients"].includes(page)) ||
+		(groupBy === "priority" && ["jobs", "quotes", "requests"].includes(page));
 
 	return (
 		<PageSummary
 			data={data}
 			onBarClick={
 				canFilter
-					? (label) => {
+					?   (label) => {
 							const href = getHref(label);
 							if (href) navigate(href);
 						}

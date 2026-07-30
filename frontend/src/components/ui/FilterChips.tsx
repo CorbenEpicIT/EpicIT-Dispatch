@@ -1,6 +1,6 @@
 ﻿import { X } from "lucide-react";
 
-export type ChipColor = "purple" | "blue" | "green" | "orange";
+export type ChipColor = "purple" | "blue" | "green" | "orange" | "cyan" | "rose";
 
 export interface FilterChip {
 	label: string;
@@ -20,6 +20,8 @@ const COLOR_STYLES: Record<ChipColor, { bg: string; border: string; text: string
 	blue:   { bg: "bg-primary-hover/20", border: "border-primary/30",    text: "text-primary-text",   ring: "ring-primary" },
 	green:  { bg: "bg-success-bg",       border: "border-success/30",    text: "text-success-text",   ring: "ring-success" },
 	orange: { bg: "bg-orange-bg",        border: "border-orange-border", text: "text-orange-text",    ring: "ring-orange" },
+	cyan:   { bg: "bg-info-bg",          border: "border-info/30",       text: "text-info-text",      ring: "ring-info" },
+	rose:   { bg: "bg-rejected-bg",      border: "border-rejected/30",   text: "text-rejected-text",  ring: "ring-rejected" },
 };
 
 export default function FilterChips({ filters: rawFilters, resultCount, onClearAll }: FilterChipsProps) {

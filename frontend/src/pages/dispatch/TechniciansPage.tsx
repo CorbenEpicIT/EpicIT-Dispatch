@@ -18,6 +18,17 @@ import { usePermission } from "../../hooks/usePermission";
 
 type viewMode = "list" | "card";
 
+const technicianStatusOptions = [
+	{ value: "Available", label: "Available" },
+	{ value: "Working", label: "Working" },
+	{ value: "EnRoute", label: "En Route" },
+	{ value: "OnSite", label: "On Site" },
+	{ value: "Paused", label: "Paused" },
+	{ value: "WrappingUp", label: "Wrapping Up" },
+	{ value: "Break", label: "Break" },
+	{ value: "Offline", label: "Offline" },
+];
+
 export default function TechniciansPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -33,18 +44,20 @@ export default function TechniciansPage() {
 	const [perPage, setPerPage] = useState(12);
 	const [currentPage, setCurrentPage] = useState(1);
 
-	const { terms, addTerm, removeTerm, clearAll, duplicateTerm } = useMultiSearch("search");
+	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const termsKey = terms.join(" ");
 
 	const queryParams = new URLSearchParams(location.search);
-	const statusFilter = queryParams.get("status");
+	const statusFilter = queryParams.getAll("status");
+	const statusKey = statusFilter.join(",");
+	const { removeTerm: removeStatus } = useMultiSearch("status");
 
 	// permissions
 	const MANAGE_TECHNICIANS = usePermission("manage_technicians");
 
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [termsKey, searchInput, statusFilter, perPage]);
+	}, [termsKey, searchInput, statusKey, perPage]);
 
 	const activeTerms = searchInput.trim() ? [...terms, searchInput.trim()] : terms;
 
@@ -72,10 +85,9 @@ export default function TechniciansPage() {
 					});
 					if (!matches) return false;
 				}
-				if (statusFilter)
-					return (
-						tech.status.toLowerCase() ===
-						statusFilter.toLowerCase()
+				if (statusFilter.length > 0)
+					return statusFilter.some(
+						(s) => s.toLowerCase() === tech.status.toLowerCase()
 					);
 				return true;
 			})
@@ -153,16 +165,7 @@ export default function TechniciansPage() {
 					<StatusFilter
 						paramKey="status"
 						placeholder="Status"
-						options={[
-							{ value: "Available", label: "Available" },
-							{ value: "Working", label: "Working" },
-							{ value: "EnRoute", label: "En Route" },
-							{ value: "OnSite", label: "On Site" },
-							{ value: "Paused", label: "Paused" },
-							{ value: "WrappingUp", label: "Wrapping Up" },
-							{ value: "Break", label: "Break" },
-							{ value: "Offline", label: "Offline" },
-						]}
+						options={technicianStatusOptions}
 					/>
 				}
 				right={<ViewToggle value={viewMode} onChange={setViewMode} />}
@@ -171,6 +174,11 @@ export default function TechniciansPage() {
 			{/*Filter Bar with Chips*/}
 			<FilterChips
 				filters={[
+					...statusFilter.map((s) => ({
+						label: `Status: ${technicianStatusOptions.find((o) => o.value === s)?.label ?? s}`,
+						color: "green" as const,
+						onRemove: () => removeStatus(s),
+					})),
 					...terms.map((term) => ({
 						label: `Search: "${term}"`,
 						color: "purple" as const,
@@ -180,8 +188,11 @@ export default function TechniciansPage() {
 				]}
 				resultCount={filteredTechnicians.length}
 				onClearAll={() => {
-					clearAll();
 					setSearchInput("");
+					const next = new URLSearchParams(location.search);
+					next.delete("search");
+					next.delete("status");
+					navigate(`/dispatch/technicians${next.toString() ? `?${next.toString()}` : ""}`);
 				}}
 			/>
 
