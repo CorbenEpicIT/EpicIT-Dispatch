@@ -154,7 +154,7 @@ const StepWizard = <T extends number>({
 								<span
 									className={`
 										mt-2 text-xs font-medium transition-colors duration-300
-										max-w-[96px] leading-tight text-center
+										max-w-[112px] leading-tight text-center
 										${getLabelColor(state)}
 									`}
 									title={state.label}

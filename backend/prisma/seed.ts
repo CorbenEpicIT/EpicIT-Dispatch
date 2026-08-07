@@ -212,7 +212,7 @@ async function main() {
 		},
 	});
 
-	await db.dispatcher.create({
+	const dispatcher2 = await db.dispatcher.create({
 		data: {
 			organization_id: org.id,
 			name: "Sam Torres",
@@ -1115,6 +1115,142 @@ async function main() {
 	]);
 
 	// ============================================================================
+	// Projects — created before Jobs so job rows can set project_id directly.
+	// Covers every project_status and priority value, plus an unassigned manager
+	// so the projects report's "By Manager" breakdown has an Unassigned bucket.
+	// Budgets are sized against the attached job totals below: P-0001/P-0002 land
+	// around 75-80% spent, P-0004 finishes slightly over, P-0005 sits at ~98%.
+	// ============================================================================
+
+	const [
+		project1,
+		project2,
+		project3,
+		project4,
+		project5,
+		project6,
+	] = await Promise.all([
+		// P-0001: Active — multi-building rooftop replacement (Smith)
+		db.project.create({
+			data: {
+				organization_id: org.id,
+				project_number: "P-0001",
+				name: "Rooftop Unit Replacement Program — Smith Commercial",
+				description:
+					"Phased replacement of the aging rooftop package units across all three buildings. Bldg 1 complete, Bldg 2 in progress, Bldg 3 pending curb fabrication.",
+				status: "Active",
+				priority: "High",
+				address: client2.address,
+				coords: { lat: 43.8129, lng: -91.2559 },
+				client_id: client2.id,
+				manager_dispatcher_id: dispatcher.id,
+				budget: 24000.0,
+				starts_at: daysFromNow(-42),
+				target_end_at: daysFromNow(38),
+			},
+		}),
+		// P-0002: Active — annual maintenance + retrofit program (Anderson, tax exempt)
+		db.project.create({
+			data: {
+				organization_id: org.id,
+				project_number: "P-0002",
+				name: "Annual Maintenance Program — Anderson Office Complex",
+				description:
+					"Umbrella project for the FY26 maintenance contract: seasonal PM on all rooftop units plus the floor-by-floor VAV control retrofit.",
+				status: "Active",
+				priority: "Medium",
+				address: client4.address,
+				coords: { lat: 43.8334, lng: -91.2601 },
+				client_id: client4.id,
+				manager_dispatcher_id: dispatcher2.id,
+				budget: 6000.0,
+				starts_at: daysFromNow(-70),
+				target_end_at: daysFromNow(120),
+			},
+		}),
+		// P-0003: Planning — boiler plant replacement (Riverside)
+		db.project.create({
+			data: {
+				organization_id: org.id,
+				project_number: "P-0003",
+				name: "Boiler Plant Replacement — Riverside Apartments",
+				description:
+					"Full replacement of both aging boilers after the emergency inspection call. Scoping and abatement survey underway; tenant notice required before demolition.",
+				status: "Planning",
+				priority: "Emergency",
+				address: client5.address,
+				coords: { lat: 43.8198, lng: -91.2514 },
+				client_id: client5.id,
+				manager_dispatcher_id: dispatcher.id,
+				budget: 32000.0,
+				starts_at: daysFromNow(-5),
+				target_end_at: daysFromNow(95),
+			},
+		}),
+		// P-0004: Completed — small fleet upgrade that ran slightly over budget
+		db.project.create({
+			data: {
+				organization_id: org.id,
+				project_number: "P-0004",
+				name: "Thermostat Fleet Upgrade — Williams Property Management",
+				description:
+					"Programmable thermostat rollout across the managed units, with schedule handover to the property team. Came in just over budget after a second unit needed rewiring.",
+				status: "Completed",
+				priority: "Low",
+				address: client3.address,
+				coords: { lat: 43.7889, lng: -91.2297 },
+				client_id: client3.id,
+				manager_dispatcher_id: dispatcher2.id,
+				budget: 750.0,
+				starts_at: daysFromNow(-48),
+				target_end_at: daysFromNow(-28),
+				completed_at: daysFromNow(-30),
+			},
+		}),
+		// P-0005: OnHold — awaiting homeowner financing (Johnson)
+		db.project.create({
+			data: {
+				organization_id: org.id,
+				project_number: "P-0005",
+				name: "Whole-Home System Replacement — Johnson Residence",
+				description:
+					"Heat pump and air handler changeout quoted after the capacitor repair. On hold while the homeowner finalizes financing.",
+				status: "OnHold",
+				priority: "Medium",
+				address: client1.address,
+				coords: { lat: 43.8124, lng: -91.2568 },
+				client_id: client1.id,
+				manager_dispatcher_id: dispatcher.id,
+				budget: 11000.0,
+				starts_at: daysFromNow(-12),
+				target_end_at: daysFromNow(60),
+			},
+		}),
+		// P-0006: Cancelled — never got past scoping, no jobs attached
+		db.project.create({
+			data: {
+				organization_id: org.id,
+				project_number: "P-0006",
+				name: "Chiller Plant Modernization — Smith Commercial",
+				description:
+					"Chiller plant modernization with new controls and commissioning. Cancelled before any work orders were written.",
+				status: "Cancelled",
+				priority: "Urgent",
+				address: client2.address,
+				coords: { lat: 43.8129, lng: -91.2559 },
+				client_id: client2.id,
+				manager_dispatcher_id: null,
+				budget: 48000.0,
+				starts_at: daysFromNow(-20),
+				target_end_at: daysFromNow(150),
+				cancelled_at: daysFromNow(-8),
+				cancellation_reason:
+					"Owner deferred the capital project to the next budget cycle.",
+			},
+		}),
+	]);
+
+	// ============================================================================
 	// Jobs
 	// ============================================================================
 
@@ -1175,6 +1311,7 @@ async function main() {
 				client_id: client2.id,
 				request_id: req2.id,
 				quote_id: quote1.id,
+				project_id: project1.id,
 				subtotal: 6800.0,
 				tax_rate: 0.0825,
 				tax_amount: 561.0,
@@ -1222,6 +1359,7 @@ async function main() {
 				coords: { lat: 43.8334, lng: -91.2601 },
 				status: "Scheduled",
 				client_id: client4.id,
+				project_id: project2.id,
 				subtotal: 1200.0,
 				tax_rate: 0.0,
 				tax_amount: 0.0,
@@ -1308,6 +1446,7 @@ async function main() {
 				coords: { lat: 43.8198, lng: -91.2514 },
 				status: "Cancelled",
 				client_id: client5.id,
+				project_id: project3.id,
 				subtotal: 0.0,
 				tax_rate: 0.0825,
 				tax_amount: 0.0,
@@ -1360,6 +1499,348 @@ async function main() {
 				content:
 					"Gas company (WE Energies) cleared the scene — minor odor from unrelated water heater vent. No HVAC issue found.",
 				creator_dispatcher_id: dispatcher.id,
+			},
+		}),
+	]);
+
+	// ----------------------------------------------------------------------------
+	// Project work orders — additional jobs rolled up under the projects above, so
+	// each project has a populated jobs list and a meaningful spend-vs-budget bar.
+	// Completed jobs carry actual_total, everything else carries estimated_total
+	// (the tax post-pass at the end of this file recomputes both from line items).
+	// ----------------------------------------------------------------------------
+
+	await Promise.all([
+		// J-0007: Completed — P-0001 phase one (Smith Bldg 1)
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0007",
+				name: "Rooftop Unit Replacement — Smith Commercial Bldg 1",
+				description:
+					"Phase one of the replacement program: swap the Bldg 1 rooftop package unit and recommission.",
+				priority: "High",
+				address: client2.address,
+				coords: { lat: 43.8129, lng: -91.2559 },
+				status: "Completed",
+				client_id: client2.id,
+				project_id: project1.id,
+				subtotal: 7450.0,
+				tax_rate: 0.0825,
+				tax_amount: 614.63,
+				actual_total: 8064.63,
+				completed_at: daysFromNow(-18),
+				line_items: {
+					create: [
+						{
+							name: "Carrier 5-Ton Rooftop Unit 48TCED06A2A5",
+							quantity: 1,
+							unit_price: 4800.0,
+							total: 4800.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Installation Labor",
+							quantity: 8,
+							unit_price: 175.0,
+							total: 1400.0,
+							source: "manual",
+							item_type: "labor",
+						},
+						{
+							name: "Crane Rental (half day)",
+							quantity: 1,
+							unit_price: 650.0,
+							total: 650.0,
+							source: "manual",
+							item_type: "other",
+						},
+						{
+							name: "Refrigerant R-410A (10 lbs)",
+							quantity: 10,
+							unit_price: 60.0,
+							total: 600.0,
+							source: "manual",
+							item_type: "material",
+						},
+					],
+				},
+			},
+		}),
+		// J-0008: Scheduled — P-0001 phase three, blocked on fabrication
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0008",
+				name: "Rooftop Curb Adapter Fabrication — Smith Commercial Bldg 3",
+				description:
+					"Fabricate and set the custom curb adapter so the Bldg 3 unit can drop onto the existing opening.",
+				priority: "Medium",
+				address: client2.address,
+				coords: { lat: 43.8129, lng: -91.2559 },
+				status: "Scheduled",
+				client_id: client2.id,
+				project_id: project1.id,
+				subtotal: 2840.0,
+				tax_rate: 0.0825,
+				tax_amount: 234.3,
+				estimated_total: 3074.3,
+				line_items: {
+					create: [
+						{
+							name: "Custom Curb Adapter (fabricated)",
+							quantity: 1,
+							unit_price: 1850.0,
+							total: 1850.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Fabrication & Set Labor",
+							quantity: 6,
+							unit_price: 165.0,
+							total: 990.0,
+							source: "manual",
+							item_type: "labor",
+						},
+					],
+				},
+			},
+		}),
+		// J-0009: Completed — P-0002 VAV retrofit (Anderson is tax exempt → rate 0)
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0009",
+				name: "VAV Box Retrofit — Anderson Office Complex Floor 2",
+				description:
+					"Replace pneumatic VAV controls with DDC controllers on floor 2; point-to-point checkout with the BAS.",
+				priority: "Medium",
+				address: client4.address,
+				coords: { lat: 43.8334, lng: -91.2601 },
+				status: "Completed",
+				client_id: client4.id,
+				project_id: project2.id,
+				subtotal: 3508.0,
+				tax_rate: 0.0,
+				tax_amount: 0.0,
+				actual_total: 3508.0,
+				completed_at: daysFromNow(-9),
+				line_items: {
+					create: [
+						{
+							name: "DDC Controller",
+							quantity: 3,
+							unit_price: 520.0,
+							total: 1560.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Control Wire (500ft spool)",
+							quantity: 1,
+							unit_price: 88.0,
+							total: 88.0,
+							source: "manual",
+							item_type: "material",
+						},
+						{
+							name: "Install & Commissioning Labor",
+							quantity: 12,
+							unit_price: 155.0,
+							total: 1860.0,
+							source: "manual",
+							item_type: "labor",
+						},
+					],
+				},
+			},
+		}),
+		// J-0010: Unscheduled — P-0003 demolition, waiting on the abatement survey
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0010",
+				name: "Boiler Removal & Disposal — Riverside Apartments",
+				description:
+					"Demolish and haul off both existing boilers once the abatement survey clears the pipe insulation.",
+				priority: "Urgent",
+				address: client5.address,
+				coords: { lat: 43.8198, lng: -91.2514 },
+				status: "Unscheduled",
+				client_id: client5.id,
+				project_id: project3.id,
+				subtotal: 3995.0,
+				tax_rate: 0.0825,
+				tax_amount: 329.59,
+				estimated_total: 4324.59,
+				line_items: {
+					create: [
+						{
+							name: "Demolition Labor",
+							quantity: 16,
+							unit_price: 160.0,
+							total: 2560.0,
+							source: "manual",
+							item_type: "labor",
+						},
+						{
+							name: "Asbestos Abatement Survey",
+							quantity: 1,
+							unit_price: 950.0,
+							total: 950.0,
+							source: "manual",
+							item_type: "other",
+						},
+						{
+							name: "Disposal & Haul-Off",
+							quantity: 1,
+							unit_price: 485.0,
+							total: 485.0,
+							source: "manual",
+							item_type: "other",
+						},
+					],
+				},
+			},
+		}),
+		// J-0011: Completed — P-0004 unit 4
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0011",
+				name: "Thermostat Replacement — Williams Unit 4",
+				description:
+					"Swap the failed thermostat for a programmable model and commission the schedule.",
+				priority: "Low",
+				address: client3.address,
+				coords: { lat: 43.7889, lng: -91.2297 },
+				status: "Completed",
+				client_id: client3.id,
+				project_id: project4.id,
+				subtotal: 406.5,
+				tax_rate: 0.0825,
+				tax_amount: 33.54,
+				actual_total: 440.04,
+				completed_at: daysFromNow(-34),
+				line_items: {
+					create: [
+						{
+							name: "Programmable Thermostat",
+							quantity: 1,
+							unit_price: 189.0,
+							total: 189.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Service Labor (1.5 hrs)",
+							quantity: 1.5,
+							unit_price: 145.0,
+							total: 217.5,
+							source: "manual",
+							item_type: "labor",
+						},
+					],
+				},
+			},
+		}),
+		// J-0012: Completed — P-0004 unit 9, the rewire that pushed it over budget
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0012",
+				name: "Thermostat Replacement — Williams Unit 9",
+				description:
+					"Thermostat swap plus a low-voltage rewire — the original run was spliced and unusable.",
+				priority: "Low",
+				address: client3.address,
+				coords: { lat: 43.7889, lng: -91.2297 },
+				status: "Completed",
+				client_id: client3.id,
+				project_id: project4.id,
+				subtotal: 406.5,
+				tax_rate: 0.0825,
+				tax_amount: 33.54,
+				actual_total: 440.04,
+				completed_at: daysFromNow(-31),
+				line_items: {
+					create: [
+						{
+							name: "Programmable Thermostat",
+							quantity: 1,
+							unit_price: 189.0,
+							total: 189.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Service Labor (1.5 hrs)",
+							quantity: 1.5,
+							unit_price: 145.0,
+							total: 217.5,
+							source: "field_addition",
+							item_type: "labor",
+						},
+					],
+				},
+			},
+		}),
+		// J-0013: Unscheduled — P-0005, the changeout the homeowner has on hold
+		db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: "J-0013",
+				name: "Heat Pump & Air Handler Changeout — Johnson Residence",
+				description:
+					"Replace the aging split system with a 3-ton heat pump and matched air handler; new line set and pad.",
+				priority: "Medium",
+				address: client1.address,
+				coords: { lat: 43.8124, lng: -91.2568 },
+				status: "Unscheduled",
+				client_id: client1.id,
+				project_id: project5.id,
+				subtotal: 9955.0,
+				tax_rate: 0.0825,
+				tax_amount: 821.29,
+				estimated_total: 10776.29,
+				line_items: {
+					create: [
+						{
+							name: "Trane 3-Ton Heat Pump XR15",
+							quantity: 1,
+							unit_price: 5400.0,
+							total: 5400.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Air Handler w/ Matched Coil",
+							quantity: 1,
+							unit_price: 1980.0,
+							total: 1980.0,
+							source: "manual",
+							item_type: "equipment",
+						},
+						{
+							name: "Installation Labor",
+							quantity: 14,
+							unit_price: 165.0,
+							total: 2310.0,
+							source: "manual",
+							item_type: "labor",
+						},
+						{
+							name: "Line Set & Equipment Pad Kit",
+							quantity: 1,
+							unit_price: 265.0,
+							total: 265.0,
+							source: "manual",
+							item_type: "material",
+						},
+					],
+				},
 			},
 		}),
 	]);
@@ -3707,7 +4188,10 @@ async function main() {
 		`  Invoice Schedules: 2  on_visit_completion + monthly subscription`,
 	);
 	console.log(
-		`  Jobs:              6  Completed, InProgress, Scheduled, InProgress×2, Cancelled`,
+		`  Projects:          6  Active×2, Planning, Completed, OnHold, Cancelled (P-0006 unassigned manager)`,
+	);
+	console.log(
+		`  Jobs:             13  6 standalone + 7 attached to projects (P-0006 has none)`,
 	);
 	console.log(
 		`  Visits:            8  Completed, OnSite, Scheduled, Completed×2, Scheduled, Driving, Paused`,

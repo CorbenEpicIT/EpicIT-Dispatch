@@ -55,6 +55,15 @@ export const formatDate = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	});
 };
 
+export const formatDateOnly = (date: Date | string) => {
+	return new Date(date).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		timeZone: "UTC",
+	});
+};
+
 export const formatTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	const d = typeof date === "string" ? new Date(date) : date;
 	return d.toLocaleTimeString("en-US", {

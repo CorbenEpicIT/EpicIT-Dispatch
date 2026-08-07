@@ -137,6 +137,9 @@ export const getAllJobVisits = async (organization_id: string, filters?: { clien
 			job: {
 				include: {
 					client: true,
+					project: {
+						select: { id: true, project_number: true, status: true, name: true },
+					}
 				},
 			},
 			visit_techs: {
@@ -187,6 +190,9 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 						},
 					},
 					quote: true,
+					project: {
+						select: { id: true, project_number: true, status: true, name: true },
+					}
 				},
 			},
 			visit_techs: {
@@ -297,6 +303,9 @@ export const getJobVisitsByTechId = async (techId: string, organization_id: stri
 			job: {
 				include: {
 					client: true,
+					project: {
+						select: { id: true, project_number: true, status: true, name: true },
+					}
 				},
 			},
 			line_items: {

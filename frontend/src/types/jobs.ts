@@ -29,6 +29,7 @@ import {
 	type RecurringPlanStatus,
 	type RecurringOccurrence,
 } from "./recurringPlans";
+import type { ProjectRef } from "./project";
 
 // ============================================================================
 // JOB-SPECIFIC TYPES
@@ -198,6 +199,7 @@ export interface Job extends PricingBreakdown, ExecutionTotals {
 	quote_id: string | null;
 	recurring_plan_id?: string | null;
 
+	project_id?: string | null;
 	client?: ClientWithPrimaryContact;
 	request?: RequestReference | null;
 	quote?: QuoteReference | null;
@@ -357,7 +359,7 @@ export interface JobVisit extends PricingBreakdown {
 	created_at?: Date | string;
 	updated_at?: Date | string;
 
-	job?: JobSummary & { client: ClientWithPrimaryContact; coords: Coordinates; quote?: QuoteReference | null };
+	job?: JobSummary & { client: ClientWithPrimaryContact; coords: Coordinates; quote?: QuoteReference | null, project?: ProjectRef | null; };
 	visit_techs: JobVisitTechnician[];
 	notes?: JobNote[];
 	line_items?: VisitLineItem[];

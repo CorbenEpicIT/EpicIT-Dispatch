@@ -2216,7 +2216,7 @@ export const getTechnicianScorecard = async (
 	return rows;
 };
 
-const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory"];
+const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"];
 const BREAKDOWNS: Record<string, string[]> = {
 	jobs: ["status", "priority", "type"],
 	quotes: ["status", "priority"],
@@ -2224,6 +2224,7 @@ const BREAKDOWNS: Record<string, string[]> = {
 	invoices: ["status", "qb_sync"],
 	clients: ["status", "tax_exempt"],
 	inventory: ["status", "qb_linked"],
+	projects: ["status", "priority", "manager"],
 };
 type Stat = { label: string; value: number; format: "number" | "currency" | "percent" | "duration" };
 type Slice = { label: string; value: number; };
@@ -2494,8 +2495,70 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			];
 			break;
 		}
-		default: {
-
+		case "projects": {
+			const OPEN_STATUSES = ["Planning", "Active", "OnHold"] as const;
+			const [total, open, overdue, budget, committed] = await Promise.all([
+				sdb.project.count({ where: { organization_id: orgId, ...createdWhere } }),
+				sdb.project.count({ where: { organization_id: orgId, status: { in: [...OPEN_STATUSES] }, ...createdWhere } }),
+				sdb.project.count({
+					where: {
+						organization_id: orgId,
+						target_end_at: { lt: now },
+						completed_at: null,
+						status: { notIn: ["Completed", "Cancelled"] },
+					},
+				}),
+				sdb.project.aggregate({ where: { organization_id: orgId, ...createdWhere }, _sum: { budget: true } }),
+				sdb.$queryRaw<{ committed: Prisma.Decimal | null }[]>(Prisma.sql`
+						SELECT SUM(COALESCE(j.actual_total, j.estimated_total)) AS committed
+						FROM job j JOIN project p ON p.id = j.project_id
+						WHERE p.organization_id = ${orgId}
+							${dated?.gte ? Prisma.sql`AND p.created_at >= ${dated.gte}` : Prisma.empty}
+							${dated?.lte ? Prisma.sql`AND p.created_at <= ${dated.lte}` : Prisma.empty}
+					`),
+			]);
+			if (grouping === "priority") {
+				const g = await sdb.project.groupBy({ by: ["priority"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.priority, value: r._count._all }));
+				breakdownLabel = "By Priority";
+			} else if (grouping === "manager") {
+				const g = await sdb.project.groupBy({
+					by: ["manager_dispatcher_id"],
+					where: { organization_id: orgId, ...createdWhere },
+					_count: { _all: true },
+				});
+				const ids = g.map((r) => r.manager_dispatcher_id).filter((v): v is string => v !== null);
+				const names = new Map(
+					(await sdb.dispatcher.findMany({
+						where: { id: { in: ids } },
+						select: { id: true, name: true },
+					})).map((d) => [d.id, d.name]),
+				);
+				const all = g
+					.map((r) => ({
+						label: r.manager_dispatcher_id
+							? names.get(r.manager_dispatcher_id) ?? "Unknown"
+							: "Unassigned",
+						value: r._count._all,
+					}))
+					.sort((a, b) => b.value - a.value);
+				const top = all.slice(0, 5);
+				const rest = all.slice(5).reduce((s, r) => s + r.value, 0);
+				breakdown = rest ? [...top, { label: "Other", value: rest }] : top;
+				breakdownLabel = "By Manager";
+			} else {
+				const g = await sdb.project.groupBy({ by: ["status"], where: { organization_id: orgId, ...createdWhere }, _count: { _all: true } });
+				breakdown = g.map((r) => ({ label: r.status, value: r._count._all }));
+				breakdownLabel = "By Status";
+			}
+			stats = [
+				{ label: "Total",			value: total,                                						 format: "number" },
+				{ label: "Open",			value: open,                                 						format: "number" },
+				{ label: "Overdue",		 value: overdue,                              						format: "number" },
+				{ label: "Budget",		   value: Number(budget._sum.budget ?? 0),      	format: "currency" },
+				{ label: "Committed", 	value: Number(committed[0]?.committed ?? 0), format: "currency" },
+			];
+			break;
 		}
 	}
 

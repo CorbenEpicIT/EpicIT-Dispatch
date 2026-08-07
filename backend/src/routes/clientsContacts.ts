@@ -36,6 +36,7 @@ import { getQuotesByClientId } from '../controllers/quotesController.js';
 import { getRequestsByClientId } from '../controllers/requestsController.js';
 import * as invoicesController from '../controllers/invoicesController.js';
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
+import { getProjectsByClientId } from '../controllers/projectsController.js';
 
 const router = Router();
 
@@ -574,5 +575,19 @@ router.get("/clients/:clientId/jobs", requireAnyPermission("view_clients", "view
     }
 });
 
+// ============================================
+// CLIENT PROJECTS (Read-only)
+// ============================================
+router.get("/clients/:clientId/projects", requireAnyPermission("view_clients", "view_projects"), async (req, res, next) => {
+    try {
+        const clientId = req.params.clientId as string;
+        const orgId = req.user!.organization_id as string;
+        const result = await getProjectsByClientId(orgId, clientId);
+
+        res.json(createSuccessResponse(result));
+    } catch (err) {
+        next(err);
+    }
+});
 
 export default router;

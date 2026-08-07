@@ -56,6 +56,8 @@ import RegisterPage from "./pages/RegisterPage";
 import MyProfilePage from "./pages/MyProfilePage";
 import QBCallbackPage from "./pages/QBCallbackPage";
 import SSOCompletePage from "./pages/SSOCompletePage";
+import ProjectsPage from "./pages/dispatch/ProjectsPage";
+import ProjectDetailPage from "./pages/dispatch/ProjectDetailPage";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
@@ -131,6 +133,8 @@ export default function AppRoutes() {
 					path="jobs/:jobId/visits/:visitId"
 					element={<RequireAnyPermission permissions={["view_jobs", "view_visits"]}><JobVisitDetailPage /></RequireAnyPermission>}
 				/>
+				<Route path="projects" element={<RequirePermission permission="view_projects"><ProjectsPage /></RequirePermission>} />
+				<Route path="projects/:projectId" element={<RequirePermission permission="view_projects"><ProjectDetailPage /></RequirePermission>} />
 				<Route
 					path="recurring-plans/:recurringPlanId"
 					element={<RequirePermission permission="view_recurring_plans"><RecurringPlanDetailPage /></RequirePermission>}

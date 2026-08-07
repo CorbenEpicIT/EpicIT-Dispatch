@@ -71,6 +71,25 @@ type InvoiceNumberTx = {
 	};
 };
 
+type ProjectNumberTx = {
+	$executeRaw: (
+		template: TemplateStringsArray,
+		...values: unknown[]
+	) => Promise<number>;
+	project: {
+		findFirst: (args: {
+			where: {
+				organization_id: string;
+				project_number: { startsWith: string };
+			};
+			orderBy: {
+				project_number?: "asc" | "desc";
+				created_at?: "asc" | "desc";
+			};
+		}) => Promise<{ project_number: string } | null>;
+	};
+}
+
 export async function generateQuoteNumber(
 	tx: QuoteNumberTx,
 	organizationId: string,
@@ -140,4 +159,30 @@ export async function generateInvoiceNumber(
 	}
 
 	return `INV-${next.toString().padStart(4, "0")}`;
+}
+
+
+export async function generateProjectNumber(
+	tx: ProjectNumberTx,
+	organizationId: string,
+): Promise<string> {
+	await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, hashtext(${organizationId}))`;
+
+	const lastProject = await tx.project.findFirst({
+		where: {
+			organization_id: organizationId,
+			project_number: { startsWith: "P-" },
+		},
+		orderBy: { created_at: "desc" },
+	});
+
+	let nextNumber = 1;
+	if (lastProject) {
+		const match = lastProject.project_number.match(/P-(\d+)/);
+		if (match) {
+			nextNumber = parseInt(match[1]) + 1;
+		}
+	}
+
+	return `P-${nextNumber.toString().padStart(4, "0")}`;
 }

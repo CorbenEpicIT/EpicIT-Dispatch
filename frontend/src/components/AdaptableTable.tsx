@@ -24,6 +24,8 @@ interface AdaptableTableProps {
 	columnAlign?: Record<string, "left" | "right">;
 	// Optional totals row keyed by column id
 	footerRow?: Record<string, React.ReactNode>;
+	// Render cells with a component instead of the default text rendering
+	cellRenderers?: Record<string, (row: Record<string, unknown>) => React.ReactNode>;
 }
 
 const PADDING = "p-3";
@@ -45,6 +47,7 @@ const AdaptableTable = ({
 	headerLabels,
 	columnAlign,
 	footerRow,
+	cellRenderers
 }: AdaptableTableProps) => {
 	const alignClass = (colId: string) => {
 		if (!columnAlign) return "";
@@ -195,6 +198,11 @@ const AdaptableTable = ({
 														cell.column.columnDef.cell,
 														cell.getContext()
 													);
+												}
+
+												// If there's a custom cell renderer for this column, use it
+												if (cellRenderers?.[cell.column.id]) {
+													return cellRenderers[cell.column.id](row.original);
 												}
 
 												const rawValue =

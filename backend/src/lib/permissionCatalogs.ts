@@ -11,6 +11,7 @@ const DISPATCHER_CATALOG = [
 	{ category: "Administration", permissions: ["view_admin", "manage_roles", "manage_organization", "manage_taxes"] },
 	{ category: "Vehicles", permissions: ["view_vehicles", "manage_vehicles"] },
 	{ category: "Followups", permissions: ["view_followups", "manage_followups"] },
+	{ category: "Projects", permissions: ["view_projects", "create_projects", "edit_projects", "delete_projects"] },
 ] as const;
 
 const TECHNICIAN_CATALOG = [
@@ -22,6 +23,7 @@ const TECHNICIAN_CATALOG = [
 	{ category: "Schedule", permissions: ["view_own_schedule", "view_team_schedule"] },
 	{ category: "Forms", permissions: ["view_forms", "submit_forms"] },
 	{ category: "Vehicles", permissions: ["view_vehicles", "use_vehicles"] },
+	{ category: "Projects", permissions: ["view_projects"] },
 ] as const;
 
 export const PERMISSION_CATALOGS = {

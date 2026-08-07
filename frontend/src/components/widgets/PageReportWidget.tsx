@@ -55,7 +55,7 @@ export default function PageReportWidget () {
     const now = useMemo(()=> new Date(), []);
     const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
 	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
-    const PAGES = ["Requests", "Quotes", "Jobs", "Invoices", "Clients", "Inventory"];
+    const PAGES = ["Requests", "Quotes", "Jobs", "Projects", "Invoices", "Clients", "Inventory"];
     const selected = PAGES.find((p) => p.toLowerCase() === page.toLowerCase()) ?? "Jobs";
     const { data, isLoading, error } = usePageSummaryQuery(selected.toLowerCase(), start, end);
 

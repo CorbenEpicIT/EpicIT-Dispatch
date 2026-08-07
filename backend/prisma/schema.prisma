@@ -304,6 +304,14 @@ enum email_template_category {
   custom
 }
 
+enum project_status {
+  Planning
+  Active
+  OnHold
+  Completed
+  Cancelled
+}
+
 model organization {
   id        String  @id @default(uuid())
   name      String
@@ -347,6 +355,7 @@ model organization {
   quotes                quote[]
   jobs                  job[]
   recurring_plans       recurring_plan[]
+  projects              project[]
   form_drafts           form_draft[]
   invoices              invoice[]
 
@@ -488,6 +497,7 @@ model client {
   client_external_mapping client_external_mapping[]
   serial_units    serial_unit[]
   followup_enrollments followup_enrollment[]
+  projects        project[]
 
   @@index([is_active])
   @@index([is_tax_exempt])
@@ -741,6 +751,8 @@ model job {
   quote    quote?  @relation(fields: [quote_id], references: [id])
   recurring_plan_id String? @unique
   recurring_plan    recurring_plan? @relation(fields: [recurring_plan_id], references: [id])
+  project_id        String? 
+  project           project? @relation(fields: [project_id], references: [id])
 
   // Financial totals for non-recurring jobs OR
   // aggregated values for recurring job containers
@@ -769,6 +781,7 @@ model job {
   @@index([priority])
   @@index([created_at])
   @@index([updated_at])
+  @@index([project_id])
 
   @@index([client_id, status])
   @@index([organization_id, created_at])
@@ -1151,6 +1164,47 @@ model recurring_plan_note {
   last_editor_dispatcher dispatcher? @relation("RecurringPlanNoteEditor", fields: [last_editor_dispatcher_id], references: [id])
   
   @@index([recurring_plan_id])
+}
+
+// ============================================================================
+// Project
+// ============================================================================
+
+model project {
+  id                String @id @default(uuid())
+  organization_id   String?
+  organization      organization? @relation(fields: [organization_id], references: [id])
+  project_number    String
+  name              String
+  description       String
+  status            project_status @default(Planning)
+  priority          priority @default(Medium)
+  address           String?
+  coords            Json?
+
+  manager_dispatcher_id String?
+  manager_dispatcher    dispatcher? @relation("ProjectManager", fields: [manager_dispatcher_id], references: [id])
+
+  client_id         String 
+  client            client @relation(fields: [client_id], references: [id])
+
+  budget            Decimal? @db.Decimal(12, 2)
+
+  starts_at         DateTime?
+  target_end_at     DateTime?
+  created_at        DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  completed_at      DateTime?
+  cancelled_at      DateTime?
+  cancellation_reason String?
+
+  jobs              job[]
+
+  @@index([client_id])
+  @@index([status])
+  @@index([organization_id, created_at])
+  @@index([manager_dispatcher_id])
+  @@unique([organization_id, project_number])
 }
 
 // ============================================================================
@@ -1733,6 +1787,8 @@ model dispatcher {
   readiness_confirmations  vehicle_readiness[] @relation("DispatcherReadinessConfirmations")
   approved_items      inventory_item[] @relation("DispatcherApprovedItems")
   acknowledged_restock_requests vehicle_restock_request[] @relation("DispatcherAcknowledgedRequests")
+
+  managed_projects project[] @relation("ProjectManager")
 
   @@index([email])
   @@index([organization_id])

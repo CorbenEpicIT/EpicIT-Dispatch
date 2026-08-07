@@ -66,6 +66,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"followup_enrollment",
 	"followup_send",
 	"email_template",
+	"project",
 ]);
 
 /**

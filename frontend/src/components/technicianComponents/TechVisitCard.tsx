@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Camera, ChevronRight, MapPin, CalendarDays } from "lucide-react";
+import { FileText, Camera, ChevronRight, MapPin, CalendarDays, FolderKanban } from "lucide-react";
 import VisitActionButtons from "./VisitActionButtons";
 import type { JobVisit } from "../../types/jobs";
 import { VisitStatusLabels } from "../../types/jobs";
@@ -156,6 +156,14 @@ export default function TechVisitCard({
 				{visit.job?.client?.name && (
 					<p className="text-xs text-text-muted mb-0.5">
 						{visit.job.client.name}
+					</p>
+				)}
+
+				{/* Project */}
+				{visit.job?.project && (
+					<p className="text-xs text-text-tertiary mb-0.5 flex items-center gap-1">
+						<FolderKanban size={11} className="text-text-faint shrink-0" aria-hidden="true" />
+						{visit.job.project.project_number}  ·  {visit.job.project.name}
 					</p>
 				)}
 

@@ -61,6 +61,7 @@ import oauthRouter from "./routes/oauth.js";
 import mfaRouter from "./routes/mfa.js";
 import ssoRouter from "./routes/sso.js"
 import followupsRouter from "./routes/followups.js";
+import projectsRouter from "./routes/projects.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -560,6 +561,11 @@ app.use("/integrations/quickbooks", verifyToken, quickbooksRouter);
 // AUTOMATED FOLLOWUPS
 // ============================================
 app.use("/followups", verifyToken, followupsRouter);
+
+// ============================================
+// PROJECTS
+// ============================================
+app.use("/projects", verifyToken, projectsRouter);
 
 // ============================================
 // CLIENTS + CONTACTS

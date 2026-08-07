@@ -23,6 +23,7 @@ import { VisitStatusColors, VisitStatusLabels, type VisitStatus } from "../../ty
 import { QuoteStatusColors } from "../../types/quotes";
 import { formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
+import { ProjectStatusColors, ProjectStatusLabels } from "../../types/project";
 
 // ── Elapsed Timer ─────────────────────────────────────────────────────────────
 
@@ -108,6 +109,21 @@ function JobContextSection({
 									{job.name}
 								</p>
 							</div>
+							{job.project && (
+								<div>
+									<p className="text-xs text-text-muted mb-0.5"> Project</p>
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-medium text-text-primary">
+											{job.project.project_number}  ·  {job.project.name}
+										</p>
+										<span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border
+											${ProjectStatusColors[job.project.status]}`}
+										>
+											{ProjectStatusLabels[job.project.status]}
+										</span>
+									</div>
+								</div>
+							)}
 							{job.address && (
 								<div>
 									<p className="text-xs text-text-muted mb-0.5">

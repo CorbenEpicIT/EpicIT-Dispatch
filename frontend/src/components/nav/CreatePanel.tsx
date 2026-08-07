@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	Briefcase, Users, ReceiptText, FileText, Phone,
+	Briefcase, FolderKanban, Users, ReceiptText, FileText, Phone,
 	RefreshCcw, Wrench, ShieldUser, X,
 } from "lucide-react";
 import { usePermission } from "../../hooks/usePermission";
@@ -11,7 +11,9 @@ import { useCreateQuoteMutation } from "../../hooks/useQuotes";
 import { useCreateRequestMutation } from "../../hooks/useRequests";
 import { useCreateTechnicianMutation } from "../../hooks/useTechnicians";
 import { useCreateDispatcherMutation } from "../../hooks/useDispatchers";
+import { useCreateProjectMutation } from "../../hooks/useProjects";
 import CreateJob from "../jobs/CreateJob";
+import CreateProjectModal from "../projects/CreateProjectModal";
 import CreateClient from "../clients/CreateClient";
 import CreateInvoice from "../invoices/CreateInvoice";
 import CreateQuote from "../quotes/CreateQuote";
@@ -21,7 +23,7 @@ import CreateTechnician from "../technicians/CreateTechnician";
 import CreateDispatcher from "../dispatchers/CreateDispatcher";
 
 type ActiveModal =
-	| "job" | "client" | "invoice" | "quote" | "request"
+	| "job" | "project" | "client" | "invoice" | "quote" | "request"
 	| "recurringPlan" | "technician" | "dispatcher" | null;
 
 function modalProps(
@@ -43,6 +45,7 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 	const [activeModal, setActiveModal] = useState<ActiveModal>(null);
 
 	const canJob = usePermission("create_jobs");
+	const canProject = usePermission("create_projects");
 	const canClient = usePermission("create_clients");
 	const canInvoice = usePermission("create_invoices");
 	const canQuote = usePermission("create_quotes");
@@ -52,6 +55,7 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 	const canDispatch = usePermission("manage_dispatchers");
 
 	const { mutateAsync: createJob } = useCreateJobMutation();
+	const { mutateAsync: createProject } = useCreateProjectMutation();
 	const { mutateAsync: createClient } = useCreateClientMutation();
 	const { mutateAsync: createQuote } = useCreateQuoteMutation();
 	const { mutateAsync: createRequest } = useCreateRequestMutation();
@@ -78,6 +82,7 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 
 	const MAIN_ITEMS = [
 		{ key: "job" as const,           label: "Job",            desc: "Schedule a new service job",      icon: Briefcase,   visible: canJob },
+		{ key: "project" as const,       label: "Project",        desc: "Group jobs under a project",      icon: FolderKanban, visible: canProject },
 		{ key: "client" as const,        label: "Client",         desc: "Add a new client",                icon: Users,       visible: canClient },
 		{ key: "invoice" as const,       label: "Invoice",        desc: "Create an invoice",               icon: ReceiptText, visible: canInvoice },
 		{ key: "quote" as const,         label: "Quote",          desc: "Send a quote to a client",        icon: FileText,    visible: canQuote },
@@ -160,6 +165,14 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 					const job = await createJob(input);
 					navigate(`/dispatch/jobs/${job.id}`);
 					return job.id;
+				}}
+			/>
+			<CreateProjectModal
+				{...modalProps("project", activeModal, setActiveModal)}
+				createProject={async (input) => {
+					const project = await createProject(input);
+					navigate(`/dispatch/projects/${project.id}`);
+					return project.id;
 				}}
 			/>
 			<CreateClient

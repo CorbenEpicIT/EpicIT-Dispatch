@@ -5,6 +5,7 @@ export type ChipColor = "purple" | "blue" | "green" | "orange" | "cyan" | "rose"
 export interface FilterChip {
 	label: string;
 	color: ChipColor;
+	classes?: string;
 	onRemove: () => void;
 	highlighted?: boolean;
 }
@@ -29,21 +30,22 @@ export default function FilterChips({ filters: rawFilters, resultCount, onClearA
 	if (filters.length === 0) return null;
 
 	return (
-		<div className="mb-3 p-2.5 bg-surface/60 rounded-md border border-border/60">
+		<div className="mb-3 p-2.5 bg-base rounded-md border border-border/60">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2 flex-wrap">
 					<span className="text-sm text-text-tertiary">Active filters:</span>
 					{filters.map((chip) => {
 						const { bg, border, text, ring } = COLOR_STYLES[chip.color];
+						const shell = chip.classes ?? `${bg} ${border} ${text}`;
 						return (
 							<div
 								key={chip.label}
-								className={`flex items-center gap-2 px-3 py-1.5 ${bg} border ${border} rounded-md transition-shadow ${chip.highlighted ? `ring-2 ${ring}` : ""}`}
+								className={`flex items-center gap-2 px-3 py-1.5 border rounded-md transition-shadow ${shell} ${chip.highlighted ? `ring-2 ${ring}` : ""}`}
 							>
-								<span className={`text-sm ${text}`}>{chip.label}</span>
+								<span className="text-sm">{chip.label}</span>
 								<button
 									onClick={chip.onRemove}
-									className={`p-1 -m-1 ${text} hover:text-text-primary transition-colors`}
+									className="p-1 -m-1 hover:text-text-primary transition-colors"
 									aria-label={`Remove ${chip.label} filter`}
 								>
 									<X size={14} />

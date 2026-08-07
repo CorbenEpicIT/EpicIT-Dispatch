@@ -31,6 +31,7 @@ const BREAKDOWNS: Record<string, string[]> = {
 	invoices: ["status", "qb_sync"],
 	clients: ["status", "tax_exempt"],
 	inventory: ["status", "qb_linked"],
+	projects: ["status", "priority", "manager"],
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -40,6 +41,7 @@ const DIMENSION_LABELS: Record<string, string> = {
 	qb_sync: "QB Sync",
 	qb_linked: "QuickBooks",
 	tax_exempt: "Tax Status",
+	manager: "Manager",
 };
 
 // Mounted only when expanded, so the summary query runs on demand
@@ -54,7 +56,7 @@ function ReportBody(
 			let statusValue: string | null = null;
 			if (page === "clients") {
 				statusValue = label === "Active" ? "active" : label === "Inactive" ? "inactive" : null;
-			} else if (["jobs", "quotes", "requests", "invoices"].includes(page)) {
+			} else if (["jobs", "quotes", "requests", "invoices", "projects"].includes(page)) {
 				statusValue = label;
 			}
 			if (!statusValue) return null;
@@ -65,7 +67,7 @@ function ReportBody(
 			const carryDate =
 				page === "jobs"
 					? !noScheduleDate
-					: ["quotes", "requests", "invoices"].includes(page);
+					: ["quotes", "requests", "invoices", "projects"].includes(page);
 			if (carryDate) {
 				params = serializeDateRange(range, "date", params);
 			}
@@ -73,9 +75,9 @@ function ReportBody(
 		}
 
 		if (groupBy === "priority") {
-			if (!["jobs", "quotes", "requests"].includes(page)) return null;
+			if (!["jobs", "quotes", "requests", "projects"].includes(page)) return null;
 			let params = new URLSearchParams({ priority: label });
-			if (["quotes", "requests"].includes(page)) {
+			if (["quotes", "requests", "projects"].includes(page)) {
 				params = serializeDateRange(range, "date", params);
 			}
 			return `/dispatch/${page}?${params.toString()}`;
@@ -95,8 +97,8 @@ function ReportBody(
 
 	const canFilter =
 		(groupBy === "status" &&
-			["jobs", "quotes", "requests", "invoices", "clients"].includes(page)) ||
-		(groupBy === "priority" && ["jobs", "quotes", "requests"].includes(page));
+			["jobs", "quotes", "requests", "invoices", "clients", "projects"].includes(page)) ||
+		(groupBy === "priority" && ["jobs", "quotes", "requests", "projects"].includes(page));
 
 	return (
 		<PageSummary
@@ -164,7 +166,7 @@ export default function PageReportSection({
 						value={effectiveGroupBy}
 						onChange={(e) => setGroupBy(e.target.value)}
 						aria-label="Group breakdown by"
-						className="flex h-9 cursor-pointer items-center whitespace-nowrap rounded-md border border-border bg-surface px-3 text-sm text-text-tertiary transition-colors hover:text-text-primary"
+						className="flex h-9 cursor-pointer items-center whitespace-nowrap rounded-md border border-border bg-base px-3 text-sm text-text-tertiary transition-colors hover:text-text-primary"
 					>
 						{options.map((p) => (
 							<option key={p} value={p}>

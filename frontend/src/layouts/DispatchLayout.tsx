@@ -19,6 +19,7 @@ import {
 	UserRoundCog,
 	Plus,
 	Mail,
+	FolderKanban,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
@@ -57,6 +58,7 @@ export default function DispatchLayout() {
 		"manage_roles",
 	]);
 	const canViewFollowups = usePermission("view_followups");
+	const canViewProjects = usePermission("view_projects");
 
 	useSocketQuerySync();
 
@@ -188,6 +190,18 @@ export default function DispatchLayout() {
 									/>
 								}
 								label="Jobs"
+							/>
+						)}
+						{canViewProjects && (
+							<SideNavItem
+								expanded={expanded}
+								to="/dispatch/projects"
+								icon={
+									<FolderKanban
+										size={ICON_SIZE}
+									/>
+								}
+								label="Projects"
 							/>
 						)}
 						{canViewInvoices && (

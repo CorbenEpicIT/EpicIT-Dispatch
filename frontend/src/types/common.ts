@@ -17,11 +17,11 @@ export const PriorityLabels: Record<Priority, string> = {
 };
 
 export const PriorityColors: Record<Priority, string> = {
-	Low:       "bg-neutral/20 text-text-tertiary border-border-strong/30",
-	Medium:    "bg-primary/20 text-primary-text border-primary/30",
-	High:      "bg-orange/20 text-orange-text border-orange/30",
-	Urgent:    "bg-error/20 text-error-text border-error/30",
-	Emergency: "bg-error/20 text-error-text border-error/30 font-bold",
+    Low:       "bg-primary text-white border-border-strong/30",
+    Medium:    "bg-yellow-400 text-white border-warning/30",
+    High:      "bg-orange text-white border-orange/30",
+    Urgent:    "bg-error text-white border-error/30",
+    Emergency: "bg-error text-white border-error/30 font-bold",
 };
 
 // ============================================================================
@@ -258,7 +258,12 @@ export function percentageToTaxRate(percentage: number): number {
 
 //Format currency for display
 export function formatCurrency(amount: number | null | undefined): string {
-	return `$${(amount ?? 0).toFixed(2)}`;
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	}).format(amount ?? 0);
 }
 
 // Calculate line item total

@@ -13,6 +13,7 @@ import type {
 	CreateClientNoteInput,
 	UpdateClientNoteInput,
 } from "../types/clients";
+import type { Project } from "../types/project";
 
 
 // ============================================================================
@@ -258,3 +259,11 @@ export const deleteClientNote = async (
 
 	return response.data.data || { message: "Client note deleted successfully" };
 };
+
+export const getClientProjects = async (clientId: string): Promise<Project[]> => {
+	const response = await api.get<ApiResponse<Project[]>>(`/clients/${clientId}/projects`);
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch client projects");
+	}
+	return response.data.data || [];
+}

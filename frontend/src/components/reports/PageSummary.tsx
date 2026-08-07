@@ -72,6 +72,14 @@ const STAT_DESCRIPTIONS: Record<string, Record<string, string>> = {
 		"Open Balance": "Total outstanding balance owed across all clients.",
 		"Avg. Income": "Average billed revenue per client (total billed ÷ all clients).",
 	},
+	projects: {
+		Total: "Projects created in the selected range.",
+		Open: "Projects still open (Planning, Active, or On Hold).",
+		Overdue: "Projects past their target end date and not yet completed (all time).",
+		Budget: "Combined budget of projects created in the range.",
+		Committed:
+			"Value of jobs attached to those projects — actual where the job is finished, otherwise estimated.",
+	},
 	inventory: {
 		"Total Items": "Active, non-provisional inventory items (current snapshot).",
 		Low: "Items at or below their low-stock threshold.",

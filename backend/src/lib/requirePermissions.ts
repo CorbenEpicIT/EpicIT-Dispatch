@@ -138,3 +138,17 @@ export const requireAnyPermissionOrSelf = (permissions: string[], idParam = "id"
     }
     next();
 };
+
+export const denyTechnicians = (req: Request, res: Response, next: NextFunction)=>{
+	if (req.user?.role === "technician"){
+		return res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+	}
+	next();
+}
+
+export const denyDispatchers = (req: Request, res: Response, next: NextFunction)=>{
+	if (req.user?.role === "dispatcher"){
+		return res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+	}
+	next();
+}

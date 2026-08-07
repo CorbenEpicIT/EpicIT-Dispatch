@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { Search, X, BookOpen, ChevronRight, Users, Trash2 } from "lucide-react";
+import { Search, X, BookOpen, Check, ChevronRight, Users, Trash2 } from "lucide-react";
 
 export interface TemplateSearchClient {
 	id: string;
@@ -30,6 +30,7 @@ export interface TemplateSearchScopeToggle {
 
 interface TemplateSearchProps {
 	heading?: string;
+	headingHint?: string;
 	placeholder?: string;
 	results: TemplateSearchResult[];
 	clients: TemplateSearchClient[];
@@ -41,6 +42,9 @@ interface TemplateSearchProps {
 	scopeToggle?: TemplateSearchScopeToggle;
 	clientFilter?: string;
 	onClientFilterChange?: (clientId: string) => void;
+	selectedIds?: readonly string[];
+	onToggleSelect?: (id: string) => void;
+	emptyHint?: string;
 }
 
 function DeleteButton({
@@ -94,6 +98,7 @@ function DeleteButton({
 
 export function TemplateSearch({
 	heading = "Start from existing",
+	headingHint = "— select one to pre-fill the form",
 	placeholder = "Search by title, number, description...",
 	results,
 	clients,
@@ -105,7 +110,15 @@ export function TemplateSearch({
 	scopeToggle,
 	clientFilter: controlledClientFilter,
 	onClientFilterChange,
+	selectedIds,
+	onToggleSelect,
+	emptyHint = "No existing entries to use as a template",
 }: TemplateSearchProps) {
+	const isMultiSelect = selectedIds !== undefined;
+	const selectedSet = useMemo(
+		() => new Set(selectedIds ?? []),
+		[selectedIds]
+	);
 	const [query, setQuery] = useState("");
 	const [clientQuery, setClientQuery] = useState("");
 
@@ -173,7 +186,7 @@ export function TemplateSearch({
 							{heading}
 						</h3>
 						<span className="text-xs text-text-muted font-normal hidden sm:inline">
-							— select one to pre-fill the form
+							{headingHint}
 						</span>
 					</div>
 				</div>
@@ -339,26 +352,54 @@ export function TemplateSearch({
 						<p className="text-xs text-text-faint mt-1">
 							{query || clientFilter
 								? "Try adjusting your search or filter"
-								: "No existing entries to use as a template"}
+								: emptyHint}
 						</p>
 					</div>
 				) : (
-					filtered.map((r) => (
+					filtered.map((r) => {
+						const isSelected = selectedSet.has(r.id);
+						return (
 						<div
 							key={r.id}
-							className="group flex items-center gap-2 px-3 py-2.5 rounded-lg border border-transparent hover:border-border hover:bg-surface/60 transition-all"
+							className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg border transition-all ${
+								isSelected
+									? "border-primary bg-primary/10"
+									: "border-transparent hover:border-border hover:bg-surface/60"
+							}`}
 						>
 							{/* Main clickable area */}
 							<button
 								type="button"
-								onClick={() => onSelect(r.id)}
+								onClick={() =>
+									isMultiSelect
+										? onToggleSelect?.(r.id)
+										: onSelect(r.id)
+								}
+								aria-pressed={
+									isMultiSelect ? isSelected : undefined
+								}
 								className="flex items-center gap-3 flex-1 min-w-0 text-left"
 							>
-								<div className="w-8 h-8 rounded-lg bg-surface border border-border flex items-center justify-center flex-shrink-0 group-hover:border-border-strong transition-colors">
-									<BookOpen
-										size={14}
-										className="text-text-tertiary"
-									/>
+								<div
+									className={`w-8 h-8 rounded-lg border flex items-center justify-center flex-shrink-0 transition-colors ${
+										isSelected
+											? "bg-primary border-primary"
+											: "bg-surface border-border group-hover:border-border-strong"
+									}`}
+								>
+									{isMultiSelect ? (
+										isSelected ? (
+											<Check
+												size={14}
+												className="text-on-primary"
+											/>
+										) : null
+									) : (
+										<BookOpen
+											size={14}
+											className="text-text-tertiary"
+										/>
+									)}
 								</div>
 								<div className="flex-1 min-w-0">
 									<div className="flex items-center gap-2 mb-0.5">
@@ -420,10 +461,12 @@ export function TemplateSearch({
 											{r.badge}
 										</span>
 									)}
-									<ChevronRight
-										size={14}
-										className="text-text-faint group-hover:text-text-tertiary transition-colors"
-									/>
+									{!isMultiSelect && (
+										<ChevronRight
+											size={14}
+											className="text-text-faint group-hover:text-text-tertiary transition-colors"
+										/>
+									)}
 								</div>
 							</button>
 
@@ -438,7 +481,8 @@ export function TemplateSearch({
 								/>
 							)}
 						</div>
-					))
+						);
+					})
 				)}
 			</div>
 		</div>
