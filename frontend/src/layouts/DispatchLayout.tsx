@@ -339,7 +339,7 @@ export default function DispatchLayout() {
 				</header>
 
 				<main className="flex-1 overflow-hidden bg-canvas">
-					<div className="p-4 md:p-6 h-full overflow-y-auto">
+					<div className="pt-4 px-4 md:pt-6 md:px-6 h-full overflow-y-auto">
 						<Outlet />
 					</div>
 				</main>

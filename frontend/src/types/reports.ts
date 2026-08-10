@@ -1,5 +1,5 @@
 import type { ColumnType, FilterCondition, FilterJoin } from "../reports/reportSources";
-import type { StockStatus } from "./inventory";
+import type { StockStatus, UnitBasis } from "./inventory";
 
 // ============================================================================
 // REPORT CATEGORIES
@@ -195,19 +195,52 @@ export interface TimesheetReportEntry {
 // INVENTORY REORDER FORECAST
 // ============================================================================
 
-// Calculated over the last 90 days
+// The reorder verdict, computed server-side in reportsController's
+// buildReorderForecast so this report's table, the priority chart, and the item
+// detail page can never disagree about the same item. Never re-derive it
+// locally from daysOfStock — that drift is exactly what this replaced.
+export type ReorderSeverity = 'critical' | 'warning' | 'healthy' | 'unknown';
+
+// Calculated over the last REORDER_FORECAST_WINDOW_DAYS days.
 export interface ReorderForecastRow {
 	itemId: string;
 	itemName: string;
 	sku: string | null;
 	category: string | null;
 	unit: string | null;
+	// ORG-WIDE on-hand: warehouse + every vehicle, matching the org-wide
+	// consumption it's divided by. The split is carried separately because
+	// "order more" and "move some out to a van" are different actions.
 	currentQuantity: number;
-	qtyConsumed: number;
-	avgDailyUsage: number;
+	warehouseQuantity: number;
+	vehicleQuantity: number;
+	// null when the consumption behind them spans a unit change (consumptionBasis
+	// below). The on-hand figures above stay non-null: they come from the cached
+	// quantity columns, always in the item's current unit, not from a ledger sum.
+	qtyConsumed: number | null;
+	avgDailyUsage: number | null;
+	// Denomination of the consumption this forecast burns down, from the units stamped
+	// on the movements — never from `unit` above, which is the item's CURRENT unit.
+	// When mixed, the rate, runway and stockout date are withheld together and
+	// `severity` falls back to the bands that need no rate.
+	consumptionBasis: UnitBasis;
+	// Days of history the rate was actually measured over — less than the window
+	// for a young item. Carried so a rate built on 4 days isn't read as a 90-day
+	// average. A time span, so it survives a unit break.
+	observedDays: number;
 	daysOfStock: number | null;
 	projectedStockoutDate: string | null;
+	// Warehouse-scoped reorder trigger (the low-stock threshold is a warehouse
+	// number), unlike the org-wide runway above.
+	lowStockThreshold: number | null;
+	belowReorderPoint: boolean;
+	severity: ReorderSeverity;
 }
+
+// The forecast window is FIXED server-side (reportRegistry.ts's "reorder-forecast"
+// entry defaults lookbackDays to 90 and this report sends no override). Stated in
+// one place so the report labels the same window ReorderHealthCard does.
+export const REORDER_FORECAST_WINDOW_DAYS = 90;
 
 export interface InventoryReportRow {
 	id: string;
@@ -225,7 +258,11 @@ export interface InventoryReportRow {
 	cost: number | null;
 	unitPrice: number | null;
 	assetValue: number | null;
-	qtyUsed: number;
+	// null when this item's consumption spans a unit change — never 0, which is the
+	// real answer for "never consumed" and has to stay distinguishable in a report
+	// people export and act on.
+	qtyUsed: number | null;
+	qtyUsedBasis: UnitBasis;
 	stockStatus: StockStatus;
 	location: string;
 	tags: { label: string }[];

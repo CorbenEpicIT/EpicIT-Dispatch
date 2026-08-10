@@ -282,8 +282,8 @@ export default function AddNotePhotoModal({
 									<ImageCarousel
 										images={[pendingUpload.url]}
 										compact
-										contain
-										maxHeight="max-h-80"
+										objectFit="contain"
+										frameClassName="h-80"
 										className="w-full mb-4"
 									/>
 								)}

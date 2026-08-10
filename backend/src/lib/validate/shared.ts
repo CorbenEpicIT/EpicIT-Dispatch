@@ -1,7 +1,47 @@
 /**
- * Shared validation schemas reused across invoice and quote validators.
+ * Shared validation schemas and predicates reused across validators — line-item
+ * shapes for invoices/quotes, and the stock-quantity precision rule below.
  */
 import { z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Stock quantity precision
+// ---------------------------------------------------------------------------
+
+/**
+ * Every quantity column in the stock ledger is `numeric(10, 2)`. Postgres
+ * won't complain about either failure mode this guards against:
+ * 1. A third decimal is silently ROUNDED on write, desyncing cached on-hand
+ *    from the movements it's derived from.
+ * 2. A value past 8 integer digits OVERFLOWS the column, surfacing as a 500
+ *    instead of a clean 4xx.
+ * Applies to stock quantities only — not pagination ints, not money fields
+ * (their own `Decimal(10, 2)` columns, validated where declared).
+ */
+export const STOCK_QTY_SCALE = 2;
+
+/** Largest value `numeric(10, 2)` can hold: 8 integer digits plus 2 decimals. */
+export const MAX_STOCK_QTY = 99_999_999.99;
+
+export const STOCK_QTY_MESSAGE = `Quantity must have at most ${STOCK_QTY_SCALE} decimal places and be at most ${MAX_STOCK_QTY}`;
+
+/**
+ * Decimal places in a number's shortest round-trip representation. String-based,
+ * not arithmetic — `Math.round(v * 100) === v * 100` false-positives on values
+ * like `0.07` (`7.000000000000001` in IEEE-754). Exponent notation returns
+ * Infinity, rejecting it rather than mis-measuring it.
+ */
+function decimalPlaces(v: number): number {
+	const s = String(v);
+	if (s.includes("e") || s.includes("E")) return Infinity;
+	const dot = s.indexOf(".");
+	return dot === -1 ? 0 : s.length - dot - 1;
+}
+
+/** True when `v` survives a round trip through a `numeric(10, 2)` column unchanged. */
+export function isStorableStockQty(v: number): boolean {
+	return Number.isFinite(v) && Math.abs(v) <= MAX_STOCK_QTY && decimalPlaces(v) <= STOCK_QTY_SCALE;
+}
 
 // ---------------------------------------------------------------------------
 // Shared enums

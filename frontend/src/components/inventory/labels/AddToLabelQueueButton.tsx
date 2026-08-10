@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { QrCode } from "lucide-react";
+import { Printer, QrCode } from "lucide-react";
 import type { InventoryItem } from "../../../types/inventory";
 import { useLabelQueueStore } from "../../../stores/labelQueueStore";
 import { useEnsureItemCodeMutation } from "../../../hooks/useTracking";
@@ -30,6 +30,10 @@ export default function AddToLabelQueueButton({
 	const add = useLabelQueueStore((s) => s.add);
 	const ensureCode = useEnsureItemCodeMutation();
 
+	// Icon follows behavior, not identity: queuing in place reads as QrCode,
+	// while navigateOnAdd sends the user to the print page — that's a Printer.
+	const Icon = navigateOnAdd ? Printer : QrCode;
+
 	const handleClick = async () => {
 		const code = item.barcode ?? (await ensureCode.mutateAsync(item.id)).barcode;
 		if (!code) return;
@@ -57,7 +61,7 @@ export default function AddToLabelQueueButton({
 				"w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-40"
 			}
 		>
-			<QrCode size={13} />
+			<Icon size={13} />
 			{children ?? "Add to Label Queue"}
 		</button>
 	);

@@ -39,9 +39,9 @@ import AssignTechnicianPage from "./pages/dispatch/AssignTechnicianPage";
 import RequestsPage from "./pages/dispatch/RequestsPage";
 import RequestDetailsPage from "./pages/dispatch/RequestDetailPage";
 import InventoryPage from "./pages/dispatch/InventoryPage";
+import InventoryItemDetailPage from "./pages/dispatch/InventoryItemDetailPage";
 import LabelPrintPage from "./components/inventory/labels/LabelPrintPage";
-import ItemTrackingPage from "./pages/dispatch/ItemTrackingPage";
-import SerialDetailPage from "./pages/dispatch/SerialDetailPage";
+import SerialRedirectPage from "./pages/dispatch/SerialRedirectPage";
 import BatchDetailPage from "./pages/dispatch/BatchDetailPage";
 import FullMapPage from "./pages/dispatch/FullMapPage";
 import InvoicesPage from "./pages/dispatch/InvoicesPage";
@@ -59,7 +59,7 @@ import SSOCompletePage from "./pages/SSOCompletePage";
 import ProjectsPage from "./pages/dispatch/ProjectsPage";
 import ProjectDetailPage from "./pages/dispatch/ProjectDetailPage";
 
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
 import { usePermission, useAnyPermission } from "./hooks/usePermission";
 import { useEffect, type JSX } from "react";
@@ -100,6 +100,13 @@ function RequirePermission({ permission, children }: { permission: string; child
 function RequireAnyPermission({ permissions, children }: { permissions: string[]; children: JSX.Element }) {
 	const allowed = useAnyPermission(permissions);
 	return allowed ? children : <Navigate to="/dispatch" replace />;
+}
+
+// Bookmark safety net for the retired standalone tracking page — the Serials &
+// Batches tables now live in the item detail page's Tracking tab.
+function RedirectToItemDetail() {
+	const { itemId } = useParams<{ itemId: string }>();
+	return <Navigate to={`/dispatch/inventory/items/${itemId}`} replace />;
 }
 
 export default function AppRoutes() {
@@ -164,9 +171,10 @@ export default function AppRoutes() {
 				<Route path="timesheets" element={<RequirePermission permission="view_reports"><TimesheetsReportPage /></RequirePermission>} />
 				<Route path="inventory/reorder-forecast" element={<RequirePermission permission="view_reports"><ReorderForecastPage /></RequirePermission>} />
 				<Route path="inventory" element={<RequirePermission permission="view_inventory"><InventoryPage /></RequirePermission>} />
+				<Route path="inventory/items/:itemId" element={<RequirePermission permission="view_inventory"><InventoryItemDetailPage /></RequirePermission>} />
 				<Route path="inventory/labels/print" element={<RequirePermission permission="manage_inventory"><LabelPrintPage /></RequirePermission>} />
-				<Route path="inventory/items/:itemId/tracking" element={<RequirePermission permission="view_inventory"><ItemTrackingPage /></RequirePermission>} />
-				<Route path="inventory/serials/:serialId" element={<RequirePermission permission="view_inventory"><SerialDetailPage /></RequirePermission>} />
+				<Route path="inventory/items/:itemId/tracking" element={<RedirectToItemDetail />} />
+				<Route path="inventory/serials/:serialId" element={<RequirePermission permission="view_inventory"><SerialRedirectPage /></RequirePermission>} />
 				<Route path="inventory/batches/:batchId" element={<RequirePermission permission="view_inventory"><BatchDetailPage /></RequirePermission>} />
 				<Route path="quotes" element={<RequirePermission permission="view_quotes"><QuotesPage /></RequirePermission>} />
 				<Route path="quotes/:quoteId" element={<RequirePermission permission="view_quotes"><QuoteDetailPage /></RequirePermission>} />

@@ -26,8 +26,15 @@ export default function RestockStatusList({ vehicleId }: { vehicleId: string }) 
 							key={r.id}
 							className="flex items-center justify-between px-4 py-2 border-b border-border-subtle/60 last:border-0"
 						>
-							<span className="text-sm text-text-primary">{name(r)}</span>
-							<span className="text-xs text-text-muted">
+							{/* min-w-0 + clamp on the name, shrink-0 on the figure — otherwise
+							    a long name squeezes the count to one char per line. */}
+							<span
+								className="text-sm text-text-primary min-w-0 line-clamp-2 break-words"
+								title={name(r)}
+							>
+								{name(r)}
+							</span>
+							<span className="text-xs text-text-muted shrink-0 ml-2">
 								requested {r.qty_requested != null ? Number(r.qty_requested) : "—"}
 							</span>
 						</div>
@@ -43,8 +50,13 @@ export default function RestockStatusList({ vehicleId }: { vehicleId: string }) 
 							key={r.id}
 							className="flex items-center justify-between px-4 py-2 border-b border-border-subtle/60 last:border-0"
 						>
-							<span className="text-sm text-text-muted">{name(r)}</span>
-							<span className="text-[11px] text-text-faint">
+							<span
+								className="text-sm text-text-muted min-w-0 line-clamp-2 break-words"
+								title={name(r)}
+							>
+								{name(r)}
+							</span>
+							<span className="text-[11px] text-text-faint shrink-0 ml-2">
 								{r.status === "dismissed" ? "dismissed" : "resolved"}
 							</span>
 						</div>

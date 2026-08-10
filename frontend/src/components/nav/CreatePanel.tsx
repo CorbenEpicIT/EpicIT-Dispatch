@@ -130,6 +130,7 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 					<span className="text-sm font-semibold text-text-primary">Create</span>
 					<button
 						onClick={onClose}
+						aria-label="Close create panel"
 						className="text-text-muted hover:text-text-primary transition-colors rounded-md p-1 hover:bg-surface-raised"
 					>
 						<X size={15} />

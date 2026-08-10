@@ -131,7 +131,11 @@ describe("file selection", () => {
 // Import flow
 // ─────────────────────────────────────────────────────────────────────────────
 describe("import flow", () => {
-	async function selectAndImport(result: { imported: number; skipped: { row: number; reason: string }[] }) {
+	async function selectAndImport(result: {
+		imported: number;
+		skipped: { row: number; reason: string }[];
+		warnings?: { row: number; message: string }[];
+	}) {
 		mockImport.mockResolvedValue(result);
 		renderOpen();
 
@@ -184,6 +188,34 @@ describe("import flow", () => {
 			expect(screen.getByText(/1 row skipped/i)).toBeInTheDocument();
 			expect(screen.getByText(/Row 3: Missing required field: location/i)).toBeInTheDocument();
 		});
+	});
+
+	// A coerced unit still produces an item, so it must not read as a skipped row.
+	it("reports rows that imported with changes separately from skipped rows", async () => {
+		await selectAndImport({
+			imported: 2,
+			skipped: [],
+			warnings: [
+				{ row: 2, message: 'Unrecognized unit "widgets" — imported as "each"' },
+			],
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText(/2 items imported successfully/i)).toBeInTheDocument();
+			expect(screen.getByText(/1 row imported with changes/i)).toBeInTheDocument();
+			expect(screen.getByText(/Row 2: Unrecognized unit "widgets"/i)).toBeInTheDocument();
+			expect(screen.queryByText(/skipped/i)).not.toBeInTheDocument();
+		});
+	});
+
+	// The field postdates the endpoint, so a cached response can arrive without it.
+	it("renders a result that carries no warnings array at all", async () => {
+		await selectAndImport({ imported: 1, skipped: [] });
+
+		await waitFor(() => {
+			expect(screen.getByText(/1 item imported successfully/i)).toBeInTheDocument();
+		});
+		expect(screen.queryByText(/imported with changes/i)).not.toBeInTheDocument();
 	});
 
 	it("shows an error message when the import API call fails", async () => {

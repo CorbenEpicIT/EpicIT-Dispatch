@@ -81,11 +81,19 @@ export default function RemoveStockItemSheet({
 								className="flex items-center justify-between gap-2 px-3 py-2.5"
 							>
 								<div className="min-w-0">
-									<p className="text-sm text-text-primary truncate">
+									{/* Truncation stays (scan-and-tap list, not a reading
+									    surface); full name goes in the title instead. */}
+									<p
+										className="text-sm text-text-primary truncate"
+										title={item.inventory_item.name}
+									>
 										{item.inventory_item.name}
 									</p>
 									{item.inventory_item.category && (
-										<p className="text-[10px] text-text-muted truncate">
+										<p
+											className="text-[10px] text-text-muted truncate"
+											title={item.inventory_item.category}
+										>
 											{item.inventory_item.category}
 										</p>
 									)}

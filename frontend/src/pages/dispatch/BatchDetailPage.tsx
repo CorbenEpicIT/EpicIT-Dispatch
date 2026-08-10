@@ -1,13 +1,15 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
 	Boxes,
 	Briefcase,
 	Check,
 	Download,
 	Loader2,
+	MoreVertical,
 	PackagePlus,
 	Pencil,
+	Printer,
 	ShieldAlert,
 	ShieldCheck,
 	Trash2,
@@ -16,28 +18,42 @@ import {
 	X,
 } from "lucide-react";
 import {
-	useBatchesQuery,
 	useBatchImpactQuery,
 	useDeleteBatchMutation,
+	useSerialsQuery,
 	useUpdateBatchMutation,
 } from "../../hooks/useTracking";
-import { useAllInventoryQuery } from "../../hooks/useInventory";
+import { useInventoryItemQuery } from "../../hooks/useInventory";
+import { useVehiclesQuery } from "../../hooks/useVehicles";
+import SerialDetailDrawer from "../../components/inventory/tracking/SerialDetailDrawer";
 import { usePermission } from "../../hooks/usePermission";
+import { useLabelQueueStore } from "../../stores/labelQueueStore";
 import { exportBatchImpact } from "../../api/tracking";
 import ReceiveStockModal from "../../components/inventory/tracking/ReceiveStockModal";
+import LabelQueueButton from "../../components/inventory/labels/LabelQueueButton";
+import LabelQueueToast from "../../components/inventory/labels/LabelQueueToast";
 import { INPUT, LABEL } from "../../components/inventory/tracking/BatchCaptureFields";
+import QRLabel from "../../components/inventory/labels/QRLabel";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import EmptyState from "../../components/ui/EmptyState";
 import StatCard from "../../components/ui/StatCard";
 import { useToast } from "../../components/ui/useToast";
-import type {
-	BatchImpactAffectedJob,
-	BatchImpactAffectedSerial,
-	BatchImpactReport,
+import {
+	SERIAL_STATUS_BADGE,
+	SERIAL_STATUS_LABEL,
+	type BatchImpactAffectedJob,
+	type BatchImpactAffectedSerial,
+	type BatchImpactReport,
+	type SerialUnitRow,
+	type SerialUnitStatus,
 } from "../../types/tracking";
 import { formatDate, formatDateTime } from "../../util/util";
 
 type Tab = "overview" | "traceability";
+
+// Same kebab item styling as the item detail page's actions menu.
+const MENU_ITEM =
+	"w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed";
 
 type ConsumptionRow = {
 	key: string;
@@ -79,7 +95,159 @@ function serialRowFromAffectedSerial(s: BatchImpactAffectedSerial): ConsumptionR
 	};
 }
 
-function OverviewTab({ remaining }: { remaining: BatchImpactReport["remaining"] }) {
+const LOT_STATUS_FILTERS: { id: SerialUnitStatus | "all"; label: string }[] = [
+	{ id: "all", label: "All" },
+	{ id: "in_warehouse", label: "Warehouse" },
+	{ id: "on_vehicle", label: "On Vehicle" },
+	{ id: "consumed", label: "Used" },
+	{ id: "lost", label: "Lost" },
+	{ id: "returned", label: "Returned" },
+];
+
+// Lists a lot's individual units (filterable by status) — aggregate counts alone
+// hid which units were live. Opens the same serial drawer as the item detail page.
+function LotSerials({
+	itemId,
+	batchId,
+	onOpenSerial,
+}: {
+	itemId: string;
+	batchId: string;
+	onOpenSerial: (serialId: string) => void;
+}) {
+	const [statusFilter, setStatusFilter] = useState<SerialUnitStatus | "all">("all");
+	const [cursor, setCursor] = useState<string | undefined>(undefined);
+	const [rows, setRows] = useState<SerialUnitRow[]>([]);
+	const { data: vehicles } = useVehiclesQuery();
+
+	const { data, isLoading, isFetching } = useSerialsQuery(itemId, {
+		batchId,
+		status: statusFilter === "all" ? undefined : statusFilter,
+		cursor,
+	});
+
+	// Changing the filter restarts pagination — an accumulated page from the
+	// previous filter no longer belongs to the list being shown.
+	useEffect(() => {
+		setCursor(undefined);
+		setRows([]);
+	}, [statusFilter, batchId]);
+
+	useEffect(() => {
+		if (!data) return;
+		setRows((prev) => {
+			const seen = new Set(prev.map((r) => r.id));
+			return [...prev, ...data.serials.filter((s) => !seen.has(s.id))];
+		});
+	}, [data]);
+
+	const vehicleName = (id: string | null) =>
+		id ? (vehicles?.find((v) => v.id === id)?.name ?? "Vehicle") : null;
+
+	return (
+		<div className="bg-surface border border-border-subtle rounded-xl p-4">
+			<div className="flex items-baseline justify-between gap-3 mb-3">
+				<h3 className="font-semibold text-text-primary">Units in this Lot</h3>
+				{rows.length > 0 && (
+					<span className="text-xs text-text-faint tabular-nums">
+						{rows.length} shown
+					</span>
+				)}
+			</div>
+
+			<div className="flex flex-wrap gap-1.5 mb-3">
+				{LOT_STATUS_FILTERS.map((f) => (
+					<button
+						key={f.id}
+						type="button"
+						aria-pressed={statusFilter === f.id}
+						onClick={() => setStatusFilter(f.id)}
+						className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+							statusFilter === f.id
+								? "bg-primary-bg border-primary text-primary-text"
+								: "bg-base border-border text-text-muted hover:border-border-strong hover:text-text-secondary"
+						}`}
+					>
+						{f.label}
+					</button>
+				))}
+			</div>
+
+			{isLoading && rows.length === 0 ? (
+				<div className="space-y-2">
+					{[0, 1, 2].map((i) => (
+						<div key={i} className="h-9 bg-surface-raised rounded animate-pulse" />
+					))}
+				</div>
+			) : rows.length === 0 ? (
+				<p className="text-sm text-text-muted py-4 text-center">
+					{statusFilter === "all"
+						? "No units recorded for this lot."
+						: "No units with that status in this lot."}
+				</p>
+			) : (
+				<div className="border border-border-subtle rounded-lg overflow-hidden">
+					{rows.map((unit) => (
+						<button
+							key={unit.id}
+							type="button"
+							onClick={() => onOpenSerial(unit.id)}
+							aria-label={`View serial ${unit.serial_number}`}
+							className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left border-t border-border-subtle first:border-t-0 hover:bg-surface-raised transition-colors"
+						>
+							<div className="min-w-0">
+								<div className="font-mono text-sm text-text-primary truncate">
+									{unit.serial_number}
+								</div>
+								<div className="font-mono text-[11px] text-text-faint truncate">
+									{unit.code}
+								</div>
+							</div>
+							<div className="flex items-center gap-2 flex-shrink-0">
+								{vehicleName(unit.current_vehicle_id) && (
+									<span className="inline-flex items-center gap-1 text-xs text-text-muted">
+										<Truck size={12} />
+										{vehicleName(unit.current_vehicle_id)}
+									</span>
+								)}
+								<span
+									className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${SERIAL_STATUS_BADGE[unit.status]}`}
+								>
+									{SERIAL_STATUS_LABEL[unit.status]}
+								</span>
+							</div>
+						</button>
+					))}
+				</div>
+			)}
+
+			{data?.nextCursor && (
+				<button
+					type="button"
+					disabled={isFetching}
+					onClick={() => setCursor(data.nextCursor ?? undefined)}
+					className="mt-3 w-full px-3 py-2 text-xs font-medium bg-surface-raised border border-border rounded-md text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors disabled:opacity-50"
+				>
+					{isFetching ? "Loading…" : "Load more"}
+				</button>
+			)}
+		</div>
+	);
+}
+
+function OverviewTab({
+	remaining,
+	itemId,
+	batchId,
+	isSerialized,
+	onOpenSerial,
+}: {
+	remaining: BatchImpactReport["remaining"];
+	itemId: string;
+	batchId: string;
+	isSerialized: boolean;
+	onOpenSerial: (serialId: string) => void;
+}) {
 	const onVehicles = remaining.vehicles.reduce((sum, v) => sum + v.qty_on_hand, 0);
 
 	return (
@@ -92,6 +260,13 @@ function OverviewTab({ remaining }: { remaining: BatchImpactReport["remaining"] 
 					hint={`${remaining.vehicles.length} vehicle${remaining.vehicles.length !== 1 ? "s" : ""}`}
 				/>
 			</div>
+
+			{/* Only for serialized items — a batch-only lot has no per-unit
+			    identity to show, which is why the counts above are the whole
+			    story there. */}
+			{isSerialized && (
+				<LotSerials itemId={itemId} batchId={batchId} onOpenSerial={onOpenSerial} />
+			)}
 
 			<div className="bg-surface border border-border-subtle rounded-xl p-4">
 				<h3 className="font-semibold text-text-primary mb-3">
@@ -350,19 +525,40 @@ export default function BatchDetailPage() {
 	const [editError, setEditError] = useState<string | null>(null);
 	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
+	// Kebab holds secondary actions (Edit, Delete, Print Label); Receive Stock and
+	// the recall toggle stay in the header — same pattern as the item detail page.
+	const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	// Same `?serial=` contract as the item detail page, so a unit stays linkable
+	// across a refresh. replace, not push, so opening one doesn't bury this page.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const openSerialId = searchParams.get("serial");
+	const setOpenSerialId = (serialId: string | null) => {
+		const next = new URLSearchParams(searchParams);
+		if (serialId) next.set("serial", serialId);
+		else next.delete("serial");
+		setSearchParams(next, { replace: true });
+	};
+
+	useEffect(() => {
+		function handleClickOutside(event: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+				setIsActionsMenuOpen(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, []);
 
 	const { data: report, isLoading, error } = useBatchImpactQuery(batchId ?? "");
 	const updateBatchMutation = useUpdateBatchMutation();
 	const deleteBatchMutation = useDeleteBatchMutation();
 	const canManage = usePermission("manage_inventory");
-	// No single-item GET on the frontend — resolve the parent item's tracking
-	// flags off the full list (same pattern as ItemTrackingPage) so the receive
-	// modal knows whether to also collect serials for a dual-tracked item.
-	const { data: allItems } = useAllInventoryQuery();
-	// BatchImpactReport's `batch` doesn't carry `supplier` — pull it from the
-	// item's batches list (same source ReceiveStockModal/BatchCaptureFields use)
-	// so the edit form can seed its current value.
-	const { data: batchesData } = useBatchesQuery(report?.batch.item_id ?? "");
+	const addToLabelQueue = useLabelQueueStore((s) => s.add);
+	// Needs the parent item's tracking flags to know if the lot also requires
+	// serials; the impact report already names the item, so no extra fetch.
+	const { data: item } = useInventoryItemQuery(report?.batch.item_id);
 
 	if (!batchId) return null;
 
@@ -394,8 +590,6 @@ export default function BatchDetailPage() {
 
 	const { batch, remaining, affected_jobs, affected_serials } = report;
 	const isRecalled = !!batch.recalled_at;
-	const item = allItems?.find((i) => i.id === batch.item_id);
-	const batchListRow = batchesData?.batches.find((b) => b.id === batch.id);
 	// Empty-lot-only: nothing left in the warehouse or on any vehicle. The
 	// backend re-checks this plus serials/consumption history authoritatively.
 	const canDeleteBatch = remaining.total === 0;
@@ -406,6 +600,17 @@ export default function BatchDetailPage() {
 	const isExpired = daysUntilExpiry !== null && daysUntilExpiry < 0;
 	const isExpiringSoon =
 		daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry < 30;
+
+	const handlePrint = () => {
+		addToLabelQueue({
+			id: batch.id,
+			code: batch.code,
+			kind: "batch",
+			primaryLabel: batch.item_name,
+			secondaryLabel: batch.batch_number,
+		});
+		navigate("/dispatch/inventory/labels/print");
+	};
 
 	const handleToggleRecall = async () => {
 		try {
@@ -424,7 +629,7 @@ export default function BatchDetailPage() {
 		setEditDraft({
 			batch_number: batch.batch_number,
 			expires_at: batch.expires_at ? batch.expires_at.slice(0, 10) : "",
-			supplier: batchListRow?.supplier ?? "",
+			supplier: batch.supplier ?? "",
 		});
 		setEditError(null);
 		setEditing(true);
@@ -465,7 +670,7 @@ export default function BatchDetailPage() {
 		try {
 			await deleteBatchMutation.mutateAsync(batch.id);
 			toast.success("Batch deleted");
-			navigate(`/dispatch/inventory/items/${batch.item_id}/tracking`);
+			navigate(`/dispatch/inventory/items/${batch.item_id}`);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : "Failed to delete batch";
 			setDeleteError(message);
@@ -558,6 +763,10 @@ export default function BatchDetailPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2 flex-wrap">
+						{/* Shared queue read — this page's Print Label button
+						    queues the lot and leaves, so a dispatcher arriving
+						    mid-queue needs the running count here too. */}
+						<LabelQueueButton className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-surface border border-border-input rounded-md text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors" />
 						{canManage && item && (
 							<button
 								type="button"
@@ -566,32 +775,6 @@ export default function BatchDetailPage() {
 							>
 								<PackagePlus size={14} />
 								Receive Stock
-							</button>
-						)}
-						{canManage && (
-							<button
-								type="button"
-								onClick={() =>
-									editing
-										? cancelEdit()
-										: startEdit()
-								}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-surface border border-border-input rounded-md text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
-							>
-								<Pencil size={14} />
-								{editing ? "Cancel Edit" : "Edit"}
-							</button>
-						)}
-						{canManage && canDeleteBatch && (
-							<button
-								type="button"
-								onClick={() =>
-									setDeleteConfirmOpen(true)
-								}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-surface border border-border-input rounded-md text-error-text hover:border-error-border transition-colors"
-							>
-								<Trash2 size={14} />
-								Delete
 							</button>
 						)}
 						<button
@@ -612,6 +795,116 @@ export default function BatchDetailPage() {
 								? "Clear Recall"
 								: "Mark Recalled"}
 						</button>
+
+						<div className="relative" ref={menuRef}>
+							<button
+								type="button"
+								aria-label="More batch actions"
+								aria-haspopup="menu"
+								aria-expanded={isActionsMenuOpen}
+								onClick={() =>
+									setIsActionsMenuOpen((v) => !v)
+								}
+								className="p-2 hover:bg-surface rounded-md transition-colors border border-border hover:border-border-strong text-text-secondary"
+							>
+								<MoreVertical size={18} />
+							</button>
+
+							{isActionsMenuOpen && (
+								<div
+									role="menu"
+									className="absolute right-0 mt-2 w-56 bg-base border border-border-subtle rounded-lg shadow-xl z-50 py-1"
+								>
+									{canManage && (
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => {
+												setIsActionsMenuOpen(
+													false
+												);
+												if (editing)
+													cancelEdit();
+												else
+													startEdit();
+											}}
+											className={MENU_ITEM}
+										>
+											<Pencil size={16} />
+											{editing
+												? "Cancel Edit"
+												: "Edit Batch"}
+										</button>
+									)}
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => {
+											setIsActionsMenuOpen(
+												false
+											);
+											handlePrint();
+										}}
+										className={MENU_ITEM}
+									>
+										<Printer size={16} />
+										Print Label
+									</button>
+									{canManage && canDeleteBatch && (
+										<>
+											<div className="my-1 border-t border-border-subtle" />
+											<button
+												type="button"
+												role="menuitem"
+												onClick={() => {
+													setIsActionsMenuOpen(
+														false
+													);
+													setDeleteConfirmOpen(
+														true
+													);
+												}}
+												className={`${MENU_ITEM} text-error-text hover:enabled:text-error-text`}
+											>
+												<Trash2 size={16} />
+												Delete Batch
+											</button>
+										</>
+									)}
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			{/* Unlike SerialDetailBody's equivalent block, the batch impact payload
+			carries no `received_at` and no note field, so this shows Supplier and
+			Expires instead of Received/Note. */}
+			<div className="bg-surface border border-border-subtle rounded-xl p-4 flex flex-col sm:flex-row items-stretch gap-4">
+				<div className="flex items-center justify-center sm:justify-start flex-shrink-0">
+					<QRLabel
+						code={batch.code}
+						kind="batch"
+						primaryLabel={batch.item_name}
+						secondaryLabel={batch.batch_number}
+						widthIn={1.75}
+						heightIn={0.7}
+					/>
+				</div>
+				<div className="hidden sm:block w-px bg-border-subtle self-stretch" aria-hidden />
+				<div className="flex-1 min-w-[180px] flex flex-col justify-center gap-2.5">
+					<div>
+						<div className="text-xs text-text-muted">Supplier</div>
+						<div className="text-sm text-text-primary">
+							{batch.supplier ?? "—"}
+						</div>
+					</div>
+					<div className="pt-2 border-t border-border-subtle/60">
+						<div className="text-xs text-text-muted">Expires</div>
+						<div className="text-sm text-text-primary">
+							{batch.expires_at ? formatDate(batch.expires_at) : "—"}
+						</div>
 					</div>
 				</div>
 			</div>
@@ -725,7 +1018,15 @@ export default function BatchDetailPage() {
 				))}
 			</div>
 
-			{activeTab === "overview" && <OverviewTab remaining={remaining} />}
+			{activeTab === "overview" && (
+				<OverviewTab
+					remaining={remaining}
+					itemId={batch.item_id}
+					batchId={batch.id}
+					isSerialized={!!item?.is_serialized}
+					onOpenSerial={setOpenSerialId}
+				/>
+			)}
 			{activeTab === "traceability" && (
 				<TraceabilityTab
 					affectedJobs={affected_jobs}
@@ -778,6 +1079,13 @@ export default function BatchDetailPage() {
 					setDeleteError(null);
 				}}
 			/>
+
+			{/* Feedback for adds made here (Print Label, ReceiveStockModal's
+			    per-serial queueing) — previously silent on this page. */}
+			<LabelQueueToast />
+
+			{/* Driven by ?serial=, so it can already be open on first paint. */}
+			<SerialDetailDrawer serialId={openSerialId} onClose={() => setOpenSerialId(null)} />
 		</div>
 	);
 }

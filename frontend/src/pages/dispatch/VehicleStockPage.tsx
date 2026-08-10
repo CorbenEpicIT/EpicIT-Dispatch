@@ -20,6 +20,7 @@ import AdjustStockModal from "../../components/vehicles/AdjustStockModal";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import type { VehicleStockItem, RestockRequest } from "../../types/vehicles";
 import StockHistorySection from "../../components/vehicles/StockHistorySection";
+import { unitLabel } from "../../lib/units";
 
 type Tab = "stock" | "restock" | "alerts";
 
@@ -139,7 +140,7 @@ function StockRow({ item, onUpdateStandard, onUpdateMin, onDelete }: {
 				</button>
 				<div className="text-xs text-text-muted">
 					{item.inventory_item.category ?? ""}
-					{(item.inventory_item.unit && item.inventory_item.unit.toLowerCase() !== "each") ? ` · ${item.inventory_item.unit}` : ""}
+					{` · ${unitLabel(item.inventory_item.unit)}`}
 				</div>
 			</div>
 			<div className="flex justify-center">
@@ -223,7 +224,11 @@ function StockRow({ item, onUpdateStandard, onUpdateMin, onDelete }: {
 						Confirm?
 					</button>
 				) : (
-					<button onClick={handleDeleteClick} className="text-text-faint hover:text-error-text transition-colors">
+					<button
+						onClick={handleDeleteClick}
+						aria-label={`Remove ${item.inventory_item.name} from stock list`}
+						className="text-text-faint hover:text-error-text transition-colors"
+					>
 						<Trash2 size={14} />
 					</button>
 				)}
@@ -401,7 +406,7 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 								className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-surface-raised transition-colors disabled:opacity-50"
 							>
 								<span className="text-sm text-text-primary">{item.name}</span>
-								<span className="text-xs text-text-muted">{item.category ?? ""}{(item.unit && item.unit.toLowerCase() !== "each") ? ` · ${item.unit}` : ""}</span>
+								<span className="text-xs text-text-muted">{item.category ?? ""}{` · ${unitLabel(item.unit)}`}</span>
 							</button>
 						))}
 					</div>
@@ -712,6 +717,7 @@ export default function VehicleStockPage() {
 					<div className="flex items-center gap-2">
 						{activeVehicles.length > 1 && (
 							<select
+								aria-label="Switch vehicle"
 								value={vehicleId}
 								onChange={(e) => navigate(`/dispatch/vehicles/${e.target.value}/stock`)}
 								className="text-xs bg-surface border border-border rounded-md px-2 py-1.5 text-text-secondary outline-none focus:border-primary cursor-pointer"

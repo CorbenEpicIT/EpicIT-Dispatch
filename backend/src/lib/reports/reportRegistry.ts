@@ -19,6 +19,7 @@ import {
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
+import { unitDisplay, unitWord } from "../units.js";
 
 // Catalog of eery report and a key to each report
 export interface ReportQuery {
@@ -61,6 +62,26 @@ const fmtDate = (value: Date | string | null | undefined): string =>
 
 const fmtQty = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
+// Quantities carry their unit — "6" and "6 ft" are different facts, and the
+// column header can't say which because the unit is per item, not per column.
+const withUnit = (n: number, unit: string | null): string => `${fmtQty(n)} ${unitWord(unit, n)}`;
+
+// One phrase for the condition across every surface that shows it. Kept in sync
+// with UNIT_BREAK_SHORT in the frontend's chartNotes — two spellings of "mixed
+// units" in one product is how a dispatcher ends up thinking they're two
+// different problems.
+const UNIT_BREAK_SHORT = "Mixed units";
+
+// Label for the server-computed reorder verdict. Plain strings, because the row
+// is what both the table and the spreadsheet render, and because the health
+// filter matches on this text (the in-memory `in` operator, lowercased).
+const HEALTH_LABEL: Record<string, string> = {
+	critical: "Reorder now",
+	warning: "Watch",
+	healthy: "Healthy",
+	unknown: "No signal",
+};
+
 const stockStatusLabel = (status: string | null): string => {
 	switch (status) {
 		case "out_of_stock":
@@ -81,7 +102,7 @@ type InventoryRaw = Awaited<ReturnType<typeof getInventoryReport>>[number];
 type PaymentRaw = Awaited<ReturnType<typeof getPaymentsReport>>[number];
 type QuoteRaw = Awaited<ReturnType<typeof getQuoteFunnelReport>>["quotes"][number];
 type TaxRaw = Awaited<ReturnType<typeof getTaxLiabilityReport>>[number];
-type ForecastRaw = Awaited<ReturnType<typeof getInventoryReorderForecast>>[number];
+type ForecastRaw = Awaited<ReturnType<typeof getInventoryReorderForecast>>["rows"][number];
 type ReceivableRaw = Awaited<ReturnType<typeof getAgedReceivablesByClient>>[number];
 type RetentionRaw = Awaited<ReturnType<typeof getClientRetentionReport>>[number];
 type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
@@ -168,12 +189,16 @@ const inventoryRow = (item: InventoryRaw): ReportRow => ({
 	totalQty: item.totalQty,
 	fleetStandard: item.fleetStandard,
 	lowStockThreshold: item.lowStockThreshold ?? "—",
-	unit: item.unit || "—",
+	// The catalog label, not the stored code — "Feet", not "ft". Shaped here so
+	// the on-screen table and the SQL export agree; the client no longer maps it.
+	unit: item.unit ? unitDisplay(item.unit).label : "—",
 	stockStatus: stockStatusLabel(item.stockStatus),
 	cost: item.cost ?? "—",
 	unitPrice: item.unitPrice ?? "—",
 	assetValue: item.assetValue ?? "—",
-	qtyUsed: item.qtyUsed,
+	// null is a WITHHELD total (the item's consumption spans a unit change), and
+	// 0 is a real answer here — so it reads as unknown rather than as zero.
+	qtyUsed: item.qtyUsed ?? "—",
 	location: item.location || "—",
 	tags: item.tags?.map((t) => t.label).join(", ") || "—",
 	altIds: item.altIds?.join(", ") || "—",
@@ -219,14 +244,42 @@ const taxRow = (r: TaxRaw): ReportRow => ({
 	invoiceCount: r.invoiceCount,
 });
 
+// Shaped here rather than on the page because this report is paginated,
+// filtered and exported server-side: `POST /reports/export/server` runs `load`
+// + the in-memory filter and never sees the client's mappers, so any column the
+// table shows but this doesn't simply exports blank.
 const forecastRow = (r: ForecastRaw): ReportRow => ({
 	id: r.itemId,
 	item: r.itemName,
 	sku: r.sku ?? "—",
 	category: r.category ?? "—",
-	currentQuantity: fmtQty(r.currentQuantity),
-	avgDailyUsage: r.avgDailyUsage > 0 ? r.avgDailyUsage.toFixed(2) : "—",
-	projectedStockout: r.projectedStockoutDate ? fmtDate(r.projectedStockoutDate) : "—",
+	onHand: withUnit(r.currentQuantity, r.unit),
+	warehouse: fmtQty(r.warehouseQuantity),
+	vehicles: fmtQty(r.vehicleQuantity),
+	reorderPoint: r.lowStockThreshold != null ? fmtQty(r.lowStockThreshold) : "—",
+	// Three outcomes, three strings. `null` is a WITHHELD rate — the item's
+	// consumption spans a unit change, so `each` and `box` totals were never
+	// added — and it must not print as "0.00/day", which is a real and different
+	// answer this same column gives.
+	avgDailyUsage:
+		r.avgDailyUsage == null
+			? UNIT_BREAK_SHORT
+			: r.avgDailyUsage > 0
+				? `${r.avgDailyUsage.toFixed(2)}/day`
+				: "—",
+	// Rounded: a runway printed to two decimals implies a precision an averaged
+	// rate over the window doesn't have.
+	daysOfStock: r.daysOfStock != null ? `${Math.round(r.daysOfStock)}d` : "—",
+	// `~` because this is a projection off an average rate, not a date anything
+	// is scheduled for. ReorderHealthCard hedges the same way.
+	projectedStockout: r.projectedStockoutDate ? `~${fmtDate(r.projectedStockoutDate)}` : "—",
+	health: HEALTH_LABEL[r.severity] ?? HEALTH_LABEL.unknown,
+	// Not columns in the table — carried for the export, whose reader can't see
+	// the page's window badge. The catalog label, not the stored code: a
+	// spreadsheet reader gets "Feet", not "ft".
+	unit: unitDisplay(r.unit).label,
+	observedDays: r.observedDays,
+	qtyConsumed: r.qtyConsumed ?? UNIT_BREAK_SHORT,
 });
 
 const receivableRow = (r: ReceivableRaw): ReportRow => ({
@@ -387,10 +440,13 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 	},
 	"reorder-forecast": {
 		load: async (orgId, q) => {
-			const raw = await getInventoryReorderForecast(orgId, {
+			const { rows, truncated } = await getInventoryReorderForecast(orgId, {
 				lookbackDays: q.lookbackDays ?? 90,
 			});
-			return { rows: raw.map(forecastRow), summary: { chartRows: raw } };
+			// chartRows is the FULL unfiltered set: the page's severity tiles and
+			// runway chart are org-wide statements, so they can't be rebuilt from
+			// whichever page the dispatcher happens to be on.
+			return { rows: rows.map(forecastRow), summary: { chartRows: rows, truncated } };
 		},
 	},
 	"client-retention": {

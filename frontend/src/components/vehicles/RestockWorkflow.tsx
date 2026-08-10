@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 import LoadSvg from "../../assets/icons/loading.svg?react";
+import { formatter } from "../../util/util";
 import { formatRestockDate } from "../../lib/stockUtils";
+import SegmentedToggle from "../ui/SegmentedToggle";
 import {
 	useCompleteRestockMutation,
 	useTomorrowRequirementsQuery,
@@ -30,9 +32,12 @@ type TrackingPatch = { serialUnitIds?: string[]; batchId?: string | null };
 
 // ── CompleteStep ──────────────────────────────────────────────────────────────
 
-function CompleteStep({ record, stockItems }: {
+function CompleteStep({ record, stockItems, onReset }: {
 	record: VehicleRestockRecord;
 	stockItems: VehicleStockItem[];
+	/** Starts a fresh run. Lives here rather than beside the mode switch — after a
+	 *  completed restock, "start another" is the next step, not a mode. */
+	onReset: () => void;
 }) {
 	const hasShortfall = record.restock_lines.some((l) => l.qty_shortfall > 0);
 	return (
@@ -49,11 +54,21 @@ function CompleteStep({ record, stockItems }: {
 				<div className="bg-surface rounded-lg border border-border overflow-hidden mb-4">
 					<div className="px-4 py-2 border-b border-border-subtle text-[10px] font-semibold text-text-muted uppercase tracking-wider">Restocked</div>
 					{record.restock_lines.map((line) => (
-						<div key={line.id} className="flex items-center justify-between px-4 py-2 border-b border-border-subtle last:border-0">
-							<span className="text-sm text-text-primary">
-								{stockItems.find((s) => s.id === line.stock_item_id)?.inventory_item.name ?? line.stock_item_id}
-							</span>
-							<div className="flex items-center gap-3">
+						<div key={line.id} className="flex items-center justify-between gap-3 px-4 py-2 border-b border-border-subtle last:border-0">
+							{(() => {
+								const name =
+									stockItems.find((s) => s.id === line.stock_item_id)?.inventory_item
+										.name ?? line.stock_item_id;
+								return (
+									<span
+										className="text-sm text-text-primary min-w-0 truncate"
+										title={name}
+									>
+										{name}
+									</span>
+								);
+							})()}
+							<div className="flex items-center gap-3 shrink-0">
 								<span className="text-sm font-semibold text-success">+{line.qty_restocked}</span>
 								{line.qty_shortfall > 0 && <span className="text-xs text-warning-text">({line.qty_shortfall} short)</span>}
 							</div>
@@ -67,6 +82,12 @@ function CompleteStep({ record, stockItems }: {
 			{hasShortfall && (
 				<p className="text-xs text-warning-text mb-4">Some items were short in the warehouse. Order more stock to fully restock next time.</p>
 			)}
+			<button
+				onClick={onReset}
+				className="w-full px-4 py-2.5 text-sm font-semibold bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
+			>
+				Start another restock
+			</button>
 		</div>
 	);
 }
@@ -105,9 +126,14 @@ function RestockContextPanel({ vehicleId, showHeader = false }: { vehicleId: str
 							</div>
 							<div className="divide-y divide-border-subtle">
 								{group.items.map((item) => (
-									<div key={item.itemName} className="flex items-center justify-between px-4 py-2">
-										<span className="text-sm text-text-primary">{item.itemName}</span>
-										<span className="text-sm font-semibold text-error-text">−{item.qtyUsed}</span>
+									<div key={item.itemName} className="flex items-center justify-between gap-3 px-4 py-2">
+										<span
+											className="text-sm text-text-primary min-w-0 truncate"
+											title={item.itemName}
+										>
+											{item.itemName}
+										</span>
+										<span className="text-sm font-semibold text-error-text shrink-0">−{item.qtyUsed}</span>
 									</div>
 								))}
 							</div>
@@ -155,9 +181,14 @@ function PrepContextPanel({ vehicleId }: { vehicleId: string }) {
 									const isShort = item.qtyOnHand < item.qtyNeeded;
 									const isEqual = item.qtyOnHand === item.qtyNeeded;
 									return (
-										<div key={item.inventoryItemId} className="flex items-center justify-between px-4 py-2">
-											<span className="text-sm text-text-primary">{item.itemName}</span>
-											<div className="flex items-center gap-2 text-xs">
+										<div key={item.inventoryItemId} className="flex items-center justify-between gap-3 px-4 py-2">
+											<span
+												className="text-sm text-text-primary min-w-0 truncate"
+												title={item.itemName}
+											>
+												{item.itemName}
+											</span>
+											<div className="flex items-center gap-2 text-xs shrink-0">
 												<span className="text-text-muted">Need <span className="text-text-primary font-semibold">{item.qtyNeeded}</span></span>
 												<span className={`font-semibold ${isShort ? "text-error-text" : isEqual ? "text-warning-text" : "text-success"}`}>
 													Have {item.qtyOnHand}
@@ -180,9 +211,12 @@ function PrepContextPanel({ vehicleId }: { vehicleId: string }) {
 const RESTOCK_GRID = "grid-cols-[1fr_72px_72px_80px_80px]";
 const PREP_GRID = "grid-cols-[1fr_64px_64px_72px_72px_80px]";
 
-function RestockRow({ line, dimmed, subTab, grid, mobile, vehicleId, onChange, onTrackingChange }: {
+function RestockRow({ line, met, subTab, grid, mobile, vehicleId, onChange, onTrackingChange }: {
 	line: RestockLine;
-	dimmed: boolean;
+	/** This line is at or above its standard — nothing to add. Marked in green
+	 *  rather than dimmed: half-opacity text is the first thing to disappear on a
+	 *  phone screen in daylight, which is exactly where this UI is used. */
+	met: boolean;
 	subTab: SubTab;
 	grid: string;
 	mobile: boolean;
@@ -196,11 +230,46 @@ function RestockRow({ line, dimmed, subTab, grid, mobile, vehicleId, onChange, o
 	const overLimit = line.qtyToRestock > warehouse;
 	const invItem = line.item.inventory_item;
 	const showTracking = line.qtyToRestock > 0 && (invItem.is_serialized || invItem.is_batch_tracked);
+	const [nameExpanded, setNameExpanded] = useState(false);
+	const advisoryId = `restock-advisory-${line.stockItemId}`;
+	// Tighter gutters on a phone: the row now sits inside a bordered table with its
+	// own margin, so desktop's px-5 would eat the name column.
+	const rowPad = mobile ? "px-3.5" : "px-5";
+	const rowInset = mobile ? "mx-3.5" : "mx-5";
 	return (
-		<div className={`border-b border-border/20 transition-opacity ${dimmed ? "opacity-50" : ""}`}>
-			<div className={`grid ${grid} items-center px-5 py-2.5`}>
-				<span className="text-sm text-text-primary">{invItem.name}</span>
-				<span className="text-center text-sm tabular-nums text-text-secondary">{onHand}</span>
+		// Row dividers sit one token below the section rules: 1px of `border`
+		// separates items, 2px of `border-strong` separates the section blocks. Both
+		// at the same weight and the table read as one undifferentiated stack.
+		<div className="border-b border-border last:border-b-0">
+			{/* The grid holds the numbers, and only the numbers — every column is one
+			    line tall, so the figures and the input stay on one optical line.
+			    Anything prose-shaped (the over-limit advisory, the tracking pickers)
+			    goes in the full-width band below, where it can wrap instead of being
+			    clipped by the section's rounded overflow-hidden shell. */}
+			<div className={`grid ${grid} items-center ${rowPad} py-2.5 gap-x-1`}>
+				{/* Tap to see the whole name. Part names run to 255 characters, and
+				    an unclamped one pushed this row's figures out of alignment with
+				    every other row. */}
+				<button
+					type="button"
+					onClick={() => setNameExpanded((v) => !v)}
+					aria-expanded={nameExpanded}
+					title={invItem.name}
+					className={`min-w-0 text-left text-sm text-text-primary ${
+						nameExpanded ? "break-words" : "truncate"
+					}`}
+				>
+					{invItem.name}
+				</button>
+					{/* A met line's on-hand figure is the reason it's met, so it carries
+				    the green — same signal as the group's header and rule. */}
+				<span
+					className={`text-center text-sm tabular-nums ${
+						met ? "text-success-text font-medium" : "text-text-secondary"
+					}`}
+				>
+					{onHand}
+				</span>
 				{!mobile && (
 					<span className="text-center text-sm tabular-nums text-text-secondary">{standard ?? "—"}</span>
 				)}
@@ -209,29 +278,59 @@ function RestockRow({ line, dimmed, subTab, grid, mobile, vehicleId, onChange, o
 						{line.tomorrowNeed > 0 ? line.tomorrowNeed : "—"}
 					</span>
 				)}
-				<span className={`text-center text-sm tabular-nums font-medium ${
-					warehouse === 0 ? "text-error-text font-semibold" : overLimit ? "text-warning-text" : "text-text-secondary"
-				}`}>
-					{warehouse}
+				{/* Compact past five digits so a large warehouse count can't widen a
+				    56px column; the exact figure stays in the title. */}
+				<span
+					title={`${warehouse} in warehouse`}
+					className={`text-center text-sm tabular-nums font-medium ${
+						warehouse === 0 ? "text-error-text font-semibold" : overLimit ? "text-warning-text" : "text-text-secondary"
+					}`}
+				>
+					{warehouse >= 100_000 ? formatter.format(warehouse) : warehouse}
 				</span>
-				<div className={mobile ? "flex flex-col items-center gap-0.5" : "flex justify-center"}>
+				<div className="flex justify-center">
 					<input
 						type="number"
 						min={0}
 						value={line.qtyToRestock}
 						onChange={(e) => onChange(line.stockItemId, Math.max(0, Number(e.target.value)))}
-						className={`w-16 text-center text-sm rounded border ${mobile ? "py-1.5" : "py-0.5"} ${
+						aria-invalid={overLimit}
+						aria-describedby={overLimit ? advisoryId : undefined}
+						aria-label={`Quantity to add for ${invItem.name}`}
+						// Fixed height and no siblings in this cell: the input used to
+						// sit above an inline warning, so the moment a line went over
+						// the limit it slid off the row's centre line.
+						className={`w-16 h-8 text-center text-sm rounded border ${
 							overLimit ? "border-warning text-warning-text" : "border-border-input text-text-primary"
 						} bg-base px-1 outline-none focus:border-primary`}
 					/>
-					{mobile && overLimit && (
-						<span className="text-[10px] text-warning-text whitespace-nowrap">⚠ Only {warehouse} in warehouse</span>
-					)}
 				</div>
 			</div>
 
+			{overLimit && (
+				<div
+					id={advisoryId}
+					role="status"
+					className={`${rowInset} mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5`}
+				>
+					<span className="text-[11px] text-warning-text">
+						Only {warehouse} in warehouse — this line will be capped at {warehouse}.
+					</span>
+					{/* Fills the input rather than enforcing anything: submitting an
+					    over-limit line stays legal and the backend records the
+					    shortfall. This is the shortcut for when it wasn't intended. */}
+					<button
+						type="button"
+						onClick={() => onChange(line.stockItemId, warehouse)}
+						className="text-[11px] font-semibold text-warning-text underline decoration-warning/50 hover:decoration-warning"
+					>
+						Use {warehouse}
+					</button>
+				</div>
+			)}
+
 			{showTracking && (
-				<div className="px-5 pb-3">
+				<div className={`${rowPad} pb-3`}>
 					{invItem.is_serialized ? (
 						<>
 							<ExistingUnitPicker
@@ -314,41 +413,52 @@ function RestockPanel({
 	const totalToRestock = restockLines.reduce((sum, l) => sum + l.qtyToRestock, 0);
 	const anyShortfall = restockLines.some((l) => l.qtyToRestock > Number(l.item.inventory_item.quantity));
 
+	const pad = mobile ? "px-3.5" : "px-5";
+
 	return (
 		<div>
-			{/* Header */}
-			<div className="flex items-center gap-2 px-5 py-3 border-b border-border/20">
-				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Restock Quantities</span>
-				{needs.length > 0 ? (
-					<span className="text-[10px] font-bold bg-warning/15 text-warning-text px-1.5 py-0.5 rounded">{needs.length} items</span>
-				) : restockLines.length > 0 ? (
-					<span className="text-[10px] font-bold bg-success/15 text-success px-1.5 py-0.5 rounded">All stocked</span>
-				) : null}
-			</div>
+			{/* Title, column heads and rows share one bounded container so the title
+			    reads as this table's title, not another band in a stack. */}
+			<div className={`${mobile ? "mx-4" : "mx-0"} mt-3 rounded-lg border border-border overflow-hidden`}>
+				{/* Head unit: title and column labels share one surface with no rule
+				    between them. */}
+				<div className="bg-canvas">
+					<div className={`flex items-center gap-2 ${pad} pt-2.5 pb-1.5`}>
+						<span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Restock Quantities</span>
+						{needs.length > 0 ? (
+							<span className="text-[10px] font-bold bg-warning/15 text-warning-text px-1.5 py-0.5 rounded">{needs.length} items</span>
+						) : restockLines.length > 0 ? (
+							<span className="text-[10px] font-bold bg-success/15 text-success px-1.5 py-0.5 rounded">All stocked</span>
+						) : null}
+					</div>
 
-			{/* Column headers */}
-			{restockLines.length > 0 && (
-				<div className={`grid ${grid} px-5 py-2 border-b border-border/30 bg-canvas sticky top-0 z-10`}>
-					{headers.map((h) => (
-						<div key={h} className="text-[10px] font-semibold text-text-muted uppercase tracking-wider text-center first:text-left">{h}</div>
-					))}
+					{/* Column headers. No `sticky`: this panel's ancestors don't
+					    scroll (the technician shell clips it with overflow-hidden),
+					    so the offset never applied and the z-index only invited
+					    stacking bugs. */}
+					{restockLines.length > 0 && (
+						<div className={`grid ${grid} ${pad} pb-2 border-b border-border-strong gap-x-1`}>
+							{headers.map((h) => (
+								<div key={h} className="text-[10px] font-semibold text-text-muted uppercase tracking-wider text-center first:text-left">{h}</div>
+							))}
+						</div>
+					)}
 				</div>
-			)}
 
-			{/* Empty state */}
-			{restockLines.length === 0 && (
-				<div className="flex flex-col items-center justify-center py-14 text-center px-8">
-					<p className="text-sm text-text-muted">No items configured for restocking.</p>
-					<p className="text-xs text-text-faint mt-1">Set a standard qty on the Stock tab to include items here.</p>
-				</div>
-			)}
+				{/* Empty state */}
+				{restockLines.length === 0 && (
+					<div className="flex flex-col items-center justify-center py-12 text-center px-8 border-t border-border-strong">
+						<p className="text-sm text-text-muted">No items configured for restocking.</p>
+						<p className="text-xs text-text-faint mt-1">Set a standard qty on the Stock tab to include items here.</p>
+					</div>
+				)}
 
 			{/* Needs restock */}
 			{needs.map((l) => (
 				<RestockRow
 					key={l.stockItemId}
 					line={l}
-					dimmed={false}
+					met={false}
 					subTab={subTab}
 					grid={grid}
 					mobile={mobile}
@@ -358,38 +468,46 @@ function RestockPanel({
 				/>
 			))}
 
-			{/* Already met */}
-			{needs.length > 0 && met.length > 0 && (
-				<div className="flex items-center gap-2 px-5 pt-3 pb-1 text-text-faint">
-					<span className="text-[10px] font-semibold uppercase tracking-wider">Already met</span>
-					<span className="text-[10px] font-semibold tabular-nums">{met.length}</span>
-					<div className="flex-1 h-px bg-border/30" />
-				</div>
-			)}
-			{met.map((l) => (
-				<RestockRow
-					key={l.stockItemId}
-					line={l}
-					dimmed={true}
-					subTab={subTab}
-					grid={grid}
-					mobile={mobile}
-					vehicleId={vehicleId}
-					onChange={onChange}
-					onTrackingChange={onTrackingChange}
-				/>
-			))}
+				{/* Already met — a group break between rows, so it stays inside the
+				    table rather than reading as a new section. */}
+				{needs.length > 0 && met.length > 0 && (
+					// Green header and rule: "already met" is the good outcome, and it
+					// should read as one at arm's length in sunlight. The rows below
+					// keep full-strength text — dimming them made the finished work
+					// the hardest part of the table to see.
+					<div className={`flex items-center gap-2 ${pad} pt-3 pb-1 text-success-text`}>
+						<span className="text-[10px] font-semibold uppercase tracking-wider">Already met</span>
+						<span className="text-[10px] font-semibold tabular-nums">{met.length}</span>
+						<div className="flex-1 h-px bg-success-text/50" />
+					</div>
+				)}
+				{met.map((l) => (
+					<RestockRow
+						key={l.stockItemId}
+						line={l}
+						met={true}
+						subTab={subTab}
+						grid={grid}
+						mobile={mobile}
+						vehicleId={vehicleId}
+						onChange={onChange}
+						onTrackingChange={onTrackingChange}
+					/>
+				))}
+			</div>
 
-			{/* Shortfall warning */}
+			{/* Shortfall warning — outside the table: it speaks about the whole
+			    submission, not about one row. */}
 			{anyShortfall && (
-				<div className="mx-5 mt-3 flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-md px-3 py-2">
+				<div className={`${mobile ? "mx-4" : "mx-5"} mt-3 flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-md px-3 py-2`}>
 					<span className="text-warning-text text-xs font-semibold">⚠</span>
 					<span className="text-xs text-warning-text">Some quantities exceed warehouse stock — restock will be capped at available.</span>
 				</div>
 			)}
 
-			{/* Notes + Apply */}
-			<div className="px-5 py-4 mt-6 border-t border-border/20">
+			{/* Notes + Apply — separated by space, not a rule. Once the table is a
+			    bounded object, another heavy line here just adds noise. */}
+			<div className={`${mobile ? "px-4" : "px-5"} pt-5 pb-4`}>
 				<label className="block text-xs text-text-muted mb-1">Notes (optional)</label>
 				<textarea
 					value={notes}
@@ -575,21 +693,51 @@ function MobileContextAccordion({ vehicleId, subTab }: { vehicleId: string; subT
 		summary = n === 0 ? "No visits tomorrow" : `${n} visit${n !== 1 ? "s" : ""} tomorrow`;
 	}
 
+	const count = subTab === "restock"
+		? (usage.data ?? []).reduce((s, g) => s + g.items.length, 0)
+		: (prep.data ?? []).length;
+
 	return (
-		<div className="border-b border-border">
+		// A filled, bordered card with its own margin — deliberately a different
+		// KIND of surface from the page shell's flat "Warehouse Restock" header,
+		// which is also a disclosure. Flush and unfilled, this row read as one more
+		// header rule stacked against the table below it.
+		<div className="mx-4 mt-3 rounded-lg border border-border bg-surface-inset overflow-hidden">
 			<button
 				onClick={() => setOpen((v) => !v)}
-				className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+				aria-expanded={open}
+				className="w-full min-h-[52px] flex items-center justify-between gap-3 px-3.5 py-2.5 text-left"
 			>
-				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{title}</span>
-				<span className="flex items-center gap-2 min-w-0">
-					<span className="text-xs text-text-muted truncate">{summary}</span>
-					<ChevronDown size={14} className={`text-text-muted shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+				<span className="min-w-0">
+					<span className="flex items-center gap-2">
+						<span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+							{title}
+						</span>
+						{count > 0 && (
+							<span className="inline-flex items-center justify-center h-5 min-w-5 rounded-full bg-primary text-on-primary text-xs font-bold px-1.5 shrink-0">
+								{count}
+							</span>
+						)}
+					</span>
+					{/* Second line says what tapping does. An empty result states the
+					    fact instead and doesn't invite a tap that shows nothing. */}
+					<span className="block text-xs text-text-muted mt-0.5 truncate">
+						{loading ? "Loading…" : count === 0 ? summary : `${summary} — tap to review`}
+					</span>
+				</span>
+				<span className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md border border-border bg-surface">
+					<ChevronDown
+						size={16}
+						className={`text-text-secondary transition-transform ${open ? "rotate-180" : ""}`}
+					/>
 				</span>
 			</button>
-			{open && (subTab === "restock"
-				? <RestockContextPanel vehicleId={vehicleId} />
-				: <PrepContextPanel vehicleId={vehicleId} />
+			{open && (
+				<div className="border-t border-border">
+					{subTab === "restock"
+						? <RestockContextPanel vehicleId={vehicleId} />
+						: <PrepContextPanel vehicleId={vehicleId} />}
+				</div>
 			)}
 		</div>
 	);
@@ -706,35 +854,31 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 
 	return (
 		<div className={layout === "mobile" ? "flex flex-col" : "flex flex-col h-full"}>
-			{/* Sub-tab bar */}
-			<div className="flex items-center gap-2 px-4 py-2 border-b border-border flex-shrink-0">
-				<div className="flex items-center gap-1 p-1 bg-surface-inset rounded-lg">
-					{(["restock", "prepare"] as SubTab[]).map((t) => (
-						<button
-							key={t}
-							onClick={() => handleSubTabChange(t)}
-							className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-								subTab === t ? "bg-primary text-on-primary" : "text-text-muted hover:text-text-secondary"
-							}`}
-						>
-							{t === "restock" ? "Restock" : "Prep for Tomorrow"}
-						</button>
-					))}
-				</div>
-				{completedRecord && (
-					<button
-						onClick={handleReset}
-						className="px-3 py-1.5 text-xs font-semibold bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
-					>
-						New Restock
-					</button>
-				)}
+			{/* Mode switch — which job is being done right now, so on a phone it
+			    takes the full width at a thumb-sized height and shares its row with
+			    nothing. The reset lives with the completed summary instead, where
+			    "start another" is the actual next step. */}
+			{/* No rule beneath: the control's own border already closes it off, and a
+			    divider here repeated that edge one row down. Matches the Add/Remove
+			    switch on the technician vehicle page. */}
+			<div className="px-3 py-2 flex-shrink-0">
+				<SegmentedToggle<SubTab>
+					ariaLabel="Restock mode"
+					value={subTab}
+					onChange={handleSubTabChange}
+					fullWidth={layout === "mobile"}
+					variant="flat"
+					options={[
+						{ id: "restock", label: "Restock" },
+						{ id: "prepare", label: "Prep for Tomorrow" },
+					]}
+				/>
 			</div>
 
 			{layout === "mobile" ? (
 				<div className="flex flex-col">
 					{completedRecord ? (
-						<CompleteStep record={completedRecord} stockItems={stockItems} />
+						<CompleteStep record={completedRecord} stockItems={stockItems} onReset={handleReset} />
 					) : (
 						<>
 							<MobileContextAccordion vehicleId={vehicleId} subTab={subTab} />
@@ -763,7 +907,7 @@ export default function RestockWorkflow({ vehicleId, stockItems, layout = "deskt
 					</div>
 					<div className="flex-1 overflow-y-auto">
 						{completedRecord ? (
-							<CompleteStep record={completedRecord} stockItems={stockItems} />
+							<CompleteStep record={completedRecord} stockItems={stockItems} onReset={handleReset} />
 						) : (
 							<RestockPanel
 								subTab={subTab}

@@ -17,6 +17,8 @@ import type {
 	SerialHistoryResponse,
 	ReconciliationReport,
 	TrackingSummary,
+	TrackingEligibility,
+	VehicleStockResponse,
 } from "../types/tracking";
 
 export const resolveCode = async (code: string): Promise<ResolveCodeResult> => {
@@ -59,11 +61,19 @@ export const receiveInventory = async (
 
 export const getItemSerials = async (
 	itemId: string,
-	params?: { status?: string; vehicleId?: string; cursor?: string; search?: string },
+	params?: {
+		status?: string;
+		vehicleId?: string;
+		/** Narrows to one lot's units — the batch detail page's serial list. */
+		batchId?: string;
+		cursor?: string;
+		search?: string;
+	},
 ): Promise<SerialsListResponse> => {
 	const queryParams: Record<string, string> = {};
 	if (params?.status) queryParams.status = params.status;
 	if (params?.vehicleId) queryParams.vehicle_id = params.vehicleId;
+	if (params?.batchId) queryParams.batch_id = params.batchId;
 	if (params?.cursor) queryParams.cursor = params.cursor;
 	if (params?.search) queryParams.search = params.search;
 
@@ -101,6 +111,30 @@ export const getTrackingSummary = async (itemId: string): Promise<TrackingSummar
 
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || "Failed to fetch tracking summary");
+	}
+
+	return response.data.data!;
+};
+
+export const getItemVehicleStock = async (itemId: string): Promise<VehicleStockResponse> => {
+	const response = await api.get<ApiResponse<VehicleStockResponse>>(`/inventory/${itemId}/vehicle-stock`);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch vehicle stock");
+	}
+
+	return response.data.data!;
+};
+
+// Read before the edit form unlocks its tracking toggles — the server's own
+// verdict, so the form can't unlock on an item PATCH /tracking would reject.
+export const getTrackingEligibility = async (itemId: string): Promise<TrackingEligibility> => {
+	const response = await api.get<ApiResponse<TrackingEligibility>>(
+		`/inventory/${itemId}/tracking-eligibility`,
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to check tracking eligibility");
 	}
 
 	return response.data.data!;

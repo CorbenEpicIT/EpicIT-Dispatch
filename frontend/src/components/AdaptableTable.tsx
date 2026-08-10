@@ -24,9 +24,36 @@ interface AdaptableTableProps {
 	columnAlign?: Record<string, "left" | "right">;
 	// Optional totals row keyed by column id
 	footerRow?: Record<string, React.ReactNode>;
-	// Render cells with a component instead of the default text rendering
-	cellRenderers?: Record<string, (row: Record<string, unknown>) => React.ReactNode>;
+	// Per-column extra CSS classes, computed from the row.
+	cellClass?: Record<string, (row: Record<string, unknown>) => string>;
+	// Per-column width cap. Layout is `auto`, so one long cell can push every
+	// column off the right edge; the cap goes on a wrapper INSIDE the cell,
+	// since auto layout ignores a width set on the <td> itself.
+	columnClamp?: Record<string, ColumnClamp>;
 }
+
+export interface ColumnClamp {
+	// Any CSS length; omit to leave the column self-sizing.
+	maxWidth?: string;
+	// Lines shown before the ellipsis. Defaults to 1.
+	lines?: 1 | 2 | 3;
+}
+
+// Static class strings — Tailwind only emits what it can read in the source.
+const CLAMP_LINES: Record<number, string> = {
+	1: "truncate",
+	// `break-words` so an unbreakable token wraps instead of running out the
+	// side of the clamp, where there is no ellipsis to say it was cut.
+	2: "line-clamp-2 break-words",
+	3: "line-clamp-3 break-words",
+};
+
+// Full value on hover for anything long enough to have plausibly been cut.
+// Short cells are skipped: a native tooltip reading "0" is noise on every
+// numeric column in the table.
+const TITLE_MIN_LENGTH = 20;
+const clampTitle = (value: unknown) =>
+	typeof value === "string" && value.length > TITLE_MIN_LENGTH ? value : undefined;
 
 const PADDING = "p-3";
 const MIN_HEIGHT = 150;
@@ -47,7 +74,8 @@ const AdaptableTable = ({
 	headerLabels,
 	columnAlign,
 	footerRow,
-	cellRenderers
+	cellClass,
+	columnClamp,
 }: AdaptableTableProps) => {
 	const alignClass = (colId: string) => {
 		if (!columnAlign) return "";
@@ -184,64 +212,79 @@ const AdaptableTable = ({
 							>
 								{row
 									.getVisibleCells()
-									.map((cell) => (
-										<td
-											key={
-												cell.id
-											}
-											className={`border-t border-border-subtle font-normal ${PADDING} ${alignClass(cell.column.id)}`}
-										>
-											{(() => {
-												// If this is the actions column, render the action cell
-												if (cell.column.id === 'actions') {
-													return flexRender(
-														cell.column.columnDef.cell,
-														cell.getContext()
-													);
-												}
-
-												// If there's a custom cell renderer for this column, use it
-												if (cellRenderers?.[cell.column.id]) {
-													return cellRenderers[cell.column.id](row.original);
-												}
-
-												const rawValue =
-													cell.getValue();
-												if (
-													formatNums
-												) {
-													if (
-														typeof rawValue ===
-														"number"
-													)
-														return formatter.format(
-															rawValue
-														);
-
-													return flexRender(
-														cell
-															.column
-															.columnDef
-															.cell,
-														cell.getContext()
-													);
-												}
-												if (
-													typeof rawValue ===
-													"number"
-												)
-													return rawValue.toLocaleString();
-
+									.map((cell) => {
+										const rawValue =
+											cell.getValue();
+										const content = (() => {
+											// If this is the actions column, render the action cell
+											if (cell.column.id === 'actions') {
 												return flexRender(
-													cell
-														.column
-														.columnDef
-														.cell,
+													cell.column.columnDef.cell,
 													cell.getContext()
 												);
-											})()}
-										</td>
-									))}
+											}
+
+											if (
+												typeof rawValue ===
+												"number"
+											)
+												return formatNums
+													? formatter.format(
+															rawValue
+														)
+													: rawValue.toLocaleString();
+
+											return flexRender(
+												cell
+													.column
+													.columnDef
+													.cell,
+												cell.getContext()
+											);
+										})();
+
+										const clamp =
+											columnClamp?.[
+												cell.column
+													.id
+											];
+
+										return (
+											<td
+												key={
+													cell.id
+												}
+												className={`border-t border-border-subtle font-normal ${PADDING} ${alignClass(cell.column.id)} ${cellClass?.[cell.column.id]?.(row.original) ?? ""}`}
+											>
+												{clamp ? (
+													<div
+														className={
+															CLAMP_LINES[
+																clamp.lines ??
+																	1
+															]
+														}
+														style={
+															clamp.maxWidth
+																? {
+																		maxWidth: clamp.maxWidth,
+																	}
+																: undefined
+														}
+														title={clampTitle(
+															rawValue
+														)}
+													>
+														{
+															content
+														}
+													</div>
+												) : (
+													content
+												)}
+											</td>
+										);
+									})}
 							</tr>
 						))}
 					</tbody>

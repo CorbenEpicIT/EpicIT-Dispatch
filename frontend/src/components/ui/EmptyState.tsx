@@ -13,8 +13,8 @@ export interface EmptyStateProps {
 	action?: EmptyStateAction;
 }
 
-// Shared empty-state layout — extracted from ItemTrackingPage's SerialsTab/
-// BatchesTab. Callers own their own copy/CTA;
+// Shared empty-state layout — extracted from the detail page's Tracking tab
+// SerialsTable/BatchesTable. Callers own their own copy/CTA;
 // this only owns layout + token choices so every empty state reads identically.
 export default function EmptyState({ title, description, icon, action }: EmptyStateProps) {
 	return (

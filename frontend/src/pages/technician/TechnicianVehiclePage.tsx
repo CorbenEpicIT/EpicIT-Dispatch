@@ -44,6 +44,7 @@ import LotSheet, {
 	type LotSheetTarget,
 } from "../../components/inventory/tracking/LotSheet";
 import EmptyState from "../../components/ui/EmptyState";
+import SegmentedToggle from "../../components/ui/SegmentedToggle";
 import { useToast } from "../../components/ui/useToast";
 import type {
 	Vehicle,
@@ -52,6 +53,7 @@ import type {
 	BulkRestockInput,
 } from "../../types/vehicles";
 import type { InventoryItem } from "../../types/inventory";
+import { unitLabel } from "../../lib/units";
 
 // ── Vehicle Status ────────────────────────────────────────────────────────────
 
@@ -224,10 +226,8 @@ function VehicleList({
 
 // ── Stock Item Row ────────────────────────────────────────────────────────────
 
-function formatUnit(unit: string | undefined): string {
-	if (!unit || unit.toLowerCase() === "each") return "";
-	return unit;
-}
+// Quantity formatting goes through lib/units now, which renders a count as
+// "units" instead of suppressing it entirely.
 
 function StockItemRow({
 	item,
@@ -255,7 +255,7 @@ function StockItemRow({
 	const isEmpty = Number(item.qty_on_hand) === 0;
 	const isLow =
 		Number(item.qty_on_hand) > 0 && Number(item.qty_on_hand) <= Number(item.qty_min);
-	const unit = formatUnit(item.inventory_item.unit);
+	const unit = item.inventory_item.unit;
 
 	const qtyColor = isEmpty
 		? "text-error-text"
@@ -282,8 +282,11 @@ function StockItemRow({
 			} ${isHighlighted ? "highlight-active" : ""}`}
 		>
 			<div className="flex-1 min-w-0">
+				{/* Two lines on a phone: one truncated line of a 255-character
+				    part name is mostly ellipsis, and the name is the only thing
+				    a tech identifies the row by. */}
 				<p
-					className="text-sm text-text-primary truncate"
+					className="text-sm text-text-primary line-clamp-2 break-words"
 					title={item.inventory_item.name}
 				>
 					{item.inventory_item.name}
@@ -304,7 +307,13 @@ function StockItemRow({
 					/>
 					{item.inventory_item.category && (
 						<>
-							<span className="text-[10px] px-1.5 py-0.5 bg-surface text-text-secondary rounded">
+							{/* Capped: category is org-defined freetext up to 100
+							    characters, and an uncapped chip wrapped inside
+							    itself and doubled the row's height. */}
+							<span
+								className="text-[10px] px-1.5 py-0.5 bg-surface text-text-secondary rounded max-w-[9rem] truncate"
+								title={item.inventory_item.category}
+							>
 								{item.inventory_item.category}
 							</span>
 							<span className="text-[10px] text-text-faint">
@@ -313,7 +322,8 @@ function StockItemRow({
 						</>
 					)}
 					<span className="text-[10px] text-text-muted">
-						Min {Number(item.qty_min)} {unit}
+						Min {Number(item.qty_min)}{" "}
+						{unitLabel(unit, Number(item.qty_min))}
 					</span>
 					<span className="text-[10px] text-text-faint">·</span>
 					<span
@@ -327,10 +337,20 @@ function StockItemRow({
 								<span className="text-[10px] text-text-faint">
 									·
 								</span>
-								<span className="text-[10px] text-text-muted">
-									{item.inventory_item.alt_ids.join(
-										" · "
-									)}
+								{/* Two alternates, then a count. There's no cap on
+								    how many an item carries or how long each one
+								    is, and the whole list joined ran ten lines
+								    deep on a phone — it's a search aid here, not
+								    something a tech reads down. */}
+								<span
+									className="text-[10px] text-text-muted max-w-[12rem] truncate"
+									title={item.inventory_item.alt_ids.join(" · ")}
+								>
+									{item.inventory_item.alt_ids
+										.slice(0, 2)
+										.join(" · ")}
+									{item.inventory_item.alt_ids.length > 2 &&
+										` +${item.inventory_item.alt_ids.length - 2}`}
 								</span>
 							</>
 						)}
@@ -386,7 +406,9 @@ function StockItemRow({
 				<p className={`text-base font-semibold tabular-nums ${qtyColor}`}>
 					{Number(item.qty_on_hand)}
 				</p>
-				<p className="text-[10px] text-text-muted">{unit}</p>
+				<p className="text-[10px] text-text-muted">
+					{unitLabel(unit, Number(item.qty_on_hand))}
+				</p>
 			</div>
 		</div>
 	);
@@ -676,23 +698,27 @@ function AddStockItemSheet({
 							disabled={addMutation.isPending}
 							className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-surface-raised transition-colors disabled:opacity-50"
 						>
-							<div>
-								<p className="text-sm text-text-primary">
+							{/* min-w-0 so a long name shrinks rather than shoving
+							    the unit label off the row's right edge. */}
+							<div className="min-w-0 flex-1">
+								<p
+									className="text-sm text-text-primary line-clamp-2 break-words"
+									title={item.name}
+								>
 									{item.name}
 								</p>
 								{item.category && (
-									<p className="text-[10px] text-text-muted">
+									<p
+										className="text-[10px] text-text-muted truncate"
+										title={item.category}
+									>
 										{item.category}
 									</p>
 								)}
 							</div>
-							{item.unit &&
-								item.unit.toLowerCase() !==
-									"each" && (
-									<span className="text-xs text-text-muted shrink-0 ml-2">
-										{item.unit}
-									</span>
-								)}
+							<span className="text-xs text-text-muted shrink-0 ml-2">
+								{unitLabel(item.unit)}
+							</span>
 						</button>
 					))}
 				</div>
@@ -1765,29 +1791,21 @@ export default function TechnicianVehiclePage() {
 						</button>
 						{showAddItem && (
 							<div className="border-t border-border-subtle">
-								<div className="flex gap-1 p-2 bg-base/40">
-									{(["add", "remove"] as const).map(
-										(mode) => (
-											<button
-												key={mode}
-												onClick={() =>
-													setStockEditMode(
-														mode
-													)
-												}
-												className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
-													stockEditMode ===
-													mode
-														? "bg-surface-raised text-text-primary"
-														: "text-text-muted hover:text-text-secondary"
-												}`}
-											>
-												{mode === "add"
-													? "Add"
-													: "Remove"}
-											</button>
-										)
-									)}
+								{/* Same control as the Warehouse Restock mode switch —
+								    two mode switches on one page reading differently
+								    was the tell that one of them was hand-rolled. */}
+								<div className="px-3 py-2">
+									<SegmentedToggle<"add" | "remove">
+										ariaLabel="Stock list mode"
+										value={stockEditMode}
+										onChange={setStockEditMode}
+										fullWidth
+										variant="flat"
+										options={[
+											{ id: "add", label: "Add" },
+											{ id: "remove", label: "Remove" },
+										]}
+									/>
 								</div>
 								{stockEditMode === "add" ? (
 									<AddStockItemSheet
@@ -1971,7 +1989,13 @@ export default function TechnicianVehiclePage() {
 							className="bg-base border border-border rounded-xl w-full max-w-sm px-4 pt-4 pb-5 shadow-2xl"
 							onClick={(e) => e.stopPropagation()}
 						>
-							<p className="text-sm font-semibold text-text-primary mb-0.5">
+							{/* Clamped: the sheet is max-w-sm, and a 255-character
+							    part name pushed the quantity stepper off the
+							    bottom of a phone screen. */}
+							<p
+								className="text-sm font-semibold text-text-primary mb-0.5 line-clamp-2 break-words"
+								title={restockTarget.inventory_item.name}
+							>
 								Request restock —{" "}
 								{restockTarget.inventory_item.name}
 							</p>
@@ -2151,11 +2175,9 @@ export default function TechnicianVehiclePage() {
 										if (!item)
 											return null;
 										const unit =
-											formatUnit(
-												item
-													.inventory_item
-													.unit
-											);
+											item
+												.inventory_item
+												.unit;
 										return (
 											<div
 												key={
@@ -2190,13 +2212,12 @@ export default function TechnicianVehiclePage() {
 															qty
 														}
 													</p>
-													{unit && (
-														<p className="text-[10px] text-text-faint">
-															{
-																unit
-															}
-														</p>
-													)}
+													<p className="text-[10px] text-text-faint">
+														{unitLabel(
+															unit,
+															qty
+														)}
+													</p>
 												</div>
 											</div>
 										);

@@ -13,6 +13,7 @@ import type {
 	VehicleRestockRecord,
 } from "../../types/vehicles";
 import { ADJUSTMENT_TYPE_LABELS } from "../../types/vehicles";
+import SegmentedToggle from "../ui/SegmentedToggle";
 
 type HistoryTab = "adjustments" | "restock";
 type FilterType = VehicleAdjustmentType | "all";
@@ -291,29 +292,23 @@ export default function StockHistorySection({
 
 	return (
 		<div>
-			{/* Tab bar */}
-			<div className="flex gap-0 border-b border-border">
-				{(["adjustments", "restock"] as HistoryTab[]).map((t) => {
-					const count = t === "adjustments" ? adjustments.length : restockRecords.length;
-					return (
-						<button
-							key={t}
-							onClick={() => setActiveTab(t)}
-							className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
-								activeTab === t
-									? "border-primary text-primary"
-									: "border-transparent text-text-muted hover:text-text-secondary"
-							}`}
-						>
-							{t === "adjustments" ? "Adjustments" : "Restock"}
-							{count > 0 && (
-								<span className={`text-[10px] tabular-nums ${activeTab === t ? "text-primary/70" : "text-text-faint"}`}>
-									{count}
-								</span>
-							)}
-						</button>
-					);
-				})}
+			{/* Same control as the Warehouse Restock and Add/Remove switches — this
+			    was the third hand-rolled mode switch on the technician sheet, and
+			    underline tabs read as page-level navigation rather than a filter on
+			    the list below. Counts ride along as badges. No rule beneath: the
+			    control's own border closes it. */}
+			<div className="px-3 py-2">
+				<SegmentedToggle<HistoryTab>
+					ariaLabel="History type"
+					value={activeTab}
+					onChange={setActiveTab}
+					fullWidth
+					variant="flat"
+					options={[
+						{ id: "adjustments", label: "Adjustments", badge: adjustments.length },
+						{ id: "restock", label: "Restock", badge: restockRecords.length },
+					]}
+				/>
 			</div>
 
 			{activeTab === "adjustments" && (

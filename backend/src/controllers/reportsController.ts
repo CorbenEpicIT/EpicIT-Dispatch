@@ -1,7 +1,7 @@
 import { getScopedDb } from "../lib/context.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { centsToDollars, dollarsToCents, type TaxSnapshot } from "../services/taxEngine.js";
-import { getStockStatus } from "../lib/inventory.js";
+import { getStockStatus, unitBasis, type UnitBasis } from "../lib/inventory.js";
 import {
 	buildSqlParts,
 	type ColumnDef,
@@ -769,14 +769,97 @@ export const getTimesheetReport = async (
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-//Forecast of the last 90 days of inventory usage
-export const getInventoryReorderForecast = async (
+type ReorderForecastRow = {
+	itemId: string;
+	itemName: string;
+	sku: string | null;
+	category: string | null;
+	unit: string;
+	// Org-wide, to match the consumption denominator below; split kept since "buy more" vs "move to a van" are different actions.
+	currentQuantity: number;
+	warehouseQuantity: number;
+	vehicleQuantity: number;
+	// null on a unit break (see consumptionBasis) — unlike the cached on-hand figures above, these are summed from the ledger.
+	qtyConsumed: number | null;
+	avgDailyUsage: number | null;
+	// Derived from stamped movement units, not `unit` above (that's the item's CURRENT unit — wrong source). When mixed, rate/runway/stockout are withheld.
+	consumptionBasis: UnitBasis;
+	// Actual history available, capped at the lookback window — the rate divides by this, not the window.
+	observedDays: number;
+	daysOfStock: number | null;
+	projectedStockoutDate: string | null;
+	lowStockThreshold: number | null;
+	// Warehouse-scoped, like getStockStatus and the low-stock alert emails — the runway above is org-wide.
+	belowReorderPoint: boolean;
+	// Computed once here so every surface (table, chart, detail page, export) agrees. Band geometry stays frontend.
+	severity: ReorderSeverity;
+};
+
+export type ReorderSeverity = "critical" | "warning" | "healthy" | "unknown";
+
+const REORDER_SEVERITY_RANK: Record<ReorderSeverity, number> = {
+	critical: 0,
+	warning: 1,
+	healthy: 2,
+	unknown: 3,
+};
+
+// Constants live here, not the UI, so they can become per-org settings later.
+const REORDER_CRITICAL_DAYS = 7;
+const REORDER_WARNING_DAYS = 21;
+const REORDER_NEAR_THRESHOLD_FACTOR = 1.25;
+
+// Divides by the OBSERVED span, not the requested window — a 10-day-old item
+// dividing its burn by a 90-day window would understate the rate 9x.
+// `evidenceAgeDays` is the age of the oldest evidence (item creation or first
+// consumption in window, whichever is earlier), since movements can predate the row.
+export const usageRate = (input: {
+	qtyConsumed: number;
+	lookbackDays: number;
+	evidenceAgeDays: number;
+}): { avgDailyUsage: number; observedDays: number } => {
+	const observedDays = Math.max(1, Math.min(input.lookbackDays, input.evidenceAgeDays));
+	// Reversal netting can drive this negative if the reversal lands inside the window but the movement it undoes doesn't — clamp to 0 rather than report negative demand.
+	const qtyConsumed = Math.max(0, input.qtyConsumed);
+	return { avgDailyUsage: qtyConsumed / observedDays, observedDays };
+};
+
+export const reorderSeverity = (input: {
+	belowReorderPoint: boolean;
+	daysOfStock: number | null;
+	lowStockThreshold: number | null;
+	warehouseQuantity: number;
+}): ReorderSeverity => {
+	if (input.belowReorderPoint) return "critical";
+	if (input.daysOfStock != null) {
+		if (input.daysOfStock <= REORDER_CRITICAL_DAYS) return "critical";
+		if (input.daysOfStock <= REORDER_WARNING_DAYS) return "warning";
+		return "healthy";
+	}
+	if (
+		input.lowStockThreshold != null &&
+		input.warehouseQuantity <= input.lowStockThreshold * REORDER_NEAR_THRESHOLD_FACTOR
+	) {
+		return "warning";
+	}
+	return "unknown";
+};
+
+// Shared by the fleet-wide reorder report and the single-item forecast (itemId
+// filters to one row) so the two surfaces can't disagree about the same item.
+// Permission-agnostic — callers gate access before calling it.
+//
+// "Days of stock" = org-wide on-hand (warehouse + vehicles) / org-wide daily
+// consumption. Warehouse<->vehicle transfers are not demand; `loss` is excluded
+// from the rate even though it does drain stock.
+const buildReorderForecast = async (
 	organizationId: string,
-	opts: { lookbackDays: number },
-) => {
-	const { lookbackDays } = opts;
+	opts: { lookbackDays: number; itemId?: string },
+): Promise<ReorderForecastRow[]> => {
+	const { lookbackDays, itemId } = opts;
 	const sdb = getScopedDb(organizationId);
 	const cutoff = new Date(Date.now() - lookbackDays * DAY_MS);
+	const itemFilter = itemId ? Prisma.sql`AND ii.id = ${itemId}` : Prisma.empty;
 
 	const rows = await sdb.$queryRaw<
 		{
@@ -786,40 +869,127 @@ export const getInventoryReorderForecast = async (
 			category: string | null;
 			unit: string;
 			warehouseQty: number;
+			vehicleQty: number;
 			qtyConsumed: number | null;
+			consumedUnits: string[] | null;
+			lowStockThreshold: number | null;
+			createdAt: Date;
+			firstConsumedAt: Date | null;
 		}[]
 	>`
-		SELECT
-			ii.id AS "itemId",
-			ii.name AS "itemName",
-			ii.sku AS "sku",
-			ii.category AS "category",
-			ii.unit AS "unit",
-			ii.quantity::float AS "warehouseQty",
-			COALESCE((
-				SELECT SUM(sm.qty)
-				FROM stock_movement sm
-				WHERE sm.inventory_item_id = ii.id
-					AND sm.organization_id = ${organizationId}
-					AND sm.reason IN ('parts_used', 'direct_consumption')
-					AND sm.created_at >= ${cutoff}
-			), 0)::float                                AS "qtyConsumed"
-		FROM inventory_item ii
-		WHERE ii.organization_id = ${organizationId}
-			AND ii.is_active = true
+		SELECT * FROM (
+			SELECT
+				ii.id AS "itemId",
+				ii.name AS "itemName",
+				ii.sku AS "sku",
+				ii.category AS "category",
+				ii.unit AS "unit",
+				ii.quantity::float AS "warehouseQty",
+				-- Cast every numeric here; otherwise the driver hands back a Decimal,
+				-- not a number, and callers relying on the row type die on .toFixed().
+				ii.low_stock_threshold::float AS "lowStockThreshold",
+				ii.created_at AS "createdAt",
+				-- Oldest consumption evidence in window; paired with created_at
+				-- (see usageRate) since movements can predate the item row.
+				(
+					SELECT MIN(sm.created_at)
+					FROM stock_movement sm
+					WHERE sm.inventory_item_id = ii.id
+						AND sm.organization_id = ${organizationId}
+						AND sm.created_at >= ${cutoff}
+						AND sm.reason IN ('parts_used', 'direct_consumption')
+				)                                   AS "firstConsumedAt",
+				-- vehicle_stock_item has no org column of its own; scope through vehicle.
+				COALESCE((
+					SELECT SUM(vsi.qty_on_hand)
+					FROM vehicle_stock_item vsi
+					JOIN vehicle v ON v.id = vsi.vehicle_id
+					WHERE vsi.inventory_item_id = ii.id
+						AND v.organization_id = ${organizationId}
+				), 0)::float                        AS "vehicleQty",
+				-- Net of reversals (from_location_type = 'consumed' cancels demand that
+				-- never happened) — same netting getBatchImpact uses. updatePartsUsedQty
+				-- is the current writer of these; keep this in lockstep if new reversal
+				-- paths are added.
+				COALESCE((
+					SELECT SUM(
+						CASE WHEN sm.reason = 'reversal' THEN -sm.qty ELSE sm.qty END
+					)
+					FROM stock_movement sm
+					WHERE sm.inventory_item_id = ii.id
+						AND sm.organization_id = ${organizationId}
+						AND sm.created_at >= ${cutoff}
+						AND (
+							sm.reason IN ('parts_used', 'direct_consumption')
+							OR (sm.reason = 'reversal' AND sm.from_location_type = 'consumed')
+						)
+				), 0)::float                        AS "qtyConsumed",
+				-- Stamped units behind that sum (same reason set + window) — the
+				-- item's own unit column says nothing about what the ledger used.
+				(
+					SELECT array_agg(DISTINCT sm.unit)
+					FROM stock_movement sm
+					WHERE sm.inventory_item_id = ii.id
+						AND sm.organization_id = ${organizationId}
+						AND sm.created_at >= ${cutoff}
+						AND (
+							sm.reason IN ('parts_used', 'direct_consumption')
+							OR (sm.reason = 'reversal' AND sm.from_location_type = 'consumed')
+						)
+				)                                   AS "consumedUnits"
+			FROM inventory_item ii
+			WHERE ii.organization_id = ${organizationId}
+				AND ii.is_active = true
+				${itemFilter}
+		) f
+		-- Ordering happens in SQL so the LIMIT truncates the least urgent rows, not
+		-- an arbitrary set. qty/consumed is a runway proxy (raw sum, mixed units and
+		-- all) good enough to rank by — the real per-row rate is computed below, and
+		-- the raw number never reaches the response.
+		ORDER BY
+			(f."lowStockThreshold" IS NOT NULL AND f."warehouseQty" < f."lowStockThreshold") DESC,
+			CASE
+				WHEN f."qtyConsumed" > 0
+					THEN (f."warehouseQty" + f."vehicleQty") / f."qtyConsumed"
+				ELSE 1e9
+			END ASC,
+			f."itemId" ASC
+		LIMIT ${REPORT_ROW_CAP}
 	`;
 
 	const now = Date.now();
 
 	const built = rows.map((r) => {
-		const currentQuantity = r.warehouseQty;
-		const qtyConsumed = Number(r.qtyConsumed ?? 0);
-		const avgDailyUsage = lookbackDays > 0 ? qtyConsumed / lookbackDays : 0;
-		const hasUsage = avgDailyUsage > 0;
+		const warehouseQuantity = r.warehouseQty;
+		const vehicleQuantity = r.vehicleQty;
+		const currentQuantity = warehouseQuantity + vehicleQuantity;
+		const rawConsumed = Math.max(0, Number(r.qtyConsumed ?? 0));
 
-		const daysOfStock = hasUsage ? currentQuantity / avgDailyUsage : null;
+		// Whichever came first, item creation or first consumption in window; usageRate caps this at the window itself.
+		const evidenceStart = Math.min(
+			new Date(r.createdAt).getTime(),
+			r.firstConsumedAt ? new Date(r.firstConsumedAt).getTime() : Infinity,
+		);
+		// observedDays is computed even when the quantity is unusable (unit break) — only the quantity-derived half gets withheld below.
+		const { avgDailyUsage: rawRate, observedDays } = usageRate({
+			qtyConsumed: rawConsumed,
+			lookbackDays,
+			evidenceAgeDays: (now - evidenceStart) / DAY_MS,
+		});
+
+		// Unit break (e.g. `12 each + 3 box`) makes the numerator unusable — qty, rate, and runway are withheld together so the card can't show a rate with no runway.
+		const consumptionBasis = unitBasis(r.consumedUnits);
+		const qtyConsumed = consumptionBasis.mixed ? null : rawConsumed;
+		const avgDailyUsage = consumptionBasis.mixed ? null : rawRate;
+		const daysOfStock =
+			avgDailyUsage != null && avgDailyUsage > 0 ? currentQuantity / avgDailyUsage : null;
 		const projectedStockoutDate =
 			daysOfStock === null ? null : new Date(now + daysOfStock * DAY_MS).toISOString();
+
+		const lowStockThreshold = r.lowStockThreshold ?? null;
+		// `<`, not `<=`, to agree with lib/inventory.getStockStatus — otherwise this report and the inventory list disagree at exactly the threshold.
+		const belowReorderPoint =
+			lowStockThreshold != null && warehouseQuantity < lowStockThreshold;
 
 		return {
 			itemId: r.itemId,
@@ -828,18 +998,38 @@ export const getInventoryReorderForecast = async (
 			category: r.category ?? null,
 			unit: r.unit,
 			currentQuantity,
+			warehouseQuantity,
+			vehicleQuantity,
 			qtyConsumed,
 			avgDailyUsage,
+			consumptionBasis,
+			observedDays,
 			daysOfStock,
 			projectedStockoutDate,
+			lowStockThreshold,
+			belowReorderPoint,
+			severity: reorderSeverity({
+				belowReorderPoint,
+				daysOfStock,
+				lowStockThreshold,
+				warehouseQuantity,
+			}),
 		};
 	});
 
-	// Shortest projected stockout first and items with no usage last
+	// Severity first, then runway. Sorting on projectedStockoutDate alone mapped
+	// null to Infinity, burying rows with no measured usage below every healthy
+	// item. AdaptableTable has no column sorting, so this default order is the
+	// only order — it must agree with the severity the report renders.
 	built.sort((a, b) => {
-		const aT = a.projectedStockoutDate ? new Date(a.projectedStockoutDate).getTime() : Infinity;
-		const bT = b.projectedStockoutDate ? new Date(b.projectedStockoutDate).getTime() : Infinity;
-		return aT - bT;
+		const sev = REORDER_SEVERITY_RANK[a.severity] - REORDER_SEVERITY_RANK[b.severity];
+		if (sev !== 0) return sev;
+		// Within a band, shortest runway first; no-runway rows sort to the end of
+		// their own band rather than the end of the report.
+		const aD = a.daysOfStock ?? Infinity;
+		const bD = b.daysOfStock ?? Infinity;
+		if (aD !== bD) return aD - bD;
+		return a.itemName.localeCompare(b.itemName);
 	});
 
 	return built;
@@ -855,16 +1045,18 @@ const inventoryBaseWhere = (includeInactive: boolean): Record<string, unknown> =
 	...(includeInactive ? {} : { is_active: true }),
 });
 
-// Usage totals (qty consumed) per item, keyed by item id, over an optional range.
+// Grouped by (item, unit), not item alone — the extra key is what surfaces a
+// unit break: >1 group per item means its consumption can't be totalled.
+// `itemIds` scopes the group-by to a hydrated page's rows.
 const inventoryUsageByItem = async (
 	sdb: ReturnType<typeof getScopedDb>,
 	organizationId: string,
 	from?: Date,
 	to?: Date,
 	itemIds?: string[],
-): Promise<Map<string, number>> => {
+): Promise<Map<string, { qty: number; units: string[] }>> => {
 	const usage = await sdb.stock_movement.groupBy({
-		by: ["inventory_item_id"],
+		by: ["inventory_item_id", "unit"],
 		where: {
 			organization_id: organizationId,
 			reason: { in: ["parts_used", "direct_consumption"] },
@@ -873,19 +1065,29 @@ const inventoryUsageByItem = async (
 		},
 		_sum: { qty: true },
 	});
-	return new Map(usage.map((u) => [u.inventory_item_id, Number(u._sum.qty ?? 0)]));
+	const byItem = new Map<string, { qty: number; units: string[] }>();
+	for (const u of usage) {
+		const entry = byItem.get(u.inventory_item_id) ?? { qty: 0, units: [] };
+		entry.qty += Number(u._sum.qty ?? 0);
+		entry.units.push(u.unit);
+		byItem.set(u.inventory_item_id, entry);
+	}
+	return byItem;
 };
 
 const mapInventoryItem = (
 	item: Prisma.inventory_itemGetPayload<{ include: typeof INVENTORY_INCLUDE }>,
-	usageByItem: Map<string, number>,
+	usageByItem: Map<string, { qty: number; units: string[] }>,
 ) => {
+	const used = usageByItem.get(item.id);
+	const qtyUsedBasis: UnitBasis = unitBasis(used?.units);
 	const fleetQty = item.vehicle_stocks.reduce((sum, vs) => sum + Number(vs.qty_on_hand ?? 0), 0);
 	const fleetStandard = item.vehicle_stocks.reduce(
 		(sum, vs) => sum + Number(vs.qty_standard ?? 0),
 		0,
 	);
-	const warehouseQty = item.quantity;
+	// Coerced: numeric(10,2) arrives as a Decimal, and `+` against a number concatenates strings instead of adding ("9" + 5 = "95").
+	const warehouseQty = Number(item.quantity);
 	const totalQty = warehouseQty + fleetQty;
 	const cost = item.cost != null ? Number(item.cost) : null;
 
@@ -901,17 +1103,42 @@ const mapInventoryItem = (
 		fleetQty,
 		fleetStandard,
 		totalQty,
-		lowStockThreshold: item.low_stock_threshold,
+		// Same Decimal-coercion reason as warehouseQty above.
+		lowStockThreshold:
+			item.low_stock_threshold == null ? null : Number(item.low_stock_threshold),
 		cost,
 		unitPrice: item.unit_price != null ? Number(item.unit_price) : null,
 		assetValue: cost != null ? cost * totalQty : null,
-		qtyUsed: usageByItem.get(item.id) ?? 0,
+		// null, not 0, on a unit break — 0 is a real answer ("never consumed") and shouldn't be confused with "cannot be totalled".
+		qtyUsed: qtyUsedBasis.mixed ? null : (used?.qty ?? 0),
+		qtyUsedBasis,
 		stockStatus: getStockStatus(warehouseQty, item.low_stock_threshold),
 		location: item.location,
 		tags: item.tags,
 		altIds: item.alt_ids,
 		updatedAt: item.updated_at,
 	};
+};
+
+// `truncated` is surfaced, not just logged, so the report can say so on screen instead of silently passing off a short list as complete.
+export const getInventoryReorderForecast = async (
+	organizationId: string,
+	opts: { lookbackDays: number },
+): Promise<{ rows: ReorderForecastRow[]; truncated: boolean }> => {
+	const rows = await buildReorderForecast(organizationId, opts);
+	return { rows, truncated: rows.length >= REPORT_ROW_CAP };
+};
+
+// Single-item variant, scoped via buildReorderForecast's itemId filter. Returns
+// null if filtered out (e.g. inactive) — the caller in
+// inventoryController.getItemForecast treats that as "no forecast", not a 404.
+export const getItemReorderForecast = async (
+	organizationId: string,
+	itemId: string,
+	opts: { lookbackDays: number },
+): Promise<ReorderForecastRow | null> => {
+	const rows = await buildReorderForecast(organizationId, { ...opts, itemId });
+	return rows[0] ?? null;
 };
 
 export const getInventoryReport = async (
@@ -2454,7 +2681,9 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			let sufficient = 0;
 			let assetValue = 0;
 			for (const it of items) {
-				assetValue += it.quantity * Number(it.cost ?? 0);
+				// Coerced for consistency with the other Decimal-derived reads in this
+				// loop (getStockStatus below also expects a plain number).
+				assetValue += Number(it.quantity) * Number(it.cost ?? 0);
 				const status = getStockStatus(it.quantity, it.low_stock_threshold);
 				if (status === "low") low++;
 				else if (status === "out_of_stock") out++;

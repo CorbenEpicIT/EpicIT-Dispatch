@@ -352,6 +352,8 @@ export interface GetOrCreateBatchArgs {
 	expires_at?: Date | null;
 	supplier?: string | null;
 	note?: string | null;
+	/** Per-unit cost paid for this lot. Only recorded when the header is created. */
+	unit_cost?: number | null;
 }
 
 /**
@@ -382,6 +384,7 @@ export async function getOrCreateBatch(
 			code: shortCode("LOT"),
 			expires_at: args.expires_at ?? null,
 			supplier: args.supplier ?? null,
+			unit_cost: args.unit_cost ?? null,
 			note: args.note ?? null,
 		},
 		select: { id: true, code: true },

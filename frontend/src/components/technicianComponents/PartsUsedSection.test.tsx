@@ -11,6 +11,7 @@ vi.mock("../../hooks/useVehicleStock", () => ({
 	useVehicleStockQuery: () => ({ data: mockStockItems() }),
 	useAddPartsUsedMutation: () => ({ mutateAsync: mockAddPartsMutateAsync, isPending: false }),
 	useAddSupplierPartUsedMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdatePartsUsedQtyMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../../hooks/useJobs", () => ({
