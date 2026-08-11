@@ -122,6 +122,33 @@ export interface UnscheduledRevenueResponse {
 }
 
 // ============================================================================
+// WORK ORDER STATUS BACKLOG
+// ============================================================================
+
+export type JobBacklogStatus = "Unscheduled" | "Scheduled" | "InProgress";
+
+export interface JobBacklogBucket {
+	count: number;
+	revenue: number;
+}
+
+export interface JobBacklogRow {
+	fresh: JobBacklogBucket;
+	aging: JobBacklogBucket;
+	stalled: JobBacklogBucket;
+	total: JobBacklogBucket;
+}
+
+export interface JobBacklogStatusRow extends JobBacklogRow {
+	status: JobBacklogStatus;
+}
+
+export interface JobBacklogResponse {
+	statuses: JobBacklogStatusRow[];
+	totals: JobBacklogRow;
+}
+
+// ============================================================================
 // QUOTE PIPELINE
 // ============================================================================
 
@@ -391,6 +418,143 @@ export interface ClientRetentionRow {
 	lastActivity: string;
 	lifetimeRevenue: number;
 	jobCount: number;
+}
+
+export interface ClientLifetimeValueRow {
+	id: string;
+	name: string;
+	primaryContact: string;
+	firstPurchaseAt: string;
+	tenureMonths: number;
+	jobCount: number;
+	invoiceCount: number;
+	lifetimeRevenue: number;
+	avgInvoiceValue: number;
+}
+
+export interface ClientLifetimeValueSummary {
+	clientCount: number;
+	totalLifetimeRevenue: number;
+	avgClv: number;
+}
+
+// ============================================================================
+// DISCOUNTING BY CLIENT
+// ============================================================================
+
+export interface ClientDiscountRow {
+	id: string;
+	clientName: string;
+	invoiceCount: number;
+	totalBilled: number;
+	totalDiscount: number;
+	discountRate: number;
+	avgDiscount: number;
+}
+
+export interface ClientDiscountSummary {
+	clientCount: number;
+	totalDiscount: number;
+	totalBilled: number;
+	avgDiscountRate: number;
+}
+
+// ============================================================================
+// FIELD-ADDED REVENUE (TECH UPSELL)
+// ============================================================================
+
+export interface FieldAddedRevenueRow {
+	id: string;
+	technician: string;
+	itemCount: number;
+	jobCount: number;
+	fieldAddedRevenue: number;
+	avgPerItem: number;
+}
+
+export interface FieldAddedRevenueTrend {
+	// Filter options, ordered by revenue desc (same order as rows), incl. "Unassigned".
+	techs: { id: string; name: string }[];
+	// Long format: one entry per (tech, month) with field-added revenue.
+	points: { month: string; techId: string; revenue: number }[];
+}
+
+export interface FieldAddedRevenueSummary {
+	technicianCount: number;
+	totalFieldAddedRevenue: number;
+	fieldAddedItems: number;
+	topTechnician: string;
+	// org-wide denominator for upsell rate = fieldAdded / orgVisitRevenue
+	orgVisitRevenue: number;
+	// per-(tech, month) field-added revenue for the trend chart's local tech filter
+	trend: FieldAddedRevenueTrend;
+}
+
+// ============================================================================
+// RECURRING REVENUE (MRR)
+// ============================================================================
+
+export interface RecurringRevenueRow {
+	id: string;
+	name: string;
+	clientName: string;
+	status: string;
+	billingBasis: string;
+	perPeriodAmount: number | string;
+	monthlyValue: number;
+	nextInvoiceAt: string;
+	lastInvoicedAt: string;
+	occCompleted: number;
+	occSkipped: number;
+}
+
+export interface RecurringRevenueTrendPoint {
+	month: string; // YYYY-MM
+	revenue: number;
+}
+
+export interface RecurringRevenueSummary {
+	mrr: number;
+	arr: number;
+	activePlans: number;
+	pausedPlans: number;
+	newPlans: number;
+	churnedPlans: number;
+	churnedMrr: number;
+	completionRate: number;
+	skipRate: number;
+	trend: RecurringRevenueTrendPoint[];
+}
+
+// ============================================================================
+// REVENUE BY LINE ITEM TYPE
+// ============================================================================
+
+export interface RevenueByLineItemTypeRow {
+	id: string; // the item_type key: labor | material | equipment | other
+	label: string;
+	revenue: number;
+	lineCount: number;
+	pctOfTotal: number;
+}
+
+export interface RevenueByLineItemTypeSummary {
+	totalRevenue: number;
+	totalLineItems: number;
+}
+
+export interface RevenueLineItemRow {
+	id: string;
+	_invoiceId: string;
+	invoiceNumber: string;
+	clientName: string;
+	issueDate: string;
+	name: string;
+	description: string;
+	quantity: number;
+	unitPrice: number;
+	total: number;
+	itemType: string;
 }
 
 // ============================================================================

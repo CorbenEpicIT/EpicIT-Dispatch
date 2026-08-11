@@ -1,4 +1,10 @@
 import { getScopedDb } from "../lib/context.js";
+import {
+	normalizedMonthly,
+	planPerPeriodAmount,
+	type BillingBasis,
+	type ScheduleFrequency,
+} from "../lib/reports/recurringRevenue.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { centsToDollars, dollarsToCents, type TaxSnapshot } from "../services/taxEngine.js";
 import { getStockStatus, unitBasis, type UnitBasis } from "../lib/inventory.js";
@@ -521,6 +527,89 @@ export const getUnscheduledRevenue = async (organizationId: string) => {
 		new: buckets.new,
 		warning: buckets.warning,
 		critical: buckets.critical,
+	};
+};
+
+// ============================================================================
+// WORK ORDER STATUS BACKLOG
+// ============================================================================
+
+const BACKLOG_STATUSES = ["Unscheduled", "Scheduled", "InProgress"] as const;
+type BacklogStatus = (typeof BACKLOG_STATUSES)[number];
+type BacklogBucketKey = "fresh" | "aging" | "stalled";
+
+export type BacklogQueryRow = {
+	status: BacklogStatus,
+	bucket: BacklogBucketKey,
+	count: number,
+	revenue: string,
+};
+
+//Resets when a status is changed to track the job sitting idle
+// at that status
+export const getJobBacklog = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const results = await sdb.$queryRaw<BacklogQueryRow[]>`
+		SELECT
+			status,
+			CASE
+				WHEN age_anchor < NOW() - INTERVAL '30 days' THEN 'stalled'
+				WHEN age_anchor < NOW() - INTERVAL '7 days'  THEN 'aging'
+				ELSE 'fresh'
+			END AS bucket,
+			COUNT(*)::int AS count,
+			COALESCE(SUM(estimated_total), 0)::text AS revenue
+		FROM (
+			SELECT status, estimated_total,
+				CASE
+					WHEN status = 'Unscheduled' THEN created_at
+					ELSE status_changed_at
+				END AS age_anchor
+			FROM job
+			WHERE status IN ('Unscheduled', 'Scheduled', 'InProgress')
+				AND organization_id = ${organizationId}
+		) t
+		GROUP BY status, bucket
+	`;
+
+	return aggregateBacklog(results);
+};
+
+export const aggregateBacklog = (results: BacklogQueryRow[]) => {
+	const emptyBucket = () => ({ count: 0, revenue: 0 });
+	const emptyRow = () => ({
+		fresh: emptyBucket(),
+		aging: emptyBucket(),
+		stalled: emptyBucket(),
+		total: emptyBucket(),
+	});
+
+	const byStatus: Record<BacklogStatus, ReturnType<typeof emptyRow>> = {
+		Unscheduled: emptyRow(),
+		Scheduled: emptyRow(),
+		InProgress: emptyRow(),
+	};
+	const totals = emptyRow();
+
+	for (const r of results) {
+		const row = byStatus[r.status];
+		if (!row) continue;
+		const revenue = round2(Number(r.revenue));
+
+		row[r.bucket].count += r.count;
+		row[r.bucket].revenue = round2(row[r.bucket].revenue + revenue);
+		row.total.count += r.count;
+		row.total.revenue = round2(row.total.revenue + revenue);
+
+		totals[r.bucket].count += r.count;
+		totals[r.bucket].revenue = round2(totals[r.bucket].revenue + revenue);
+		totals.total.count += r.count;
+		totals.total.revenue = round2(totals.total.revenue + revenue);
+	}
+
+	return {
+		statuses: BACKLOG_STATUSES.map((status) => ({ status, ...byStatus[status] })),
+		totals,
 	};
 };
 
@@ -1767,6 +1856,167 @@ export const getInvoicesReportPage = async (
 };
 
 // ============================================================================
+// REVENUE BY LINE ITEM TYPE (revenue grouped by labor,material,equipment, or other)
+// ============================================================================
+
+// Fixed buckets in display order; null item_type folds into "other".
+const LINE_ITEM_TYPES = [
+	{ key: "labor", label: "Labor" },
+	{ key: "material", label: "Material" },
+	{ key: "equipment", label: "Equipment" },
+	{ key: "other", label: "Other" },
+] as const;
+
+export const getRevenueByLineItemType = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+
+	const rows = await sdb.$queryRaw<{ itemType: string; revenue: number | null; lineCount: number }[]>`
+		SELECT
+			COALESCE(ili.item_type::text, 'other') AS "itemType",
+			SUM(ili.total)::float                  AS "revenue",
+			COUNT(*)::int                          AS "lineCount"
+		FROM invoice_line_item ili
+		JOIN invoice i ON i.id = ili.invoice_id
+		WHERE i.organization_id = ${organizationId}
+			AND i.status NOT IN ('Draft', 'Void')
+			${df.gte ? Prisma.sql`AND COALESCE(i.issue_date, i.created_at) >= ${df.gte}` : Prisma.empty}
+			${df.lte ? Prisma.sql`AND COALESCE(i.issue_date, i.created_at) <= ${df.lte}` : Prisma.empty}
+		GROUP BY 1
+	`;
+
+	const byType = new Map(rows.map((r) => [r.itemType, r]));
+	const totalRevenue = rows.reduce((sum, r) => sum + Number(r.revenue ?? 0), 0);
+
+	return LINE_ITEM_TYPES.map(({ key, label }) => {
+		const row = byType.get(key);
+		const revenue = round2(Number(row?.revenue ?? 0));
+		return {
+			itemType: key,
+			label,
+			revenue,
+			lineCount: row?.lineCount ?? 0,
+			pctOfTotal: totalRevenue > 0 ? round2((revenue / totalRevenue) * 100) : 0,
+		};
+	});
+};
+
+// ============================================================================
+// REVENUE LINE ITEMS (drilldown detail for Revenue by Line Item Type)
+// ============================================================================
+
+const REVENUE_LINE_ITEM_INCLUDE = {
+	invoice: {
+		select: {
+			id: true,
+			invoice_number: true,
+			issue_date: true,
+			client: { select: { name: true } },
+		},
+	},
+} satisfies Prisma.invoice_line_itemInclude;
+
+const revenueLineItemsWhere = (
+	organizationId: string,
+	startDate?: string,
+	endDate?: string,
+): Prisma.invoice_line_itemWhereInput => {
+	const df = buildDateFilter(startDate, endDate);
+	return {
+		invoice: {
+			organization_id: organizationId,
+			status: { notIn: ["Draft", "Void"] },
+			...(Object.keys(df).length && {
+				OR: [{ issue_date: df }, { issue_date: null, created_at: df }],
+			}),
+		},
+	};
+};
+
+const mapRevenueLineItemRaw = (
+	li: Prisma.invoice_line_itemGetPayload<{ include: typeof REVENUE_LINE_ITEM_INCLUDE }>,
+) => ({
+	id: li.id,
+	invoiceId: li.invoice.id,
+	invoiceNumber: li.invoice.invoice_number,
+	clientName: li.invoice.client.name,
+	issueDate: li.invoice.issue_date,
+	name: li.name,
+	description: li.description,
+	quantity: Number(li.quantity),
+	unitPrice: Number(li.unit_price),
+	total: Number(li.total),
+	itemType: li.item_type ?? "other",
+});
+
+export const getRevenueLineItemsReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const items = await sdb.invoice_line_item.findMany({
+		where: revenueLineItemsWhere(organizationId, startDate, endDate),
+		orderBy: { invoice: { issue_date: "desc" } },
+		include: REVENUE_LINE_ITEM_INCLUDE,
+	});
+	return items.map(mapRevenueLineItemRaw);
+};
+
+const REVENUE_LINE_ITEM_SQL_COLUMNS: ColumnMap = {
+	invoiceNumber: t("i.invoice_number"),
+	clientName: t("c.name"),
+	issueDate: dt("i.issue_date"),
+	name: t("ili.name"),
+	description: t("ili.description"),
+	quantity: n("ili.quantity"),
+	unitPrice: cur("ili.unit_price"),
+	total: cur("ili.total"),
+	// COALESCE folds null → 'other' so the type filter matches the aggregate's Other bucket
+	itemType: t("COALESCE(ili.item_type::text, 'other')"),
+};
+
+export const getRevenueLineItemsReportPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+): Promise<PageResult<ReturnType<typeof mapRevenueLineItemRaw>> | null> => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "i.organization_id = $1 AND i.status NOT IN ('Draft', 'Void')";
+	if (df.gte) {
+		const idx = baseParams.push(df.gte);
+		baseWhere += ` AND COALESCE(i.issue_date, i.created_at) >= $${idx}`;
+	}
+	if (df.lte) {
+		const idx = baseParams.push(df.lte);
+		baseWhere += ` AND COALESCE(i.issue_date, i.created_at) <= $${idx}`;
+	}
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"invoice_line_item" ili JOIN "invoice" i ON i.id = ili.invoice_id JOIN "client" c ON c.id = i.client_id',
+		baseWhere,
+		baseParams,
+		idExpr: "ili.id",
+		columns: REVENUE_LINE_ITEM_SQL_COLUMNS,
+		defaultOrder: { expr: "i.issue_date", dir: "desc" },
+		params,
+		hydrate: (ids) =>
+			sdb.invoice_line_item.findMany({ where: { id: { in: ids } }, include: REVENUE_LINE_ITEM_INCLUDE }),
+		rowId: (r) => r.id,
+	});
+	if (!res) return null;
+	return { rows: res.rows.map(mapRevenueLineItemRaw), total: res.total, page: res.page, pageSize: res.pageSize };
+};
+
+// ============================================================================
 // CLIENTS
 // ============================================================================
 
@@ -1973,6 +2223,518 @@ export const getClientRetentionReport = async (
 		jobCount: r.jobCount,
 		lifetimeRevenue: round2(r.lifetimeRevenue),
 	}));
+};
+
+// ============================================================================
+// CLIENT LIFETIME VALUE
+// ============================================================================
+
+const MS_PER_MONTH = DAY_MS * 30.437;
+
+export const getClientLifetimeValueReport = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+
+	const rows = await sdb.$queryRaw<
+		{
+			id: string;
+			name: string;
+			primaryContact: string | null;
+			firstPurchaseAt: Date;
+			jobCount: number;
+			invoiceCount: number;
+			lifetimeRevenue: number | null;
+		}[]
+	>`
+		WITH pay AS (
+			SELECT i.client_id, MIN(ip.paid_at) AS first_purchase_at
+			FROM invoice i
+			JOIN invoice_payment ip ON ip.invoice_id = i.id
+			WHERE i.organization_id = ${organizationId}
+				AND i.status NOT IN ('Draft', 'Void')
+			GROUP BY i.client_id
+		),
+		rev AS (
+			SELECT client_id,
+				SUM(amount_paid) AS lifetime_revenue,
+				COUNT(*) FILTER (WHERE amount_paid > 0) AS invoice_count
+			FROM invoice
+			WHERE organization_id = ${organizationId}
+				AND status NOT IN ('Draft', 'Void')
+			GROUP BY client_id
+		),
+		jobs AS (
+			SELECT client_id, COUNT(*) AS job_count
+			FROM job
+			WHERE organization_id = ${organizationId}
+			GROUP BY client_id
+		)
+		SELECT
+			c.id   AS "id",
+			c.name AS "name",
+			pc.name AS "primaryContact",
+			p.first_purchase_at AS "firstPurchaseAt",
+			COALESCE(j.job_count, 0)::int          AS "jobCount",
+			COALESCE(r.invoice_count, 0)::int      AS "invoiceCount",
+			COALESCE(r.lifetime_revenue, 0)::float AS "lifetimeRevenue"
+		FROM client c
+		JOIN pay p ON p.client_id = c.id
+		JOIN rev r ON r.client_id = c.id
+		LEFT JOIN LATERAL (
+			SELECT ct.name
+			FROM client_contact cc
+			JOIN contact ct ON ct.id = cc.contact_id
+			WHERE cc.client_id = c.id
+			ORDER BY cc.is_primary DESC, cc.is_billing DESC
+			LIMIT 1
+		) pc ON true
+		LEFT JOIN jobs j ON j.client_id = c.id
+		WHERE c.organization_id = ${organizationId}
+			AND c.is_active = true
+		ORDER BY r.lifetime_revenue DESC
+	`;
+
+	const now = Date.now();
+	return rows.map((r) => {
+		const lifetimeRevenue = round2(r.lifetimeRevenue ?? 0);
+		return {
+			id: r.id,
+			name: r.name,
+			primaryContact: r.primaryContact,
+			firstPurchaseAt: r.firstPurchaseAt,
+			tenureMonths: Math.round((now - r.firstPurchaseAt.getTime()) / MS_PER_MONTH),
+			jobCount: r.jobCount,
+			invoiceCount: r.invoiceCount,
+			lifetimeRevenue,
+			avgInvoiceValue: r.invoiceCount ? round2(lifetimeRevenue / r.invoiceCount) : 0,
+		};
+	});
+};
+
+// ============================================================================
+// DISCOUNTING BY CLIENT
+// ============================================================================
+
+// Realized (billed) discounts per client across issued invoices, ranked by
+// total discount given. Only clients that actually received a discount appear.
+export const getClientDiscountsReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+
+	const rows = await sdb.$queryRaw<
+		{
+			clientId: string;
+			clientName: string;
+			invoiceCount: number;
+			totalBilled: number | null;
+			totalDiscount: number | null;
+		}[]
+	>`
+		SELECT
+			c.id   AS "clientId",
+			c.name AS "clientName",
+			COUNT(*) FILTER (WHERE i.discount_amount > 0)::int AS "invoiceCount",
+			SUM(i.subtotal)::float                            AS "totalBilled",
+			SUM(i.discount_amount)::float                     AS "totalDiscount"
+		FROM invoice i
+		JOIN client c ON c.id = i.client_id
+		WHERE i.organization_id = ${organizationId}
+			AND i.status NOT IN ('Draft', 'Void')
+			${df.gte ? Prisma.sql`AND COALESCE(i.issue_date, i.created_at) >= ${df.gte}` : Prisma.empty}
+			${df.lte ? Prisma.sql`AND COALESCE(i.issue_date, i.created_at) <= ${df.lte}` : Prisma.empty}
+		GROUP BY c.id, c.name
+		HAVING SUM(i.discount_amount) > 0
+		ORDER BY "totalDiscount" DESC
+	`;
+
+	return rows.map((r) => {
+		const totalBilled = round2(r.totalBilled ?? 0);
+		const totalDiscount = round2(r.totalDiscount ?? 0);
+		return {
+			clientId: r.clientId,
+			clientName: r.clientName,
+			invoiceCount: r.invoiceCount,
+			totalBilled,
+			totalDiscount,
+			discountRate: totalBilled > 0 ? round2((totalDiscount / totalBilled) * 100) : 0,
+			avgDiscount: r.invoiceCount ? round2(totalDiscount / r.invoiceCount) : 0,
+		};
+	});
+};
+
+// ============================================================================
+// FIELD-ADDED REVENUE (TECH UPSELL)
+// ============================================================================
+
+export interface FieldAddedRevenueRow {
+	techId: string;
+	techName: string;
+	itemCount: number;
+	jobCount: number;
+	fieldAddedRevenue: number;
+	avgPerItem: number;
+}
+
+export interface FieldAddedRevenueTrend {
+	// Filter options, ordered by revenue desc (same order as rows), incl. "Unassigned".
+	techs: { id: string; name: string }[];
+	// Long format: one entry per (tech, month) with field-added revenue.
+	points: { month: string; techId: string; revenue: number }[];
+}
+
+const UNASSIGNED_TECH_ID = "__unassigned__";
+
+type FieldAddedItem = {
+	total: Prisma.Decimal | number;
+	reconciled_by_tech_id: string | null;
+	visit: {
+		job_id: string;
+		scheduled_start_at: Date;
+		visit_techs: { tech: { id: string; name: string } }[];
+	};
+};
+
+// "2026-08-14T…" → "2026-08" (UTC, matching buildDateFilter's UTC handling).
+const monthKey = (d: Date) =>
+	`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
+// Attributes each field-addition line to a technician (reconciled_by_tech_id when set,
+// otherwise split evenly across the visit's assigned techs, otherwise "Unassigned") and
+// builds both the per-tech table rows and the per-(tech, month) revenue trend.
+export const aggregateFieldAdded = (
+	items: FieldAddedItem[],
+	techNames: Map<string, string>,
+): { rows: FieldAddedRevenueRow[]; trend: FieldAddedRevenueTrend } => {
+	type Acc = { revenue: number; itemCount: number; jobs: Set<string> };
+	const byTech = new Map<string, Acc>();
+	const byTechMonth = new Map<string, Map<string, number>>();
+	const bump = (techId: string, revenue: number, jobId: string, month: string) => {
+		const acc = byTech.get(techId) ?? { revenue: 0, itemCount: 0, jobs: new Set<string>() };
+		acc.revenue += revenue;
+		acc.itemCount += 1;
+		acc.jobs.add(jobId);
+		byTech.set(techId, acc);
+
+		const months = byTechMonth.get(techId) ?? new Map<string, number>();
+		months.set(month, (months.get(month) ?? 0) + revenue);
+		byTechMonth.set(techId, months);
+	};
+
+	for (const item of items) {
+		const total = Number(item.total);
+		const jobId = item.visit.job_id;
+		const month = monthKey(item.visit.scheduled_start_at);
+		if (item.reconciled_by_tech_id) {
+			bump(item.reconciled_by_tech_id, total, jobId, month);
+			continue;
+		}
+		const visitTechs = item.visit.visit_techs;
+		if (visitTechs.length === 0) {
+			bump(UNASSIGNED_TECH_ID, total, jobId, month);
+			continue;
+		}
+		const share = total / visitTechs.length;
+		for (const { tech } of visitTechs) bump(tech.id, share, jobId, month);
+	}
+
+	const nameFor = (techId: string) =>
+		techId === UNASSIGNED_TECH_ID ? "Unassigned" : (techNames.get(techId) ?? "Unknown");
+
+	const rows = [...byTech.entries()]
+		.map(([techId, acc]) => ({
+			techId,
+			techName: nameFor(techId),
+			itemCount: acc.itemCount,
+			jobCount: acc.jobs.size,
+			fieldAddedRevenue: round2(acc.revenue),
+			avgPerItem: acc.itemCount ? round2(acc.revenue / acc.itemCount) : 0,
+		}))
+		.sort((a, b) => b.fieldAddedRevenue - a.fieldAddedRevenue);
+
+	const techs = rows.map((r) => ({ id: r.techId, name: r.techName }));
+	const points = rows.flatMap((r) =>
+		[...(byTechMonth.get(r.techId) ?? new Map<string, number>())].map(([month, revenue]) => ({
+			month,
+			techId: r.techId,
+			revenue: round2(revenue),
+		})),
+	);
+
+	return { rows, trend: { techs, points } };
+};
+
+// Revenue on line items techs added in the field (source = field_addition),
+// grouped by technician. Job-level field additions (job_line_item) are excluded:
+// they have no visit and no tech link, so they can't be attributed. Each item is
+// credited to reconciled_by_tech_id when set, otherwise split evenly across the
+// visit's assigned techs (matching getTechnicianScorecard's revenue split).
+export const getFieldAddedRevenueReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+): Promise<{
+	rows: FieldAddedRevenueRow[];
+	orgVisitRevenue: number;
+	trend: FieldAddedRevenueTrend;
+}> => {
+	const sdb = getScopedDb(organizationId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+	const visitWhere = {
+		job: { organization_id: organizationId },
+		...(Object.keys(dateFilter).length && { scheduled_start_at: dateFilter }),
+	};
+
+	const [items, revenueAgg, techs] = await Promise.all([
+		sdb.job_visit_line_item.findMany({
+			where: { source: "field_addition", visit: visitWhere },
+			select: {
+				total: true,
+				reconciled_by_tech_id: true,
+				visit: {
+					select: {
+						job_id: true,
+						scheduled_start_at: true,
+						visit_techs: { select: { tech: { select: { id: true, name: true } } } },
+					},
+				},
+			},
+		}),
+		// Upsell-rate: all visit line-item revenue
+		sdb.job_visit_line_item.aggregate({
+			where: { visit: visitWhere },
+			_sum: { total: true },
+		}),
+		sdb.technician.findMany({
+			where: { organization_id: organizationId },
+			select: { id: true, name: true },
+		}),
+	]);
+
+	const techNames = new Map<string, string>(techs.map((t) => [t.id, t.name]));
+	const { rows, trend } = aggregateFieldAdded(items, techNames);
+
+	return {
+		rows,
+		orgVisitRevenue: round2(Number(revenueAgg._sum.total ?? 0)),
+		trend,
+	};
+};
+
+// ============================================================================
+// RECURRING REVENUE (MRR)
+// ============================================================================
+
+export interface RecurringRevenueRow {
+	planId: string;
+	clientName: string;
+	name: string;
+	status: string;
+	billingBasis: string;
+	perPeriodAmount: number | null;
+	monthlyValue: number;
+	nextInvoiceAt: Date | null;
+	lastInvoicedAt: Date | null;
+	occCompleted: number;
+	occSkipped: number;
+}
+
+export interface RecurringRevenueTrendPoint {
+	month: string; // YYYY-MM
+	revenue: number;
+}
+
+const TRAILING_DAYS = 90;
+const TREND_MONTHS = 12;
+
+// Forward-looking recurring run-rate + plan health. MRR normalizes each active
+// plan's per-period amount to a month (deterministic bases) or estimates it from
+// the plan's trailing-90d invoiced revenue (variable bases). See recurringRevenue.ts.
+export const getRecurringRevenueReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const now = new Date();
+	const trailingStart = new Date(now.getTime() - TRAILING_DAYS * 24 * 60 * 60 * 1000);
+	// UTC to match date_trunc in the trend query and the gap-fill keys below.
+	const trendStart = new Date(
+		Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (TREND_MONTHS - 1), 1),
+	);
+	// "New" is a fixed trailing-30-day window, independent of the report period.
+	const newSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+	const [plans, trailing, occGroups, trendRaw] = await Promise.all([
+		sdb.recurring_plan.findMany({
+			where: { organization_id: organizationId },
+			include: {
+				client: { select: { name: true } },
+				invoice_schedule: true,
+				line_items: { select: { quantity: true, unit_price: true } },
+			},
+		}),
+		// Trailing-90d invoiced revenue per plan → variable-basis MRR estimate.
+		sdb.invoice.groupBy({
+			by: ["recurring_plan_id"],
+			where: {
+				organization_id: organizationId,
+				recurring_plan_id: { not: null },
+				status: { notIn: ["Draft", "Void"] },
+				OR: [
+					{ issue_date: { gte: trailingStart } },
+					{ issue_date: null, created_at: { gte: trailingStart } },
+				],
+			},
+			_sum: { total: true },
+		}),
+		sdb.recurring_occurrence.groupBy({
+			by: ["recurring_plan_id", "status"],
+			where: {
+				recurring_plan: { organization_id: organizationId },
+				...(Object.keys(df).length && { occurrence_start_at: df }),
+			},
+			_count: { _all: true },
+		}),
+		// 12-month realized recurring revenue trend 
+		sdb.$queryRaw<{ month: string; revenue: number }[]>`
+			SELECT to_char(date_trunc('month', COALESCE(i.issue_date, i.created_at)), 'YYYY-MM') AS month,
+			       SUM(i.total)::float AS revenue
+			FROM invoice i
+			WHERE i.organization_id = ${organizationId}
+			  AND i.recurring_plan_id IS NOT NULL
+			  AND i.status NOT IN ('Draft', 'Void')
+			  AND COALESCE(i.issue_date, i.created_at) >= ${trendStart}
+			GROUP BY 1
+			ORDER BY 1
+		`,
+	]);
+
+	const trailingMap = new Map<string, number>();
+	for (const t of trailing) {
+		if (t.recurring_plan_id) trailingMap.set(t.recurring_plan_id, Number(t._sum.total ?? 0));
+	}
+
+	const occByPlan = new Map<string, { completed: number; skipped: number }>();
+	let occCompletedTotal = 0;
+	let occSkippedTotal = 0;
+	let occCancelledTotal = 0;
+	for (const g of occGroups) {
+		const n = g._count._all;
+		const bucket = occByPlan.get(g.recurring_plan_id) ?? { completed: 0, skipped: 0 };
+		if (g.status === "completed") {
+			bucket.completed += n;
+			occCompletedTotal += n;
+		} else if (g.status === "skipped") {
+			bucket.skipped += n;
+			occSkippedTotal += n;
+		} else if (g.status === "cancelled") {
+			occCancelledTotal += n;
+		}
+		occByPlan.set(g.recurring_plan_id, bucket);
+	}
+
+	const inRange = (d: Date | null): boolean =>
+		d != null && (!df.gte || d >= df.gte) && (!df.lte || d <= df.lte);
+
+	const monthlyValueOf = (plan: (typeof plans)[number]): number => {
+		const schedule = plan.invoice_schedule;
+		const perPeriod = planPerPeriodAmount({
+			billing_basis: (schedule?.billing_basis ?? null) as BillingBasis | null,
+			fixed_amount: schedule?.fixed_amount != null ? Number(schedule.fixed_amount) : null,
+			line_items: plan.line_items.map((li) => ({
+				quantity: Number(li.quantity),
+				unit_price: Number(li.unit_price),
+			})),
+		});
+		// on_visit_completion has no fixed cadence, so even a deterministic
+		// per-period amount can't be normalized — fall back to trailing actuals.
+		if (perPeriod != null && schedule && schedule.frequency !== "on_visit_completion") {
+			return normalizedMonthly(perPeriod, schedule.frequency as ScheduleFrequency);
+		}
+		return (trailingMap.get(plan.id) ?? 0) / 3;
+	};
+
+	const perPeriodOf = (plan: (typeof plans)[number]): number | null =>
+		planPerPeriodAmount({
+			billing_basis: (plan.invoice_schedule?.billing_basis ?? null) as BillingBasis | null,
+			fixed_amount:
+				plan.invoice_schedule?.fixed_amount != null
+					? Number(plan.invoice_schedule.fixed_amount)
+					: null,
+			line_items: plan.line_items.map((li) => ({
+				quantity: Number(li.quantity),
+				unit_price: Number(li.unit_price),
+			})),
+		});
+
+	let mrr = 0;
+	let activePlans = 0;
+	let pausedPlans = 0;
+	let newPlans = 0;
+	let churnedPlans = 0;
+	let churnedMrr = 0;
+
+	const rows: RecurringRevenueRow[] = plans.map((plan) => {
+		const monthly = round2(monthlyValueOf(plan));
+		const activeForMrr =
+			plan.status === "Active" && (!plan.ends_at || new Date(plan.ends_at) > now);
+		if (activeForMrr) mrr += monthly;
+		if (plan.status === "Active") activePlans++;
+		if (plan.status === "Paused") pausedPlans++;
+		if (plan.starts_at >= newSince) newPlans++;
+		if (
+			(plan.status === "Cancelled" || plan.status === "Completed") &&
+			inRange(plan.ends_at ?? plan.updated_at)
+		) {
+			churnedPlans++;
+			churnedMrr += monthly;
+		}
+		const occ = occByPlan.get(plan.id) ?? { completed: 0, skipped: 0 };
+		return {
+			planId: plan.id,
+			clientName: plan.client.name,
+			name: plan.name,
+			status: plan.status,
+			billingBasis: plan.invoice_schedule?.billing_basis ?? "none",
+			perPeriodAmount: perPeriodOf(plan),
+			monthlyValue: monthly,
+			nextInvoiceAt: plan.invoice_schedule?.next_invoice_at ?? null,
+			lastInvoicedAt: plan.invoice_schedule?.last_invoiced_at ?? null,
+			occCompleted: occ.completed,
+			occSkipped: occ.skipped,
+		};
+	});
+	rows.sort((a, b) => b.monthlyValue - a.monthlyValue);
+
+	const decidedOcc = occCompletedTotal + occSkippedTotal;
+	const completionRate = decidedOcc > 0 ? round2((occCompletedTotal / decidedOcc) * 100) : 0;
+	const skipRateDenom = occCompletedTotal + occSkippedTotal + occCancelledTotal;
+	const skipRate = skipRateDenom > 0 ? round2((occSkippedTotal / skipRateDenom) * 100) : 0;
+	const trendMap = new Map(trendRaw.map((r) => [r.month, round2(Number(r.revenue ?? 0))]));
+	const trend: RecurringRevenueTrendPoint[] = [];
+	for (let i = 0; i < TREND_MONTHS; i++) {
+		const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (TREND_MONTHS - 1) + i, 1));
+		const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+		trend.push({ month: key, revenue: trendMap.get(key) ?? 0 });
+	}
+
+	return {
+		mrr: round2(mrr),
+		arr: round2(mrr * 12),
+		activePlans,
+		pausedPlans,
+		newPlans,
+		churnedPlans,
+		churnedMrr: round2(churnedMrr),
+		completionRate,
+		skipRate,
+		trend,
+		plans: rows,
+	};
 };
 
 // ============================================================================

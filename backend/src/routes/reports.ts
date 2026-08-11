@@ -7,6 +7,7 @@ import {
 } from "../types/responses.js";
 import { getAgedReceivables,
     getArrivalPerformance,
+    getJobBacklog,
     getLeadsBySource,
     getMileageReport,
     getOverviewMetrics,
@@ -209,6 +210,16 @@ router.get("/unscheduled-revenue", requirePermission("view_reports"), async (req
 	}
 });
 
+router.get("/job-backlog", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const backlog = await getJobBacklog(orgId);
+		res.json(createSuccessResponse(backlog));
+	} catch (err) {
+		next(err);
+	}
+});
+
 router.get("/quote-pipeline", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -359,6 +370,34 @@ router.get("/clients/retention", requirePermission("view_reports"), async (req, 
 	}
 });
 
+router.get("/clients/lifetime-value", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"client-lifetime-value",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/clients/discounts", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"client-discounts",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
 router.get("/payments", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -458,6 +497,62 @@ router.get("/receivables/aging/by-client", requirePermission("view_reports"), as
 		const orgId = req.user!.organization_id as string;
 		const { data, meta } = await handlePaginatedReport(
 			"aged-receivables-by-client",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/recurring-revenue", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"recurring-revenue",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/field-added-revenue", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"field-added-revenue",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/revenue-by-line-item-type", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"revenue-by-line-item-type",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/revenue-line-items", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"revenue-line-items",
 			orgId,
 			req.query as Record<string, unknown>,
 		);

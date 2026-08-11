@@ -745,6 +745,7 @@ model job {
   status job_status @default(Unscheduled)
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
+  status_changed_at   DateTime  @default(now())
   completed_at        DateTime?
   cancelled_at        DateTime?
   cancellation_reason String?
@@ -790,6 +791,7 @@ model job {
   @@index([project_id])
 
   @@index([client_id, status])
+  @@index([organization_id, status])
   @@index([organization_id, created_at])
   @@unique([organization_id, job_number])
 }

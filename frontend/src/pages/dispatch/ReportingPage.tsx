@@ -61,6 +61,11 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 		icon: DollarSign,
 		entries: [
 			{
+				title: "Profit & Loss Statement",
+				description: "Profit & Loss from Quickbooks",
+				to: "/dispatch/reporting/profit-and-loss",
+			},
+			{
 				title: "Aged Receivables",
 				description: "Outstanding invoice balances by age",
 				to: "/dispatch/reporting/aged-receivables",
@@ -76,9 +81,14 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 				to: "/dispatch/reporting/payments",
 			},
 			{
-				title: "Quote Conversion",
-				description: "Win rate and quote pipeline conversion",
-				to: "/dispatch/reporting/quote-funnel",
+				title: "Recurring Revenue",
+				description: "MRR, ARR, and plan health",
+				to: "/dispatch/reporting/recurring-revenue",
+			},
+			{
+				title: "Revenue by Line Item Type",
+				description: "Billed revenue grouped by line items",
+				to: "/dispatch/reporting/revenue-by-line-item-type",
 			},
 		],
 	},
@@ -88,13 +98,23 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 		icon: Gauge,
 		entries: [
 			{
+				title: "Job Backlog",
+				description: "Open jobs by age and value",
+				to: "/dispatch/reporting/job-backlog",
+			},
+			{
+				title: "Quote Conversion",
+				description: "Win rate and quote pipeline conversion",
+				to: "/dispatch/reporting/quote-funnel",
+			},
+			{
 				title: "Reorder Forecast",
 				description: "Predicted stockouts by usage",
 				to: "/dispatch/inventory/reorder-forecast",
 			},
 			{
 				title: "First-Time Fix Rate",
-				description: "Jobs resolved on the first visit",
+				description: "Jobs finished on the first visit",
 				to: "/dispatch/reporting/first-time-fix",
 			},
 		],
@@ -105,14 +125,19 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 		icon: HardHat,
 		entries: [
 			{
-				title: "Timesheets Report",
-				description: "Hours logged per technician and job",
+				title: "Timesheets",
+				description: "Hours logged per technician",
 				to: "/dispatch/timesheets",
 			},
 			{
 				title: "Technician Scorecard",
 				description: "Revenue, hours, and on-time rate per technician",
 				to: "/dispatch/reporting/technician-scorecard",
+			},
+			{
+				title: "Field-Added Revenue",
+				description: "Upsell revenue techs add in the field",
+				to: "/dispatch/reporting/field-added-revenue",
 			},
 		],
 	},
@@ -125,6 +150,17 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 				title: "Client Retention",
 				description: "Active clients with no recent activity",
 				to: "/dispatch/reporting/client-retention",
+			},
+			{
+				title: "Client Lifetime Value",
+				description: "Clients by total revenue generated",
+				to: "/dispatch/reporting/client-lifetime-value",
+			},
+			{
+				title: "Client Discounts",
+				description:
+					"Clients by total discount received",
+				to: "/dispatch/reporting/client-discounts",
 			},
 		],
 	},

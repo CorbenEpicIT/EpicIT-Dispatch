@@ -673,6 +673,8 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 			"coords",
 		] as const);
 
+		const statusChanged = parsed.status !== undefined && parsed.status !== existing.status;
+
 		const updated = await sdb.$transaction(async (tx) => {
 			// BULK LINE ITEMS UPDATE
 			if (parsed.line_items !== undefined) {
@@ -869,6 +871,7 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 					...(parsed.status !== undefined && {
 						status: parsed.status,
 					}),
+					...(statusChanged && { status_changed_at: new Date() }),
 
 					...(parsed.subtotal !== undefined && {
 						subtotal: parsed.subtotal,

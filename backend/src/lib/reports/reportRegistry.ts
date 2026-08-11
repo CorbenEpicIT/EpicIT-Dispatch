@@ -16,6 +16,13 @@ import {
 	getTaxLiabilityReport,
 	getAgedReceivablesByClient,
 	getClientRetentionReport,
+	getClientLifetimeValueReport,
+	getClientDiscountsReport,
+	getFieldAddedRevenueReport,
+	getRecurringRevenueReport,
+	getRevenueByLineItemType,
+	getRevenueLineItemsReport,
+	getRevenueLineItemsReportPage,
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
@@ -105,7 +112,13 @@ type TaxRaw = Awaited<ReturnType<typeof getTaxLiabilityReport>>[number];
 type ForecastRaw = Awaited<ReturnType<typeof getInventoryReorderForecast>>["rows"][number];
 type ReceivableRaw = Awaited<ReturnType<typeof getAgedReceivablesByClient>>[number];
 type RetentionRaw = Awaited<ReturnType<typeof getClientRetentionReport>>[number];
+type ClvRaw = Awaited<ReturnType<typeof getClientLifetimeValueReport>>[number];
+type ClientDiscountRaw = Awaited<ReturnType<typeof getClientDiscountsReport>>[number];
+type FieldAddedRaw = Awaited<ReturnType<typeof getFieldAddedRevenueReport>>["rows"][number];
+type RecurringRaw = Awaited<ReturnType<typeof getRecurringRevenueReport>>["plans"][number];
 type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
+type LineItemTypeRaw = Awaited<ReturnType<typeof getRevenueByLineItemType>>[number];
+type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>[number];
 
 const jobRow = (job: JobRaw): ReportRow => ({
 	id: job.id,
@@ -303,6 +316,81 @@ const retentionRow = (r: RetentionRaw): ReportRow => ({
 	jobCount: r.jobCount,
 });
 
+const clvRow = (r: ClvRaw): ReportRow => ({
+	id: r.id,
+	name: r.name,
+	primaryContact: r.primaryContact || "—",
+	firstPurchaseAt: fmtDate(r.firstPurchaseAt),
+	tenureMonths: r.tenureMonths,
+	jobCount: r.jobCount,
+	invoiceCount: r.invoiceCount,
+	lifetimeRevenue: r.lifetimeRevenue,
+	avgInvoiceValue: r.avgInvoiceValue,
+});
+
+const clientDiscountRow = (r: ClientDiscountRaw): ReportRow => ({
+	id: r.clientId,
+	clientName: r.clientName,
+	invoiceCount: r.invoiceCount,
+	totalBilled: r.totalBilled,
+	totalDiscount: r.totalDiscount,
+	discountRate: r.discountRate,
+	avgDiscount: r.avgDiscount,
+});
+
+const fieldAddedRow = (r: FieldAddedRaw): ReportRow => ({
+	id: r.techId,
+	technician: r.techName,
+	itemCount: r.itemCount,
+	jobCount: r.jobCount,
+	fieldAddedRevenue: r.fieldAddedRevenue,
+	avgPerItem: r.avgPerItem,
+});
+
+const BILLING_BASIS_LABELS: Record<string, string> = {
+	fixed_amount: "Fixed Amount",
+	plan_line_items: "Plan Line Items",
+	visit_actuals: "Visit Actuals",
+	invoice: "Invoice",
+	none: "—",
+};
+
+const recurringPlanRow = (r: RecurringRaw): ReportRow => ({
+	id: r.planId,
+	name: r.name,
+	clientName: r.clientName,
+	status: r.status,
+	billingBasis: BILLING_BASIS_LABELS[r.billingBasis] ?? r.billingBasis,
+	perPeriodAmount: r.perPeriodAmount ?? "—",
+	monthlyValue: r.monthlyValue,
+	nextInvoiceAt: fmtDate(r.nextInvoiceAt),
+	lastInvoicedAt: fmtDate(r.lastInvoicedAt),
+	occCompleted: r.occCompleted,
+	occSkipped: r.occSkipped,
+});
+
+const lineItemTypeRow = (r: LineItemTypeRaw): ReportRow => ({
+	id: r.itemType,
+	label: r.label,
+	revenue: r.revenue,
+	lineCount: r.lineCount,
+	pctOfTotal: r.pctOfTotal,
+});
+
+const revenueLineItemRow = (r: RevenueLineItemRaw): ReportRow => ({
+	id: r.id,
+	_invoiceId: r.invoiceId,
+	invoiceNumber: r.invoiceNumber,
+	clientName: r.clientName,
+	issueDate: fmtDate(r.issueDate),
+	name: r.name,
+	description: r.description || "—",
+	quantity: r.quantity,
+	unitPrice: r.unitPrice,
+	total: r.total,
+	itemType: r.itemType,
+});
+
 const mapPage = <T>(
 	r: { rows: T[]; total: number; page: number; pageSize: number; summary?: Record<string, unknown> } | null,
 	fn: (row: T) => ReportRow,
@@ -456,6 +544,17 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			).map(retentionRow),
 		}),
 	},
+	"client-lifetime-value": {
+		load: async (orgId) => ({
+			rows: (await getClientLifetimeValueReport(orgId)).map(clvRow),
+		}),
+		filteredSummary: (rows) => {
+			const clientCount = rows.length;
+			const totalLifetimeRevenue = round2(rows.reduce((s, r) => s + num(r.lifetimeRevenue), 0));
+			const avgClv = clientCount ? round2(totalLifetimeRevenue / clientCount) : 0;
+			return { clientCount, totalLifetimeRevenue, avgClv };
+		},
+	},
 	"aged-receivables-by-client": {
 		load: async (orgId) => ({
 			rows: (await getAgedReceivablesByClient(orgId)).map(receivableRow),
@@ -467,6 +566,83 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			bucket90plus: round2(rows.reduce((s, r) => s + num(r.bucket90plus), 0)),
 			total: round2(rows.reduce((s, r) => s + num(r.total), 0)),
 		}),
+	},
+	"client-discounts": {
+		load: async (orgId, q) => ({
+			rows: (await getClientDiscountsReport(q.startDate, q.endDate, orgId)).map(
+				clientDiscountRow,
+			),
+		}),
+		filteredSummary: (rows) => {
+			const clientCount = rows.length;
+			const totalDiscount = round2(rows.reduce((s, r) => s + num(r.totalDiscount), 0));
+			const totalBilled = round2(rows.reduce((s, r) => s + num(r.totalBilled), 0));
+			const avgDiscountRate = totalBilled > 0 ? round2((totalDiscount / totalBilled) * 100) : 0;
+			return { clientCount, totalDiscount, totalBilled, avgDiscountRate };
+		},
+	},
+	"recurring-revenue": {
+		load: async (orgId, q) => {
+			const report = await getRecurringRevenueReport(q.startDate, q.endDate, orgId);
+			return {
+				rows: report.plans.map(recurringPlanRow),
+				summary: {
+					mrr: report.mrr,
+					arr: report.arr,
+					activePlans: report.activePlans,
+					pausedPlans: report.pausedPlans,
+					newPlans: report.newPlans,
+					churnedPlans: report.churnedPlans,
+					churnedMrr: report.churnedMrr,
+					completionRate: report.completionRate,
+					skipRate: report.skipRate,
+					trend: report.trend,
+				},
+			};
+		},
+	},
+	"field-added-revenue": {
+		load: async (orgId, q) => {
+			const { rows, orgVisitRevenue, trend } = await getFieldAddedRevenueReport(
+				q.startDate,
+				q.endDate,
+				orgId,
+			);
+			return { rows: rows.map(fieldAddedRow), summary: { orgVisitRevenue, trend } };
+		},
+		filteredSummary: (rows) => {
+			const totalFieldAddedRevenue = round2(rows.reduce((s, r) => s + num(r.fieldAddedRevenue), 0));
+			const fieldAddedItems = rows.reduce((s, r) => s + num(r.itemCount), 0);
+			const top = rows.reduce<ReportRow | null>(
+				(best, r) => (!best || num(r.fieldAddedRevenue) > num(best.fieldAddedRevenue) ? r : best),
+				null,
+			);
+			return {
+				technicianCount: rows.length,
+				totalFieldAddedRevenue,
+				fieldAddedItems,
+				topTechnician: top ? String(top.technician) : "—",
+			};
+		},
+	},
+	"revenue-by-line-item-type": {
+		load: async (orgId, q) => ({
+			rows: (await getRevenueByLineItemType(q.startDate, q.endDate, orgId)).map(lineItemTypeRow),
+		}),
+		filteredSummary: (rows) => ({
+			totalRevenue: round2(rows.reduce((s, r) => s + num(r.revenue), 0)),
+			totalLineItems: rows.reduce((s, r) => s + num(r.lineCount), 0),
+		}),
+	},
+	"revenue-line-items": {
+		load: async (orgId, q) => ({
+			rows: (await getRevenueLineItemsReport(q.startDate, q.endDate, orgId)).map(revenueLineItemRow),
+		}),
+		loadPage: async (orgId, q, params) =>
+			mapPage(
+				await getRevenueLineItemsReportPage(q.startDate, q.endDate, orgId, params),
+				revenueLineItemRow,
+			),
 	},
 };
 
