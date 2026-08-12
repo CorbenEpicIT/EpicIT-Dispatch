@@ -95,7 +95,7 @@ export default function AttachedJobsCard({ jobs, onAttach, onDetach, className }
 					status: (row) => {
 						const r = row as JobRow;
 						return (
-							<div className={`w-fit px-2 py-1 rounded-full border text-xs font-medium ${JobStatusColors[r.status]}`}>
+							<div className={`w-fit px-2 py-1 rounded-full border text-xs font-medium text-nowrap ${JobStatusColors[r.status]}`}>
 								{JobStatusLabels[r.status]}
 							</div>
 						);
@@ -103,7 +103,7 @@ export default function AttachedJobsCard({ jobs, onAttach, onDetach, className }
 					priority: (row) => {
 						const r = row as JobRow;
 						return (
-							<span className={`px-2 py-1 rounded-md border text-xs font-medium ${PriorityColors[r.priority]}`}>
+							<span className={`px-2 py-1 rounded-md border text-xs font-medium text-nowrap ${PriorityColors[r.priority]}`}>
 								{PriorityLabels[r.priority]}
 							</span>
 						);

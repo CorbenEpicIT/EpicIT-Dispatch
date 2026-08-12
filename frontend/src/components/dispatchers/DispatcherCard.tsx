@@ -287,7 +287,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                         }}
-                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors border border-border"
                     >
                         <MoreHorizontal size={18} />
                         <span className="text-sm font-medium">Options</span>
@@ -364,7 +364,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                             e.stopPropagation();
                             onClick?.();
                         }}
-                        className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors"
+                        className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors border border-border"
                     >
                         View Details
                     </button>
@@ -376,7 +376,7 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                                 e.stopPropagation();
                                 setDropdownOpen((prev) => !prev);
                             }}
-                            className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+                            className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors border border-border"
                         >
                             <MoreHorizontal size={18} />
                         </button>

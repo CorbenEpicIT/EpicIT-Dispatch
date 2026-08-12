@@ -84,7 +84,7 @@ function JobContextSection({
 		<div className="rounded-xl border border-border-subtle overflow-hidden">
 			<button
 				onClick={() => setOpen((p) => !p)}
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 bg-base border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Job Context
@@ -97,7 +97,7 @@ function JobContextSection({
 			</button>
 
 			{open && (
-				<div className="p-4 space-y-3">
+				<div className="p-4 space-y-3 bg-surface">
 					{job && (
 						<>
 							<div>

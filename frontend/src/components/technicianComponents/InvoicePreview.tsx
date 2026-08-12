@@ -20,7 +20,7 @@ export default function InvoicePreview({
 }: InvoicePreviewProps) {
 	return (
 		<div className="rounded-xl border border-border-subtle overflow-hidden">
-			<div className="flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle">
+			<div className="flex items-center justify-between px-4 py-3 bg-base border-b border-border-subtle">
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Invoice Preview
 				</span>
@@ -37,7 +37,7 @@ export default function InvoicePreview({
 			) : (
 				<>
 					{/* Line items */}
-					<div className="divide-y divide-border-subtle/60">
+					<div className="divide-y divide-border-subtle bg-surface">
 						{lineItems.map((item, idx) => {
 							const lineTotal = Number(item.quantity) * Number(item.unit_price);
 							return (
@@ -62,7 +62,7 @@ export default function InvoicePreview({
 					</div>
 
 					{/* Totals */}
-					<div className="px-4 py-3 space-y-1.5 border-t border-border-subtle bg-base/40">
+					<div className="px-4 py-3 space-y-1.5 border-t border-border-subtle bg-base">
 						<div className="flex justify-between text-sm text-text-tertiary">
 							<span>Subtotal</span>
 							<span className="tabular-nums">${subtotal.toFixed(2)}</span>

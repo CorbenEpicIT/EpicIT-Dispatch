@@ -61,14 +61,14 @@ function EditPartsTab({
 
 	if (lineItems.length === 0) {
 		return (
-			<div className="px-4 py-5 text-center">
+			<div className="px-4 py-5 text-center bg-surface">
 				<p className="text-sm text-text-faint">No parts added yet</p>
 			</div>
 		);
 	}
 
 	return (
-		<div className="divide-y divide-border-subtle/60">
+		<div className="divide-y divide-border-subtle/60 bg-surface">
 			{lineItems.map((item, idx) => {
 				const qty = Number(item.quantity);
 				const unitPrice = Number(item.unit_price);
@@ -241,7 +241,7 @@ function StockPartPicker({
 			addParts.isPending || (isSerialized && selectedUnits.length !== targetCount);
 
 		return (
-			<div className="p-4">
+			<div className="p-4 bg-surface">
 				<p className="text-sm font-semibold text-text-primary mb-1">
 					{selected.inventory_item.name}
 				</p>
@@ -337,7 +337,7 @@ function StockPartPicker({
 	}
 
 	return (
-		<div className="p-4">
+		<div className="p-4 bg-surface">
 			<div className="relative mb-3">
 				<Search
 					size={13}
@@ -472,7 +472,7 @@ function SupplierPartForm({
 	};
 
 	return (
-		<div className="p-4 space-y-3">
+		<div className="p-4 space-y-3 bg-surface">
 			<div>
 				<label className="text-xs text-text-tertiary mb-1 block">Part / Material Name</label>
 				<input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus
@@ -593,7 +593,7 @@ export default function PartsUsedSection({
 	return (
 		<div
 			ref={containerRef}
-			className="rounded-xl border border-border-subtle overflow-hidden"
+			className="rounded-xl border border-border-subtle overflow-hidden bg-surface"
 		>
 			{/* Header */}
 			<button
@@ -642,7 +642,7 @@ export default function PartsUsedSection({
 									onClick={() => setMode("edit")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
-											? "bg-surface-raised text-on-primary"
+											? "bg-surface-raised "
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
@@ -654,7 +654,7 @@ export default function PartsUsedSection({
 										onClick={() => setMode("stock")}
 										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "stock"
-												? "bg-surface-raised text-on-primary"
+												? "bg-surface-raised "
 												: "text-text-muted hover:text-text-secondary"
 										}`}
 									>
@@ -670,7 +670,7 @@ export default function PartsUsedSection({
 										}}
 										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "supplier"
-												? "bg-surface-raised text-on-primary"
+												? "bg-surface-raised "
 												: "text-text-muted hover:text-text-secondary"
 										}`}
 									>

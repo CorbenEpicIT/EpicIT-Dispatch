@@ -13,7 +13,7 @@ export default function RestockStatusList({ vehicleId }: { vehicleId: string }) 
 	const name = (r: RestockRequest) => r.stock_item.inventory_item.name;
 
 	return (
-		<div className="rounded-xl border border-border-subtle overflow-hidden">
+		<div className="rounded-xl border border-border-subtle overflow-hidden bg-surface">
 			<div className="px-4 py-3 bg-base/60 border-b border-border-subtle text-xs font-medium text-text-tertiary uppercase tracking-wide">
 				Restock Requests
 			</div>

@@ -136,7 +136,7 @@ function VehicleList({
 				return (
 					<div key={v.id}>
 						<div
-							className={`flex items-center gap-3 px-4 py-3 border-b border-border-subtle/60 ${isCurrent ? "bg-primary-bg-dim border-l-2 border-l-primary" : ""}`}
+							className={`flex items-center gap-3 px-4 py-3 bg-surface border-b border-border-subtle/60 ${isCurrent ? "bg-primary-bg-dim border-l-2 border-l-primary" : ""}`}
 						>
 							<div className="flex-1 min-w-0">
 								<p className="text-sm font-semibold text-text-primary truncate">
@@ -419,7 +419,7 @@ function VehicleCardSkeleton() {
 
 function StockConflictWarning({ conflicts }: { conflicts: VehicleStockConflict[] }) {
 	return (
-		<div className="rounded-xl border border-error overflow-hidden">
+		<div className="rounded-xl border border-error overflow-hidden bg-base">
 			<div className="px-4 py-2.5 bg-error/10 border-b border-error/30 flex items-center gap-2">
 				<AlertTriangle size={14} className="text-error-text shrink-0" />
 				<span className="text-sm font-semibold text-error-text">
@@ -1144,7 +1144,7 @@ export default function TechnicianVehiclePage() {
 	return (
 		<div className="max-w-lg mx-auto space-y-4">
 			{/* ── Vehicle card ──────────────────────────────────────────────────── */}
-			<div className="rounded-xl border border-border-subtle overflow-hidden">
+			<div className="rounded-xl border border-border-subtle overflow-hidden  bg-surface">
 				<div className="px-4 py-3 bg-base/60 border-b border-border-subtle flex items-center gap-2">
 					<Truck size={15} className="text-text-muted" />
 					<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
@@ -1301,7 +1301,7 @@ export default function TechnicianVehiclePage() {
 
 			{/* ── Inventory ─────────────────────────────────────────────────────── */}
 			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
-				<div className="rounded-xl border border-border-subtle overflow-hidden">
+				<div className="rounded-xl border border-border-subtle overflow-hidden bg-surface">
 					<button
 						onClick={() => setShowInventory((v) => !v)}
 						className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
@@ -1747,10 +1747,10 @@ export default function TechnicianVehiclePage() {
 				currentVehicleId &&
 				!showVehicleList &&
 				!showCheckOutConfirm && (
-					<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<div className="rounded-xl border border-border-subtle overflow-hidden bg-surface">
 						<button
 							onClick={() => setShowAddItem((v) => !v)}
-							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left bg-base"
 						>
 							<ListChecks
 								size={15}
@@ -1830,10 +1830,10 @@ export default function TechnicianVehiclePage() {
 				currentVehicleId &&
 				!showVehicleList &&
 				!showCheckOutConfirm && (
-					<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<div className="rounded-xl border border-border-subtle overflow-hidden bg-surface">
 						<button
 							onClick={() => setRestockOpen((v) => !v)}
-							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left"
+							className="w-full px-4 py-3 bg-base/60 flex items-center gap-2 text-left bg-base"
 						>
 							<ClipboardCheck
 								size={15}
@@ -1863,7 +1863,7 @@ export default function TechnicianVehiclePage() {
 				!showVehicleList &&
 				!showCheckOutConfirm &&
 				(canStock || canUseInventory) && (
-					<div className="rounded-xl border border-border-subtle overflow-hidden">
+					<div className="rounded-xl border border-border-subtle overflow-hidden bg-surface">
 						<button
 							onClick={() =>
 								setShowStockHistory((v) => !v)

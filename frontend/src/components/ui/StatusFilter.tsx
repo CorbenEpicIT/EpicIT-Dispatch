@@ -102,7 +102,7 @@ export function DropdownFilter({
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive && !hideAll
 						? "bg-primary-bg border-primary text-primary-text pr-7"
-						: "bg-surface border-border text-text-tertiary hover:text-text-primary"
+						: "bg-base border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
 				<span>

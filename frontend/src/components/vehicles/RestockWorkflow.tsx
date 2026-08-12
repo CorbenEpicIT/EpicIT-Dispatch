@@ -328,7 +328,7 @@ function RestockPanel({
 
 			{/* Column headers */}
 			{restockLines.length > 0 && (
-				<div className={`grid ${grid} px-5 py-2 border-b border-border/30 bg-canvas sticky top-0 z-10`}>
+				<div className={`grid ${grid} px-5 py-2 border-b border-border/30 bg-base/40 sticky top-0 z-10`}>
 					{headers.map((h) => (
 						<div key={h} className="text-[10px] font-semibold text-text-muted uppercase tracking-wider text-center first:text-left">{h}</div>
 					))}

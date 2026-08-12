@@ -45,7 +45,7 @@ export default function SortControl({ options, defaultDirByField }: SortControlP
             {sort && (
                     <button 
                         onClick={toggleDir} 
-                        className="flex items-center justify-center h-9 w-9 rounded-md border border-border bg-surface text-text-tertiary hover:text-text-primary transition-colors" 
+                        className="flex items-center justify-center h-9 w-9 rounded-md border border-border bg-base text-text-tertiary hover:text-text-primary transition-colors" 
                         aria-label="Toggle sort direction"
                     >
                         {dir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14}/>}

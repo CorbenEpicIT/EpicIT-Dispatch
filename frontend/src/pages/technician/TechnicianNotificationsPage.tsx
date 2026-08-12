@@ -56,7 +56,7 @@ function NotificationItem({
 	return (
 		<button
 			onClick={handleClick}
-			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-border-subtle/60 hover:bg-surface/40 transition-colors ${
+			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-border-subtle/60 hover:bg-surface-raised bg-surface transition-colors ${
 				isUnread ? "border-l-2 border-l-primary" : ""
 			}`}
 		>

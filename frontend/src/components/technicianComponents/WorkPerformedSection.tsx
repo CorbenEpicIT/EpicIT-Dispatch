@@ -79,7 +79,7 @@ export default function WorkPerformedSection({
 				onClick={() => setExpanded((p) => !p)}
 				aria-expanded={expanded}
 				aria-controls="work-performed-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 bg-base border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Work Performed
@@ -95,7 +95,7 @@ export default function WorkPerformedSection({
 			{expanded && (
 				<>
 					{/* Action row */}
-					<div id="work-performed-panel" className="px-4 py-3 border-b border-border-subtle">
+					<div id="work-performed-panel" className="px-4 py-3 border-b border-border-subtle bg-surface">
 						<button
 							onClick={() => setShowNotePhotoModal(true)}
 							className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
@@ -107,9 +107,9 @@ export default function WorkPerformedSection({
 
 					{/* Note list */}
 					{visitNotes.length === 0 ? (
-						<p className="px-4 py-6 text-center text-sm text-text-faint">No notes yet</p>
+						<p className="px-4 py-6 text-center text-sm text-text-faint bg-surface">No notes yet</p>
 					) : (
-						<div>
+						<div className="bg-surface">
 							{visitNotes.map((note) => (
 								<NoteItem key={note.id} note={note} tz={tz} />
 							))}
