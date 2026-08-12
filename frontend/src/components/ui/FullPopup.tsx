@@ -13,7 +13,6 @@ interface FullPopupProps {
 const FullPopup = ({
 	content,
 	isModalOpen,
-	onClose,
 	size = "md",
 	hasBackground = true,
 	overflowVisible = false,
@@ -43,19 +42,6 @@ const FullPopup = ({
 			break;
 	}
 
-	const handlePanelMouseDown = (e: React.MouseEvent) => {
-		const target = e.target as HTMLElement;
-		const isMapboxElement =
-			target.closest(".mapboxgl-ctrl-geocoder") ||
-			target.closest(".suggestions-wrapper") ||
-			target.closest(".mapbox-gl-geocoder") ||
-			target.classList.contains("mapboxgl-ctrl-geocoder--suggestion");
-
-		if (!isMapboxElement) {
-			onClose();
-		}
-	};
-
 	if (!isModalOpen) {
 		return (
 			<>
@@ -67,14 +53,9 @@ const FullPopup = ({
 
 	return createPortal(
 		<>
-			{hasBackground && <div className={backdropClass} onMouseDown={onClose} />}
-			<div className={panelClass} onMouseDown={handlePanelMouseDown}>
-				<div
-					className={insetClass}
-					onMouseDown={(e) => e.stopPropagation()}
-				>
-					{content}
-				</div>
+			{hasBackground && <div className={backdropClass} />}
+			<div className={panelClass}>
+				<div className={insetClass}>{content}</div>
 			</div>
 		</>,
 		document.body

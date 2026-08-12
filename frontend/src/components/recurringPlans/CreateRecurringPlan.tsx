@@ -766,7 +766,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 									setName(e.target.value);
 									markDirty();
 								}}
-								className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-surface-inset border-input text-primary placeholder:text-faint text-sm lg:text-base focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 xl:py-2.5 w-full rounded bg-base text-text-primary placeholder:text-faint text-sm lg:text-base focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="name" />
@@ -836,7 +836,7 @@ const CreateRecurringPlan = ({ isModalOpen, setIsModalOpen }: CreateRecurringPla
 									);
 									markDirty();
 								}}
-								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-surface-inset border-input text-primary placeholder:text-faint text-sm lg:text-base resize-none focus:outline-none focus:ring-1 focus:ring-primary-border transition-colors min-w-0"
+								className="border border-border px-2.5 py-1.5 lg:py-2 w-full h-14 lg:h-20 xl:h-24 rounded bg-base text-text-primary placeholder:text-faint text-sm lg:text-base resize-none focus:border-primary focus:outline-none transition-colors min-w-0"
 								disabled={isLoading}
 							/>
 							<ErrorDisplay path="description" />
