@@ -218,6 +218,7 @@ const CreateTechnician = ({
 					<div className="min-w-0">
 						<label className={LABEL}>Hire Date</label>
 						<DatePicker
+							portal
 							value={hireDate}
 							onChange={(d) =>
 								setHireDate(d ?? new Date())

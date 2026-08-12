@@ -594,6 +594,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 									Valid Until (Optional)
 								</p>
 								<DatePicker
+									portal
 									mode="edit"
 									originalValue={
 										quote.valid_until
@@ -614,6 +615,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 									Expires At (Optional)
 								</p>
 								<DatePicker
+									portal
 									mode="edit"
 									originalValue={
 										quote.expires_at

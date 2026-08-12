@@ -392,6 +392,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 									Issue Date
 								</label>
 								<DatePicker
+									portal
 									mode="edit"
 									originalValue={
 										originalIssueDate
@@ -464,6 +465,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 									</span>
 								</label>
 								<DatePicker
+									portal
 									mode="edit"
 									originalValue={
 										originalDueDate

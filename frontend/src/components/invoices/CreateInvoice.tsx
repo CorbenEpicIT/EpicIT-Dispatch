@@ -949,6 +949,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									</span>
 								</label>
 								<DatePicker
+									portal
 									value={dueDate}
 									onChange={(d) => {
 										setDueDate(d);

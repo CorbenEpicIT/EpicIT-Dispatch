@@ -200,6 +200,7 @@ export default function EditTechnician({ isOpen, onClose, technician }: EditTech
 					<div className="min-w-0">
 						<label className={LABEL}>Hire Date</label>
 						<DatePicker
+							portal
 							value={hireDate}
 							onChange={(d) =>
 								setHireDate(d ?? new Date())

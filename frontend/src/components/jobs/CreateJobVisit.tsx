@@ -826,6 +826,7 @@ const CreateJobVisit = ({
 								Visit Date *
 							</label>
 							<DatePicker
+								portal
 								value={startDate}
 								onChange={(d) => {
 									setStartDate(

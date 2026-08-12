@@ -134,6 +134,7 @@ export const ScheduleConfiguration = ({
 							Start Date *
 						</label>
 						<DatePicker
+							portal
 							mode={mode}
 							originalValue={originalStartDate}
 							value={startDate}
@@ -150,6 +151,7 @@ export const ScheduleConfiguration = ({
 							End Date (Optional)
 						</label>
 						<DatePicker
+							portal
 							mode={mode}
 							originalValue={originalEndDate}
 							value={endDate}

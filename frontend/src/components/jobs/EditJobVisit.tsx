@@ -572,6 +572,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 								Visit Date *
 							</label>
 							<DatePicker
+								portal
 								mode="edit"
 								originalValue={
 									fields.startDate

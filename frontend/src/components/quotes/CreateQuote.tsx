@@ -788,6 +788,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 									Valid Until (Optional)
 								</label>
 								<DatePicker
+									portal
 									mode="create"
 									value={validUntilDate}
 									onChange={(v) => {
@@ -805,6 +806,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 									Expires At (Optional)
 								</label>
 								<DatePicker
+									portal
 									mode="create"
 									value={expiresAtDate}
 									onChange={(v) => {
