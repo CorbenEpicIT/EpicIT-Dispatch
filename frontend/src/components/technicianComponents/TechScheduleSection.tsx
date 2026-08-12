@@ -81,11 +81,12 @@ export default function TechScheduleSection({ todayVisits, tomorrowVisits, tz = 
 							const isActive = visit.id === activeVisitId;
 							const isAnytime = visit.arrival_constraint === "anytime";
 							return (
-								<div
+								<button
 									key={visit.id}
+									type="button"
 									onClick={() => navigate(`/technician/visits/${visit.id}`)}
 									className={[
-										"rounded-lg p-3 border-l-[3px] cursor-pointer active:opacity-80 hover:brightness-110 transition-[filter]",
+										"w-full text-left rounded-lg p-3 border-l-[3px] cursor-pointer active:opacity-80 hover:brightness-110 transition-[filter]",
 										isActive
 											? "bg-primary-bg-dim border border-primary-active border-l-primary"
 											: isAnytime
@@ -108,7 +109,7 @@ export default function TechScheduleSection({ todayVisits, tomorrowVisits, tz = 
 									<p className="text-xs text-text-muted italic">
 										{isAnytime ? "Anytime today" : formatTimeRange(visit, tz)}
 									</p>
-								</div>
+								</button>
 							);
 						})}
 					</div>

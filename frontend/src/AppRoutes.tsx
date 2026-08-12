@@ -1,76 +1,83 @@
-import LoginPage from "./auth/LoginPage";
-import DispatchLayout from "./layouts/DispatchLayout";
-import DispatcherDetailPage from "./pages/dispatch/DispatcherDetailPage";
-import TechnicianLayout from "./layouts/TechnicianLayout";
-import TechnicianDashboardPage from "./pages/technician/TechnicianDashboardPage";
-import TechnicianVisitsPage from "./pages/technician/TechnicianVisitsPage";
-import TechnicianVisitDetailPage from "./pages/technician/TechnicianVisitDetailPage";
-import TechnicianNotificationsPage from "./pages/technician/TechnicianNotificationsPage";
-import TechnicianVehiclePage from "./pages/technician/TechnicianVehiclePage";
-import TechnicianMapPage from "./pages/technician/TechnicianMapPage";
-import TechnicianMileagePage from "./pages/technician/TechnicianMileagePage";
-import DashboardPage from "./pages/dispatch/DashboardPage";
-import JobsPage from "./pages/dispatch/JobsPage";
-import JobDetailPage from "./pages/dispatch/JobDetailPage";
-import JobVisitDetailPage from "./pages/dispatch/JobVisitDetailPage";
-import RecurringPlanDetailPage from "./pages/dispatch/RecurringPlanDetailPage";
-import SchedulePage from "./pages/dispatch/SchedulePage";
-import ClientsPage from "./pages/dispatch/ClientsPage";
-import ClientDetailsPage from "./pages/dispatch/ClientDetailPage";
-import TechniciansPage from "./pages/dispatch/TechniciansPage";
-import TechnicianDetailsPage from "./pages/dispatch/TechnicianDetailPage";
-import MapPage from "./pages/dispatch/MapPage";
-import ReportingPage from "./pages/dispatch/ReportingPage";
-import ReportBuilderPage from "./pages/dispatch/ReportBuilderPage";
-import KPIPage from "./pages/dispatch/KPIPage";
-import MileageReportPage from "./pages/dispatch/MileageReportPage";
-import TimesheetsReportPage from "./pages/dispatch/TimesheetsReportPage";
-import ReorderForecastPage from "./pages/dispatch/ReorderForecastPage";
-import AgedReceivablesPage from "./pages/dispatch/AgedReceivablesPage";
-import JobBacklogPage from "./pages/dispatch/JobBacklogPage";
-import ClientRetentionPage from "./pages/dispatch/ClientRetentionPage";
-import ClientLifetimeValuePage from "./pages/dispatch/ClientLifetimeValuePage";
-import ClientDiscountsPage from "./pages/dispatch/ClientDiscountsPage";
-import FieldAddedRevenuePage from "./pages/dispatch/FieldAddedRevenuePage";
-import RecurringRevenuePage from "./pages/dispatch/RecurringRevenuePage";
-import ProfitAndLossPage from "./pages/dispatch/ProfitAndLossPage";
-import TaxLiabilityPage from "./pages/dispatch/TaxLiabilityPage";
-import PaymentsReportPage from "./pages/dispatch/PaymentsReportPage";
-import QuoteFunnelPage from "./pages/dispatch/QuoteFunnelPage";
-import RevenueByLineItemTypePage from "./pages/dispatch/RevenueByLineItemTypePage";
-import RevenueByLineItemTypeDetailPage from "./pages/dispatch/RevenueByLineItemTypeDetailPage";
-import FirstTimeFixRatePage from "./pages/dispatch/FirstTimeFixRatePage";
-import TechnicianScorecardPage from "./pages/dispatch/TechnicianScorecardPage";
-import QuotesPage from "./pages/dispatch/QuotesPage";
-import QuoteDetailPage from "./pages/dispatch/QuoteDetailPage";
-import AssignTechnicianPage from "./pages/dispatch/AssignTechnicianPage";
-import RequestsPage from "./pages/dispatch/RequestsPage";
-import RequestDetailsPage from "./pages/dispatch/RequestDetailPage";
-import InventoryPage from "./pages/dispatch/InventoryPage";
-import InventoryItemDetailPage from "./pages/dispatch/InventoryItemDetailPage";
-import LabelPrintPage from "./components/inventory/labels/LabelPrintPage";
-import SerialRedirectPage from "./pages/dispatch/SerialRedirectPage";
-import BatchDetailPage from "./pages/dispatch/BatchDetailPage";
-import FullMapPage from "./pages/dispatch/FullMapPage";
-import InvoicesPage from "./pages/dispatch/InvoicesPage";
-import InvoiceDetailPage from "./pages/dispatch/InvoiceDetailPage";
-import AdminPage from "./pages/dispatch/AdminPage";
-import FollowupsPage from "./pages/dispatch/FollowupsPage";
-import VehiclesPage from "./pages/dispatch/VehiclesPage";
-import VehicleStockPage from "./pages/dispatch/VehicleStockPage";
-import VerifyEmailPage from "./pages/dispatch/VerifyEmailPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import RegisterPage from "./pages/RegisterPage";
-import MyProfilePage from "./pages/MyProfilePage";
-import QBCallbackPage from "./pages/QBCallbackPage";
-import SSOCompletePage from "./pages/SSOCompletePage";
-import ProjectsPage from "./pages/dispatch/ProjectsPage";
-import ProjectDetailPage from "./pages/dispatch/ProjectDetailPage";
-
+import { lazy, Suspense, useEffect, type JSX } from "react";
 import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { useAuthStore, isTokenExpired } from "./auth/authStore";
 import { usePermission, useAnyPermission } from "./hooks/usePermission";
-import { useEffect, type JSX } from "react";
+
+// Route-level code splitting: every page component below (plus DispatchLayout,
+// which itself eagerly pulls in the full Create-panel form suite) is
+// dynamically imported so a technician's first load doesn't pull in
+// dispatch-only dependencies (Mapbox, Recharts, FullCalendar,
+// react-grid-layout, etc.) and vice versa. TechnicianLayout stays eager —
+// confirmed via trace to be a genuinely thin nav shell with no heavy deps.
+import TechnicianLayout from "./layouts/TechnicianLayout";
+const DispatchLayout = lazy(() => import("./layouts/DispatchLayout"));
+
+const LoginPage = lazy(() => import("./auth/LoginPage"));
+const DispatcherDetailPage = lazy(() => import("./pages/dispatch/DispatcherDetailPage"));
+const TechnicianDashboardPage = lazy(() => import("./pages/technician/TechnicianDashboardPage"));
+const TechnicianVisitsPage = lazy(() => import("./pages/technician/TechnicianVisitsPage"));
+const TechnicianVisitDetailPage = lazy(() => import("./pages/technician/TechnicianVisitDetailPage"));
+const TechnicianNotificationsPage = lazy(() => import("./pages/technician/TechnicianNotificationsPage"));
+const TechnicianVehiclePage = lazy(() => import("./pages/technician/TechnicianVehiclePage"));
+const TechnicianMapPage = lazy(() => import("./pages/technician/TechnicianMapPage"));
+const TechnicianMileagePage = lazy(() => import("./pages/technician/TechnicianMileagePage"));
+const DashboardPage = lazy(() => import("./pages/dispatch/DashboardPage"));
+const JobsPage = lazy(() => import("./pages/dispatch/JobsPage"));
+const JobDetailPage = lazy(() => import("./pages/dispatch/JobDetailPage"));
+const JobVisitDetailPage = lazy(() => import("./pages/dispatch/JobVisitDetailPage"));
+const RecurringPlanDetailPage = lazy(() => import("./pages/dispatch/RecurringPlanDetailPage"));
+const SchedulePage = lazy(() => import("./pages/dispatch/SchedulePage"));
+const ClientsPage = lazy(() => import("./pages/dispatch/ClientsPage"));
+const ClientDetailsPage = lazy(() => import("./pages/dispatch/ClientDetailPage"));
+const TechniciansPage = lazy(() => import("./pages/dispatch/TechniciansPage"));
+const TechnicianDetailsPage = lazy(() => import("./pages/dispatch/TechnicianDetailPage"));
+const MapPage = lazy(() => import("./pages/dispatch/MapPage"));
+const ReportingPage = lazy(() => import("./pages/dispatch/ReportingPage"));
+const ReportBuilderPage = lazy(() => import("./pages/dispatch/ReportBuilderPage"));
+const KPIPage = lazy(() => import("./pages/dispatch/KPIPage"));
+const MileageReportPage = lazy(() => import("./pages/dispatch/MileageReportPage"));
+const TimesheetsReportPage = lazy(() => import("./pages/dispatch/TimesheetsReportPage"));
+const ReorderForecastPage = lazy(() => import("./pages/dispatch/ReorderForecastPage"));
+const AgedReceivablesPage = lazy(() => import("./pages/dispatch/AgedReceivablesPage"));
+const JobBacklogPage = lazy(() => import("./pages/dispatch/JobBacklogPage"));
+const ClientRetentionPage = lazy(() => import("./pages/dispatch/ClientRetentionPage"));
+const ClientLifetimeValuePage = lazy(() => import("./pages/dispatch/ClientLifetimeValuePage"));
+const ClientDiscountsPage = lazy(() => import("./pages/dispatch/ClientDiscountsPage"));
+const FieldAddedRevenuePage = lazy(() => import("./pages/dispatch/FieldAddedRevenuePage"));
+const RecurringRevenuePage = lazy(() => import("./pages/dispatch/RecurringRevenuePage"));
+const ProfitAndLossPage = lazy(() => import("./pages/dispatch/ProfitAndLossPage"));
+const TaxLiabilityPage = lazy(() => import("./pages/dispatch/TaxLiabilityPage"));
+const PaymentsReportPage = lazy(() => import("./pages/dispatch/PaymentsReportPage"));
+const QuoteFunnelPage = lazy(() => import("./pages/dispatch/QuoteFunnelPage"));
+const RevenueByLineItemTypePage = lazy(() => import("./pages/dispatch/RevenueByLineItemTypePage"));
+const RevenueByLineItemTypeDetailPage = lazy(() => import("./pages/dispatch/RevenueByLineItemTypeDetailPage"));
+const FirstTimeFixRatePage = lazy(() => import("./pages/dispatch/FirstTimeFixRatePage"));
+const TechnicianScorecardPage = lazy(() => import("./pages/dispatch/TechnicianScorecardPage"));
+const QuotesPage = lazy(() => import("./pages/dispatch/QuotesPage"));
+const QuoteDetailPage = lazy(() => import("./pages/dispatch/QuoteDetailPage"));
+const AssignTechnicianPage = lazy(() => import("./pages/dispatch/AssignTechnicianPage"));
+const RequestsPage = lazy(() => import("./pages/dispatch/RequestsPage"));
+const RequestDetailsPage = lazy(() => import("./pages/dispatch/RequestDetailPage"));
+const InventoryPage = lazy(() => import("./pages/dispatch/InventoryPage"));
+const InventoryItemDetailPage = lazy(() => import("./pages/dispatch/InventoryItemDetailPage"));
+const LabelPrintPage = lazy(() => import("./components/inventory/labels/LabelPrintPage"));
+const SerialRedirectPage = lazy(() => import("./pages/dispatch/SerialRedirectPage"));
+const BatchDetailPage = lazy(() => import("./pages/dispatch/BatchDetailPage"));
+const FullMapPage = lazy(() => import("./pages/dispatch/FullMapPage"));
+const InvoicesPage = lazy(() => import("./pages/dispatch/InvoicesPage"));
+const InvoiceDetailPage = lazy(() => import("./pages/dispatch/InvoiceDetailPage"));
+const AdminPage = lazy(() => import("./pages/dispatch/AdminPage"));
+const FollowupsPage = lazy(() => import("./pages/dispatch/FollowupsPage"));
+const VehiclesPage = lazy(() => import("./pages/dispatch/VehiclesPage"));
+const VehicleStockPage = lazy(() => import("./pages/dispatch/VehicleStockPage"));
+const VerifyEmailPage = lazy(() => import("./pages/dispatch/VerifyEmailPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const MyProfilePage = lazy(() => import("./pages/MyProfilePage"));
+const QBCallbackPage = lazy(() => import("./pages/QBCallbackPage"));
+const SSOCompletePage = lazy(() => import("./pages/SSOCompletePage"));
+const ProjectsPage = lazy(() => import("./pages/dispatch/ProjectsPage"));
+const ProjectDetailPage = lazy(() => import("./pages/dispatch/ProjectDetailPage"));
 
 function RequireAuth({ children }: { children: JSX.Element }) {
 	const { user, logout } = useAuthStore();
@@ -123,8 +130,9 @@ export default function AppRoutes() {
 	if (!hasHydrated) return null;
 
 	return (
-		<Routes>
-			<Route path="/login" element={<LoginPage />} />
+		<Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-canvas" />}>
+			<Routes>
+				<Route path="/login" element={<LoginPage />} />
 			<Route path="/register" element={<RegisterPage />} />
 			<Route path="/verify-email" element={<VerifyEmailPage />} />
 			<Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -235,7 +243,8 @@ export default function AppRoutes() {
 				<Route path="mileage" element={<TechnicianMileagePage />} />
 			</Route>
 
-			<Route path="*" element={<Navigate to="/login" replace />} />
-		</Routes>
+				<Route path="*" element={<Navigate to="/login" replace />} />
+			</Routes>
+		</Suspense>
 	);
 }

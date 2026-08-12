@@ -70,7 +70,7 @@ export default function RemoveStockItemSheet({
 			</div>
 
 			{rows.length > 0 ? (
-				<div className="border border-border rounded-lg overflow-hidden divide-y divide-border-subtle/60">
+				<div className="border border-border bg-base rounded-lg overflow-hidden divide-y divide-border-subtle">
 					{rows.map((item) => {
 						const qty = Number(item.qty_on_hand);
 						const removable = qty === 0;

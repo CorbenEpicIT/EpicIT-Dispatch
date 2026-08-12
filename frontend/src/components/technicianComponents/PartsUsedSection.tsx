@@ -69,7 +69,7 @@ function EditPartsTab({
 	}
 
 	return (
-		<div className="divide-y divide-border-subtle/60">
+		<div className="divide-y divide-border-subtle">
 			{lineItems.map((item, idx) => {
 				const qty = Number(item.quantity);
 				const unitPrice = Number(item.unit_price);
@@ -362,7 +362,7 @@ function StockPartPicker({
 					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
-			<div className="divide-y divide-border-subtle/40 overflow-y-auto max-h-56">
+			<div className="divide-y divide-border-subtle overflow-y-auto max-h-56">
 				{filtered.length === 0 && (
 					<p className="px-4 py-4 text-center text-sm text-text-faint">
 						No matching parts
@@ -371,7 +371,7 @@ function StockPartPicker({
 				{filtered.map((item) => (
 					<div
 						key={item.id}
-						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface/40 transition-colors"
+						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-raised transition-colors"
 					>
 						<div className="min-w-0 flex-1">
 							{/* Clamped to two lines, full name in the title — a 255-char part
@@ -639,14 +639,14 @@ export default function PartsUsedSection({
 	return (
 		<div
 			ref={containerRef}
-			className="rounded-xl border border-border-subtle overflow-hidden"
+			className="rounded-xl border border-border-subtle bg-base overflow-hidden"
 		>
 			{/* Header */}
 			<button
 				onClick={() => setExpanded((p) => !p)}
 				aria-expanded={expanded}
 				aria-controls="parts-used-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					{adding && <span className="text-primary-text">Editing </span>}
@@ -688,7 +688,7 @@ export default function PartsUsedSection({
 									onClick={() => setMode("edit")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
-											? "bg-surface-raised text-on-primary"
+											? "bg-surface-raised text-text-primary"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
@@ -700,7 +700,7 @@ export default function PartsUsedSection({
 										onClick={() => setMode("stock")}
 										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "stock"
-												? "bg-surface-raised text-on-primary"
+												? "bg-surface-raised text-text-primary"
 												: "text-text-muted hover:text-text-secondary"
 										}`}
 									>
@@ -716,7 +716,7 @@ export default function PartsUsedSection({
 										}}
 										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "supplier"
-												? "bg-surface-raised text-on-primary"
+												? "bg-surface-raised text-text-primary"
 												: "text-text-muted hover:text-text-secondary"
 										}`}
 									>
@@ -797,7 +797,7 @@ export default function PartsUsedSection({
 									No parts added yet
 								</p>
 							) : (
-								<div className="divide-y divide-border-subtle/60">
+								<div className="divide-y divide-border-subtle">
 									{lineItems.map((item, idx) => {
 										const qty = Number(item.quantity);
 										const unitPrice = Number(item.unit_price);
@@ -836,7 +836,7 @@ export default function PartsUsedSection({
 
 					{/* Running total — shown only when not editing */}
 					{!adding && lineItems.length > 0 && (
-						<div className="flex items-center justify-between px-4 py-3 bg-base/60 border-t border-border-subtle">
+						<div className="flex items-center justify-between px-4 py-3 border-t border-border-subtle">
 							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
 								Running Total
 							</span>

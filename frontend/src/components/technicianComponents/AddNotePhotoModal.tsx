@@ -180,7 +180,7 @@ export default function AddNotePhotoModal({
 								className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-surface border border-border text-xs text-text-secondary"
 							>
 								<Camera size={11} className="text-text-muted shrink-0" />
-								<span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-hover/20 text-primary-text border border-primary/30">
+								<span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-bg text-primary-text border border-primary-border">
 									{p.photo_label}
 								</span>
 								<span className="max-w-[100px] truncate text-text-tertiary">
