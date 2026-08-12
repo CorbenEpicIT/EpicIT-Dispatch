@@ -2,7 +2,7 @@
 import { useAllQuotesQuery, useCreateQuoteMutation } from "../../hooks/useQuotes";
 import { useClientByIdQuery } from "../../hooks/useClients";
 import { useRequestByIdQuery } from "../../hooks/useRequests";
-import { QuoteStatusValues, QuoteStatusLabels, type Quote, type QuoteStatus } from "../../types/quotes";
+import { QuoteStatusValues, QuoteStatusLabels, QuoteStatusColors, type Quote, type QuoteStatus } from "../../types/quotes";
 import { useState, useMemo } from "react";
 import { Plus } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -26,7 +26,7 @@ import {
 	compareDate,
 	comparePriority
 } from "../../util/sortUtil";
-import { PriorityLabels, PriorityValues } from "../../types/common";
+import { PriorityLabels, PriorityValues, PriorityColors, type Priority } from "../../types/common";
 
 
 const quoteStatusOptions = QuoteStatusValues.map((s) => ({
@@ -162,6 +162,8 @@ export default function QuotesPage() {
 				status: QuoteStatusLabels[q.status] || q.status,
 				priority: PriorityLabels[q.priority] || q.priority,
 				total: formatCurrency(Number(q.total)),
+				_rawStatus: q.status,
+				_rawPriority: q.priority,
 			}));
 	}, [quotes, searchInput, termsKey, clientFilter, requestFilter, statusKey, priorityKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam]);
 
@@ -256,11 +258,13 @@ export default function QuotesPage() {
 					...statusFilter.map((status) => ({
 						label: `Status: ${QuoteStatusLabels[status as keyof typeof QuoteStatusLabels] ?? status}`,
 						color: "green" as const,
+						classes: QuoteStatusColors[status as QuoteStatus],
 						onRemove: () => removeStatus(status),
 					})),
 					...priorityFilter.map((pri) => ({
 						label: `Priority: ${PriorityLabels[pri as keyof typeof PriorityLabels] ?? pri}`,
 						color: "orange" as const,
+						classes: PriorityColors[pri as Priority],
 						onRemove: () => removePriority(pri),
 					})),
 					sortParam
@@ -286,6 +290,23 @@ export default function QuotesPage() {
 					loadListener={isFetchLoading}
 					errListener={fetchError}
 					onRowClick={(row) => navigate(`/dispatch/quotes/${row.id}`)}
+					columnAlign={{ total: "right" }}
+					cellRenderers={{
+						status: (row) => (
+							<div
+								className={`w-fit px-2 py-1 rounded-full border text-sm font-medium text-nowrap ${QuoteStatusColors[row._rawStatus as QuoteStatus]}`}
+							>
+								{row.status as string}
+							</div>
+						),
+						priority: (row) => (
+							<div
+								className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium text-nowrap ${PriorityColors[row._rawPriority as Priority]}`}
+							>
+								{row.priority as string}
+							</div>
+						),
+					}}
 				/>
 			</div>
 

@@ -1,7 +1,7 @@
 ﻿import AdaptableTable from "../../components/AdaptableTable";
 import { useAllInvoicesQuery } from "../../hooks/useInvoices";
 import { useClientByIdQuery } from "../../hooks/useClients";
-import { InvoiceStatusValues, type InvoiceStatus, isOverdue } from "../../types/invoices";
+import { InvoiceStatusValues, InvoiceStatusColors, type InvoiceStatus, isOverdue } from "../../types/invoices";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, MoreVertical, FileText, Upload } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -169,19 +169,6 @@ export default function InvoicesPage() {
 						(a._issueDate?.getTime() ?? 0)
 					);
 				})
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				.map(
-					({
-						_rawStatus,
-						_rawTotal,
-						_rawBalance,
-						_rawDueDate,
-						_isOverdue,
-						_clientId,
-						_issueDate,
-						...rest
-					}) => rest
-				)
 		);
 	}, [invoices, searchInput, termsKey, clientFilter, statusKey, dateParamKey, dateParamFrom, dateParamTo]);
 
@@ -354,6 +341,7 @@ export default function InvoicesPage() {
 					...statusFilter.map((s) => ({
 						label: `Status: ${addSpacesToCamelCase(s)}`,
 						color: "green" as const,
+						classes: InvoiceStatusColors[s as InvoiceStatus],
 						onRemove: () => removeStatus(s),
 					})),
 					...terms.map((term) => ({
@@ -406,6 +394,27 @@ export default function InvoicesPage() {
 						onRowClick={(row) =>
 							navigate(`/dispatch/invoices/${row.id}`)
 						}
+						columnAlign={{ total: "right", balance: "right" }}
+						cellRenderers={{
+							status: (row) => {
+								const colors =
+									InvoiceStatusColors[row._rawStatus as InvoiceStatus];
+								return (
+									<div
+										className={`w-fit px-2 py-1 rounded-full border text-sm font-medium text-nowrap ${colors}`}
+									>
+										{row.status as string}
+									</div>
+								);
+							},
+							dueDate: (row) => (
+								<span
+									className={`text-nowrap ${row._isOverdue ? "text-error-text font-medium" : ""}`}
+								>
+									{row.dueDate as string}
+								</span>
+							),
+						}}
 					/>
 				)}
 			</div>

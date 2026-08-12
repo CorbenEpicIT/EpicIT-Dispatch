@@ -1,8 +1,8 @@
 ﻿import AdaptableTable from "../../components/AdaptableTable";
 import { useAllRequestsQuery, useCreateRequestMutation } from "../../hooks/useRequests";
 import { useClientByIdQuery } from "../../hooks/useClients";
-import { RequestStatusValues, RequestStatusLabels, type Request } from "../../types/requests";
-import { PriorityLabels, PriorityValues } from "../../types/common";
+import { RequestStatusValues, RequestStatusLabels, RequestStatusColors, type Request, type RequestStatus } from "../../types/requests";
+import { PriorityLabels, PriorityValues, PriorityColors, type Priority } from "../../types/common";
 import { useState, useMemo } from "react";
 import { Plus } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -154,6 +154,8 @@ export default function RequestsPage() {
 				priority: PriorityLabels[r.priority] || r.priority,
 				created: formatDate(r.created_at),
 				status: RequestStatusLabels[r.status] || r.status,
+				_rawStatus: r.status,
+				_rawPriority: r.priority,
 			}));
 	}, [requests, searchInput, termsKey, clientFilter, statusKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam, priorityKey]);
 
@@ -247,11 +249,13 @@ export default function RequestsPage() {
 					...statusFilter.map((status) => ({
 						label: `Status: ${RequestStatusLabels[status as keyof typeof RequestStatusLabels] ?? status}`,
 						color: "green" as const,
+						classes: RequestStatusColors[status as RequestStatus],
 						onRemove: () => removeStatus(status),
 					})),
 					...priorityFilter.map((pri) => ({
 						label: `Priority: ${PriorityLabels[pri as keyof typeof PriorityLabels] ?? pri}`,
 						color: "orange" as const,
+						classes: PriorityColors[pri as Priority],
 						onRemove: () => removePriority(pri),
 					})),
 					sortParam
@@ -274,6 +278,22 @@ export default function RequestsPage() {
 					onRowClick={(row) =>
 						navigate(`/dispatch/requests/${row.id}`)
 					}
+					cellRenderers={{
+						status: (row) => (
+							<div
+								className={`w-fit px-2 py-1 rounded-full border text-sm font-medium text-nowrap ${RequestStatusColors[row._rawStatus as RequestStatus]}`}
+							>
+								{row.status as string}
+							</div>
+						),
+						priority: (row) => (
+							<div
+								className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium text-nowrap ${PriorityColors[row._rawPriority as Priority]}`}
+							>
+								{row.priority as string}
+							</div>
+						),
+					}}
 				/>
 			</div>
 

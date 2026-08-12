@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProjectsQuery, useCreateProjectMutation } from "../../hooks/useProjects";
 import { useClientByIdQuery } from "../../hooks/useClients";
 import PageReportSection from "../../components/reports/PageReportSection";
+//const PageReportSection = lazy(()=> import ("../../components/reports/PageReportSection"))
 import StatusFilter from "../../components/ui/StatusFilter";
 import SortControl from "../../components/ui/SortControl";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
@@ -334,11 +335,11 @@ export default function ProjectsPage() {
                         },
                         status: (row) => {
                             const r = row as ProjectRow;
-                            return <div className={`w-fit px-2 py-1 rounded-full border text-sm font-medium ${ProjectStatusColors[r.status]}`}>{ProjectStatusLabels[r.status]}</div>;
+                            return <div className={`w-fit px-2 py-1 rounded-full border text-sm font-medium text-nowrap ${ProjectStatusColors[r.status]}`}>{ProjectStatusLabels[r.status]}</div>;
                         },
                         priority: (row) => {
                             const r = row as ProjectRow;
-                            return <div className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium ${PriorityColors[r.priority]}`}>{PriorityLabels[r.priority]}</div>;
+                            return <div className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium text-nowrap ${PriorityColors[r.priority]}`}>{PriorityLabels[r.priority]}</div>;
                         },
                         jobs: (row) => {
                             const r = row as ProjectRow;

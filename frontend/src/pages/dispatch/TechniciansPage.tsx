@@ -15,6 +15,7 @@ import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { usePermission } from "../../hooks/usePermission";
+import { TechnicianStatusColors, type TechnicianStatus } from "../../types/technicians";
 
 type viewMode = "list" | "card";
 
@@ -177,6 +178,7 @@ export default function TechniciansPage() {
 					...statusFilter.map((s) => ({
 						label: `Status: ${technicianStatusOptions.find((o) => o.value === s)?.label ?? s}`,
 						color: "green" as const,
+						classes: TechnicianStatusColors[s as TechnicianStatus],
 						onRemove: () => removeStatus(s),
 					})),
 					...terms.map((term) => ({

@@ -17,11 +17,11 @@ export const PriorityLabels: Record<Priority, string> = {
 };
 
 export const PriorityColors: Record<Priority, string> = {
-    Low:       "bg-primary text-white border-border-strong/30",
-    Medium:    "bg-yellow-400 text-white border-warning/30",
-    High:      "bg-orange text-white border-orange/30",
-    Urgent:    "bg-error text-white border-error/30",
-    Emergency: "bg-error text-white border-error/30 font-bold",
+    Low: "bg-gray-600/20 text-gray-400 border-gray-700",
+	Medium: "bg-blue-600/20 text-blue-400 border-blue-700",
+	High: "bg-orange-600/20 text-orange-400 border-orange-700",
+	Urgent: "bg-red-600/20 text-red-400 border-red-700",
+	Emergency: "bg-red-700/30 text-red-500 border-red-600 font-bold",
 };
 
 // ============================================================================

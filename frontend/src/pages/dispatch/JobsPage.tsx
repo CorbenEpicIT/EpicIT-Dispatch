@@ -2,8 +2,8 @@
 import { useAllJobsQuery, useCreateJobMutation } from "../../hooks/useJobs";
 import { useAllRecurringPlansQuery } from "../../hooks/useRecurringPlans";
 import { useClientByIdQuery } from "../../hooks/useClients";
-import { JobStatusValues, type JobStatus } from "../../types/jobs";
-import { RecurringPlanStatusValues, type RecurringPlanStatus } from "../../types/recurringPlans";
+import { JobStatusValues, JobStatusColors, type JobStatus } from "../../types/jobs";
+import { RecurringPlanStatusValues, RecurringPlanStatusColors, type RecurringPlanStatus } from "../../types/recurringPlans";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, MoreVertical, Repeat, Upload } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -29,7 +29,7 @@ import {
 	compareDate,
 	comparePriority
 } from "../../util/sortUtil";
-import { PriorityLabels, PriorityValues } from "../../types/common";
+import { PriorityLabels, PriorityValues, PriorityColors, type Priority } from "../../types/common";
 
 const jobStatusOptions = JobStatusValues.map((s) => ({
 	value: s,
@@ -50,6 +50,25 @@ const sortLabels: Record<string, string> = {
 	priority: "Priority",
 	status: "Status",
 	date: "Date",
+};
+
+type JobRow = {
+	id: string;
+	isRecurring: string;
+	client: string;
+	jobNumber: string;
+	property: string;
+	schedule: string;
+	status: string;
+	priority: Priority;
+	total: number;
+	_rawStatus: string;
+	_rawPriority: Priority,
+	_rawTotal: number;
+	_scheduleDate: string;
+	_rawJobNumber: string;
+	_clientId: string;
+	_jobId: string;
 };
 
 export default function JobsPage() {
@@ -242,9 +261,7 @@ export default function JobsPage() {
 					return 0;
 				})
 				.map(
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
 					({
-						_rawStatus,
 						_scheduleDate,
 						_clientId,
 						_recurringPlanId,
@@ -308,8 +325,8 @@ export default function JobsPage() {
 					return {
 						id: j.id,
 						isRecurring: !!j.recurring_plan_id,
-						client: j.client?.name || "Unknown Client",
 						jobNumber: `${j.job_number}\n${j.name}`,
+						client: j.client?.name || "Unknown Client",
 						property: j.address || "No address",
 						schedule: scheduleDisplay,
 						status: addSpacesToCamelCase(j.status),
@@ -396,10 +413,7 @@ export default function JobsPage() {
 			return jobsData
 				.sort(comparator)
 				.map(
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
 					({
-						_rawStatus,
-						_rawPriority,
 						_rawTotal,
 						_scheduleDate,
 						_rawJobNumber,
@@ -587,11 +601,13 @@ export default function JobsPage() {
 					...statusFilter.map((status) => ({
 						label: `Status: ${addSpacesToCamelCase(status)}`,
 						color: "green" as const,
+						classes: JobStatusColors[status as JobStatus],
 						onRemove: () => removeStatus(status),
 					})),
 					...priorityFilter.map((pri) => ({
 						label: `Priority: ${PriorityLabels[pri as keyof typeof PriorityLabels] ?? pri}`,
 						color: "orange" as const,
+						classes: PriorityColors[pri as Priority],
 						onRemove: () => removePriority(pri),
 					})),
 					sortParam
@@ -624,6 +640,36 @@ export default function JobsPage() {
 						} else {
 							navigate(`/dispatch/jobs/${row.id}`);
 						}
+					}}
+					columnVisibility={ {property: false} }
+					cellRenderers={{
+						jobNumber: (row) => {
+							const r = row as JobRow;
+							const [firstLine, ...nameLines] = String(r.jobNumber).split("\n");
+							const isRecurring = firstLine.startsWith("🔄");
+							const number = firstLine.replace(/^🔄\s*/, "");
+							return (
+								<div className="flex flex-col">
+									<span className="font-mono text-xs font-semibold text-primary-text">
+										{isRecurring ? "🔄 " : ""}#{number}
+									</span>
+									<span className="font-medium text-text-primary">{nameLines.join(" ")}</span>
+									<span className="text-xs text-text-tertiary">{r.property}</span>
+								</div>
+							)
+						},
+						status: (row) => {
+							const r = row as JobRow;
+							const colors =
+								viewMode === "templates"
+									? RecurringPlanStatusColors[r._rawStatus as RecurringPlanStatus]
+									: JobStatusColors[r._rawStatus as JobStatus];
+							return <div className={`w-fit px-2 py-1 rounded-full border text-sm font-medium text-nowrap ${colors}`}>{r.status}</div>;
+						},
+						priority: (row) => {
+							const r = row as JobRow;
+							return <div className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium ${PriorityColors[r._rawPriority]}`}>{r.priority}</div>;
+						},
 					}}
 				/>
 			</div>
