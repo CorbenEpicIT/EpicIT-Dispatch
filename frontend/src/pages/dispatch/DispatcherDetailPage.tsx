@@ -1,4 +1,4 @@
-import { useDispatcherByIdQuery } from "../../hooks/useDispatchers";
+import { useDispatcherByIdQuery, } from "../../hooks/useDispatchers";
 import EditDispatcher from "../../components/dispatchers/EditDispatcher";
 import { groupPermissionsByCategory } from "../../lib/permissionCatalogs";
 import { useNavigate, useParams } from "react-router-dom";
@@ -10,6 +10,9 @@ import { formatActivity, resolveRoute, timeAgo } from "../../components/dashboar
 import { useAuthStore } from "../../auth/authStore";
 import { FALLBACK_TIMEZONE } from "../../util/util";
 import { Mail, Phone, Clock, ShieldCheck, CalendarDays } from "lucide-react";
+import ChangeHistory from "../../components/activity/ChangeHistory";
+import UserActivityCard from "../../components/profile/UserActivityCard";
+import Card from "../../components/ui/Card";
 
 const DispatcherDetailPage = () => {
 	const { dispatcherId } = useParams();
@@ -36,6 +39,7 @@ const DispatcherDetailPage = () => {
 	const activityLogs = (logsResult?.data ?? [])
 		.filter((l) => l.actor_id === dispatcherId || l.entity_id === dispatcherId)
 		.slice(0, 15);
+
 
 	const initials = dispatcher?.name
 		?.split(" ")
@@ -139,70 +143,39 @@ const DispatcherDetailPage = () => {
 				{/* Two-column body */}
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 					{/* Permissions */}
-					<div>
-						<h2 className="text-sm font-semibold text-text-primary mb-3">Permissions</h2>
-						{permissionGroups.length === 0 ? (
-							<p className="text-sm text-text-muted">No permissions assigned.</p>
-						) : (
-							<div className="space-y-2">
-								{permissionGroups.map(({ category, permissions }) => (
-									<div key={category} className="rounded-lg border border-border-subtle bg-base px-4 py-3">
-										<p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
-											{category}
-										</p>
-										<div className="flex flex-wrap gap-1.5">
-											{permissions.map((p) => (
-												<span
-													key={p.id}
-													className="px-2 py-0.5 rounded-md bg-surface text-xs text-text-secondary border border-border-subtle"
-												>
-													{p.label}
-												</span>
-											))}
+					<Card>
+						<div>
+							<h2 className="text-sm font-semibold text-text-primary mb-3">Permissions</h2>
+							{permissionGroups.length === 0 ? (
+								<p className="text-sm text-text-muted">No permissions assigned.</p>
+							) : (
+								<div className="space-y-2">
+									{permissionGroups.map(({ category, permissions }) => (
+										<div key={category} className="rounded-lg border border-border-subtle bg-base px-4 py-3">
+											<p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+												{category}
+											</p>
+											<div className="flex flex-wrap gap-1.5">
+												{permissions.map((p) => (
+													<span
+														key={p.id}
+														className="px-2 py-0.5 rounded-md bg-surface text-xs text-text-secondary border border-border-subtle"
+													>
+														{p.label}
+													</span>
+												))}
+											</div>
 										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-
+									))}
+								</div>
+							)}
+						</div>							
+					</Card>
 					{/* Recent Activity */}
-					<div>
-						<h2 className="text-sm font-semibold text-text-primary mb-3">Recent Activity</h2>
-						{activityLogs.length === 0 ? (
-							<div className="rounded-lg border border-border-subtle bg-base px-4 py-8 text-center">
-								<CalendarDays size={20} className="mx-auto text-text-muted mb-2" />
-								<p className="text-sm text-text-muted">No recent activity.</p>
-							</div>
-						) : (
-							<div className="rounded-lg border border-border-subtle bg-base divide-y divide-border-subtle overflow-hidden">
-								{activityLogs.map((log) => {
-									const entry = formatActivity(log, tz);
-									if (!entry) return null;
-									const route = resolveRoute(log);
-									return (
-										<div
-											key={log.id}
-											onClick={() => route && navigate(route)}
-											className={`flex items-start gap-3 px-4 py-3 ${route ? "cursor-pointer hover:bg-surface-raised transition-colors" : ""}`}
-										>
-											<div className={`w-7 h-7 rounded-lg ${entry.bg} flex items-center justify-center shrink-0 mt-0.5`}>
-												<entry.icon size={13} className={entry.color} />
-											</div>
-											<div className="min-w-0 flex-1">
-												<p className="text-sm text-text-primary leading-snug">{entry.message}</p>
-												{entry.subtitle && (
-													<p className="text-xs text-text-muted mt-0.5 truncate">{entry.subtitle}</p>
-												)}
-											</div>
-											<span className="text-xs text-text-muted shrink-0 pt-0.5">{timeAgo(log.timestamp)}</span>
-										</div>
-									);
-								})}
-							</div>
-						)}
-					</div>
+					{/*<UserActivityCard />*/}
+					<ChangeHistory scope={{kind: "actor", type: "dispatcher", id: dispatcherId ?? ""} }/>
 				</div>
+				
 			</div>
 
 			{editOpen && (

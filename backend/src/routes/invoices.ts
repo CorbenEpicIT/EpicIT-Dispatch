@@ -17,6 +17,7 @@ import { buildVisitInvoicePayload, buildRecurringPlanInvoicePayload } from '../s
 import { overlapCheckSchema, generateInvoiceSchema } from '../lib/validate/invoices.js';
 import { advanceNextInvoiceAt, calculateNextInvoiceAt, type ScheduleFrequency } from '../lib/invoiceSchedule.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -459,5 +460,30 @@ router.delete("/:invoiceId/notes/:noteId", requirePermission("edit_invoices"), a
         next(err);
     }
 });
+
+router.get("/:invoiceId/changes", requirePermission("view_invoices"), async (req, res, next) => {
+    try {
+        const invoiceId = req.params.invoiceId as string;
+        const orgId = req.user!.organization_id as string;
+        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+
+        const results = await getEntityHistory(orgId, "invoice", invoiceId, limit);
+
+        if (results.err) {
+            return res
+                .status(500)
+                .json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+        }
+
+        res.json(createSuccessResponse(results.rows, {
+            count: results.rows.length,
+            hasMore: results.hasMore,
+            total: results.total,
+        }));
+    } catch (err) {
+        next(err);
+    }
+});
+
 
 export default router;

@@ -77,6 +77,7 @@ export const useCreateJobMutation = (): UseMutationResult<Job, Error, CreateJobI
 
 			queryClient.setQueryData(["jobs", newJob.id], newJob);
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -99,6 +100,7 @@ export const useUpdateJobMutation = (): UseMutationResult<
 				queryKey: ["clients", updatedJob.client_id],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["clients"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -119,6 +121,7 @@ export const useDeleteJobMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 
 			queryClient.removeQueries({ queryKey: ["jobs", jobId] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -218,6 +221,7 @@ export const useCreateJobVisitMutation = (): UseMutationResult<
 
 			queryClient.setQueryData(["jobVisits", newVisit.id], newVisit);
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -251,6 +255,7 @@ export const useUpdateJobVisitMutation = (): UseMutationResult<
 				}
 			}
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -277,6 +282,7 @@ export const useAssignTechniciansToVisitMutation = (): UseMutationResult<
 
 			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -300,6 +306,7 @@ export const useAcceptJobVisitMutation = (): UseMutationResult<
 			});
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			queryClient.setQueryData(["jobVisits", updatedVisit.id], updatedVisit);
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -318,6 +325,7 @@ export const useDeleteJobVisitMutation = (): UseMutationResult<
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			queryClient.removeQueries({ queryKey: ["jobVisits", visitId] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -351,6 +359,7 @@ export const useVisitTransitionMutation = (): UseMutationResult<JobVisit, Error,
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -399,6 +408,7 @@ export const useDelayJobVisitMutation = (): UseMutationResult<JobVisit, Error, s
 			await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -427,6 +437,7 @@ export const useCancelJobVisitMutation = (): UseMutationResult<
 			}
 			await queryClient.invalidateQueries({ queryKey: ["technicians"] });
 			await queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -505,6 +516,7 @@ export const useCreateJobNoteMutation = (): UseMutationResult<
 					queryKey: ["jobVisits", variables.data.visit_id],
 				});
 			}
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -539,6 +551,7 @@ export const useUpdateJobNoteMutation = (): UseMutationResult<
 				});
 			}
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };
@@ -561,6 +574,7 @@ export const useDeleteJobNoteMutation = (): UseMutationResult<
 				queryKey: ["jobs", variables.jobId, "notes"],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			await queryClient.invalidateQueries({ queryKey: ["changes"] });
 		},
 	});
 };

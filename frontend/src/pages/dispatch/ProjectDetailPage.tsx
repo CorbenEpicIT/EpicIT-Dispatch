@@ -13,6 +13,7 @@ import BudgetCard from "../../components/projects/BudgetCard";
 import Card from "../../components/ui/Card"
 import EditProjectModal from "../../components/projects/EditProjectModal"
 import AttachJobModal from "../../components/projects/AttachJobModal";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 export default function ProjectDetailPage() {
     const { projectId } = useParams<{ projectId: string }>();
@@ -185,6 +186,7 @@ export default function ProjectDetailPage() {
                     <Card title="Description">
                         <p>{project.description || "No description given"}</p>
                     </Card>
+                    <ChangeHistory scope={{kind: "entity", type: "project", id: projectId ?? ""}} /> 
                 </div>
                 <div className="flex flex-col gap-4 min-w-0">
                     <BudgetCard

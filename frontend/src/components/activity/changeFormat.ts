@@ -1,0 +1,263 @@
+import { Ban, History, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink } from "lucide-react";
+import type React from "react";
+import type { ActivityLog } from "../../types/logs";
+
+export type ChangeRow = {
+	key: string;
+	label: string;
+	from: string;
+	to: string;
+};
+
+export type ChangeEntry = {
+	headline: string;
+	subtitle: string | null;
+	rows: ChangeRow[];
+	icon: React.ElementType;
+	color: string;
+	bg: string;
+};
+
+const EM_DASH = "—";
+
+const ACTION_VERBS: Record<string, string> = {
+	created: "created",
+	create: "created",
+	updated: "updated",
+	changed: "changed",
+	deleted: "deleted",
+	delete: "deleted",
+	attached: "attached",
+	detached: "detached",
+	sent: "sent",
+	send: "sent",
+	authorized: "authorized",
+	stop: "stopped",
+};
+
+type EntryStyle = { icon: React.ElementType; color: string; bg: string };
+
+const DEFAULT_STYLE: EntryStyle = {
+	icon: History,
+	color: "text-text-tertiary",
+	bg: "bg-zinc-500/10",
+};
+
+const VERB_STYLES: Record<string, EntryStyle> = {
+	created: { icon: Plus, color: "text-success-text", bg: "bg-success/10" },
+	updated: { icon: Pencil, color: "text-primary-text", bg: "bg-primary/10" },
+	changed: { icon: Pencil, color: "text-primary-text", bg: "bg-primary/10" },
+	deleted: { icon: Trash2, color: "text-error-text", bg: "bg-error/10" },
+	attached: { icon: Link2, color: "text-info-text", bg: "bg-cyan-500/10" },
+	detached: { icon: Unlink, color: "text-warning-text", bg: "bg-warning/10" },
+	sent: { icon: Send, color: "text-primary-text", bg: "bg-primary/10" },
+	authorized: { icon: ShieldCheck, color: "text-success-text", bg: "bg-success/10" },
+	stopped: { icon: Ban, color: "text-error-text", bg: "bg-error/10" },
+};
+
+const ENTITY_LABELS: Record<string, string> = {
+	job: "Job",
+	job_visit: "Visit",
+	job_note: "Job note",
+	job_line_item: "Job line item",
+	quote: "Quote",
+	quote_note: "Quote note",
+	quote_line_item: "Quote line item",
+	request: "Request",
+	request_note: "Request note",
+	invoice: "Invoice",
+	invoice_note: "Invoice note",
+	invoice_payment: "Payment",
+	client: "Client",
+	client_note: "Client note",
+	contact: "Contact",
+	project: "Project",
+	technician: "Technician",
+	dispatcher: "Dispatcher",
+	vehicle: "Vehicle",
+	inventory_item: "Inventory item",
+	recurring_plan: "Recurring plan",
+	recurring_occurrence: "Recurring occurrence",
+	organization_role: "Role",
+	saved_report: "Saved report",
+	mfa: "Two-factor authentication",
+};
+
+const HEADLINE_OVERRIDES: Record<string, string> = {
+	"project.job_attached": "Job attached",
+	"project.job_detached": "Job detached",
+};
+
+const humanize = (raw: string): string => {
+	const spaced = raw.replace(/[_.]+/g, " ").trim();
+	return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "";
+};
+
+const FIELD_LABELS: Record<string, string> = {
+	scheduled_start_at: "Scheduled start",
+	scheduled_end_at: "Scheduled end",
+	actual_start_at: "Actual start",
+	actual_end_at: "Actual end",
+	target_end_at: "Target end",
+	starts_at: "Start date",
+	completed_at: "Completed",
+	issue_date: "Issue date",
+	due_date: "Due date",
+	client_id: "Client",
+	project_id: "Project",
+	manager_dispatcher_id: "Manager",
+	organization_role_id: "Role",
+	tech_status: "Technician status",
+	qb_sync_status: "QuickBooks sync",
+	is_active: "Active",
+	tax_exempt: "Tax exempt",
+	estimated_total: "Estimated total",
+	actual_total: "Actual total",
+	balance_due: "Balance due",
+	amount_paid: "Amount paid",
+	discount_amount: "Discount",
+	tax_amount: "Tax",
+	tax_rate: "Tax rate",
+	unit_price: "Unit price",
+	internal_notes: "Internal notes",
+};
+
+const labelFor = (key: string): string => FIELD_LABELS[key] ?? humanize(key);
+
+// Denormalized context, not field edits — these belong in the subtitle, not rows.
+const BREADCRUMB_KEYS = new Set([
+	"client_name",
+	"job_number",
+	"quote_number",
+	"invoice_number",
+	"request_number",
+	"project_number",
+]);
+
+const isBreadcrumb = (key: string): boolean => key.startsWith("_") || BREADCRUMB_KEYS.has(key);
+
+const REFERENCE_KEYS = [
+	"_job_number",
+	"job_number",
+	"_quote_number",
+	"quote_number",
+	"_invoice_number",
+	"invoice_number",
+	"_project_number",
+	"project_number",
+];
+
+const readBreadcrumb = (log: ActivityLog, keys: string[]): string | null => {
+	if (!log.changes) return null;
+	for (const key of keys) {
+		const value = log.changes[key]?.new;
+		if (typeof value === "string" && value.trim()) return value;
+	}
+	return null;
+};
+
+const buildSubtitle = (log: ActivityLog): string | null => {
+	const parts = [
+		readBreadcrumb(log, REFERENCE_KEYS),
+		readBreadcrumb(log, ["client_name", "_client_name"]),
+	].filter(Boolean) as string[];
+	return parts.length ? parts.join(" · ") : null;
+};
+
+// buildChanges stores raw values: Dates arrive as ISO strings, Prisma Decimals as strings.
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// A Decimal-as-string looks like any numeric string, so money is matched by name.
+const CURRENCY_FIELDS = new Set([
+	"total",
+	"subtotal",
+	"amount",
+	"amount_paid",
+	"balance_due",
+	"budget",
+	"cost",
+	"price",
+	"unit_price",
+	"tax_amount",
+	"discount_amount",
+	"estimated_total",
+	"actual_total",
+	"estimated_value",
+]);
+
+// Money-ish names that are not money. `discount_value` is a percent OR an amount
+const NEVER_CURRENCY = new Set(["tax_rate", "discount_value", "quantity", "generated_count"]);
+
+// Stored at UTC midnight — rendering in the org timezone shows the previous day.
+const DATE_ONLY_FIELDS = new Set(["starts_at", "target_end_at", "due_date", "issue_date"]);
+
+export const formatValue = (key: string, value: unknown, tz: string): string => {
+	if (value === null || value === undefined || value === "") return EM_DASH;
+
+	if (typeof value === "boolean") return value ? "Yes" : "No";
+
+	if (Array.isArray(value)) {
+		const readable = value.filter(
+			(v) => (typeof v === "string" && !UUID.test(v)) || typeof v === "number",
+		);
+		return readable.length ? readable.join(", ") : EM_DASH;
+	}
+
+	if (typeof value === "object") {
+		const obj = value as Record<string, unknown>;
+		if ("lat" in obj && "lon" in obj) return `${obj.lat}, ${obj.lon}`;
+		return JSON.stringify(value);
+	}
+
+	if (CURRENCY_FIELDS.has(key) && !NEVER_CURRENCY.has(key)) {
+		const n = typeof value === "number" ? value : parseFloat(String(value));
+		if (isFinite(n)) return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+	}
+
+	if (typeof value === "string" && ISO_TIMESTAMP.test(value)) {
+		const d = new Date(value);
+		if (!isNaN(d.getTime())) {
+			const dateOnly = DATE_ONLY_FIELDS.has(key) || !value.includes("T");
+			return d.toLocaleDateString("en-US", {
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+				...(dateOnly
+					? { timeZone: "UTC" }
+					: { hour: "numeric", minute: "2-digit", timeZone: tz }),
+			});
+		}
+	}
+
+	if (typeof value === "number") return value.toLocaleString("en-US");
+
+	return String(value);
+};
+
+export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
+	const verb = ACTION_VERBS[log.action] ?? humanize(log.action).toLowerCase();
+	const entity = ENTITY_LABELS[log.entity_type] ?? humanize(log.entity_type);
+
+	const rows: ChangeRow[] = log.changes
+		? Object.entries(log.changes).flatMap(([key, delta]) => {
+				if (isBreadcrumb(key)) return [];
+
+				const from = formatValue(key, delta.old, tz);
+				const to = formatValue(key, delta.new, tz);
+				if (from === to) return [];
+
+				return [{ key, label: labelFor(key), from, to }];
+			})
+		: [];
+
+	return {
+		headline:
+			HEADLINE_OVERRIDES[log.event_type] ??
+			([entity, verb].filter(Boolean).join(" ") || "Change recorded"),
+		subtitle: buildSubtitle(log),
+		rows,
+		...(VERB_STYLES[verb] ?? DEFAULT_STYLE),
+	};
+};

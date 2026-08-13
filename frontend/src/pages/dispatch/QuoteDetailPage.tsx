@@ -28,6 +28,7 @@ import { downloadQuotePdf } from "../../api/quotes";
 import FinancialSummary from "../../components/pagesections/FinancialSummary";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 export default function QuoteDetailPage() {
 	const { quoteId } = useParams<{ quoteId: string }>();
@@ -572,6 +573,8 @@ export default function QuoteDetailPage() {
 			</div>
 
 			<NoteManager quoteId={quoteId!} />
+
+			<ChangeHistory scope={{ kind: "entity", type: "quote", id: quoteId ?? "" }} />
 
 			{quote && (
 				<>

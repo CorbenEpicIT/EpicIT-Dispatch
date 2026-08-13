@@ -25,6 +25,7 @@ import {
 } from "../../types/invoices";
 import { formatCurrency, formatDate } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 type MainTab = "active" | "requests" | "quotes" | "jobs" | "plans" | "invoices";
 const ITEMS_LIMIT = 8;
@@ -552,6 +553,7 @@ export default function ClientDetailsPage() {
 						</div>
 
 						<NoteManager clientId={client.id} />
+						<ChangeHistory scope={{kind: "entity", type: "client", id: clientId ?? ""} }/>
 					</div>
 
 					{/* RIGHT COLUMN */}

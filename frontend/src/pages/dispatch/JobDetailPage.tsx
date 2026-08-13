@@ -43,6 +43,7 @@ import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "..
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
 import FinancialSummary, { type FinancialSummaryLineItem } from "../../components/pagesections/FinancialSummary";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 export default function JobDetailPage() {
 	const { jobId } = useParams<{ jobId: string }>();
@@ -1228,6 +1229,8 @@ export default function JobDetailPage() {
 			</div>
 
 			<JobNoteManager jobId={jobId!} visits={visits} />
+
+			<ChangeHistory scope={ { kind: "entity", type: "job", id: jobId ?? ""} }  />
 
 			{job && isEditModalOpen && (
 				<EditJob

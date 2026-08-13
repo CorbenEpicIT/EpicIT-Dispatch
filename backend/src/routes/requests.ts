@@ -14,6 +14,7 @@ import {
 import { getUserContext } from '../lib/context.js';
 import * as requestNotesController from '../controllers/requestNotesController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
+import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -242,6 +243,30 @@ router.delete("/:requestId/notes/:noteId", requirePermission("edit_requests"), a
         res.status(200).json(
             createSuccessResponse({ message: result.message }),
         );
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:requestId/changes", requirePermission("view_requests"), async (req, res, next) => {
+    try {
+        const requestId = req.params.requestId as string;
+        const orgId = req.user!.organization_id as string;
+        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+
+        const results = await getEntityHistory(orgId, "request", requestId, limit);
+
+        if (results.err) {
+            return res
+                .status(500)
+                .json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+        }
+
+        res.json(createSuccessResponse(results.rows, {
+            count: results.rows.length,
+            hasMore: results.hasMore,
+            total: results.total,
+        }));
     } catch (err) {
         next(err);
     }

@@ -27,6 +27,7 @@ import {
 	type VisitStatus,
 } from "../../types/jobs";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 export default function TechnicianDetailsPage() {
 	const { technicianId } = useParams<{ technicianId: string }>();
@@ -578,6 +579,8 @@ export default function TechnicianDetailsPage() {
 					</div>
 				</div>
 			</Card>
+
+			<ChangeHistory scope={{ kind: "actor", type: "technician", id: technicianId ?? "" }} />
 
 			<EditTechnicianModal
 				isOpen={isEditModalOpen}

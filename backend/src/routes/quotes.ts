@@ -22,6 +22,7 @@ import { onQuoteSent } from "../services/followupTriggers.js";
 import { getUserContext } from '../lib/context.js';
 import * as quoteNotesController from '../controllers/quoteNotesController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
+import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -422,4 +423,29 @@ router.delete("/:quoteId/notes/:noteId", requirePermission("edit_quotes"), async
         next(err);
     }
 });
+
+router.get("/:quoteId/changes", requirePermission("view_quotes"), async (req, res, next) => {
+    try {
+        const quoteId = req.params.quoteId as string;
+        const orgId = req.user!.organization_id as string;
+        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+
+        const results = await getEntityHistory(orgId, "quote", quoteId, limit);
+
+        if (results.err) {
+            return res
+                .status(500)
+                .json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+        }
+
+        res.json(createSuccessResponse(results.rows, {
+            count: results.rows.length,
+            hasMore: results.hasMore,
+            total: results.total,
+        }));
+    } catch (err) {
+        next(err);
+    }
+});
+
 export default router;
