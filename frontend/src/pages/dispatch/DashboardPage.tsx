@@ -42,6 +42,7 @@ import QuotePipelineWidget from "../../components/widgets/QuotePipelineWidget";
 import ArrivalPerformanceWidget from "../../components/widgets/ArrivalPerformanceWidget";
 import MileageSummaryWidget from "../../components/widgets/MileageSummaryWidget";
 import AgedReceivablesColumnWidget from "../../components/widgets/AgedReceivablesColumnWidget";
+import JobBacklogWidget from "../../components/widgets/JobBacklogWidget";
 import MapWidget from "../../components/widgets/MapWidget";
 import QBWidget from "../../components/widgets/QBWidget";
 import PageReportWidget from "../../components/widgets/PageReportWidget";
@@ -470,6 +471,7 @@ export default function DashboardPage() {
 			case "report-mileage":         return <MileageSummaryWidget />;
 			case "report-aged-receivables-bar": return <AgedReceivablesColumnWidget />;
 			case "report-page-summary":    return <PageReportWidget />;
+			case "report-job-backlog":     return <JobBacklogWidget />;
 			default: return <div>Unknown widget: {id}</div>;
 		}
 	}

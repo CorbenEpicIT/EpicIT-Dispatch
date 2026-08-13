@@ -1,17 +1,137 @@
+import type { Prisma } from "../../generated/prisma/client.js";
+
 export type StockStatus = "sufficient" | "low" | "out_of_stock" | null;
 
-export function getStockStatus(quantity: number, threshold: number | null): StockStatus {
+/**
+ * A stock quantity as it can arrive here: a plain number from a validated request
+ * body, or a Prisma `Decimal` read out of a `numeric(10,2)` column.
+ *
+ * Both shapes are accepted rather than forcing callers to convert, because the
+ * conversion is exactly what kept getting forgotten. Comparing a `Decimal` with
+ * `===` or `<` compiles, runs, and is wrong: `===` tests object identity, and the
+ * relational operators coerce through `valueOf()` to a STRING, so `"9" < "10"` is
+ * false and `"100" < "20"` is true. Nothing throws. Before `inventory_item.quantity`
+ * became `numeric(10,2)` these fields were `Int`, so the old `number` signature was
+ * safe; the moment they widened, every comparison in here became a silent
+ * misordering — a low item reporting `sufficient` (missed reorder) or a full one
+ * reporting `low` (false alert). See lib/__tests__/inventory.test.ts.
+ */
+export type StockQty = number | Prisma.Decimal;
+
+/** Numeric value of a quantity, whichever shape it arrived in. */
+function toNumber(v: StockQty): number {
+	return typeof v === "number" ? v : v.toNumber();
+}
+
+export function getStockStatus(quantity: StockQty, threshold: StockQty | null): StockStatus {
 	if (threshold === null) return null;
-	if (quantity === 0) return "out_of_stock";
-	if (quantity < threshold) return "low";
+	const qty = toNumber(quantity);
+	if (qty === 0) return "out_of_stock";
+	if (qty < toNumber(threshold)) return "low";
 	return "sufficient";
 }
 
-export function withStockStatus<T extends { quantity: number; low_stock_threshold: number | null }>(
+/**
+ * Adds `stock_status` to an item row and NORMALIZES its two quantity columns to
+ * plain numbers.
+ *
+ * The normalization is not incidental: every caller hands the result straight to
+ * an API response, so this is the serialization boundary for `quantity` and
+ * `low_stock_threshold` whether it wants to be or not. Both are `numeric(10,2)`,
+ * which Prisma returns as a `Decimal` and `JSON.stringify` renders as a STRING —
+ * while every client type declares them `number`. Nothing type-checks across the
+ * wire, so the mismatch surfaces only as downstream oddities: `.toFixed()` throwing,
+ * or `unitLabel`'s `qty === 1` test failing against `"1"` and printing "1 units".
+ *
+ * This passed the values through verbatim until 2026-08-05, which was correct while
+ * the columns were `Int` and became wrong the moment the fractional-quantity
+ * migration widened them. `Number()` is exact here — `numeric(10,2)` tops out at
+ * 99999999.99, far inside what a double represents without loss.
+ */
+export function withStockStatus<T extends { quantity: StockQty; low_stock_threshold: StockQty | null }>(
 	item: T,
-): T & { stock_status: StockStatus } {
+): Omit<T, "quantity" | "low_stock_threshold"> & {
+	quantity: number;
+	low_stock_threshold: number | null;
+	stock_status: StockStatus;
+} {
 	return {
 		...item,
+		quantity: toNumber(item.quantity),
+		low_stock_threshold:
+			item.low_stock_threshold === null ? null : toNumber(item.low_stock_threshold),
 		stock_status: getStockStatus(item.quantity, item.low_stock_threshold),
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Mixed-unit aggregates
+// ---------------------------------------------------------------------------
+
+/**
+ * How an aggregated quantity is DENOMINATED — the one shape every endpoint that
+ * sums `stock_movement.qty` returns alongside its numbers.
+ *
+ * `stock_movement.unit` is stamped at write time by recordMovements() and frozen,
+ * so a ledger that spans a unit change (item edited from `each` to `box`) is now
+ * DETECTABLE. It is still not summable: `3 each + 2 box` has no value, and there is
+ * no conversion to fall back on — multi-UOM conversion was declined deliberately
+ * (D4), because inventing a factor here would rebuild the silent wrongness that
+ * stamping the unit exists to end.
+ *
+ * So aggregates FLAG rather than fail. When `mixed` is true the endpoint returns
+ * `null` for every quantity (and for anything derived from one — value, weighted
+ * average cost, usage rate, runway) and lets the UI say why. Three rules make that
+ * honest rather than merely quiet:
+ *
+ *  1. The basis is derived ONLY from the stamped units of the rows that actually
+ *     fed the aggregate. Never from `inventory_item.unit` — the item's current unit
+ *     is exactly the wrong answer, since it is what silently reinterpreted history
+ *     before the column existed.
+ *  2. The basis covers every row the aggregate touched, including rows outside a
+ *     display window that were folded into an opening balance or a running average.
+ *     A window that looks internally consistent is still contaminated if its
+ *     starting level was summed across the seam.
+ *  3. Nothing is truncated to "just the current unit". Dropping the older
+ *     denomination would produce a plausible number that quietly disagrees with the
+ *     ledger — worse than no number.
+ *
+ * `units` is SORTED, not chronological: it comes from `array_agg(DISTINCT …)`, which
+ * has no cheap chronological form. Copy must therefore say "spans 2 units (box,
+ * each)" and never imply a direction ("each → box") the basis cannot support.
+ */
+export interface UnitBasis {
+	/** Distinct stamped units across the aggregated rows, sorted. Empty if no rows. */
+	units: string[];
+	/** The unit every row shares. `null` when the rows are mixed OR there are none. */
+	unit: string | null;
+	/** More than one distinct stamped unit — totals over these rows are withheld. */
+	mixed: boolean;
+}
+
+/**
+ * Builds a {@link UnitBasis} from the stamped units of the aggregated rows.
+ *
+ * Accepts what the two query styles actually hand back: a `text[]` from
+ * `array_agg(DISTINCT sm.unit)` (null when the aggregate matched no rows), or the
+ * per-row `unit` values off a `findMany`. Blanks are ignored rather than counted as
+ * a distinct unit — a blank is missing information, and treating it as a second
+ * denomination would flag a clean series.
+ */
+export function unitBasis(units: Iterable<string | null | undefined> | null | undefined): UnitBasis {
+	const seen = new Set<string>();
+	for (const u of units ?? []) {
+		if (typeof u === "string" && u.trim() !== "") seen.add(u);
+	}
+	const sorted = [...seen].sort();
+	return {
+		units: sorted,
+		unit: sorted.length === 1 ? sorted[0] : null,
+		mixed: sorted.length > 1,
+	};
+}
+
+/** Union of several bases — e.g. one page of per-group aggregates sharing a column. */
+export function mergeUnitBases(bases: UnitBasis[]): UnitBasis {
+	return unitBasis(bases.flatMap((b) => b.units));
 }

@@ -210,7 +210,10 @@ router.post("/items/:id/import", requirePermission("manage_inventory"), async (r
 	try{
 		const orgId = req.user!.organization_id as string;
 		const qbItemId = req.params.id as string;
-		const result = await importQBItem(orgId, qbItemId);
+		const result = await importQBItem(orgId, qbItemId, {
+			actor_type: "dispatcher",
+			actor_id: req.user!.uid,
+		});
 
 		res.status(201).json(createSuccessResponse(result));
 	} catch (err) {

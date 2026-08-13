@@ -56,7 +56,7 @@ function NotificationItem({
 	return (
 		<button
 			onClick={handleClick}
-			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-border-subtle/60 hover:bg-surface-raised bg-surface transition-colors ${
+			className={`w-full text-left flex gap-3 px-4 py-3 border-b border-border-subtle hover:bg-surface-raised bg-surface transition-colors ${
 				isUnread ? "border-l-2 border-l-primary" : ""
 			}`}
 		>
@@ -147,13 +147,13 @@ export default function TechnicianNotificationsPage() {
 			)}
 
 			{!isLoading && notifications.length > 0 && (
-				<div className="rounded-xl border border-border-subtle overflow-hidden">
+				<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 					{groupOrder.map((group) => {
 						const items = groups[group];
 						if (!items?.length) return null;
 						return (
 							<div key={group}>
-								<div className="px-4 py-2 bg-base/60 text-[11px] font-medium text-text-muted uppercase tracking-wide">
+								<div className="px-4 py-2 border-b border-border-subtle text-[11px] font-medium text-text-muted uppercase tracking-wide">
 									{group}
 								</div>
 								{items.map((notif) => (

@@ -1,4 +1,5 @@
 import z from "zod";
+import { STOCK_QTY_MESSAGE, isStorableStockQty } from "./shared.js";
 
 // Batch expiry dates round-trip through native `<input type="date">` controls
 // on the frontend, which emit a bare "YYYY-MM-DD" — not the full ISO-8601
@@ -17,19 +18,29 @@ export const expiresAtField = z
 // depend on the item's is_serialized/is_batch_tracked flags, which this
 // schema can't see — those are enforced in the controller after the item
 // is loaded.
+//
+// qty is bounded to numeric(10,2) via isStorableStockQty — see validate/shared.ts.
 export const receiveInventorySchema = z
 	.object({
-		qty: z.number().positive(),
+		qty: z.number().positive().refine(isStorableStockQty, STOCK_QTY_MESSAGE),
 		serial_numbers: z.array(z.string().trim().min(1).max(100)).optional(),
 		// When true for a serialized item, the controller synthesizes the per-unit
 		// serial numbers (AUTO-… codes) so a business with no manufacturer serials
 		// doesn't hand-type each. Ignored for non-serialized items.
 		auto_serial: z.boolean().optional(),
+		// What the supplier billed per unit on THIS receipt. Optional and left
+		// unknown rather than guessed — price-history reports coverage instead
+		// of averaging in a fake 0.
+		unit_cost: z.number().nonnegative().optional(),
 		batch: z
 			.object({
 				batch_number: z.string().trim().min(1).max(100),
 				expires_at: expiresAtField,
 				supplier: z.string().trim().max(200).optional(),
+				// Lot-level twin of the movement's unit_cost, stored on the lot
+				// header so a batch's paid cost is readable without walking its
+				// movements. Falls back to the receive-level unit_cost.
+				unit_cost: z.number().nonnegative().optional(),
 			})
 			.optional(),
 		batch_id: z.string().uuid().optional(),
@@ -47,6 +58,9 @@ export type ReceiveInventoryInput = z.infer<typeof receiveInventorySchema>;
 export const listSerialsQuerySchema = z.object({
 	status: z.enum(["in_warehouse", "on_vehicle", "consumed", "lost", "returned"]).optional(),
 	vehicle_id: z.string().uuid().optional(),
+	// Narrows to the units belonging to one lot, for the batch detail page —
+	// a dual-tracked item's batch is a bag of individually identified units.
+	batch_id: z.string().uuid().optional(),
 	cursor: z.string().min(1).optional(),
 	limit: z.coerce.number().int().min(1).max(100).optional(),
 	search: z.string().trim().min(1).max(200).optional(),
@@ -63,12 +77,15 @@ export const listBatchesQuerySchema = z.object({
 export type ListBatchesQueryInput = z.infer<typeof listBatchesQuerySchema>;
 
 // PATCH /inventory/:id/tracking — flips is_serialized/is_batch_tracked ON or
-// OFF (enable, disable, or switch serialized↔batch). Both flags are optional so
-// callers can flip just one; at least one must be provided. The empty-only
-// policy (zero on-hand qty AND zero serial_unit/stock_batch rows before any
-// change that disables or switches an already-tracked dimension) and the
-// provisional-item block are enforced authoritatively in the controller — this
-// schema only shapes the request body.
+// OFF. Both flags are optional so callers can flip just one; at least one must
+// be provided. The empty-only policy (zero on-hand across warehouse and every
+// vehicle; plus, for disabling/switching an already-tracked dimension, no
+// in_warehouse/on_vehicle serial and no lot still holding stock) and the
+// provisional-item block are enforced authoritatively in the controller.
+//
+// Terminal serials and drained lots do NOT block a disable — they stay as
+// read-only history. GET /inventory/:itemId/tracking-eligibility exposes the
+// same facts for the UI to explain the block up front.
 export const toggleTrackingSchema = z
 	.object({
 		is_serialized: z.boolean().optional(),

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { Prisma } from "../../generated/prisma/client.js";
+import { STOCK_QTY_MESSAGE, isStorableStockQty } from "../lib/validate/shared.js";
 import {
 	applyTracking,
 	type ItemTrackingFlags,
@@ -35,6 +36,15 @@ export class InsufficientStockError extends Error {
 	}
 }
 
+/** Throws instead of defaulting — a guessed unit would silently misdenominate the ledger. */
+function mustGetUnit(units: Map<string, string>, itemId: string): string {
+	const unit = units.get(itemId);
+	if (unit === undefined) {
+		throw new Error(`Cannot stamp movement unit: inventory item ${itemId} not found in org scope`);
+	}
+	return unit;
+}
+
 export interface ActorInfo {
 	actor_type: "technician" | "dispatcher" | "system";
 	actor_id?: string;
@@ -42,7 +52,7 @@ export interface ActorInfo {
 
 export interface MovementInput {
 	inventory_item_id: string;
-	/** Must be > 0. Fractional qty rejected when movement touches warehouse (Int column). */
+	/** Must be > 0, with at most 2 decimal places (every qty column is numeric(10,2)). */
 	qty: number;
 	from_location_type: "warehouse" | "vehicle" | "consumed" | "adjustment" | "external";
 	from_vehicle_id?: string;
@@ -61,6 +71,8 @@ export interface MovementInput {
 		| "initial"
 		| "supplier_purchase";
 	note?: string;
+	/** Per-unit cost paid, for intake movements only (reason "receive"/"supplier_purchase"); omit elsewhere. */
+	unit_cost?: number;
 	visit_id?: string;
 	visit_line_item_id?: string;
 	restock_record_id?: string;
@@ -117,11 +129,11 @@ export async function recordMovements(
 	for (const m of movements) {
 		if (m.qty <= 0) throw new Error(`Movement qty must be > 0; got ${m.qty}`);
 
-		const touchesWarehouse =
-			m.from_location_type === "warehouse" || m.to_location_type === "warehouse";
-		if (touchesWarehouse && !Number.isInteger(m.qty)) {
+		// A third decimal is refused here rather than silently rounded by Postgres,
+		// which would desync the cached on-hand from this ledger.
+		if (!isStorableStockQty(m.qty)) {
 			throw new Error(
-				`Fractional qty (${m.qty}) rejected for warehouse movement on item ${m.inventory_item_id}; inventory_item.quantity is Int`,
+				`Movement qty (${m.qty}) on item ${m.inventory_item_id} is not storable: ${STOCK_QTY_MESSAGE}`,
 			);
 		}
 	}
@@ -266,16 +278,21 @@ export async function recordMovements(
 	// rows to insert after the movement rows). May append TRACKING_GAP to notes.
 	const allItemIds = [...new Set(withIds.map((m) => m.inventory_item_id))];
 	const flags = new Map<string, ItemTrackingFlags>();
+	// Read alongside tracking flags (no second round trip), inside the transaction
+	// so the stamp matches the unit the item had when the stock moved.
+	const units = new Map<string, string>();
 	if (allItemIds.length > 0) {
 		const flagRows = await tx.inventory_item.findMany({
 			where: { id: { in: allItemIds }, organization_id: orgId },
-			select: { id: true, is_serialized: true, is_batch_tracked: true },
+			select: { id: true, is_serialized: true, is_batch_tracked: true, unit: true },
 		});
-		for (const r of flagRows)
+		for (const r of flagRows) {
 			flags.set(r.id, {
 				is_serialized: !!r.is_serialized,
 				is_batch_tracked: !!r.is_batch_tracked,
 			});
+			units.set(r.id, r.unit);
+		}
 	}
 
 	const tracking = await applyTracking(tx, orgId, flags, withIds as TrackedMovement[], {
@@ -290,12 +307,14 @@ export async function recordMovements(
 			organization_id: orgId,
 			inventory_item_id: m.inventory_item_id,
 			qty: new Prisma.Decimal(m.qty),
+			unit: mustGetUnit(units, m.inventory_item_id),
 			from_location_type: m.from_location_type,
 			from_vehicle_id: m.from_vehicle_id ?? null,
 			to_location_type: m.to_location_type,
 			to_vehicle_id: m.to_vehicle_id ?? null,
 			reason: m.reason,
 			note: m.note ?? null,
+			unit_cost: m.unit_cost != null ? new Prisma.Decimal(m.unit_cost) : null,
 			actor_type: actor.actor_type,
 			actor_id: actor.actor_id ?? null,
 			visit_id: m.visit_id ?? null,
@@ -326,7 +345,9 @@ export async function recordMovements(
 		.filter(
 			(item) =>
 				item.low_stock_threshold !== null &&
-				Number(item.quantity) <= item.low_stock_threshold,
+				// Both sides coerced explicitly: these are Decimals, and `<=` between
+				// them compares their string forms, making "9" <= "10" false.
+				Number(item.quantity) <= Number(item.low_stock_threshold),
 		)
 		.map((item) => item.id);
 

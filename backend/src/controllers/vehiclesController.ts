@@ -424,11 +424,18 @@ const adjustStockSchema = z
 						batch_picks:     z
 							.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
 							.optional(),
+						// Per-unit cost paid — only meaningful on a supplier_purchase
+						// line (a tech buying a part in the field). Recorded on the
+						// movement so it joins warehouse receives in the item's paid-cost
+						// history; ignored by every other adjustment type, which move
+						// stock the org already owns and therefore has no purchase price.
+						unit_cost:       z.number().nonnegative().optional(),
 						new_batch: z
 							.object({
 								batch_number: z.string().trim().min(1).max(100),
 								expires_at:   expiresAtField,
 								supplier:     z.string().trim().max(200).optional(),
+								unit_cost:    z.number().nonnegative().optional(),
 							})
 							.optional(),
 					})
@@ -1366,6 +1373,199 @@ export const addPartsUsed = async (visitId: string, data: unknown, organizationI
 	}
 };
 
+// ── Update parts used quantity (reverses/extends the stock ledger) ────────────
+
+const updatePartsUsedQtySchema = z.object({
+	technician_id: z.string().uuid(),
+	quantity:       z.number().min(0),
+});
+
+/**
+ * Edit-Parts qty +/-/delete for a line item that came from addPartsUsed
+ * (inventory_item_id set, fulfillment_status "used"). A plain field update here
+ * would desync the line's displayed quantity from the serial/batch ledger that
+ * was written when the part was first added — this mirrors that ledger instead:
+ * increases deduct more from the same vehicle, decreases (incl. to zero) write a
+ * "reversal" movement back onto it, releasing the exact consumed serials/batch
+ * qty tied to this line so the audit trail always matches what's billed.
+ */
+export const updatePartsUsedQty = async (visitId: string, lineItemId: string, data: unknown, organizationId: string) => {
+	try {
+		const parsed = updatePartsUsedQtySchema.parse(data);
+		const sdb = getScopedDb(organizationId);
+
+		const lineItem = await sdb.job_visit_line_item.findFirst({
+			where: { id: lineItemId, visit_id: visitId },
+			include: { inventory_item: true },
+		});
+		if (!lineItem) return { err: "Line item not found" };
+		if (!lineItem.inventory_item_id || !lineItem.inventory_item || lineItem.fulfillment_status !== "used") {
+			return { err: "This line isn't linked to vehicle stock — edit it as a regular line item" };
+		}
+
+		const currentQty = Number(lineItem.quantity);
+		const newQty = parsed.quantity;
+		const delta = newQty - currentQty;
+		if (delta === 0) return { err: "", item: lineItem };
+
+		const isSerialized = lineItem.inventory_item.is_serialized;
+		const isBatchTracked = lineItem.inventory_item.is_batch_tracked;
+
+		// Increasing a serialized line needs a specific new unit picked off the
+		// vehicle — Edit Parts has no picker for that, so it must be re-added via
+		// Vehicle Stock instead of silently understating what's on hand.
+		if (delta > 0 && isSerialized) {
+			return { err: "Serialized items can't be increased here — remove this line and re-add the units from Vehicle Stock." };
+		}
+
+		const originMovement = await sdb.stock_movement.findFirst({
+			where: { visit_line_item_id: lineItemId, from_location_type: "vehicle" },
+			select: { from_vehicle_id: true },
+			orderBy: { created_at: "asc" },
+		});
+		const vehicleId = originMovement?.from_vehicle_id;
+		if (!vehicleId) return { err: "Could not determine the originating vehicle for this part" };
+
+		const updatedLineItem = await sdb.$transaction(async (tx) => {
+			const amount = Math.abs(delta);
+
+			if (delta > 0) {
+				// Increase: additional deduction from the same vehicle. Batch-tracked
+				// items auto-allocate FIFO (recordMovements → applyTracking); untracked
+				// items just deduct. Serialized items were rejected above.
+				await recordMovements(
+					tx as unknown as Prisma.TransactionClient,
+					organizationId,
+					{ actor_type: "technician", actor_id: parsed.technician_id },
+					[
+						{
+							inventory_item_id:  lineItem.inventory_item_id!,
+							qty:                amount,
+							from_location_type: "vehicle",
+							from_vehicle_id:    vehicleId,
+							to_location_type:   "consumed",
+							reason:             "parts_used",
+							visit_id:           visitId,
+							visit_line_item_id: lineItemId,
+							batch_allocations:  undefined,
+						},
+					],
+				);
+			} else {
+				// Decrease (incl. to zero): release exactly `amount` of what this line
+				// actually consumed back onto the vehicle.
+				let serial: { unit_ids: string[] } | undefined;
+				let batch_allocations: { batch_id: string; qty: number }[] | undefined;
+
+				if (isSerialized) {
+					const released = await tx.serial_unit.findMany({
+						where: { consumed_line_item_id: lineItemId },
+						select: { id: true },
+						orderBy: { consumed_at: "asc" },
+						take: amount,
+					});
+					if (released.length !== amount) {
+						throw new TrackingValidationError(
+							`Only ${released.length} consumed unit(s) on record for this line — cannot release ${amount}`,
+						);
+					}
+					serial = { unit_ids: released.map((s) => s.id) };
+				} else if (isBatchTracked) {
+					// Net every movement this line has ever produced (reversals cancel
+					// their original) to find what's still attributed to it per batch.
+					const movements = await tx.stock_movement.findMany({
+						where: { visit_line_item_id: lineItemId },
+						include: { movement_batches: true },
+						orderBy: { created_at: "asc" },
+					});
+					const net = new Map<string, Prisma.Decimal>();
+					for (const mv of movements) {
+						for (const b of mv.movement_batches) {
+							const signedQty =
+								mv.reason === "reversal"
+									? new Prisma.Decimal(b.qty).negated()
+									: new Prisma.Decimal(b.qty);
+							net.set(b.batch_id, (net.get(b.batch_id) ?? new Prisma.Decimal(0)).plus(signedQty));
+						}
+					}
+
+					let remaining = new Prisma.Decimal(amount);
+					batch_allocations = [];
+					for (const [batch_id, qty] of net) {
+						if (remaining.lessThanOrEqualTo(0) || qty.lessThanOrEqualTo(0)) continue;
+						const take = Prisma.Decimal.min(remaining, qty);
+						batch_allocations.push({ batch_id, qty: Number(take) });
+						remaining = remaining.minus(take);
+					}
+					if (remaining.greaterThan(0)) {
+						throw new TrackingValidationError(
+							`Only ${amount - Number(remaining)} unit(s) of batch stock on record for this line — cannot release ${amount}`,
+						);
+					}
+				}
+
+				await recordMovements(
+					tx as unknown as Prisma.TransactionClient,
+					organizationId,
+					{ actor_type: "technician", actor_id: parsed.technician_id },
+					[
+						{
+							inventory_item_id:  lineItem.inventory_item_id!,
+							qty:                amount,
+							from_location_type: "consumed",
+							to_location_type:   "vehicle",
+							to_vehicle_id:      vehicleId,
+							reason:             "reversal",
+							visit_id:           visitId,
+							visit_line_item_id: lineItemId,
+							serial,
+							batch_allocations,
+						},
+					],
+				);
+			}
+
+			let result: typeof lineItem | null;
+			if (newQty <= 0) {
+				await tx.job_visit_line_item.delete({ where: { id: lineItemId } });
+				result = null;
+			} else {
+				result = await tx.job_visit_line_item.update({
+					where: { id: lineItemId },
+					data: {
+						quantity: newQty,
+						total:    Number(lineItem.unit_price) * newQty,
+					},
+					include: { inventory_item: true },
+				});
+			}
+
+			await recomputeVisitTotals(visitId, organizationId, tx as unknown as Prisma.TransactionClient);
+
+			return result;
+		});
+
+		await logActivity({
+			event_type: "vehicle_stock.parts_used_adjusted",
+			action: "updated",
+			entity_type: "job_visit_line_item",
+			entity_id: lineItemId,
+			organization_id: organizationId,
+			actor_type: "technician",
+			actor_id: parsed.technician_id,
+			changes: { quantity: { old: currentQty, new: newQty } },
+		});
+
+		return { err: "", item: updatedLineItem };
+	} catch (e: unknown) {
+		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
+		const t = trackingErrorResponse(e);
+		if (t) return t;
+		log.error({ err: e }, "Failed to update parts used quantity");
+		return { err: "Failed to update parts used quantity" };
+	}
+};
+
 // ── Apply Fill ────────────────────────────────────────────────────────────────
 
 export interface FillToStandardLine {
@@ -1414,8 +1614,9 @@ export async function applyFill(
 				where: { id: { in: itemIds } },
 				select: { id: true, quantity: true },
 			});
+			// quantity is inferred from the select — a Decimal now, coerced right here.
 			const availableById = new Map<string, number>(
-				items.map((i: { id: string; quantity: number }) => [i.id, Number(i.quantity)]),
+				items.map((i) => [i.id, Number(i.quantity)]),
 			);
 
 			// Serial/batch tracking (B-T4) — warn-don't-block: allowUntracked lets a
@@ -1698,7 +1899,7 @@ export async function completeRestock(
 				where: { id: { in: itemIds } },
 				select: { id: true, quantity: true },
 			});
-			const availableById = new Map(items.map((i: { id: string; quantity: number }) => [i.id, Number(i.quantity)]));
+			const availableById = new Map(items.map((i) => [i.id, Number(i.quantity)]));
 
 			// Resolve each line's stock item up front (throws for an unknown
 			// stock_item_id, same as the original per-line .find() did).
@@ -2178,6 +2379,12 @@ export async function adjustStock(
 						batch_number: raw.new_batch.batch_number,
 						expires_at: raw.new_batch.expires_at ? new Date(raw.new_batch.expires_at) : null,
 						supplier: raw.new_batch.supplier ?? null,
+						// Lot cost only for a genuine purchase — a transfer or
+						// audit correction of an existing lot paid nothing.
+						unit_cost:
+							parsed.type === "supplier_purchase"
+								? (raw.new_batch.unit_cost ?? raw.unit_cost ?? null)
+								: null,
 					});
 					batchId = batch.id;
 				}
@@ -2271,6 +2478,11 @@ export async function adjustStock(
 						to_vehicle_id:      vehicleId,
 						reason:             "supplier_purchase",
 						adjustment_id:      created.id,
+						// Only branch carrying a purchase price: stock enters from
+						// outside the org here, so this is literally what was paid.
+						// new_item.cost is NOT a fallback — that's the standard cost
+						// being configured on a freshly created item, not a receipt.
+						unit_cost:          parsed.lines[i]?.unit_cost,
 						...tracking,
 					});
 				} else {
@@ -2983,12 +3195,17 @@ const supplierPartUsedSchema = z
 		qty_used:          z.number().positive(),
 		inventory_item_id: z.string().uuid().optional(),
 		new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
+		// What the tech paid the supplier per unit for this part. Recorded on the
+		// external → vehicle leg (the purchase); the vehicle → consumed leg is the
+		// same stock being used, not a second purchase, so it carries no cost.
+		unit_cost:         z.number().nonnegative().optional(),
 		new_serials:       z.array(z.string().trim().min(1).max(100)).optional(),
 		batch: z
 			.object({
 				batch_number: z.string().trim().min(1).max(100),
 				expires_at:   expiresAtField,
 				supplier:     z.string().trim().max(200).optional(),
+				unit_cost:    z.number().nonnegative().optional(),
 			})
 			.optional(),
 		batch_id: z.string().uuid().optional(),
@@ -3061,6 +3278,7 @@ export async function addSupplierPartUsed(
 						batch_number:      parsed.batch.batch_number,
 						expires_at:        parsed.batch.expires_at ? new Date(parsed.batch.expires_at) : null,
 						supplier:          parsed.batch.supplier ?? null,
+						unit_cost:         parsed.batch.unit_cost ?? parsed.unit_cost ?? null,
 					});
 				} else {
 					const batchRow = await tx.stock_batch.findFirst({
@@ -3082,6 +3300,7 @@ export async function addSupplierPartUsed(
 					to_location_type:   "vehicle",
 					to_vehicle_id:      vehicleId,
 					reason:             "supplier_purchase",
+					unit_cost:          parsed.unit_cost,
 					...(leg1Serial ? { serial: leg1Serial } : {}),
 					...(batchAllocations ? { batch_allocations: batchAllocations } : {}),
 				},

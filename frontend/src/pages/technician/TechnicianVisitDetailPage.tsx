@@ -81,10 +81,10 @@ function JobContextSection({
 	const primaryContact = job?.client?.contacts?.find((cc) => cc.is_primary)?.contact ?? null;
 
 	return (
-		<div className="rounded-xl border border-border-subtle overflow-hidden">
+		<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 			<button
 				onClick={() => setOpen((p) => !p)}
-				className="w-full flex items-center justify-between px-4 py-3 bg-base border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Job Context
@@ -277,7 +277,7 @@ function JobContextSection({
 										<span
 											role="button"
 											aria-disabled="true"
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface/50 border border-border/50 text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
 										>
 											<Phone
 												size={
@@ -303,7 +303,7 @@ function JobContextSection({
 										<span
 											role="button"
 											aria-disabled="true"
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface/50 border border-border/50 text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
 										>
 											<Mail
 												size={
@@ -456,9 +456,9 @@ export default function TechnicianVisitDetailPage() {
 		return (
 			<div className="max-w-lg mx-auto space-y-4 animate-pulse">
 				<div className="h-7 w-48 bg-surface rounded" />
-				<div className="h-4 w-32 bg-surface/60 rounded" />
+				<div className="h-4 w-32 bg-surface rounded" />
 				<div className="h-24 bg-surface rounded-xl" />
-				<div className="h-32 bg-surface/60 rounded-xl" />
+				<div className="h-32 bg-surface rounded-xl" />
 			</div>
 		);
 	}

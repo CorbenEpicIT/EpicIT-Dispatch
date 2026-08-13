@@ -585,7 +585,7 @@ export default function TechnicianVisitsPage() {
 												`/technician/visits/${row.id}`
 											)
 										}
-										className="flex-[1] flex flex-col items-center justify-center gap-1 rounded-lg border border-border bg-surface/50 text-text-tertiary hover:bg-surface hover:text-text-primary hover:border-border-strong transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[52px]"
+										className="flex-[1] flex flex-col items-center justify-center gap-1 rounded-lg border border-border bg-surface text-text-tertiary hover:bg-surface-raised hover:text-text-primary hover:border-border-strong transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[52px]"
 										aria-label="View visit details"
 									>
 										<ChevronRight

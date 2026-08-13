@@ -229,12 +229,12 @@ export default function TechnicianDashboardPage() {
 		return (
 			<div className="px-4 sm:px-6 pt-5 pb-8 max-w-lg w-full space-y-4 lg:max-w-4xl lg:px-8">
 				<div className="h-7 w-36 bg-surface rounded animate-pulse" />
-				<div className="h-4 w-28 bg-surface/50 rounded animate-pulse" />
+				<div className="h-4 w-28 bg-surface rounded animate-pulse" />
 				<div className="h-28 bg-surface rounded-xl animate-pulse mt-2" />
 				{[1, 2, 3].map((i) => (
 					<div
 						key={i}
-						className="h-[52px] bg-surface/50 rounded-lg animate-pulse"
+						className="h-[52px] bg-surface rounded-lg animate-pulse"
 					/>
 				))}
 			</div>
@@ -444,7 +444,7 @@ export default function TechnicianDashboardPage() {
 									showDateTime={true}
 								/>
 							) : heroType !== "wrapping-up" && (
-								<div className="rounded-xl border border-border-subtle bg-base/40 px-4 py-6 text-center">
+								<div className="rounded-xl border border-border-subtle bg-base px-4 py-6 text-center">
 									<p className="text-sm text-text-faint">
 										No visits scheduled. Check with dispatch.
 									</p>
@@ -479,7 +479,7 @@ export default function TechnicianDashboardPage() {
 									: "visits"}
 							</span>
 							{doneCount > 0 && (
-								<span className="text-[10px] font-semibold text-success/80">
+								<span className="text-[10px] font-semibold text-success-text">
 									{doneCount} done
 								</span>
 							)}
@@ -494,10 +494,10 @@ export default function TechnicianDashboardPage() {
 								{/* Overdue bucket */}
 								{overdueVisits.length > 0 && (
 									<div>
-										<p className="text-[10px] font-bold uppercase tracking-widest text-error/80 mb-1.5 px-0.5">
+										<p className="text-[10px] font-bold uppercase tracking-widest text-error-text mb-1.5 px-0.5">
 											Overdue
 										</p>
-										<div className="rounded-xl border border-error/20 bg-base overflow-hidden divide-y divide-border-subtle/80">
+										<div className="rounded-xl border border-error/20 bg-base overflow-hidden divide-y divide-border-subtle">
 											{overdueVisits.map(
 												(
 													visit
@@ -528,10 +528,10 @@ export default function TechnicianDashboardPage() {
 								{/* Up Next bucket */}
 								{upNextVisits.length > 0 && (
 									<div>
-										<p className="text-[10px] font-bold uppercase tracking-widest text-warning/80 mb-1.5 px-0.5">
+										<p className="text-[10px] font-bold uppercase tracking-widest text-warning-text mb-1.5 px-0.5">
 											Up Next
 										</p>
-										<div className="rounded-xl border border-warning/20 bg-base overflow-hidden divide-y divide-border-subtle/80">
+										<div className="rounded-xl border border-warning/20 bg-base overflow-hidden divide-y divide-border-subtle">
 											{upNextVisits.map(
 												(
 													visit
@@ -565,7 +565,7 @@ export default function TechnicianDashboardPage() {
 										<p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1.5 px-0.5">
 											Upcoming
 										</p>
-										<div className="rounded-xl border border-border-subtle bg-base overflow-hidden divide-y divide-border-subtle/80">
+										<div className="rounded-xl border border-border-subtle bg-base overflow-hidden divide-y divide-border-subtle">
 											{upcomingVisits.map(
 												(
 													visit
@@ -600,7 +600,7 @@ export default function TechnicianDashboardPage() {
 										v.status ===
 											"Cancelled"
 								).length > 0 && (
-									<div className="rounded-xl border border-border-subtle bg-base overflow-hidden divide-y divide-border-subtle/80">
+									<div className="rounded-xl border border-border-subtle bg-base overflow-hidden divide-y divide-border-subtle">
 										{todayVisits
 											.filter(
 												(
@@ -660,13 +660,14 @@ export default function TechnicianDashboardPage() {
 								</span>
 							</div>
 							<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
-								<div
+								<button
+									type="button"
 									onClick={() =>
 										navigate(
 											`/technician/visits/${nextDayVisits[0].id}`
 										)
 									}
-									className="flex items-center gap-3 px-3 py-3 min-h-[52px] cursor-pointer hover:bg-surface/40 transition-colors duration-150"
+									className="w-full flex items-center gap-3 px-3 py-3 min-h-[52px] text-left cursor-pointer hover:bg-surface-raised transition-colors duration-150"
 								>
 									<div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-surface-raised" />
 									<div className="flex-1 min-w-0">
@@ -690,7 +691,7 @@ export default function TechnicianDashboardPage() {
 											tz
 										)}
 									</span>
-								</div>
+								</button>
 								{nextDayVisits.length > 1 && (
 									<button
 										onClick={() =>
@@ -698,7 +699,7 @@ export default function TechnicianDashboardPage() {
 												"/technician/visits"
 											)
 										}
-										className="w-full px-3 py-2 border-t border-border-subtle/60 text-center hover:bg-surface/40 transition-colors duration-150"
+										className="w-full px-3 py-2 border-t border-border-subtle text-center hover:bg-surface-raised transition-colors duration-150"
 									>
 										<span className="text-[11px] text-text-muted">
 											+
@@ -793,16 +794,17 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 		: 0;
 
 	return (
-		<div
+		<button
+			type="button"
 			onClick={onClick}
-			className={`flex items-center gap-3 min-h-[52px] cursor-pointer transition-colors duration-150 ${
+			className={`w-full flex items-center gap-3 min-h-[52px] text-left cursor-pointer transition-colors duration-150 ${
 				isActive
 					? "bg-primary-bg-dim border-l-[3px] border-l-primary pl-[9px] pr-3 py-3"
 					: isOverdue
-						? "border-l-[3px] border-l-error pl-[9px] pr-3 py-3 hover:bg-surface/40"
+						? "border-l-[3px] border-l-error pl-[9px] pr-3 py-3 hover:bg-surface-raised"
 						: isUpNext
-							? "border-l-[3px] border-l-warning/50 pl-[9px] pr-3 py-3 hover:bg-surface/40"
-							: "px-3 py-3 hover:bg-surface/40"
+							? "border-l-[3px] border-l-warning/50 pl-[9px] pr-3 py-3 hover:bg-surface-raised"
+							: "px-3 py-3 hover:bg-surface-raised"
 			}`}
 		>
 			<div
@@ -834,7 +836,7 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 			</div>
 			<div className="flex-shrink-0 text-right">
 				{isDone ? (
-					<span className="text-[11px] text-success/70 font-medium">
+					<span className="text-[11px] text-success-text font-medium">
 						Done
 					</span>
 				) : isActive ? (
@@ -855,6 +857,6 @@ function ScheduleRow({ visit, tz, isOverdue, isUpNext, onClick }: ScheduleRowPro
 					</span>
 				)}
 			</div>
-		</div>
+		</button>
 	);
 }

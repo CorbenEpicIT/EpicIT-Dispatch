@@ -418,7 +418,7 @@ export default function VisitActionButtons({
 						<button
 							onClick={handleClockOut}
 							disabled={isLoading}
-							className={`${btn} border border-border/60 text-text-muted hover:bg-surface hover:text-text-tertiary`}
+							className={`${btn} border border-border text-text-muted hover:bg-surface hover:text-text-tertiary`}
 						>
 							<Clock size={iconSize} />
 							{isLoading ? "Clocking Out…" : "Clock Out"}

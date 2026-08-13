@@ -8,5 +8,8 @@ export interface ApiResponse<T> {
 	meta?: {
 		timestamp: string;
 		count?: number;
+		// Server-side row cap was hit: `data` is a prefix of the real result set,
+		// not the whole thing. Mirrors ResponseMeta.hasMore on the backend.
+		hasMore?: boolean;
 	};
 }

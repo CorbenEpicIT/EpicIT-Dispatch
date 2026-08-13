@@ -57,6 +57,7 @@ export default function TechnicianLayout() {
 					<div className="flex items-center gap-3 sm:gap-6">
 						<button
 							onClick={handleBack}
+							aria-label="Back"
 							className="flex items-center gap-2 text-text-tertiary hover:text-text-primary px-2 sm:px-3 py-2 rounded-lg hover:bg-surface group"
 						>
 							<ArrowLeft
@@ -137,6 +138,7 @@ export default function TechnicianLayout() {
 						</button>
 						<button
 							onClick={() => setNotifBanner(null)}
+							aria-label="Dismiss notification"
 							className="shrink-0 text-text-muted hover:text-text-secondary transition-colors mt-0.5"
 						>
 							<X size={14} />

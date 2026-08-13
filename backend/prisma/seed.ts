@@ -54,6 +54,21 @@ function firstOfMonth(monthOffset: number): Date {
 	return d;
 }
 
+/**
+ * Pads `text` to EXACTLY `len` chars for UI stress-test fixtures. Mid-word
+ * truncation is intentional — an unbreakable token is the worst case for wrapping.
+ * Pass a space-free filler for code-shaped fields (sku, barcode, alt_ids).
+ */
+function padTo(
+	text: string,
+	len: number,
+	filler = " Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+): string {
+	if (text.length >= len) return text.slice(0, len);
+	const needed = len - text.length;
+	return (text + filler.repeat(Math.ceil(needed / filler.length))).slice(0, len);
+}
+
 async function main() {
 	console.log("Seeding database...");
 
@@ -300,8 +315,11 @@ async function main() {
 		invIgniter,
 		invFlameSensor,
 		invCondPump,
+		invMaxLenStress,
 		invLineSet,
 		invCompressor,
+		invLineSetSmall,
+		invTubingMetric,
 	] = await Promise.all([
 		db.inventory_item.create({
 			data: {
@@ -462,6 +480,50 @@ async function main() {
 				unit: "each",
 			},
 		}),
+		// UI STRESS TEST FIXTURE — every field padded to its exact validation cap
+		// (lib/validate/inventory.ts) so layouts break here in dev, not at a
+		// customer with verbose part names. Keep caps in sync with the schema.
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: padTo(
+					"MAXLEN STRESS TEST — Universal High-Efficiency Variable-Speed Inverter-Driven Heat Pump Air Handler Replacement Assembly Kit (Commercial Rooftop, Left-Hand Return)",
+					255,
+				),
+				description: padTo(
+					"MAXLEN STRESS TEST — this description occupies the full 5000-character cap. The next token has no break opportunity anywhere in it, which is the worst case for any container that relies on word wrapping: " +
+						"UNBREAKABLE".repeat(16) +
+						" Everything after this point is filler prose so that clamped descriptions, expand/collapse toggles, tooltips, table cells and print layouts all get exercised at the true limit. ",
+					5000,
+				),
+				location: padTo(
+					"Warehouse — Building 3, Mezzanine Level 2, Aisle 14, Rack Section D, Shelf 7, Bin 22-B (Overflow Tote, Behind The Seasonal Equipment Pallets)",
+					255,
+				),
+				quantity: 0,
+				// Decimal(10, 2) ceiling — 8 integer digits + 2 decimals. Cost is
+				// deliberately identical to price: both fields at max width is what
+				// the currency columns have to survive.
+				unit_price: 99999999.99,
+				cost: 99999999.99,
+				sku: padTo("STRESS-MAXLEN-SKU-", 100, "X"),
+				barcode: padTo("STRESSMAXLENBARCODE", 200, "0"),
+				alt_ids: Array.from({ length: 12 }, (_, i) =>
+					padTo(`STRESS-ALT-ID-${String(i + 1).padStart(2, "0")}-`, 100, "X"),
+				),
+				// Decimal(10, 2) ceiling; qty 0 keeps it permanently below threshold so
+				// low-stock badges and reorder tables render the full 8-digit number.
+				low_stock_threshold: 99999999.99,
+				category: padTo("Stress Test Category — Very Long Freetext Grouping Axis Label", 100),
+				unit: "cylinder",
+				// 254-char RFC-maximum address (64-char local + 189-char domain).
+				alert_emails_enabled: true,
+				alert_email: `${padTo("inventory-maxlength-stress-test-alerts-mailbox", 64, "x")}@${padTo("stress-subdomain-one", 63, "x")}.${padTo("stress-subdomain-two", 63, "x")}.${padTo("verylongtldsegment", 61, "x")}`,
+				// Dual-tracked so serial AND batch badges stack on the same row.
+				is_serialized: true,
+				is_batch_tracked: true,
+			},
+		}),
 		db.inventory_item.create({
 			data: {
 				organization_id: org.id,
@@ -497,6 +559,47 @@ async function main() {
 				unit: "each",
 				is_serialized: true,
 				is_batch_tracked: true,
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				// FRACTIONAL FIXTURE — reaches 12.5 ft through the opening receive
+				// below, not by being written here. Same rule as every other item:
+				// quantity is a cache of the ledger.
+				name: "Copper Line Set 1/4 x 3/8 (Small)",
+				description:
+					"Insulated copper refrigerant line set, smaller gauge for compact systems, sold by the foot.",
+				location: "Warehouse — Rack C1",
+				quantity: 0,
+				unit_price: 7.5,
+				cost: 3.8,
+				sku: "LINE-14-38",
+				barcode: shortCode("ITM"),
+				alt_ids: ["LS-1438", "CU-LINESET-SMALL"],
+				low_stock_threshold: 15,
+				category: "Refrigerants",
+				unit: "ft",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				// METRIC FIXTURE — the only `mm` item in the seed. On-hand arrives
+				// through the opening receive below, same as everything else.
+				name: "Copper Refrigerant Tubing 9.52mm OD",
+				description:
+					"Seamless copper tubing in metric dimensions, standard for European HVAC systems and metric-spec installations.",
+				location: "Warehouse — Rack C2",
+				quantity: 0,
+				unit_price: 22.0,
+				cost: 11.5,
+				sku: "TUBE-9.52MM",
+				barcode: shortCode("ITM"),
+				alt_ids: ["TUBE-952-EU", "CU-TUBE-METRIC"],
+				low_stock_threshold: 100,
+				category: "Refrigerants",
+				unit: "mm",
 			},
 		}),
 	]);
@@ -3507,6 +3610,22 @@ async function main() {
 	const move = (actor: any, movements: any[], opts: any = {}) =>
 		db.$transaction((tx) => recordMovements(tx, org.id, actor, movements, opts));
 
+	// Same as move(), but rewrites created_at afterward so a movement can sit in
+	// the past — recordMovements always stamps now() and offers no override.
+	//
+	// CALLERS MUST STAY IN CHRONOLOGICAL ORDER: recordMovements checks stock
+	// sufficiency against live quantities, so insertion order and backdated
+	// order have to agree or the charted curve disagrees with actual on-hand.
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const moveAt = async (at: Date, actor: any, movements: any[], opts: any = {}) => {
+		const res = await move(actor, movements, opts);
+		await db.stock_movement.updateMany({
+			where: { id: { in: res.movementIds } },
+			data: { created_at: at },
+		});
+		return res;
+	};
+
 	// ============================================================================
 	// Serial & Batch Tracking Demo Data — Blower Motor (is_serialized) +
 	// Refrigerant (is_batch_tracked). Everything still flows through
@@ -3585,6 +3704,9 @@ async function main() {
 		batch_number: string;
 		supplier?: string;
 		expires_at?: Date;
+		// Twin of the receive movement's unit_cost — set both, or the lot header
+		// and the ledger disagree about what the delivery cost.
+		unit_cost?: number;
 		note?: string;
 	}) => db.$transaction((tx) => getOrCreateBatch(tx, org.id, args));
 
@@ -3637,21 +3759,315 @@ async function main() {
 		data: { recalled_at: daysFromNow(-3) },
 	});
 
-	// -- Compressor: dual-tracked (is_serialized + is_batch_tracked) — one lot,
-	// 3 serialized units, each unit's batch_id points back to the lot. --
-	const lotCompressor = await makeLot({
+	// -- Compressor: dual-tracked, carries a full 12-month BACKDATED ledger (3
+	// lots, 10 serialized units, 15 movements) so the History tab has real data
+	// to chart. Every step runs through moveAt() in chronological order, and
+	// lands on the same warehouse 2 / Truck 4 x1 end state as before.
+
+	// stock_batch/serial_unit received_at/consumed_at are stamped now() by the
+	// tracking pass — backdate them too, or the Tracking tab's Received column
+	// contradicts the History tab's ledger for the same unit.
+	const backdateLot = (lotId: string, at: Date) =>
+		db.stock_batch.update({
+			where: { id: lotId },
+			data: { received_at: at, created_at: at },
+		});
+	const backdateReceived = (serialNumbers: string[], at: Date) =>
+		db.serial_unit.updateMany({
+			where: { inventory_item_id: invCompressor.id, serial_number: { in: serialNumbers } },
+			data: { received_at: at, created_at: at },
+		});
+	const backdateConsumed = (serialNumbers: string[], at: Date) =>
+		db.serial_unit.updateMany({
+			where: { inventory_item_id: invCompressor.id, serial_number: { in: serialNumbers } },
+			data: { consumed_at: at },
+		});
+	const cmpUnit = async (serialNumber: string) =>
+		(
+			await db.serial_unit.findFirstOrThrow({
+				where: { inventory_item_id: invCompressor.id, serial_number: serialNumber },
+			})
+		).id;
+
+	// -- Cost & pricing history -------------------------------------------------
+	// The Cost & Pricing chart reads its two CONFIGURED series (set cost, list
+	// price) from the audit log, so backdate the item and write the edit history
+	// a year of supplier increases would have left.
+	//
+	// The LAST value of each field must equal the live column (cost 410,
+	// unit_price 620), or buildPriceStepSeries draws the tail as untracked drift.
+	const at365 = daysFromNow(-365);
+	await db.inventory_item.update({
+		where: { id: invCompressor.id },
+		data: { created_at: at365 },
+	});
+
+	const cmpPriceEdit = (
+		timestamp: Date,
+		changes: Record<string, { old: number | null; new: number }>,
+		event: "created" | "updated" = "updated",
+	) => ({
+		organization_id: org.id,
+		event_type: `inventory_item.${event}`,
+		action: event,
+		entity_type: "inventory_item",
+		entity_id: invCompressor.id,
+		actor_type: "dispatcher",
+		actor_id: dispatcher.id,
+		actor_name: dispatcher.name,
+		changes,
+		timestamp,
+	});
+
+	await db.log.createMany({
+		data: [
+			cmpPriceEdit(
+				at365,
+				{ cost: { old: null, new: 368.0 }, unit_price: { old: null, new: 560.0 } },
+				"created",
+			),
+			// Copeland raised the ZP31 line; cost follows immediately, price doesn't.
+			cmpPriceEdit(daysFromNow(-320), { cost: { old: 368.0, new: 385.0 } }),
+			// Customer price catches up two quarters later.
+			cmpPriceEdit(daysFromNow(-230), { unit_price: { old: 560.0, new: 590.0 } }),
+			// Second supplier increase — the one that visibly squeezes margin.
+			cmpPriceEdit(daysFromNow(-150), { cost: { old: 385.0, new: 410.0 } }),
+			// Price rise that restores it.
+			cmpPriceEdit(daysFromNow(-60), { unit_price: { old: 590.0, new: 620.0 } }),
+		],
+	});
+
+	// Four historical compressor replacements. getItemUsage only sees consumption
+	// linked through visit_line_item -> visit -> job -> client, so two of the six
+	// consumptions below are deliberately left unlinked (write-off, counter pull)
+	// to exercise that exclusion.
+	//
+	// `charged` is what the customer was actually billed, not list price — the
+	// chart's charged series is realized revenue, including a discount (J-0015)
+	// and a premium (J-0017).
+	const compressorJobSpecs = [
+		{ jobNumber: "J-0014", daysAgo: 290, charged: 560.0, client: client5, coords: { lat: 43.8198, lng: -91.2514 }, clientLabel: "Riverside Apartments", techId: tech1.id },
+		{ jobNumber: "J-0015", daysAgo: 260, charged: 540.0, client: client3, coords: { lat: 43.7889, lng: -91.2297 }, clientLabel: "Williams Property Management", techId: tech2.id },
+		{ jobNumber: "J-0016", daysAgo: 170, charged: 590.0, client: client4, coords: { lat: 43.8334, lng: -91.2601 }, clientLabel: "Anderson Office Complex", techId: tech1.id },
+		{ jobNumber: "J-0017", daysAgo: 30, charged: 660.0, client: client2, coords: { lat: 43.8129, lng: -91.2559 }, clientLabel: "Smith Commercial Properties", techId: tech3.id },
+	];
+
+	// Derived per visit (not fixed) so job totals don't contradict the line items.
+	const CMP_LABOR_TOTAL = 660.0;
+	const CMP_TAX_RATE = 0.0825;
+	const round2 = (n: number) => Math.round(n * 100) / 100;
+
+	const compressorVisits: { visitId: string; lineId: string }[] = [];
+	for (const spec of compressorJobSpecs) {
+		const day = daysFromNow(-spec.daysAgo);
+		const subtotal = round2(spec.charged + CMP_LABOR_TOTAL);
+		const taxAmount = round2(subtotal * CMP_TAX_RATE);
+		const total = round2(subtotal + taxAmount);
+		const histJob = await db.job.create({
+			data: {
+				organization_id: org.id,
+				job_number: spec.jobNumber,
+				name: `Compressor Replacement — ${spec.clientLabel}`,
+				description:
+					"Failed 3-ton scroll compressor diagnosed and replaced under service agreement.",
+				priority: "High",
+				address: spec.client.address,
+				coords: spec.coords,
+				status: "Completed",
+				client_id: spec.client.id,
+				subtotal,
+				tax_rate: CMP_TAX_RATE,
+				tax_amount: taxAmount,
+				actual_total: total,
+				completed_at: dateAt(day, 15),
+			},
+		});
+		const histVisit = await db.job_visit.create({
+			data: {
+				job_id: histJob.id,
+				name: "Compressor Replacement",
+				description:
+					"Recover charge, swap compressor, pull vacuum, recharge and verify superheat.",
+				arrival_constraint: "at",
+				finish_constraint: "when_done",
+				arrival_time: "08:00",
+				scheduled_start_at: dateAt(day, 8),
+				scheduled_end_at: dateAt(day, 15),
+				actual_start_at: dateAt(day, 8, 10),
+				actual_end_at: dateAt(day, 14, 45),
+				status: "Completed",
+				subtotal,
+				tax_rate: CMP_TAX_RATE,
+				tax_amount: taxAmount,
+				total,
+				visit_techs: { create: { tech_id: spec.techId } },
+				line_items: {
+					create: [
+						{
+							name: "Compressor 3-Ton Scroll R410A",
+							quantity: 1,
+							unit_price: spec.charged,
+							total: spec.charged,
+							source: "field_addition",
+							item_type: "material",
+							sort_order: 0,
+							inventory_item_id: invCompressor.id,
+						},
+						{
+							name: "Compressor Replacement Labor (4 hrs)",
+							quantity: 4,
+							unit_price: 165.0,
+							total: 660.0,
+							source: "field_addition",
+							item_type: "labor",
+							sort_order: 1,
+						},
+					],
+				},
+			},
+		});
+		const histLine = await db.job_visit_line_item.findFirstOrThrow({
+			where: { visit_id: histVisit.id, inventory_item_id: invCompressor.id },
+			select: { id: true },
+		});
+		compressorVisits.push({ visitId: histVisit.id, lineId: histLine.id });
+	}
+	const [cmpVisitA, cmpVisitB, cmpVisitC, cmpVisitD] = compressorVisits;
+
+	// -- t-350d: opening receipt, lot LOT-COMP-23-08 (4 units) -> WH 4 --
+	// No unit_cost: reason "initial" is an opening count, not a supplier invoice,
+	// and getItemPriceHistory only reads `receive`/`supplier_purchase` for paid
+	// cost. Pricing it would claim a bill that was never received.
+	const at350 = daysFromNow(-350);
+	const lotCompressorOpening = await makeLot({
 		inventory_item_id: invCompressor.id,
-		batch_number: "LOT-COMP-24-03",
+		batch_number: "LOT-COMP-23-08",
 		supplier: "Copeland Distribution",
 	});
-	await move(sysActor, [
+	await backdateLot(lotCompressorOpening.id, at350);
+	await moveAt(at350, sysActor, [
+		{
+			inventory_item_id: invCompressor.id,
+			qty: 4,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "initial",
+			note: "Opening warehouse count (dual-tracked) — Lot LOT-COMP-23-08.",
+			serial: {
+				create: ["CMP23-0101", "CMP23-0102", "CMP23-0103", "CMP23-0104"].map(
+					(serial_number) => ({ serial_number, batch_id: lotCompressorOpening.id }),
+				),
+			},
+		},
+	]);
+	await backdateReceived(["CMP23-0101", "CMP23-0102", "CMP23-0103", "CMP23-0104"], at350);
+
+	// -- t-320d: stage 2 units on Truck 4 -> WH 2 / T4 2 --
+	const at320 = daysFromNow(-320);
+	await moveAt(at320, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 2, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [await cmpUnit("CMP23-0101"), await cmpUnit("CMP23-0102")] }, note: "Staged spare compressors on the install truck." },
+	]);
+
+	// -- t-290d: consumed on J-0014 (Riverside) -> WH 2 / T4 1 --
+	const at290 = daysFromNow(-290);
+	await moveAt(at290, techActor(tech1.id), [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitA.visitId, visit_line_item_id: cmpVisitA.lineId, serial: { unit_ids: [await cmpUnit("CMP23-0101")] }, note: "Compressor seized — replaced under service agreement." },
+	]);
+	await backdateConsumed(["CMP23-0101"], at290);
+
+	// -- t-260d: consumed on J-0015 (Williams) -> WH 2 / T4 0 --
+	const at260 = daysFromNow(-260);
+	await moveAt(at260, techActor(tech2.id), [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitB.visitId, visit_line_item_id: cmpVisitB.lineId, serial: { unit_ids: [await cmpUnit("CMP23-0102")] }, note: "Shorted windings on the original compressor." },
+	]);
+	await backdateConsumed(["CMP23-0102"], at260);
+
+	// -- t-230d: re-stage the truck -> WH 1 / T4 1 --
+	const at230 = daysFromNow(-230);
+	await moveAt(at230, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [await cmpUnit("CMP23-0103")] } },
+	]);
+
+	// -- t-200d: replenishment receipt, lot LOT-COMP-24-01 (3 units) -> WH 4 --
+	const at200 = daysFromNow(-200);
+	// unit_cost is what Copeland actually billed per unit on this PO — 392 against
+	// a configured cost of 385 at the time. That gap is the entire point of
+	// charting paid cost separately from set cost.
+	const lotCompressorMid = await makeLot({
+		inventory_item_id: invCompressor.id,
+		batch_number: "LOT-COMP-24-01",
+		supplier: "Copeland Distribution",
+		unit_cost: 392.0,
+	});
+	await backdateLot(lotCompressorMid.id, at200);
+	await moveAt(at200, dispActor, [
 		{
 			inventory_item_id: invCompressor.id,
 			qty: 3,
 			from_location_type: "external",
 			to_location_type: "warehouse",
-			reason: "initial",
-			note: "Opening warehouse count (dual-tracked).",
+			reason: "receive",
+			unit_cost: 392.0,
+			note: "Replenishment PO — Lot LOT-COMP-24-01.",
+			serial: {
+				create: ["CMP24-0101", "CMP24-0102", "CMP24-0103"].map((serial_number) => ({
+					serial_number,
+					batch_id: lotCompressorMid.id,
+				})),
+			},
+		},
+	]);
+	await backdateReceived(["CMP24-0101", "CMP24-0102", "CMP24-0103"], at200);
+
+	// -- t-170d: consumed on J-0016 (Anderson) -> WH 4 / T4 0 --
+	const at170 = daysFromNow(-170);
+	await moveAt(at170, techActor(tech1.id), [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitC.visitId, visit_line_item_id: cmpVisitC.lineId, serial: { unit_ids: [await cmpUnit("CMP23-0103")] }, note: "Rooftop unit compressor replacement." },
+	]);
+	await backdateConsumed(["CMP23-0103"], at170);
+
+	// -- t-150d: re-stage the truck -> WH 3 / T4 1 --
+	const at150 = daysFromNow(-150);
+	await moveAt(at150, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [await cmpUnit("CMP24-0101")] } },
+	]);
+
+	// -- t-120d: warehouse write-off (damaged in storage) -> WH 2. No adjustment_id
+	// since vehicle_stock_adjustment is vehicle-scoped; "adjustment" still resolves
+	// the unit's status to `lost` via LOCATION_STATUS.
+	const at120 = daysFromNow(-120);
+	await moveAt(at120, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "adjustment", reason: "loss", serial: { unit_ids: [await cmpUnit("CMP23-0104")] }, note: "Suction line crushed by a fallen pallet — scrapped during cycle count." },
+	]);
+
+	// -- t-95d: consumed, no job link (warranty swap done off-ticket) -> T4 0 --
+	const at95 = daysFromNow(-95);
+	await moveAt(at95, techActor(tech2.id), [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", serial: { unit_ids: [await cmpUnit("CMP24-0101")] }, note: "Goodwill warranty swap — never ticketed." },
+	]);
+	await backdateConsumed(["CMP24-0101"], at95);
+
+	// -- t-60d: current-lot receipt, LOT-COMP-24-03 (3 units) -> WH 5 --
+	const at60 = daysFromNow(-60);
+	// Second priced receipt: 415/unit. The running weighted average lands between
+	// the two receipts (3 @ 392 then 3 @ 415 = 403.50), which is what the dashed
+	// paid-cost line steps to while the receipt markers stay at 392 and 415.
+	const lotCompressor = await makeLot({
+		inventory_item_id: invCompressor.id,
+		batch_number: "LOT-COMP-24-03",
+		supplier: "Copeland Distribution",
+		unit_cost: 415.0,
+	});
+	await backdateLot(lotCompressor.id, at60);
+	await moveAt(at60, dispActor, [
+		{
+			inventory_item_id: invCompressor.id,
+			qty: 3,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+			unit_cost: 415.0,
+			note: "Replenishment PO — Lot LOT-COMP-24-03.",
 			serial: {
 				create: ["CMP24-0001", "CMP24-0002", "CMP24-0003"].map((serial_number) => ({
 					serial_number,
@@ -3660,13 +4076,34 @@ async function main() {
 			},
 		},
 	]);
-	const [cu1] = await db.serial_unit.findMany({
-		where: { inventory_item_id: invCompressor.id },
-		orderBy: { serial_number: "asc" },
-	});
-	await move(dispActor, [
-		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [cu1.id] } },
+	await backdateReceived(["CMP24-0001", "CMP24-0002", "CMP24-0003"], at60);
+
+	// -- t-58d: stage the truck -> WH 4 / T4 1 --
+	const at58 = daysFromNow(-58);
+	await moveAt(at58, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [await cmpUnit("CMP24-0002")] } },
 	]);
+
+	// -- t-30d: consumed on J-0017 (Smith). Inside the reorder card's fixed 90d
+	// window, so the forecast has real demand to work from. -> WH 4 / T4 0 --
+	const at30 = daysFromNow(-30);
+	await moveAt(at30, techActor(tech3.id), [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitD.visitId, visit_line_item_id: cmpVisitD.lineId, serial: { unit_ids: [await cmpUnit("CMP24-0002")] }, note: "Compressor replacement on the Smith rooftop unit." },
+	]);
+	await backdateConsumed(["CMP24-0002"], at30);
+
+	// -- t-25d: re-stage the truck -> WH 3 / T4 1 --
+	const at25 = daysFromNow(-25);
+	await moveAt(at25, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [await cmpUnit("CMP24-0001")] } },
+	]);
+
+	// -- t-10d: counter sale straight off the shelf, no job -> WH 2 / T4 1.
+	const at10 = daysFromNow(-10);
+	await moveAt(at10, dispActor, [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption", serial: { unit_ids: [await cmpUnit("CMP24-0003")] }, note: "Counter sale to a contractor — cash ticket, no job created." },
+	]);
+	await backdateConsumed(["CMP24-0003"], at10);
 
 	// (a) Initial receive — external → warehouse. Sized to cover all downstream
 	//     outflow while leaving contactor at/below threshold.
@@ -3679,6 +4116,10 @@ async function main() {
 		{ inventory_item_id: invFlameSensor.id, qty: 18,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invCondPump.id,    qty: 6,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 		{ inventory_item_id: invLineSet.id,     qty: 150, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		// 12.5 exercises a non-integer on-hand end to end; both sit below threshold
+		// so they also appear in low-stock surfaces.
+		{ inventory_item_id: invLineSetSmall.id, qty: 12.5, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count — partial spool." },
+		{ inventory_item_id: invTubingMetric.id, qty: 250,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 	]);
 
 	// (b) Base restock — warehouse → each vehicle.
@@ -3989,28 +4430,44 @@ async function main() {
 			data: {
 				organization_id: org.id,
 				label: "Fast-moving",
-				items: { connect: [{ id: invFilter.id }, { id: invCapacitor.id }] },
+				items: { connect: [{ id: invFilter.id }, { id: invCapacitor.id }, { id: invMaxLenStress.id }] },
 			},
 		}),
 		db.inventory_tag.create({
 			data: {
 				organization_id: org.id,
 				label: "Electrical",
-				items: { connect: [{ id: invCapacitor.id }, { id: invContactor.id }] },
+				items: { connect: [{ id: invCapacitor.id }, { id: invContactor.id }, { id: invMaxLenStress.id }] },
 			},
 		}),
 		db.inventory_tag.create({
 			data: {
 				organization_id: org.id,
 				label: "Refrigerant",
-				items: { connect: [{ id: invRefrigerant.id }, { id: invLineSet.id }] },
+				items: { connect: [{ id: invRefrigerant.id }, { id: invLineSet.id }, { id: invMaxLenStress.id }] },
 			},
 		}),
 		db.inventory_tag.create({
 			data: {
 				organization_id: org.id,
 				label: "Controls",
-				items: { connect: [{ id: invThermostat.id }, { id: invIgniter.id }, { id: invFlameSensor.id }] },
+				items: { connect: [{ id: invThermostat.id }, { id: invIgniter.id }, { id: invFlameSensor.id }, { id: invMaxLenStress.id }] },
+			},
+		}),
+		// Two tags at the 100-char label cap, both on the stress item, so it
+		// carries six chips including two full-width ones.
+		db.inventory_tag.create({
+			data: {
+				organization_id: org.id,
+				label: padTo("MAXLEN TAG — Warranty Claim Documentation Required Before Return", 100),
+				items: { connect: [{ id: invMaxLenStress.id }] },
+			},
+		}),
+		db.inventory_tag.create({
+			data: {
+				organization_id: org.id,
+				label: padTo("MAXLEN TAG — Special Order Long Lead Time Vendor Drop-Ship", 100),
+				items: { connect: [{ id: invMaxLenStress.id }] },
 			},
 		}),
 	]);

@@ -30,11 +30,38 @@ vi.mock("../../../hooks/useInventory", () => ({
 }));
 
 const mockEnsureCodeMutateAsync = vi.fn();
+const mockTrackingMutateAsync = vi.fn();
+// Returns the useTrackingEligibilityQuery result; default (beforeEach) is
+// undefined, so the form falls back to its warehouse-quantity proxy.
+const mockEligibilityQuery = vi.fn();
 
 vi.mock("../../../hooks/useTracking", () => ({
 	useEnsureItemCodeMutation: () => ({ mutateAsync: mockEnsureCodeMutateAsync, isPending: false }),
-	useUpdateItemTrackingMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdateItemTrackingMutation: () => ({ mutateAsync: mockTrackingMutateAsync, isPending: false }),
+	useTrackingEligibilityQuery: () => mockEligibilityQuery(),
 }));
+
+function eligibility(overrides: Record<string, unknown> = {}) {
+	return {
+		data: {
+			provisional: false,
+			is_serialized: false,
+			is_batch_tracked: false,
+			qty_warehouse: 0,
+			qty_on_vehicles: 0,
+			vehicle_count: 0,
+			live_serials: 0,
+			live_lots: 0,
+			history_serials: 0,
+			history_lots: 0,
+			can_enable: true,
+			can_disable: true,
+			blockers: [] as string[],
+			...overrides,
+		},
+		isLoading: false,
+	};
+}
 
 // Receive is now a direct api call fired at Submit (not a hook bound to a
 // pre-existing itemId), so it's mocked at the api layer.
@@ -130,6 +157,100 @@ async function fillBasicsAndAdvance(name: string) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockEligibilityQuery.mockReturnValue({ data: undefined, isLoading: false });
+});
+
+// Blank required fields must be caught before Submit, not surfaced as a server error.
+describe("step gating", () => {
+	it("keeps an invalid step 1 on step 1 and says what's missing", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(screen.getByText("Name is required.")).toBeInTheDocument();
+		expect(screen.getByText("Location is required.")).toBeInTheDocument();
+		// Still on Basics — step 2's Quantity never mounted.
+		expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
+		expect(screen.getByPlaceholderText("Item Name")).toHaveAttribute("aria-invalid", "true");
+	});
+
+	it("advances once the step 1 errors are fixed", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.type(screen.getByPlaceholderText("Item Name"), "Widget");
+		await userEvent.type(screen.getByPlaceholderText("e.g. A42 - 325"), "A1-100");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(await screen.findByLabelText("Quantity")).toBeInTheDocument();
+	});
+
+	// The gate is not step-1-only: step 2's own conditional requirement blocks
+	// the same way, on the step that owns the field.
+	it("blocks step 2 when email alerts are on with no address", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Widget");
+
+		// Switch order on this step: serial, batch, low-stock, then email alerts
+		// once low-stock is on.
+		await userEvent.click(screen.getAllByRole("switch")[2]);
+		await userEvent.click(screen.getAllByRole("switch")[3]);
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(
+			screen.getByText("Alert email is required while email alerts are on."),
+		).toBeInTheDocument();
+		// Still on Stock & Pricing.
+		expect(screen.getByLabelText("Quantity")).toBeInTheDocument();
+
+		await userEvent.type(screen.getByPlaceholderText("alerts@company.com"), "not-an-email");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		expect(screen.getByText("Enter a valid email address.")).toBeInTheDocument();
+
+		await userEvent.clear(screen.getByPlaceholderText("alerts@company.com"));
+		await userEvent.type(screen.getByPlaceholderText("alerts@company.com"), "ops@co.com");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		expect(await screen.findByText(/Drop images here/)).toBeInTheDocument();
+	});
+
+	// Server caps (name/location 255, sku/category 100, barcode 200, description
+	// 5000) must be caught here, not as a raw Zod message at Save.
+	it("catches an over-long name on the step that owns it, before any write", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+
+		const nameInput = screen.getByPlaceholderText("Item Name");
+		await userEvent.type(screen.getByPlaceholderText("e.g. A42 - 325"), "A1-100");
+		// paste, not type: 256 keystrokes is a slow test for no extra coverage.
+		await userEvent.click(nameInput);
+		await userEvent.paste("x".repeat(256));
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(
+			screen.getByText("Name must be 255 characters or fewer — currently 256."),
+		).toBeInTheDocument();
+		expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
+		expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+
+		// 255 is accepted — the cap is inclusive, matching z.string().max(255).
+		await userEvent.clear(nameInput);
+		await userEvent.click(nameInput);
+		await userEvent.paste("x".repeat(255));
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(await screen.findByLabelText("Quantity")).toBeInTheDocument();
+	});
+
+	// A cleared Name must not ride all the way to Save Changes and fail server-side.
+	it("holds an edit on the step whose required field was cleared", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={makeItem()} />);
+
+		await userEvent.clear(screen.getByPlaceholderText("Item Name"));
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(screen.getByText("Name is required.")).toBeInTheDocument();
+		expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
+		expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+	});
 });
 
 describe("tracked item create — serialized, quantity > 0", () => {
@@ -292,6 +413,105 @@ describe("tracked item create — quantity 0", () => {
 	});
 });
 
+// quantity/low_stock_threshold are Decimal(10,2); fractional is fine for
+// untracked items, but a serialized item stays whole-number since a serial
+// is one indivisible unit and the capture step ties enteredSerials.length === quantity.
+describe("fractional quantity + threshold (D1)", () => {
+	it("accepts a fractional quantity and sends it unchanged", async () => {
+		const onClose = vi.fn();
+		mockCreateMutateAsync.mockResolvedValue(makeItem({ id: "item-frac", name: "Line Set" }));
+
+		render(<CreateInventoryItem isOpen onClose={onClose} />);
+		await fillBasicsAndAdvance("Line Set");
+
+		await userEvent.clear(screen.getByLabelText("Quantity"));
+		await userEvent.type(screen.getByLabelText("Quantity"), "12.5");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		await userEvent.click(screen.getByRole("button", { name: "Create Item" }));
+
+		await waitFor(() => expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockCreateMutateAsync.mock.calls[0][0].quantity).toBe(12.5);
+	});
+
+	it("rejects a quantity with 3 decimal places", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Line Set");
+
+		await userEvent.clear(screen.getByLabelText("Quantity"));
+		await userEvent.type(screen.getByLabelText("Quantity"), "12.505");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(
+			screen.getByText("Quantity must be 0 or more, to two decimal places."),
+		).toBeInTheDocument();
+		// Still on Stock & Pricing — Next did not advance.
+		expect(screen.getByLabelText("Quantity")).toBeInTheDocument();
+		expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+	});
+
+	it("keeps a serialized item's quantity whole-number-only even though fractional is otherwise allowed", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Compressor");
+
+		await userEvent.clear(screen.getByLabelText("Quantity"));
+		await userEvent.type(screen.getByLabelText("Quantity"), "2.5");
+		await userEvent.click(screen.getByLabelText("Track by serial number"));
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(
+			screen.getByText("Quantity must be a whole number of 0 or more."),
+		).toBeInTheDocument();
+		expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+	});
+
+	it("accepts a fractional low-stock threshold", async () => {
+		const onClose = vi.fn();
+		mockCreateMutateAsync.mockResolvedValue(makeItem({ id: "item-thresh" }));
+
+		render(<CreateInventoryItem isOpen onClose={onClose} />);
+		await fillBasicsAndAdvance("Braze Rod");
+
+		// Switch order: serial, batch, low-stock (see the email-gating test above).
+		await userEvent.click(screen.getAllByRole("switch")[2]);
+		await userEvent.type(screen.getByPlaceholderText("e.g. 10"), "2.5");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		await userEvent.click(screen.getByRole("button", { name: "Create Item" }));
+
+		await waitFor(() => expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockCreateMutateAsync.mock.calls[0][0].low_stock_threshold).toBe(2.5);
+	});
+
+	it("rejects a low-stock threshold with 3 decimal places", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Braze Rod");
+
+		await userEvent.click(screen.getAllByRole("switch")[2]);
+		await userEvent.type(screen.getByPlaceholderText("e.g. 10"), "2.505");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(
+			screen.getByText("Low-stock threshold must be 0 or more, to two decimal places."),
+		).toBeInTheDocument();
+		expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+	});
+
+	it("rejects a negative low-stock threshold", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Braze Rod");
+
+		await userEvent.click(screen.getAllByRole("switch")[2]);
+		await userEvent.type(screen.getByPlaceholderText("e.g. 10"), "-1");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(
+			screen.getByText("Low-stock threshold must be 0 or more, to two decimal places."),
+		).toBeInTheDocument();
+		expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+	});
+});
+
 describe("non-tracked item create (regression)", () => {
 	it("keeps the exact single-call create flow with no tracking flags", async () => {
 		const onClose = vi.fn();
@@ -319,5 +539,181 @@ describe("non-tracked item create (regression)", () => {
 		expect(mockAddToLabelQueue).toHaveBeenCalledWith(
 			expect.objectContaining({ id: "item-3", kind: "item", code: "BC-2" }),
 		);
+	});
+});
+
+// Unit is a grouped select over the lib/units catalog, so the form can only
+// emit a canonical code.
+describe("unit of measure", () => {
+	it("defaults to each and sends that code on create", async () => {
+		mockCreateMutateAsync.mockResolvedValue(makeItem({ id: "item-u1" }));
+
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Plain");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.click(screen.getByRole("button", { name: "Create Item" }));
+
+		await waitFor(() => expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockCreateMutateAsync.mock.calls[0][0].unit).toBe("each");
+	});
+
+	it("sends the chosen catalog code, not the label", async () => {
+		mockCreateMutateAsync.mockResolvedValue(makeItem({ id: "item-u2" }));
+
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
+		await fillBasicsAndAdvance("Line Set");
+
+		await userEvent.selectOptions(screen.getByLabelText("Unit of measure"), "ft");
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.click(screen.getByRole("button", { name: "Create Item" }));
+
+		await waitFor(() => expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockCreateMutateAsync.mock.calls[0][0].unit).toBe("ft");
+	});
+
+	// The Unit field lives on the wizard's second step, so an edit has to advance
+	// past Basics (already prefilled) before the select is in the tree.
+	async function openUnitStep(item: InventoryItem) {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={item} />);
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		return screen.getByLabelText("Unit of measure");
+	}
+
+	// Without normalization on load the select would have no matching option and
+	// would silently show the first entry instead of the item's real unit.
+	it("pre-selects a legacy aliased unit by its canonical code", async () => {
+		expect(await openUnitStep(makeItem({ unit: "LBS" }))).toHaveValue("lb");
+	});
+
+	it("falls back to each for a unit outside the catalog", async () => {
+		expect(await openUnitStep(makeItem({ unit: "widgets" }))).toHaveValue("each");
+	});
+
+	it("groups the options so a long list stays scannable", async () => {
+		const select = await openUnitStep(makeItem());
+		const groups = select.querySelectorAll("optgroup");
+		expect(groups.length).toBeGreaterThan(1);
+		expect([...groups].map((g) => g.getAttribute("label"))).toContain("Count");
+	});
+
+	// The parenthetical names the word that appears beside a quantity, which the
+	// label alone doesn't convey — but for containers it just repeats the label.
+	it("shows the rendered word in parentheses only when it adds something", async () => {
+		const select = await openUnitStep(makeItem());
+		const text = (code: string) =>
+			select.querySelector<HTMLOptionElement>(`option[value="${code}"]`)?.textContent;
+
+		expect(text("each")).toBe("Each (units)");
+		expect(text("ft")).toBe("Feet (ft)");
+		expect(text("sqft")).toBe("Square Feet (sq ft)");
+
+		// Containers: "Boxes (boxes)" would be pure repetition.
+		expect(text("box")).toBe("Boxes");
+		expect(text("case")).toBe("Cases");
+		expect(text("cylinder")).toBe("Cylinders");
+	});
+});
+
+// Covers the form reflecting PATCH /inventory/:id/tracking's gate accurately
+// before the user saves, rather than unlocking toggles the server will reject.
+describe("edit — tracking gate and callout", () => {
+	async function openStockStep(item: InventoryItem) {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={item} />);
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+	}
+
+	it("explains why tracking is locked when the item still has stock", async () => {
+		mockEligibilityQuery.mockReturnValue(
+			eligibility({
+				qty_warehouse: 12,
+				can_enable: false,
+				can_disable: false,
+				blockers: ["12 unit(s) on hand (12 in the warehouse, 0 on 0 vehicle(s)) — reduce to zero first"],
+			}),
+		);
+
+		await openStockStep(makeItem({ quantity: 12 }));
+
+		expect(await screen.findByText(/Tracking can’t be changed yet/)).toBeInTheDocument();
+		expect(screen.getByText(/reduce to zero first/)).toBeInTheDocument();
+		expect(screen.getByLabelText("Track by serial number")).toBeDisabled();
+	});
+
+	it("locks the toggles and names the vehicles when only vehicle stock remains", async () => {
+		mockEligibilityQuery.mockReturnValue(
+			eligibility({
+				qty_warehouse: 0,
+				qty_on_vehicles: 3,
+				vehicle_count: 2,
+				can_enable: false,
+				can_disable: false,
+				blockers: ["3 unit(s) on hand (0 in the warehouse, 3 on 2 vehicle(s)) — reduce to zero first"],
+			}),
+		);
+
+		// Warehouse quantity alone is 0; vehicles still hold stock, so the toggles
+		// must stay locked.
+		await openStockStep(makeItem({ quantity: 0 }));
+
+		expect(await screen.findByText(/Tracking can’t be changed yet/)).toBeInTheDocument();
+		expect(screen.getByText(/3 on 2 vehicle\(s\)/)).toBeInTheDocument();
+		expect(screen.getByLabelText("Track by serial number")).toBeDisabled();
+		expect(screen.getByLabelText("Track by batch or lot")).toBeDisabled();
+	});
+
+	it("promises that existing units survive a disable", async () => {
+		mockEligibilityQuery.mockReturnValue(
+			eligibility({
+				is_serialized: true,
+				history_serials: 47,
+				live_serials: 0,
+				can_disable: true,
+			}),
+		);
+
+		await openStockStep(makeItem({ quantity: 0, is_serialized: true }));
+
+		expect(
+			await screen.findByText(/stay on the Tracking tab as read-only history/),
+		).toBeInTheDocument();
+		expect(screen.getByText(/47 units/)).toBeInTheDocument();
+	});
+
+	it("sends the tracking flip before the field update so a rejection writes nothing", async () => {
+		mockEligibilityQuery.mockReturnValue(eligibility({ can_enable: true }));
+		mockUpdateMutateAsync.mockResolvedValue(makeItem({ is_serialized: true }));
+		mockSetTagsMutateAsync.mockResolvedValue(undefined);
+		mockTrackingMutateAsync.mockResolvedValue(makeItem({ is_serialized: true }));
+
+		await openStockStep(makeItem({ quantity: 0 }));
+
+		await userEvent.click(screen.getByLabelText("Track by serial number"));
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+		await waitFor(() => expect(mockTrackingMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockTrackingMutateAsync).toHaveBeenCalledWith({
+			is_serialized: true,
+			is_batch_tracked: false,
+		});
+		await waitFor(() => expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockTrackingMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
+			mockUpdateMutateAsync.mock.invocationCallOrder[0],
+		);
+	});
+
+	it("leaves the other edits unwritten when the tracking flip is rejected", async () => {
+		mockEligibilityQuery.mockReturnValue(eligibility({ can_enable: true }));
+		mockTrackingMutateAsync.mockRejectedValue(new Error("reduce to zero first"));
+
+		await openStockStep(makeItem({ quantity: 0 }));
+
+		await userEvent.click(screen.getByLabelText("Track by serial number"));
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+		await waitFor(() => expect(mockTrackingMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+		expect(mockSetTagsMutateAsync).not.toHaveBeenCalled();
 	});
 });

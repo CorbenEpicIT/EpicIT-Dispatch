@@ -11,7 +11,7 @@ import {
 	Check,
 	Trash2,
 } from "lucide-react";
-import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation } from "../../hooks/useVehicleStock";
+import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation, useUpdatePartsUsedQtyMutation } from "../../hooks/useVehicleStock";
 import { useUpdateJobVisitMutation } from "../../hooks/useJobs";
 import { useToast } from "../ui/useToast";
 
@@ -22,6 +22,7 @@ import ExistingUnitPicker from "../vehicles/ExistingUnitPicker";
 import ExistingBatchPicker from "../vehicles/ExistingBatchPicker";
 import type { VehicleStockItem, SupplierPartUsedInput, AddPartsUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
+import { unitLabel } from "../../lib/units";
 
 type Mode = "edit" | "stock" | "supplier";
 
@@ -68,7 +69,7 @@ function EditPartsTab({
 	}
 
 	return (
-		<div className="divide-y divide-border-subtle/60 bg-surface">
+		<div className="divide-y divide-border-subtle bg-surface">
 			{lineItems.map((item, idx) => {
 				const qty = Number(item.quantity);
 				const unitPrice = Number(item.unit_price);
@@ -242,12 +243,18 @@ function StockPartPicker({
 
 		return (
 			<div className="p-4 bg-surface">
-				<p className="text-sm font-semibold text-text-primary mb-1">
+				<p
+					className="text-sm font-semibold text-text-primary mb-1 line-clamp-2 break-words"
+					title={selected.inventory_item.name}
+				>
 					{selected.inventory_item.name}
 				</p>
 				<p className="text-xs text-text-muted mb-4">
 					On hand: {Number(selected.qty_on_hand)}{" "}
-					{selected.inventory_item.unit}
+					{unitLabel(
+						selected.inventory_item.unit,
+						Number(selected.qty_on_hand)
+					)}
 				</p>
 				{isSerialized ? (
 					<div className="mb-3">
@@ -280,6 +287,9 @@ function StockPartPicker({
 							</div>
 						</div>
 						<ExistingUnitPicker
+							// Picking which units left the van IS this step, so the
+							// list opens. Restock rows collapse it instead.
+							defaultOpen
 							itemId={selected.inventory_item.id}
 							itemName={selected.inventory_item.name}
 							statusFilter="on_vehicle"
@@ -352,7 +362,7 @@ function StockPartPicker({
 					className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong"
 				/>
 			</div>
-			<div className="divide-y divide-border-subtle/40 overflow-y-auto max-h-56">
+			<div className="divide-y divide-border-subtle overflow-y-auto max-h-56">
 				{filtered.length === 0 && (
 					<p className="px-4 py-4 text-center text-sm text-text-faint">
 						No matching parts
@@ -361,13 +371,18 @@ function StockPartPicker({
 				{filtered.map((item) => (
 					<div
 						key={item.id}
-						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface/40 transition-colors"
+						className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-raised transition-colors"
 					>
 						<div className="min-w-0 flex-1">
-							<p className="text-sm text-text-primary">
+							{/* Clamped to two lines, full name in the title — a 255-char part
+							    name could take most of the screen. */}
+							<p
+								className="text-sm text-text-primary line-clamp-2 break-words"
+								title={item.inventory_item.name}
+							>
 								{item.inventory_item.name}
 							</p>
-							<p className="text-[10px] text-text-muted mt-0.5">
+							<p className="text-[10px] text-text-muted mt-0.5 line-clamp-2 break-words">
 								{item.inventory_item.category
 									? `${item.inventory_item.category} — `
 									: ""}
@@ -389,9 +404,15 @@ function StockPartPicker({
 										/>
 									)}
 								</span>
+								{/* Capped at two + a count — a long alt_ids join buried the
+								    on-hand figure this row exists to show. Search still
+								    matches every alternate. */}
 								{item.inventory_item.alt_ids && item.inventory_item.alt_ids.length > 0 && (
-									<span>
-										{" · "}{item.inventory_item.alt_ids.join(" · ")}
+									<span title={item.inventory_item.alt_ids.join(" · ")}>
+										{" · "}
+										{item.inventory_item.alt_ids.slice(0, 2).join(" · ")}
+										{item.inventory_item.alt_ids.length > 2 &&
+											` +${item.inventory_item.alt_ids.length - 2}`}
 									</span>
 								)}
 							</p>
@@ -519,8 +540,29 @@ export default function PartsUsedSection({
 	const vehicleId = techProfile?.current_vehicle_id ?? null;
 	const { data: stockItems = [] } = useVehicleStockQuery(vehicleId);
 	const updateVisit = useUpdateJobVisitMutation();
+	const updatePartsQty = useUpdatePartsUsedQtyMutation();
+	const toast = useToast();
 
 	const handleQtyChange = async (item: VisitLineItem, newQty: number) => {
+		// Stock-linked lines carry their own serial/batch ledger — route qty
+		// changes through the dedicated endpoint so decreases/deletes release the
+		// exact consumed units back to the vehicle instead of silently desyncing
+		// the ledger from what's displayed.
+		if (item.inventory_item_id && item.id) {
+			if (!user?.userId) return;
+			try {
+				await updatePartsQty.mutateAsync({
+					visitId,
+					lineItemId: item.id,
+					vehicleId,
+					data: { technician_id: user.userId, quantity: newQty },
+				});
+			} catch (e) {
+				toast.error(e instanceof Error ? e.message : "Failed to update part");
+			}
+			return;
+		}
+
 		const updatedItems =
 			newQty <= 0
 				? lineItems.filter((li) => li.id !== item.id)
@@ -535,23 +577,27 @@ export default function PartsUsedSection({
 								}
 							: li
 					);
-		await updateVisit.mutateAsync({
-			id: visitId,
-			data: {
-				line_items: updatedItems.map((li) => ({
-					id: li.id,
-					name: li.name,
-					description: li.description ?? null,
-					quantity: Number(li.quantity),
-					unit_price: Number(li.unit_price),
-					total: parseFloat(
-						(Number(li.quantity) * Number(li.unit_price)).toFixed(2)
-					),
-					item_type: li.item_type ?? null,
-					source: li.source,
-				})),
-			},
-		});
+		try {
+			await updateVisit.mutateAsync({
+				id: visitId,
+				data: {
+					line_items: updatedItems.map((li) => ({
+						id: li.id,
+						name: li.name,
+						description: li.description ?? null,
+						quantity: Number(li.quantity),
+						unit_price: Number(li.unit_price),
+						total: parseFloat(
+							(Number(li.quantity) * Number(li.unit_price)).toFixed(2)
+						),
+						item_type: li.item_type ?? null,
+						source: li.source,
+					})),
+				},
+			});
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : "Failed to update part");
+		}
 	};
 
 	const [expanded, setExpanded] = useState(true);
@@ -593,14 +639,14 @@ export default function PartsUsedSection({
 	return (
 		<div
 			ref={containerRef}
-			className="rounded-xl border border-border-subtle overflow-hidden bg-surface"
+			className="rounded-xl border border-border-subtle bg-base overflow-hidden"
 		>
 			{/* Header */}
 			<button
 				onClick={() => setExpanded((p) => !p)}
 				aria-expanded={expanded}
 				aria-controls="parts-used-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					{adding && <span className="text-primary-text">Editing </span>}
@@ -642,7 +688,7 @@ export default function PartsUsedSection({
 									onClick={() => setMode("edit")}
 									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
-											? "bg-surface-raised "
+											? "bg-surface-raised text-text-primary"
 											: "text-text-muted hover:text-text-secondary"
 									}`}
 								>
@@ -654,7 +700,7 @@ export default function PartsUsedSection({
 										onClick={() => setMode("stock")}
 										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "stock"
-												? "bg-surface-raised "
+												? "bg-surface-raised text-text-primary"
 												: "text-text-muted hover:text-text-secondary"
 										}`}
 									>
@@ -670,7 +716,7 @@ export default function PartsUsedSection({
 										}}
 										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "supplier"
-												? "bg-surface-raised "
+												? "bg-surface-raised text-text-primary"
 												: "text-text-muted hover:text-text-secondary"
 										}`}
 									>
@@ -685,7 +731,7 @@ export default function PartsUsedSection({
 									<EditPartsTab
 										lineItems={lineItems}
 										onUpdateQty={handleQtyChange}
-										isPending={updateVisit.isPending}
+										isPending={updateVisit.isPending || updatePartsQty.isPending}
 										highlightedPartId={highlightedPartId}
 									/>
 								</div>
@@ -751,7 +797,7 @@ export default function PartsUsedSection({
 									No parts added yet
 								</p>
 							) : (
-								<div className="divide-y divide-border-subtle/60">
+								<div className="divide-y divide-border-subtle">
 									{lineItems.map((item, idx) => {
 										const qty = Number(item.quantity);
 										const unitPrice = Number(item.unit_price);
@@ -790,7 +836,7 @@ export default function PartsUsedSection({
 
 					{/* Running total — shown only when not editing */}
 					{!adding && lineItems.length > 0 && (
-						<div className="flex items-center justify-between px-4 py-3 bg-base/60 border-t border-border-subtle">
+						<div className="flex items-center justify-between px-4 py-3 border-t border-border-subtle">
 							<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
 								Running Total
 							</span>

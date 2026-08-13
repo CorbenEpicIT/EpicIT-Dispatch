@@ -56,6 +56,9 @@ export default function InventoryImportExport({ isOpen, onClose }: Props) {
 		if (file) selectFile(file);
 	}, []);
 
+	// May be absent on older/cached responses; default so it doesn't blank the panel.
+	const warnings = importResult?.warnings ?? [];
+
 	const handleImport = async () => {
 		if (!selectedFile) return;
 		setIsImporting(true);
@@ -207,6 +210,21 @@ export default function InventoryImportExport({ isOpen, onClose }: Props) {
 									{importResult.skipped.map((s) => (
 										<p key={s.row} className="text-xs text-muted">
 											Row {s.row}: {s.reason}
+										</p>
+									))}
+								</div>
+							)}
+							{/* Separate from skipped rows: these still produced items. */}
+							{warnings.length > 0 && (
+								<div className="space-y-1 max-h-28 overflow-y-auto">
+									<p className="text-xs text-warning-text">
+										{warnings.length} row
+										{warnings.length !== 1 ? "s" : ""} imported with
+										changes:
+									</p>
+									{warnings.map((w) => (
+										<p key={w.row} className="text-xs text-muted">
+											Row {w.row}: {w.message}
 										</p>
 									))}
 								</div>

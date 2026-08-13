@@ -18,6 +18,7 @@ import BatchCaptureFields, {
 import ExistingUnitPicker from "./ExistingUnitPicker";
 import ExistingBatchPicker, { type BatchPickDirection } from "./ExistingBatchPicker";
 import type { SerialUnitStatus } from "../../types/tracking";
+import { unitLabel } from "../../lib/units";
 
 const ADJUST_TYPE_PERMS: Record<VehicleAdjustmentType, string> = {
 	field_loss: "adjust_field_loss",
@@ -846,6 +847,11 @@ interface TrackingLineReq {
 	inventoryItemId: string;
 	name: string;
 	qty: number; // abs(delta) — how many units/serials this line needs
+	// The item's unit of measure, carried so the summary can say "3 ft" instead
+	// of the hardcoded "3 units". A serialized item is almost always "each", so
+	// this changes nothing there; it matters for a batch-tracked item measured
+	// in ft or lb.
+	unit: string;
 	delta: number; // signed — direction drives which candidate pool applies
 	isSerialized: boolean;
 	isBatchTracked: boolean;
@@ -939,8 +945,7 @@ function TrackingStep({
 								{line.name}
 							</span>
 							<span className="text-xs text-text-muted">
-								{line.qty} unit
-								{line.qty !== 1 ? "s" : ""}
+								{line.qty} {unitLabel(line.unit, line.qty)}
 							</span>
 						</div>
 
@@ -966,6 +971,10 @@ function TrackingStep({
 								onChange={(v) =>
 									onSerialChange(line.key, v)
 								}
+								// Naming the units IS this step, so the list opens.
+								// Restock rows collapse it instead — see the prop's
+								// doc comment.
+								defaultOpen
 							/>
 						)}
 
@@ -1135,6 +1144,7 @@ export default function AdjustStockModal({
 					inventoryItemId: id,
 					name: item.name,
 					qty: row.qty,
+					unit: item.unit,
 					delta: row.qty,
 					isSerialized: item.is_serialized,
 					isBatchTracked: item.is_batch_tracked,
@@ -1159,6 +1169,7 @@ export default function AdjustStockModal({
 				inventoryItemId: inv.id,
 				name: inv.name,
 				qty: Math.abs(delta),
+				unit: inv.unit,
 				delta,
 				isSerialized: inv.is_serialized,
 				isBatchTracked: inv.is_batch_tracked,

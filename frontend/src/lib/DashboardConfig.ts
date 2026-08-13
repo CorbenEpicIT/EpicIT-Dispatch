@@ -188,6 +188,12 @@ export const WIDGET_CATALOG: Record<string, {
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
+    "report-job-backlog":   {   label: "Job Backlog",
+                                defaultW: 4,  defaultH: 8,  minW: 3, minH: 6, maxH: 12, maxW: 8,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
+                                ]
+                            },
 
 };
 

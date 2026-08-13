@@ -39,12 +39,12 @@ export default function CustomerHistorySection({
 	const visibleVisits = filtered.slice(0, visibleCount);
 
 	return (
-		<div className="rounded-xl border border-border-subtle overflow-hidden">
+		<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 			<button
 				onClick={() => setOpen((p) => !p)}
 				aria-expanded={open}
 				aria-controls="customer-history-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60"
+				className="w-full flex items-center justify-between px-4 py-3"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Client History
@@ -70,7 +70,7 @@ export default function CustomerHistorySection({
 					) : filtered.length === 0 ? (
 						<p className="px-4 py-5 text-center text-sm text-text-faint">No prior visits</p>
 					) : (
-						<div className="divide-y divide-border-subtle/60">
+						<div className="divide-y divide-border-subtle">
 							{visibleVisits.map((visit) => {
 								const firstNote = visit.notes?.[0];
 								const techName = visit.visit_techs?.[0]?.tech?.name;
@@ -94,7 +94,7 @@ export default function CustomerHistorySection({
 												<span
 													className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
 														VisitStatusColors[visit.status as VisitStatus] ??
-														"bg-neutral/20 text-text-tertiary border-border-strong/30"
+														"bg-surface-raised text-text-tertiary border-border-strong"
 													}`}
 												>
 													{visit.status}
@@ -110,7 +110,7 @@ export default function CustomerHistorySection({
 							{visibleCount < filtered.length && (
 								<button
 									onClick={() => setVisibleCount((c) => Math.min(c + 5, filtered.length))}
-									className="px-4 py-2.5 w-full flex items-center justify-center gap-1.5 text-xs text-primary-text hover:bg-surface/40 transition-colors"
+									className="px-4 py-2.5 w-full flex items-center justify-center gap-1.5 text-xs text-primary-text hover:bg-surface-raised transition-colors"
 								>
 									<ChevronDown size={13} />
 									Load 5 more

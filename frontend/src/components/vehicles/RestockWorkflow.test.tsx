@@ -181,15 +181,128 @@ function renderWorkflow(stockItems: VehicleStockItem[]) {
 	return render(<RestockWorkflow vehicleId="v1" stockItems={stockItems} />);
 }
 
+// The technician sheet's layout — full-width mode switch, usage card, tighter
+// gutters. The dispatch page renders the same component without it.
+function renderMobile(stockItems: VehicleStockItem[]) {
+	return render(<RestockWorkflow vehicleId="v1" stockItems={stockItems} layout="mobile" />);
+}
+
+describe("RestockWorkflow — mobile field layout", () => {
+	test("the mode switch is one full-width segmented control", async () => {
+		renderMobile([plainStockItem]);
+
+		const group = await screen.findByRole("group", { name: "Restock mode" });
+		expect(group.className).toContain("w-full");
+
+		const restock = screen.getByRole("button", { name: "Restock" });
+		const prep = screen.getByRole("button", { name: "Prep for Tomorrow" });
+		expect(restock).toHaveAttribute("aria-pressed", "true");
+		expect(prep).toHaveAttribute("aria-pressed", "false");
+		// Both segments live in the same control, splitting the row evenly.
+		expect(group).toContainElement(restock);
+		expect(group).toContainElement(prep);
+		expect(restock.className).toContain("flex-1");
+	});
+
+	test("the usage panel is a labelled, collapsed disclosure", async () => {
+		renderMobile([plainStockItem]);
+
+		const toggle = await screen.findByRole("button", { name: /Usage Since Last Restock/ });
+		expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+		await userEvent.click(toggle);
+
+		expect(toggle).toHaveAttribute("aria-expanded", "true");
+	});
+
+	test("the Restock Quantities title shares one container with its rows", async () => {
+		renderMobile([plainStockItem]);
+
+		const title = await screen.findByText("Restock Quantities");
+		// Walk up to the bounded table container and confirm the column heads and an
+		// item row are inside it too.
+		const table = title.closest("div.rounded-lg");
+		expect(table).not.toBeNull();
+		expect(table).toContainElement(screen.getByText("Item"));
+		expect(table).toContainElement(screen.getByRole("button", { name: "Zip Ties" }));
+	});
+});
+
 describe("RestockWorkflow — tracking capture (P8-2)", () => {
-	test("renders the existing-unit picker for a serialized line needing restock", async () => {
+	test("renders the existing-unit picker collapsed for a serialized line needing restock", async () => {
 		renderWorkflow([serializedStockItem]);
 
+		// Collapsed: summary bar and scan/browse controls present, candidate rows
+		// not. Several serialized lines can need restocking at once, and each one
+		// opening its own scroller buried the sheet.
 		expect(await screen.findByText("Select existing units")).toBeInTheDocument();
-		expect(mockSerialsQuery).toHaveBeenCalledWith("inv-serial", { status: "in_warehouse", vehicleId: undefined });
-		expect(screen.getByText("SN-A")).toBeInTheDocument();
+		expect(screen.getByText("Browse")).toBeInTheDocument();
+		expect(screen.queryByText("SN-A")).not.toBeInTheDocument();
+		expect(mockSerialsQuery).toHaveBeenCalledWith("inv-serial", {
+			status: "in_warehouse",
+			vehicleId: undefined,
+			search: undefined,
+			cursor: undefined,
+		});
 		// Warn-don't-block cue, not a blocker.
 		expect(screen.getByText(/0 of 3 units scanned/)).toBeInTheDocument();
+	});
+
+	test("Browse reveals the candidate list and a serial search", async () => {
+		renderWorkflow([serializedStockItem]);
+
+		await userEvent.click(await screen.findByText("Browse"));
+
+		expect(screen.getByText("SN-A")).toBeInTheDocument();
+		expect(screen.getByLabelText("Search serial numbers")).toBeInTheDocument();
+		expect(screen.getByText("Hide list")).toBeInTheDocument();
+	});
+
+	test("a selected unit stays legible as a chip after the list is collapsed", async () => {
+		renderWorkflow([serializedStockItem]);
+
+		await userEvent.click(await screen.findByText("Browse"));
+		await userEvent.click(screen.getByLabelText("Select unit SN-A"));
+		await userEvent.click(screen.getByText("Hide list"));
+
+		expect(screen.queryByLabelText("Select unit SN-A")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("Remove SN-A")).toBeInTheDocument();
+	});
+
+	test("the over-limit advisory sits outside the input's cell and can fill the input", async () => {
+		// si-serial-short wants 3 with only 2 in the warehouse. The advisory used to
+		// live inside the Add cell, which knocked the input off the row's centre
+		// line and got clipped by the section's overflow-hidden shell.
+		renderWorkflow([shortSerializedStockItem]);
+
+		const input = await screen.findByLabelText("Quantity to add for Rare Compressor");
+		expect(input).toHaveAttribute("aria-invalid", "true");
+
+		const advisory = screen.getByRole("status");
+		expect(advisory).toHaveTextContent("Only 2 in warehouse");
+		// Not a descendant of the input's grid cell — that's the whole fix.
+		expect(advisory.contains(input)).toBe(false);
+		expect(input.parentElement?.contains(advisory)).toBe(false);
+		expect(input).toHaveAttribute("aria-describedby", advisory.id);
+
+		await userEvent.click(screen.getByText("Use 2"));
+
+		expect(input).toHaveValue(2);
+		expect(screen.queryByRole("status")).not.toBeInTheDocument();
+	});
+
+	test("a long item name truncates and expands on tap", async () => {
+		renderWorkflow([serializedStockItem]);
+
+		const name = await screen.findByRole("button", { name: "Compressor" });
+		expect(name).toHaveAttribute("aria-expanded", "false");
+		expect(name.className).toContain("truncate");
+
+		await userEvent.click(name);
+
+		expect(name).toHaveAttribute("aria-expanded", "true");
+		expect(name.className).not.toContain("truncate");
+		expect(name.className).toContain("break-words");
 	});
 
 	test("renders the existing-batch picker for a batch-tracked line needing restock", async () => {
@@ -230,7 +343,8 @@ describe("RestockWorkflow — tracking capture (P8-2)", () => {
 		// rest untracked." Only an omitted/empty field takes the safe gap path.
 		renderWorkflow([serializedStockItem]);
 
-		await screen.findByText("Select existing units");
+		// The candidate list is collapsed on restock rows — open it before picking.
+		await userEvent.click(await screen.findByText("Browse"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-A"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-B"));
 		// 2 of 3 selected — qtyToRestock is 3, so this is a short (partial) capture.
@@ -253,7 +367,8 @@ describe("RestockWorkflow — tracking capture (P8-2)", () => {
 	test("submitting with an exact-match selection (all qtyToRestock units) includes the full serial_unit_ids array", async () => {
 		renderWorkflow([serializedStockItem]);
 
-		await screen.findByText("Select existing units");
+		// The candidate list is collapsed on restock rows — open it before picking.
+		await userEvent.click(await screen.findByText("Browse"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-A"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-B"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-C"));
@@ -282,7 +397,8 @@ describe("RestockWorkflow — tracking capture (P8-2)", () => {
 		// proactively rather than risking a mismatch.
 		renderWorkflow([shortSerializedStockItem]);
 
-		await screen.findByText("Select existing units");
+		// The candidate list is collapsed on restock rows — open it before picking.
+		await userEvent.click(await screen.findByText("Browse"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-A"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-B"));
 		await userEvent.click(screen.getByLabelText("Select unit SN-C"));

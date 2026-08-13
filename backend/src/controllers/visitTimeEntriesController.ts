@@ -24,7 +24,7 @@ export const clockInVisit = async (
 		const sdb = getScopedDb(organizationId);
 		const visit = await sdb.job_visit.findFirst({
 			where: { id: visitId, job: { organization_id: organizationId } },
-			include: { job: { select: { id: true, job_number: true } } },
+			include: { job: { select: { id: true, job_number: true, status: true } } },
 		});
 		if (!visit) return { err: "Job visit not found" };
 
@@ -64,10 +64,12 @@ export const clockInVisit = async (
 						...(visit.status === "OnSite" && { actual_start_at: visit.actual_start_at ?? now }),
 					},
 				});
-				await tx.job.update({
-					where: { id: visit.job.id },
-					data: { status: "InProgress" },
-				});
+				if (visit.job.status !== "InProgress") {
+					await tx.job.update({
+						where: { id: visit.job.id },
+						data: { status: "InProgress", status_changed_at: new Date() },
+					});
+				}
 			}
 
 			// Update global tech status

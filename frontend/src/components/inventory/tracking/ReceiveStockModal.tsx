@@ -35,6 +35,9 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 	const [serialValues, setSerialValues] = useState<string[]>([]);
 	const [autoSerial, setAutoSerial] = useState(false);
 	const [batchValue, setBatchValue] = useState<BatchCaptureValue>(emptyBatch);
+	// Kept as a string, not a number: "" must stay distinguishable from 0 so a
+	// blank field records "cost unknown" rather than a free purchase.
+	const [unitCost, setUnitCost] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
 	const receiveMutation = useReceiveInventoryMutation(item.id);
@@ -49,6 +52,7 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 			setSerialValues([]);
 			setAutoSerial(false);
 			setBatchValue(emptyBatch);
+			setUnitCost("");
 			setError(null);
 		}
 	}, [isOpen, item.id]);
@@ -77,8 +81,17 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 			return;
 		}
 
+		const parsedUnitCost = unitCost.trim() === "" ? null : Number(unitCost);
+		if (parsedUnitCost != null && (!Number.isFinite(parsedUnitCost) || parsedUnitCost < 0)) {
+			setError("Unit cost must be 0 or more, or left blank.");
+			return;
+		}
+
 		const input: ReceiveInventoryInput = {
 			qty,
+			// Omitted when blank — the paid-cost history counts a receipt with no
+			// recorded cost as unknown rather than averaging in a zero.
+			...(parsedUnitCost != null ? { unit_cost: parsedUnitCost } : {}),
 			...(item.is_serialized
 				? autoSerial
 					? { auto_serial: true }
@@ -175,6 +188,26 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 									: "Enter one serial number per unit below."}
 							</p>
 						)}
+					</div>
+
+					<div>
+						<label htmlFor="receive-unit-cost" className={LABEL}>
+							Unit cost paid <span className="normal-case">(optional)</span>
+						</label>
+						<input
+							id="receive-unit-cost"
+							type="number"
+							min={0}
+							step="0.01"
+							placeholder="—"
+							value={unitCost}
+							onChange={(e) => setUnitCost(e.target.value)}
+							className={INPUT}
+						/>
+						<p className="text-xs text-text-muted mt-1">
+							What the supplier billed per unit on this receipt. Leave blank if
+							unknown — it's recorded as unknown, not as zero.
+						</p>
 					</div>
 
 					{item.is_serialized && (

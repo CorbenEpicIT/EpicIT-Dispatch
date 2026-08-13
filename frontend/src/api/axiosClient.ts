@@ -24,6 +24,21 @@ export const api = axios.create({
 	baseURL: BASE_URL,
 	withCredentials: true,
 });
+
+/**
+ * Builds axios `params`, omitting keys whose value is undefined, null, or "".
+ * `0` and `false` are sent — only genuinely absent values are dropped.
+ */
+export const queryParams = (
+	source: Record<string, string | number | boolean | null | undefined>,
+): Record<string, string> => {
+	const params: Record<string, string> = {};
+	for (const [key, value] of Object.entries(source)) {
+		if (value == null || value === "") continue;
+		params[key] = String(value);
+	}
+	return params;
+};
 api.interceptors.request.use((config) => {
 	const token = localStorage.getItem("accessToken");
 	if (token) {

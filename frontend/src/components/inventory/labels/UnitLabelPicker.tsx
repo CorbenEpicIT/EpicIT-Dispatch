@@ -15,7 +15,7 @@ interface UnitLabelPickerProps {
 	onClose: () => void;
 }
 
-// Local 300ms debounce for the search inputs — matches ItemTrackingPage's
+// Local 300ms debounce for the search inputs — matches the Tracking tab's
 // useDebouncedValue (kept private here to avoid exporting page-internal helpers).
 function useDebouncedValue<T>(value: T, delayMs = 300): T {
 	const [debounced, setDebounced] = useState(value);
@@ -31,7 +31,7 @@ type Tab = "serials" | "batches";
 // Modal to queue per-unit labels for a queued tracked item. Lists that item's
 // serial units and/or batches (reusing useSerialsQuery/useBatchesQuery) and adds
 // the selected ones to the label queue as kind:"serial"/"batch" with their own
-// SU-/LOT- code — the same add shape ItemTrackingPage's QueueLabelButton uses.
+// SU-/LOT- code — the same add shape the Tracking tab's QueueLabelButton uses.
 export default function UnitLabelPicker({
 	itemId,
 	itemName,

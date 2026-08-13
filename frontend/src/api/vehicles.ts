@@ -182,6 +182,19 @@ export const addPartsUsed = async (visitId: string, input: AddPartsUsedInput): P
 	return response.data.data!;
 };
 
+export const updatePartsUsedQty = async (
+	visitId: string,
+	lineItemId: string,
+	input: { technician_id: string; quantity: number },
+): Promise<VisitLineItem | null> => {
+	const response = await api.patch<ApiResponse<VisitLineItem | null>>(
+		`/job-visits/${visitId}/parts-used/${lineItemId}`,
+		input,
+	);
+	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to update part quantity");
+	return response.data.data ?? null;
+};
+
 export const addSupplierPartUsed = async (
 	visitId: string,
 	input: SupplierPartUsedInput,

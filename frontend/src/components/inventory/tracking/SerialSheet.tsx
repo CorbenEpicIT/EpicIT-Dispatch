@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight, PackageX } from "lucide-react";
 import Drawer from "../../ui/Drawer";
 import { Field, SheetError, formatDate } from "./sheetShared";
+import { movementReasonLabel as reasonLabel } from "../../../lib/movementReasons";
 import { useSerialHistoryQuery, useSerialsQuery } from "../../../hooks/useTracking";
 import { SERIAL_STATUS_LABEL } from "../../../types/tracking";
 import type { SerialHistoryEvent, SerialUnitStatus } from "../../../types/tracking";
@@ -26,23 +27,6 @@ const STATUS_TONE: Record<SerialUnitStatus, string> = {
 	lost: "bg-error-bg text-error-text border-error-border",
 	returned: "bg-warning-bg text-warning-text border-warning-border",
 };
-
-// Movement `reason` values arrive snake_case from the backend and nothing in
-// the app maps them for a field reader yet.
-const REASON_LABEL: Record<string, string> = {
-	restock: "Restock",
-	field_loss: "Field Loss",
-	transfer: "Transfer",
-	audit: "Audit Correction",
-	supplier_purchase: "Supplier Purchase",
-	warehouse_exchange: "Returned to Warehouse",
-	consumed: "Used on Job",
-	receive: "Received",
-};
-
-function reasonLabel(reason: string): string {
-	return REASON_LABEL[reason] ?? reason.replace(/_/g, " ");
-}
 
 function locationLabel(event: SerialHistoryEvent): string {
 	if (event.to_vehicle) return event.to_vehicle.name;

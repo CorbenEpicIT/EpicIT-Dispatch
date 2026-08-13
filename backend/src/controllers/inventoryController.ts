@@ -8,7 +8,15 @@ import {
 	createInventoryItemSchema,
 	updateInventoryItemSchema,
 	adjustStockSchema,
+	usageQuerySchema,
+	consumptionTrendQuerySchema,
+	valueHistoryQuerySchema,
+	priceHistoryQuerySchema,
+	movementsQuerySchema,
+	type TrendBucket,
 } from "../lib/validate/inventory.js";
+import { isStorableStockQty, STOCK_QTY_MESSAGE } from "../lib/validate/shared.js";
+import { getItemReorderForecast } from "./reportsController.js";
 import {
 	receiveInventorySchema,
 	listSerialsQuerySchema,
@@ -38,18 +46,30 @@ import {
 	lockSerialRows,
 	type ItemTrackingFlags,
 } from "../services/inventoryTracking.js";
-import { withStockStatus } from "../lib/inventory.js";
+import { withStockStatus, unitBasis, mergeUnitBases, type StockQty } from "../lib/inventory.js";
+import { DEFAULT_UNIT_CODE, normalizeUnitCode } from "../lib/units.js";
 import { emitInventoryUpdated } from "../services/socketService.js";
 
 function zodMessage(e: ZodError): string {
 	return `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`;
 }
 
+/** Parses input via safeParse so a validation failure is a typed `{ err }` result, not a thrown exception. */
+function parseInput<S extends z.ZodType>(
+	schema: S,
+	input: unknown,
+): { ok: true; data: z.output<S> } | { ok: false; err: string } {
+	const result = schema.safeParse(input);
+	return result.success
+		? { ok: true, data: result.data }
+		: { ok: false, err: zodMessage(result.error) };
+}
+
 interface InventoryRecord {
 	id: string;
 	name: string;
-	quantity: number;
-	low_stock_threshold: number | null;
+	quantity: StockQty;
+	low_stock_threshold: StockQty | null;
 	alert_emails_enabled: boolean;
 	alert_email: string | null;
 }
@@ -111,6 +131,22 @@ export const getAllInventory = async (organizationId: string, sort?: string) => 
 	return items.map(withStockStatus);
 };
 
+// Mirrors getAllInventory's shape for the detail page. Unlike the list, provisional/
+// inactive items are still returned so a direct link never 404s.
+export const getInventoryItemById = async (itemId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const item = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		include: {
+			_count: { select: { visit_line_items: true } },
+			tags: { orderBy: { label: "asc" } },
+		},
+	});
+
+	if (!item) return { err: "Inventory item not found" as const };
+	return { err: "", item: withStockStatus(item) };
+};
+
 export const getLowStockInventory = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
 	const items = await sdb.inventory_item.findMany({
@@ -126,7 +162,7 @@ export const getLowStockInventory = async (organizationId: string) => {
 		.sort((a, b) => {
 			if (a.stock_status === "out_of_stock" && b.stock_status !== "out_of_stock") return -1;
 			if (a.stock_status !== "out_of_stock" && b.stock_status === "out_of_stock") return 1;
-			return a.quantity - b.quantity;
+			return Number(a.quantity) - Number(b.quantity);
 		});
 };
 
@@ -355,9 +391,12 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 					description: parsed.description,
 					location: parsed.location,
 					quantity: 0, // recordMovements sets the initial qty below
+					unit: parsed.unit,
 					unit_price: parsed.unit_price ?? null,
 					cost: parsed.cost ?? null,
 					sku: parsed.sku ?? null,
+					// Blank collapses to null so "no category" is one value, not null vs "".
+					category: parsed.category?.trim() || null,
 					barcode: parsed.barcode ?? null,
 					low_stock_threshold: parsed.low_stock_threshold ?? null,
 					image_urls: parsed.image_urls,
@@ -378,6 +417,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 						from_location_type: "external",
 						to_location_type: "warehouse",
 						reason: "receive",
+						unit_cost: parsed.cost_at_receipt ?? undefined,
 					},
 				]);
 			}
@@ -393,6 +433,13 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 					name: { old: null, new: created.name },
 					quantity: { old: null, new: parsed.quantity },
 					location: { old: null, new: created.location },
+					// Logged so price-history has an anchor point at creation. Numbers, not
+					// Decimals: Prisma's Decimal round-trips through Json inconsistently.
+					cost: { old: null, new: created.cost != null ? Number(created.cost) : null },
+					unit_price: {
+						old: null,
+						new: created.unit_price != null ? Number(created.unit_price) : null,
+					},
 				},
 			});
 
@@ -438,14 +485,16 @@ export const updateInventoryItem = async (
 			return { err: "Inventory item not found" };
 		}
 
+		// No "quantity" here — the schema omits it; warehouse qty only moves via recordMovements.
 		const changes = buildChanges(existing, parsed, [
 			"name",
 			"description",
 			"location",
-			"quantity",
+			"unit",
 			"unit_price",
 			"cost",
 			"sku",
+			"category",
 			"barcode",
 			"low_stock_threshold",
 			"image_urls",
@@ -461,6 +510,11 @@ export const updateInventoryItem = async (
 					...parsed,
 					...(parsed.alt_ids !== undefined && {
 						alt_ids: parsed.alt_ids.map((s) => s.trim()).filter(Boolean),
+					}),
+					// Same normalization as create — the spread above would
+					// otherwise persist "  Filters  " verbatim.
+					...(parsed.category !== undefined && {
+						category: parsed.category?.trim() || null,
 					}),
 				},
 				include: { tags: true },
@@ -650,9 +704,11 @@ export const adjustInventoryStock = async (
 		});
 
 		// Only alert when quantity first crosses below threshold, not on every deduction
+		// Coerced: these are Decimals, and `>` between them compares string forms
+		// (so "9" > "10" is true), which would invert the gate.
 		if (
 			lowStockItemIds.includes(itemId) &&
-			existing.quantity > (existing.low_stock_threshold ?? 0)
+			Number(existing.quantity) > Number(existing.low_stock_threshold ?? 0)
 		) {
 			sendLowStockAlert(updated as InventoryRecord).catch(() => {});
 		}
@@ -753,6 +809,8 @@ export const receiveInventoryItem = async (
 					batch_number: parsed.batch.batch_number,
 					expires_at: parsed.batch.expires_at ? new Date(parsed.batch.expires_at) : null,
 					supplier: parsed.batch.supplier ?? null,
+					// Falls back to the receive-level cost — one purchase, one price.
+					unit_cost: parsed.batch.unit_cost ?? parsed.unit_cost ?? null,
 				});
 				resolvedBatch = { id: created.id, code: created.code, batch_number: parsed.batch.batch_number };
 			} else if (parsed.batch_id) {
@@ -771,6 +829,7 @@ export const receiveInventoryItem = async (
 				to_location_type: "warehouse",
 				reason: "receive",
 				note: parsed.note,
+				unit_cost: parsed.unit_cost,
 				serial: newSerialTracking
 					? {
 							create: (newSerialTracking.create ?? []).map((c) => ({
@@ -859,10 +918,90 @@ const isSerialNumberConflict = (e: unknown): boolean => p2002TargetHits(e, "seri
 // TrackingValidationError handling in receiveInventoryItem above).
 class TrackingStockNotZeroError extends Error {}
 
+// Shared by the PATCH tracking-toggle enforcement and the GET tracking-eligibility
+// predictor, so both surfaces can never disagree on the disable/switch rule.
+interface TrackingLiveness {
+	/** Units still physically somewhere. The hard blocker on disabling. */
+	liveSerials: number;
+	/** Lots still holding stock, in the warehouse or on any vehicle. */
+	liveLots: number;
+	/** Every unit/lot ever recorded, live or terminal — what a disable archives. */
+	totalSerials: number;
+	totalLots: number;
+}
+
+/** Counts live vs total tracked rows for one item. Org filtered explicitly since the
+ * enforcement call site holds a raw transaction client, not a scoped one. */
+const countTrackingLiveness = async (
+	client: Prisma.TransactionClient,
+	itemId: string,
+	organizationId: string,
+): Promise<TrackingLiveness> => {
+	const [liveSerials, liveWarehouseLots, liveVehicleLots, totalSerials, totalLots] =
+		await Promise.all([
+			client.serial_unit.count({
+				where: {
+					inventory_item_id: itemId,
+					organization_id: organizationId,
+					status: { in: ["in_warehouse", "on_vehicle"] },
+				},
+			}),
+			client.stock_batch.count({
+				where: {
+					inventory_item_id: itemId,
+					organization_id: organizationId,
+					qty_in_warehouse: { gt: 0 },
+				},
+			}),
+			client.vehicle_stock_batch.count({
+				where: {
+					batch: { inventory_item_id: itemId, organization_id: organizationId },
+					qty_on_hand: { gt: 0 },
+				},
+			}),
+			client.serial_unit.count({
+				where: { inventory_item_id: itemId, organization_id: organizationId },
+			}),
+			client.stock_batch.count({
+				where: { inventory_item_id: itemId, organization_id: organizationId },
+			}),
+		]);
+
+	// Warehouse and vehicle lots are counted apart only because they live in
+	// different tables — the rule treats "holding stock anywhere" as one fact.
+	return {
+		liveSerials,
+		liveLots: liveWarehouseLots + liveVehicleLots,
+		totalSerials,
+		totalLots,
+	};
+};
+
+/** Reasons a disable/switch is refused; empty means the flip is allowed. Enforcement
+ * prefixes the first with "Cannot disable or switch tracking while …"; eligibility
+ * returns them verbatim as `blockers`. */
+const trackingLivenessBlockers = (live: TrackingLiveness): string[] => {
+	const blockers: string[] = [];
+	if (live.liveSerials > 0) {
+		blockers.push(
+			`${live.liveSerials} serial unit(s) are still in the warehouse or on a vehicle — consume, return, or remove them first`,
+		);
+	}
+	if (live.liveLots > 0) {
+		blockers.push(
+			`${live.liveLots} batch(es) still hold stock in the warehouse or on a vehicle — draw them down to zero first`,
+		);
+	}
+	return blockers;
+};
+
 // PATCH /inventory/:id/tracking — flips is_serialized/is_batch_tracked. Gated
 // on zero total on-hand stock (warehouse quantity + every vehicle's
 // qty_on_hand for this item) so serial_unit/stock_batch rows never desync
 // from physical stock. Provisional items can never be tracked.
+//
+// Disabling additionally requires no *live* units or lots — terminal serials and
+// drained lots are deliberately left behind as read-only history.
 export const updateItemTracking = async (
 	itemId: string,
 	data: unknown,
@@ -919,31 +1058,37 @@ export const updateItemTracking = async (
 				);
 			}
 
-			// "Block unless empty": turning OFF (or switching away from) an
-			// already-tracked dimension is only allowed when no serial/batch rows
-			// survive — even consumed/lost/returned serials or zeroed-out lots
-			// carry recall/audit history that disabling would orphan. Enabling on
-			// an untracked item can't hit this (it has no such rows). Mirrors
-			// deleteBatch's "empty everywhere incl. no serials" reasoning.
+			// "Block unless nothing is live": disabling/switching a tracked dimension is
+			// allowed once no unit or lot still holds stock; terminal serials/drained lots
+			// survive on purpose as read-only history. Checked directly rather than via
+			// totalOnHand === 0 above, since the cached quantity and unit rows can drift.
 			const disablingTracked =
 				(changesToApply.is_serialized?.old === true &&
 					changesToApply.is_serialized?.new === false) ||
 				(changesToApply.is_batch_tracked?.old === true &&
 					changesToApply.is_batch_tracked?.new === false);
 
+			// Recorded on the activity entry so the audit log distinguishes "disabled clean"
+			// from "disabled, history retained".
+			let archivedHistory: { serials: number; batches: number } | null = null;
+
 			if (disablingTracked) {
-				const [serialCount, batchCount] = await Promise.all([
-					tx.serial_unit.count({
-						where: { inventory_item_id: itemId, organization_id: organizationId },
-					}),
-					tx.stock_batch.count({
-						where: { inventory_item_id: itemId, organization_id: organizationId },
-					}),
-				]);
-				if (serialCount > 0 || batchCount > 0) {
+				const live = await countTrackingLiveness(
+					tx as unknown as Prisma.TransactionClient,
+					itemId,
+					organizationId,
+				);
+
+				// Report the first blocker only; the eligibility endpoint returns the full list.
+				const [blocker] = trackingLivenessBlockers(live);
+				if (blocker) {
 					throw new TrackingStockNotZeroError(
-						`Cannot disable or switch tracking while ${serialCount} serial unit(s) and ${batchCount} batch(es) still exist for this item — remove them first`,
+						`Cannot disable or switch tracking while ${blocker}`,
 					);
+				}
+
+				if (live.totalSerials > 0 || live.totalLots > 0) {
+					archivedHistory = { serials: live.totalSerials, batches: live.totalLots };
 				}
 			}
 
@@ -964,7 +1109,14 @@ export const updateItemTracking = async (
 				entity_id: itemId,
 				organization_id: organizationId,
 				...getActorInfo(context),
-				changes: changesToApply,
+				changes: {
+					...changesToApply,
+					// ChangeSet is old/new per key; nothing about the history rows
+					// changed, so old is null and new carries what was retained.
+					...(archivedHistory
+						? { archived_history: { old: null, new: archivedHistory } }
+						: {}),
+				},
 			});
 
 			return item;
@@ -1106,17 +1258,35 @@ export const importInventoryFromFile = async (
 	buffer: Buffer,
 	orgId: string,
 	context?: UserContext,
-): Promise<{ imported: number; skipped: { row: number; reason: string }[] }> => {
+): Promise<{
+	imported: number;
+	skipped: { row: number; reason: string }[];
+	// Rows that DID import, but not exactly as written (unlike skipped, which produced nothing).
+	warnings: { row: number; message: string }[];
+}> => {
 	const workbook = XLSX.read(buffer, { type: "buffer" });
 	const sheet = workbook.Sheets[workbook.SheetNames[0]];
 	const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
 	const skipped: { row: number; reason: string }[] = [];
+	const warnings: { row: number; message: string }[] = [];
 	let imported = 0;
 
 	const str = (v: unknown) => String(v ?? "").trim();
 	const toNum = (v: unknown) => { const n = parseFloat(str(v)); return isNaN(n) ? undefined : n; };
-	const toInt = (v: unknown) => { const n = parseInt(str(v), 10); return isNaN(n) ? undefined : n; };
+
+	// Decimal(10,2) columns — parsed as floats (fractional stock is legitimate), and
+	// validated via isStorableStockQty so this path can't accept what the single-item
+	// path rejects. Negative values aren't checked here; createInventoryItem's schema
+	// already reports that.
+	const toStockQty = (v: unknown): { ok: true; value: number | undefined } | { ok: false } => {
+		const raw = str(v);
+		if (!raw) return { ok: true, value: undefined };
+		const n = parseFloat(raw);
+		if (isNaN(n)) return { ok: true, value: undefined };
+		if (!isStorableStockQty(n)) return { ok: false };
+		return { ok: true, value: n };
+	};
 
 	const sdb = getScopedDb(orgId);
 
@@ -1150,15 +1320,46 @@ export const importInventoryFromFile = async (
 		if (!name) { skipped.push({ row: rowNum, reason: "Missing required field: name" }); continue; }
 		if (!location) { skipped.push({ row: rowNum, reason: "Missing required field: location" }); continue; }
 
+		const quantityResult = toStockQty(row["quantity"]);
+		if (!quantityResult.ok) {
+			skipped.push({
+				row: rowNum,
+				reason: `Invalid quantity "${str(row["quantity"])}": ${STOCK_QTY_MESSAGE}`,
+			});
+			continue;
+		}
+
+		const thresholdResult = toStockQty(row["low_stock_threshold"]);
+		if (!thresholdResult.ok) {
+			skipped.push({
+				row: rowNum,
+				reason: `Invalid low_stock_threshold "${str(row["low_stock_threshold"])}": ${STOCK_QTY_MESSAGE}`,
+			});
+			continue;
+		}
+
+		// Accepts both the "Unit" header the low-stock export writes and lowercase "unit".
+		// Unlike the API, an unrecognized unit coerces to the default and warns instead of
+		// failing the row — losing a whole item over a unit typo is worse.
+		const rawUnit = str(row["unit"] ?? row["Unit"]);
+		const unit = normalizeUnitCode(rawUnit);
+		if (rawUnit && !unit) {
+			warnings.push({
+				row: rowNum,
+				message: `Unrecognized unit "${rawUnit}" — imported as "${DEFAULT_UNIT_CODE}"`,
+			});
+		}
+
 		const data = {
 			name,
 			location,
 			description: str(row["description"]) || "",
 			sku: str(row["sku"]) || null,
-			quantity: toInt(row["quantity"]) ?? 0,
+			quantity: quantityResult.value ?? 0,
+			unit: unit ?? DEFAULT_UNIT_CODE,
 			unit_price: toNum(row["unit_price"]) ?? null,
 			cost: toNum(row["cost"]) ?? null,
-			low_stock_threshold: toInt(row["low_stock_threshold"]) ?? null,
+			low_stock_threshold: thresholdResult.value ?? null,
 			alert_email: str(row["alert_email"]) || null,
 			alert_emails_enabled: false,
 			image_urls: [],
@@ -1182,7 +1383,7 @@ export const importInventoryFromFile = async (
 		}
 	}
 
-	return { imported, skipped };
+	return { imported, skipped, warnings };
 };
 
 // ── Low-stock export ──────────────────────────────────────────────────────────
@@ -1225,16 +1426,30 @@ export const getInventoryMovements = async (
 	organizationId: string,
 	cursor?: string,
 	limit = 25,
+	query: unknown = {},
 ) => {
 	const sdb = getScopedDb(organizationId);
 
-	const existing = await sdb.inventory_item.findFirst({ where: { id: itemId } });
+	const existing = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		select: { id: true },
+	});
 	if (!existing) return { err: "Inventory item not found" as const };
+
+	// cursor/limit stay as explicit args (existing callers pass them positionally);
+	// `query` carries the newer filters. created_after narrows the ledger here on
+	// the server rather than the UI hiding rows it already fetched.
+	const q = parseInput(movementsQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
 
 	const take = Math.min(Math.max(Number.isFinite(limit) ? Math.floor(limit) : 25, 1), 100);
 
 	const movements = await sdb.stock_movement.findMany({
-		where: { inventory_item_id: itemId },
+		where: {
+			inventory_item_id: itemId,
+			...(parsed.created_after ? { created_at: { gte: parsed.created_after } } : {}),
+		},
 		include: MOVEMENT_INCLUDE,
 		orderBy: [{ created_at: "desc" }, { id: "desc" }],
 		take: take + 1,
@@ -1246,6 +1461,706 @@ export const getInventoryMovements = async (
 	const nextCursor = hasNext ? page[page.length - 1].id : null;
 
 	return { err: "", movements: page, nextCursor };
+};
+
+// ── History & Reports tab (item detail page) ──────────────────────────────────
+
+// GET /inventory/:id/usage — consumption of this item traced back to the job +
+// client it was used on, grouped per job+client. Offset-paginated since these are
+// GROUP BY aggregate rows, not raw ledger rows with a stable cursor id.
+export const getItemUsage = async (itemId: string, organizationId: string, query: unknown = {}) => {
+	const sdb = getScopedDb(organizationId);
+
+	const existing = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		select: { id: true },
+	});
+	if (!existing) return { err: "Inventory item not found" as const };
+
+	const q = parseInput(usageQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
+
+	const take = Math.min(Math.max(parsed.limit ?? 20, 1), 100);
+	const offset = Math.max(parsed.offset ?? 0, 0);
+
+	const rows = await sdb.$queryRaw<
+		{
+			jobId: string;
+			jobNumber: string;
+			jobName: string;
+			clientId: string;
+			clientName: string;
+			qtyConsumed: number;
+			units: string[] | null;
+			lastConsumedAt: Date;
+		}[]
+	>`
+		SELECT
+			j.id AS "jobId",
+			j.job_number AS "jobNumber",
+			j.name AS "jobName",
+			c.id AS "clientId",
+			c.name AS "clientName",
+			SUM(sm.qty)::float AS "qtyConsumed",
+			-- Per-row units, so a mixed-unit group's sum can be withheld per row.
+			array_agg(DISTINCT sm.unit) AS "units",
+			MAX(sm.created_at) AS "lastConsumedAt"
+		FROM stock_movement sm
+		JOIN job_visit_line_item jli ON jli.id = sm.visit_line_item_id
+		JOIN job_visit jv ON jv.id = jli.visit_id
+		JOIN job j ON j.id = jv.job_id
+		JOIN client c ON c.id = j.client_id
+		WHERE sm.inventory_item_id = ${itemId}
+			AND sm.organization_id = ${organizationId}
+			AND sm.reason IN ('parts_used', 'direct_consumption')
+		GROUP BY j.id, j.job_number, j.name, c.id, c.name
+		ORDER BY MAX(sm.created_at) DESC
+		LIMIT ${take + 1} OFFSET ${offset}
+	`;
+
+	const hasMore = rows.length > take;
+	const page = hasMore ? rows.slice(0, take) : rows;
+
+	// Per-row basis withholds that row's total; the page-level union flags the column
+	// itself as mixed even when every individual row is single-unit.
+	const usage = page.map((r) => {
+		const basis = unitBasis(r.units);
+		return {
+			jobId: r.jobId,
+			jobNumber: r.jobNumber,
+			jobName: r.jobName,
+			clientId: r.clientId,
+			clientName: r.clientName,
+			qtyConsumed: basis.mixed ? null : Number(r.qtyConsumed),
+			unitBasis: basis,
+			lastConsumedAt: r.lastConsumedAt.toISOString(),
+		};
+	});
+
+	return {
+		err: "",
+		usage,
+		unitBasis: mergeUnitBases(usage.map((u) => u.unitBasis)),
+		hasMore,
+	};
+};
+
+// Per-bucket default/hard-cap for `range`. Zod only enforces a shared outer ceiling
+// (104) since it can't see which bucket was requested; the tighter cap is applied
+// here once `bucket` is resolved.
+const TREND_BUCKET_DEFAULTS: Record<TrendBucket, { defaultRange: number; maxRange: number }> = {
+	week: { defaultRange: 26, maxRange: 104 }, // ~6 months default, 2 years cap
+	month: { defaultRange: 12, maxRange: 36 }, // 1 year default, 3 years cap
+};
+
+// The date_trunc grain's matching generate_series step.
+const TREND_BUCKET_INTERVAL: Record<TrendBucket, string> = {
+	week: "1 week",
+	month: "1 month",
+};
+
+/** Resolves bucket, clamped range, cap, and SQL interval — shared by both bucketed series. */
+const resolveTrendBucket = (parsed: { bucket?: TrendBucket; range?: number }) => {
+	const bucket = parsed.bucket ?? "week";
+	const { defaultRange, maxRange } = TREND_BUCKET_DEFAULTS[bucket];
+	return {
+		bucket,
+		range: Math.min(Math.max(parsed.range ?? defaultRange, 1), maxRange),
+		maxRange,
+		interval: TREND_BUCKET_INTERVAL[bucket],
+	};
+};
+
+/** Start of a window `buckets` wide, ending at date_trunc(bucket, now()). Weeks
+ * subtract fixed-length milliseconds; months walk back from the 1st (UTC) since
+ * month length varies. */
+const bucketCutoff = (bucket: TrendBucket, buckets: number): Date => {
+	if (bucket === "week") return new Date(Date.now() - (buckets - 1) * 7 * 24 * 60 * 60 * 1000);
+	const d = new Date();
+	d.setUTCDate(1);
+	d.setUTCMonth(d.getUTCMonth() - (buckets - 1));
+	return d;
+};
+
+// GET /inventory/:id/consumption-trend — bucketed CONSUMPTION totals for the
+// History-tab trend chart. Zero-filled via generate_series so a bucket with no
+// consumption is a real 0, not a missing point.
+export const getItemConsumptionTrend = async (
+	itemId: string,
+	organizationId: string,
+	query: unknown = {},
+) => {
+	const sdb = getScopedDb(organizationId);
+
+	const existing = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		select: { id: true },
+	});
+	if (!existing) return { err: "Inventory item not found" as const };
+
+	const q = parseInput(consumptionTrendQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
+
+	const { bucket, range, interval: intervalStr } = resolveTrendBucket(parsed);
+	const cutoff = bucketCutoff(bucket, range);
+
+	const rows = await sdb.$queryRaw<{ periodStart: Date; qtyConsumed: number; units: string[] | null }[]>`
+		WITH bucket_range AS (
+			SELECT
+				date_trunc(${bucket}, ${cutoff}::timestamptz) AS start_period,
+				date_trunc(${bucket}, now()) AS end_period
+		),
+		buckets AS (
+			SELECT generate_series(start_period, end_period, ${intervalStr}::interval) AS period_start
+			FROM bucket_range
+		),
+		consumption AS (
+			SELECT
+				date_trunc(${bucket}, sm.created_at) AS period_start,
+				SUM(sm.qty) AS qty
+			FROM stock_movement sm
+			WHERE sm.inventory_item_id = ${itemId}
+				AND sm.organization_id = ${organizationId}
+				AND sm.reason IN ('parts_used', 'direct_consumption')
+				AND sm.created_at >= (SELECT start_period FROM bucket_range)
+			GROUP BY 1
+		),
+		-- Stamped units over the WHOLE window, not per bucket — a per-bucket basis
+		-- would still plot "each" bars beside "box" bars on one y-axis. CROSS JOINed
+		-- rather than a correlated subquery so this can't drift from consumption's filter.
+		series_units AS (
+			SELECT array_agg(DISTINCT sm.unit) AS units
+			FROM stock_movement sm
+			WHERE sm.inventory_item_id = ${itemId}
+				AND sm.organization_id = ${organizationId}
+				AND sm.reason IN ('parts_used', 'direct_consumption')
+				AND sm.created_at >= (SELECT start_period FROM bucket_range)
+		)
+		SELECT
+			b.period_start AS "periodStart",
+			COALESCE(c.qty, 0)::float AS "qtyConsumed",
+			su.units AS "units"
+		FROM buckets b
+		CROSS JOIN series_units su
+		LEFT JOIN consumption c ON c.period_start = b.period_start
+		ORDER BY b.period_start ASC
+	`;
+
+	// Every row carries the same series-wide array (CROSS JOIN), so one row is enough;
+	// a bucket series is never empty — generate_series always emits at least one.
+	const basis = unitBasis(rows[0]?.units);
+
+	return {
+		err: "",
+		bucket,
+		unitBasis: basis,
+		points: rows.map((r) => ({
+			periodStart: r.periodStart.toISOString(),
+			// Withheld (null), not zeroed — 0 already means "nothing consumed" on this
+			// zero-filled series, so it can't also mean "cannot be totalled".
+			qtyConsumed: basis.mixed ? null : Number(r.qtyConsumed),
+		})),
+	};
+};
+
+// GET /inventory/:id/forecast — delegates to reportsController's shared
+// buildReorderForecast so this stays in lockstep with the fleet-wide report.
+// `reason` distinguishes "inactive" from "active but no forecastable row" so the
+// UI doesn't conflate the two empty states; either way it's not a 404.
+export const getItemForecast = async (
+	itemId: string,
+	organizationId: string,
+	opts: { lookbackDays?: number } = {},
+) => {
+	const sdb = getScopedDb(organizationId);
+
+	const existing = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		// is_active distinguishes "inactive" from "no forecastable row" below.
+		select: { id: true, is_active: true },
+	});
+	if (!existing) return { err: "Inventory item not found" as const };
+
+	const lookbackDays = opts.lookbackDays != null && opts.lookbackDays > 0 ? opts.lookbackDays : 90;
+	const forecast = await getItemReorderForecast(organizationId, itemId, { lookbackDays });
+
+	const reason: "inactive" | "no_forecast_row" | null =
+		forecast != null ? null : existing.is_active ? "no_forecast_row" : "inactive";
+
+	return { err: "", forecast, reason };
+};
+
+// Hard cap on movements replayed for the value-history time series — a single
+// item's full ledger should never realistically approach this, but caps it
+// the same way REPORT_ROW_CAP does for the reports module.
+const VALUE_HISTORY_ROW_CAP = 2000;
+
+// GET /inventory/:id/value-history — running warehouse quantity over time, priced
+// at the weighted-average PAID cost when receipts recorded one (costBasis "paid"),
+// falling back to the item's current configured cost otherwise (costBasis
+// "configured") — a directional trend, not a realized-COGS ledger.
+//
+// Replay is a NEWEST-N window; `openingQuantity` recovers the level before it via
+// one aggregate over everything older. A NEGATIVE series (`hasNegative`) means the
+// ledger predates full stock-movement coverage — left unclamped rather than
+// fabricating stock that was never recorded.
+export const getItemValueHistory = async (
+	itemId: string,
+	organizationId: string,
+	query: unknown = {},
+) => {
+	const sdb = getScopedDb(organizationId);
+
+	const item = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		select: { id: true, cost: true },
+	});
+	if (!item) return { err: "Inventory item not found" as const };
+
+	const q = parseInput(valueHistoryQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
+
+	const where: Prisma.stock_movementWhereInput = {
+		inventory_item_id: itemId,
+		...(parsed.created_after ? { created_at: { gte: parsed.created_after } } : {}),
+	};
+
+	// take cap + 1 so a full page tells us rows were cut. Same (created_at, id)
+	// tie-break as getInventoryMovements — a non-unique sort key would make the
+	// window boundary unstable.
+	const newestFirst = await sdb.stock_movement.findMany({
+		where,
+		select: {
+			id: true,
+			qty: true,
+			from_location_type: true,
+			to_location_type: true,
+			created_at: true,
+		},
+		orderBy: [{ created_at: "desc" }, { id: "desc" }],
+		take: VALUE_HISTORY_ROW_CAP + 1,
+	});
+
+	const truncated = newestFirst.length > VALUE_HISTORY_ROW_CAP;
+	const movements = (truncated ? newestFirst.slice(0, VALUE_HISTORY_ROW_CAP) : newestFirst).reverse();
+
+	const first = movements[0] ?? null;
+	const windowStart = first ? first.created_at.toISOString() : null;
+
+	// Only runs when the series doesn't start at the item's first movement. Row-tuple
+	// comparison keeps created_at ties from being counted on both sides of the seam.
+	const needsOpening = first != null && (truncated || parsed.created_after != null);
+
+	// ONE aggregate serving two needs (one round-trip instead of two): openingQuantity
+	// (stock before the window's first row) and paidQty/paidSpend (weighted-average
+	// paid cost, over the WHOLE ledger regardless of window).
+	const [agg] = first
+		? await sdb.$queryRaw<{
+				openingQuantity: number | null;
+				paidQty: number | null;
+				paidSpend: number | null;
+				units: string[] | null;
+			}[]>`
+			SELECT
+				-- Basis over the WHOLE ledger, wider than the displayed window: a window
+				-- holding one unit is still contaminated if the ledger behind it isn't.
+				array_agg(DISTINCT sm.unit) AS "units",
+				COALESCE(SUM(
+					CASE WHEN (sm.created_at, sm.id) < (${first.created_at}::timestamptz, ${first.id}) THEN
+						CASE WHEN sm.to_location_type = 'warehouse' THEN sm.qty ELSE 0 END
+						- CASE WHEN sm.from_location_type = 'warehouse' THEN sm.qty ELSE 0 END
+					ELSE 0 END
+				), 0)::float AS "openingQuantity",
+				SUM(
+					CASE WHEN sm.reason IN ('receive', 'supplier_purchase') AND sm.unit_cost IS NOT NULL
+						THEN sm.qty END
+				)::float AS "paidQty",
+				SUM(
+					CASE WHEN sm.reason IN ('receive', 'supplier_purchase') AND sm.unit_cost IS NOT NULL
+						THEN sm.qty * sm.unit_cost END
+				)::float AS "paidSpend"
+			FROM stock_movement sm
+			WHERE sm.inventory_item_id = ${itemId}
+				AND sm.organization_id = ${organizationId}
+		`
+		: [];
+
+	const currentCost = item.cost != null ? Number(item.cost) : null;
+
+	// Unit break: no honest running balance to draw (it's a cumulative sum, so points
+	// in one unit still depend on rows in the other) — return no points + basis so the
+	// chart shows an explained state instead of a false "No history yet".
+	const basis = unitBasis(agg?.units);
+	if (basis.mixed) {
+		return {
+			err: "",
+			currentCost,
+			costUsed: null,
+			costBasis: null,
+			unitBasis: basis,
+			points: [],
+			truncated,
+			openingQuantity: null,
+			windowStart,
+			hasNegative: false,
+		};
+	}
+
+	const openingQuantity = needsOpening ? Number(agg?.openingQuantity ?? 0) : 0;
+
+	// Weighted average of what was actually PAID beats the current configured cost.
+	// Falls back to configured cost when no receipt recorded one; `costBasis` tells
+	// the UI which reading it's looking at.
+	const paidQty = Number(agg?.paidQty ?? 0);
+	const wacCost =
+		paidQty > 0 && agg?.paidSpend != null ? Number(agg.paidSpend) / paidQty : null;
+	const costUsed = wacCost ?? currentCost;
+	const costBasis: "paid" | "configured" | null =
+		wacCost != null ? "paid" : currentCost != null ? "configured" : null;
+
+	let runningQty = openingQuantity;
+	let hasNegative = false;
+	const points = movements.map((m) => {
+		const qty = Number(m.qty);
+		if (m.from_location_type === "warehouse") runningQty -= qty;
+		if (m.to_location_type === "warehouse") runningQty += qty;
+		if (runningQty < 0) hasNegative = true;
+		return {
+			date: m.created_at.toISOString(),
+			quantity: runningQty,
+			value: costUsed != null ? costUsed * runningQty : null,
+		};
+	});
+
+	return {
+		err: "",
+		currentCost,
+		costUsed,
+		costBasis,
+		unitBasis: basis,
+		points,
+		truncated,
+		openingQuantity,
+		windowStart,
+		hasNegative,
+	};
+};
+
+// ── Cost & pricing history ────────────────────────────────────────────────────
+
+// Hard cap on audit-log rows replayed for the price step series. A single item's
+// edit history is realistically a handful of rows; this caps it the same way
+// VALUE_HISTORY_ROW_CAP does for the ledger replay.
+const PRICE_HISTORY_LOG_CAP = 1000;
+
+export interface PriceStepPoint {
+	at: string;
+	value: number | null;
+}
+
+// log.changes is untyped Json; a Prisma Decimal round-trips through it as either a
+// number or a string. number = real amount, null = explicitly cleared, undefined =
+// unusable — caller must drop the entry rather than plot 0 or NaN.
+const coerceLoggedAmount = (raw: unknown): number | null | undefined => {
+	if (raw === null) return null;
+	if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+	if (typeof raw === "string") {
+		const trimmed = raw.trim();
+		if (trimmed === "") return undefined;
+		const n = Number(trimmed);
+		return Number.isFinite(n) ? n : undefined;
+	}
+	return undefined;
+};
+
+// Reconstructs a STEP function (cost/price holds until edited) from audit-log diffs:
+// anchored at created_at using the first change's `old` value, and tailed at `now`
+// pinned to the LIVE column so log drift can't disagree with the item page.
+const buildPriceStepSeries = (
+	entries: { timestamp: Date; changes: Prisma.JsonValue | null }[],
+	field: "cost" | "unit_price",
+	itemCreatedAt: Date,
+	current: number | null,
+	nowIso: string,
+): PriceStepPoint[] => {
+	const points: PriceStepPoint[] = [];
+
+	for (const entry of entries) {
+		const changes = entry.changes as Record<string, unknown> | null;
+		const diff = changes?.[field];
+		if (!diff || typeof diff !== "object") continue;
+
+		const { old: before, new: after } = diff as { old?: unknown; new?: unknown };
+		const next = coerceLoggedAmount(after);
+		if (next === undefined) continue;
+
+		// Anchor only from a real prior amount. A `null` predecessor means the
+		// field was unset before this change, and there's nothing to draw from
+		// created_at up to it.
+		if (points.length === 0) {
+			const previous = coerceLoggedAmount(before);
+			if (previous != null) {
+				points.push({ at: itemCreatedAt.toISOString(), value: previous });
+			}
+		}
+
+		points.push({ at: entry.timestamp.toISOString(), value: next });
+	}
+
+	// Never edited (or every entry was unusable): a flat line from creation to now
+	// still communicates "this has always been X", which is the truth.
+	if (points.length === 0) {
+		if (current == null) return [];
+		return [
+			{ at: itemCreatedAt.toISOString(), value: current },
+			{ at: nowIso, value: current },
+		];
+	}
+
+	points.push({ at: nowIso, value: current });
+	return points;
+};
+
+// Trims a step series to the range window, keeping the last point BEFORE the window
+// and re-stamping it at the window start — otherwise the chart's first visible
+// segment is missing (same reasoning as getItemValueHistory's openingQuantity).
+// Generic over point shape since the paid-cost average is windowed the same way.
+const windowStepSeries = <T extends { at: string }>(points: T[], from: Date | undefined): T[] => {
+	if (!from) return points;
+	const fromMs = from.getTime();
+	const inside: T[] = [];
+	let carryIn: T | null = null;
+
+	for (const p of points) {
+		if (new Date(p.at).getTime() < fromMs) carryIn = p;
+		else inside.push(p);
+	}
+
+	return carryIn ? [{ ...carryIn, at: from.toISOString() }, ...inside] : inside;
+};
+
+// GET /inventory/:id/price-history — four distinct series, not conflated: set cost
+// and list price (step, from the audit log — the only path that mutates them), charged
+// (actually billed, bucketed), and paid cost (per-receipt + running weighted average).
+// `coverageStart` reports that the log only covers changes made after audit logging began.
+export const getItemPriceHistory = async (
+	itemId: string,
+	organizationId: string,
+	query: unknown = {},
+) => {
+	const sdb = getScopedDb(organizationId);
+
+	const item = await sdb.inventory_item.findFirst({
+		where: { id: itemId },
+		select: { id: true, cost: true, unit_price: true, created_at: true },
+	});
+	if (!item) return { err: "Inventory item not found" as const };
+
+	const q = parseInput(priceHistoryQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
+
+	const { bucket, range, maxRange, interval: intervalStr } = resolveTrendBucket(parsed);
+
+	// The charged series must span the same window as the step series, or the chart
+	// draws a list price reaching back years beside a charged price that silently stops.
+	// Clamped to the bucket's cap; chargedTruncated reports that clamp rather than
+	// hiding it.
+	const capCutoff = bucketCutoff(bucket, maxRange);
+	const desiredCutoff =
+		parsed.created_after ??
+		(parsed.range != null ? bucketCutoff(bucket, range) : item.created_at);
+	const chargedTruncated = desiredCutoff.getTime() < capCutoff.getTime();
+	const cutoff = chargedTruncated ? capCutoff : desiredCutoff;
+
+	const [logEntries, chargedRows, receiptRows] = await Promise.all([
+		// Ascending: the series is built forward, and the FIRST entry's `old`
+		// value is what anchors it at created_at.
+		sdb.log.findMany({
+			where: {
+				entity_type: "inventory_item",
+				entity_id: itemId,
+				event_type: { in: ["inventory_item.created", "inventory_item.updated"] },
+			},
+			select: { timestamp: true, changes: true },
+			orderBy: { timestamp: "asc" },
+			take: PRICE_HISTORY_LOG_CAP,
+		}),
+		// Realized price actually billed, zero-filled like getItemConsumptionTrend.
+		// Visit line items only — invoice_line_item is generated FROM visits, so
+		// counting both would double every sale. Bucketed by when the work happened
+		// (actual_end_at, falling back to scheduled/created), not row-insertion time.
+		// Cancelled visits/jobs excluded — never billed.
+		sdb.$queryRaw<{ periodStart: Date; qty: number; revenue: number }[]>`
+			WITH bucket_range AS (
+				SELECT
+					date_trunc(${bucket}, ${cutoff}::timestamptz) AS start_period,
+					date_trunc(${bucket}, now()) AS end_period
+			),
+			buckets AS (
+				SELECT generate_series(start_period, end_period, ${intervalStr}::interval) AS period_start
+				FROM bucket_range
+			),
+			charged AS (
+				SELECT
+					date_trunc(${bucket}, COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at)) AS period_start,
+					SUM(jli.quantity) AS qty,
+					SUM(jli.quantity * jli.unit_price) AS revenue
+				FROM job_visit_line_item jli
+				JOIN job_visit jv ON jv.id = jli.visit_id
+				JOIN job j ON j.id = jv.job_id
+				WHERE jli.inventory_item_id = ${itemId}
+					AND j.organization_id = ${organizationId}
+					AND jv.status <> 'Cancelled'::visit_status
+					AND j.status <> 'Cancelled'::job_status
+					AND COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at)
+						>= (SELECT start_period FROM bucket_range)
+				GROUP BY 1
+			)
+			SELECT
+				b.period_start AS "periodStart",
+				COALESCE(c.qty, 0)::float AS "qty",
+				COALESCE(c.revenue, 0)::float AS "revenue"
+			FROM buckets b
+			LEFT JOIN charged c ON c.period_start = b.period_start
+			ORDER BY b.period_start ASC
+		`,
+		// Per-receipt purchase cost. Includes `supplier_purchase` (field purchase, never
+		// touches the warehouse) alongside `receive`. Rows with no unit_cost are still
+		// returned so their count can inform the coverage figure.
+		//
+		// Deliberately NOT filtered by created_after — the weighted average is a running
+		// total over everything bought to date; windowing is applied to the OUTPUT below.
+		sdb.stock_movement.findMany({
+			where: {
+				inventory_item_id: itemId,
+				reason: { in: ["receive", "supplier_purchase"] },
+			},
+			select: {
+				created_at: true,
+				qty: true,
+				unit: true,
+				unit_cost: true,
+				movement_batches: {
+					select: { batch: { select: { batch_number: true } } },
+					take: 1,
+				},
+			},
+			orderBy: [{ created_at: "asc" }, { id: "asc" }],
+			take: PRICE_HISTORY_LOG_CAP,
+		}),
+	]);
+
+	const nowIso = new Date().toISOString();
+	const currentCost = item.cost != null ? Number(item.cost) : null;
+	const currentPrice = item.unit_price != null ? Number(item.unit_price) : null;
+
+	const costPoints = windowStepSeries(
+		buildPriceStepSeries(logEntries, "cost", item.created_at, currentCost, nowIso),
+		parsed.created_after,
+	);
+	const pricePoints = windowStepSeries(
+		buildPriceStepSeries(logEntries, "unit_price", item.created_at, currentPrice, nowIso),
+		parsed.created_after,
+	);
+
+	// Running weighted average over every receipt with a cost, skipping ones without
+	// (not treated as $0) and counting them in costCoverage. Basis matches the
+	// unwindowed query above, since the average carries in from outside the window.
+	const receiptBasis = unitBasis(receiptRows.map((r) => r.unit));
+
+	let wacQty = 0;
+	let wacSpend = 0;
+	const allReceipts: {
+		at: string;
+		unitCost: number;
+		qty: number;
+		unit: string;
+		batchNumber: string | null;
+	}[] = [];
+	const allWac: { at: string; value: number }[] = [];
+
+	for (const r of receiptRows) {
+		if (r.unit_cost == null) continue;
+		const unitCost = Number(r.unit_cost);
+		const qty = Number(r.qty);
+		if (!Number.isFinite(unitCost) || !Number.isFinite(qty) || qty <= 0) continue;
+
+		allReceipts.push({
+			at: r.created_at.toISOString(),
+			unitCost,
+			qty,
+			// Per-receipt, stamped. A receipt is a single fact ("$18 per box on this
+			// date") and stays truthful across a unit break, so the markers survive
+			// where the average can't — but only because each one now names its own
+			// denomination instead of borrowing the item's.
+			unit: r.unit,
+			batchNumber: r.movement_batches[0]?.batch?.batch_number ?? null,
+		});
+
+		// Skipped entirely (not emitted-and-flagged) on a unit break — a plotted
+		// line invites reading a trend off it regardless of any note underneath.
+		if (receiptBasis.mixed) continue;
+		wacQty += qty;
+		wacSpend += qty * unitCost;
+		allWac.push({ at: r.created_at.toISOString(), value: wacSpend / wacQty });
+	}
+
+	// The average carries in at the window start (same contract as the step series);
+	// individual receipt markers do NOT — re-stamping one would invent a purchase.
+	const fromMs = parsed.created_after?.getTime();
+	const wac = windowStepSeries(allWac, parsed.created_after);
+	const receipts =
+		fromMs == null
+			? allReceipts
+			: allReceipts.filter((r) => new Date(r.at).getTime() >= fromMs);
+	const windowReceiptRows =
+		fromMs == null
+			? receiptRows.length
+			: receiptRows.filter((r) => r.created_at.getTime() >= fromMs).length;
+
+	return {
+		err: "",
+		cost: { current: currentCost, points: costPoints },
+		price: { current: currentPrice, points: pricePoints },
+		charged: {
+			bucket,
+			points: chargedRows.map((r) => {
+				const qty = Number(r.qty);
+				const revenue = Number(r.revenue);
+				return {
+					periodStart: r.periodStart.toISOString(),
+					qty,
+					revenue,
+					avgUnitPrice: qty > 0 ? revenue / qty : null,
+				};
+			}),
+		},
+		receipts,
+		wac,
+		// Denomination of the two MOVEMENT-derived series only — set-cost/list-price are
+		// configured amounts off the item, unaffected by a unit break.
+		unitBasis: receiptBasis,
+		// receipts/withCost describe THIS window; wacBasisReceipts is the evidence behind
+		// the average overall. All three are counts, so they stay truthful across a unit break.
+		costCoverage: {
+			receipts: windowReceiptRows,
+			withCost: receipts.length,
+			wacBasisReceipts: allReceipts.length,
+		},
+		// Where the charged series actually starts, and whether older sales were
+		// cut off by the bucket cap. Never inferred from the first bucket — a
+		// zero-filled leading bucket looks identical to a truncated one.
+		chargedWindowStart: cutoff.toISOString(),
+		chargedTruncated,
+		// Null when the item has no audit history at all — the UI must not claim
+		// coverage "since" a date that doesn't exist.
+		coverageStart: logEntries[0]?.timestamp.toISOString() ?? null,
+		itemCreatedAt: item.created_at.toISOString(),
+	};
 };
 
 // ── Serial/batch listings ─────────────────────────────────────────────────────
@@ -1263,15 +2178,9 @@ export const listItemSerials = async (
 	const existing = await sdb.inventory_item.findFirst({ where: { id: itemId } });
 	if (!existing) return { err: "Inventory item not found" as const };
 
-	let parsed;
-	try {
-		parsed = listSerialsQuerySchema.parse(query);
-	} catch (e) {
-		if (e instanceof ZodError) {
-			return { err: zodMessage(e) };
-		}
-		throw e;
-	}
+	const q = parseInput(listSerialsQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
 
 	const take = Math.min(Math.max(parsed.limit ?? 25, 1), 100);
 
@@ -1280,6 +2189,7 @@ export const listItemSerials = async (
 			inventory_item_id: itemId,
 			...(parsed.status ? { status: parsed.status } : {}),
 			...(parsed.vehicle_id ? { current_vehicle_id: parsed.vehicle_id } : {}),
+			...(parsed.batch_id ? { batch_id: parsed.batch_id } : {}),
 			...(parsed.search
 				? {
 						OR: [
@@ -1310,15 +2220,9 @@ export const listItemBatches = async (itemId: string, organizationId: string, qu
 	const existing = await sdb.inventory_item.findFirst({ where: { id: itemId } });
 	if (!existing) return { err: "Inventory item not found" as const };
 
-	let parsed;
-	try {
-		parsed = listBatchesQuerySchema.parse(query);
-	} catch (e) {
-		if (e instanceof ZodError) {
-			return { err: zodMessage(e) };
-		}
-		throw e;
-	}
+	const q = parseInput(listBatchesQuerySchema, query);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
 
 	const batches = await sdb.stock_batch.findMany({
 		where: {
@@ -1406,6 +2310,107 @@ export const getItemTrackingSummary = async (itemId: string, organizationId: str
 	};
 };
 
+// GET /inventory/:itemId/vehicle-stock — per-vehicle qty for the Overview tab's
+// "on vehicles" drill-in. vehicle_stock_item.qty_on_hand is the ONE cache
+// recordMovements() upserts on every movement regardless of tracking mode
+// (services/stockMovements.ts, step 7) — serialized, batch-tracked, dual, and
+// untracked items all net through it identically, so this single query covers
+// every StockPlacementCard variant instead of re-deriving the split three
+// different ways (serial_unit groupBy, vehicle_stock_batch aggregate, etc).
+export const getItemVehicleStock = async (itemId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+
+	const existing = await sdb.inventory_item.findFirst({ where: { id: itemId } });
+	if (!existing) return { err: "Inventory item not found" as const };
+
+	const rows = await sdb.vehicle_stock_item.findMany({
+		where: { inventory_item_id: itemId, qty_on_hand: { gt: 0 } },
+		include: {
+			vehicle: {
+				select: {
+					id: true,
+					name: true,
+					status: true,
+					current_technicians: { select: { name: true }, take: 1 },
+				},
+			},
+		},
+		orderBy: { qty_on_hand: "desc" },
+	});
+
+	return {
+		err: "",
+		rows: rows.map((r) => ({
+			vehicle_id: r.vehicle.id,
+			vehicle_name: r.vehicle.name,
+			vehicle_status: r.vehicle.status,
+			technician_name: r.vehicle.current_technicians[0]?.name ?? null,
+			qty_on_hand: Number(r.qty_on_hand),
+		})),
+	};
+};
+
+// GET /inventory/:itemId/tracking-eligibility — the exact facts PATCH
+// /inventory/:id/tracking gates on, so the edit form can explain a block BEFORE
+// the user saves. `blockers` comes from trackingLivenessBlockers, the same
+// function the PATCH gate throws from.
+export const getTrackingEligibility = async (itemId: string, organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+
+	const item = await sdb.inventory_item.findFirst({ where: { id: itemId } });
+	if (!item) return { err: "Inventory item not found" as const };
+
+	const [vehicleAgg, vehiclesHolding, live] = await Promise.all([
+		sdb.vehicle_stock_item.aggregate({
+			where: { inventory_item_id: itemId },
+			_sum: { qty_on_hand: true },
+		}),
+		sdb.vehicle_stock_item.count({
+			where: { inventory_item_id: itemId, qty_on_hand: { gt: 0 } },
+		}),
+		countTrackingLiveness(sdb as unknown as Prisma.TransactionClient, itemId, organizationId),
+	]);
+
+	const qtyWarehouse = Number(item.quantity ?? 0);
+	const qtyOnVehicles = Number(vehicleAgg._sum.qty_on_hand ?? 0);
+
+	const blockers: string[] = [];
+	if (item.provisional) {
+		blockers.push("Provisional items can't be tracked — approve this item first");
+	}
+	const totalOnHand = qtyWarehouse + qtyOnVehicles;
+	if (totalOnHand !== 0) {
+		blockers.push(
+			`${totalOnHand} unit(s) on hand (${qtyWarehouse} in the warehouse, ${qtyOnVehicles} on ${vehiclesHolding} vehicle(s)) — reduce to zero first`,
+		);
+	}
+
+	// Enabling only ever hits the on-hand/provisional gate; the liveness checks
+	// apply to a disable or a serialized↔batch switch.
+	const canEnable = blockers.length === 0;
+
+	const disableBlockers = [...blockers, ...trackingLivenessBlockers(live)];
+
+	return {
+		err: "",
+		eligibility: {
+			provisional: item.provisional,
+			is_serialized: item.is_serialized,
+			is_batch_tracked: item.is_batch_tracked,
+			qty_warehouse: qtyWarehouse,
+			qty_on_vehicles: qtyOnVehicles,
+			vehicle_count: vehiclesHolding,
+			live_serials: live.liveSerials,
+			live_lots: live.liveLots,
+			history_serials: live.totalSerials,
+			history_lots: live.totalLots,
+			can_enable: canEnable,
+			can_disable: disableBlockers.length === 0,
+			blockers: disableBlockers,
+		},
+	};
+};
+
 // ── Batch edit (metadata + recall flag) ───────────────────────────────────────
 // batch_number carries a per-item unique index ([organization_id,
 // inventory_item_id, batch_number]); a rename collision surfaces as a P2002.
@@ -1428,13 +2433,9 @@ export async function updateBatch(
 	const existing = await sdb.stock_batch.findFirst({ where: { id: batchId } });
 	if (!existing) return { err: "Batch not found" };
 
-	let parsed;
-	try {
-		parsed = updateBatchSchema.parse(data);
-	} catch (e) {
-		if (e instanceof ZodError) return { err: zodMessage(e) };
-		throw e;
-	}
+	const q = parseInput(updateBatchSchema, data);
+	if (!q.ok) return { err: q.err };
+	const parsed = q.data;
 
 	const wasRecalled = existing.recalled_at !== null;
 	let updated;
@@ -1753,6 +2754,10 @@ export async function getBatchImpact(batchId: string, organizationId: string) {
 			batch_number: batch.batch_number,
 			item_id: batch.inventory_item.id,
 			item_name: batch.inventory_item.name,
+			// Carried here so the batch detail page can render and seed the
+			// supplier field from this one report, instead of fetching the
+			// item's entire batch list to read a single string off one row.
+			supplier: batch.supplier ?? null,
 			expires_at: batch.expires_at ? batch.expires_at.toISOString() : null,
 			recalled_at: batch.recalled_at ? batch.recalled_at.toISOString() : null,
 		},
@@ -2167,12 +3172,14 @@ export async function getTrackingReconciliation(organizationId: string) {
 	for (const item of items) {
 		if (item.is_serialized) {
 			const warehouseCount = serialCountMap.get(`${item.id}|in_warehouse|`) ?? 0;
-			if (warehouseCount !== item.quantity) {
+			// Coerced: item.quantity is a Decimal object, so `!==` against a counted
+			// number is always true and every serialized item would report drift.
+			if (warehouseCount !== Number(item.quantity)) {
 				drifts.push({
 					item_id: item.id,
 					item_name: item.name,
 					scope: "warehouse",
-					expected: item.quantity,
+					expected: Number(item.quantity),
 					actual: warehouseCount,
 				});
 			}
@@ -2194,12 +3201,13 @@ export async function getTrackingReconciliation(organizationId: string) {
 
 		if (item.is_batch_tracked) {
 			const batchWarehouseSum = batchWarehouseByItem.get(item.id) ?? 0;
-			if (batchWarehouseSum !== item.quantity) {
+			// Same Decimal-vs-number coercion as the serialized branch above.
+			if (batchWarehouseSum !== Number(item.quantity)) {
 				drifts.push({
 					item_id: item.id,
 					item_name: item.name,
 					scope: "warehouse",
-					expected: item.quantity,
+					expected: Number(item.quantity),
 					actual: batchWarehouseSum,
 				});
 			}

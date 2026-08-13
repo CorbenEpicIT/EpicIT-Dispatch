@@ -14,8 +14,8 @@ export default function NotePhotoGallery({ photos }: {photos: JobNotePhoto[] }){
                 onIndexChange={setActive}
                 compact
                 compactNav
-                maxHeight="max-h-80"
-                contain
+                objectFit="contain"
+                frameClassName="w-full h-80"
             />
             <div className="flex flex-wrap gap-1.5 mt-1.5">
 				{photos.map((p, i) => (

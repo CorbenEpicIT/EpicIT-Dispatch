@@ -2,6 +2,7 @@ import {
 	useMutation,
 	useQuery,
 	useQueryClient,
+	keepPreviousData,
 	type UseMutationResult,
 	type UseQueryResult,
 } from "@tanstack/react-query";
@@ -13,6 +14,12 @@ import type {
 	CreateInventoryItemInput,
 	UpdateInventoryItemInput,
 	ProvisionalItem,
+	MovementsPage,
+	ItemUsage,
+	ItemForecastResult,
+	ValueHistory,
+	PriceHistory,
+	ItemConsumptionTrend,
 } from "../types/inventory";
 
 import * as inventoryApi from "../api/inventory";
@@ -40,29 +47,114 @@ export const useLowStockInventoryQuery = (): UseQueryResult<InventoryItem[], Err
 	});
 };
 
+// Single-item fetch for the item product/detail page (GET /inventory/:id).
+export const useInventoryItemQuery = (
+	itemId: string | undefined,
+): UseQueryResult<InventoryItem, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.detail(itemId ?? ""),
+		queryFn: () => inventoryApi.getInventoryItem(itemId!),
+		enabled: !!itemId,
+	});
+};
+
+// Cursor-paginated stock-movement ledger for the detail page's history section.
+// keepPreviousData keeps the current page visible while the next one loads, so
+// the "Load more" button doesn't flash the list back to a spinner.
+export const useInventoryMovementsQuery = (
+	itemId: string | undefined,
+	cursor?: string,
+	opts?: { createdAfter?: string },
+): UseQueryResult<MovementsPage, Error> => {
+	return useQuery({
+		queryKey: [...qk.inventory.movements(itemId ?? "", opts), cursor ?? "first"],
+		queryFn: () => inventoryApi.getInventoryMovements(itemId!, cursor, undefined, opts?.createdAfter),
+		enabled: !!itemId,
+		placeholderData: keepPreviousData,
+	});
+};
+
+// ── History & Reports tab (item detail page) ─────────────────────────────────
+
+// Offset-paginated usage report — jobs/clients this item was consumed on.
+export const useItemUsageQuery = (
+	itemId: string | undefined,
+	opts?: { limit?: number; offset?: number },
+): UseQueryResult<ItemUsage, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.usage(itemId ?? "", opts),
+		queryFn: () => inventoryApi.getItemUsage(itemId!, opts),
+		enabled: !!itemId,
+		placeholderData: keepPreviousData,
+	});
+};
+
+// `forecast` in the resolved data can legitimately be `null` — that's a valid
+// result, not a query error — and `reason` says which cause it was (inactive
+// item vs active item with no forecastable row). See ItemForecastResult in
+// types/inventory.
+export const useItemForecastQuery = (
+	itemId: string | undefined,
+): UseQueryResult<ItemForecastResult, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.forecast(itemId ?? ""),
+		queryFn: () => inventoryApi.getItemForecast(itemId!),
+		enabled: !!itemId,
+	});
+};
+
+// keepPreviousData keeps the current series on screen while a new range loads,
+// so switching the tab's range control doesn't flash the chart to a spinner
+// (same reason useItemConsumptionTrendQuery does it).
+export const useItemValueHistoryQuery = (
+	itemId: string | undefined,
+	opts?: { createdAfter?: string },
+): UseQueryResult<ValueHistory, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.valueHistory(itemId ?? "", opts),
+		queryFn: () => inventoryApi.getItemValueHistory(itemId!, opts?.createdAfter),
+		enabled: !!itemId,
+		placeholderData: keepPreviousData,
+	});
+};
+
+// Cost/price history for the History-tab trend chart. keepPreviousData for the
+// same reason as the value-history query: the tab's range control changes the
+// server-side window, and the chart shouldn't flash to a spinner to show it.
+export const useItemPriceHistoryQuery = (
+	itemId: string | undefined,
+	opts?: { createdAfter?: string; bucket?: "week" | "month"; range?: number },
+): UseQueryResult<PriceHistory, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.priceHistory(itemId ?? "", opts),
+		queryFn: () => inventoryApi.getItemPriceHistory(itemId!, opts),
+		enabled: !!itemId,
+		placeholderData: keepPreviousData,
+	});
+};
+
+// Bucketed consumption totals for the History-tab trend chart. keepPreviousData
+// keeps the current series visible while the next bucket/range loads, so the
+// week/month toggle transitions smoothly instead of flashing a spinner.
+export const useItemConsumptionTrendQuery = (
+	itemId: string | undefined,
+	opts?: { bucket?: "week" | "month"; range?: number },
+): UseQueryResult<ItemConsumptionTrend, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.consumptionTrend(itemId ?? "", opts),
+		queryFn: () => inventoryApi.getItemConsumptionTrend(itemId!, opts),
+		enabled: !!itemId,
+		placeholderData: keepPreviousData,
+	});
+};
+
 // ============================================================================
 // INVENTORY MUTATIONS
 // ============================================================================
 
-export const useUpdateItemThresholdMutation = (): UseMutationResult<
-	InventoryItem,
-	Error,
-	{ itemId: string; threshold: number | null }
-> => {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: ({ itemId, threshold }: { itemId: string; threshold: number | null }) =>
-			inventoryApi.updateItemThreshold(itemId, threshold),
-		onSuccess: () => {
-			invalidate.warehouse(queryClient);
-			invalidate.vehicleStock(queryClient);
-		},
-		onError: (error: Error) => {
-			console.error("Failed to update inventory threshold:", error);
-		},
-	});
-};
+// low_stock_threshold is edited through the full item form
+// (useUpdateInventoryItemMutation) — the threshold-only modal and its dedicated
+// mutation are gone, since every field it held already lives in that form.
 
 export const useCreateInventoryItemMutation = (): UseMutationResult<
 	InventoryItem,

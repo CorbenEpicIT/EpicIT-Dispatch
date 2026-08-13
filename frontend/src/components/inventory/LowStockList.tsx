@@ -2,7 +2,7 @@
 import { ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, MapPin } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { InventoryItem } from "../../types/inventory";
-import { calculateStockStatus, getStockStatusTextColor } from "../../util/util";
+import { calculateStockStatus, getStockStatusTextColor, formatter } from "../../util/util";
 
 type PanelStatus = 'healthy' | 'warning' | 'critical';
 
@@ -135,9 +135,13 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 											<div className="p-3">
 												<div className="flex items-center gap-3">
 													{/* Quantity */}
-													<div className={`text-center min-w-[3rem] ${getStockStatusTextColor(status)}`}>
+													<div
+														className={`text-center min-w-[3rem] max-w-[4.5rem] shrink-0 ${getStockStatusTextColor(status)}`}
+														title={`${item.quantity} left`}
+													>
+															{/* Compact notation — long figures don't fit this 320px row. */}
 															<span className="text-2xl font-bold leading-none">
-																{item.quantity}
+																{formatter.format(item.quantity)}
 															</span>
 															<span className="block text-[10px] uppercase tracking-wide opacity-70 mt-0.5">
 																left
@@ -146,7 +150,10 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 
 														{/* Item details */}
 														<div className="flex-1 min-w-0">
-															<h4 className="text-sm font-medium text-text-primary leading-snug line-clamp-2 mb-1.5">
+															<h4
+																className="text-sm font-medium text-text-primary leading-snug line-clamp-2 break-words mb-1.5"
+																title={item.name}
+															>
 																{item.name}
 															</h4>
 															{item.location && (
@@ -161,9 +168,12 @@ export default function LowStockList({ items, onItemClick }: LowStockListProps) 
 
 														{/* Threshold */}
 														{item.low_stock_threshold !== null && (
-															<div className="text-center min-w-[3rem] text-success">
+															<div
+																className="text-center min-w-[3rem] max-w-[4.5rem] shrink-0 text-success"
+																title={`Threshold: ${item.low_stock_threshold}`}
+															>
 																<span className="text-2xl font-bold leading-none">
-																	{item.low_stock_threshold}
+																	{formatter.format(item.low_stock_threshold)}
 																</span>
 																<span className="block text-[10px] uppercase tracking-wide opacity-70 mt-0.5">
 																	min
