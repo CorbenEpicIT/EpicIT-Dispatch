@@ -52,6 +52,8 @@ export const useUpdateOrgRoleMutation = () => {
             updateOrgRole(id, input),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["organizationRoles"] });
+            queryClient.invalidateQueries({ queryKey: ["dispatchers"] });
+            queryClient.invalidateQueries({ queryKey: ["technicians"] });
         },
     });
 };

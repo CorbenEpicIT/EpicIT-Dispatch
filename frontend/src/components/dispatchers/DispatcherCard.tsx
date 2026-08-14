@@ -7,6 +7,7 @@ import { requestPasswordResetCall } from "../../api/authenticate"
 import { usePermission } from "../../hooks/usePermission";
 import { useDeleteDispatcherMutation } from "../../hooks/useDispatchers";
 import { useResetMfaMutation } from "../../hooks/useMfa";
+import { useToast } from "../ui/useToast";
 
 interface DispatcherCardProps {
   dispatcher: Dispatcher;
@@ -72,8 +73,11 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
     const [confirmResetMFA, setConfirmResetMFA] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [confirmResetPassword, setConfirmResetPassword] = useState(false);
+    const [isResettingPassword, setIsResettingPassword] = useState(false);
     const { mutateAsync: deleteDispatcher, isPending: isDeleting } = useDeleteDispatcherMutation();
     const { mutateAsync: resetMFA, isPending: isResetingMFA } = useResetMfaMutation();
+    const toast = useToast();
 
     //permissions
     const MANAGE_DISPATCHER = usePermission("manage_dispatchers");
@@ -91,6 +95,26 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
 			setDeleteConfirm(false);
 		} catch (error) {
 			console.error("Failed to delete dispatcher:", error);
+		}
+	};
+
+    const handleResetPassword = async () => {
+		if (!MANAGE_DISPATCHER || !dispatcher) return;
+		if (!confirmResetPassword) {
+			setConfirmResetPassword(true);
+			return;
+		}
+		setIsResettingPassword(true);
+		try {
+			await requestPasswordResetCall(dispatcher.id, dispatcher.role);
+			setConfirmResetPassword(false);
+			setDropdownOpen(false);
+			toast.success(`Password reset email sent to ${dispatcher.email}`);
+		} catch (error) {
+			setConfirmResetPassword(false);
+			toast.error(error instanceof Error ? error.message : "Failed to send the reset email");
+		} finally {
+			setIsResettingPassword(false);
 		}
 	};
 
@@ -142,15 +166,20 @@ export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, view
                             </button>
                         } 
                         <button
+                            title={!MANAGE_DISPATCHER ? "You don't have permission to perform this action" : undefined}
+                            disabled={!MANAGE_DISPATCHER || isResettingPassword}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setDropdownOpen(false);
-                                requestPasswordResetCall(dispatcher.id, dispatcher.role);
-                                alert("Password reset email sent to " + dispatcher.email);
+                                handleResetPassword();
                             }}
-                            className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                            onMouseLeave={() => setConfirmResetPassword(false)}
+                            className="w-full px-4 py-2 text-left text-sm text-text-primary hover:enabled:bg-surface-raised transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            Reset Password
+                            {isResettingPassword
+                                ? "Sending..."
+                                : confirmResetPassword
+                                    ? "Click to Confirm"
+                                    : "Reset Password"}
                         </button>
                         <button
                             onClick={(e) => {

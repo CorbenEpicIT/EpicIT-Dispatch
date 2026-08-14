@@ -1,11 +1,12 @@
 ﻿import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import UsersSection from "../../components/admin/UsersSection";
 import SettingsSection from "../../components/admin/SettingsSection";
 import RolesSection from "../../components/admin/RolesSection";
 import IntegrationSection from "../../components/admin/IntegrationSection";
 import { usePermission } from "../../hooks/usePermission";
 
-type AdminTab = "users" | "settings" | "roles" | "integrations";
+export type AdminTab = "users" | "settings" | "roles" | "integrations";
 
 const STORAGE_KEY = "adminPage_activeTab";
 
@@ -27,13 +28,17 @@ export default function AdminPage() {
 		manage_roles: MANAGE_ROLES,
 	}
 	const visibleTabs = TABS.filter((tab) => permMap[tab.permission as keyof typeof permMap]);
+	const [searchParams, setSearchParams] = useSearchParams();
 	const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+		const requested = searchParams.get("tab") as AdminTab | null;
+		if (requested && visibleTabs.some((tab) => tab.id === requested)) return requested;
 		const stored = sessionStorage.getItem(STORAGE_KEY) as AdminTab | null;
 		if (stored && visibleTabs.some(tab => tab.id === stored)) return stored;
 		return visibleTabs[0]?.id ?? "users";
 	});
 	const handleTabChange = (tab: AdminTab) => {
 		sessionStorage.setItem(STORAGE_KEY, tab);
+		setSearchParams({ tab }, { replace: true });
 		setActiveTab(tab);
 	};
 

@@ -32,7 +32,17 @@ export const getDispatcherById = async (id: string, organizationId: string) => {
         where: { id },
         include: {
             organization_role: { select: { id: true, name: true, permissions: true } },
+            _count: {
+                select: {
+                    created_quotes: true,
+                    created_invoices: true,
+                    created_requests: true,
+                    created_recurring_plans: true,
+                    managed_projects: true,
+                }
+            }
         },
+        
     });
     if (!dispatcher) return null;
     const permissions: string[] =

@@ -128,6 +128,7 @@ export const getOrgRoles = async (organizationId: string) => {
 		const sdb = getScopedDb(organizationId);
 		const roles = await sdb.organization_role.findMany({
 			where: { organization_id: organizationId },
+			include: { _count: { select: { dispatchers: true, technicians: true } } },
 		});
 		return { err: "", items: roles };
 	}catch (e) {
@@ -149,6 +150,7 @@ export const getOrgRoleById = async (id: string, organizationId: string) => {
 		const role = await sdb.organization_role.findFirst({
 			// redundant or extra secure 🤔
 			where: { id, organization_id: organizationId },
+			include: { _count: { select: { dispatchers: true, technicians: true } } },
 		});
 		if (!role) {
 			return { err: "Role not found" };
