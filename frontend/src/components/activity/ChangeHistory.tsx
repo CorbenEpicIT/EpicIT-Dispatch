@@ -71,7 +71,7 @@ export default function ChangeHistory({scope, subjectName, title, pageSize=CHANG
                         <p className="text-sm text-text-muted">No recent changes.</p>
                     </div>
                 ) : (
-                    <div className="rounded-lg border border-border-subtle bg-base divide-y divide-border-subtle overflow-hidden">
+                    <div className="rounded-lg border border-border-subtle bg-base divide-y divide-border-subtle overflow-y-scroll max-h-100">
                         {entries.map(({ log, entry }) => {
                                 const route = resolveRoute(log);
 

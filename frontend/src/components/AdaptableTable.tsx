@@ -210,7 +210,7 @@ const AdaptableTable = ({
 						{table.getRowModel().rows.map((row) => (
 							<tr
 								key={row.id}
-								className={`text-left ${borderColor} ${onRowClick ? 'cursor-pointer hover:bg-surface transition-colors' : ''}`}
+								className={`text-left ${borderColor} ${onRowClick ? 'cursor-pointer hover:bg-surface-raised transition-colors' : ''}`}
 								onClick={() => onRowClick?.(row.original)}
 							>
 								{row
