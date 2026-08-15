@@ -21,6 +21,7 @@ interface StatusFilterUrlProps extends BaseProps {
 interface StatusFilterControlledProps extends BaseProps {
 	values: string[] | null;
 	onChange: (value: string | null) => void;
+	exclusive?: boolean;
 }
 
 type StatusFilterProps = StatusFilterUrlProps | StatusFilterControlledProps;
@@ -54,6 +55,7 @@ export function DropdownFilter({
 	allLabel = "All",
 	placeholder = "Status",
 	hideAll = false,
+	exclusive = false,
 }: StatusFilterControlledProps) {
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -84,8 +86,8 @@ export function DropdownFilter({
 			return;
 		}
 		const alreadySelected = selectedOptions.some((o) => o.value === optionValue);
-		// if all select clears selection
-		if (!alreadySelected && selectedOptions.length + 1 >= options.length) {
+		// if all select clears selection (multi-select only — exclusive callers pick one at a time)
+		if (!exclusive && !alreadySelected && selectedOptions.length + 1 >= options.length) {
 			onChange(null);
 			return;
 		}

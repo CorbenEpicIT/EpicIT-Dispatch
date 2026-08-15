@@ -12,16 +12,24 @@ import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
+import SortControl from "../../components/ui/SortControl";
 import { parseDateRangeFromParams, matchesDateRange } from "../../util/dateRangeUtils";
 import PageHeader from "../../components/ui/PageHeader";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { usePermission } from "../../hooks/usePermission";
 import PageReportSection from "../../components/reports/PageReportSection";
+import type { SortDir } from "../../util/sortUtil";
+import { withDir, compareByOrder, compareDate } from "../../util/sortUtil";
 
 const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 	value: s,
 	label: addSpacesToCamelCase(s),
 }));
+
+const sortLabels: Record<string, string> = {
+	status: "Status",
+	date: "Date",
+};
 
 export default function InvoicesPage() {
 	const navigate = useNavigate();
@@ -44,6 +52,8 @@ export default function InvoicesPage() {
 	const dateParamKey = queryParams.get("date");
 	const dateParamFrom = queryParams.get("dateFrom");
 	const dateParamTo = queryParams.get("dateTo");
+	const sortParam = queryParams.get("sort");
+	const dirParam = queryParams.get("dir");
 
 	//permissions
 	const CREATE_INVOICE = usePermission("create_invoices");
@@ -144,9 +154,15 @@ export default function InvoicesPage() {
 			);
 		}
 
-		return (
-			data
-				.sort((a, b) => {
+		type InvoiceRow = (typeof data)[number];
+		const dir: SortDir = dirParam === "asc" ? "asc" : "desc";
+		const comparator: (a: InvoiceRow, b: InvoiceRow) => number =
+			sortParam === "status"
+				? withDir((a, b) => compareByOrder(a._rawStatus, b._rawStatus, InvoiceStatusValues), dir)
+				: sortParam === "date"
+				? withDir((a, b) => compareDate(a._rawDueDate, b._rawDueDate), dir)
+				: (a, b) => {
+					// default: status, then schedule date (nulls last)
 					if (a._isOverdue && !b._isOverdue) return -1;
 					if (!a._isOverdue && b._isOverdue) return 1;
 					const statusDiff =
@@ -168,9 +184,13 @@ export default function InvoicesPage() {
 						(b._issueDate?.getTime() ?? 0) -
 						(a._issueDate?.getTime() ?? 0)
 					);
-				})
+				};
+
+		return (
+			data
+				.sort(comparator)
 		);
-	}, [invoices, searchInput, termsKey, clientFilter, statusKey, dateParamKey, dateParamFrom, dateParamTo]);
+	}, [invoices, searchInput, termsKey, clientFilter, statusKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam]);
 
 	const removeClientFilter = () => {
 		const newParams = new URLSearchParams(location.search);
@@ -187,6 +207,13 @@ export default function InvoicesPage() {
 		next.delete("date");
 		next.delete("dateFrom");
 		next.delete("dateTo");
+		navigate(`/dispatch/invoices${next.toString() ? `?${next.toString()}` : ""}`);
+	};
+
+	const clearSort = () => {
+		const next = new URLSearchParams(location.search);
+		next.delete("sort");
+		next.delete("dir");
 		navigate(`/dispatch/invoices${next.toString() ? `?${next.toString()}` : ""}`);
 	};
 
@@ -327,6 +354,13 @@ export default function InvoicesPage() {
 							options={invoiceStatusOptions}
 						/>
 						<DateRangeFilter paramKey="date" />
+						<SortControl
+							options={[
+								{ value: "status", label: "Status" },
+								{ value: "date", label: "Date" },
+							]}
+							defaultDirByField={{ status: "asc", date: "desc" }}
+						/>
 					</div>
 				}
 				right={null}
@@ -350,6 +384,13 @@ export default function InvoicesPage() {
 						onRemove: () => removeTerm(term),
 						highlighted: duplicateTerm === term,
 					})),
+					sortParam
+						? {
+								label: `Sort: ${sortLabels[sortParam] ?? sortParam} (${dirParam === "asc" ? "asc" : "desc"})`,
+								color: "cyan" as const,
+								onRemove: clearSort,
+							}
+						: null,
 				]}
 				resultCount={display.length}
 				onClearAll={clearAllFilters}

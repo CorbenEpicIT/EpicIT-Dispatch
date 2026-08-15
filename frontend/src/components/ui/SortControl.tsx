@@ -25,7 +25,10 @@ export default function SortControl({ options, defaultDirByField }: SortControlP
             return next;
         }
     );
-    const toggleDir = () => 
+    const handleChange = (field: string | null) =>
+        setField(field && field === sort ? null : field);
+
+    const toggleDir = () =>
         setParams(prev => {
             const next = new URLSearchParams(prev);
             next.set("dir", dir === "asc" ? "desc" : "asc");
@@ -37,10 +40,11 @@ export default function SortControl({ options, defaultDirByField }: SortControlP
         <div className="flex items-center gap-1">
             <DropdownFilter
                 values={sort ? [sort] : null}
-                onChange={setField}
+                onChange={handleChange}
                 options={options}
-                placeholder="Sort" 
-                allLabel="Default" 
+                placeholder="Sort"
+                allLabel="Default"
+                exclusive
             />
             {sort && (
                     <button 
