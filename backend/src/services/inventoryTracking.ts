@@ -856,12 +856,56 @@ async function autoAllocateFifo(
 		}
 	}
 
-	if (remaining.greaterThan(0) && !opts.allowNegative)
-		throw new InsufficientBatchStockError({
-			[m.inventory_item_id]: Number(new Prisma.Decimal(m.qty).minus(remaining)),
-		});
+	if (remaining.greaterThan(0)) {
+		if (!opts.allowNegative)
+			throw new InsufficientBatchStockError({
+				[m.inventory_item_id]: Number(new Prisma.Decimal(m.qty).minus(remaining)),
+			});
+
+		// Shortfall permitted: charge it to a batch so the allocation still sums to
+		// m.qty. Keep draining the last lot we already picked from, negative;
+		// if nothing had any stock at all, fall back to the oldest non-recalled
+		// lot for this item/vehicle so the movement still has somewhere to post.
+		const last = picks[picks.length - 1];
+		if (last) {
+			last.qty = last.qty.plus(remaining);
+		} else {
+			const sinkBatchId = await findSinkBatch(tx, organizationId, m);
+			if (!sinkBatchId)
+				throw new TrackingValidationError(
+					`Batch-tracked item ${m.inventory_item_id} has no batch to allocate the shortfall against`,
+				);
+			picks.push({ batch_id: sinkBatchId, qty: remaining });
+		}
+		remaining = new Prisma.Decimal(0);
+	}
 
 	return picks;
+}
+
+/**
+ * Oldest non-recalled lot to charge a negative shortfall against when every
+ * candidate batch is already at zero (so the FIFO loop above picked nothing).
+ */
+async function findSinkBatch(
+	tx: TransactionClient,
+	organizationId: string,
+	m: TrackedMovement,
+): Promise<string | null> {
+	if (m.from_location_type === "warehouse") {
+		const batch = await tx.stock_batch.findFirst({
+			where: { organization_id: organizationId, inventory_item_id: m.inventory_item_id, recalled_at: null },
+			orderBy: [{ received_at: "asc" }, { id: "asc" }],
+			select: { id: true },
+		});
+		return batch?.id ?? null;
+	}
+	const row = await tx.vehicle_stock_batch.findFirst({
+		where: { vehicle_id: m.from_vehicle_id, batch: { recalled_at: null } },
+		orderBy: [{ batch: { received_at: "asc" } }, { batch_id: "asc" }],
+		select: { batch_id: true },
+	});
+	return row?.batch_id ?? null;
 }
 
 // ── Lock-target collection ────────────────────────────────────────────────────

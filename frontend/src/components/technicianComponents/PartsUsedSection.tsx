@@ -548,7 +548,7 @@ export default function PartsUsedSection({
 		// changes through the dedicated endpoint so decreases/deletes release the
 		// exact consumed units back to the vehicle instead of silently desyncing
 		// the ledger from what's displayed.
-		if (item.inventory_item_id && item.id) {
+		if (item.inventory_item_id && item.id && item.fulfillment_status === "used") {
 			if (!user?.userId) return;
 			try {
 				await updatePartsQty.mutateAsync({
