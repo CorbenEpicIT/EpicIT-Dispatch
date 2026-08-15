@@ -301,6 +301,7 @@ export interface VisitLineItem {
 	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
 	isNew?: boolean;
 	isDeleted?: boolean;
+	fulfillment_status?: string | null;
 }
 
 export interface CreateVisitLineItemInput {
@@ -424,6 +425,13 @@ export interface JobNotePhoto {
 	created_at: string;
 }
 
+export interface NotePhoto {
+	photo_url: string;
+	photo_label: "Before" | "After" | "Other";
+	filename: string;
+	preview_url: string;
+}
+
 export interface JobNote extends BaseNote {
 	job_id: string;
 	visit_id?: string | null;
@@ -440,6 +448,7 @@ export interface CreateJobNoteInput {
 export interface UpdateJobNoteInput {
 	content: string;
 	visit_id?: string | null;
+	photos?: { id?: string; photo_url: string; photo_label: string }[];
 }
 
 // ============================================================================
@@ -806,6 +815,13 @@ export const CreateJobNoteSchema = z.object({
 export const UpdateJobNoteSchema = z.object({
 	content: z.string().min(1, "Note content is required"),
 	visit_id: z.string().uuid().optional().nullable(),
+	photos: z.array(
+		z.object({
+			id: z.string().uuid().optional(),
+			photo_url: z.string().url(),
+			photo_label: z.enum(["Before", "After", "Other"]),
+		}),
+	).optional(),
 });
 
 // ============================================================================

@@ -305,48 +305,35 @@ export const updateJobNote = async (
 				updateData.last_editor_tech = { disconnect: true };
 			}
 
-			const note = await tx.job_note.update({
+			await tx.job_note.update({
 				where: { id: noteId },
 				data: updateData,
-				include: {
-					creator_tech: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					creator_dispatcher: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					last_editor_tech: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					last_editor_dispatcher: {
-						select: {
-							id: true,
-							name: true,
-							email: true,
-						},
-					},
-					visit: {
-						select: {
-							id: true,
-							scheduled_start_at: true,
-							scheduled_end_at: true,
-							status: true,
-						},
-					},
-				},
 			});
+
+			if (parsed.photos !== undefined) {
+				const existingPhotos = await tx.job_note_photo.findMany({
+					where: { note_id: noteId},
+					select: { id: true },
+				});
+				const incomingPhotos = new Set(parsed.photos.filter((p) => p.id).map((p) => p.id!));
+				const photosToDelete = existingPhotos.map((p) => p.id).filter((id) => !incomingPhotos.has(id));
+				if (photosToDelete.length > 0){
+					await tx.job_note_photo.deleteMany({
+						where: { id: { in: photosToDelete }}
+					});
+				}
+
+				const photosToCreate = parsed.photos.filter((p) => !p.id);
+				if (photosToCreate.length > 0){
+					await tx.job_note_photo.createMany({
+						data: photosToCreate.map((p) => ({
+							note_id: noteId,
+							photo_url: p.photo_url,
+							photo_label: p.photo_label,
+						}))
+					});
+				}
+			}
 
 			if (Object.keys(changes).length > 0) {
 				await logActivity({
@@ -367,10 +354,15 @@ export const updateJobNote = async (
 				});
 			}
 
-			return note;
+			return await tx.job_note.findFirst({
+				where: { id: noteId },
+				include: noteInclude,
+			});
 		});
 
-		return { err: "", item: updated };
+		if (!updated) return { err: "Failed to update note" };
+		const signed = await signNotePhotos(updated);
+		return { err: "", item: signed };
 	} catch (e) {
 		if (e instanceof ZodError) {
 			return {

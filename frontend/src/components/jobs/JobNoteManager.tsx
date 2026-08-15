@@ -1,7 +1,7 @@
-﻿import { useState, useEffect, useRef } from "react";
-import { Plus, Edit2, Trash2, X, Calendar, Camera } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Edit2, Trash2, X, Calendar } from "lucide-react";
 import Card from "../ui/Card";
-import type { JobNote, JobVisit } from "../../types/jobs";
+import type { JobNote, JobVisit, JobNotePhoto, NotePhoto, UpdateJobNoteInput } from "../../types/jobs";
 import {
 	useJobNotesQuery,
 	useCreateJobNoteMutation,
@@ -9,8 +9,8 @@ import {
 	useDeleteJobNoteMutation,
 } from "../../hooks/useJobs";
 import { usePermission } from "../../hooks/usePermission";
-import ImageCarousel from "../inventory/ImageCarousel";
 import NotePhotoGallery from "./NotePhotoGallery";
+import NotePhotoPicker from "./NotePhotoPicker";
 
 interface JobNoteManagerProps {
 	jobId: string;
@@ -25,6 +25,9 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 	const [content, setContent] = useState("");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+	const [photos, setPhotos] = useState<NotePhoto[]>([]);
+	const [existingPhotos, setExistingPhotos] = useState<JobNotePhoto[]>([]);
 
 	const { data: notes, isLoading } = useJobNotesQuery(jobId);
 	const createNote = useCreateJobNoteMutation();
@@ -44,6 +47,8 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 		setIsAdding(false);
 		setEditingId(null);
 		setErrorMessage(null);
+		setPhotos([]);
+		setExistingPhotos([]);
 	};
 
 	const handleEdit = (note: JobNote) => {
@@ -51,6 +56,8 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 		setContent(note.content);
 		setEditingId(note.id);
 		setIsAdding(true);
+		setExistingPhotos(note.photos ?? []);
+		setPhotos([]);
 	};
 
 	const handleDelete = async (noteId: string) => {
@@ -77,8 +84,12 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 
 		try {
 			if (editingId) {
-				const updateData: any = {
+				const updateData: UpdateJobNoteInput = {
 					content,
+					photos: [
+						...existingPhotos.map((p) => ({ id: p.id, photo_url: p.photo_url, photo_label: p.photo_label })),
+						...photos.map((p) => ({ photo_url: p.photo_url, photo_label: p.photo_label })),
+					],
 				};
 
 				await updateNote.mutateAsync({
@@ -92,6 +103,10 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 					data: {
 						content,
 						visit_id: visitId || null,
+						photos: photos.map((p) => ({
+							photo_url: p.photo_url,
+							photo_label: p.photo_label,
+						})),
 					},
 				});
 			}
@@ -103,22 +118,6 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 			setErrorMessage(errorMsg);
 		}
 	};
-
-	useEffect(() => {
-		const handleClickOutside = (event: MouseEvent) => {
-			if (formRef.current && !formRef.current.contains(event.target as Node)) {
-				resetForm();
-			}
-		};
-
-		if (isAdding) {
-			document.addEventListener("mousedown", handleClickOutside);
-		}
-
-		return () => {
-			document.removeEventListener("mousedown", handleClickOutside);
-		};
-	}, [isAdding]);
 
 	const formatDate = (date: Date | string) => {
 		const d = typeof date === "string" ? new Date(date) : date;
@@ -198,6 +197,13 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 								className="w-full px-3 py-2 bg-base border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 								required
 								autoFocus
+							/>
+
+							<NotePhotoPicker
+								jobId={jobId}
+								photos={photos}
+								onPhotosChange={setPhotos}
+								disabled={createNote.isPending}
 							/>
 
 							<button
@@ -422,6 +428,17 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 													className="w-full px-3 py-2 bg-base border border-border rounded-md text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 													required
 													autoFocus
+												/>
+
+												<NotePhotoPicker
+													jobId={jobId}
+													photos={photos}
+													onPhotosChange={setPhotos}
+													existingPhotos={existingPhotos}
+													onRemoveExisting={(id) =>
+														setExistingPhotos((prev) => prev.filter((p) => p.id !== id))
+													}
+													disabled={updateNote.isPending}
 												/>
 
 												<button

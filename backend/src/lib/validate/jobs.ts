@@ -247,6 +247,13 @@ export const createJobNoteSchema = z
 export const updateJobNoteSchema = z.object({
 	content: z.string().min(1, "Content is required").optional(),
 	visit_id: z.string().uuid("Invalid visit ID").optional().nullable(),
+	photos: z.array(
+		z.object({
+			id: z.string().uuid().optional(),
+			photo_url: z.string().url(),
+			photo_label: z.enum(["Before", "After", "Other"]),
+		}),
+	).optional(),
 });
 export type CreateJobInput = z.infer<typeof createJobSchema>;
 export type UpdateJobInput = z.infer<typeof updateJobSchema>;
