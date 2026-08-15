@@ -2,6 +2,7 @@
 import type { ZodError } from "zod";
 import { CreateDispatcherSchema, type CreateDispatcherInput } from "../../types/dispatchers";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import PasswordSetField from "../ui/forms/PasswordSetField";
 import { useOrgRolesQuery } from "../../hooks/useOrgRoles";
 
 interface CreateDispatcherProps {
@@ -209,36 +210,17 @@ const CreateDispatcher = ({
 					/>
 				</div>
 				{/* Password */}
-				<div className="min-w-0 flex items-center space-x-2">
-					<div className="min-w-0">
-						<label className={LABEL}>Choose Password</label>
-						<input
-							type="checkbox"
-							checked={choosePassword}
-							onChange={(e) =>
-								setChoosePassword(e.target.checked)
-							}
-							className="form-checkbox h-[28px] w-4 text-primary focus:ring-primary border-border bg-base"
-							disabled={isLoading}
-						/>
-					</div>
-					{choosePassword && (
-						<div className="min-w-0">
-							<label className={LABEL}>Password *</label>
-							<input
-								type="password"
-								placeholder="Enter password"
-								value={password}
-								onChange={(e) =>
-									setPassword(e.target.value)
-								}
-								className={INPUT}
-								disabled={isLoading}
-							/>
-							<ErrorDisplay path="password" />
-						</div>
-					)}
-				</div>
+				<PasswordSetField
+					enabled={choosePassword}
+					onEnabledChange={setChoosePassword}
+					password={password}
+					onPasswordChange={setPassword}
+					disabled={isLoading}
+					description="Otherwise the user sets one from their invite email"
+					errorMessages={errors?.issues
+						.filter((e) => e.path[0] === "password")
+						.map((e) => e.message)}
+				/>
 			</div>
 		),
 		[
