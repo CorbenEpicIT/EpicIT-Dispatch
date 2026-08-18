@@ -288,7 +288,7 @@ export default function RequestsPage() {
 						),
 						priority: (row) => (
 							<div
-								className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium text-nowrap ${PriorityColors[row._rawPriority as Priority]}`}
+								className={`w-fit px-2 py-1 rounded-md border text-sm font-medium text-nowrap ${PriorityColors[row._rawPriority as Priority]}`}
 							>
 								{row.priority as string}
 							</div>

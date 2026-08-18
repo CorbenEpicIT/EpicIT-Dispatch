@@ -50,9 +50,9 @@ export interface Project {
 
 export const ProjectStatusColors: Record<ProjectStatus, string> = {
     Planning:  "bg-primary/20 text-primary-text border-primary/30",
-    Active:    "bg-success/20 text-success-text border-success/30",
+    Active:    "bg-info/20 text-info-text border-info/30",
     OnHold:    "bg-warning/20 text-warning-text border-warning/30",
-    Completed: "bg-neutral/20 text-text-tertiary border-border-strong/30",
+    Completed: "bg-success/20 text-success-text border-success/30",
     Cancelled: "bg-error/20 text-error-text border-error/30",
 };
 

@@ -339,7 +339,7 @@ export default function ProjectsPage() {
                         },
                         priority: (row) => {
                             const r = row as ProjectRow;
-                            return <div className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium text-nowrap ${PriorityColors[r.priority]}`}>{PriorityLabels[r.priority]}</div>;
+                            return <div className={`w-fit px-2 py-1 rounded-md border text-sm font-medium text-nowrap ${PriorityColors[r.priority]}`}>{PriorityLabels[r.priority]}</div>;
                         },
                         jobs: (row) => {
                             const r = row as ProjectRow;

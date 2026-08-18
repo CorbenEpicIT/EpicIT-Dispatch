@@ -668,7 +668,7 @@ export default function JobsPage() {
 						},
 						priority: (row) => {
 							const r = row as JobRow;
-							return <div className={`w-fit px-2 py-1 rounded-md border border-border-subtle text-sm font-medium ${PriorityColors[r._rawPriority]}`}>{r.priority}</div>;
+							return <div className={`w-fit px-2 py-1 rounded-md border text-sm font-medium ${PriorityColors[r._rawPriority]}`}>{r.priority}</div>;
 						},
 					}}
 				/>
