@@ -24,7 +24,6 @@ type PermRow = {
 	_perms: PermPill[];
 };
 
-// structural, so a technician can be passed in without importing either concrete type
 export interface AccessCardUser {
 	id: string;
 	name: string;
@@ -36,9 +35,10 @@ export interface AccessCardUser {
 interface AccessCardProps {
 	user: AccessCardUser;
 	tier: PermissionCatalogTier;
+	readOnly ?: boolean;
 }
 
-const AccessCard = ({ user, tier }: AccessCardProps) => {
+const AccessCard = ({ user, tier, readOnly = false }: AccessCardProps) => {
 	const MANAGE_ROLES = usePermission("manage_roles");
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState<Set<string>>(new Set());
@@ -54,15 +54,16 @@ const AccessCard = ({ user, tier }: AccessCardProps) => {
 
 	const buildRows = (held: Set<string>): PermRow[] =>
 		catalog.map((s) => {
-			const perms = s.permissions.map((p) => ({
+			const allPerms = s.permissions.map((p) => ({
 				id: p.id,
 				label: p.label,
 				held: held.has(p.id),
 			}));
+			const perms = readOnly ? allPerms.filter((p) => p.held) : allPerms;
 			return {
 				area: s.category,
 				access: "",
-				granted: `${perms.filter((p) => p.held).length}/${perms.length}`,
+				granted: `${allPerms.filter((p) => p.held).length}/${allPerms.length}`,
 				_perms: perms,
 			};
 		});
@@ -154,7 +155,7 @@ const AccessCard = ({ user, tier }: AccessCardProps) => {
 		}
 	}
 
-	const canEdit = MANAGE_ROLES && !!user.organization_role && user.role !== "admin";
+	const canEdit = !readOnly && MANAGE_ROLES && !!user.organization_role && user.role !== "admin";
 
 	return (
 		<>

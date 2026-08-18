@@ -1,38 +1,26 @@
-import { groupPermissionsByCategory } from "../../lib/permissionCatalogs";
+import { useAuthStore } from "../../auth/authStore";
+import { useDispatcherByIdQuery } from "../../hooks/useDispatchers";
+import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
+import AccessCard from "../roles/AccessCard";
 
 interface PermissionsCardProps {
-	permissionIds: string[];
 	tier: "dispatcher" | "technician";
 }
 
-export default function PermissionsCard({ permissionIds, tier }: PermissionsCardProps) {
-	const permissionGroups = groupPermissionsByCategory(permissionIds, tier);
+export default function PermissionsCard({ tier }: PermissionsCardProps) {
+	const { user } = useAuthStore();
+	const isTech = tier === "technician";
+	const { data: dispatcher } = useDispatcherByIdQuery(isTech ? null : user?.userId);
+	const { data: technician } = useTechnicianByIdQuery(isTech ? user?.userId : null);
+	const result = isTech ? technician : dispatcher;
 
 	return (
-		<section>
-			{permissionGroups.length === 0 ? (
-				<p className="text-sm text-text-muted">No permissions assigned.</p>
-			) : (
-				<div className="space-y-2">
-					{permissionGroups.map(({ category, permissions }) => (
-						<div key={category} className="rounded-lg border border-border-subtle bg-base px-4 py-3">
-							<p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
-								{category}
-							</p>
-							<div className="flex flex-wrap gap-1.5">
-								{permissions.map((p) => (
-									<span
-										key={p.id}
-										className="px-2 py-0.5 rounded-md bg-base text-xs text-text-secondary border border-border-subtle"
-									>
-										{p.label}
-									</span>
-								))}
-							</div>
-						</div>
-					))}
-				</div>
+		<div className="mb-4">
+			{ result && (
+				<AccessCard
+					user={result} tier={tier} readOnly
+				/>
 			)}
-		</section>
+		</div>
 	);
 }

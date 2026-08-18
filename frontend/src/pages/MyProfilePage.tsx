@@ -149,7 +149,6 @@ export default function MyProfilePage() {
 			{activeTab === "permissions" && (
 				<div role="tabpanel" id="tabpanel-permissions" aria-labelledby="tab-permissions">
 					<PermissionsCard
-						permissionIds={user?.permissions ?? []}
 						tier={isTech ? "technician" : "dispatcher"}
 					/>
 				</div>
