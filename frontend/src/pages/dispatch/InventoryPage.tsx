@@ -385,10 +385,13 @@ export default function InventoryPage() {
 									viewMode={viewMode}
 									isHighlighted={highlightedItemId === item.id}
 									onHighlightMouseLeave={() => handleHighlightMouseLeave(item.id)}
-									onEditItem={() =>
-										setEditingItem(
-											item
-										)
+									// Gated like onDelete below: the server enforces
+									// manage_inventory on PATCH, so without it the edit
+									// affordance only led to a rejected save.
+									onEditItem={
+										MANAGE_INVENTORY
+											? () => setEditingItem(item)
+											: undefined
 									}
 									onClick={() =>
 										navigate(`/dispatch/inventory/items/${item.id}`)
