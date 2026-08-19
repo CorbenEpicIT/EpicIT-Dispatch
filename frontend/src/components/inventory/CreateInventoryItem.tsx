@@ -162,8 +162,9 @@ function getApiErrorMessage(e: unknown, fallback: string): string {
  * outside the catalog (kept verbatim so an unrelated edit can't rewrite it), or
  * the default for a blank.
  */
-function seedUnit(stored: string): string {
-	return normalizeUnitCode(stored) ?? (stored.trim() || DEFAULT_UNIT_CODE);
+function seedUnit(stored: string | null | undefined): string {
+	const raw = typeof stored === "string" ? stored.trim() : "";
+	return normalizeUnitCode(raw) ?? (raw || DEFAULT_UNIT_CODE);
 }
 
 // Shared role="switch" toggle markup used for every on/off control in this
@@ -367,7 +368,7 @@ export default function CreateInventoryItem({
 		isEdit &&
 		!!existingItem &&
 		normalizeUnitCode(existingItem.unit) === null &&
-		existingItem.unit.trim() !== "";
+		seededUnit !== DEFAULT_UNIT_CODE;
 	// On-hand as the server would count it for decision 5: warehouse + vehicles
 	// (and live serials/lots), from the eligibility read when it has landed, else
 	// the warehouse-only column this form always has.
