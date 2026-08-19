@@ -118,10 +118,19 @@ describe("downloadInventoryTemplate", () => {
 		expect(capturedA?.download).toBe("inventory-import-template.xlsx");
 	});
 
+	// triggerDownload defers the revoke by 1s so the browser has started the
+	// download before the URL goes away (util/download.ts).
 	it("revokes the object URL after the click", async () => {
-		mockApi.get.mockResolvedValue({ data: new Blob(["data"]) });
-		await downloadInventoryTemplate();
-		expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockObjectURL);
+		vi.useFakeTimers();
+		try {
+			mockApi.get.mockResolvedValue({ data: new Blob(["data"]) });
+			await downloadInventoryTemplate();
+			expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1000);
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockObjectURL);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
