@@ -7,6 +7,7 @@ import {
     type ProjectStatus,
     ProjectStatusValues,
     ProjectStatusLabels,
+    UpdateProjectSchema,
 } from "../../types/project";
 import { useState, useMemo, useEffect } from "react";
 import { type Priority, PriorityValues, PriorityLabels } from "../../types/common";
@@ -95,6 +96,12 @@ export default function EditProjectModal ({isModalOpen, setIsModalOpen, project,
             target_end_at: targetEndDate ? new Date(targetEndDate).toISOString() : null,
             manager_dispatcher_id: projectManager || null,
         };
+
+        const parseResult = UpdateProjectSchema.safeParse(input);
+        if (!parseResult.success) {
+            setErrors(parseResult.error);
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -239,6 +246,7 @@ export default function EditProjectModal ({isModalOpen, setIsModalOpen, project,
                                 className={INPUT}
                                 disabled={isLoading}
                             />
+                            <ErrorDisplay path="starts_at" />
                         </div>
                     </div>
 
@@ -252,6 +260,7 @@ export default function EditProjectModal ({isModalOpen, setIsModalOpen, project,
                             className={INPUT}
                             disabled={isLoading}
                         />
+                        <ErrorDisplay path="target_end_at" />
                     </div>
 
                     {/* Address */}
