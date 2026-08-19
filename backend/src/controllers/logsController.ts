@@ -20,6 +20,34 @@ const RENDERABLE = {
     ],
 };
 
+/**
+ * Read-side denylist for the change-history views. Credential and session
+ * events (password changes/resets, logins, MFA, OAuth) are audit-only and are
+ * never surfaced through /:id/changes, whatever the caller's permissions.
+ */
+const SENSITIVE_EVENT_PREFIXES = ["auth.", "mfa.", "oauth"] as const;
+const NOT_SENSITIVE_EVENT = {
+    NOT: [
+        ...SENSITIVE_EVENT_PREFIXES.map((prefix) => ({ event_type: { startsWith: prefix } })),
+        { event_type: { contains: ".password." } },
+    ],
+};
+
+// Keys that must never leave the server inside `changes`, even on otherwise
+// harmless events (defence in depth on top of the event-type denylist).
+const SENSITIVE_CHANGE_KEY = /password|token|secret|otp|mfa/i;
+
+export const redactSensitiveChanges = <T extends { changes: unknown }>(row: T): T => {
+    const changes = row.changes;
+    if (!changes || typeof changes !== "object" || Array.isArray(changes)) return row;
+    const entries = Object.entries(changes as Record<string, unknown>);
+    if (!entries.some(([key]) => SENSITIVE_CHANGE_KEY.test(key))) return row;
+    return {
+        ...row,
+        changes: Object.fromEntries(entries.filter(([key]) => !SENSITIVE_CHANGE_KEY.test(key))),
+    };
+};
+
 const ACTOR_TYPES: Record<actor, string[]> = {
     technician: ["technician"],
     dispatcher: ["dispatcher", "admin"],
@@ -140,7 +168,9 @@ export const getActorHistory = async (orgId: string, type: actor, id: string, li
         if (!actorTypes) return { err: `Unknown actor type: ${type}`, rows: [] as log_row[], hasMore: false, total: 0 };
 
         const sdb = getScopedDb(orgId);
-        const scopedWhere = { actor_type: { in: actorTypes }, actor_id: id, ...RENDERABLE };
+        const scopedWhere = {
+            AND: [{ actor_type: { in: actorTypes }, actor_id: id }, RENDERABLE, NOT_SENSITIVE_EVENT],
+        };
 
         const [rows, total] = await Promise.all([
             sdb.log.findMany({
@@ -152,8 +182,9 @@ export const getActorHistory = async (orgId: string, type: actor, id: string, li
         ]);
 
         const hasMore = rows.length > limit;
+        const page = (hasMore ? rows.slice(0, limit) : rows).map(redactSensitiveChanges);
 
-        return { err: "", rows: hasMore ? rows.slice(0, limit) : rows, hasMore, total };
+        return { err: "", rows: page, hasMore, total };
 
     } catch (err) {
         if (err instanceof Error) {
@@ -184,7 +215,7 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
 
         if (scopedOr.length === 0) return { err: "", rows: [] as log_row[], hasMore: false, total: 0 };
 
-        const scopedWhere = { AND: [{ OR: scopedOr }, RENDERABLE] };
+        const scopedWhere = { AND: [{ OR: scopedOr }, RENDERABLE, NOT_SENSITIVE_EVENT] };
 
         const [rows, total] = await Promise.all([
             sdb.log.findMany({
@@ -196,8 +227,9 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
         ]);
 
         const hasMore = rows.length > limit;
+        const page = (hasMore ? rows.slice(0, limit) : rows).map(redactSensitiveChanges);
 
-        return { err: "", rows: hasMore ? rows.slice(0, limit) : rows, hasMore, total };
+        return { err: "", rows: page, hasMore, total };
     } catch (err) {
         if (err instanceof Error) {
             return { err: err.message, rows: [] as log_row[], hasMore: false, total: 0 };

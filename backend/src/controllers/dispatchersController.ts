@@ -315,8 +315,10 @@ export const changeDispatcherPassword = async (
                 ? "dispatcher"
                 : "system",
             actor_id: context?.techId || context?.dispatcherId,
+            // Never persist hashes in the audit trail — they are readable by anyone
+            // with view_dispatchers via the change-history endpoints.
             changes: {
-                password: { old: dispatcher.password, new: hashedPassword },
+                password: { old: "[hashed]", new: "[hashed]" },
             },
             ip_address: context?.ipAddress,
             user_agent: context?.userAgent,
