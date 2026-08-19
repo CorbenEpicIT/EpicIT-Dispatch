@@ -119,7 +119,7 @@ type FieldAddedRaw = Awaited<ReturnType<typeof getFieldAddedRevenueReport>>["row
 type RecurringRaw = Awaited<ReturnType<typeof getRecurringRevenueReport>>["plans"][number];
 type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
 type LineItemTypeRaw = Awaited<ReturnType<typeof getRevenueByLineItemType>>[number];
-type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>[number];
+type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>["rows"][number];
 
 const jobRow = (job: JobRaw): ReportRow => ({
 	id: job.id,
@@ -638,9 +638,10 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		}),
 	},
 	"revenue-line-items": {
-		load: async (orgId, q) => ({
-			rows: (await getRevenueLineItemsReport(q.startDate, q.endDate, orgId)).map(revenueLineItemRow),
-		}),
+		load: async (orgId, q) => {
+			const { rows, truncated } = await getRevenueLineItemsReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(revenueLineItemRow), summary: { truncated } };
+		},
 		loadPage: async (orgId, q, params) =>
 			mapPage(
 				await getRevenueLineItemsReportPage(q.startDate, q.endDate, orgId, params),

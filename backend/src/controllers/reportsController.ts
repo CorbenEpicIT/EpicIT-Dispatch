@@ -1962,18 +1962,22 @@ const mapRevenueLineItemRaw = (
 	itemType: li.item_type ?? "other",
 });
 
+// Capped like the other in-memory reports; `truncated` is surfaced so the
+// fallback/export path can say the sheet is incomplete instead of passing off a
+// short list as the whole period.
 export const getRevenueLineItemsReport = async (
 	startDate: string | undefined,
 	endDate: string | undefined,
 	organizationId: string,
-) => {
+): Promise<{ rows: ReturnType<typeof mapRevenueLineItemRaw>[]; truncated: boolean }> => {
 	const sdb = getScopedDb(organizationId);
 	const items = await sdb.invoice_line_item.findMany({
 		where: revenueLineItemsWhere(organizationId, startDate, endDate),
 		orderBy: { invoice: { issue_date: "desc" } },
 		include: REVENUE_LINE_ITEM_INCLUDE,
+		take: REPORT_ROW_CAP,
 	});
-	return items.map(mapRevenueLineItemRaw);
+	return { rows: items.map(mapRevenueLineItemRaw), truncated: items.length >= REPORT_ROW_CAP };
 };
 
 const REVENUE_LINE_ITEM_SQL_COLUMNS: ColumnMap = {
@@ -3481,11 +3485,17 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			break;
 		}
 		case "inventory": {
-			const items = await sdb.inventory_item.findMany({
-				where: { organization_id: orgId, provisional: false, is_active: true },
-				select: { id: true, quantity: true, low_stock_threshold: true, cost: true },
-				take: REPORT_ROW_CAP,
-			});
+			const itemWhere = { organization_id: orgId, provisional: false, is_active: true };
+			// Total comes from count(): the row list below is capped, so its length
+			// would silently understate a large catalog.
+			const [items, itemCount] = await Promise.all([
+				sdb.inventory_item.findMany({
+					where: itemWhere,
+					select: { id: true, quantity: true, low_stock_threshold: true, cost: true },
+					take: REPORT_ROW_CAP,
+				}),
+				sdb.inventory_item.count({ where: itemWhere }),
+			]);
 			let low = 0;
 			let out = 0;
 			let sufficient = 0;
@@ -3527,7 +3537,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 				breakdownLabel = "By Stock Status";
 			}
 			stats = [
-				{ label: "Total Items",  value: items.length, format: "number" },
+				{ label: "Total Items",  value: itemCount,    format: "number" },
 				{ label: "Low",          value: low,          format: "number" },
 				{ label: "Out of Stock", value: out,          format: "number" },
 				{ label: "Asset Value",  value: assetValue,   format: "currency" },
