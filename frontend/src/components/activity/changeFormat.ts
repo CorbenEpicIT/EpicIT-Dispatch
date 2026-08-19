@@ -1,4 +1,4 @@
-import { History, Key, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
+import { History, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
 import type React from "react";
 import type { ActivityLog } from "../../types/logs";
 
@@ -154,6 +154,11 @@ const BREADCRUMB_KEYS = new Set([
 
 const isBreadcrumb = (key: string): boolean => key.startsWith("_") || BREADCRUMB_KEYS.has(key);
 
+// Never render credential-ish fields, whatever the backend happened to log for them.
+const SENSITIVE_KEY = /password|token|secret|otp|mfa/i;
+
+export const isSensitiveKey = (key: string): boolean => SENSITIVE_KEY.test(key);
+
 const REFERENCE_KEYS = [
 	"_job_number",
 	"job_number",
@@ -260,7 +265,7 @@ export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 
 	const rows: ChangeRow[] = log.changes
 		? Object.entries(log.changes).flatMap(([key, delta]) => {
-				if (isBreadcrumb(key)) return [];
+				if (isBreadcrumb(key) || isSensitiveKey(key)) return [];
 
 				const from = formatValue(key, delta.old, tz);
 				const to = formatValue(key, delta.new, tz);
