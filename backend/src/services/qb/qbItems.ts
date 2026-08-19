@@ -78,9 +78,13 @@ export async function importQBItem(orgId: string, qbItemId: string, actor?: Acto
         throw httpError(409, ErrorCodes.CONFLICT, "This QuickBooks item has already been imported.");
     }
 
-    // QuickBooks item quantities are treated as whole units on import; floor a
-    // fractional QtyOnHand rather than fail the import.
-    const qtyOnHand = Math.max(0, Math.floor(qbItem.QtyOnHand ?? 0));
+    // Keep the QBO quantity at the ledger's own scale (numeric(10,2)) instead of
+    // flooring it: 12.5 gal on hand in QuickBooks is 12.5 here, not 12. Rounding
+    // to 2 dp is what makes it storable for recordMovements' precision guard;
+    // anything QBO sends with more precision than that is not representable and
+    // is rounded rather than failing the import. Negative QBO balances still
+    // import as 0 — the opening movement can't be negative.
+    const qtyOnHand = Math.max(0, Math.round((qbItem.QtyOnHand ?? 0) * 100) / 100);
 
     try {
         const item = await db.$transaction(async (tx) => {

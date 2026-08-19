@@ -155,32 +155,37 @@ export async function recordMovements(
 		_id: randomUUID(),
 	}));
 
-	// 3. Aggregate cache deltas
-	const itemDeltas = new Map<string, number>(); // inventory_item.quantity
+	// 3. Aggregate cache deltas — in Decimal, not float. Quantities are 2-dp
+	// decimals, and summing them as doubles (0.1 + 0.2 = 0.30000000000000004)
+	// produced a third decimal that made the overdraw guard below report a false
+	// InsufficientStock (0.3 on hand minus 0.1 and 0.2 is -5.5e-17 < 0).
+	const ZERO = new Prisma.Decimal(0);
+	const itemDeltas = new Map<string, Prisma.Decimal>(); // inventory_item.quantity
 	// vehicle key = `${vehicle_id}::${item_id}`
 	const vehicleItemDeltaMap = new Map<
 		string,
-		{ vehicle_id: string; inventory_item_id: string; delta: number }
+		{ vehicle_id: string; inventory_item_id: string; delta: Prisma.Decimal }
 	>();
 
 	for (const m of withIds) {
+		const qty = new Prisma.Decimal(m.qty);
 		if (m.from_location_type === "warehouse") {
-			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? 0) - m.qty);
+			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? ZERO).minus(qty));
 		}
 		if (m.to_location_type === "warehouse") {
-			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? 0) + m.qty);
+			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? ZERO).plus(qty));
 		}
 		if (m.from_vehicle_id) {
 			const key = `${m.from_vehicle_id}::${m.inventory_item_id}`;
 			const e = vehicleItemDeltaMap.get(key);
-			if (e) e.delta -= m.qty;
-			else vehicleItemDeltaMap.set(key, { vehicle_id: m.from_vehicle_id, inventory_item_id: m.inventory_item_id, delta: -m.qty });
+			if (e) e.delta = e.delta.minus(qty);
+			else vehicleItemDeltaMap.set(key, { vehicle_id: m.from_vehicle_id, inventory_item_id: m.inventory_item_id, delta: qty.negated() });
 		}
 		if (m.to_vehicle_id) {
 			const key = `${m.to_vehicle_id}::${m.inventory_item_id}`;
 			const e = vehicleItemDeltaMap.get(key);
-			if (e) e.delta += m.qty;
-			else vehicleItemDeltaMap.set(key, { vehicle_id: m.to_vehicle_id, inventory_item_id: m.inventory_item_id, delta: m.qty });
+			if (e) e.delta = e.delta.plus(qty);
+			else vehicleItemDeltaMap.set(key, { vehicle_id: m.to_vehicle_id, inventory_item_id: m.inventory_item_id, delta: qty });
 		}
 	}
 
@@ -190,7 +195,7 @@ export async function recordMovements(
 
 	// 5. Warehouse overdraw guard
 	if (!opts.allowNegative) {
-		const deductions = itemIds.filter((id) => (itemDeltas.get(id) ?? 0) < 0);
+		const deductions = itemIds.filter((id) => (itemDeltas.get(id) ?? ZERO).lessThan(0));
 		if (deductions.length > 0) {
 			const rows = await tx.inventory_item.findMany({
 				where: { id: { in: deductions } },
@@ -199,8 +204,8 @@ export async function recordMovements(
 
 			const insufficient: Record<string, number> = {};
 			for (const row of rows) {
-				const projected = Number(row.quantity) + itemDeltas.get(row.id)!;
-				if (projected < 0) insufficient[row.id] = Number(row.quantity);
+				const projected = new Prisma.Decimal(row.quantity).plus(itemDeltas.get(row.id)!);
+				if (projected.lessThan(0)) insufficient[row.id] = Number(row.quantity);
 			}
 			if (Object.keys(insufficient).length > 0) throw new InsufficientStockError(insufficient);
 		}
@@ -209,7 +214,7 @@ export async function recordMovements(
 	// 6. Apply inventory_item deltas (deterministic order)
 	for (const itemId of itemIds) {
 		const delta = itemDeltas.get(itemId)!;
-		if (delta === 0) continue;
+		if (delta.isZero()) continue;
 		await tx.inventory_item.update({
 			where: { id: itemId },
 			data: { quantity: { increment: delta } },
@@ -223,7 +228,7 @@ export async function recordMovements(
 	});
 
 	for (const entry of vehicleEntries) {
-		if (entry.delta === 0) continue;
+		if (entry.delta.isZero()) continue;
 		await tx.vehicle_stock_item.upsert({
 			where: {
 				vehicle_id_inventory_item_id: {
@@ -234,17 +239,17 @@ export async function recordMovements(
 			create: {
 				vehicle_id: entry.vehicle_id,
 				inventory_item_id: entry.inventory_item_id,
-				qty_on_hand: new Prisma.Decimal(entry.delta),
+				qty_on_hand: entry.delta,
 				qty_min: 0,
 			},
 			update: {
-				qty_on_hand: { increment: new Prisma.Decimal(entry.delta) },
+				qty_on_hand: { increment: entry.delta },
 			},
 		});
 	}
 
 	// 7b. Auto-resolve pending/acknowledged restock requests for items restocked onto a vehicle
-	const inboundVehicleEntries = [...vehicleItemDeltaMap.values()].filter((e) => e.delta > 0);
+	const inboundVehicleEntries = [...vehicleItemDeltaMap.values()].filter((e) => e.delta.greaterThan(0));
 	if (inboundVehicleEntries.length > 0) {
 		// Find stock_item IDs for (vehicle_id, inventory_item_id) pairs receiving stock
 		const stockItemRows = await tx.vehicle_stock_item.findMany({

@@ -241,7 +241,7 @@ describe("recordMovements", () => {
 
 		expect(tx.inventory_item.update).toHaveBeenCalledWith({
 			where: { id: "item-1" },
-			data: { quantity: { increment: 5 } },
+			data: { quantity: { increment: new Prisma.Decimal(5) } },
 		});
 	});
 
@@ -259,7 +259,7 @@ describe("recordMovements", () => {
 
 		expect(tx.inventory_item.update).toHaveBeenCalledWith({
 			where: { id: "item-1" },
-			data: { quantity: { increment: -3 } },
+			data: { quantity: { increment: new Prisma.Decimal(-3) } },
 		});
 	});
 
@@ -411,8 +411,54 @@ describe("recordMovements", () => {
 		expect(tx.inventory_item.update).toHaveBeenCalledOnce();
 		expect(tx.inventory_item.update).toHaveBeenCalledWith({
 			where: { id: "item-1" },
-			data: { quantity: { increment: 7 } },
+			data: { quantity: { increment: new Prisma.Decimal(7) } },
 		});
+	});
+
+	// Deltas are accumulated in Decimal, not float: 0.1 + 0.2 as doubles is
+	// 0.30000000000000004, which both wrote a third decimal into the increment and
+	// made the overdraw guard see -5.5e-17 < 0 on an item with exactly 0.3 on hand.
+	it("does not raise a false InsufficientStock from float noise when 2-dp deductions exactly equal on-hand", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", new Prisma.Decimal("0.3"))]);
+
+		const movements: MovementInput[] = [
+			{ inventory_item_id: "item-1", qty: 0.1, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+			{ inventory_item_id: "item-1", qty: 0.2, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+		];
+
+		await expect(recordMovements(tx as unknown as Tx, ORG, ACTOR, movements)).resolves.toBeDefined();
+		expect(tx.inventory_item.update).toHaveBeenCalledWith({
+			where: { id: "item-1" },
+			data: { quantity: { increment: new Prisma.Decimal("-0.3") } },
+		});
+		const increment = tx.inventory_item.update.mock.calls[0][0].data.quantity.increment as Prisma.Decimal;
+		expect(increment.toString()).toBe("-0.3");
+	});
+
+	it("still raises InsufficientStock when 2-dp deductions exceed on-hand by one cent", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", new Prisma.Decimal("0.3"))]);
+
+		const movements: MovementInput[] = [
+			{ inventory_item_id: "item-1", qty: 0.1, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+			{ inventory_item_id: "item-1", qty: 0.21, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+		];
+
+		await expect(recordMovements(tx as unknown as Tx, ORG, ACTOR, movements)).rejects.toThrow(InsufficientStockError);
+	});
+
+	it("accumulates vehicle deltas in Decimal too (no third decimal reaches the upsert)", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 10)]);
+
+		const movements: MovementInput[] = [
+			{ inventory_item_id: "item-1", qty: 0.1, from_location_type: "vehicle", from_vehicle_id: "truck-1", to_location_type: "consumed", reason: "parts_used" },
+			{ inventory_item_id: "item-1", qty: 0.2, from_location_type: "vehicle", from_vehicle_id: "truck-1", to_location_type: "consumed", reason: "parts_used" },
+		];
+
+		await recordMovements(tx as unknown as Tx, ORG, ACTOR, movements, { allowNegative: true });
+
+		const upsert = tx.vehicle_stock_item.upsert.mock.calls[0][0];
+		expect((upsert.update.qty_on_hand.increment as Prisma.Decimal).toString()).toBe("-0.3");
+		expect((upsert.create.qty_on_hand as Prisma.Decimal).toString()).toBe("-0.3");
 	});
 
 	it("locks inventory rows before reading quantities", async () => {
