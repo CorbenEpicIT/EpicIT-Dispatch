@@ -45,16 +45,20 @@ export const login = async (res: Response, email: string, password: string) => {
 		}
 
 		// ask if last login updates automatically or if I have to add that here
+		// password is omitted globally (db.ts); login is one of the few places
+		// that legitimately needs the hash, so opt back in for this query only.
 		let user =
 			(await db.technician.findUnique({
 				where: {
 					email: email,
 				},
+				omit: { password: false },
 			})) ??
 			(await db.dispatcher.findUnique({
 				where: {
 					email: email,
 				},
+				omit: { password: false },
 			}));
 		if (!user) {
 			return createErrorResponse(

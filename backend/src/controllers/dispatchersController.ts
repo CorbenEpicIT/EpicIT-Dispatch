@@ -71,6 +71,10 @@ export const insertDispatcher = async (
         const tempPassword = passwordProvided ? parsed.password! : randomBytes(8).toString("hex") + "A1!";
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
+        // Kept locally: the created row comes back with credential columns
+        // omitted (see SECRET_FIELD_OMIT in db.ts), and the token must not be
+        // echoed in the API response anyway.
+        const emailVerificationToken = randomUUID();
         const created = await sdb.$transaction(async (tx) => {
             const { password: _pw, ...parsedWithoutPassword } = parsed;
             const dispatcher = await tx.dispatcher.create({
@@ -78,7 +82,7 @@ export const insertDispatcher = async (
                     ...parsedWithoutPassword,
                     organization_id: organizationId,
                     password: hashedPassword,
-                    email_verification_token: randomUUID(),
+                    email_verification_token: emailVerificationToken,
                     // if password provided dispatcher doesn't need to reset password on first login
                     ...(passwordProvided && { last_login: new Date() }),
                 },
@@ -108,7 +112,7 @@ export const insertDispatcher = async (
 
             sendEmailVerificationEmail(
                 dispatcher.email, 
-                dispatcher.email_verification_token!, 
+                emailVerificationToken, 
                 passwordProvided ? undefined : tempPassword
             );
 
@@ -276,8 +280,10 @@ export const changeDispatcherPassword = async (
 ) => {
     const parsed = changePasswordSchema.parse(data);
     const sdb = getScopedDb(organization_id);
+    // password is omitted globally (db.ts); opt back in here to verify the current one.
     const dispatcher = await sdb.dispatcher.findFirst({
         where: { id },
+        omit: { password: false },
     });
 
     if (!dispatcher) {

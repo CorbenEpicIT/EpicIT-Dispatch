@@ -3,17 +3,13 @@ import { db } from "../db.js";
 import { createErrorResponse, ErrorCodes } from "../types/responses.js";
 import { getAllPermissions } from "../lib/permissionCatalogs.js";
 
-// copied from prisma schema
+// The subset of a dispatcher/technician row the token claims are built from.
+// Deliberately excludes credential columns — they are omitted globally by the
+// Prisma client (see SECRET_FIELD_OMIT in db.ts) and never belong in a token.
 interface User {
 	id: string;
-	name: string;
 	organization_id: string | null;
-	title: string;
-	description: string;
 	email: string;
-	phone: string | null;
-	password: string;
-	last_login: Date | null;
 }
 type PendingStage = "pending_otp" | "pending_totp" | "pending_mfa_enroll";
 

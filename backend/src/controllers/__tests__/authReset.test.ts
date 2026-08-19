@@ -35,7 +35,7 @@ vi.mock("../../services/otpServce.js", () => ({
 }));
 
 import { db } from "../../db.js";
-import { resetPassword, requestPasswordReset } from "../authenticationController.js";
+import { login, resetPassword, requestPasswordReset } from "../authenticationController.js";
 import { refreshAccessToken } from "../../services/jwtService.js";
 import { sendPasswordResetEmail } from "../../services/emailService.js";
 import { logActivity } from "../../services/logger.js";
@@ -175,6 +175,40 @@ describe("requestPasswordReset — no live token survives a failed email (review
 		expect(fake.technician.update).toHaveBeenCalledOnce();
 		expect(fake.technician.update.mock.calls[0][0].data.password_reset_token).toEqual(expect.any(String));
 		expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ event_type: "auth.password_reset_requested" }));
+	});
+});
+
+describe("login — opts back into the password hash only for the credential check (review B2)", () => {
+	it("passes omit:{password:false} on the lookup and never returns the hash", async () => {
+		fake.technician.findUnique.mockResolvedValue(null);
+		fake.dispatcher.findUnique.mockResolvedValue({
+			id: "disp-1",
+			email: "d@x.com",
+			organization_id: "org-1",
+			role: "dispatcher",
+			password: "hashed(pw)",
+			last_login: null,
+			organization_role_id: null,
+		});
+		fake.dispatcher.update.mockResolvedValue({});
+		fake.organization.findUnique.mockResolvedValue({ timezone: "UTC" });
+		fake.jwt_refresh_token.findFirst.mockResolvedValue(null);
+		fake.jwt_refresh_token.create.mockResolvedValue({});
+
+		const res = { cookie: vi.fn() } as never;
+		const result = await login(res, "d@x.com", "pw");
+
+		expect(fake.technician.findUnique.mock.calls[0][0]).toEqual({ where: { email: "d@x.com" }, omit: { password: false } });
+		expect(fake.dispatcher.findUnique.mock.calls[0][0]).toEqual({ where: { email: "d@x.com" }, omit: { password: false } });
+		expect(result && "data" in result && result.data).toMatchObject({ user: { uid: "disp-1", role: "dispatcher" } });
+		expect(JSON.stringify(result)).not.toContain("hashed(pw)");
+	});
+
+	it("rejects a wrong password", async () => {
+		fake.technician.findUnique.mockResolvedValue(null);
+		fake.dispatcher.findUnique.mockResolvedValue({ id: "disp-1", email: "d@x.com", organization_id: "org-1", role: "dispatcher", password: "hashed(pw)", last_login: new Date() });
+		const result = await login({ cookie: vi.fn() } as never, "d@x.com", "wrong");
+		expect(result).toMatchObject({ success: false, error: { code: "INVALID_CREDENTIALS" } });
 	});
 });
 

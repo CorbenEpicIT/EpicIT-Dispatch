@@ -1,15 +1,35 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 
+// Credential / token columns that must never leave the server by default.
+// Applied globally (including nested relation reads such as
+// `visit_techs: { include: { tech: true } }`); the few code paths that
+// genuinely need a value opt back in per query with `omit: { <field>: false }`.
+export const SECRET_FIELD_OMIT = {
+	dispatcher: {
+		password: true,
+		password_reset_token: true,
+		password_reset_token_expires_at: true,
+		email_verification_token: true,
+	},
+	technician: {
+		password: true,
+		password_reset_token: true,
+		password_reset_token_expires_at: true,
+	},
+} as const;
+
+const createClient = () =>
+	new PrismaClient({
+		adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+		omit: SECRET_FIELD_OMIT,
+	});
+
 const globalForPrisma = globalThis as unknown as {
-	prisma: PrismaClient | undefined;
+	prisma: ReturnType<typeof createClient> | undefined;
 };
 
-const adapter = new PrismaPg({
-	connectionString: process.env.DATABASE_URL,
-});
-
-export const db = globalForPrisma.prisma ?? new PrismaClient({ adapter });
+export const db = globalForPrisma.prisma ?? createClient();
 
 if (process.env.NODE_ENV !== "production") {
 	globalForPrisma.prisma = db;

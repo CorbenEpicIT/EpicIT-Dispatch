@@ -728,8 +728,10 @@ export const changeTechnicianPassword = async (
 ) => {
 	const parsed = changePasswordSchema.parse(data);
 	const sdb = getScopedDb(organization_id);
+	// password is omitted globally (db.ts); opt back in here to verify the current one.
 	const technician = await sdb.technician.findFirst({
 		where: { id },
+		omit: { password: false },
 	});
 
 	if (!technician) {
