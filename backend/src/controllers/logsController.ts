@@ -1,7 +1,9 @@
+import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { getScopedDb } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
 
 export type actor = "technician" | "dispatcher";
 export type entity = "job" | "quote" | "request" | "invoice" | "client" | "project";
@@ -282,3 +284,90 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
         return { err: "Internal server error", rows: [] as log_row[], hasMore: false, total: 0 };
     }
 };
+
+// ============================================================
+// ACTIVITY FEED (GET /logs/recent)
+// ============================================================
+
+const FEED_EVENTS = [
+    "job.created",
+    "job_visit.created",
+    "job_visit.updated",
+    "job_visit.technicians_assigned",
+    "request.created",
+    "request.updated",
+    "quote.created",
+    "quote.updated",
+    "invoice.created",
+    "invoice.updated",
+    "invoice_payment.created",
+    "recurring_plan.created",
+    "recurring_occurrence.generated",
+    "technician.updated",
+];
+
+// technician.updated carries contact details and GPS coords — keep the event in
+// the feed (status changes are useful) but never ship the PII diffs.
+const FEED_PII_KEYS: Record<string, ReadonlySet<string>> = {
+    "technician.updated": new Set(["email", "phone", "coords", "hire_date", "last_login"]),
+};
+
+export const redactFeedRow = <T extends { event_type: string; changes: unknown }>(row: T): T => {
+    const denied = FEED_PII_KEYS[row.event_type];
+    const changes = row.changes;
+    if (!denied || !changes || typeof changes !== "object" || Array.isArray(changes)) return row;
+    const entries = Object.entries(changes as Record<string, unknown>);
+    if (!entries.some(([key]) => denied.has(key))) return row;
+    return { ...row, changes: Object.fromEntries(entries.filter(([key]) => !denied.has(key))) };
+};
+
+const FEED_DEFAULT_LIMIT = 25;
+const FEED_MAX_LIMIT = 50;
+const FEED_VIEWER_PERMISSIONS = ["view_dispatchers", "view_technicians"];
+
+const forbidden = (res: Response) =>
+    res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+
+/**
+ * Access rule for the activity feed:
+ *  - `?userId=<own id>`: anyone may read their own activity;
+ *  - `?userId=<someone else>`: needs view_dispatchers or view_technicians (admin passes);
+ *  - unfiltered org-wide feed: dispatchers/admins only — technicians are denied.
+ */
+export const requireFeedAccess = (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user) return forbidden(res);
+    const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+    if (userId && userId === user.uid) return next();
+    if (user.role === "admin") return next();
+    if (userId) {
+        const perms = Array.isArray(user.permissions) ? user.permissions : [];
+        return FEED_VIEWER_PERMISSIONS.some((p) => perms.includes(p)) ? next() : forbidden(res);
+    }
+    return user.role === "technician" ? forbidden(res) : next();
+};
+
+export const getRecentActivity = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const limit = Math.min(Number(req.query.limit) || FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT);
+        const cursor = req.query.cursor as string | undefined;
+        const userId = req.query.userId as string | undefined;
+        const orgId = req.user!.organization_id as string;
+        const sdb = getScopedDb(orgId);
+        const logs = await sdb.log.findMany({
+            where: {
+                event_type: { in: FEED_EVENTS },
+                ...(cursor ? { timestamp: { lt: new Date(cursor) } } : {}),
+                ...(userId ? { OR: [{ actor_id: userId }, { entity_id: userId }] } : {}),
+            },
+            orderBy: { timestamp: "desc" },
+            take: limit,
+        });
+        const hasMore = logs.length === limit;
+        res.json(createSuccessResponse(logs.map(redactFeedRow), { count: logs.length, hasMore }));
+    } catch (err) {
+        next(err);
+    }
+};
+
+export const recentActivityRoute = [requireFeedAccess, getRecentActivity];
