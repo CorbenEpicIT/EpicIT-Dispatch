@@ -5,7 +5,7 @@ type FieldStates<T> = {
 	[K in keyof T]: FormFieldState<T[K]>;
 };
 
-export function useDirtyTracking<T extends Record<string, any>>(initialValues: T) {
+export function useDirtyTracking<T extends Record<string, unknown>>(initialValues: T) {
 	const [fields, setFields] = useState<FieldStates<T>>(() =>
 		Object.entries(initialValues).reduce(
 			(acc, [key, value]) => ({

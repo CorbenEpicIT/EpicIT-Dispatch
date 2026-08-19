@@ -708,8 +708,8 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 											const sa = a.type === "visit" ? (STATUS_SORT_ORDER[a.item.status] ?? 3) : 3;
 											const sb = b.type === "visit" ? (STATUS_SORT_ORDER[b.item.status] ?? 3) : 3;
 											if (sa !== sb) return sa - sb;
-											const ta = new Date(a.type === "visit" ? (a.item.scheduled_start_at ?? 0) : ((a.item as any).occurrence_start_at ?? 0)).getTime();
-											const tb = new Date(b.type === "visit" ? (b.item.scheduled_start_at ?? 0) : ((b.item as any).occurrence_start_at ?? 0)).getTime();
+											const ta = new Date(a.type === "visit" ? (a.item.scheduled_start_at ?? 0) : (a.item.occurrence_start_at ?? 0)).getTime();
+											const tb = new Date(b.type === "visit" ? (b.item.scheduled_start_at ?? 0) : (b.item.occurrence_start_at ?? 0)).getTime();
 											return ta - tb;
 										});
 									}

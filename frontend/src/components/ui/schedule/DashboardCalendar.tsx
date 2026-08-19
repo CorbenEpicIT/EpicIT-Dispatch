@@ -16,6 +16,7 @@ import {
 	buildOccurrenceEvents,
 	buildOccurrenceBadgeEvents,
 	toZonedDateTime,
+	type CalendarEvent,
 	type VisitWithJob,
 	type OccurrenceWithPlan,
 } from "./dashboardCalendarUtils";
@@ -71,47 +72,47 @@ export default function DashboardCalendar({
 			views: [createViewWeek(), createViewMonthGrid()],
 			defaultView: view === "week" ? "week" : "month-grid",
 			callbacks: {
-				onEventClick(calEvent: any) {
-					if (calEvent._type === "occurrence-badge") return;
-					if (calEvent._type === "visit") {
+				onEventClick(calEvent) {
+					const ev = calEvent as CalendarEvent;
+					if (ev._type === "occurrence-badge") return;
+					if (ev._type === "visit") {
 						setClickedOccurrence(null);
-						setClickedVisit({ visit: calEvent._data as VisitWithJob, x: mousePosRef.current.x, y: mousePosRef.current.y });
-					} else if (calEvent._type === "occurrence") {
+						setClickedVisit({ visit: ev._data, x: mousePosRef.current.x, y: mousePosRef.current.y });
+					} else if (ev._type === "occurrence") {
 						setClickedVisit(null);
-						setClickedOccurrence({ occ: calEvent._data as OccurrenceWithPlan, x: mousePosRef.current.x, y: mousePosRef.current.y });
+						setClickedOccurrence({ occ: ev._data, x: mousePosRef.current.x, y: mousePosRef.current.y });
 					}
 				},
-				async onEventUpdate(updatedEvent: any) {
-					const type = updatedEvent._type;
-					if (type !== "visit" && type !== "occurrence") return;
-					const originalData = updatedEvent._data;
-
-					if (type === "visit") {
+				async onEventUpdate(updatedEvent) {
+					const ev = updatedEvent as CalendarEvent;
+					if (ev._type === "visit") {
+						const originalData = ev._data;
 						const input: UpdateJobVisitInput = {
-							scheduled_start_at: new Date(updatedEvent.start.epochMilliseconds),
-							scheduled_end_at: new Date(updatedEvent.end.epochMilliseconds),
+							scheduled_start_at: new Date(ev.start.epochMilliseconds),
+							scheduled_end_at: new Date(ev.end.epochMilliseconds),
 						};
 						try {
 							await updateVisit({ id: originalData.id, data: input });
 						} catch {
 							eventsService.update({
-								...updatedEvent,
+								...ev,
 								start: toZonedDateTime(originalData.scheduled_start_at),
 								end: toZonedDateTime(originalData.scheduled_end_at),
 							});
 						}
-					} else {
+					} else if (ev._type === "occurrence") {
+						const originalData = ev._data;
 						try {
 							await rescheduleOccurrence({
 								occurrenceId: originalData.id,
 								jobId: originalData.job_obj.id,
 								input: {
-									new_start_at: new Date(updatedEvent.start.epochMilliseconds).toISOString(),
+									new_start_at: new Date(ev.start.epochMilliseconds).toISOString(),
 								},
 							});
 						} catch {
 							eventsService.update({
-								...updatedEvent,
+								...ev,
 								start: toZonedDateTime(originalData.occurrence_start_at),
 								end: toZonedDateTime(originalData.occurrence_start_at),
 							});

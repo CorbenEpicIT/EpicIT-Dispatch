@@ -50,8 +50,8 @@ export default function RegisterPage() {
 				org_timezone: orgTimezone || undefined,
 			});
 			setStatus("success");
-		} catch (e: any) {
-			setErrorMessage(e.message || "Registration failed.");
+		} catch (e) {
+			setErrorMessage((e instanceof Error && e.message) || "Registration failed.");
 			setStatus("error");
 		}
 	};

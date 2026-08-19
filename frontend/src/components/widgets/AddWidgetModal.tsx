@@ -4,7 +4,7 @@ import FullPopup from "../ui/FullPopup";
 import { WIDGET_CATALOG, addWidget, removeWidget } from "../../lib/DashboardConfig";
 import { useAuthStore } from "../../auth/authStore";
 import { useResolvedTheme } from "../../hooks/useApplyTheme";
-import type { Layout } from "react-grid-layout";
+import type { Layout, LayoutItem } from "react-grid-layout";
 
 interface AddWidgetModalProps {
 	isOpen: boolean;
@@ -20,8 +20,8 @@ const widgetHue = (id: string) => {
 };
 
 function buildCompactLayout(layout: Layout) {
-	const sorted = [...(layout as unknown as any[])].sort((a: any, b: any) => a.y - b.y || a.x - b.x);
-	const placed: any[] = [];
+	const sorted = [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
+	const placed: LayoutItem[] = [];
 	for (const item of sorted) {
 		const h = Math.min(item.h, WIDGET_CATALOG[item.i]?.maxH ?? item.h);
 		let newY = 0;
@@ -52,11 +52,11 @@ function LayoutPreview({
 
 	const COLS = 12;
 	const { norm } = buildCompactLayout(layout);
-	const totalH = Math.max(1, ...norm.map((item: any) => item.y + item.h));
+	const totalH = Math.max(1, ...norm.map((item) => item.y + item.h));
 
 	return (
 		<div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
-			{norm.map((item: any) => {
+			{norm.map((item) => {
 				const hue = widgetHue(item.i);
 				const isProposed = item.i === proposedId;
 				const dim = !!hoveredId && item.i !== hoveredId && !isProposed;

@@ -86,7 +86,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 	const lineItemsForCalc = useMemo(
 		() =>
 			activeLineItems
-				.filter((li) => !(li as any).isDeleted)
+				.filter((li) => !("isDeleted" in li && li.isDeleted))
 				.map((li) => ({
 					id: li.id,
 					total: Number(li.total),
@@ -277,7 +277,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 				quantity: Number(item.quantity),
 				unit_price: Number(item.unit_price),
 				total: Number(item.total),
-				item_type: (item.item_type || undefined) as any,
+				item_type: item.item_type || undefined,
 				tax_group_id: item.tax_group_id ?? undefined,
 				taxable: item.taxable,
 			};

@@ -12,8 +12,8 @@ const refreshClient = axios.create({
 });
 const AUTH_PATHS = ["/login", "/refresh-token", "/otp-verify", "/reset-password", "/register"];
 let isRefreshing = false;
-let failedQueue: { resolve: (token: string) => void; reject: (error?: any) => void }[] = [];
-const processQueue = (error: any, token: string | null = null) => {
+let failedQueue: { resolve: (token: string) => void; reject: (error?: unknown) => void }[] = [];
+const processQueue = (error: unknown, token: string | null = null) => {
 	failedQueue.forEach((p) => (token ? p.resolve(token) : p.reject(error)));
 	failedQueue = [];
 };

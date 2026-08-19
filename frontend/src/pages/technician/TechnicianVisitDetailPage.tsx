@@ -694,7 +694,11 @@ export default function TechnicianVisitDetailPage() {
 		}
 	};
 
-	const dispatchPhone = (user as any)?.dispatchPhone as string | undefined;
+	// Not part of the auth User shape yet; read defensively so the button only shows when present.
+	const dispatchPhone =
+		user && "dispatchPhone" in user && typeof user.dispatchPhone === "string"
+			? user.dispatchPhone
+			: undefined;
 
 	return (
 		<div className="max-w-lg mx-auto pb-28">
