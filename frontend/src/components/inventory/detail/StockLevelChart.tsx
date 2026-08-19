@@ -17,7 +17,7 @@ import { unitLabel } from "../../../lib/units";
 import Card from "../../ui/Card";
 import EmptyState from "../../ui/EmptyState";
 import SegmentedToggle from "../../ui/SegmentedToggle";
-import { ChartChip, ChartTooltipShell } from "./chartShared";
+import { ChartChip, ChartTooltipShell, QueryErrorState } from "./chartShared";
 import { CHART_BODY_H, CHART_GRID, CHART_TICK, timeXAxis } from "./chartAxis";
 import { useChartNotes, unitBreakNote, UNIT_BREAK_DETAIL } from "./chartNotes";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
@@ -94,23 +94,43 @@ export default function StockLevelChart({
 	xDomain?: [number, number];
 }) {
 	const [mode, setMode] = useState<Mode>("units");
-	const { data, isLoading } = useItemValueHistoryQuery(itemId, { createdAfter });
+	const { data, isLoading, isError, refetch } = useItemValueHistoryQuery(itemId, {
+		createdAfter,
+	});
 
 	// On a unit break the server returns NO points (a running balance is
 	// cumulative, so no subset of it survives). Without this branch the card
 	// would fall through to a false "No history yet".
 	const unitBreak = unitBreakNote(data?.unitBasis, "on-hand over time");
 
-	const points: ChartPoint[] = useMemo(
-		() =>
-			(data?.points ?? []).map((p) => ({
-				ts: new Date(p.date).getTime(),
-				date: p.date,
-				quantity: p.quantity,
-				value: p.value,
-			})),
-		[data],
-	);
+	// A range-limited series starts at the first movement INSIDE the range, but
+	// stock was already on hand before it — `openingQuantity` (the level just
+	// before the window) anchors the step at the range start, so the plot shows
+	// the level held from the start of the range rather than beginning at its
+	// first change. Only when a range is active: an "All"/truncated window has
+	// no earlier x to anchor at (windowStart IS the first point).
+	const points: ChartPoint[] = useMemo(() => {
+		const series = (data?.points ?? []).map((p) => ({
+			ts: new Date(p.date).getTime(),
+			date: p.date,
+			quantity: p.quantity,
+			value: p.value,
+		}));
+		const opening = data?.openingQuantity;
+		const anchorTs = xDomain?.[0] ?? (createdAfter ? Date.parse(createdAfter) : NaN);
+		if (series.length === 0 || opening == null || !Number.isFinite(anchorTs)) return series;
+		if (anchorTs >= series[0].ts) return series;
+		const costUsed = data?.costUsed ?? null;
+		return [
+			{
+				ts: anchorTs,
+				date: new Date(anchorTs).toISOString(),
+				quantity: opening,
+				value: costUsed != null ? costUsed * opening : null,
+			},
+			...series,
+		];
+	}, [data, xDomain, createdAfter]);
 
 	// Either kind of cost can price the series; costBasis says which one did.
 	const hasCost = data?.costUsed != null;
@@ -164,8 +184,10 @@ export default function StockLevelChart({
 						? "The dashed line is the configured reorder threshold; the shaded band below it is the low-stock zone."
 						: "Set a low-stock threshold on this item to overlay a reorder line here.",
 			"Drawn as steps, not a curve: on-hand holds flat between movements, so a smooth line would show quantities this item never actually held.",
+			// Server-side row cap: name the window AND the level it started from,
+			// so the first step isn't read as "stock appeared from nothing".
 			data?.truncated &&
-				`Showing the most recent ${points.length} movements${data.windowStart ? `, from ${formatDate(data.windowStart)}` : ""}.`,
+				`Showing the most recent ${data.points.length} movements${data.windowStart ? `, from ${formatDate(data.windowStart)}` : ""}${data.openingQuantity != null ? ` — ${data.openingQuantity} ${unitLabel(unit, data.openingQuantity)} were on hand before that` : ""}.`,
 			data?.hasNegative &&
 				"Dips below zero mean this item's ledger predates full stock-movement coverage — consumption was recorded without a matching receipt.",
 		],
@@ -176,6 +198,16 @@ export default function StockLevelChart({
 			<Card title="Stock Level Over Time" headerAction={modeToggle}>
 				<div className={`${CHART_BODY_H} flex justify-center items-center`}>
 					<LoadSvg className="w-7 h-7" />
+				</div>
+			</Card>
+		);
+	}
+
+	if (isError) {
+		return (
+			<Card title="Stock Level Over Time" headerAction={modeToggle}>
+				<div className={`${CHART_BODY_H} flex flex-col justify-center`}>
+					<QueryErrorState what="stock level history" onRetry={() => refetch()} />
 				</div>
 			</Card>
 		);
@@ -196,14 +228,21 @@ export default function StockLevelChart({
 		);
 	}
 
+	// Two different facts: nothing has EVER moved, vs nothing moved in the
+	// chosen range (the series is server-filtered, so an empty response under a
+	// range is "quiet range", not "no history").
 	if (points.length === 0) {
 		return (
 			<Card title="Stock Level Over Time" headerAction={modeToggle}>
 				<div className={`${CHART_BODY_H} flex flex-col justify-center`}>
 					<EmptyState
 						icon={<Gauge size={26} />}
-						title="No history yet"
-						description="Once stock moves in or out of the warehouse, its on-hand quantity over time will chart here."
+						title={createdAfter ? "No movements in this range" : "No history yet"}
+						description={
+							createdAfter
+								? "Warehouse stock didn't change in this range. Widen the range above to see how it got to where it is."
+								: "Once stock moves in or out of the warehouse, its on-hand quantity over time will chart here."
+						}
 					/>
 				</div>
 			</Card>
