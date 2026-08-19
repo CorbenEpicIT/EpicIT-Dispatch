@@ -1155,13 +1155,17 @@ export const deductInventoryForVisit = async (
 	});
 	if (lineItems.length === 0) return { lowStockItemIds: [] };
 
-	// Billed quantities can be fractional; warehouse is Int — consume at least
-	// what was billed (ceil). allowNegative: completion must never block; a
-	// truthful negative surfaces the discrepancy instead of hiding it.
+	// Billed quantities are consumed exactly as billed — every qty column is
+	// numeric(10,2) and recordMovements rejects anything it cannot store, so
+	// 12.5 ft billed consumes 12.5 ft (not 13). allowNegative: completion must
+	// never block; a truthful negative surfaces the discrepancy instead of hiding
+	// it. allowUntracked: likewise, a serialized/batch-tracked item billed without
+	// scan data goes through with a [TRACKING_GAP] note for reconciliation rather
+	// than failing the whole completion transaction.
 	const movements = (lineItems as { id: string; inventory_item_id: string; quantity: unknown }[])
 		.map((li) => ({
 			inventory_item_id: li.inventory_item_id,
-			qty: Math.ceil(Number(li.quantity)),
+			qty: Number(li.quantity),
 			from_location_type: "warehouse" as const,
 			to_location_type: "consumed" as const,
 			reason: "direct_consumption" as const,
@@ -1175,7 +1179,7 @@ export const deductInventoryForVisit = async (
 		organizationId,
 		toActorInfo(context),
 		movements,
-		{ allowNegative: true },
+		{ allowNegative: true, allowUntracked: true },
 	);
 
 	await tx.job_visit_line_item.updateMany({

@@ -2149,7 +2149,7 @@ describe("inventoryController", () => {
 			};
 		}
 
-		it("emits one batched direct_consumption movement set with allowNegative", async () => {
+		it("emits one batched direct_consumption movement set with allowNegative + allowUntracked", async () => {
 			const tx = makeTx([
 				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 3 },
 				{ id: "li-2", visit_id: "v1", inventory_item_id: "item-2", quantity: 2 },
@@ -2161,7 +2161,10 @@ describe("inventoryController", () => {
 			expect(mockRecordMovements).toHaveBeenCalledOnce();
 			const [, orgId, , movements, opts] = mockRecordMovements.mock.calls[0];
 			expect(orgId).toBe("org-1");
-			expect(opts).toEqual({ allowNegative: true });
+			// Completion must never block: a negative is recorded truthfully and a
+			// tracked item billed without scan data goes through as a TRACKING_GAP
+			// (the documented completion-path option) instead of throwing mid-tx.
+			expect(opts).toEqual({ allowNegative: true, allowUntracked: true });
 			expect(movements).toEqual([
 				expect.objectContaining({
 					inventory_item_id: "item-1",
@@ -2195,7 +2198,9 @@ describe("inventoryController", () => {
 			});
 		});
 
-		it("ceils fractional billed quantities (warehouse is integer)", async () => {
+		// Quantities are numeric(10,2) end to end: what was billed is what is
+		// consumed. The old Math.ceil here turned 12.5 ft billed into 13 ft consumed.
+		it("passes fractional billed quantities through unchanged (no ceil)", async () => {
 			const tx = makeTx([
 				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 2.3 },
 			]);
@@ -2204,7 +2209,24 @@ describe("inventoryController", () => {
 			await deductInventoryForVisit("v1", tx as any, "org-1");
 
 			const movements = mockRecordMovements.mock.calls[0][3];
-			expect(movements[0].qty).toBe(3);
+			expect(movements[0].qty).toBe(2.3);
+		});
+
+		it("coerces a Prisma Decimal quantity to its exact numeric value", async () => {
+			const tx = makeTx([
+				{
+					id: "li-1",
+					visit_id: "v1",
+					inventory_item_id: "item-1",
+					quantity: new Prisma.Decimal("12.5") as unknown as number,
+				},
+			]);
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await deductInventoryForVisit("v1", tx as any, "org-1");
+
+			const movements = mockRecordMovements.mock.calls[0][3];
+			expect(movements[0].qty).toBe(12.5);
 		});
 
 		it("does nothing when the visit has no linked line items", async () => {
