@@ -1,6 +1,6 @@
 import { AlertCircle } from "lucide-react";
-import { useJobBacklogQuery } from "../../hooks/useReports";
-import JobBacklogChart from "../reports/JobBacklogChart";
+import { useJobBacklogQuery } from "../../../hooks/useReports";
+import JobBacklogChart from "../../reports/JobBacklogChart";
 
 export default function JobBacklogWidget() {
 	const { data, isLoading, error } = useJobBacklogQuery();

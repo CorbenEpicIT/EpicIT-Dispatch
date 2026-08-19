@@ -1,6 +1,6 @@
 import { AlertCircle } from "lucide-react";
-import { useAgedReceivablesQuery } from "../../hooks/useReports";
-import AgedReceivablesColumnChart from "../reports/AgedReceivablesColumnChart";
+import { useAgedReceivablesQuery } from "../../../hooks/useReports";
+import AgedReceivablesColumnChart from "../../reports/AgedReceivablesColumnChart";
 
 export default function AgedReceivablesColumnWidget() {
 	const { data, isLoading, error } = useAgedReceivablesQuery();

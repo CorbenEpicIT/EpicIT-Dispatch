@@ -1,16 +1,23 @@
 import { useMemo } from "react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { AlertCircle } from "lucide-react";
-import { useArrivalPerformanceQuery } from "../../hooks/useReports";
-import ArrivalPerformanceChart from "../reports/ArrivalPerformanceChart";
+import { useArrivalPerformanceQuery } from "../../../hooks/useReports";
+import ArrivalPerformanceChart from "../../reports/ArrivalPerformanceChart";
 
-export default function ArrivalPerformanceWidget() {
+interface ArrivalPerformanceWidgetProps {
+	startDate?: string;
+	endDate?: string;
+}
+
+export default function ArrivalPerformanceWidget({ startDate, endDate }: ArrivalPerformanceWidgetProps = {}) {
 	const now = useMemo(() => new Date(), []);
-	const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
-	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const defaultStart = useMemo(() => startOfMonth(now).toISOString(), [now]);
+	const defaultEnd   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const start = startDate ?? defaultStart;
+	const end   = endDate ?? defaultEnd;
 	const rangeLabel = useMemo(
-		() => `${format(startOfMonth(now), "MMM d, yyyy")} - ${format(endOfMonth(now), "MMM d, yyyy")}`,
-		[now]
+		() => `${format(new Date(start), "MMM d, yyyy")} - ${format(new Date(end), "MMM d, yyyy")}`,
+		[start, end]
 	);
 
 	const { data, isLoading, error } = useArrivalPerformanceQuery(start, end);

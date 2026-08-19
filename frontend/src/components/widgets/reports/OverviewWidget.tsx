@@ -2,15 +2,22 @@ import { useMemo } from "react";
 import { useContainerWidth } from "react-grid-layout";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { AlertCircle } from "lucide-react";
-import { useOverviewQuery } from "../../hooks/useReports";
-import Card from "../ui/Card";
-import OverviewSection from "../reports/OverviewSection";
+import { useOverviewQuery } from "../../../hooks/useReports";
+import Card from "../../ui/Card";
+import OverviewSection from "../../reports/OverviewSection";
 
-export default function OverviewWidget() {
+interface OverviewWidgetProps {
+	startDate?: string;
+	endDate?: string;
+}
+
+export default function OverviewWidget({ startDate, endDate }: OverviewWidgetProps = {}) {
 	const { containerRef, width } = useContainerWidth();
 	const now = useMemo(() => new Date(), []);
-	const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
-	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const defaultStart = useMemo(() => startOfMonth(now).toISOString(), [now]);
+	const defaultEnd   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const start = startDate ?? defaultStart;
+	const end   = endDate ?? defaultEnd;
 
 	const { data, isLoading, error } = useOverviewQuery(start, end);
 

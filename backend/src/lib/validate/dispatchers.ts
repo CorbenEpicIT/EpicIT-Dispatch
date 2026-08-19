@@ -7,6 +7,24 @@ const reportLayoutSchema = z.record(
 	z.object({ order: z.array(z.string()), hidden: z.array(z.string()) }),
 );
 
+// Mirrors react-grid-layout's Layout[] — passthrough so extra RGL-managed
+// keys (e.g. moved, isDraggable) don't get rejected as the library evolves.
+// Shared by dashboard_layout and kpi_layout — both are RGL grids.
+const gridLayoutSchema = z.array(
+	z.object({
+		i: z.string(),
+		x: z.number(),
+		y: z.number(),
+		w: z.number(),
+		h: z.number(),
+		minW: z.number().optional(),
+		minH: z.number().optional(),
+		maxW: z.number().optional(),
+		maxH: z.number().optional(),
+		static: z.boolean().optional(),
+	}).passthrough(),
+);
+
 export const createDispatcherSchema = z.object({
 	organization_id: z.string().uuid("Valid organization ID is required").optional(),
 	name: z.string().min(1, "Dispatcher name is required"),
@@ -37,8 +55,9 @@ export const updateDispatcherSchema = z
 				z.date()
 			)
 			.optional(),
-		dashboard_layout: z.any().optional(),
+		dashboard_layout: gridLayoutSchema.nullable().optional(),
 		report_layout: reportLayoutSchema.nullable().optional(),
+		kpi_layout: gridLayoutSchema.nullable().optional(),
 	})
 	.refine(
 		(data) =>
@@ -52,7 +71,8 @@ export const updateDispatcherSchema = z
 			data.theme !== undefined ||
 			data.last_login !== undefined ||
 			data.dashboard_layout !== undefined ||
-			data.report_layout !== undefined,
+			data.report_layout !== undefined ||
+			data.kpi_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);
 

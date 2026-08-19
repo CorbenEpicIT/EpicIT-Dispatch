@@ -1,13 +1,20 @@
 import { useMemo } from "react";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { AlertCircle } from "lucide-react";
-import { useQuotePipelineQuery } from "../../hooks/useReports";
-import QuotePipeline from "../reports/QuotePipeline";
+import { useQuotePipelineQuery } from "../../../hooks/useReports";
+import QuotePipeline from "../../reports/QuotePipeline";
 
-export default function QuotePipelineWidget() {
+interface QuotePipelineWidgetProps {
+	startDate?: string;
+	endDate?: string;
+}
+
+export default function QuotePipelineWidget({ startDate, endDate }: QuotePipelineWidgetProps = {}) {
 	const now = useMemo(() => new Date(), []);
-	const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
-	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const defaultStart = useMemo(() => startOfMonth(now).toISOString(), [now]);
+	const defaultEnd   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const start = startDate ?? defaultStart;
+	const end   = endDate ?? defaultEnd;
 
 	const { data, isLoading, error } = useQuotePipelineQuery(start, end);
 

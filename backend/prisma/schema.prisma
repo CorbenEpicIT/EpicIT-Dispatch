@@ -1789,6 +1789,7 @@ model dispatcher {
   theme       String   @default("system")
   dashboard_layout Json?
   report_layout    Json?
+  kpi_layout       Json?
 
   organization_role_id String?
   organization_role    organization_role? @relation("DispatcherRole", fields: [organization_role_id], references: [id])

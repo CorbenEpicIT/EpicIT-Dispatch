@@ -1,6 +1,6 @@
 import { AlertCircle } from "lucide-react";
-import { useUnscheduledRevenueQuery } from "../../hooks/useReports";
-import UnscheduledRevenue from "../reports/UnscheduledRevenue";
+import { useUnscheduledRevenueQuery } from "../../../hooks/useReports";
+import UnscheduledRevenue from "../../reports/UnscheduledRevenue";
 
 export default function UnscheduledRevenueWidget() {
 	const { data, isLoading, error } = useUnscheduledRevenueQuery();

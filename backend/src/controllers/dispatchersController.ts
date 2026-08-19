@@ -158,6 +158,7 @@ export const updateDispatcher = async (
         }
 
         const changes = buildChanges(existing, parsed, [
+            "organization_id",
             "name",
             "email",
             "phone",
@@ -168,7 +169,7 @@ export const updateDispatcher = async (
             "theme",
         ] as const);
 
-        const { report_layout, ...rest } = parsed;
+        const { report_layout, dashboard_layout, kpi_layout, ...rest } = parsed;
         const updated = await sdb.$transaction(async (tx) => {
             const dispatcher = await tx.dispatcher.update({
                 where: { id },
@@ -180,7 +181,19 @@ export const updateDispatcher = async (
                                 ? Prisma.JsonNull
                                 : (report_layout as Prisma.InputJsonValue),
                     }),
-                },
+                    ...(dashboard_layout !== undefined && {
+                        dashboard_layout:
+                            dashboard_layout === null
+                                ? Prisma.JsonNull
+                                : (dashboard_layout as Prisma.InputJsonValue),
+                    }),
+                    ...(kpi_layout !== undefined && {
+                        kpi_layout:
+                            kpi_layout === null
+                                ? Prisma.JsonNull
+                                : (kpi_layout as Prisma.InputJsonValue),
+                    }),
+                } as Prisma.dispatcherUncheckedUpdateInput,
                 include: {
                     // Nothing needed to be included for now
                 },

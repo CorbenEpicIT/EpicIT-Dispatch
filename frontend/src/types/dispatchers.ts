@@ -27,6 +27,7 @@ export interface Dispatcher {
   theme: "dark" | "light" | "system";
   dashboard_layout: Layout | null;
   report_layout: ReportLayout | null;
+  kpi_layout: Layout | null;
   mfaEnabled?: boolean;
   _count?: {
     created_quotes: number;
@@ -60,6 +61,7 @@ export interface UpdateDispatcherInput {
   theme?: "dark" | "light" | "system";
   dashboard_layout?: Layout | null;
   report_layout?: ReportLayout | null;
+  kpi_layout?: Layout | null;
 }
  
 export interface ChangeDispatcherPasswordInput {
@@ -102,6 +104,7 @@ export const UpdateDispatcherSchema = z
 			)
 			.nullable()
 			.optional(),
+		kpi_layout: z.array(z.any()).nullable().optional(),
 	})
 	.refine(
 		(data) =>
@@ -115,6 +118,7 @@ export const UpdateDispatcherSchema = z
 			data.last_login !== undefined ||
 			data.theme !== undefined ||
 			data.dashboard_layout !== undefined ||
-			data.report_layout !== undefined,
+			data.report_layout !== undefined ||
+			data.kpi_layout !== undefined,
 		{ message: "At least one field must be provided for update" }
 	);

@@ -1,13 +1,20 @@
 import { useMemo } from "react";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { AlertCircle } from "lucide-react";
-import { useRevenueByJobTypeQuery } from "../../hooks/useReports";
-import RevenueByJobTypeChart from "../reports/RevenueByJobTypeChart";
+import { useRevenueByJobTypeQuery } from "../../../hooks/useReports";
+import RevenueByJobTypeChart from "../../reports/RevenueByJobTypeChart";
 
-export default function RevenueByJobTypeWidget() {
+interface RevenueByJobTypeWidgetProps {
+	startDate?: string;
+	endDate?: string;
+}
+
+export default function RevenueByJobTypeWidget({ startDate, endDate }: RevenueByJobTypeWidgetProps = {}) {
 	const now = useMemo(() => new Date(), []);
-	const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
-	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const defaultStart = useMemo(() => startOfMonth(now).toISOString(), [now]);
+	const defaultEnd   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const start = startDate ?? defaultStart;
+	const end   = endDate ?? defaultEnd;
 
 	const { data, isLoading, error } = useRevenueByJobTypeQuery(start, end);
 

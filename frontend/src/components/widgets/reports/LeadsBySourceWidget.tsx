@@ -1,13 +1,20 @@
 import { useMemo } from "react";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { AlertCircle } from "lucide-react";
-import { useLeadsBySourceQuery } from "../../hooks/useReports";
-import LeadsBySourceChart from "../reports/LeadsBySourceChart";
+import { useLeadsBySourceQuery } from "../../../hooks/useReports";
+import LeadsBySourceChart from "../../reports/LeadsBySourceChart";
 
-export default function LeadsBySourceWidget() {
+interface LeadsBySourceWidgetProps {
+	startDate?: string;
+	endDate?: string;
+}
+
+export default function LeadsBySourceWidget({ startDate, endDate }: LeadsBySourceWidgetProps = {}) {
 	const now = useMemo(() => new Date(), []);
-	const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
-	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const defaultStart = useMemo(() => startOfMonth(now).toISOString(), [now]);
+	const defaultEnd   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const start = startDate ?? defaultStart;
+	const end   = endDate ?? defaultEnd;
 
 	const { data, isLoading, error } = useLeadsBySourceQuery(start, end);
 

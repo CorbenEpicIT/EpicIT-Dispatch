@@ -1,17 +1,24 @@
 import { useMemo } from "react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { AlertCircle } from "lucide-react";
-import { useMileageReportQuery } from "../../hooks/useReports";
-import MileageSummaryCard from "../reports/MileageSummaryCard";
-import Card from "../ui/Card";
+import { useMileageReportQuery } from "../../../hooks/useReports";
+import MileageSummaryCard from "../../reports/MileageSummaryCard";
+import Card from "../../ui/Card";
 
-export default function MileageSummaryWidget() {
+interface MileageSummaryWidgetProps {
+	startDate?: string;
+	endDate?: string;
+}
+
+export default function MileageSummaryWidget({ startDate, endDate }: MileageSummaryWidgetProps = {}) {
 	const now = useMemo(() => new Date(), []);
-	const start = useMemo(() => startOfMonth(now).toISOString(), [now]);
-	const end   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const defaultStart = useMemo(() => startOfMonth(now).toISOString(), [now]);
+	const defaultEnd   = useMemo(() => endOfMonth(now).toISOString(),   [now]);
+	const start = startDate ?? defaultStart;
+	const end   = endDate ?? defaultEnd;
 	const rangeLabel = useMemo(
-		() => `${format(startOfMonth(now), "MMM d, yyyy")} - ${format(endOfMonth(now), "MMM d, yyyy")}`,
-		[now]
+		() => `${format(new Date(start), "MMM d, yyyy")} - ${format(new Date(end), "MMM d, yyyy")}`,
+		[start, end]
 	);
 
 	const { data, isLoading, error } = useMileageReportQuery(start, end);

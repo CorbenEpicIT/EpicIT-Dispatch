@@ -1,8 +1,8 @@
 import { useMemo, useState, useCallback } from "react";
 import { startOfMonth, endOfMonth } from "date-fns";
-import { usePageSummaryQuery } from "../../hooks/useReports";
-import PageSummary from "../reports/PageSummary";
-import Card from "../ui/Card";
+import { usePageSummaryQuery } from "../../../hooks/useReports";
+import PageSummary from "../../reports/PageSummary";
+import Card from "../../ui/Card";
 
 function usePersistentPage(key: string, fallback: string,): [string, (v: string) => void] {
     const [page, setPage] = useState<string>(

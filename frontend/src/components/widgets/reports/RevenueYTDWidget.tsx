@@ -1,6 +1,6 @@
 import { AlertCircle } from "lucide-react";
-import { useRevenueYTDQuery } from "../../hooks/useReports";
-import RevenueYTDChart from "../reports/RevenueYTDChart";
+import { useRevenueYTDQuery } from "../../../hooks/useReports";
+import RevenueYTDChart from "../../reports/RevenueYTDChart";
 
 export default function RevenueYTDWidget() {
 	const { data, isLoading, error } = useRevenueYTDQuery();
