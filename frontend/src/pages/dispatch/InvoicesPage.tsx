@@ -19,7 +19,7 @@ import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { usePermission } from "../../hooks/usePermission";
 import PageReportSection from "../../components/reports/PageReportSection";
 import type { SortDir } from "../../util/sortUtil";
-import { withDir, compareByOrder, compareDate } from "../../util/sortUtil";
+import { withDir, compareByOrder, compareDateNullsLast } from "../../util/sortUtil";
 
 const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 	value: s,
@@ -160,7 +160,7 @@ export default function InvoicesPage() {
 			sortParam === "status"
 				? withDir((a, b) => compareByOrder(a._rawStatus, b._rawStatus, InvoiceStatusValues), dir)
 				: sortParam === "date"
-				? withDir((a, b) => compareDate(a._rawDueDate, b._rawDueDate), dir)
+				? (a, b) => compareDateNullsLast(dir)(a._rawDueDate, b._rawDueDate)
 				: (a, b) => {
 					// default: status, then schedule date (nulls last)
 					if (a._isOverdue && !b._isOverdue) return -1;

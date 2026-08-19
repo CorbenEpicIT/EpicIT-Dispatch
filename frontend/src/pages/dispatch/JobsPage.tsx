@@ -26,7 +26,7 @@ import type { SortDir } from "../../util/sortUtil";
 import { 
 	withDir,
 	compareByOrder,
-	compareDate,
+	compareDateNullsLast,
 	comparePriority
 } from "../../util/sortUtil";
 import { PriorityLabels, PriorityValues, PriorityColors, type Priority } from "../../types/common";
@@ -396,7 +396,7 @@ export default function JobsPage() {
 					: sortParam === "status"
 					? withDir((a, b) => compareByOrder(a._rawStatus, b._rawStatus, JobStatusValues), dir)
 					: sortParam === "date"
-					? withDir((a, b) => compareDate(a._scheduleDate, b._scheduleDate), dir)
+					? (a, b) => compareDateNullsLast(dir)(a._scheduleDate, b._scheduleDate)
 					: (a, b) => {
 							// default: status, then schedule date (nulls last)
 							const statusDiff =

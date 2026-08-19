@@ -23,7 +23,7 @@ import type { SortDir } from "../../util/sortUtil";
 import { 
 	withDir,
 	compareByOrder,
-	compareDate,
+	compareDateNullsLast,
 	comparePriority
 } from "../../util/sortUtil";
 
@@ -135,7 +135,7 @@ export default function RequestsPage() {
 				: sortParam === "status"
 				? withDir((a, b) => compareByOrder(a.status, b.status, RequestStatusValues), dir)
 				: sortParam === "date"
-				? withDir((a, b) => compareDate(a.created_at, b.created_at), dir)
+				? (a, b) => compareDateNullsLast(dir)(a.created_at, b.created_at)
 				: (a, b) => {
 					// default: status, then priority (Emergency first)
 					const statusDiff = compareByOrder(a.status, b.status, RequestStatusValues);

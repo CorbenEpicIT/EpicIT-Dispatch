@@ -23,10 +23,40 @@ export function compareByOrder(
     return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
 }
 
-export function compareDate(a?: string| Date | null, b?: string | Date | null): number {
-    const ta = a ? new Date(a).getTime() : NaN;
-    const tb = b ? new Date(b).getTime() : NaN;
-    return (Number.isNaN(ta) ? Infinity : ta) - (Number.isNaN(tb) ? Infinity : tb);
+type DateLike = string | Date | null | undefined;
+
+/** Epoch ms, or NaN when the value is missing or not a parseable date. */
+function toTime(v: DateLike): number {
+    return v ? new Date(v).getTime() : NaN;
+}
+
+/**
+ * Ascending date comparator; missing/invalid dates sort last. Wrapping this in
+ * `withDir(…, "desc")` flips the null placement too — for direction-aware sorting
+ * use `compareDateNullsLast(dir)` instead.
+ */
+export function compareDate(a?: DateLike, b?: DateLike): number {
+    const ta = toTime(a);
+    const tb = toTime(b);
+    const aMissing = Number.isNaN(ta);
+    const bMissing = Number.isNaN(tb);
+    if (aMissing || bMissing) return Number(aMissing) - Number(bMissing);
+    return ta - tb;
+}
+
+/**
+ * Date comparator for a given direction that keeps missing/invalid dates at the
+ * end in BOTH directions (only the date comparison itself is flipped).
+ */
+export function compareDateNullsLast(dir: SortDir): (a?: DateLike, b?: DateLike) => number {
+    return (a, b) => {
+        const ta = toTime(a);
+        const tb = toTime(b);
+        const aMissing = Number.isNaN(ta);
+        const bMissing = Number.isNaN(tb);
+        if (aMissing || bMissing) return Number(aMissing) - Number(bMissing);
+        return dir === "desc" ? tb - ta : ta - tb;
+    };
 }
 
 export function withDir<T>(
