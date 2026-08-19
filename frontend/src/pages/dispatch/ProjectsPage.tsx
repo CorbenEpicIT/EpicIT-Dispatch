@@ -57,9 +57,8 @@ type ProjectRow = {
     targetEnd: string;
     _name: string;
     _actual: number;
-    _budget: number;
-    _variance: number;
-    _pct: number;
+    _budget: number | null;
+    _variance: number | null;
 };
 
 export default function ProjectsPage() {
@@ -182,8 +181,9 @@ export default function ProjectsPage() {
             .map((p) => {
                 const jobCount = p.jobs?.length ?? 0;
                 const actual = p.jobs?.reduce((acc, j) => acc + Number(j.actual_total ?? 0), 0) ?? 0;
-                const budget = Number(p.budget ?? 0);
-                const variance = budget - actual;
+                // null budget = never set; keep it null so the renderers can say so instead of "$0 over".
+                const budget = p.budget === null || p.budget === undefined ? null : Number(p.budget);
+                const variance = budget === null ? null : budget - actual;
                 return ({
                     id: p.id,
                     projectNumber: p.project_number,   
@@ -347,6 +347,9 @@ export default function ProjectsPage() {
                         },
                         variance: (row) => {
                             const r = row as ProjectRow;
+                            if (r._variance === null) {
+                                return <span className="text-text-muted tabular-nums">—</span>;
+                            }
                             const pos = r._variance >= 0;
                             return (
                                 <span className={`font-semibold tabular-nums ${pos ? "text-success-text" : "text-error-text"}`}>
@@ -356,6 +359,16 @@ export default function ProjectsPage() {
                         },
                         budget: (row) => {
                             const r = row as ProjectRow;
+                            if (r._budget === null) {
+                                return (
+                                    <div className="min-w-[150px]">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="font-semibold text-text-primary tabular-nums">{formatCurrency(r._actual)}</span>
+                                            <span className="text-text-muted">No budget set</span>
+                                        </div>
+                                    </div>
+                                );
+                            }
                             const pct = r._budget > 0 ? Math.min((r._actual / r._budget) * 100, 100) : 0;
                             const over = r._actual > r._budget;
                             return (

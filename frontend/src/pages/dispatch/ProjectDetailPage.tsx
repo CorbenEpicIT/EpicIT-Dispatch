@@ -190,7 +190,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="flex flex-col gap-4 min-w-0">
                     <BudgetCard
-                        budget={Number(project.budget ?? 0)}
+                        budget={project.budget === null || project.budget === undefined ? null : Number(project.budget)}
                         estimated={project.jobs.reduce((a, j) => a + Number(j.estimated_total ?? 0), 0)}
                         actual={project.jobs.reduce((a, j) => a + Number(j.actual_total ?? 0), 0)}
                         className="mt-6"
