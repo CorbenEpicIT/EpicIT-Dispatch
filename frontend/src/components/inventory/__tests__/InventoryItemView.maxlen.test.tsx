@@ -97,6 +97,27 @@ describe("InventoryItemView — maxlen field values", () => {
 			expect(screen.getAllByTitle(MAX_TAG).length).toBeGreaterThan(0);
 		});
 
+		// The ring is 32px; a raw fractional/thousands quantity spilled out of it
+		// (08-frontend-inventory F14). Exact value stays in title/aria-label.
+		it("fits the stock ring label to the ring and keeps the exact quantity accessible", () => {
+			const { rerender } = render(
+				<InventoryItemView item={maxLenItem({ quantity: 1234.75 })} viewMode="list" />,
+			);
+			const ring = screen.getByRole("img", { name: "1234.75 cylinders in warehouse" });
+			expect(ring).toHaveTextContent("1.2K");
+			expect(ring).toHaveAttribute("title", "1234.75 cylinders");
+
+			rerender(<InventoryItemView item={maxLenItem({ quantity: 12.5 })} viewMode="list" />);
+			expect(screen.getByRole("img", { name: "12.5 cylinders in warehouse" })).toHaveTextContent(
+				"12.5",
+			);
+
+			rerender(<InventoryItemView item={maxLenItem({ quantity: 123.75 })} viewMode="list" />);
+			expect(screen.getByRole("img", { name: "123.75 cylinders in warehouse" })).toHaveTextContent(
+				"124",
+			);
+		});
+
 		it("clamps the name to two lines instead of one truncated line", () => {
 			render(<InventoryItemView item={maxLenItem()} viewMode="list" />);
 
