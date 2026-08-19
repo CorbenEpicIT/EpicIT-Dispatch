@@ -35,7 +35,7 @@ import { getJobsByClientId } from "../controllers/jobsController.js";
 import { getQuotesByClientId } from '../controllers/quotesController.js';
 import { getRequestsByClientId } from '../controllers/requestsController.js';
 import * as invoicesController from '../controllers/invoicesController.js';
-import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
+import { requirePermission, requireAnyPermission, denyTechnicians } from '../lib/requirePermissions.js';
 import { getProjectsByClientId } from '../controllers/projectsController.js';
 import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
@@ -610,7 +610,9 @@ router.get("/clients/:clientId/jobs", requireAnyPermission("view_clients", "view
 // ============================================
 // CLIENT PROJECTS (Read-only)
 // ============================================
-router.get("/clients/:clientId/projects", requireAnyPermission("view_clients", "view_projects"), async (req, res, next) => {
+// Same policy as /projects: technicians are hard-denied and dispatchers need
+// view_projects (project budgets are not part of the client view).
+router.get("/clients/:clientId/projects", denyTechnicians, requirePermission("view_projects"), async (req, res, next) => {
     try {
         const clientId = req.params.clientId as string;
         const orgId = req.user!.organization_id as string;
