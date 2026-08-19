@@ -10,7 +10,7 @@ import type {
 	LineItemType,
 	DiscountType,
 } from "./common";
-import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
+import { PriorityValues } from "./common";
 import type { TaxSnapshot } from "./tax";
 
 // ============================================================================

@@ -20,6 +20,8 @@ import {
 	listItemSerials,
 	listItemBatches,
 	getItemTrackingSummary,
+	getItemVehicleStock,
+	getTrackingEligibility,
 	updateBatch,
 	deleteBatch,
 	getBatchImpact,
@@ -27,8 +29,13 @@ import {
 	updateSerial,
 	deleteSerial,
 	getTrackingReconciliation,
+	getItemValueHistory,
+	getItemForecast,
+	getInventoryMovements,
+	getInventoryItemById,
 } from "../inventoryController.js";
 import { db } from "../../db.js";
+import { logActivity, buildChanges } from "../../services/logger.js";
 import { sendEmail } from "../../services/emailService.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 
@@ -61,7 +68,13 @@ vi.mock("../../db.js", () => {
 		vehicle_stock_batch: {
 			findMany: vi.fn(),
 			aggregate: vi.fn(),
+			count: vi.fn(),
 			deleteMany: vi.fn(),
+		},
+		vehicle_stock_item: {
+			aggregate: vi.fn(),
+			count: vi.fn(),
+			findMany: vi.fn(),
 		},
 		stock_movement: {
 			findMany: vi.fn(),
@@ -74,11 +87,22 @@ vi.mock("../../db.js", () => {
 			findMany: vi.fn(),
 		},
 		$transaction: vi.fn(),
+		$queryRaw: vi.fn(),
 		$extends,
 	};
 	$extends.mockReturnValue(mockDb);
 	return { db: mockDb };
 });
+
+// getItemForecast delegates the math to reportsController's shared helper; the
+// tests here only care which `reason` the controller derives around it.
+const { mockGetItemReorderForecast } = vi.hoisted(() => ({
+	mockGetItemReorderForecast: vi.fn(),
+}));
+
+vi.mock("../reportsController.js", () => ({
+	getItemReorderForecast: mockGetItemReorderForecast,
+}));
 
 vi.mock("../../services/logger.js", () => ({
 	logActivity: vi.fn().mockResolvedValue(undefined),
@@ -182,6 +206,14 @@ function setupTransaction() {
 		item_external_mapping: {
 			deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
 		},
+		// updateInventoryItem's unit-change gate reads on-hand under the item lock:
+		// vehicle cache + (for tracked items) live serial/lot counts. Empty by default.
+		vehicle_stock_item: {
+			aggregate: vi.fn().mockResolvedValue({ _sum: { qty_on_hand: null } }),
+		},
+		serial_unit: { count: vi.fn().mockResolvedValue(0) },
+		stock_batch: { count: vi.fn().mockResolvedValue(0) },
+		vehicle_stock_batch: { count: vi.fn().mockResolvedValue(0) },
 	};
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => unknown) =>
@@ -262,6 +294,50 @@ describe("inventoryController", () => {
 			expect(mockDb.inventory_item.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ orderBy: expectedOrderBy }),
 			);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getInventoryItemById — unlike the list, provisional/inactive items are still
+	// returned so a direct link (from a ledger row, an alert email) never 404s.
+	// ---------------------------------------------------------------------------
+	describe("getInventoryItemById", () => {
+		it("returns an inactive (soft-deleted) item with stock_status", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ is_active: false, quantity: 0, low_stock_threshold: 2 }),
+			);
+
+			const result = await getInventoryItemById("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.item?.is_active).toBe(false);
+			expect(result.item?.stock_status).toBe("out_of_stock");
+		});
+
+		it("returns a provisional item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ provisional: true }));
+
+			const result = await getInventoryItemById("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.item?.provisional).toBe(true);
+		});
+
+		it("does not filter on is_active or provisional (the list does)", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+
+			await getInventoryItemById("item-1", "org-1");
+
+			const where = mockDb.inventory_item.findFirst.mock.calls[0][0].where;
+			expect(where).toEqual({ id: "item-1" });
+		});
+
+		it("returns not found for a missing/foreign id", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+
+			const result = await getInventoryItemById("missing", "org-1");
+
+			expect(result.err).toBe("Inventory item not found");
 		});
 	});
 
@@ -1737,6 +1813,246 @@ describe("inventoryController", () => {
 	});
 
 	// ---------------------------------------------------------------------------
+	// unit of measure — see lib/units.ts
+	//
+	// Regression cover for a field that was validated and then discarded: the
+	// create path never wrote `unit`, so every item took the column default no
+	// matter what was picked, and the update path wrote it but left it out of the
+	// audited key list.
+	// ---------------------------------------------------------------------------
+	describe("inventory item unit", () => {
+		it("persists the unit on create instead of silently dropping it", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ unit: "ft" }));
+
+			await createInventoryItem({ name: "Line Set", location: "Shelf A", unit: "ft" });
+
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "ft" }) }),
+			);
+		});
+
+		it("defaults to each when no unit is given", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			await createInventoryItem({ name: "Widget", location: "Shelf A" });
+
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "each" }) }),
+			);
+		});
+
+		it.each([
+			["EACH", "each"],
+			["ea", "each"],
+			["pcs", "each"],
+			["lbs", "lb"],
+			["feet", "ft"],
+			["  Gallons ", "gal"],
+		])("normalizes %s to %s on create", async (input, expected) => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ unit: expected }));
+
+			await createInventoryItem({ name: "Widget", location: "Shelf A", unit: input });
+
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: expected }) }),
+			);
+		});
+
+		it("rejects a unit outside the catalog rather than coercing it", async () => {
+			const result = await createInventoryItem({
+				name: "Widget",
+				location: "Shelf A",
+				unit: "widgets",
+			});
+
+			expect(result.err).toMatch(/Validation failed/);
+			expect(result.item).toBeUndefined();
+		});
+
+		it("audits a unit change on update", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "each" }));
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "ft" }));
+
+			await updateInventoryItem("item-1", { unit: "ft" });
+
+			// buildChanges is mocked to {}, so assert on the audited key list it
+			// was handed — the omission of "unit" from that tuple WAS the bug.
+			expect(vi.mocked(buildChanges)).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.anything(),
+				expect.arrayContaining(["unit"]),
+			);
+		});
+
+		it("normalizes an aliased unit on update", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "each" }));
+			const tx = setupTransaction();
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "lb" }));
+
+			await updateInventoryItem("item-1", { unit: "LBS" });
+
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "lb" }) }),
+			);
+		});
+
+		it("rejects an unknown unit on update", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			const result = await updateInventoryItem("item-1", { unit: "widgets" });
+			expect(result.err).toMatch(/Validation failed/);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// unit change with stock on hand — decision 5: allowed only with explicit
+	// acknowledgement. Nothing is converted; the cached quantities simply start
+	// reading in the new unit, so the caller must say they know that.
+	// ---------------------------------------------------------------------------
+	describe("updateInventoryItem — unit change acknowledgement", () => {
+		const ACK_MESSAGE = /pass acknowledge_unit_change to confirm/;
+
+		function setupUnitChange(opts: { warehouse?: number; vehicles?: number | null } = {}) {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "each", quantity: opts.warehouse ?? 10 }));
+			const tx = setupTransaction();
+			// The on-hand check re-reads the row under lock, not the pre-tx snapshot.
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: opts.warehouse ?? 10 });
+			tx.vehicle_stock_item.aggregate.mockResolvedValue({
+				_sum: { qty_on_hand: opts.vehicles === undefined ? null : opts.vehicles },
+			});
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "box" }));
+			return tx;
+		}
+
+		it("refuses a unit change on an item with warehouse stock unless acknowledged", async () => {
+			const tx = setupUnitChange({ warehouse: 250 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe(
+				"Changing the unit re-denominates 250 units on hand; pass acknowledge_unit_change to confirm",
+			);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+			expect(logActivity).not.toHaveBeenCalled();
+		});
+
+		it("counts vehicle stock as on hand (warehouse 0, 4.5 on trucks)", async () => {
+			const tx = setupUnitChange({ warehouse: 0, vehicles: 4.5 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe(
+				"Changing the unit re-denominates 4.5 units on hand; pass acknowledge_unit_change to confirm",
+			);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("applies the change when acknowledged, strips the flag, and writes an explicit audit note", async () => {
+			const tx = setupUnitChange({ warehouse: 250, vehicles: 3 });
+
+			const result = await updateInventoryItem(
+				"item-1",
+				{ unit: "box", acknowledge_unit_change: true },
+				"org-1",
+			);
+
+			expect(result.err).toBe("");
+			const updateData = tx.inventory_item.update.mock.calls[0][0].data;
+			expect(updateData.unit).toBe("box");
+			expect(updateData).not.toHaveProperty("acknowledge_unit_change");
+			expect(logActivity).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event_type: "inventory_item.updated",
+					changes: expect.objectContaining({
+						unit_change_note: {
+							old: null,
+							new: expect.stringMatching(
+								/^Unit changed from each to box with 253 on hand \(warehouse 250, vehicles 3\); quantities were NOT converted/,
+							),
+						},
+					}),
+				}),
+			);
+		});
+
+		it("reads on-hand under the item lock (SELECT … FOR UPDATE) rather than from the pre-tx snapshot", async () => {
+			const tx = setupUnitChange({ warehouse: 0 });
+
+			await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(mockLockInventoryRows).toHaveBeenCalledWith(expect.anything(), ["item-1"]);
+			expect(tx.inventory_item.findUnique).toHaveBeenCalledWith(
+				expect.objectContaining({ where: { id: "item-1" } }),
+			);
+		});
+
+		it("needs no acknowledgement when nothing is on hand", async () => {
+			const tx = setupUnitChange({ warehouse: 0, vehicles: null });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe("");
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "box" }) }),
+			);
+			expect(logActivity).not.toHaveBeenCalledWith(
+				expect.objectContaining({ changes: expect.objectContaining({ unit_change_note: expect.anything() }) }),
+			);
+		});
+
+		it("treats a re-spelling of the same unit (legacy 'Each' -> 'each') as no change, stock or not", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "Each", quantity: 40 }));
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: 40 });
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "each" }));
+
+			const result = await updateInventoryItem("item-1", { unit: "each" });
+
+			expect(result.err).toBe("");
+			expect(mockLockInventoryRows).not.toHaveBeenCalled();
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "each" }) }),
+			);
+		});
+
+		it("does not gate (or lock) edits that leave the unit alone", async () => {
+			const tx = setupUnitChange({ warehouse: 250 });
+
+			const result = await updateInventoryItem("item-1", { name: "Renamed" });
+
+			expect(result.err).toBe("");
+			expect(mockLockInventoryRows).not.toHaveBeenCalled();
+			expect(tx.vehicle_stock_item.aggregate).not.toHaveBeenCalled();
+		});
+
+		it("also refuses when the caches read zero but a tracked item still has live lots", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ unit: "each", quantity: 0, is_batch_tracked: true }),
+			);
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: 0 });
+			tx.stock_batch.count.mockResolvedValueOnce(2); // live warehouse lots
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toMatch(ACK_MESSAGE);
+			expect(result.err).toMatch(/live lot\(s\)/);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("ignores a false acknowledgement the same as a missing one", async () => {
+			setupUnitChange({ warehouse: 1 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box", acknowledge_unit_change: false });
+
+			expect(result.err).toMatch(ACK_MESSAGE);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
 	// deleteInventoryItem
 	// ---------------------------------------------------------------------------
 	describe("deleteInventoryItem", () => {
@@ -2031,7 +2347,7 @@ describe("inventoryController", () => {
 			};
 		}
 
-		it("emits one batched direct_consumption movement set with allowNegative", async () => {
+		it("emits one batched direct_consumption movement set with allowNegative + allowUntracked", async () => {
 			const tx = makeTx([
 				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 3 },
 				{ id: "li-2", visit_id: "v1", inventory_item_id: "item-2", quantity: 2 },
@@ -2043,7 +2359,10 @@ describe("inventoryController", () => {
 			expect(mockRecordMovements).toHaveBeenCalledOnce();
 			const [, orgId, , movements, opts] = mockRecordMovements.mock.calls[0];
 			expect(orgId).toBe("org-1");
-			expect(opts).toEqual({ allowNegative: true });
+			// Completion must never block: a negative is recorded truthfully and a
+			// tracked item billed without scan data goes through as a TRACKING_GAP
+			// (the documented completion-path option) instead of throwing mid-tx.
+			expect(opts).toEqual({ allowNegative: true, allowUntracked: true });
 			expect(movements).toEqual([
 				expect.objectContaining({
 					inventory_item_id: "item-1",
@@ -2077,7 +2396,9 @@ describe("inventoryController", () => {
 			});
 		});
 
-		it("ceils fractional billed quantities (warehouse is integer)", async () => {
+		// Quantities are numeric(10,2) end to end: what was billed is what is
+		// consumed. The old Math.ceil here turned 12.5 ft billed into 13 ft consumed.
+		it("passes fractional billed quantities through unchanged (no ceil)", async () => {
 			const tx = makeTx([
 				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 2.3 },
 			]);
@@ -2086,7 +2407,24 @@ describe("inventoryController", () => {
 			await deductInventoryForVisit("v1", tx as any, "org-1");
 
 			const movements = mockRecordMovements.mock.calls[0][3];
-			expect(movements[0].qty).toBe(3);
+			expect(movements[0].qty).toBe(2.3);
+		});
+
+		it("coerces a Prisma Decimal quantity to its exact numeric value", async () => {
+			const tx = makeTx([
+				{
+					id: "li-1",
+					visit_id: "v1",
+					inventory_item_id: "item-1",
+					quantity: new Prisma.Decimal("12.5") as unknown as number,
+				},
+			]);
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await deductInventoryForVisit("v1", tx as any, "org-1");
+
+			const movements = mockRecordMovements.mock.calls[0][3];
+			expect(movements[0].qty).toBe(12.5);
 		});
 
 		it("does nothing when the visit has no linked line items", async () => {
@@ -2456,6 +2794,93 @@ describe("inventoryController", () => {
 			expect(result.conflict).toBe(true);
 			expect(result.err).toMatch(/already exist/i);
 		});
+
+		// unit_cost is what the supplier billed per unit on THIS receipt. It must
+		// reach the ledger row (price-history reports read it from there) and, for
+		// a lot, the stock_batch header (the batch-level cost is readable without
+		// walking movements). Batch-level unit_cost overrides; receive-level is the
+		// fallback — one purchase, one price.
+		describe("unit_cost propagation", () => {
+			it("stamps the receive-level unit_cost onto the movement", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+				const result = await receiveInventoryItem("item-1", { qty: 5, unit_cost: 12.34 }, "org-1");
+
+				expect(result.err).toBe("");
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBe(12.34);
+			});
+
+			it("leaves unit_cost undefined on the movement when none was given (never a fake 0)", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+				await receiveInventoryItem("item-1", { qty: 5 }, "org-1");
+
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBeUndefined();
+			});
+
+			it("passes the batch-level unit_cost to getOrCreateBatch, overriding the receive-level one", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				const result = await receiveInventoryItem(
+					"item-1",
+					{ qty: 10, unit_cost: 9, batch: { batch_number: "B-100", unit_cost: 8.5 } },
+					"org-1",
+				);
+
+				expect(result.err).toBe("");
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ inventory_item_id: "item-1", batch_number: "B-100", unit_cost: 8.5 }),
+				);
+				// The movement still carries the receive-level cost.
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBe(9);
+			});
+
+			it("falls back to the receive-level unit_cost for the lot header when the batch names none", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				await receiveInventoryItem(
+					"item-1",
+					{ qty: 10, unit_cost: 9, batch: { batch_number: "B-100" } },
+					"org-1",
+				);
+
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ unit_cost: 9 }),
+				);
+			});
+
+			it("stores a null lot cost when neither level names one", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				await receiveInventoryItem("item-1", { qty: 10, batch: { batch_number: "B-100" } }, "org-1");
+
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ unit_cost: null }),
+				);
+			});
+		});
 	});
 
 	// ---------------------------------------------------------------------------
@@ -2475,6 +2900,9 @@ describe("inventoryController", () => {
 					count: vi.fn().mockResolvedValue(0),
 				},
 				stock_batch: {
+					count: vi.fn().mockResolvedValue(0),
+				},
+				vehicle_stock_batch: {
 					count: vi.fn().mockResolvedValue(0),
 				},
 			};
@@ -2622,41 +3050,123 @@ describe("inventoryController", () => {
 			});
 		});
 
-		it("rejects disabling tracking when serial units still exist even at zero on-hand", async () => {
+		// Terminal serials and drained lots are HISTORY, not a blocker: they'd
+		// otherwise make disabling impossible on any item that ever moved tracked
+		// stock (consumed serials are never deleted). What blocks a disable is a
+		// unit or lot that still holds stock somewhere.
+		it("disables tracking while terminal serials survive, retaining them as read-only history", async () => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ id: "item-1", quantity: 0, is_serialized: true }),
 			);
 			const tx = setupTrackingTransaction();
 			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
-			tx.serial_unit.count.mockResolvedValue(2); // e.g. consumed units retaining recall history
+			// 5 units on record, none of them live (all consumed/lost/returned)
+			tx.serial_unit.count.mockImplementation(({ where }: { where: { status?: unknown } }) =>
+				Promise.resolve(where.status ? 0 : 5),
+			);
+			tx.inventory_item.update.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_serialized: false }),
+			);
 
 			const result = await updateItemTracking("item-1", { is_serialized: false }, "org-1");
 
-			expect(result.err).toMatch(/serial unit\(s\) and .* batch\(es\) still exist/);
+			expect(result.err).toBe("");
+			expect(result.item?.is_serialized).toBe(false);
+			expect(vi.mocked(logActivity)).toHaveBeenCalledWith(
+				expect.objectContaining({
+					changes: expect.objectContaining({
+						archived_history: { old: null, new: { serials: 5, batches: 0 } },
+					}),
+				}),
+			);
+		});
+
+		it("rejects disabling tracking when a serial is still in the warehouse or on a vehicle", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_serialized: true }),
+			);
+			const tx = setupTrackingTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
+			tx.serial_unit.count.mockImplementation(({ where }: { where: { status?: unknown } }) =>
+				Promise.resolve(where.status ? 2 : 7),
+			);
+
+			const result = await updateItemTracking("item-1", { is_serialized: false }, "org-1");
+
+			expect(result.err).toMatch(/2 serial unit\(s\) are still in the warehouse or on a vehicle/);
 			expect(tx.inventory_item.update).not.toHaveBeenCalled();
 		});
 
-		it("rejects disabling batch tracking when batch lots still exist", async () => {
+		it("disables batch tracking while drained lots survive as history", async () => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ id: "item-1", quantity: 0, is_batch_tracked: true }),
 			);
 			const tx = setupTrackingTransaction();
 			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
-			tx.stock_batch.count.mockResolvedValue(1);
+			// 3 lots on record, none of them holding warehouse stock
+			tx.stock_batch.count.mockImplementation(
+				({ where }: { where: { qty_in_warehouse?: unknown } }) =>
+					Promise.resolve(where.qty_in_warehouse ? 0 : 3),
+			);
+			tx.inventory_item.update.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_batch_tracked: false }),
+			);
 
 			const result = await updateItemTracking("item-1", { is_batch_tracked: false }, "org-1");
 
-			expect(result.err).toMatch(/still exist/);
+			expect(result.err).toBe("");
+			expect(result.item?.is_batch_tracked).toBe(false);
+			expect(vi.mocked(logActivity)).toHaveBeenCalledWith(
+				expect.objectContaining({
+					changes: expect.objectContaining({
+						archived_history: { old: null, new: { serials: 0, batches: 3 } },
+					}),
+				}),
+			);
+		});
+
+		it("rejects disabling batch tracking when a lot still holds warehouse stock", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_batch_tracked: true }),
+			);
+			const tx = setupTrackingTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
+			tx.stock_batch.count.mockImplementation(
+				({ where }: { where: { qty_in_warehouse?: unknown } }) =>
+					Promise.resolve(where.qty_in_warehouse ? 1 : 4),
+			);
+
+			const result = await updateItemTracking("item-1", { is_batch_tracked: false }, "org-1");
+
+			expect(result.err).toMatch(/1 batch\(es\) still hold stock/);
 			expect(tx.inventory_item.update).not.toHaveBeenCalled();
 		});
 
-		it("rejects switching serialized→batch when serial units still exist", async () => {
+		// The warehouse cache can read 0 while a van still holds lot stock, so the
+		// vehicle side is counted independently rather than inferred from on-hand.
+		it("rejects disabling batch tracking when a lot still holds stock on a vehicle", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_batch_tracked: true }),
+			);
+			const tx = setupTrackingTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
+			tx.vehicle_stock_batch.count.mockResolvedValue(2);
+
+			const result = await updateItemTracking("item-1", { is_batch_tracked: false }, "org-1");
+
+			expect(result.err).toMatch(/2 batch\(es\) still hold stock/);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("rejects switching serialized→batch when a serial is still live", async () => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(
 				makeItem({ id: "item-1", quantity: 0, is_serialized: true, is_batch_tracked: false }),
 			);
 			const tx = setupTrackingTransaction();
 			tx.inventory_item.findUnique.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
-			tx.serial_unit.count.mockResolvedValue(3);
+			tx.serial_unit.count.mockImplementation(({ where }: { where: { status?: unknown } }) =>
+				Promise.resolve(where.status ? 3 : 3),
+			);
 
 			const result = await updateItemTracking(
 				"item-1",
@@ -2664,7 +3174,7 @@ describe("inventoryController", () => {
 				"org-1",
 			);
 
-			expect(result.err).toMatch(/still exist/);
+			expect(result.err).toMatch(/still in the warehouse or on a vehicle/);
 			expect(tx.inventory_item.update).not.toHaveBeenCalled();
 		});
 
@@ -2691,6 +3201,119 @@ describe("inventoryController", () => {
 				where: { id: "item-1" },
 				data: { is_serialized: false, is_batch_tracked: true },
 			});
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getTrackingEligibility
+	// ---------------------------------------------------------------------------
+	describe("getTrackingEligibility", () => {
+		// Defaults: empty item, nothing live, no history. Each test overrides only
+		// the aggregate it cares about.
+		function setupEligibility() {
+			mockDb.vehicle_stock_item.aggregate.mockResolvedValue({ _sum: { qty_on_hand: null } });
+			mockDb.vehicle_stock_item.count.mockResolvedValue(0);
+			mockDb.serial_unit.count.mockResolvedValue(0);
+			mockDb.stock_batch.count.mockResolvedValue(0);
+			mockDb.vehicle_stock_batch.count.mockResolvedValue(0);
+		}
+
+		it("returns not found for a cross-org item id", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+
+			const result = await getTrackingEligibility("missing", "org-1");
+
+			expect(result.err).toBe("Inventory item not found");
+		});
+
+		it("reports both paths open for an empty, untracked, non-provisional item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
+			setupEligibility();
+
+			const result = await getTrackingEligibility("item-1", "org-1");
+
+			expect(result.eligibility?.can_enable).toBe(true);
+			expect(result.eligibility?.can_disable).toBe(true);
+			expect(result.eligibility?.blockers).toEqual([]);
+		});
+
+		// inventory_item.quantity alone is blind to stock sitting on a van.
+		it("blocks both paths and names the vehicles when warehouse is 0 but a van holds stock", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ id: "item-1", quantity: 0 }));
+			setupEligibility();
+			mockDb.vehicle_stock_item.aggregate.mockResolvedValue({ _sum: { qty_on_hand: 3 } });
+			mockDb.vehicle_stock_item.count.mockResolvedValue(2);
+
+			const result = await getTrackingEligibility("item-1", "org-1");
+
+			expect(result.eligibility?.qty_warehouse).toBe(0);
+			expect(result.eligibility?.qty_on_vehicles).toBe(3);
+			expect(result.eligibility?.vehicle_count).toBe(2);
+			expect(result.eligibility?.can_enable).toBe(false);
+			expect(result.eligibility?.can_disable).toBe(false);
+			expect(result.eligibility?.blockers[0]).toMatch(/3 unit\(s\) on hand/);
+			expect(result.eligibility?.blockers[0]).toMatch(/on 2 vehicle\(s\)/);
+		});
+
+		it("keeps enable open but blocks disable when a serial is still live", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_serialized: true }),
+			);
+			setupEligibility();
+			mockDb.serial_unit.count.mockImplementation(({ where }: { where: { status?: unknown } }) =>
+				Promise.resolve(where.status ? 2 : 9),
+			);
+
+			const result = await getTrackingEligibility("item-1", "org-1");
+
+			expect(result.eligibility?.can_enable).toBe(true);
+			expect(result.eligibility?.can_disable).toBe(false);
+			expect(result.eligibility?.live_serials).toBe(2);
+			expect(result.eligibility?.history_serials).toBe(9);
+			expect(result.eligibility?.blockers).toHaveLength(1);
+		});
+
+		it("reports history without blocking when every serial is terminal", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_serialized: true }),
+			);
+			setupEligibility();
+			mockDb.serial_unit.count.mockImplementation(({ where }: { where: { status?: unknown } }) =>
+				Promise.resolve(where.status ? 0 : 9),
+			);
+
+			const result = await getTrackingEligibility("item-1", "org-1");
+
+			expect(result.eligibility?.can_disable).toBe(true);
+			expect(result.eligibility?.history_serials).toBe(9);
+			expect(result.eligibility?.blockers).toEqual([]);
+		});
+
+		it("counts vehicle-held lots as a disable blocker", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, is_batch_tracked: true }),
+			);
+			setupEligibility();
+			mockDb.vehicle_stock_batch.count.mockResolvedValue(1);
+
+			const result = await getTrackingEligibility("item-1", "org-1");
+
+			expect(result.eligibility?.live_lots).toBe(1);
+			expect(result.eligibility?.can_disable).toBe(false);
+			expect(result.eligibility?.blockers[0]).toMatch(/1 batch\(es\) still hold stock/);
+		});
+
+		it("blocks a provisional item outright", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ id: "item-1", quantity: 0, provisional: true }),
+			);
+			setupEligibility();
+
+			const result = await getTrackingEligibility("item-1", "org-1");
+
+			expect(result.eligibility?.can_enable).toBe(false);
+			expect(result.eligibility?.can_disable).toBe(false);
+			expect(result.eligibility?.blockers[0]).toMatch(/Provisional items can't be tracked/);
 		});
 	});
 
@@ -2767,6 +3390,79 @@ describe("inventoryController", () => {
 	});
 
 	// ---------------------------------------------------------------------------
+	// getItemVehicleStock
+	// ---------------------------------------------------------------------------
+	describe("getItemVehicleStock", () => {
+		it("returns not found for a cross-org item id", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+
+			const result = await getItemVehicleStock("missing", "org-1");
+
+			expect(result.err).toBe("Inventory item not found");
+			expect(mockDb.vehicle_stock_item.findMany).not.toHaveBeenCalled();
+		});
+
+		it("maps per-vehicle rows regardless of tracking mode, filtering to nonzero qty only", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ id: "item-1" }));
+			mockDb.vehicle_stock_item.findMany.mockResolvedValue([
+				{
+					qty_on_hand: 5,
+					vehicle: {
+						id: "veh-1",
+						name: "Van 3",
+						status: "active",
+						current_technicians: [{ name: "Alex Tech" }],
+					},
+				},
+				{
+					qty_on_hand: 2,
+					vehicle: {
+						id: "veh-2",
+						name: "Van 7",
+						status: "inactive",
+						current_technicians: [],
+					},
+				},
+			]);
+
+			const result = await getItemVehicleStock("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.rows).toEqual([
+				{
+					vehicle_id: "veh-1",
+					vehicle_name: "Van 3",
+					vehicle_status: "active",
+					technician_name: "Alex Tech",
+					qty_on_hand: 5,
+				},
+				{
+					vehicle_id: "veh-2",
+					vehicle_name: "Van 7",
+					vehicle_status: "inactive",
+					technician_name: null,
+					qty_on_hand: 2,
+				},
+			]);
+			expect(mockDb.vehicle_stock_item.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { inventory_item_id: "item-1", qty_on_hand: { gt: 0 } },
+				}),
+			);
+		});
+
+		it("returns an empty list when no vehicle holds the item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ id: "item-1" }));
+			mockDb.vehicle_stock_item.findMany.mockResolvedValue([]);
+
+			const result = await getItemVehicleStock("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.rows).toEqual([]);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
 	// importInventoryFromFile
 	// ---------------------------------------------------------------------------
 	describe("importInventoryFromFile", () => {
@@ -2809,6 +3505,79 @@ describe("inventoryController", () => {
 
 			expect(result.imported).toBe(0);
 			expect(result.skipped[0]).toMatchObject({ row: 2, reason: expect.stringContaining("location") });
+		});
+
+		it("reads and normalizes the unit column", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ unit: "ft" }));
+
+			const buf = makeXlsxBuffer([{ name: "Line Set", location: "Shelf A", unit: "feet" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(result.warnings).toHaveLength(0);
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "ft" }) }),
+			);
+		});
+
+		// The low-stock export writes a capitalized "Unit" header, so a sheet
+		// exported from the app has to import back unchanged.
+		it("accepts the capitalized Unit header the export writes", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem({ unit: "cylinder" }));
+
+			const buf = makeXlsxBuffer([{ name: "R410A", location: "Cage", Unit: "cylinder" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "cylinder" }) }),
+			);
+		});
+
+		it("defaults the unit when the column is absent", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A" }]);
+			await importInventoryFromFile(buf, "org-1");
+
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "each" }) }),
+			);
+		});
+
+		// Unlike the API, import coerces rather than rejects — losing a whole item
+		// over a unit typo is worse than importing it with the default — but it
+		// must never coerce silently.
+		it("imports an unrecognized unit as the default and warns about it", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A", unit: "widgets" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(result.skipped).toHaveLength(0);
+			expect(result.warnings).toHaveLength(1);
+			expect(result.warnings[0]).toMatchObject({
+				row: 2,
+				message: expect.stringContaining("widgets"),
+			});
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "each" }) }),
+			);
+		});
+
+		it("does not warn when the unit column is simply blank", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A", unit: "" }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.warnings).toHaveLength(0);
 		});
 
 		it("accepts name* and location* column headers from the downloaded template", async () => {
@@ -2868,6 +3637,101 @@ describe("inventoryController", () => {
 
 			expect(result.imported).toBe(0);
 			expect(result.skipped[0].reason).toMatch(/Validation failed/);
+		});
+
+		// Fractional warehouse quantities are legitimate (12.5 ft of line set) —
+		// the import must preserve the fraction rather than truncating it like an
+		// integer column would.
+		it("imports a fractional quantity as-is instead of truncating it", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{
+				name: "Line Set", location: "Shelf A", quantity: 12.5, low_stock_threshold: 2.5,
+			}]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(result.skipped).toHaveLength(0);
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ low_stock_threshold: 2.5 }) }),
+			);
+			expect(mockRecordMovements).toHaveBeenCalledWith(
+				expect.anything(), expect.anything(), expect.anything(),
+				expect.arrayContaining([expect.objectContaining({ qty: 12.5, reason: "receive" })]),
+			);
+		});
+
+		// More than 2 decimal places can't round-trip through the numeric(10,2)
+		// column: Postgres would silently round it, producing a discrepancy
+		// against the movement ledger. The row is reported as an error instead of
+		// imported with a rounded value.
+		it("reports a row error for a quantity with more than 2 decimal places instead of rounding it", async () => {
+			const tx = setupTransaction();
+
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A", quantity: 12.567 }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(0);
+			expect(result.skipped[0]).toMatchObject({
+				row: 2,
+				reason: expect.stringContaining("quantity"),
+			});
+			expect(result.skipped[0].reason).toMatch(/decimal places/);
+			expect(tx.inventory_item.create).not.toHaveBeenCalled();
+		});
+
+		it("reports a row error for a low_stock_threshold with more than 2 decimal places", async () => {
+			const buf = makeXlsxBuffer([{
+				name: "Widget", location: "Shelf A", low_stock_threshold: 3.14159,
+			}]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(0);
+			expect(result.skipped[0]).toMatchObject({
+				row: 2,
+				reason: expect.stringContaining("low_stock_threshold"),
+			});
+			expect(result.skipped[0].reason).toMatch(/decimal places/);
+		});
+
+		it("still imports a whole-number quantity unchanged", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{ name: "Widget", location: "Shelf A", quantity: 7 }]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(mockRecordMovements).toHaveBeenCalledWith(
+				expect.anything(), expect.anything(), expect.anything(),
+				expect.arrayContaining([expect.objectContaining({ qty: 7, reason: "receive" })]),
+			);
+		});
+
+		// The bulk import path never wires an is_serialized/is_batch_tracked column
+		// through from the sheet — createInventoryItemSchema always defaults both
+		// to false for an imported row, so a tracked item (and therefore its
+		// quantity>0 refusal) can only ever be reached by toggling tracking AFTER
+		// creation via updateItemTracking, never through this function. This test
+		// documents that a fractional (or any nonzero) opening quantity still
+		// imports normally even when an is_serialized-like column is present in
+		// the sheet, because the column is simply ignored on this path.
+		it("ignores an is_serialized column in the sheet — tracked flags are never set via import", async () => {
+			const tx = setupTransaction();
+			tx.inventory_item.create.mockResolvedValue(makeItem());
+
+			const buf = makeXlsxBuffer([{
+				name: "Compressor", location: "Shelf A", quantity: 2.5, is_serialized: true,
+			}]);
+			const result = await importInventoryFromFile(buf, "org-1");
+
+			expect(result.imported).toBe(1);
+			expect(tx.inventory_item.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					data: expect.objectContaining({ is_serialized: false, is_batch_tracked: false }),
+				}),
+			);
 		});
 
 		it("parses CSV buffers in addition to xlsx", async () => {
@@ -3022,6 +3886,331 @@ describe("inventoryController", () => {
 			const { allRows } = parseTemplate();
 			const exampleRow = allRows[1] as unknown[];
 			expect(exampleRow.some((cell) => String(cell).trim() !== "")).toBe(true);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getItemValueHistory — newest-N window + opening balance
+	// ---------------------------------------------------------------------------
+	describe("getItemValueHistory", () => {
+		const VALUE_HISTORY_ROW_CAP = 2000;
+
+		function movement(
+			overrides: Partial<{
+				id: string;
+				qty: number;
+				from_location_type: string;
+				to_location_type: string;
+				created_at: Date;
+			}> = {},
+		) {
+			return {
+				id: "mv-1",
+				qty: 10,
+				from_location_type: "supplier",
+				to_location_type: "warehouse",
+				created_at: new Date("2026-06-01T00:00:00.000Z"),
+				...overrides,
+			};
+		}
+
+		// Newest-first is what the controller asks the DB for; it reverses in
+		// memory. Tests hand back rows in that same descending order.
+		function mockMovements(rows: ReturnType<typeof movement>[]) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			mockDb.stock_movement.findMany.mockResolvedValue(rows as any);
+		}
+
+		function mockOpeningQuantity(openingQuantity: number) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			mockDb.$queryRaw.mockResolvedValue([{ openingQuantity }] as any);
+		}
+
+		beforeEach(() => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ cost: 4 }));
+			// The ledger aggregate now runs for every non-empty series (it carries
+			// the paid-cost basis as well as the opening balance), so it always
+			// needs a destructurable row shape.
+			mockDb.$queryRaw.mockResolvedValue([] as any);
+		});
+
+		it("requests the NEWEST rows, not the oldest", async () => {
+			mockMovements([movement()]);
+			await getItemValueHistory("item-1", "org-1");
+
+			const args = mockDb.stock_movement.findMany.mock.calls[0][0];
+			expect(args.orderBy).toEqual([{ created_at: "desc" }, { id: "desc" }]);
+			expect(args.take).toBe(VALUE_HISTORY_ROW_CAP + 1);
+		});
+
+		it("returns points in ascending date order", async () => {
+			mockMovements([
+				movement({ id: "mv-2", created_at: new Date("2026-06-02T00:00:00.000Z") }),
+				movement({ id: "mv-1", created_at: new Date("2026-06-01T00:00:00.000Z") }),
+			]);
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			expect(result.points!.map((p) => p.date)).toEqual([
+				"2026-06-01T00:00:00.000Z",
+				"2026-06-02T00:00:00.000Z",
+			]);
+		});
+
+		it("ignores the opening balance for a complete, unfiltered series", async () => {
+			mockMovements([movement()]);
+			mockOpeningQuantity(500);
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			// The aggregate still runs — it also carries the paid-cost basis — but a
+			// series that starts at the item's first movement opens at zero.
+			expect(result.openingQuantity).toBe(0);
+			expect(result.truncated).toBe(false);
+			expect(result.points![0].quantity).toBe(10);
+		});
+
+		it("prices the series at the item's configured cost when no receipt recorded one", async () => {
+			mockMovements([movement()]);
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			expect(result.costBasis).toBe("configured");
+			expect(result.costUsed).toBe(4);
+			expect(result.points![0].value).toBe(40); // 10 on hand × cost 4
+		});
+
+		it("prices the series at the weighted-average PAID cost when receipts recorded one", async () => {
+			mockMovements([movement()]);
+			// 10 units bought for 60 total → $6/unit paid, versus a configured $4.
+			mockDb.$queryRaw.mockResolvedValue([
+				{ openingQuantity: 0, paidQty: 10, paidSpend: 60 },
+			] as any);
+
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			expect(result.costBasis).toBe("paid");
+			expect(result.costUsed).toBe(6);
+			expect(result.points![0].value).toBe(60); // 10 on hand × paid 6
+			// currentCost still reports the configured value — the two are different
+			// facts and the UI labels which basis it charted.
+			expect(result.currentCost).toBe(4);
+		});
+
+		it("reports a null cost basis when there is neither a paid nor a configured cost", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ cost: null }));
+			mockMovements([movement()]);
+
+			const result = await getItemValueHistory("item-1", "org-1");
+			expect(result.costBasis).toBeNull();
+			expect(result.points![0].value).toBeNull();
+		});
+
+		it("flags truncation and seeds the running total from the opening balance", async () => {
+			// cap + 1 rows: the controller drops the extra and reports truncated.
+			const rows = Array.from({ length: VALUE_HISTORY_ROW_CAP + 1 }, (_, i) =>
+				movement({
+					id: `mv-${i}`,
+					qty: 1,
+					created_at: new Date(Date.UTC(2026, 0, 1) + (VALUE_HISTORY_ROW_CAP - i) * 1000),
+				}),
+			);
+			mockMovements(rows);
+			mockOpeningQuantity(500);
+
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			expect(result.truncated).toBe(true);
+			expect(result.points).toHaveLength(VALUE_HISTORY_ROW_CAP);
+			expect(result.openingQuantity).toBe(500);
+			expect(result.windowStart).toBe(result.points![0].date);
+			// seeded at 500, then +1 per receipt across the whole window
+			expect(result.points![0].quantity).toBe(501);
+			expect(result.points![VALUE_HISTORY_ROW_CAP - 1].quantity).toBe(
+				500 + VALUE_HISTORY_ROW_CAP,
+			);
+		});
+
+		it("seeds the opening balance for a range-filtered window", async () => {
+			mockMovements([
+				movement({
+					id: "mv-2",
+					qty: 5,
+					from_location_type: "supplier",
+					to_location_type: "warehouse",
+					created_at: new Date("2026-06-02T00:00:00.000Z"),
+				}),
+				movement({
+					id: "mv-1",
+					qty: 10,
+					from_location_type: "warehouse",
+					to_location_type: "vehicle",
+					created_at: new Date("2026-06-01T00:00:00.000Z"),
+				}),
+			]);
+			mockOpeningQuantity(40);
+
+			const result = await getItemValueHistory("item-1", "org-1", {
+				created_after: "2026-06-01T00:00:00.000Z",
+			});
+
+			expect(mockDb.$queryRaw).toHaveBeenCalledTimes(1);
+			expect(result.openingQuantity).toBe(40);
+			expect(result.windowStart).toBe("2026-06-01T00:00:00.000Z");
+			expect(result.points!.map((p) => p.quantity)).toEqual([30, 35]);
+			// value is quantity priced at the item's CURRENT cost (4)
+			expect(result.points!.map((p) => p.value)).toEqual([120, 140]);
+		});
+
+		it("passes created_after through as a gte filter", async () => {
+			mockMovements([movement()]);
+			mockOpeningQuantity(0);
+			await getItemValueHistory("item-1", "org-1", {
+				created_after: "2026-06-01T00:00:00.000Z",
+			});
+
+			const args = mockDb.stock_movement.findMany.mock.calls[0][0];
+			expect(args.where).toEqual({
+				inventory_item_id: "item-1",
+				created_at: { gte: new Date("2026-06-01T00:00:00.000Z") },
+			});
+		});
+
+		it("reports hasNegative and leaves the negative values unmodified", async () => {
+			// consumption with no receipt behind it — incomplete ledger coverage
+			mockMovements([
+				movement({
+					id: "mv-1",
+					qty: 3,
+					from_location_type: "warehouse",
+					to_location_type: "vehicle",
+				}),
+			]);
+
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			expect(result.hasNegative).toBe(true);
+			expect(result.points![0].quantity).toBe(-3);
+			expect(result.points![0].value).toBe(-12);
+		});
+
+		it("returns a null value per point when the item has no cost", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ cost: null }));
+			mockMovements([movement()]);
+
+			const result = await getItemValueHistory("item-1", "org-1");
+
+			expect(result.currentCost).toBeNull();
+			expect(result.points![0].value).toBeNull();
+		});
+
+		it("rejects an unparseable created_after with a validation error", async () => {
+			mockMovements([movement()]);
+			const result = await getItemValueHistory("item-1", "org-1", { created_after: "nope" });
+
+			expect(result.err).toBeTruthy();
+			expect(result.err).not.toContain("not found");
+			expect(result.points).toBeUndefined();
+		});
+
+		it("404s an unknown item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+			const result = await getItemValueHistory("missing", "org-1");
+			expect(result.err).toBe("Inventory item not found");
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getInventoryMovements — server-side range filter
+	// ---------------------------------------------------------------------------
+	describe("getInventoryMovements", () => {
+		beforeEach(() => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			mockDb.stock_movement.findMany.mockResolvedValue([] as any);
+		});
+
+		it("narrows the query with created_after instead of filtering after the fact", async () => {
+			await getInventoryMovements("item-1", "org-1", undefined, 25, {
+				created_after: "2026-07-01T00:00:00.000Z",
+			});
+
+			const args = mockDb.stock_movement.findMany.mock.calls[0][0];
+			expect(args.where).toEqual({
+				inventory_item_id: "item-1",
+				created_at: { gte: new Date("2026-07-01T00:00:00.000Z") },
+			});
+		});
+
+		it("keeps cursor pagination intact alongside the range filter", async () => {
+			await getInventoryMovements("item-1", "org-1", "mv-9", 10, {
+				created_after: "2026-07-01T00:00:00.000Z",
+			});
+
+			const args = mockDb.stock_movement.findMany.mock.calls[0][0];
+			expect(args.cursor).toEqual({ id: "mv-9" });
+			expect(args.skip).toBe(1);
+			expect(args.take).toBe(11);
+		});
+
+		it("omits the date filter when no range is given", async () => {
+			await getInventoryMovements("item-1", "org-1");
+
+			const args = mockDb.stock_movement.findMany.mock.calls[0][0];
+			expect(args.where).toEqual({ inventory_item_id: "item-1" });
+		});
+
+		it("rejects an unparseable created_after", async () => {
+			const result = await getInventoryMovements("item-1", "org-1", undefined, 25, {
+				created_after: "nope",
+			});
+
+			expect(result.err).toBeTruthy();
+			expect(result.err).not.toContain("not found");
+			expect(result.movements).toBeUndefined();
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getItemForecast — why a null forecast is null
+	// ---------------------------------------------------------------------------
+	describe("getItemForecast", () => {
+		it("reports reason 'inactive' for an inactive item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_active: false }));
+			mockGetItemReorderForecast.mockResolvedValue(null);
+
+			const result = await getItemForecast("item-1", "org-1");
+
+			expect(result.forecast).toBeNull();
+			expect(result.reason).toBe("inactive");
+		});
+
+		it("reports reason 'no_forecast_row' for an active item with nothing to forecast", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_active: true }));
+			mockGetItemReorderForecast.mockResolvedValue(null);
+
+			const result = await getItemForecast("item-1", "org-1");
+
+			expect(result.forecast).toBeNull();
+			expect(result.reason).toBe("no_forecast_row");
+		});
+
+		it("reports a null reason when a forecast exists", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			mockGetItemReorderForecast.mockResolvedValue({ itemId: "item-1", severity: "healthy" });
+
+			const result = await getItemForecast("item-1", "org-1");
+
+			expect(result.forecast).toEqual({ itemId: "item-1", severity: "healthy" });
+			expect(result.reason).toBeNull();
+		});
+
+		it("defaults the lookback window to 90 days", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+			mockGetItemReorderForecast.mockResolvedValue(null);
+
+			await getItemForecast("item-1", "org-1");
+
+			expect(mockGetItemReorderForecast).toHaveBeenCalledWith("org-1", "item-1", {
+				lookbackDays: 90,
+			});
 		});
 	});
 });

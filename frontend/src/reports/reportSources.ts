@@ -482,7 +482,7 @@ const quotesSource: ReportSource = {
 	id: "quotes",
 	label: "Quotes",
 	description: "Quote pipeline, conversion timing, and outcomes",
-	category: "financial",
+	category: "operational",
 	serverDateFilter: true,
 	categories: [
 		{

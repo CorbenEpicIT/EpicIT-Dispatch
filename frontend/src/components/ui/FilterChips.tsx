@@ -1,10 +1,11 @@
 ﻿import { X } from "lucide-react";
 
-export type ChipColor = "purple" | "blue" | "green" | "orange";
+export type ChipColor = "purple" | "blue" | "green" | "orange" | "cyan" | "rose";
 
 export interface FilterChip {
 	label: string;
 	color: ChipColor;
+	classes?: string;
 	onRemove: () => void;
 	highlighted?: boolean;
 }
@@ -20,6 +21,8 @@ const COLOR_STYLES: Record<ChipColor, { bg: string; border: string; text: string
 	blue:   { bg: "bg-primary-hover/20", border: "border-primary/30",    text: "text-primary-text",   ring: "ring-primary" },
 	green:  { bg: "bg-success-bg",       border: "border-success/30",    text: "text-success-text",   ring: "ring-success" },
 	orange: { bg: "bg-orange-bg",        border: "border-orange-border", text: "text-orange-text",    ring: "ring-orange" },
+	cyan:   { bg: "bg-info-bg",          border: "border-info/30",       text: "text-info-text",      ring: "ring-info" },
+	rose:   { bg: "bg-rejected-bg",      border: "border-rejected/30",   text: "text-rejected-text",  ring: "ring-rejected" },
 };
 
 export default function FilterChips({ filters: rawFilters, resultCount, onClearAll }: FilterChipsProps) {
@@ -27,21 +30,22 @@ export default function FilterChips({ filters: rawFilters, resultCount, onClearA
 	if (filters.length === 0) return null;
 
 	return (
-		<div className="mb-3 p-2.5 bg-surface/60 rounded-md border border-border/60">
+		<div className="mb-3 p-2.5 bg-base rounded-md border border-border/60">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2 flex-wrap">
 					<span className="text-sm text-text-tertiary">Active filters:</span>
 					{filters.map((chip) => {
 						const { bg, border, text, ring } = COLOR_STYLES[chip.color];
+						const shell = chip.classes ?? `${bg} ${border} ${text}`;
 						return (
 							<div
 								key={chip.label}
-								className={`flex items-center gap-2 px-3 py-1.5 ${bg} border ${border} rounded-md transition-shadow ${chip.highlighted ? `ring-2 ${ring}` : ""}`}
+								className={`flex items-center gap-2 px-3 py-1.5 border rounded-md transition-shadow ${shell} ${chip.highlighted ? `ring-2 ${ring}` : ""}`}
 							>
-								<span className={`text-sm ${text}`}>{chip.label}</span>
+								<span className="text-sm">{chip.label}</span>
 								<button
 									onClick={chip.onRemove}
-									className={`p-1 -m-1 ${text} hover:text-text-primary transition-colors`}
+									className="p-1 -m-1 hover:text-text-primary transition-colors"
 									aria-label={`Remove ${chip.label} filter`}
 								>
 									<X size={14} />

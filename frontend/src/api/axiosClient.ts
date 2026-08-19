@@ -12,8 +12,8 @@ const refreshClient = axios.create({
 });
 const AUTH_PATHS = ["/login", "/refresh-token", "/otp-verify", "/reset-password", "/register"];
 let isRefreshing = false;
-let failedQueue: { resolve: (token: string) => void; reject: (error?: any) => void }[] = [];
-const processQueue = (error: any, token: string | null = null) => {
+let failedQueue: { resolve: (token: string) => void; reject: (error?: unknown) => void }[] = [];
+const processQueue = (error: unknown, token: string | null = null) => {
 	failedQueue.forEach((p) => (token ? p.resolve(token) : p.reject(error)));
 	failedQueue = [];
 };
@@ -24,6 +24,21 @@ export const api = axios.create({
 	baseURL: BASE_URL,
 	withCredentials: true,
 });
+
+/**
+ * Builds axios `params`, omitting keys whose value is undefined, null, or "".
+ * `0` and `false` are sent — only genuinely absent values are dropped.
+ */
+export const queryParams = (
+	source: Record<string, string | number | boolean | null | undefined>,
+): Record<string, string> => {
+	const params: Record<string, string> = {};
+	for (const [key, value] of Object.entries(source)) {
+		if (value == null || value === "") continue;
+		params[key] = String(value);
+	}
+	return params;
+};
 api.interceptors.request.use((config) => {
 	const token = localStorage.getItem("accessToken");
 	if (token) {

@@ -35,7 +35,9 @@ import { getJobsByClientId } from "../controllers/jobsController.js";
 import { getQuotesByClientId } from '../controllers/quotesController.js';
 import { getRequestsByClientId } from '../controllers/requestsController.js';
 import * as invoicesController from '../controllers/invoicesController.js';
-import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
+import { requirePermission, requireAnyPermission, denyTechnicians } from '../lib/requirePermissions.js';
+import { getProjectsByClientId } from '../controllers/projectsController.js';
+import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -194,6 +196,37 @@ router.get("/clients/:clientId/invoices", requirePermission("view_clients"), asy
         next(err);
     }
 });
+
+router.get("/clients/:clientId/changes", requirePermission("view_clients"), async (req, res, next)=> {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const clientId = req.params.clientId as string;
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
+
+        const results = await getEntityHistory(orgId, "client", clientId, limit);
+
+        if (results.err) {
+            return res
+                .status(500)
+                .json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+        }
+
+        res.json(createSuccessResponse(results.rows, {
+            count: results.rows.length,
+            hasMore: results.hasMore,
+            total: results.total,
+        }));
+    } catch (err) {
+        next(err);
+    }
+})
 
 // ============================================
 // CONTACTS
@@ -574,5 +607,21 @@ router.get("/clients/:clientId/jobs", requireAnyPermission("view_clients", "view
     }
 });
 
+// ============================================
+// CLIENT PROJECTS (Read-only)
+// ============================================
+// Same policy as /projects: technicians are hard-denied and dispatchers need
+// view_projects (project budgets are not part of the client view).
+router.get("/clients/:clientId/projects", denyTechnicians, requirePermission("view_projects"), async (req, res, next) => {
+    try {
+        const clientId = req.params.clientId as string;
+        const orgId = req.user!.organization_id as string;
+        const result = await getProjectsByClientId(orgId, clientId);
+
+        res.json(createSuccessResponse(result));
+    } catch (err) {
+        next(err);
+    }
+});
 
 export default router;

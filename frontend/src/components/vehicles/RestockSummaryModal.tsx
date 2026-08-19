@@ -47,8 +47,16 @@ export default function RestockSummaryModal({
 						return (
 							<div key={`${line.label}-${i}`} className="bg-surface rounded-lg border border-border p-3">
 								<div className="flex items-center justify-between gap-3">
-									<span className="text-sm font-semibold text-text-primary">{line.label}</span>
-									<span className="text-xs tabular-nums text-text-secondary whitespace-nowrap">
+									{/* Clamped: the label is a part name, which runs to 255
+									    characters and otherwise crowds out the figures
+									    this confirmation exists to show. */}
+									<span
+										className="text-sm font-semibold text-text-primary min-w-0 line-clamp-2 break-words"
+										title={line.label}
+									>
+										{line.label}
+									</span>
+									<span className="text-xs tabular-nums text-text-secondary whitespace-nowrap shrink-0">
 										Requested <span className="text-text-primary font-semibold">{line.requested}</span>
 										{" · "}Moved <span className="text-text-primary font-semibold">{line.moved}</span>
 										{short > 0 && <span className="text-warning-text font-semibold"> ({short} short)</span>}

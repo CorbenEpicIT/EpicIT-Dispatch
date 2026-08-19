@@ -18,6 +18,13 @@
 	scrollbar-color: var(--color-border) transparent;
 }
 
+/* Keyboard focus ring — visible only for keyboard/switch-device navigation,
+   never on mouse click (:focus-visible, not :focus). */
+:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
 ::-webkit-scrollbar {
 	width: 6px;
 	height: 6px;

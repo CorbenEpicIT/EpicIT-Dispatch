@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { DayPicker } from "react-day-picker";
 import { Calendar, X, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
@@ -14,6 +15,8 @@ type DatePickerProps = {
 	onClear?: () => void;
 	align?: "left" | "right";
 	position?: "above" | "below" | "auto";
+	/** portal option for formwizard since it goes off the display */
+	portal?: boolean;
 };
 
 export default function DatePicker({
@@ -26,10 +29,14 @@ export default function DatePicker({
 	onClear,
 	align = "left",
 	position = "auto",
+	portal = false,
 }: DatePickerProps) {
 	const [open, setOpen] = useState(false);
 	const [ready, setReady] = useState(false);
 	const [calculatedPosition, setCalculatedPosition] = useState<"above" | "below">("below");
+	// Portal mode only: coords measured off the trigger, since a portaled popup
+	// has no positioned ancestor to anchor to.
+	const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const calendarRef = useRef<HTMLDivElement>(null);
@@ -44,16 +51,53 @@ export default function DatePicker({
 			return;
 		}
 
+		// Calculate based on available space
+		const CAL_H = 350;
+		const rect = buttonRef.current!.getBoundingClientRect();
+		const hasSpaceBelow = window.innerHeight - rect.bottom >= CAL_H;
+
 		if (position === "auto") {
-			// Calculate based on available space
-			const CAL_H = 350;
-			const rect = buttonRef.current!.getBoundingClientRect();
-			const hasSpaceBelow = window.innerHeight - rect.bottom >= CAL_H;
 			setCalculatedPosition(hasSpaceBelow ? "below" : "above");
 		}
 
+		if (portal) {
+			const GAP = 4;
+			const MARGIN = 8;
+			const hasSpaceAbove = rect.top >= CAL_H;
+			// A fixed popup escapes the modal but not the viewport, so treat
+			// `position` as a preference and flip when the chosen side has no room.
+			const wanted = position === "auto" ? (hasSpaceBelow ? "below" : "above") : position;
+			const side =
+				wanted === "below"
+					? hasSpaceBelow || !hasSpaceAbove
+						? "below"
+						: "above"
+					: hasSpaceAbove || !hasSpaceBelow
+						? "above"
+						: "below";
+
+			setPopupStyle({
+				position: "fixed",
+				...(side === "below"
+					? {
+							top: rect.bottom + GAP,
+							maxHeight: window.innerHeight - rect.bottom - GAP - MARGIN,
+						}
+					: {
+							bottom: window.innerHeight - rect.top + GAP,
+							maxHeight: rect.top - GAP - MARGIN,
+						}),
+				// Anchoring the far edge to the viewport right-aligns without
+				// having to measure the calendar's own width.
+				...(align === "left"
+					? { left: rect.left }
+					: { right: Math.max(MARGIN, window.innerWidth - rect.right) }),
+				overflowY: "auto",
+			});
+		}
+
 		requestAnimationFrame(() => setReady(true));
-	}, [open, position]);
+	}, [open, position, align, portal]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -71,11 +115,15 @@ export default function DatePicker({
 		const onScroll = () => setOpen(false);
 		window.addEventListener("keydown", onKey);
 		window.addEventListener("scroll", onScroll, true);
+		// Portal coords are measured once on open, so a resize would leave the
+		// calendar stranded away from its trigger.
+		if (portal) window.addEventListener("resize", onScroll);
 		return () => {
 			window.removeEventListener("keydown", onKey);
 			window.removeEventListener("scroll", onScroll, true);
+			if (portal) window.removeEventListener("resize", onScroll);
 		};
-	}, [open]);
+	}, [open, portal]);
 
 	const handleClear = (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -94,7 +142,11 @@ export default function DatePicker({
 
 	const finalPosition = position === "auto" ? calculatedPosition : position;
 
-	const popupClasses = `
+	// Portal mode gets its placement from popupStyle (position:fixed) and needs a
+	// z-index above the modal layers (backdrop 4000 / panel 5000).
+	const popupClasses = portal
+		? "z-[6000] bg-canvas border border-border rounded-sm shadow-xl p-0.5"
+		: `
     absolute z-50 bg-canvas border border-border
     rounded-sm shadow-xl p-0.5
     ${finalPosition === "above" ? "bottom-full mb-1" : "top-full mt-1"}
@@ -205,19 +257,30 @@ export default function DatePicker({
 				</div>
 			</button>
 
-			{open && ready && (
-				<div ref={calendarRef} className={popupClasses}>
-					<DayPicker
-						mode="single"
-						selected={value || undefined}
-						onSelect={(date) => {
-							onChange(date ?? null);
-							setOpen(false);
-						}}
-						className="date-picker-dark"
-					/>
-				</div>
-			)}
+			{open &&
+				ready &&
+				(() => {
+					const calendar = (
+						<div
+							ref={calendarRef}
+							className={popupClasses}
+							style={portal ? popupStyle : undefined}
+						>
+							<DayPicker
+								mode="single"
+								selected={value || undefined}
+								onSelect={(date) => {
+									onChange(date ?? null);
+									setOpen(false);
+								}}
+								className="date-picker-dark"
+							/>
+						</div>
+					);
+					// The portal keeps the calendar in this React tree, so clicks still
+					// bubble to the modal's stopPropagation guard and won't close it.
+					return portal ? createPortal(calendar, document.body) : calendar;
+				})()}
 		</div>
 	);
 }

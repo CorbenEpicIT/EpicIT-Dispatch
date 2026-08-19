@@ -1,4 +1,4 @@
-﻿import type { JSX } from "react";
+﻿import { useEffect, type JSX } from "react";
 import { createPortal } from "react-dom";
 
 interface FullPopupProps {
@@ -18,6 +18,17 @@ const FullPopup = ({
 	hasBackground = true,
 	overflowVisible = false,
 }: FullPopupProps) => {
+	// Off-click never closes the modal (deliberate — forms inside would lose state),
+	// but Escape does. Listener is only attached while open and removed on close/unmount.
+	useEffect(() => {
+		if (!isModalOpen) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onClose();
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [isModalOpen, onClose]);
+
 	const backdropClass =
 		"transition-opacity duration-300 fixed inset-0 z-[4000] bg-black " +
 		(isModalOpen ? "opacity-50 pointer-events-auto" : "opacity-0 pointer-events-none");
@@ -43,19 +54,6 @@ const FullPopup = ({
 			break;
 	}
 
-	const handlePanelMouseDown = (e: React.MouseEvent) => {
-		const target = e.target as HTMLElement;
-		const isMapboxElement =
-			target.closest(".mapboxgl-ctrl-geocoder") ||
-			target.closest(".suggestions-wrapper") ||
-			target.closest(".mapbox-gl-geocoder") ||
-			target.classList.contains("mapboxgl-ctrl-geocoder--suggestion");
-
-		if (!isMapboxElement) {
-			onClose();
-		}
-	};
-
 	if (!isModalOpen) {
 		return (
 			<>
@@ -67,14 +65,9 @@ const FullPopup = ({
 
 	return createPortal(
 		<>
-			{hasBackground && <div className={backdropClass} onMouseDown={onClose} />}
-			<div className={panelClass} onMouseDown={handlePanelMouseDown}>
-				<div
-					className={insetClass}
-					onMouseDown={(e) => e.stopPropagation()}
-				>
-					{content}
-				</div>
+			{hasBackground && <div className={backdropClass} />}
+			<div className={panelClass}>
+				<div className={insetClass}>{content}</div>
 			</div>
 		</>,
 		document.body

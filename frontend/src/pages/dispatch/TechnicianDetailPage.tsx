@@ -12,9 +12,10 @@ import {
 	Mail,
 	Phone,
 	Calendar,
+	KeyRound,
+	RotateCcw,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
-import DynamicMap from "../../components/ui/maps/DynamicMap";
 import EditTechnicianModal from "../../components/technicians/EditTechnician";
 import { useTechnicianByIdQuery, useDeleteTechnicianMutation } from "../../hooks/useTechnicians";
 import { TechnicianStatusColors, TechnicianStatusDotColors } from "../../types/technicians";
@@ -27,6 +28,11 @@ import {
 	type VisitStatus,
 } from "../../types/jobs";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
+import AccessCard from "../../components/roles/AccessCard";
+import { requestPasswordResetCall } from "../../api/authenticate";
+import { useResetMfaMutation } from "../../hooks/useMfa";
+import { useToast } from "../../components/ui/useToast";
 
 export default function TechnicianDetailsPage() {
 	const { technicianId } = useParams<{ technicianId: string }>();
@@ -35,17 +41,22 @@ export default function TechnicianDetailsPage() {
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
+	const [confirmResetPassword, setConfirmResetPassword] = useState(false);
+	const [isResettingPassword, setIsResettingPassword] = useState(false);
+	const [confirmResetMFA, setConfirmResetMFA] = useState(false);
 	const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
 	const toggleJob = (jobId: string) =>
 		setExpandedJobs((prev) => {
 			const next = new Set(prev);
-			next.has(jobId) ? next.delete(jobId) : next.add(jobId);
+			if (next.has(jobId)) next.delete(jobId);
+			else next.add(jobId);
 			return next;
 		});
 
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
-	const locationMapRef = useRef<HTMLDivElement>(null);
 	const deleteTechnician = useDeleteTechnicianMutation();
+	const { mutateAsync: resetMFA, isPending: isResettingMFA } = useResetMfaMutation();
+	const toast = useToast();
 
 	const { data: technician, isLoading, error } = useTechnicianByIdQuery(technicianId);
 	const lastLogin = technician?.last_login ?
@@ -63,6 +74,8 @@ export default function TechnicianDetailsPage() {
 			) {
 				setIsOptionsMenuOpen(false);
 				setDeleteConfirm(false);
+				setConfirmResetPassword(false);
+				setConfirmResetMFA(false);
 			}
 		};
 		document.addEventListener("mousedown", handleClickOutside);
@@ -80,6 +93,43 @@ export default function TechnicianDetailsPage() {
 			await deleteTechnician.mutateAsync(technician!.id);
 		} catch (error) {
 			console.error("Failed to delete technician:", error);
+		}
+	};
+
+	const handleResetPassword = async () => {
+		if (!MANAGE_TECHNICIANS || !technician) return;
+		if (!confirmResetPassword) {
+			setConfirmResetPassword(true);
+			return;
+		}
+		setIsResettingPassword(true);
+		try {
+			await requestPasswordResetCall(technician.id, "technician");
+			setConfirmResetPassword(false);
+			setIsOptionsMenuOpen(false);
+			toast.success(`Password reset email sent to ${technician.email}`);
+		} catch (error) {
+			setConfirmResetPassword(false);
+			toast.error(error instanceof Error ? error.message : "Failed to send the reset email");
+		} finally {
+			setIsResettingPassword(false);
+		}
+	};
+
+	const handleResetMFA = async () => {
+		if (!MANAGE_TECHNICIANS || !technician) return;
+		if (!confirmResetMFA) {
+			setConfirmResetMFA(true);
+			return;
+		}
+		try {
+			await resetMFA({ userId: technician.id, role: "technician" });
+			setConfirmResetMFA(false);
+			setIsOptionsMenuOpen(false);
+			toast.success("MFA reset");
+		} catch (error) {
+			setConfirmResetMFA(false);
+			toast.error(error instanceof Error ? error.message : "Failed to reset MFA");
 		}
 	};
 
@@ -129,25 +179,9 @@ export default function TechnicianDetailsPage() {
 		return bLatest - aLatest;
 	});
 
-	const ACTIVE_STATUSES = ["InProgress", "OnSite", "Driving", "Paused", "Delayed"];
 	const hasActiveVisits = visitTechs.some((vt) =>
 		["Scheduled", "InProgress", "OnSite", "Driving", "Paused", "Delayed"].includes(vt.visit.status)
 	);
-	const activeVisit =
-		visitTechs
-			.map((vt) => vt.visit)
-			.filter((v) => ACTIVE_STATUSES.includes(v.status))
-			.sort((a, b) => {
-				const priority = [
-					"InProgress",
-					"OnSite",
-					"Driving",
-					"Paused",
-					"Delayed",
-				];
-				return priority.indexOf(a.status) - priority.indexOf(b.status);
-			})[0] ?? null;
-
 	const fmtTime = (d: Date | string) =>
 		new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 	const fmtDate = (d: Date | string) =>
@@ -238,6 +272,36 @@ export default function TechnicianDetailsPage() {
 											<Edit size={14} />
 											Edit Technician
 										</button>
+										<button
+											title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
+											disabled={!MANAGE_TECHNICIANS || isResettingPassword}
+											onClick={handleResetPassword}
+											onMouseLeave={() => setConfirmResetPassword(false)}
+											className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											<KeyRound size={14} />
+											{isResettingPassword
+												? "Sending..."
+												: confirmResetPassword
+													? "Click Again to Confirm"
+													: "Reset Password"}
+										</button>
+										{technician.mfaEnabled && (
+											<button
+												title={!MANAGE_TECHNICIANS ? "You don't have permission to perform this action" : undefined}
+												disabled={!MANAGE_TECHNICIANS || isResettingMFA}
+												onClick={handleResetMFA}
+												onMouseLeave={() => setConfirmResetMFA(false)}
+												className="w-full px-4 py-2 text-left text-sm hover:enabled:bg-surface transition-colors flex items-center gap-2 text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												<RotateCcw size={14} />
+												{isResettingMFA
+													? "Resetting..."
+													: confirmResetMFA
+														? "Click Again to Confirm"
+														: "Reset MFA"}
+											</button>
+										)}
 									{MANAGE_TECHNICIANS && !hasActiveVisits && (
 									  <>
 									  	<div className="my-1 border-t border-border-subtle" />
@@ -578,6 +642,10 @@ export default function TechnicianDetailsPage() {
 					</div>
 				</div>
 			</Card>
+
+			<AccessCard user={technician} tier="technician" />
+
+			<ChangeHistory scope={{ kind: "actor", type: "technician", id: technicianId ?? "" }} />
 
 			<EditTechnicianModal
 				isOpen={isEditModalOpen}

@@ -6,6 +6,8 @@ import { useRef, useState, useEffect } from "react";
 import { usePermission } from "../../hooks/usePermission";
 import { useDeleteTechnicianMutation } from "../../hooks/useTechnicians";
 import { useResetMfaMutation } from "../../hooks/useMfa";
+import { requestPasswordResetCall } from "../../api/authenticate";
+import { useToast } from "../ui/useToast";
 
 interface TechnicianCardProps {
   technician: Technician;
@@ -73,8 +75,11 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [confirmResetMFA, setConfirmResetMFA] = useState(false);
+  const [confirmResetPassword, setConfirmResetPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const { mutateAsync: deleteTechnician, isPending: isDeleting } = useDeleteTechnicianMutation();
   const { mutateAsync: resetMFA, isPending: isResetingMFA } = useResetMfaMutation();
+  const toast = useToast();
 
   // permissions
   const MANAGE_TECHNICIAN = usePermission("manage_technicians");
@@ -98,6 +103,28 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
 			console.error("Failed to delete technician:", error);
 		}
 	};
+
+  const handleResetPassword = async () => {
+    if (!MANAGE_TECHNICIAN || !technician) return;
+    if (!confirmResetPassword) {
+      setConfirmResetPassword(true);
+      return;
+    }
+    setIsResettingPassword(true);
+    try {
+      await requestPasswordResetCall(technician.id, "technician");
+      setConfirmResetPassword(false);
+      setDropdownOpen(false);
+      toast.success(`Password reset email sent to ${technician.email}`);
+    } catch (error) {
+      setConfirmResetPassword(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send the reset email"
+      );
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
 
   const handleResetMFA = async (technician: Technician) => {
     if (!MANAGE_TECHNICIAN) return;
@@ -149,13 +176,20 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                           View Details
                       </button>
                       <button
+                          title={!MANAGE_TECHNICIAN ? "You don't have permission to perform this action" : undefined}
+                          disabled={!MANAGE_TECHNICIAN || isResettingPassword}
                           onClick={(e) => {
                               e.stopPropagation();
-                              setDropdownOpen(false);
+                              handleResetPassword();
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-surface-raised transition-colors"
+                          onMouseLeave={() => setConfirmResetPassword(false)}
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:enabled:bg-surface-raised transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                          Reset Password
+                          {isResettingPassword
+                              ? "Sending..."
+                              : confirmResetPassword
+                                  ? "Click to Confirm"
+                                  : "Reset Password"}
                       </button>
                       <button
                           onClick={(e) => {
@@ -278,7 +312,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                             e.stopPropagation();
                             setDropdownOpen((prev) => !prev);
                         }}
-                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+                        className="flex items-center gap-2 p-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors border border-border"
                     >
                         <MoreHorizontal size={18} />
                         <span className="text-sm font-medium">Options</span>
@@ -359,7 +393,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
               e.stopPropagation();
               onClick?.();
             }}
-            className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors"
+            className="flex-1 px-4 py-2 bg-surface hover:bg-surface-raised text-text-secondary text-sm font-medium rounded-md transition-colors border border-border"
           >
             View Details
           </button>
@@ -380,7 +414,7 @@ export default function TechnicianCard({ technician, onClick, onEdit, onAssignRo
                 e.stopPropagation();
                 setDropdownOpen((prev) => !prev);
               }}
-              className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors"
+              className="flex items-center justify-center h-full px-3 py-2 bg-surface hover:bg-surface-raised text-text-secondary rounded-md transition-colors border border-border"
             >
               <MoreHorizontal size={18} />
             </button>

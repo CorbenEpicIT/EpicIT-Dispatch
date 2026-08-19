@@ -204,6 +204,7 @@ export default function ConvertToQuote({
 					<div>
 						<label className={LABEL}>Valid Until</label>
 						<DatePicker
+							portal
 							value={validUntil}
 							onChange={setValidUntil}
 							disabled={isLoading}
@@ -213,6 +214,7 @@ export default function ConvertToQuote({
 					<div>
 						<label className={LABEL}>Expires At</label>
 						<DatePicker
+							portal
 							value={expiresAt}
 							onChange={setExpiresAt}
 							disabled={isLoading}

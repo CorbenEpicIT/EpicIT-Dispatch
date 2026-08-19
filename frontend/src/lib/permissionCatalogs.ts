@@ -90,6 +90,22 @@ export const DISPATCHER_CATALOG = [
 			{ id: "manage_vehicles", label: "Manage Vehicles" },
 		],
 	},
+	{
+		category: "Followups",
+		permissions: [
+			{ id: "view_followups", label: "View Followups" },
+			{ id: "manage_followups", label: "Manage Followups" },
+		],
+	},
+	{
+		category: "Projects",
+		permissions: [
+			{ id: "view_projects", label: "View Projects" },
+			{ id: "create_projects", label: "Create Projects" },
+			{ id: "edit_projects", label: "Edit Projects" },
+			{ id: "delete_projects", label: "Delete Projects" },
+		],
+	},
 ] as const;
 
 export const TECHNICIAN_CATALOG = [

@@ -32,7 +32,17 @@ export const getDispatcherById = async (id: string, organizationId: string) => {
         where: { id },
         include: {
             organization_role: { select: { id: true, name: true, permissions: true } },
+            _count: {
+                select: {
+                    created_quotes: true,
+                    created_invoices: true,
+                    created_requests: true,
+                    created_recurring_plans: true,
+                    managed_projects: true,
+                }
+            }
         },
+        
     });
     if (!dispatcher) return null;
     const permissions: string[] =
@@ -61,6 +71,10 @@ export const insertDispatcher = async (
         const tempPassword = passwordProvided ? parsed.password! : randomBytes(8).toString("hex") + "A1!";
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
+        // Kept locally: the created row comes back with credential columns
+        // omitted (see SECRET_FIELD_OMIT in db.ts), and the token must not be
+        // echoed in the API response anyway.
+        const emailVerificationToken = randomUUID();
         const created = await sdb.$transaction(async (tx) => {
             const { password: _pw, ...parsedWithoutPassword } = parsed;
             const dispatcher = await tx.dispatcher.create({
@@ -68,7 +82,7 @@ export const insertDispatcher = async (
                     ...parsedWithoutPassword,
                     organization_id: organizationId,
                     password: hashedPassword,
-                    email_verification_token: randomUUID(),
+                    email_verification_token: emailVerificationToken,
                     // if password provided dispatcher doesn't need to reset password on first login
                     ...(passwordProvided && { last_login: new Date() }),
                 },
@@ -98,7 +112,7 @@ export const insertDispatcher = async (
 
             sendEmailVerificationEmail(
                 dispatcher.email, 
-                dispatcher.email_verification_token!, 
+                emailVerificationToken, 
                 passwordProvided ? undefined : tempPassword
             );
 
@@ -266,8 +280,10 @@ export const changeDispatcherPassword = async (
 ) => {
     const parsed = changePasswordSchema.parse(data);
     const sdb = getScopedDb(organization_id);
+    // password is omitted globally (db.ts); opt back in here to verify the current one.
     const dispatcher = await sdb.dispatcher.findFirst({
         where: { id },
+        omit: { password: false },
     });
 
     if (!dispatcher) {
@@ -299,8 +315,10 @@ export const changeDispatcherPassword = async (
                 ? "dispatcher"
                 : "system",
             actor_id: context?.techId || context?.dispatcherId,
+            // Never persist hashes in the audit trail — they are readable by anyone
+            // with view_dispatchers via the change-history endpoints.
             changes: {
-                password: { old: dispatcher.password, new: hashedPassword },
+                password: { old: "[hashed]", new: "[hashed]" },
             },
             ip_address: context?.ipAddress,
             user_agent: context?.userAgent,

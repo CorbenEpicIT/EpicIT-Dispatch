@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Camera, ChevronRight, MapPin, CalendarDays } from "lucide-react";
+import { FileText, Camera, ChevronRight, MapPin, CalendarDays, FolderKanban } from "lucide-react";
 import VisitActionButtons from "./VisitActionButtons";
 import type { JobVisit } from "../../types/jobs";
 import { VisitStatusLabels } from "../../types/jobs";
@@ -159,6 +159,14 @@ export default function TechVisitCard({
 					</p>
 				)}
 
+				{/* Project */}
+				{visit.job?.project && (
+					<p className="text-xs text-text-tertiary mb-0.5 flex items-center gap-1">
+						<FolderKanban size={11} className="text-text-faint shrink-0" aria-hidden="true" />
+						{visit.job.project.project_number}  ·  {visit.job.project.name}
+					</p>
+				)}
+
 				{/* Address + optional distance */}
 				{visit.job?.address && (
 					<p className="text-xs text-text-tertiary mb-0.5 flex items-center gap-1">
@@ -200,7 +208,7 @@ export default function TechVisitCard({
 					{isDone ? (
 						<button
 							onClick={() => navigate(`/technician/visits/${visit.id}`)}
-							className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-border-subtle bg-surface/30 text-text-muted hover:text-text-secondary hover:bg-surface/60 transition-colors text-[12px] font-medium"
+							className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-border-subtle bg-surface text-text-muted hover:text-text-secondary hover:bg-surface-raised transition-colors text-[12px] font-medium"
 						>
 							View Details <ChevronRight size={13} />
 						</button>
@@ -216,12 +224,12 @@ export default function TechVisitCard({
 							</div>
 							{!isOverlay && (
 								<>
-									<div className="w-px bg-surface-raised/60 self-stretch mx-0.5" />
+									<div className="w-px bg-border-subtle self-stretch mx-0.5" />
 									<button
 										onClick={() =>
 											navigate(`/technician/visits/${visit.id}`)
 										}
-										className="flex-[1] flex items-center justify-center gap-1 rounded-lg border border-border bg-surface/50 text-text-tertiary hover:bg-surface hover:text-text-primary hover:border-border-strong transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[48px]"
+										className="flex-[1] flex items-center justify-center gap-1 rounded-lg border border-border bg-surface text-text-tertiary hover:bg-surface-raised hover:text-text-primary hover:border-border-strong transition-all duration-150 active:scale-[0.97] px-2 py-2.5 min-w-[48px]"
 										aria-label="View visit details"
 									>
 										{visit.status === "InProgress" ? (

@@ -5,27 +5,30 @@ interface ImageCarouselProps {
 	images: string[];
 	compact?: boolean;
 	compactNav?: boolean;
-	contain?: boolean;
-	maxHeight?: string;
 	index?: number;
 	onIndexChange?: (i: number) => void;
 	className?: string;
+	/** How the image fills its frame. Defaults to "cover" (crop-to-fill). */
+	objectFit?: "cover" | "contain";
+	/** Opt-in override for the default h-30/h-48 frame, e.g. a size-adaptive aspect-ratio + min/max-h combo. */
+	frameClassName?: string;
 }
 
 export default function ImageCarousel({
 	images,
 	compact = false,
 	compactNav = false,
-	contain = false,
-	maxHeight = "max-h-[70vh]",
 	index,
 	onIndexChange,
 	className = "",
+	objectFit = "cover",
+	frameClassName,
 }: ImageCarouselProps) {
 	const [currentIndex, setCurrentIndex] = useState(index ?? 0);
 	const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
 
-	const height = compact ? "h-30" : "h-48";
+	const frame = frameClassName ?? (compact ? "h-30" : "h-48");
+	const isContain = objectFit === "contain";
 
 	// Sync a controlled index in from the parent (chip clicks, etc.)
 	useEffect(() => {
@@ -39,7 +42,11 @@ export default function ImageCarousel({
 	if (!images.length) {
 		return (
 			<div
-				className={`flex items-center justify-center bg-surface border border-border rounded-md ${height} ${className}`}
+				className={`flex items-center justify-center ${frame} ${className} ${
+					isContain
+						? "bg-base border border-border-subtle rounded-xl"
+						: "bg-surface border border-border rounded-md"
+				}`}
 			>
 				<ImageOff size={compact ? 24 : 32} className="text-text-faint" />
 			</div>
@@ -54,15 +61,27 @@ export default function ImageCarousel({
 	};
 
 	return (
-		<div className={`relative group ${contain ? (status === "loaded" ? "" : height) : height} ${className}`}>
+		<div
+			className={`relative group ${frame} ${className}${
+				isContain ? " bg-base border border-border-subtle rounded-xl overflow-hidden" : ""
+			}`}
+		>
 			{/* Shimmer while image is fetching */}
 			{status === "loading" && (
-				<div className="absolute inset-0 animate-pulse bg-surface rounded-md border border-border" />
+				<div
+					className={`absolute inset-0 animate-pulse bg-surface ${
+						isContain ? "rounded-xl" : "rounded-md border border-border"
+					}`}
+				/>
 			)}
 
 			{/* Error fallback */}
 			{status === "error" && (
-				<div className="absolute inset-0 flex items-center justify-center bg-surface rounded-md border border-border">
+				<div
+					className={`absolute inset-0 flex items-center justify-center bg-surface ${
+						isContain ? "rounded-xl" : "rounded-md border border-border"
+					}`}
+				>
 					<ImageOff size={compact ? 20 : 28} className="text-text-faint" />
 				</div>
 			)}
@@ -79,15 +98,11 @@ export default function ImageCarousel({
 				alt={`Image ${currentIndex + 1}`}
 				onLoad={() => setStatus("loaded")}
 				onError={() => setStatus("error")}
-				className={
-					contain
-						? `block w-full h-auto ${maxHeight} object-contain border border-border rounded-md transition-opacity duration-150 ${
-								status === "loaded" ? "opacity-100" : "opacity-0"
-							}`
-						: `absolute inset-0 w-full h-full object-cover border border-border rounded-md transition-opacity duration-150 ${
-								status === "loaded" ? "opacity-100" : "opacity-0"
-							}`
-				}
+				className={`absolute transition-opacity duration-150 ${
+					isContain
+						? "inset-3 w-[calc(100%-1.5rem)] h-[calc(100%-1.5rem)] object-contain"
+						: "inset-0 w-full h-full object-cover border border-border rounded-md"
+				} ${status === "loaded" ? "opacity-100" : "opacity-0"}`}
 			/>
 
 			{images.length > 1 && compactNav && (

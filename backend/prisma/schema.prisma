@@ -304,6 +304,14 @@ enum email_template_category {
   custom
 }
 
+enum project_status {
+  Planning
+  Active
+  OnHold
+  Completed
+  Cancelled
+}
+
 model organization {
   id        String  @id @default(uuid())
   name      String
@@ -317,6 +325,12 @@ model organization {
   tax_rate            Decimal @default(0) @db.Decimal(5, 4)
   wrapping_up_minutes Int     @default(15)
   restock_mode        restock_mode @default(tech_self_serve)
+  // "imperial" | "metric". ORDERS the unit picker for the org's region and drives
+  // the form default — it hides nothing (a US org still reaches `mm`) and converts
+  // nothing. String + app-level Zod enum, same reasoning as inventory_item.unit.
+  // NOT a general locale: currency and number formatting are still en-US/USD
+  // throughout the frontend, which is a separate project.
+  measurement_system  String       @default("imperial")
   mfa_required        Boolean @default(false) // Require MFA for all users in this org
 
   logo_key String?
@@ -347,6 +361,7 @@ model organization {
   quotes                quote[]
   jobs                  job[]
   recurring_plans       recurring_plan[]
+  projects              project[]
   form_drafts           form_draft[]
   invoices              invoice[]
 
@@ -488,6 +503,7 @@ model client {
   client_external_mapping client_external_mapping[]
   serial_units    serial_unit[]
   followup_enrollments followup_enrollment[]
+  projects        project[]
 
   @@index([is_active])
   @@index([is_tax_exempt])
@@ -729,6 +745,7 @@ model job {
   status job_status @default(Unscheduled)
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
+  status_changed_at   DateTime  @default(now())
   completed_at        DateTime?
   cancelled_at        DateTime?
   cancellation_reason String?
@@ -741,6 +758,8 @@ model job {
   quote    quote?  @relation(fields: [quote_id], references: [id])
   recurring_plan_id String? @unique
   recurring_plan    recurring_plan? @relation(fields: [recurring_plan_id], references: [id])
+  project_id        String? 
+  project           project? @relation(fields: [project_id], references: [id])
 
   // Financial totals for non-recurring jobs OR
   // aggregated values for recurring job containers
@@ -769,8 +788,10 @@ model job {
   @@index([priority])
   @@index([created_at])
   @@index([updated_at])
+  @@index([project_id])
 
   @@index([client_id, status])
+  @@index([organization_id, status])
   @@index([organization_id, created_at])
   @@unique([organization_id, job_number])
 }
@@ -1154,6 +1175,47 @@ model recurring_plan_note {
 }
 
 // ============================================================================
+// Project
+// ============================================================================
+
+model project {
+  id                String @id @default(uuid())
+  organization_id   String?
+  organization      organization? @relation(fields: [organization_id], references: [id])
+  project_number    String
+  name              String
+  description       String
+  status            project_status @default(Planning)
+  priority          priority @default(Medium)
+  address           String?
+  coords            Json?
+
+  manager_dispatcher_id String?
+  manager_dispatcher    dispatcher? @relation("ProjectManager", fields: [manager_dispatcher_id], references: [id])
+
+  client_id         String 
+  client            client @relation(fields: [client_id], references: [id])
+
+  budget            Decimal? @db.Decimal(12, 2)
+
+  starts_at         DateTime?
+  target_end_at     DateTime?
+  created_at        DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  completed_at      DateTime?
+  cancelled_at      DateTime?
+  cancellation_reason String?
+
+  jobs              job[]
+
+  @@index([client_id])
+  @@index([status])
+  @@index([organization_id, created_at])
+  @@index([manager_dispatcher_id])
+  @@unique([organization_id, project_number])
+}
+
+// ============================================================================
 // FORM DRAFTS
 // ============================================================================
 
@@ -1188,7 +1250,12 @@ model inventory_item {
   name        String
   description String @db.Text
   location    String
-  quantity    Int    @default(0)
+  // Fractional on purpose: the unit catalog sells ft / m / lb / kg / gal / L, so
+  // 12.5 ft of line set is an ordinary warehouse level. Matches the precision
+  // every other quantity in the ledger already uses (stock_movement.qty,
+  // vehicle_stock_item.qty_on_hand, stock_batch.qty_*) — this column was the last
+  // integer holdout. Still a CACHED value, written only by recordMovements().
+  quantity    Decimal @default(0) @db.Decimal(10, 2)
 
   unit_price Decimal? @db.Decimal(10, 2)
   cost       Decimal? @db.Decimal(10, 2)
@@ -1197,7 +1264,7 @@ model inventory_item {
   is_active  Boolean  @default(true)
   is_serialized    Boolean @default(false)
   is_batch_tracked Boolean @default(false)
-  low_stock_threshold Int?
+  low_stock_threshold Decimal? @db.Decimal(10, 2)
   provisional         Boolean   @default(false)
   created_by_tech_id  String?
   created_by_tech     technician? @relation("TechProvisionalItems", fields: [created_by_tech_id], references: [id], onDelete: SetNull)
@@ -1215,7 +1282,11 @@ model inventory_item {
   updated_at DateTime @updatedAt
 
   category       String?              // freetext, org-defined — no static enum
-  unit           String  @default("each") // freetext: "each", "ft", "lb", etc.
+  // Unit of MEASURE, not a serial_unit. Typed app-level: a TS union plus a Zod
+  // enum at the API boundary (lib/units.ts + lib/validate/inventory.ts), with the
+  // column left String so unknown legacy values still read back and adding a unit
+  // needs no migration. Not a Prisma enum for exactly those reasons.
+  unit           String  @default("each")
 
   visit_line_items job_visit_line_item[]
   vehicle_stocks   vehicle_stock_item[]
@@ -1382,7 +1453,6 @@ model vehicle_stock_adjustment {
   vehicle         vehicle                 @relation("VehicleAdjustments", fields: [vehicle_id], references: [id], onDelete: Cascade)
   type            vehicle_adjustment_type
   note            String?
-  // Exactly one of created_by_id / created_by_tech_id is set (app-level invariant)
   created_by_id   String?
   created_by      dispatcher?             @relation("DispatcherAdjustments", fields: [created_by_id], references: [id])
   created_by_tech_id String?
@@ -1450,6 +1520,21 @@ model stock_movement {
   inventory_item_id String
   inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id])
   qty               Decimal      @db.Decimal(10, 2) // strictly positive; direction is from→to
+  // Unit of measure `qty` is denominated in, STAMPED at write time by
+  // recordMovements() from the item's unit inside the same transaction. Never
+  // derived from inventory_item at read time, and never caller-supplied.
+  //
+  // Before this column existed, every row was implicitly denominated in the item's
+  // CURRENT unit, so changing an item from `each` to `box` silently reinterpreted
+  // years of ledger rows — consumption charts, WAC and runway all shifted with no
+  // migration and no warning. Existing rows were backfilled from the item's unit,
+  // which writes down the semantics the code already assumed rather than inventing
+  // a new claim. A ledger spanning a unit change is now detectable, so aggregates
+  // flag a mixed-unit series instead of summing across units.
+  unit              String
+  // What supplier actually billed PER UNIT for this movement. Only ever set
+  // on intake movements (reason 'receive' / 'supplier_purchase'); omit elsewhere.
+  unit_cost         Decimal?     @db.Decimal(10, 2)
 
   from_location_type stock_location_type
   from_vehicle_id    String?
@@ -1546,6 +1631,7 @@ model stock_batch {
 
   expires_at  DateTime? @db.Date
   supplier    String?
+  unit_cost   Decimal?  @db.Decimal(10, 2)
   recalled_at DateTime? // recall flag blocks FIFO picks
   qty_received     Decimal @default(0) @db.Decimal(10, 2) // cumulative received
   qty_in_warehouse Decimal @default(0) @db.Decimal(10, 2) // cached — written ONLY by recordMovements
@@ -1733,6 +1819,8 @@ model dispatcher {
   readiness_confirmations  vehicle_readiness[] @relation("DispatcherReadinessConfirmations")
   approved_items      inventory_item[] @relation("DispatcherApprovedItems")
   acknowledged_restock_requests vehicle_restock_request[] @relation("DispatcherAcknowledgedRequests")
+
+  managed_projects project[] @relation("ProjectManager")
 
   @@index([email])
   @@index([organization_id])

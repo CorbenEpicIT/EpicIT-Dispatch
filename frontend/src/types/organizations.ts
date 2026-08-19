@@ -34,4 +34,5 @@ export interface OrganizationRole {
     base_tier: "dispatcher" | "technician";
     permissions: string[];
     is_default: boolean;
+    _count?: { dispatchers: number; technicians: number };
 }

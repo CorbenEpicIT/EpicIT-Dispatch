@@ -1,4 +1,4 @@
-import { api } from "./axiosClient";
+import { api, queryParams } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import { triggerDownload } from "../util/download";
 import type {
@@ -7,6 +7,12 @@ import type {
 	InventorySortOption,
 	CreateInventoryItemInput,
 	UpdateInventoryItemInput,
+	MovementsPage,
+	ItemUsage,
+	ItemForecastResult,
+	ValueHistory,
+	PriceHistory,
+	ItemConsumptionTrend,
 } from "../types/inventory";
 
 // ============================================
@@ -17,9 +23,7 @@ export const getAllInventory = async (
 	lowStock?: boolean,
 	sort?: InventorySortOption,
 ): Promise<InventoryItem[]> => {
-	const params: Record<string, string> = {};
-	if (lowStock) params.low_stock = "true";
-	if (sort) params.sort = sort;
+	const params = queryParams({ low_stock: lowStock ? "true" : undefined, sort });
 	const response = await api.get<ApiResponse<InventoryItem[]>>("/inventory", { params });
 
 	if (!response.data.success) {
@@ -27,6 +31,131 @@ export const getAllInventory = async (
 	}
 
 	return response.data.data || [];
+};
+
+export const getInventoryItem = async (itemId: string): Promise<InventoryItem> => {
+	const response = await api.get<ApiResponse<InventoryItem>>(`/inventory/${itemId}`);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch inventory item");
+	}
+
+	return response.data.data!;
+};
+
+// created_after filters server-side (narrows the query itself), not a
+// client-side slice of loaded pages — cursor pagination stays intact.
+export const getInventoryMovements = async (
+	itemId: string,
+	cursor?: string,
+	limit?: number,
+	createdAfter?: string,
+): Promise<MovementsPage> => {
+	const params = queryParams({ cursor, limit, created_after: createdAfter });
+	const response = await api.get<ApiResponse<MovementsPage>>(
+		`/inventory/${itemId}/movements`,
+		{ params },
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch stock history");
+	}
+
+	return response.data.data!;
+};
+
+// ── History & Reports tab (item detail page) ─────────────────────────────────
+
+export const getItemUsage = async (
+	itemId: string,
+	opts?: { limit?: number; offset?: number },
+): Promise<ItemUsage> => {
+	const params = queryParams({ limit: opts?.limit, offset: opts?.offset });
+	const response = await api.get<ApiResponse<ItemUsage>>(`/inventory/${itemId}/usage`, {
+		params,
+	});
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch item usage");
+	}
+
+	return response.data.data!;
+};
+
+// `forecast: null` is a valid 200 response, not an error; `reason` distinguishes
+// an inactive item from an active one with no forecastable data.
+export const getItemForecast = async (
+	itemId: string,
+	lookbackDays?: number,
+): Promise<ItemForecastResult> => {
+	const params = queryParams({ lookbackDays });
+	const response = await api.get<ApiResponse<ItemForecastResult>>(
+		`/inventory/${itemId}/forecast`,
+		{ params },
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch item forecast");
+	}
+
+	return response.data.data ?? { forecast: null, reason: null };
+};
+
+// bucket/range mirror consumptionTrendQuerySchema on the backend; defaults
+// and caps are resolved server-side.
+export const getItemConsumptionTrend = async (
+	itemId: string,
+	opts?: { bucket?: "week" | "month"; range?: number },
+): Promise<ItemConsumptionTrend> => {
+	const params = queryParams({ bucket: opts?.bucket, range: opts?.range });
+	const response = await api.get<ApiResponse<ItemConsumptionTrend>>(
+		`/inventory/${itemId}/consumption-trend`,
+		{ params },
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch consumption trend");
+	}
+
+	return response.data.data!;
+};
+
+export const getItemValueHistory = async (
+	itemId: string,
+	createdAfter?: string,
+): Promise<ValueHistory> => {
+	const params = queryParams({ created_after: createdAfter });
+	const response = await api.get<ApiResponse<ValueHistory>>(
+		`/inventory/${itemId}/value-history`,
+		{ params },
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch value history");
+	}
+
+	return response.data.data!;
+};
+
+export const getItemPriceHistory = async (
+	itemId: string,
+	opts?: { createdAfter?: string; bucket?: "week" | "month"; range?: number },
+): Promise<PriceHistory> => {
+	const params = queryParams({
+		created_after: opts?.createdAfter,
+		bucket: opts?.bucket,
+		range: opts?.range,
+	});
+	const response = await api.get<ApiResponse<PriceHistory>>(
+		`/inventory/${itemId}/price-history`,
+		{ params },
+	);
+
+	if (!response.data.success) {
+		throw new Error(response.data.error?.message || "Failed to fetch price history");
+	}
+
+	return response.data.data!;
 };
 
 export const createInventoryItem = async (
@@ -107,25 +236,12 @@ export const uploadInventoryImage = async (file: File): Promise<string> => {
 	return response.data.data!.url;
 };
 
-export const updateItemThreshold = async (
-	itemId: string,
-	threshold: number | null,
-): Promise<InventoryItem> => {
-	const response = await api.patch<ApiResponse<InventoryItem>>(
-		`/inventory/${itemId}/threshold`,
-		{ low_stock_threshold: threshold },
-	);
-
-	if (!response.data.success) {
-		throw new Error(response.data.error?.message || "Failed to update threshold");
-	}
-
-	return response.data.data!;
-};
-
 export interface ImportResult {
 	imported: number;
 	skipped: { row: number; reason: string }[];
+	// Rows that imported but got modified (e.g. unit coerced to default) —
+	// distinct from `skipped`; dispatcher may want to review these.
+	warnings?: { row: number; message: string }[];
 }
 
 export const importInventory = async (file: File): Promise<ImportResult> => {

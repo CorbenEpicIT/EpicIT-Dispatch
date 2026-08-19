@@ -16,6 +16,7 @@ import {
 import { requestPasswordReset } from '../controllers/authenticationController.js';
 import { resetMfa } from '../controllers/mfaController.js';
 import { requirePermission, requirePermissionOrSelf } from '../lib/requirePermissions.js';
+import { getActorHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -213,6 +214,37 @@ router.post("/:id/mfa/reset", requirePermissionOrSelf("manage_dispatchers"), asy
         }
         const result = await resetMfa(id, "dispatcher", req.user!.uid, req.user!.role);
         res.json(createSuccessResponse(result.data));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id/changes", requirePermissionOrSelf("view_dispatchers"), async (req, res, next) => {
+    try {
+        const id = req.params.id as string;
+        const orgId = req.user!.organization_id as string;
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
+
+        const results = await getActorHistory(orgId, "dispatcher", id, limit);
+
+        if (results.err) {
+            return res
+                .status(500)
+                .json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+        }
+
+        res.json(createSuccessResponse(results.rows, {
+            count: results.rows.length,
+            hasMore: results.hasMore,
+            total: results.total,
+        }));
     } catch (err) {
         next(err);
     }

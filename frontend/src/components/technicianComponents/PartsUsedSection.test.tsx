@@ -4,17 +4,24 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import PartsUsedSection from "./PartsUsedSection";
 import type { VehicleStockItem } from "../../types/vehicles";
+import type { VisitLineItem } from "../../types/jobs";
 
 const mockAddPartsMutateAsync = vi.fn();
+const mockUpdatePartsQtyMutateAsync = vi.fn();
+const mockUpdateVisitMutateAsync = vi.fn();
 const mockStockItems = vi.fn<() => VehicleStockItem[]>();
 vi.mock("../../hooks/useVehicleStock", () => ({
 	useVehicleStockQuery: () => ({ data: mockStockItems() }),
 	useAddPartsUsedMutation: () => ({ mutateAsync: mockAddPartsMutateAsync, isPending: false }),
 	useAddSupplierPartUsedMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdatePartsUsedQtyMutation: () => ({
+		mutateAsync: mockUpdatePartsQtyMutateAsync,
+		isPending: false,
+	}),
 }));
 
 vi.mock("../../hooks/useJobs", () => ({
-	useUpdateJobVisitMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	useUpdateJobVisitMutation: () => ({ mutateAsync: mockUpdateVisitMutateAsync, isPending: false }),
 }));
 
 vi.mock("../../hooks/useTechnicians", () => ({
@@ -44,11 +51,11 @@ vi.mock("../inventory/BarcodeScanner", () => ({
 	BarcodeScanner: () => null,
 }));
 
-function renderSection() {
+function renderSection(lineItems: VisitLineItem[] = []) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<PartsUsedSection visitId="visit-1" lineItems={[]} />
+			<PartsUsedSection visitId="visit-1" lineItems={lineItems} />
 		</QueryClientProvider>,
 	);
 }
@@ -61,6 +68,8 @@ async function openStockPickerAndSelect(itemLabel: string) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockUpdatePartsQtyMutateAsync.mockResolvedValue(null);
+	mockUpdateVisitMutateAsync.mockResolvedValue({});
 	mockStockItems.mockReturnValue([]);
 	mockSerialsQuery.mockReturnValue({ data: { serials: [], nextCursor: null }, isLoading: false });
 	mockBatchesQuery.mockReturnValue({ data: { batches: [] }, isLoading: false });
@@ -328,5 +337,139 @@ describe("PartsUsedSection — plain (non-tracked) stock item", () => {
 
 		expect(await screen.findByText("Not enough stock on hand.")).toBeInTheDocument();
 		expect(mockAddPartsMutateAsync).not.toHaveBeenCalled();
+	});
+});
+
+// The ledger stores two decimals and the server's z.number().positive() would
+// silently round 2.505 — catch it client-side, and send a clean 2.5 as a number.
+describe("PartsUsedSection — fractional qty_used", () => {
+	test("sends 2.5 as a number for a non-serialized stock item", async () => {
+		mockStockItems.mockReturnValue([plainStockItem]);
+
+		renderSection();
+		await openStockPickerAndSelect("Zip Ties");
+
+		const qtyInput = screen.getByDisplayValue("1");
+		expect(qtyInput).toHaveAttribute("step", "0.01");
+		fireEvent.change(qtyInput, { target: { value: "2.5" } });
+		await userEvent.click(screen.getByText("Add Part"));
+
+		await waitFor(() => expect(mockAddPartsMutateAsync).toHaveBeenCalled());
+		expect(mockAddPartsMutateAsync.mock.calls[0][0].data.qty_used).toBe(2.5);
+	});
+
+	test("rejects 2.505 with an inline error and sends nothing", async () => {
+		mockStockItems.mockReturnValue([plainStockItem]);
+
+		renderSection();
+		await openStockPickerAndSelect("Zip Ties");
+
+		fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "2.505" } });
+		await userEvent.click(screen.getByText("Add Part"));
+
+		expect(await screen.findByText("Quantity must be to two decimal places.")).toBeInTheDocument();
+		expect(mockAddPartsMutateAsync).not.toHaveBeenCalled();
+	});
+});
+
+// handleQtyChange routes a change by what the line IS: a stock-linked line that
+// was actually used carries a serial/batch ledger and goes through the dedicated
+// parts-used-qty endpoint (so a decrease releases the exact units back to the
+// van); anything else is a plain line-item rewrite on the visit.
+describe("PartsUsedSection — Edit Parts quantity routing", () => {
+	const usedStockLine: VisitLineItem = {
+		id: "li-stock",
+		name: "Zip Ties",
+		quantity: 3,
+		unit_price: 1.5,
+		total: 4.5,
+		inventory_item_id: "inv-plain",
+		fulfillment_status: "used",
+		source: "vehicle_stock" as VisitLineItem["source"],
+		taxable: false,
+		tax_group_id: null,
+		tax_amount: null,
+	};
+	const supplierLine: VisitLineItem = {
+		id: "li-supplier",
+		name: "Copper fitting",
+		quantity: 2,
+		unit_price: 3.333,
+		total: 6.67,
+		inventory_item_id: null,
+		fulfillment_status: null,
+		source: "manual" as VisitLineItem["source"],
+		taxable: false,
+		tax_group_id: null,
+		tax_amount: null,
+	};
+
+	async function openEditTab(lineItems: VisitLineItem[]) {
+		renderSection(lineItems);
+		await userEvent.click(screen.getByText("Add / Edit Parts"));
+		// "Edit Parts" is the default tab.
+	}
+
+	test("a used stock-linked line goes through the parts-used-qty endpoint, not the visit update", async () => {
+		await openEditTab([usedStockLine]);
+
+		await userEvent.click(screen.getByLabelText("Increase quantity"));
+
+		await waitFor(() => expect(mockUpdatePartsQtyMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockUpdatePartsQtyMutateAsync).toHaveBeenCalledWith({
+			visitId: "visit-1",
+			lineItemId: "li-stock",
+			vehicleId: "veh-1",
+			data: { technician_id: "tech-1", quantity: 4 },
+		});
+		expect(mockUpdateVisitMutateAsync).not.toHaveBeenCalled();
+	});
+
+	test("a non-stock line rewrites the visit's line items with the total recomputed to 2 dp", async () => {
+		await openEditTab([supplierLine]);
+
+		await userEvent.click(screen.getByLabelText("Increase quantity"));
+
+		await waitFor(() => expect(mockUpdateVisitMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockUpdatePartsQtyMutateAsync).not.toHaveBeenCalled();
+		const { id, data } = mockUpdateVisitMutateAsync.mock.calls[0][0];
+		expect(id).toBe("visit-1");
+		expect(data.line_items).toEqual([
+			expect.objectContaining({
+				id: "li-supplier",
+				quantity: 3,
+				unit_price: 3.333,
+				// 3 × 3.333 = 9.999 → 10.00
+				total: 10,
+			}),
+		]);
+	});
+
+	test("decreasing a non-stock line to zero removes it from the visit", async () => {
+		await openEditTab([{ ...supplierLine, quantity: 1, total: 3.33 }]);
+
+		// qty 1 shows a remove control that arms on first click and fires on the second.
+		const remove = screen.getByLabelText("Remove part");
+		await userEvent.click(remove);
+		await userEvent.click(remove);
+
+		await waitFor(() => expect(mockUpdateVisitMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockUpdateVisitMutateAsync.mock.calls[0][0].data.line_items).toEqual([]);
+		expect(mockUpdatePartsQtyMutateAsync).not.toHaveBeenCalled();
+	});
+
+	test("decreasing a used stock-linked line to zero sends quantity 0 to the parts-used-qty endpoint", async () => {
+		await openEditTab([{ ...usedStockLine, quantity: 1, total: 1.5 }]);
+
+		const remove = screen.getByLabelText("Remove part");
+		await userEvent.click(remove);
+		await userEvent.click(remove);
+
+		await waitFor(() => expect(mockUpdatePartsQtyMutateAsync).toHaveBeenCalledTimes(1));
+		expect(mockUpdatePartsQtyMutateAsync.mock.calls[0][0].data).toEqual({
+			technician_id: "tech-1",
+			quantity: 0,
+		});
+		expect(mockUpdateVisitMutateAsync).not.toHaveBeenCalled();
 	});
 });

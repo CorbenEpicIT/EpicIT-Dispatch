@@ -60,7 +60,7 @@ export default function ConfirmDialog({
 				<h3 className="text-lg font-semibold text-text-primary mb-2">
 					{title}
 				</h3>
-				<p className="text-sm text-text-tertiary mb-4">{body}</p>
+				<div className="text-sm text-text-tertiary mb-4">{body}</div>
 				{error && <p className="text-sm text-error-text mb-3">{error}</p>}
 				<div className="flex justify-end gap-2">
 					<button

@@ -18,10 +18,18 @@ import {
     importInventoryFromFile,
     exportLowStockToXlsx,
     getInventoryImportTemplate,
+    getInventoryItemById,
     getInventoryMovements,
+    getItemUsage,
+    getItemConsumptionTrend,
+    getItemForecast,
+    getItemValueHistory,
+    getItemPriceHistory,
     listItemSerials,
     listItemBatches,
     getItemTrackingSummary,
+    getItemVehicleStock,
+    getTrackingEligibility,
     scanInventoryByCode,
     resolveInventoryCode,
     ensureItemCode,
@@ -48,7 +56,7 @@ import {
 import { uploadFile, signImageUrl, signImageUrls, toRawUrl } from "../services/wasabiService.js";
 import { imageUpload, spreadsheetUpload } from "../lib/upload.js";
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
-import { scanQuerySchema } from '../lib/validate/inventory.js';
+import { scanQuerySchema, forecastQuerySchema } from '../lib/validate/inventory.js';
 
 
 
@@ -71,13 +79,23 @@ function normalizeImageUrls(body: unknown): void {
     }
 }
 
-// Maps a controller-result error to the matching HTTP status + ErrorCode for the
-// tracking/serial/batch handlers below (409 on conflict, else 404 on "not found", else 400).
+// Central error→status mapping so every handler in this file agrees: conflict
+// is 409, a "not found" message is 404 (with NOT_FOUND, not VALIDATION_ERROR),
+// else 400 VALIDATION_ERROR.
 function sendControllerErr(res: Response, result: { err?: string; conflict?: boolean }) {
     const err = result.err ?? "";
-    const status = result.conflict ? 409 : err.includes("not found") ? 404 : 400;
-    const code = result.conflict ? ErrorCodes.CONFLICT : ErrorCodes.VALIDATION_ERROR;
-    return res.status(status).json(createErrorResponse(code, err));
+    if (result.conflict) {
+        return res.status(409).json(createErrorResponse(ErrorCodes.CONFLICT, err));
+    }
+    const notFound = err.includes("not found");
+    return res
+        .status(notFound ? 404 : 400)
+        .json(
+            createErrorResponse(
+                notFound ? ErrorCodes.NOT_FOUND : ErrorCodes.VALIDATION_ERROR,
+                err,
+            ),
+        );
 }
 
 router.get("/", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
@@ -343,6 +361,40 @@ router.get("/:itemId/tracking-summary", requireAnyPermission("view_inventory", "
             return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
         }
         res.json(createSuccessResponse(result.summary));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Per-vehicle qty breakdown for the Overview tab's "on vehicles" drill-in —
+// same 2nd-segment reasoning and read permission as tracking-summary above.
+router.get("/:itemId/vehicle-stock", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const itemId = req.params.itemId as string;
+        const result = await getItemVehicleStock(itemId, orgId);
+        if (result.err) {
+            return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+        }
+        res.json(createSuccessResponse({ rows: result.rows }));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Whether tracking can be turned on/off/switched right now, and what's blocking
+// it. Read by the edit form's Stock & Pricing step so the toggles lock (and
+// explain themselves) using the same arithmetic PATCH /:id/tracking enforces.
+// Same 2nd-segment reasoning and read permission as tracking-summary above.
+router.get("/:itemId/tracking-eligibility", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const itemId = req.params.itemId as string;
+        const result = await getTrackingEligibility(itemId, orgId);
+        if (result.err) {
+            return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+        }
+        res.json(createSuccessResponse(result.eligibility));
     } catch (err) {
         next(err);
     }
@@ -748,6 +800,121 @@ router.delete("/tags/:tagId", requirePermission("manage_inventory"), async (req,
     }
 });
 
+// ── History tab (item detail page) ────────────────────────────────────────────
+// Registered before the single-item GET /:id catch route below, ahead of the
+// 2-segment /:id/* reads.
+//
+// PERMISSIONS — deliberate asymmetry: these five reads require view_inventory
+// OR manage_inventory, while the org-wide equivalent
+// (/reports/inventory/reorder-forecast) requires view_reports. Drilling into
+// ONE item you can already see is an inventory activity; ranking every item
+// against each other is a reporting activity.
+
+router.get("/:id/usage", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const result = await getItemUsage(id, orgId, req.query);
+        if (result.err) return sendControllerErr(res, result);
+        // Spread, not a hand-picked field list: `unitBasis` was silently dropped
+        // here, so a mixed-unit item's withheld totals reached the client with no
+        // explanation (same lesson as value-history below).
+        const { err: _err, ...payload } = result;
+        res.json(createSuccessResponse(payload));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id/consumption-trend", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const result = await getItemConsumptionTrend(id, orgId, req.query);
+        if (result.err) return sendControllerErr(res, result);
+        const { err: _err, ...payload } = result;
+        res.json(createSuccessResponse(payload));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id/forecast", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const query = forecastQuerySchema.safeParse(req.query);
+        if (!query.success) {
+            return res
+                .status(400)
+                .json(
+                    createErrorResponse(
+                        ErrorCodes.VALIDATION_ERROR,
+                        `Validation failed: ${query.error.issues.map((i) => i.message).join(", ")}`,
+                    ),
+                );
+        }
+        const result = await getItemForecast(id, orgId, { lookbackDays: query.data.lookbackDays });
+        if (result.err) {
+            return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+        }
+        // Envelope, not the bare row: a null forecast needs `reason` alongside
+        // it to say WHY (inactive vs no forecastable row) — the two read very
+        // differently to a dispatcher.
+        res.json(createSuccessResponse({ forecast: result.forecast, reason: result.reason }));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id/value-history", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const result = await getItemValueHistory(id, orgId, req.query);
+        if (result.err) return sendControllerErr(res, result);
+        // Everything the controller returned except its error slot. Listing the
+        // fields by hand meant a new one silently failed to reach the client.
+        const { err: _err, ...payload } = result;
+        res.json(createSuccessResponse(payload));
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get("/:id/price-history", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const result = await getItemPriceHistory(id, orgId, req.query);
+        if (result.err) return sendControllerErr(res, result);
+        const { err: _err, ...payload } = result;
+        res.json(createSuccessResponse(payload));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Single-item read for the product/detail page. Registered here — after every
+// literal single-segment GET route (/scan, /resolve, /tags, /template,
+// /provisional) — so those resolve first and this only catches genuine ids.
+// Sits below the History-tab 2-segment reads above and above /:id/movements,
+// /:id/serials, /:id/batches below (all distinct depth from /:id, so
+// registration order doesn't affect routing).
+router.get("/:id", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const id = req.params.id as string;
+        const result = await getInventoryItemById(id, orgId);
+        if (result.err) {
+            return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+        }
+        res.json(createSuccessResponse(await signItem(result.item!)));
+    } catch (err) {
+        next(err);
+    }
+});
+
 router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_inventory"), async (req, res, next) => {
     try {
         const orgId = req.user!.organization_id as string;
@@ -758,10 +925,9 @@ router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_inve
             orgId,
             cursor,
             limit ? parseInt(limit, 10) : 25,
+            req.query,
         );
-        if (result.err) {
-            return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
-        }
+        if (result.err) return sendControllerErr(res, result);
         res.json(createSuccessResponse({ movements: result.movements, nextCursor: result.nextCursor }));
     } catch (err) {
         next(err);
@@ -775,11 +941,7 @@ router.get("/:id/serials", requireAnyPermission("view_inventory", "manage_invent
         const orgId = req.user!.organization_id as string;
         const id = req.params.id as string;
         const result = await listItemSerials(id, req.query, orgId);
-        if (result.err) {
-            const statusCode = result.err.includes("not found") ? 404 : 400;
-            const code = statusCode === 404 ? ErrorCodes.NOT_FOUND : ErrorCodes.VALIDATION_ERROR;
-            return res.status(statusCode).json(createErrorResponse(code, result.err));
-        }
+        if (result.err) return sendControllerErr(res, result);
         res.json(createSuccessResponse({ serials: result.serials, nextCursor: result.nextCursor }));
     } catch (err) {
         next(err);
@@ -791,11 +953,7 @@ router.get("/:id/batches", requireAnyPermission("view_inventory", "manage_invent
         const orgId = req.user!.organization_id as string;
         const id = req.params.id as string;
         const result = await listItemBatches(id, orgId, req.query);
-        if (result.err) {
-            const statusCode = result.err.includes("not found") ? 404 : 400;
-            const code = statusCode === 404 ? ErrorCodes.NOT_FOUND : ErrorCodes.VALIDATION_ERROR;
-            return res.status(statusCode).json(createErrorResponse(code, result.err));
-        }
+        if (result.err) return sendControllerErr(res, result);
         res.json(createSuccessResponse({ batches: result.batches }));
     } catch (err) {
         next(err);

@@ -147,9 +147,10 @@ export async function verifyMfa(res: Response, pendingToken: string, code?: stri
 }
 
 export async function disableTotp(userId: string, role: string, password?: string, code?: string, backupCode?: string) {
+    // password is omitted globally (db.ts); opt back in to re-authenticate below.
     const user = role === "technician"
-        ? await db.technician.findUnique({ where: { id: userId } })
-        : await db.dispatcher.findUnique({ where: { id: userId } });
+        ? await db.technician.findUnique({ where: { id: userId }, omit: { password: false } })
+        : await db.dispatcher.findUnique({ where: { id: userId }, omit: { password: false } });
     if (!user) {
         return createErrorResponse(ErrorCodes.NOT_FOUND, "User not found");
     }

@@ -107,10 +107,11 @@ export default function TechnicianMileagePage() {
 							</p>
 							<div className="bg-base border border-border-subtle rounded-xl overflow-hidden divide-y divide-border-subtle">
 								{dayVisits.map((v) => (
-									<div
+									<button
 										key={v.id}
+										type="button"
 										onClick={() => navigate(`/technician/visits/${v.id}`)}
-										className="flex items-center justify-between px-4 py-3 gap-3 cursor-pointer hover:bg-surface transition-colors"
+										className="w-full flex items-center justify-between px-4 py-3 gap-3 text-left cursor-pointer hover:bg-surface transition-colors"
 									>
 										<div className="min-w-0">
 											<p className="text-sm font-medium text-text-primary truncate">
@@ -126,7 +127,7 @@ export default function TechnicianMileagePage() {
 										<span className="text-sm font-bold tabular-nums text-text-primary shrink-0">
 											{Number(v.estimated_drive_miles).toFixed(1)} mi
 										</span>
-									</div>
+									</button>
 								))}
 							</div>
 							<p className="text-xs text-text-muted text-right px-1">

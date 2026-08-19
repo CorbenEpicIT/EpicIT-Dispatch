@@ -17,6 +17,7 @@ export interface ResponseMeta {
 	timestamp?: string;
 	count?: number;
 	hasMore?: boolean;
+	total?: number;
 	page?: number;
 	pageSize?: number;
 }

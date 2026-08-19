@@ -3,6 +3,7 @@ import { qbQueryAll } from "./qbQuery.js";
 import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
 import { httpError, ErrorCodes } from "../../types/responses.js";
+import { recordMovements, type ActorInfo } from "../stockMovements.js";
 
 export interface QBItem {
     Id: string;
@@ -61,7 +62,7 @@ export async function getMappedQBItems(orgId: string): Promise<{ inventory_item_
     return mappings;
 }
 
-export async function importQBItem(orgId: string, qbItemId: string) {
+export async function importQBItem(orgId: string, qbItemId: string, actor?: ActorInfo) {
     const data = (await qbFetch(orgId, "GET", `/item/${qbItemId}`)) as any;
     const qbItem = data.Item as QBItem;
     const accountId = await getOrgRealmId(orgId);
@@ -77,6 +78,14 @@ export async function importQBItem(orgId: string, qbItemId: string) {
         throw httpError(409, ErrorCodes.CONFLICT, "This QuickBooks item has already been imported.");
     }
 
+    // Keep the QBO quantity at the ledger's own scale (numeric(10,2)) instead of
+    // flooring it: 12.5 gal on hand in QuickBooks is 12.5 here, not 12. Rounding
+    // to 2 dp is what makes it storable for recordMovements' precision guard;
+    // anything QBO sends with more precision than that is not representable and
+    // is rounded rather than failing the import. Negative QBO balances still
+    // import as 0 — the opening movement can't be negative.
+    const qtyOnHand = Math.max(0, Math.round((qbItem.QtyOnHand ?? 0) * 100) / 100);
+
     try {
         const item = await db.$transaction(async (tx) => {
             const created = await tx.inventory_item.create({
@@ -85,7 +94,8 @@ export async function importQBItem(orgId: string, qbItemId: string) {
                     name: qbItem.Name,
                     description: qbItem.Description ?? "",
                     location: "",
-                    quantity: qbItem.QtyOnHand ?? 0,
+                    quantity: 0, // recordMovements sets the opening qty below
+                    // No unit-of-measure field on the QBO Item — leave `unit` at its default rather than guess.
                     unit_price: qbItem.UnitPrice ?? null,
                     cost: qbItem.PurchaseCost ?? null,
                     sku: qbItem.Sku ?? null,
@@ -96,10 +106,29 @@ export async function importQBItem(orgId: string, qbItemId: string) {
                     inventory_item_id: created.id,
                     external_id: qbItemId,
                     provider: "quickbooks",
-                    account_id: accountId 
+                    account_id: accountId
                 }
             });
-            return created;
+
+            // recordMovements is the single writer of inventory_item.quantity — route the opening
+            // balance through it. Reason "initial", not "receive": nothing was purchased.
+            if (qtyOnHand > 0) {
+                await recordMovements(tx, orgId, actor ?? { actor_type: "system" }, [
+                    {
+                        inventory_item_id: created.id,
+                        qty: qtyOnHand,
+                        from_location_type: "external",
+                        to_location_type: "warehouse",
+                        reason: "initial",
+                        note: `Imported from QuickBooks (QtyOnHand ${qbItem.QtyOnHand})`,
+                        unit_cost: qbItem.PurchaseCost ?? undefined,
+                    },
+                ]);
+            }
+
+            // quantity was created at 0 and incremented by recordMovements; return
+            // the known final value instead of re-reading the row.
+            return { ...created, quantity: qtyOnHand };
         });
         return { item };
     } catch (error: any) {

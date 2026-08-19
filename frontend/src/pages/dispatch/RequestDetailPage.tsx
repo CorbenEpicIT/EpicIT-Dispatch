@@ -25,6 +25,7 @@ import ConvertToJob from "../../components/requests/ConvertToJob";
 import NoteManager from "../../components/requests/RequestNoteManager";
 import { useState, useRef, useEffect } from "react";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 export default function RequestDetailPage() {
 	const { requestId } = useParams<{ requestId: string }>();
@@ -587,6 +588,9 @@ export default function RequestDetailPage() {
 			</div>
 
 			<NoteManager requestId={requestId!} />
+
+			<ChangeHistory scope={{ kind: "entity", type: "request", id: requestId ?? ""}} />
+			
 
 			{request && (
 				<>

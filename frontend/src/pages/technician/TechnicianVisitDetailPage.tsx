@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useJobVisitByIdQuery } from "../../hooks/useJobs";
-import Card from "../../components/ui/Card";
 import VisitActionButtons from "../../components/technicianComponents/VisitActionButtons";
 import TechnicianQuoteModal from "../../components/quotes/TechnicianQuoteModal";
 import WorkPerformedSection from "../../components/technicianComponents/WorkPerformedSection";
@@ -23,6 +22,7 @@ import { VisitStatusColors, VisitStatusLabels, type VisitStatus } from "../../ty
 import { QuoteStatusColors } from "../../types/quotes";
 import { formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { useAuthStore } from "../../auth/authStore";
+import { ProjectStatusColors, ProjectStatusLabels } from "../../types/project";
 
 // ── Elapsed Timer ─────────────────────────────────────────────────────────────
 
@@ -80,10 +80,10 @@ function JobContextSection({
 	const primaryContact = job?.client?.contacts?.find((cc) => cc.is_primary)?.contact ?? null;
 
 	return (
-		<div className="rounded-xl border border-border-subtle overflow-hidden">
+		<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 			<button
 				onClick={() => setOpen((p) => !p)}
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Job Context
@@ -96,7 +96,7 @@ function JobContextSection({
 			</button>
 
 			{open && (
-				<div className="p-4 space-y-3">
+				<div className="p-4 space-y-3 bg-surface">
 					{job && (
 						<>
 							<div>
@@ -108,6 +108,21 @@ function JobContextSection({
 									{job.name}
 								</p>
 							</div>
+							{job.project && (
+								<div>
+									<p className="text-xs text-text-muted mb-0.5"> Project</p>
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-medium text-text-primary">
+											{job.project.project_number}  ·  {job.project.name}
+										</p>
+										<span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border
+											${ProjectStatusColors[job.project.status]}`}
+										>
+											{ProjectStatusLabels[job.project.status]}
+										</span>
+									</div>
+								</div>
+							)}
 							{job.address && (
 								<div>
 									<p className="text-xs text-text-muted mb-0.5">
@@ -261,7 +276,7 @@ function JobContextSection({
 										<span
 											role="button"
 											aria-disabled="true"
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface/50 border border-border/50 text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
 										>
 											<Phone
 												size={
@@ -287,7 +302,7 @@ function JobContextSection({
 										<span
 											role="button"
 											aria-disabled="true"
-											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface/50 border border-border/50 text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
+											className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface border border-border text-xs font-semibold text-text-faint opacity-50 cursor-not-allowed"
 										>
 											<Mail
 												size={
@@ -440,9 +455,9 @@ export default function TechnicianVisitDetailPage() {
 		return (
 			<div className="max-w-lg mx-auto space-y-4 animate-pulse">
 				<div className="h-7 w-48 bg-surface rounded" />
-				<div className="h-4 w-32 bg-surface/60 rounded" />
+				<div className="h-4 w-32 bg-surface rounded" />
 				<div className="h-24 bg-surface rounded-xl" />
-				<div className="h-32 bg-surface/60 rounded-xl" />
+				<div className="h-32 bg-surface rounded-xl" />
 			</div>
 		);
 	}
@@ -679,7 +694,11 @@ export default function TechnicianVisitDetailPage() {
 		}
 	};
 
-	const dispatchPhone = (user as any)?.dispatchPhone as string | undefined;
+	// Not part of the auth User shape yet; read defensively so the button only shows when present.
+	const dispatchPhone =
+		user && "dispatchPhone" in user && typeof user.dispatchPhone === "string"
+			? user.dispatchPhone
+			: undefined;
 
 	return (
 		<div className="max-w-lg mx-auto pb-28">

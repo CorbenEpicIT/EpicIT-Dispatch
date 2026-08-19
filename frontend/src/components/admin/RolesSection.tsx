@@ -52,7 +52,6 @@ const RolesSection = () => {
             }
             return true;
         });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roles, showDispatchers, showTechnicians, defaultOnly, terms, searchInput]);
 
     const clearAllFilters = () => {
@@ -194,7 +193,7 @@ const RolesSection = () => {
                                         setSelectedRole(role);
                                         setIsEditRoleModalOpen(true);
                                     }}
-                                    className="shrink-0 text-xs px-3 py-1.5 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors"
+                                    className="shrink-0 text-xs px-3 py-1.5 bg-surface hover:bg-surface-raised text-text-primary rounded-md transition-colors border border-border-subtle"
                                 >
                                     Edit
                                 </button>

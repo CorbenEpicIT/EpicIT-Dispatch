@@ -1,4 +1,5 @@
 import { Router, type Response } from 'express';
+import { z } from "zod";
 import {
     ErrorCodes,
     createSuccessResponse,
@@ -7,6 +8,7 @@ import {
 } from "../types/responses.js";
 import { getAgedReceivables,
     getArrivalPerformance,
+    getJobBacklog,
     getLeadsBySource,
     getMileageReport,
     getOverviewMetrics,
@@ -15,7 +17,10 @@ import { getAgedReceivables,
     getRevenueYTD,
     getTechnicianScorecard,
     getTimesheetReport,
-    getUnscheduledRevenue
+    getUnscheduledRevenue,
+	getPageSummary,
+	PAGES,
+	BREAKDOWNS,
 } from '../controllers/reportsController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
 import { rowsToXlsxBuffer } from '../lib/excel/reportExcel.js';
@@ -208,6 +213,16 @@ router.get("/unscheduled-revenue", requirePermission("view_reports"), async (req
 	}
 });
 
+router.get("/job-backlog", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const backlog = await getJobBacklog(orgId);
+		res.json(createSuccessResponse(backlog));
+	} catch (err) {
+		next(err);
+	}
+});
+
 router.get("/quote-pipeline", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -358,6 +373,34 @@ router.get("/clients/retention", requirePermission("view_reports"), async (req, 
 	}
 });
 
+router.get("/clients/lifetime-value", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"client-lifetime-value",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/clients/discounts", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"client-discounts",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
 router.get("/payments", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -457,6 +500,62 @@ router.get("/receivables/aging/by-client", requirePermission("view_reports"), as
 		const orgId = req.user!.organization_id as string;
 		const { data, meta } = await handlePaginatedReport(
 			"aged-receivables-by-client",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/recurring-revenue", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"recurring-revenue",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/field-added-revenue", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"field-added-revenue",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/revenue-by-line-item-type", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"revenue-by-line-item-type",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/revenue-line-items", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"revenue-line-items",
 			orgId,
 			req.query as Record<string, unknown>,
 		);
@@ -670,6 +769,38 @@ router.delete("/favorites/:id", requirePermission("view_reports"), async (req, r
 			return sendControllerError(res, result.err, ErrorCodes.DELETE_ERROR);
 		}
 		res.json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// A bound is either a full ISO instant (what the frontend sends) or a bare
+// YYYY-MM-DD, which the controller widens to that UTC day.
+const reportDateParam = z.union([z.iso.datetime({ offset: true }), z.iso.date()]);
+const GROUPINGS = [...new Set(Object.values(BREAKDOWNS).flat())] as [string, ...string[]];
+const pageSummaryQuerySchema = z.object({
+	page: z.enum(PAGES),
+	startDate: reportDateParam.optional(),
+	endDate: reportDateParam.optional(),
+	// Per-page applicability is resolved in the controller (falls back to the
+	// page's default dimension); this just rejects values that exist nowhere.
+	groupBy: z.enum(GROUPINGS).optional(),
+});
+
+router.get("/page-summary", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const parsed = pageSummaryQuerySchema.safeParse(req.query);
+		if (!parsed.success) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.message));
+		}
+		const { page, startDate, endDate, groupBy } = parsed.data;
+
+		const result = await getPageSummary(orgId, page, startDate, endDate, groupBy);
+
+		res.json(createSuccessResponse(result));
 	} catch (err) {
 		next(err);
 	}

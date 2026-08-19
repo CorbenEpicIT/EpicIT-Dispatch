@@ -22,6 +22,8 @@ import type {
 	SerialHistoryResponse,
 	ReconciliationReport,
 	TrackingSummary,
+	TrackingEligibility,
+	VehicleStockResponse,
 } from "../types/tracking";
 import * as trackingApi from "../api/tracking";
 import { qk, invalidate } from "../lib/queryKeys";
@@ -56,11 +58,31 @@ export const useReceiveInventoryMutation = (
 	});
 };
 
+// Whether tracking can change right now, and what's blocking it — the server's
+// own gate arithmetic (warehouse + vehicle qty, live serials/lots). The edit
+// form reads this instead of guessing from InventoryItem.quantity, which can't
+// see stock on a van. `enabled` is caller-controlled so the request only fires
+// while the edit modal is actually open.
+export const useTrackingEligibilityQuery = (
+	itemId: string,
+	enabled = true,
+): UseQueryResult<TrackingEligibility, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.trackingEligibility(itemId),
+		queryFn: () => trackingApi.getTrackingEligibility(itemId),
+		enabled: enabled && !!itemId,
+		// Short: stock moves constantly, and a stale "you can change this" would
+		// unlock toggles the server then rejects.
+		staleTime: 5_000,
+	});
+};
+
 // Flips is_serialized / is_batch_tracked on an existing item. The backend only
-// allows this when on-hand stock is zero and the item isn't provisional — a
-// rejection surfaces as a thrown Error the caller can display. Invalidates the
-// whole inventory tree (list + detail) since the badges/tracking page gating
-// read off these flags.
+// allows this when on-hand stock is zero (warehouse AND every vehicle), nothing
+// is live for a disable, and the item isn't provisional — a rejection surfaces
+// as a thrown Error the caller can display. Invalidates the whole inventory tree
+// (list + detail) since the badges/Tracking tab gating read off these flags;
+// that also refreshes the eligibility query, which is keyed under the same root.
 export const useUpdateItemTrackingMutation = (
 	itemId: string,
 ): UseMutationResult<InventoryItem, Error, UpdateItemTrackingInput> => {
@@ -77,7 +99,13 @@ export const useUpdateItemTrackingMutation = (
 
 export const useSerialsQuery = (
 	itemId: string,
-	filters?: { status?: string; vehicleId?: string; cursor?: string; search?: string },
+	filters?: {
+		status?: string;
+		vehicleId?: string;
+		batchId?: string;
+		cursor?: string;
+		search?: string;
+	},
 ): UseQueryResult<SerialsListResponse, Error> => {
 	return useQuery({
 		queryKey: [...qk.inventory.serials(itemId), filters],
@@ -107,6 +135,23 @@ export const useTrackingSummaryQuery = (itemId: string): UseQueryResult<Tracking
 		queryFn: () => trackingApi.getTrackingSummary(itemId),
 		enabled: !!itemId,
 		staleTime: 30_000,
+	});
+};
+
+// Per-vehicle qty breakdown for the Overview tab's "on vehicles" drill-in.
+// `enabled` gates the request behind the dropdown actually being open — the
+// card renders on every item detail load, and most opens never expand it.
+export const useItemVehicleStockQuery = (
+	itemId: string,
+	enabled = true,
+): UseQueryResult<VehicleStockResponse, Error> => {
+	return useQuery({
+		queryKey: qk.inventory.vehicleStock(itemId),
+		queryFn: () => trackingApi.getItemVehicleStock(itemId),
+		enabled: enabled && !!itemId,
+		// Stock moves fast enough (restocks, parts-used) that a stale open
+		// dropdown could show a van as loaded that was just drained.
+		staleTime: 15_000,
 	});
 };
 

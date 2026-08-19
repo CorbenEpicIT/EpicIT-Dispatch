@@ -8,6 +8,7 @@ import { useLabelQueueStore } from "../../../stores/labelQueueStore";
 import { useToast } from "../../ui/useToast";
 import SerialCaptureList from "./SerialCaptureList";
 import BatchCaptureFields, { type BatchCaptureValue } from "./BatchCaptureFields";
+import { isStorableStockQty } from "../stockQtyPrecision";
 
 interface ReceiveStockModalProps {
 	isOpen: boolean;
@@ -31,10 +32,18 @@ const emptyBatch: BatchCaptureValue = {
 // Reuses the same capture components + receive mutation so serials/batches can
 // be added to an item that already exists.
 export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStockModalProps) {
-	const [qty, setQty] = useState(1);
+	// A string, not a number: coercing on every keystroke snapped "0.5" to 1
+	// and the native min=1/no-step input rejected "2.5" outright, so a batch-
+	// tracked measured item could never receive a fractional quantity even
+	// though the ledger stores 2 dp (review I7). Serialized items stay whole —
+	// a serial is one indivisible unit.
+	const [qty, setQty] = useState("1");
 	const [serialValues, setSerialValues] = useState<string[]>([]);
 	const [autoSerial, setAutoSerial] = useState(false);
 	const [batchValue, setBatchValue] = useState<BatchCaptureValue>(emptyBatch);
+	// Kept as a string, not a number: "" must stay distinguishable from 0 so a
+	// blank field records "cost unknown" rather than a free purchase.
+	const [unitCost, setUnitCost] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
 	const receiveMutation = useReceiveInventoryMutation(item.id);
@@ -45,30 +54,46 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 	// values never leak into the next one.
 	useEffect(() => {
 		if (isOpen) {
-			setQty(1);
+			setQty("1");
 			setSerialValues([]);
 			setAutoSerial(false);
 			setBatchValue(emptyBatch);
+			setUnitCost("");
 			setError(null);
 		}
 	}, [isOpen, item.id]);
 
 	if (!isOpen) return null;
 
+	// Mirrors the backend: z.number().positive() + isStorableStockQty, and the
+	// controller's whole-number rule for serialized items.
+	const parsedQty = Number(qty.trim());
+	const qtyError =
+		qty.trim() === "" || !Number.isFinite(parsedQty) || parsedQty <= 0
+			? "Quantity must be greater than 0."
+			: item.is_serialized && !Number.isInteger(parsedQty)
+				? "Quantity must be a whole number of units for a serialized item."
+				: !isStorableStockQty(parsedQty)
+					? "Quantity must be to two decimal places."
+					: null;
+	// Serial entry needs a whole count to size itself by; while the field is
+	// blank or invalid it sizes to nothing rather than a guessed 1.
+	const serialTarget = qtyError == null && Number.isInteger(parsedQty) ? parsedQty : 0;
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (receiveMutation.isPending) return;
 		setError(null);
 
-		if (qty < 1) {
-			setError("Quantity must be at least 1.");
+		if (qtyError) {
+			setError(qtyError);
 			return;
 		}
 		// Mirrors handleAdvanceFromCapture's guards in CreateInventoryItem.
 		// Auto-assign skips the per-unit entry (the backend synthesizes them).
-		if (item.is_serialized && !autoSerial && serialValues.length !== qty) {
+		if (item.is_serialized && !autoSerial && serialValues.length !== serialTarget) {
 			setError(
-				`Enter exactly ${qty} serial number${qty === 1 ? "" : "s"} (currently ${serialValues.length}).`,
+				`Enter exactly ${serialTarget} serial number${serialTarget === 1 ? "" : "s"} (currently ${serialValues.length}).`,
 			);
 			return;
 		}
@@ -77,8 +102,17 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 			return;
 		}
 
+		const parsedUnitCost = unitCost.trim() === "" ? null : Number(unitCost);
+		if (parsedUnitCost != null && (!Number.isFinite(parsedUnitCost) || parsedUnitCost < 0)) {
+			setError("Unit cost must be 0 or more, or left blank.");
+			return;
+		}
+
 		const input: ReceiveInventoryInput = {
-			qty,
+			qty: parsedQty,
+			// Omitted when blank — the paid-cost history counts a receipt with no
+			// recorded cost as unknown rather than averaging in a zero.
+			...(parsedUnitCost != null ? { unit_cost: parsedUnitCost } : {}),
 			...(item.is_serialized
 				? autoSerial
 					? { auto_serial: true }
@@ -155,7 +189,10 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 					</button>
 				</div>
 
-				<form onSubmit={handleSubmit} className="space-y-4">
+				{/* noValidate: the quantity rules (positive, 2 dp, whole for serialized)
+				    are checked in handleSubmit with the same messages as the rest of
+				    this form, rather than the browser's generic step/min tooltip. */}
+				<form onSubmit={handleSubmit} noValidate className="space-y-4">
 					<div>
 						<label htmlFor="receive-qty" className={LABEL}>
 							Quantity
@@ -163,18 +200,40 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 						<input
 							id="receive-qty"
 							type="number"
-							min={1}
+							min={item.is_serialized ? 1 : 0.01}
+							step={item.is_serialized ? 1 : 0.01}
+							inputMode={item.is_serialized ? "numeric" : "decimal"}
 							value={qty}
-							onChange={(e) => setQty(e.target.value ? Math.max(1, Number(e.target.value)) : 1)}
+							onChange={(e) => setQty(e.target.value)}
 							className={INPUT}
 						/>
 						{item.is_serialized && (
 							<p className="text-xs text-text-muted mt-1">
 								{autoSerial
-									? `${qty} serial number${qty === 1 ? "" : "s"} will be auto-assigned.`
+									? `${serialTarget} serial number${serialTarget === 1 ? "" : "s"} will be auto-assigned.`
 									: "Enter one serial number per unit below."}
 							</p>
 						)}
+					</div>
+
+					<div>
+						<label htmlFor="receive-unit-cost" className={LABEL}>
+							Unit cost paid <span className="normal-case">(optional)</span>
+						</label>
+						<input
+							id="receive-unit-cost"
+							type="number"
+							min={0}
+							step="0.01"
+							placeholder="—"
+							value={unitCost}
+							onChange={(e) => setUnitCost(e.target.value)}
+							className={INPUT}
+						/>
+						<p className="text-xs text-text-muted mt-1">
+							What the supplier billed per unit on this receipt. Leave blank if
+							unknown — it's recorded as unknown, not as zero.
+						</p>
 					</div>
 
 					{item.is_serialized && (
@@ -196,7 +255,7 @@ export default function ReceiveStockModal({ isOpen, onClose, item }: ReceiveStoc
 							) : (
 								<SerialCaptureList
 									itemId={item.id}
-									targetCount={qty}
+									targetCount={serialTarget}
 									value={serialValues}
 									onChange={setSerialValues}
 								/>

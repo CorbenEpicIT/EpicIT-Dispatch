@@ -26,9 +26,43 @@ export const qk = {
 		detail: (id: string) => [...inventoryRoot, "detail", id] as const,
 		tags: [...inventoryRoot, "tags"] as const,
 		provisional: [...inventoryRoot, "provisional"] as const,
+		// movements/valueHistory take an opts object for the same reason
+		// consumptionTrend does: the History tab's range control is a SERVER-side
+		// filter, so two ranges are two different result sets and must not share
+		// one cache entry. Omitting opts keeps the old key shape, and because the
+		// range lands in a trailing segment, prefix invalidation still matches.
+		movements: (itemId: string, opts?: { createdAfter?: string }) =>
+			opts
+				? ([...inventoryRoot, "detail", itemId, "movements", opts] as const)
+				: ([...inventoryRoot, "detail", itemId, "movements"] as const),
+		usage: (itemId: string, opts?: { limit?: number; offset?: number }) =>
+			opts
+				? ([...inventoryRoot, "detail", itemId, "usage", opts] as const)
+				: ([...inventoryRoot, "detail", itemId, "usage"] as const),
+		forecast: (itemId: string) => [...inventoryRoot, "detail", itemId, "forecast"] as const,
+		valueHistory: (itemId: string, opts?: { createdAfter?: string }) =>
+			opts
+				? ([...inventoryRoot, "detail", itemId, "value-history", opts] as const)
+				: ([...inventoryRoot, "detail", itemId, "value-history"] as const),
+		// Carries both range shapes because the endpoint does: createdAfter windows
+		// the step series, bucket/range drive the charged-price aggregate.
+		priceHistory: (
+			itemId: string,
+			opts?: { createdAfter?: string; bucket?: "week" | "month"; range?: number },
+		) =>
+			opts
+				? ([...inventoryRoot, "detail", itemId, "price-history", opts] as const)
+				: ([...inventoryRoot, "detail", itemId, "price-history"] as const),
+		consumptionTrend: (itemId: string, opts?: { bucket?: "week" | "month"; range?: number }) =>
+			opts
+				? ([...inventoryRoot, "detail", itemId, "consumption-trend", opts] as const)
+				: ([...inventoryRoot, "detail", itemId, "consumption-trend"] as const),
 		serials: (itemId: string) => [...inventoryRoot, "detail", itemId, "serials"] as const,
 		batches: (itemId: string) => [...inventoryRoot, "detail", itemId, "batches"] as const,
 		trackingSummary: (itemId: string) => [...inventoryRoot, "detail", itemId, "tracking-summary"] as const,
+			vehicleStock: (itemId: string) => [...inventoryRoot, "detail", itemId, "vehicle-stock"] as const,
+		trackingEligibility: (itemId: string) =>
+			[...inventoryRoot, "detail", itemId, "tracking-eligibility"] as const,
 		labels: [...inventoryRoot, "labels"] as const,
 		batchImpact: (batchId: string) => [...inventoryRoot, "batch-impact", batchId] as const,
 		serialHistory: (serialId: string) => [...inventoryRoot, "serial-history", serialId] as const,

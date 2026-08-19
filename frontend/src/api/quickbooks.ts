@@ -72,6 +72,8 @@ export const getQBMappedItems = async (): Promise<MappedQBItem[]> => {
 
 export const linkQBItem = async (inventory_item_id: string, qb_item_id:string) => {
     const response = await api.post<ApiResponse<{linked: boolean}>>(`integrations/quickbooks/item-mappings`, {inventory_item_id, qb_item_id});
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to link QB item");
+    return response.data.data!;
 }
 
 export const unlinkQBItem = async (inventory_item_id: string) => {

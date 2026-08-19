@@ -9,6 +9,7 @@ import {
 } from "../lib/validate/jobVisits.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
 import { onVisitScheduled, onVisitRescheduled, onVisitCancelled } from "../services/followupTriggers.js";
@@ -137,6 +138,9 @@ export const getAllJobVisits = async (organization_id: string, filters?: { clien
 			job: {
 				include: {
 					client: true,
+					project: {
+						select: { id: true, project_number: true, status: true, name: true },
+					}
 				},
 			},
 			visit_techs: {
@@ -187,6 +191,9 @@ export const getJobVisitById = async (id: string, organization_id: string) => {
 						},
 					},
 					quote: true,
+					project: {
+						select: { id: true, project_number: true, status: true, name: true },
+					}
 				},
 			},
 			visit_techs: {
@@ -297,6 +304,9 @@ export const getJobVisitsByTechId = async (techId: string, organization_id: stri
 			job: {
 				include: {
 					client: true,
+					project: {
+						select: { id: true, project_number: true, status: true, name: true },
+					}
 				},
 			},
 			line_items: {
@@ -445,7 +455,7 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 			if (job.status === "Unscheduled") {
 				await tx.job.update({
 					where: { id: parsed.job_id },
-					data: { status: "Scheduled" },
+					data: { status: "Scheduled", status_changed_at: new Date() },
 				});
 			}
 
@@ -736,7 +746,7 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				if (newJobStatus !== existingVisit.job.status) {
 					await tx.job.update({
 						where: { id: existingVisit.job_id },
-						data: { status: newJobStatus },
+						data: { status: newJobStatus, status_changed_at: new Date() },
 					});
 				}
 
@@ -1384,7 +1394,10 @@ export const applyVisitTransition = async (
 						revertedJobStatus = "Scheduled";
 					}
 					if (revertedJobStatus !== other.job.status) {
-						await tx.job.update({ where: { id: other.job_id }, data: { status: revertedJobStatus } });
+						await tx.job.update({
+							where: { id: other.job_id },
+							data: { status: revertedJobStatus, status_changed_at: new Date() },
+						});
 					}
 				}
 			}
@@ -1400,7 +1413,10 @@ export const applyVisitTransition = async (
 				newJobStatus = "Scheduled";
 			}
 			if (newJobStatus !== existingVisit.job.status) {
-				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
+				await tx.job.update({
+					where: { id: existingVisit.job_id },
+					data: { status: newJobStatus, status_changed_at: new Date() },
+				});
 			}
 
 			// ── Inventory consumption (once, on this visit's Completed transition) ──
@@ -1669,7 +1685,10 @@ export const cancelJobVisit = async (
 				newJobStatus = "Scheduled";
 			}
 			if (newJobStatus !== existingVisit.job.status) {
-				await tx.job.update({ where: { id: existingVisit.job_id }, data: { status: newJobStatus } });
+				await tx.job.update({
+					where: { id: existingVisit.job_id },
+					data: { status: newJobStatus, status_changed_at: new Date() },
+				});
 			}
 
 			// ── Step 1: Close open time entries ──────────────────────────────────
@@ -1826,6 +1845,7 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 		const sdb = getScopedDb(organizationId);
 		const visit = await sdb.job_visit.findFirst({
 			where: { id, job: { organization_id: organizationId } },
+			include: { job: { select: { status: true } } },
 		});
 
 		if (!visit) {
@@ -1861,6 +1881,7 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 						new: null,
 					},
 					status: { old: visit.status, new: null },
+					...parentBreadcrumb("job", visit.job_id),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -1875,10 +1896,10 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 				where: { job_id: visit.job_id },
 			});
 
-			if (remainingVisits.length === 0) {
+			if (remainingVisits.length === 0 && visit.job.status !== "Unscheduled") {
 				await tx.job.update({
 					where: { id: visit.job_id },
-					data: { status: "Unscheduled" },
+					data: { status: "Unscheduled", status_changed_at: new Date() },
 				});
 			}
 		});

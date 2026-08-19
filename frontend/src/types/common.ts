@@ -16,12 +16,14 @@ export const PriorityLabels: Record<Priority, string> = {
 	Emergency: "Emergency",
 };
 
+// Theme-token classes only (see styles/theme.css) so badges and filter chips stay
+// readable in both light and dark themes.
 export const PriorityColors: Record<Priority, string> = {
-	Low:       "bg-neutral/20 text-text-tertiary border-border-strong/30",
-	Medium:    "bg-primary/20 text-primary-text border-primary/30",
-	High:      "bg-orange/20 text-orange-text border-orange/30",
-	Urgent:    "bg-error/20 text-error-text border-error/30",
-	Emergency: "bg-error/20 text-error-text border-error/30 font-bold",
+	Low: "bg-info/20 text-info-text border-info/30",
+	Medium: "bg-primary/20 text-primary-text border-primary/30",
+	High: "bg-orange/20 text-orange-text border-orange/30",
+	Urgent: "bg-error/20 text-error-text border-error/30",
+	Emergency: "bg-error/30 text-error-text border-error/50 font-bold",
 };
 
 // ============================================================================
@@ -258,7 +260,12 @@ export function percentageToTaxRate(percentage: number): number {
 
 //Format currency for display
 export function formatCurrency(amount: number | null | undefined): string {
-	return `$${(amount ?? 0).toFixed(2)}`;
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	}).format(amount ?? 0);
 }
 
 // Calculate line item total

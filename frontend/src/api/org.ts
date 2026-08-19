@@ -4,6 +4,8 @@ import type { ProvisionalItem } from "../types/inventory";
 
 export type RestockMode = "tech_self_serve" | "dispatch_prepared";
 
+export type MeasurementSystem = "imperial" | "metric";
+
 export interface OrgSettings {
 	id: string;
 	name: string;
@@ -15,6 +17,7 @@ export interface OrgSettings {
 	website: string | null;
 	tax_rate: string;
 	restock_mode: RestockMode;
+	measurement_system: MeasurementSystem;
 	mfa_required: boolean;
 	brand_color: string | null;
 	followups_enabled: boolean;
@@ -28,6 +31,7 @@ export interface OrgSettingsUpdate {
 	email?: string | null;
 	website?: string | null;
 	restock_mode?: RestockMode;
+	measurement_system?: MeasurementSystem;
 	mfa_required?: boolean;
 	brand_color?: string | null;
 	followups_enabled?: boolean;

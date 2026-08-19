@@ -233,6 +233,22 @@ export const useAddPartsUsedMutation = () => {
 	});
 };
 
+export const useUpdatePartsUsedQtyMutation = () => {
+	const queryClient = useQueryClient();
+	return useMutation<
+		VisitLineItem | null,
+		Error,
+		{ visitId: string; lineItemId: string; vehicleId: string | null; data: { technician_id: string; quantity: number } }
+	>({
+		mutationFn: ({ visitId, lineItemId, data }) => vehicleApi.updatePartsUsedQty(visitId, lineItemId, data),
+		onSuccess: (_result, { visitId, vehicleId }) => {
+			queryClient.invalidateQueries({ queryKey: ["jobVisits", visitId] });
+			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
+			if (vehicleId) invalidate.stockData(queryClient, vehicleId);
+		},
+	});
+};
+
 export const useAddSupplierPartUsedMutation = (visitId: string, vehicleId: string | null) => {
 	const qc = useQueryClient();
 	return useMutation<

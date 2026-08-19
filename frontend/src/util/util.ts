@@ -55,6 +55,15 @@ export const formatDate = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	});
 };
 
+export const formatDateOnly = (date: Date | string) => {
+	return new Date(date).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		timeZone: "UTC",
+	});
+};
+
 export const formatTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 	const d = typeof date === "string" ? new Date(date) : date;
 	return d.toLocaleTimeString("en-US", {
@@ -65,7 +74,7 @@ export const formatTime = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 };
 /* ── Week / day helpers ──────────────────────────────────────── */
 
-// Returns the Start of the week 
+// Returns the Start of the week
 export function startOfWeek(d: Date): Date {
 	const date = new Date(d);
 	const day = date.getDay(); // 0 = Sun
@@ -75,7 +84,7 @@ export function startOfWeek(d: Date): Date {
 	return date;
 }
 
-// Returns a new Date by n amount of calendar days 
+// Returns a new Date by n amount of calendar days
 export function addDays(d: Date, n: number): Date {
 	const date = new Date(d);
 	date.setDate(date.getDate() + n);
@@ -92,9 +101,13 @@ export function formatWeekDay(d: Date, tz = FALLBACK_TIMEZONE): string {
 	});
 }
 
-// Formats a week range 
+// Formats a week range
 export function formatWeekRange(weekStart: Date, tz = FALLBACK_TIMEZONE): string {
-	const start = weekStart.toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" });
+	const start = weekStart.toLocaleDateString("en-US", {
+		timeZone: tz,
+		month: "short",
+		day: "numeric",
+	});
 	const end = addDays(weekStart, 6).toLocaleDateString("en-US", {
 		timeZone: tz,
 		month: "short",
@@ -114,65 +127,84 @@ export function isSameDay(a: Date, b: Date, tz = FALLBACK_TIMEZONE): boolean {
 
 /* ── Inventory Status ────────────────────────────────────────── */
 
-export const calculateStockStatus = (
-	quantity: number,
-	threshold: number | null
-): StockStatus => {
-	if(threshold === null) return null;
-	if(quantity === 0) return 'out_of_stock';
-	if(quantity <= threshold) return 'low';
-	return 'sufficient';
+export const calculateStockStatus = (quantity: number, threshold: number | null): StockStatus => {
+	if (threshold === null) return null;
+	if (quantity === 0) return "out_of_stock";
+	if (quantity <= threshold) return "low";
+	return "sufficient";
 };
+
+// Prefers the server-computed stock_status (accounts for tracking-aware
+// on-hand math); falls back to a client-side calc from quantity/threshold
+// when it isn't present. Shared by ItemStatRow and InventoryItemDetailPage
+// so the two never drift.
+export const getItemStockStatus = (item: {
+	stock_status: StockStatus;
+	quantity: number;
+	low_stock_threshold: number | null;
+}): StockStatus =>
+	item.stock_status ?? calculateStockStatus(item.quantity, item.low_stock_threshold);
 
 export const getStatusLabel = (status: StockStatus): string => {
 	switch (status) {
-		case 'out_of_stock':
-			return 'Out of Stock';
-		case 'low':
-			return 'Low Stock';
-		case 'sufficient':
-			return 'Sufficient';
+		case "out_of_stock":
+			return "Out of Stock";
+		case "low":
+			return "Low Stock";
+		case "sufficient":
+			return "Sufficient";
 		default:
-			return 'No Alert';
+			return "No Alert";
 	}
 };
 
 export const getStatusBadgeClass = (status: StockStatus): string => {
 	switch (status) {
-		case 'out_of_stock':
-			return 'bg-error/20 text-error-text border border-error/30';
-		case 'low':
-			return 'bg-yellow-500/20 text-warning-text border border-yellow-500/30';
-		case 'sufficient':
-			return 'bg-success/20 text-success-text border border-success/30';
+		case "out_of_stock":
+			return "bg-error/20 text-error-text border border-error/30";
+		case "low":
+			return "bg-yellow-500/20 text-warning-text border border-yellow-500/30";
+		case "sufficient":
+			return "bg-success/20 text-success-text border border-success/30";
 		default:
-			return 'bg-surface text-text-tertiary border border-border';
+			return "bg-surface text-text-tertiary border border-border";
 	}
 };
 
 export const getStockStatusTextColor = (status: StockStatus): string => {
 	switch (status) {
-		case 'out_of_stock': return 'text-error-text';
-		case 'low':          return 'text-warning-text';
-		default:             return 'text-text-primary';
+		case "out_of_stock":
+			return "text-error-text";
+		case "low":
+			return "text-warning-text";
+		default:
+			return "text-text-primary";
 	}
 };
 
 export const getStockStatusDotColor = (status: StockStatus): string => {
 	switch (status) {
-		case 'out_of_stock': return 'bg-red-400';
-		case 'low':          return 'bg-yellow-400';
-		case 'sufficient':   return 'bg-green-400';
-		default:             return 'bg-zinc-500';
+		case "out_of_stock":
+			return "bg-red-400";
+		case "low":
+			return "bg-yellow-400";
+		case "sufficient":
+			return "bg-green-400";
+		default:
+			return "bg-zinc-500";
 	}
 };
 
 export const getStockRingColor = (status: StockStatus): string => {
 	switch (status) {
-		case 'out_of_stock': return '#ef4444';
-		case 'low':          return '#eab308';
-		case 'sufficient':   return '#22c55e';
-		default:             return '#3f3f46';
+		case "out_of_stock":
+			return "#ef4444";
+		case "low":
+			return "#eab308";
+		case "sufficient":
+			return "#22c55e";
+		default:
+			return "#3f3f46";
 	}
 };
 
@@ -181,9 +213,9 @@ export const getStockRingColor = (status: StockStatus): string => {
 // Admin is basically dispatcher with extra permissions
 // also works if need to add other roles like super admin or a lower dispatcher role in the future
 export function isDispatcherRole(role: string): boolean {
-  return role === 'DISPATCHER' || role === 'ADMIN';
+	return role === "DISPATCHER" || role === "ADMIN";
 }
 
 export function isAdmin(role: string): boolean {
-  return role === 'ADMIN';
+	return role === "ADMIN";
 }

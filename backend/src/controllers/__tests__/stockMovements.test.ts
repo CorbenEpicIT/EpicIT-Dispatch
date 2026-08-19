@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Prisma } from "../../../generated/prisma/client.js";
 import {
 	recordMovements,
 	lockInventoryRows,
@@ -31,8 +32,17 @@ function makeTx(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function makeItemRow(id: string, quantity: number, low_stock_threshold: number | null = null) {
-	return { id, quantity, low_stock_threshold };
+// `unit` is required: recordMovements stamps it onto every ledger row, so a row
+// without one is not a shape the production code can be handed. quantity and
+// low_stock_threshold accept Decimal as well as number because that is what Prisma
+// returns from their numeric(10,2) columns.
+function makeItemRow(
+	id: string,
+	quantity: number | Prisma.Decimal,
+	low_stock_threshold: number | Prisma.Decimal | null = null,
+	unit = "each",
+) {
+	return { id, quantity, low_stock_threshold, unit };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,6 +74,97 @@ describe("recordMovements", () => {
 		tx.inventory_item.findMany.mockResolvedValue([]);
 	});
 
+	// The ledger is the source of truth for stock, but until `unit` was stamped here
+	// every row was only implicitly denominated in the item's CURRENT unit — so
+	// editing an item from `each` to `box` silently reinterpreted all of its history.
+	// recordMovements is the single writer of stock_movement, so it is the only place
+	// the stamp can be applied, and it reads the unit from the item inside the same
+	// transaction rather than trusting a caller-supplied value.
+	it("stamps the item's unit onto every movement row", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 5, null, "ft")]);
+		const m: MovementInput = {
+			inventory_item_id: "item-1",
+			qty: 12.5,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+		};
+
+		await recordMovements(tx as unknown as Tx, ORG, ACTOR, [m]);
+
+		const { data } = tx.stock_movement.createMany.mock.calls[0][0] as { data: Record<string, unknown>[] };
+		expect(data[0].unit).toBe("ft");
+	});
+
+	it("stamps each movement with its own item's unit when a batch spans items", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([
+			makeItemRow("item-1", 5, null, "ft"),
+			makeItemRow("item-2", 5, null, "kg"),
+		]);
+		const movements: MovementInput[] = [
+			{
+				inventory_item_id: "item-1",
+				qty: 1,
+				from_location_type: "external",
+				to_location_type: "warehouse",
+				reason: "receive",
+			},
+			{
+				inventory_item_id: "item-2",
+				qty: 2,
+				from_location_type: "external",
+				to_location_type: "warehouse",
+				reason: "receive",
+			},
+		];
+
+		await recordMovements(tx as unknown as Tx, ORG, ACTOR, movements);
+
+		const { data } = tx.stock_movement.createMany.mock.calls[0][0] as { data: Record<string, unknown>[] };
+		expect(data.map((d) => [d.inventory_item_id, d.unit])).toEqual([
+			["item-1", "ft"],
+			["item-2", "kg"],
+		]);
+	});
+
+	// The low-stock trigger compares on-hand against the threshold. Both arrive as
+	// Decimal now, and `<` / `<=` on Decimals coerces through valueOf() to a STRING:
+	// "9" <= "10" is false, so a low item would report as fine. Values chosen so the
+	// lexicographic answer differs from the numeric one.
+	it("flags an item as low when Decimal quantity is under its Decimal threshold", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([
+			makeItemRow("item-1", new Prisma.Decimal("9.00"), new Prisma.Decimal("10.00")),
+		]);
+		const m: MovementInput = {
+			inventory_item_id: "item-1",
+			qty: 1,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+		};
+
+		const result = await recordMovements(tx as unknown as Tx, ORG, ACTOR, [m]);
+
+		expect(result.lowStockItemIds).toEqual(["item-1"]);
+	});
+
+	it("does not flag an item whose Decimal quantity is over its Decimal threshold", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([
+			makeItemRow("item-1", new Prisma.Decimal("100.00"), new Prisma.Decimal("20.00")),
+		]);
+		const m: MovementInput = {
+			inventory_item_id: "item-1",
+			qty: 1,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+		};
+
+		const result = await recordMovements(tx as unknown as Tx, ORG, ACTOR, [m]);
+
+		expect(result.lowStockItemIds).toEqual([]);
+	});
+
 	it("returns empty lowStockItemIds when movements array is empty", async () => {
 		const result = await recordMovements(tx as unknown as Tx, ORG, ACTOR, []);
 		expect(result).toEqual({ lowStockItemIds: [], gapItemIds: [], movementIds: [] });
@@ -83,7 +184,10 @@ describe("recordMovements", () => {
 		);
 	});
 
-	it("rejects fractional qty on warehouse-touching movements", async () => {
+	// quantity is numeric(10,2) now, so a measured item genuinely holds 2.5 kg —
+	// the guard only needs to fit the column, not require a whole number.
+	it("allows fractional qty on warehouse-touching movements", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 10, null, "kg")]);
 		const m: MovementInput = {
 			inventory_item_id: "item-1",
 			qty: 2.5,
@@ -91,12 +195,25 @@ describe("recordMovements", () => {
 			to_location_type: "warehouse",
 			reason: "receive",
 		};
+		await expect(recordMovements(tx as unknown as Tx, ORG, ACTOR, [m])).resolves.toBeDefined();
+	});
+
+	it("rejects a qty with more precision than the qty column can store", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 10, null, "kg")]);
+		const m: MovementInput = {
+			inventory_item_id: "item-1",
+			qty: 2.555,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+		};
 		await expect(recordMovements(tx as unknown as Tx, ORG, ACTOR, [m])).rejects.toThrow(
-			"Fractional qty",
+			"is not storable",
 		);
 	});
 
 	it("allows fractional qty for vehicle-only movements", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 10, null, "kg")]);
 		const m: MovementInput = {
 			inventory_item_id: "item-1",
 			qty: 1.5,
@@ -124,7 +241,7 @@ describe("recordMovements", () => {
 
 		expect(tx.inventory_item.update).toHaveBeenCalledWith({
 			where: { id: "item-1" },
-			data: { quantity: { increment: 5 } },
+			data: { quantity: { increment: new Prisma.Decimal(5) } },
 		});
 	});
 
@@ -142,7 +259,7 @@ describe("recordMovements", () => {
 
 		expect(tx.inventory_item.update).toHaveBeenCalledWith({
 			where: { id: "item-1" },
-			data: { quantity: { increment: -3 } },
+			data: { quantity: { increment: new Prisma.Decimal(-3) } },
 		});
 	});
 
@@ -183,7 +300,9 @@ describe("recordMovements", () => {
 	});
 
 	it("allows warehouse overdraw when allowNegative is true", async () => {
-		// No findMany call should happen when allowNegative (no guard check)
+		// allowNegative skips the overdraw guard, but the item is still read — the
+		// tracking flags and the unit to stamp both come from that same query.
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 1)]);
 		const m: MovementInput = {
 			inventory_item_id: "item-1",
 			qty: 999,
@@ -292,8 +411,54 @@ describe("recordMovements", () => {
 		expect(tx.inventory_item.update).toHaveBeenCalledOnce();
 		expect(tx.inventory_item.update).toHaveBeenCalledWith({
 			where: { id: "item-1" },
-			data: { quantity: { increment: 7 } },
+			data: { quantity: { increment: new Prisma.Decimal(7) } },
 		});
+	});
+
+	// Deltas are accumulated in Decimal, not float: 0.1 + 0.2 as doubles is
+	// 0.30000000000000004, which both wrote a third decimal into the increment and
+	// made the overdraw guard see -5.5e-17 < 0 on an item with exactly 0.3 on hand.
+	it("does not raise a false InsufficientStock from float noise when 2-dp deductions exactly equal on-hand", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", new Prisma.Decimal("0.3"))]);
+
+		const movements: MovementInput[] = [
+			{ inventory_item_id: "item-1", qty: 0.1, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+			{ inventory_item_id: "item-1", qty: 0.2, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+		];
+
+		await expect(recordMovements(tx as unknown as Tx, ORG, ACTOR, movements)).resolves.toBeDefined();
+		expect(tx.inventory_item.update).toHaveBeenCalledWith({
+			where: { id: "item-1" },
+			data: { quantity: { increment: new Prisma.Decimal("-0.3") } },
+		});
+		const increment = tx.inventory_item.update.mock.calls[0][0].data.quantity.increment as Prisma.Decimal;
+		expect(increment.toString()).toBe("-0.3");
+	});
+
+	it("still raises InsufficientStock when 2-dp deductions exceed on-hand by one cent", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", new Prisma.Decimal("0.3"))]);
+
+		const movements: MovementInput[] = [
+			{ inventory_item_id: "item-1", qty: 0.1, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+			{ inventory_item_id: "item-1", qty: 0.21, from_location_type: "warehouse", to_location_type: "consumed", reason: "direct_consumption" },
+		];
+
+		await expect(recordMovements(tx as unknown as Tx, ORG, ACTOR, movements)).rejects.toThrow(InsufficientStockError);
+	});
+
+	it("accumulates vehicle deltas in Decimal too (no third decimal reaches the upsert)", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 10)]);
+
+		const movements: MovementInput[] = [
+			{ inventory_item_id: "item-1", qty: 0.1, from_location_type: "vehicle", from_vehicle_id: "truck-1", to_location_type: "consumed", reason: "parts_used" },
+			{ inventory_item_id: "item-1", qty: 0.2, from_location_type: "vehicle", from_vehicle_id: "truck-1", to_location_type: "consumed", reason: "parts_used" },
+		];
+
+		await recordMovements(tx as unknown as Tx, ORG, ACTOR, movements, { allowNegative: true });
+
+		const upsert = tx.vehicle_stock_item.upsert.mock.calls[0][0];
+		expect((upsert.update.qty_on_hand.increment as Prisma.Decimal).toString()).toBe("-0.3");
+		expect((upsert.create.qty_on_hand as Prisma.Decimal).toString()).toBe("-0.3");
 	});
 
 	it("locks inventory rows before reading quantities", async () => {
@@ -332,6 +497,41 @@ describe("recordMovements", () => {
 		const { data } = tx.stock_movement.createMany.mock.calls[0][0] as { data: Record<string, unknown>[] };
 		expect(data[0].actor_type).toBe("technician");
 		expect(data[0].actor_id).toBe("tech-99");
+	});
+
+	it("persists unit_cost on an intake movement", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 5)]);
+
+		const m: MovementInput = {
+			inventory_item_id: "item-1",
+			qty: 2,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+			unit_cost: 40.25,
+		};
+		await recordMovements(tx as unknown as Tx, ORG, ACTOR, [m]);
+
+		const { data } = tx.stock_movement.createMany.mock.calls[0][0] as { data: Record<string, unknown>[] };
+		expect(Number(data[0].unit_cost)).toBe(40.25);
+	});
+
+	it("writes a null unit_cost when the caller records none", async () => {
+		tx.inventory_item.findMany.mockResolvedValue([makeItemRow("item-1", 5)]);
+
+		const m: MovementInput = {
+			inventory_item_id: "item-1",
+			qty: 2,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+		};
+		await recordMovements(tx as unknown as Tx, ORG, ACTOR, [m]);
+
+		const { data } = tx.stock_movement.createMany.mock.calls[0][0] as { data: Record<string, unknown>[] };
+		// null, not 0 — an unrecorded purchase cost is unknown, and the
+		// weighted-average cost series excludes it rather than averaging in zero.
+		expect(data[0].unit_cost).toBeNull();
 	});
 });
 
@@ -378,10 +578,10 @@ function makeTrackedTx(over: Record<string, unknown> = {}) {
 }
 
 function serializedRow(id: string, quantity = 100) {
-	return { id, quantity, low_stock_threshold: null, is_serialized: true, is_batch_tracked: false };
+	return { id, quantity, low_stock_threshold: null, is_serialized: true, is_batch_tracked: false, unit: "each" };
 }
 function batchRow(id: string, quantity = 100) {
-	return { id, quantity, low_stock_threshold: null, is_serialized: false, is_batch_tracked: true };
+	return { id, quantity, low_stock_threshold: null, is_serialized: false, is_batch_tracked: true, unit: "each" };
 }
 
 describe("recordMovements — serial tracking", () => {
@@ -517,7 +717,14 @@ describe("recordMovements — serial tracking", () => {
 	it("rejects serial inputs on a non-serialized item", async () => {
 		const tx = makeTrackedTx();
 		tx.inventory_item.findMany.mockResolvedValue([
-			{ id: "p1", quantity: 100, low_stock_threshold: null, is_serialized: false, is_batch_tracked: false },
+			{
+				id: "p1",
+				quantity: 100,
+				low_stock_threshold: null,
+				is_serialized: false,
+				is_batch_tracked: false,
+				unit: "each",
+			},
 		]);
 		const m: MovementInput = {
 			inventory_item_id: "p1",

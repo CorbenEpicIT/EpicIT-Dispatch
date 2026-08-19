@@ -69,7 +69,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		priority: Priority;
 	};
 
-	const { fields, updateField, undoField, setOriginals, isDirty, getValue } =
+	const { updateField, undoField, setOriginals, isDirty, getValue } =
 		useDirtyTracking<FormFields>({
 			title: "",
 			description: "",
@@ -594,6 +594,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 									Valid Until (Optional)
 								</p>
 								<DatePicker
+									portal
 									mode="edit"
 									originalValue={
 										quote.valid_until
@@ -614,6 +615,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 									Expires At (Optional)
 								</p>
 								<DatePicker
+									portal
 									mode="edit"
 									originalValue={
 										quote.expires_at

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, X } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useMultiSearch } from "../../hooks/useMultiSearch";
 
 export interface StatusOption {
 	value: string;
@@ -19,8 +19,9 @@ interface StatusFilterUrlProps extends BaseProps {
 }
 
 interface StatusFilterControlledProps extends BaseProps {
-	value: string | null;
+	values: string[] | null;
 	onChange: (value: string | null) => void;
+	exclusive?: boolean;
 }
 
 type StatusFilterProps = StatusFilterUrlProps | StatusFilterControlledProps;
@@ -33,36 +34,33 @@ export default function StatusFilter(props: StatusFilterProps) {
 }
 
 function UrlStatusFilter({ paramKey, ...rest }: StatusFilterUrlProps) {
-	const [searchParams, setSearchParams] = useSearchParams();
-	const value = searchParams.get(paramKey);
+	const { terms, addTerm, removeTerm, clearAll } = useMultiSearch(paramKey);
 
 	const handleChange = (newValue: string | null) => {
-		setSearchParams((prev) => {
-			const next = new URLSearchParams(prev);
-			if (newValue) {
-				next.set(paramKey, newValue);
-			} else {
-				next.delete(paramKey);
-			}
-			return next;
-		});
+		if (!newValue) {
+			clearAll();
+			return;
+		}
+		if (terms.includes(newValue)) removeTerm(newValue);
+		else addTerm(newValue);
 	};
 
-	return <DropdownFilter value={value} onChange={handleChange} {...rest} />;
+	return <DropdownFilter values={terms} onChange={handleChange} {...rest} />;
 }
 
-function DropdownFilter({
-	value,
+export function DropdownFilter({
+	values,
 	onChange,
 	options,
 	allLabel = "All",
 	placeholder = "Status",
 	hideAll = false,
+	exclusive = false,
 }: StatusFilterControlledProps) {
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
-	const selectedOption = options.find((o) => o.value === value) ?? null;
-	const isActive = value !== null;
+	const selectedOptions = options.filter((o) => values?.includes(o.value) ?? false);
+	const isActive = selectedOptions.length > 0;
 
 	useEffect(() => {
 		if (!open) return;
@@ -83,9 +81,27 @@ function DropdownFilter({
 	}, [open]);
 
 	const handleSelect = (optionValue: string | null) => {
-		onChange(optionValue === value ? null : optionValue);
-		setOpen(false);
+		if (optionValue === null) {
+			onChange(null); // selects "All"
+			if (exclusive) setOpen(false);
+			return;
+		}
+		const alreadySelected = selectedOptions.some((o) => o.value === optionValue);
+		// if all select clears selection (multi-select only — exclusive callers pick one at a time)
+		if (!exclusive && !alreadySelected && selectedOptions.length + 1 >= options.length) {
+			onChange(null);
+			return;
+		}
+		onChange(optionValue);
+		// Exclusive (one-of) callers are done after a single pick; multi-select stays open.
+		if (exclusive) setOpen(false);
 	};
+
+	const triggerLabel = !isActive
+		? placeholder
+		: selectedOptions.length === 1
+			? `${placeholder}: ${selectedOptions[0].label}`
+			: `${placeholder} (${selectedOptions.length})`;
 
 	return (
 		<div className="relative" ref={containerRef}>
@@ -97,14 +113,10 @@ function DropdownFilter({
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive && !hideAll
 						? "bg-primary-bg border-primary text-primary-text pr-7"
-						: "bg-surface border-border text-text-tertiary hover:text-text-primary"
+						: "bg-base border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
-				<span>
-					{isActive && selectedOption
-						? `${placeholder}: ${selectedOption.label}`
-						: placeholder}
-				</span>
+				<span>{triggerLabel}</span>
 				{!(isActive && !hideAll) && (
 					<ChevronDown size={14} className="shrink-0" />
 				)}
@@ -149,16 +161,16 @@ function DropdownFilter({
 							<button
 								key={option.value}
 								role="option"
-								aria-selected={value === option.value}
+								aria-selected={selectedOptions?.includes(option)}
 								onClick={() => handleSelect(option.value)}
 								className={`w-full flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer rounded text-left ${
-									value === option.value
+									selectedOptions?.includes(option)
 										? "bg-primary-bg text-primary-text"
 										: "text-text-secondary hover:bg-surface/70"
 								}`}
 							>
 								<span>{option.label}</span>
-								{value === option.value && <Check size={14} />}
+								{selectedOptions?.includes(option) && <Check size={14} />}
 							</button>
 						))}
 					</div>

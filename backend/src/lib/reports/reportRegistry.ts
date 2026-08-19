@@ -16,9 +16,18 @@ import {
 	getTaxLiabilityReport,
 	getAgedReceivablesByClient,
 	getClientRetentionReport,
+	getClientLifetimeValueReport,
+	getClientDiscountsReport,
+	getFieldAddedRevenueReport,
+	getRecurringRevenueReport,
+	getRevenueByLineItemType,
+	getRevenueLineItemsReport,
+	getRevenueLineItemsReportPage,
+	reportInstant,
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
+import { unitDisplay, unitWord } from "../units.js";
 
 // Catalog of eery report and a key to each report
 export interface ReportQuery {
@@ -61,6 +70,26 @@ const fmtDate = (value: Date | string | null | undefined): string =>
 
 const fmtQty = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
+// Quantities carry their unit — "6" and "6 ft" are different facts, and the
+// column header can't say which because the unit is per item, not per column.
+const withUnit = (n: number, unit: string | null): string => `${fmtQty(n)} ${unitWord(unit, n)}`;
+
+// One phrase for the condition across every surface that shows it. Kept in sync
+// with UNIT_BREAK_SHORT in the frontend's chartNotes — two spellings of "mixed
+// units" in one product is how a dispatcher ends up thinking they're two
+// different problems.
+const UNIT_BREAK_SHORT = "Mixed units";
+
+// Label for the server-computed reorder verdict. Plain strings, because the row
+// is what both the table and the spreadsheet render, and because the health
+// filter matches on this text (the in-memory `in` operator, lowercased).
+const HEALTH_LABEL: Record<string, string> = {
+	critical: "Reorder now",
+	warning: "Watch",
+	healthy: "Healthy",
+	unknown: "No signal",
+};
+
 const stockStatusLabel = (status: string | null): string => {
 	switch (status) {
 		case "out_of_stock":
@@ -81,10 +110,16 @@ type InventoryRaw = Awaited<ReturnType<typeof getInventoryReport>>[number];
 type PaymentRaw = Awaited<ReturnType<typeof getPaymentsReport>>[number];
 type QuoteRaw = Awaited<ReturnType<typeof getQuoteFunnelReport>>["quotes"][number];
 type TaxRaw = Awaited<ReturnType<typeof getTaxLiabilityReport>>[number];
-type ForecastRaw = Awaited<ReturnType<typeof getInventoryReorderForecast>>[number];
+type ForecastRaw = Awaited<ReturnType<typeof getInventoryReorderForecast>>["rows"][number];
 type ReceivableRaw = Awaited<ReturnType<typeof getAgedReceivablesByClient>>[number];
 type RetentionRaw = Awaited<ReturnType<typeof getClientRetentionReport>>[number];
+type ClvRaw = Awaited<ReturnType<typeof getClientLifetimeValueReport>>[number];
+type ClientDiscountRaw = Awaited<ReturnType<typeof getClientDiscountsReport>>[number];
+type FieldAddedRaw = Awaited<ReturnType<typeof getFieldAddedRevenueReport>>["rows"][number];
+type RecurringRaw = Awaited<ReturnType<typeof getRecurringRevenueReport>>["plans"][number];
 type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
+type LineItemTypeRaw = Awaited<ReturnType<typeof getRevenueByLineItemType>>[number];
+type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>["rows"][number];
 
 const jobRow = (job: JobRaw): ReportRow => ({
 	id: job.id,
@@ -168,12 +203,16 @@ const inventoryRow = (item: InventoryRaw): ReportRow => ({
 	totalQty: item.totalQty,
 	fleetStandard: item.fleetStandard,
 	lowStockThreshold: item.lowStockThreshold ?? "—",
-	unit: item.unit || "—",
+	// The catalog label, not the stored code — "Feet", not "ft". Shaped here so
+	// the on-screen table and the SQL export agree; the client no longer maps it.
+	unit: item.unit ? unitDisplay(item.unit).label : "—",
 	stockStatus: stockStatusLabel(item.stockStatus),
 	cost: item.cost ?? "—",
 	unitPrice: item.unitPrice ?? "—",
 	assetValue: item.assetValue ?? "—",
-	qtyUsed: item.qtyUsed,
+	// null is a WITHHELD total (the item's consumption spans a unit change), and
+	// 0 is a real answer here — so it reads as unknown rather than as zero.
+	qtyUsed: item.qtyUsed ?? "—",
 	location: item.location || "—",
 	tags: item.tags?.map((t) => t.label).join(", ") || "—",
 	altIds: item.altIds?.join(", ") || "—",
@@ -219,14 +258,42 @@ const taxRow = (r: TaxRaw): ReportRow => ({
 	invoiceCount: r.invoiceCount,
 });
 
+// Shaped here rather than on the page because this report is paginated,
+// filtered and exported server-side: `POST /reports/export/server` runs `load`
+// + the in-memory filter and never sees the client's mappers, so any column the
+// table shows but this doesn't simply exports blank.
 const forecastRow = (r: ForecastRaw): ReportRow => ({
 	id: r.itemId,
 	item: r.itemName,
 	sku: r.sku ?? "—",
 	category: r.category ?? "—",
-	currentQuantity: fmtQty(r.currentQuantity),
-	avgDailyUsage: r.avgDailyUsage > 0 ? r.avgDailyUsage.toFixed(2) : "—",
-	projectedStockout: r.projectedStockoutDate ? fmtDate(r.projectedStockoutDate) : "—",
+	onHand: withUnit(r.currentQuantity, r.unit),
+	warehouse: fmtQty(r.warehouseQuantity),
+	vehicles: fmtQty(r.vehicleQuantity),
+	reorderPoint: r.lowStockThreshold != null ? fmtQty(r.lowStockThreshold) : "—",
+	// Three outcomes, three strings. `null` is a WITHHELD rate — the item's
+	// consumption spans a unit change, so `each` and `box` totals were never
+	// added — and it must not print as "0.00/day", which is a real and different
+	// answer this same column gives.
+	avgDailyUsage:
+		r.avgDailyUsage == null
+			? UNIT_BREAK_SHORT
+			: r.avgDailyUsage > 0
+				? `${r.avgDailyUsage.toFixed(2)}/day`
+				: "—",
+	// Rounded: a runway printed to two decimals implies a precision an averaged
+	// rate over the window doesn't have.
+	daysOfStock: r.daysOfStock != null ? `${Math.round(r.daysOfStock)}d` : "—",
+	// `~` because this is a projection off an average rate, not a date anything
+	// is scheduled for. ReorderHealthCard hedges the same way.
+	projectedStockout: r.projectedStockoutDate ? `~${fmtDate(r.projectedStockoutDate)}` : "—",
+	health: HEALTH_LABEL[r.severity] ?? HEALTH_LABEL.unknown,
+	// Not columns in the table — carried for the export, whose reader can't see
+	// the page's window badge. The catalog label, not the stored code: a
+	// spreadsheet reader gets "Feet", not "ft".
+	unit: unitDisplay(r.unit).label,
+	observedDays: r.observedDays,
+	qtyConsumed: r.qtyConsumed ?? UNIT_BREAK_SHORT,
 });
 
 const receivableRow = (r: ReceivableRaw): ReportRow => ({
@@ -248,6 +315,81 @@ const retentionRow = (r: RetentionRaw): ReportRow => ({
 	lastActivity: fmtDate(r.lastActivityAt),
 	lifetimeRevenue: r.lifetimeRevenue,
 	jobCount: r.jobCount,
+});
+
+const clvRow = (r: ClvRaw): ReportRow => ({
+	id: r.id,
+	name: r.name,
+	primaryContact: r.primaryContact || "—",
+	firstPurchaseAt: fmtDate(r.firstPurchaseAt),
+	tenureMonths: r.tenureMonths,
+	jobCount: r.jobCount,
+	invoiceCount: r.invoiceCount,
+	lifetimeRevenue: r.lifetimeRevenue,
+	avgInvoiceValue: r.avgInvoiceValue,
+});
+
+const clientDiscountRow = (r: ClientDiscountRaw): ReportRow => ({
+	id: r.clientId,
+	clientName: r.clientName,
+	invoiceCount: r.invoiceCount,
+	totalBilled: r.totalBilled,
+	totalDiscount: r.totalDiscount,
+	discountRate: r.discountRate,
+	avgDiscount: r.avgDiscount,
+});
+
+const fieldAddedRow = (r: FieldAddedRaw): ReportRow => ({
+	id: r.techId,
+	technician: r.techName,
+	itemCount: r.itemCount,
+	jobCount: r.jobCount,
+	fieldAddedRevenue: r.fieldAddedRevenue,
+	avgPerItem: r.avgPerItem,
+});
+
+const BILLING_BASIS_LABELS: Record<string, string> = {
+	fixed_amount: "Fixed Amount",
+	plan_line_items: "Plan Line Items",
+	visit_actuals: "Visit Actuals",
+	invoice: "Invoice",
+	none: "—",
+};
+
+const recurringPlanRow = (r: RecurringRaw): ReportRow => ({
+	id: r.planId,
+	name: r.name,
+	clientName: r.clientName,
+	status: r.status,
+	billingBasis: BILLING_BASIS_LABELS[r.billingBasis] ?? r.billingBasis,
+	perPeriodAmount: r.perPeriodAmount ?? "—",
+	monthlyValue: r.monthlyValue,
+	nextInvoiceAt: fmtDate(r.nextInvoiceAt),
+	lastInvoicedAt: fmtDate(r.lastInvoicedAt),
+	occCompleted: r.occCompleted,
+	occSkipped: r.occSkipped,
+});
+
+const lineItemTypeRow = (r: LineItemTypeRaw): ReportRow => ({
+	id: r.itemType,
+	label: r.label,
+	revenue: r.revenue,
+	lineCount: r.lineCount,
+	pctOfTotal: r.pctOfTotal,
+});
+
+const revenueLineItemRow = (r: RevenueLineItemRaw): ReportRow => ({
+	id: r.id,
+	_invoiceId: r.invoiceId,
+	invoiceNumber: r.invoiceNumber,
+	clientName: r.clientName,
+	issueDate: fmtDate(r.issueDate),
+	name: r.name,
+	description: r.description || "—",
+	quantity: r.quantity,
+	unitPrice: r.unitPrice,
+	total: r.total,
+	itemType: r.itemType,
 });
 
 const mapPage = <T>(
@@ -286,8 +428,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		load: async (orgId, q) => {
 			let raw = await getClientsReport(orgId);
 			if (q.startDate || q.endDate) {
-				const gte = q.startDate ? new Date(q.startDate).getTime() : -Infinity;
-				const lte = q.endDate ? new Date(q.endDate).getTime() : Infinity;
+				const gte = q.startDate ? reportInstant(q.startDate).getTime() : -Infinity;
+				const lte = q.endDate ? reportInstant(q.endDate).getTime() : Infinity;
 				raw = raw.filter((c) => {
 					const t = new Date(c.createdAt).getTime();
 					return t >= gte && t <= lte;
@@ -300,8 +442,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		load: async (orgId, q) => ({
 			rows: (
 				await getInventoryReport(orgId, {
-					from: q.startDate ? new Date(q.startDate) : undefined,
-					to: q.endDate ? new Date(q.endDate) : undefined,
+					from: q.startDate ? reportInstant(q.startDate) : undefined,
+					to: q.endDate ? reportInstant(q.endDate) : undefined,
 					includeInactive: q.includeInactive ?? true,
 				})
 			).map(inventoryRow),
@@ -311,8 +453,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 				await getInventoryReportPage(
 					orgId,
 					{
-						from: q.startDate ? new Date(q.startDate) : undefined,
-						to: q.endDate ? new Date(q.endDate) : undefined,
+						from: q.startDate ? reportInstant(q.startDate) : undefined,
+						to: q.endDate ? reportInstant(q.endDate) : undefined,
 						includeInactive: q.includeInactive ?? true,
 					},
 					params,
@@ -387,10 +529,13 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 	},
 	"reorder-forecast": {
 		load: async (orgId, q) => {
-			const raw = await getInventoryReorderForecast(orgId, {
+			const { rows, truncated } = await getInventoryReorderForecast(orgId, {
 				lookbackDays: q.lookbackDays ?? 90,
 			});
-			return { rows: raw.map(forecastRow), summary: { chartRows: raw } };
+			// chartRows is the FULL unfiltered set: the page's severity tiles and
+			// runway chart are org-wide statements, so they can't be rebuilt from
+			// whichever page the dispatcher happens to be on.
+			return { rows: rows.map(forecastRow), summary: { chartRows: rows, truncated } };
 		},
 	},
 	"client-retention": {
@@ -399,6 +544,17 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 				await getClientRetentionReport(orgId, { lookbackDays: q.lookbackDays ?? 180 })
 			).map(retentionRow),
 		}),
+	},
+	"client-lifetime-value": {
+		load: async (orgId) => ({
+			rows: (await getClientLifetimeValueReport(orgId)).map(clvRow),
+		}),
+		filteredSummary: (rows) => {
+			const clientCount = rows.length;
+			const totalLifetimeRevenue = round2(rows.reduce((s, r) => s + num(r.lifetimeRevenue), 0));
+			const avgClv = clientCount ? round2(totalLifetimeRevenue / clientCount) : 0;
+			return { clientCount, totalLifetimeRevenue, avgClv };
+		},
 	},
 	"aged-receivables-by-client": {
 		load: async (orgId) => ({
@@ -411,6 +567,86 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			bucket90plus: round2(rows.reduce((s, r) => s + num(r.bucket90plus), 0)),
 			total: round2(rows.reduce((s, r) => s + num(r.total), 0)),
 		}),
+	},
+	"client-discounts": {
+		load: async (orgId, q) => ({
+			rows: (await getClientDiscountsReport(q.startDate, q.endDate, orgId)).map(
+				clientDiscountRow,
+			),
+		}),
+		filteredSummary: (rows) => {
+			const clientCount = rows.length;
+			const totalDiscount = round2(rows.reduce((s, r) => s + num(r.totalDiscount), 0));
+			const totalBilled = round2(rows.reduce((s, r) => s + num(r.totalBilled), 0));
+			const avgDiscountRate = totalBilled > 0 ? round2((totalDiscount / totalBilled) * 100) : 0;
+			return { clientCount, totalDiscount, totalBilled, avgDiscountRate };
+		},
+	},
+	"recurring-revenue": {
+		load: async (orgId, q) => {
+			const report = await getRecurringRevenueReport(q.startDate, q.endDate, orgId);
+			return {
+				rows: report.plans.map(recurringPlanRow),
+				summary: {
+					mrr: report.mrr,
+					arr: report.arr,
+					activePlans: report.activePlans,
+					pausedPlans: report.pausedPlans,
+					newPlans: report.newPlans,
+					churnedPlans: report.churnedPlans,
+					churnedMrr: report.churnedMrr,
+					completionRate: report.completionRate,
+					skipRate: report.skipRate,
+					trend: report.trend,
+				},
+			};
+		},
+	},
+	"field-added-revenue": {
+		load: async (orgId, q) => {
+			const { rows, orgVisitRevenue, fieldAddedItemCount, truncated, trend } =
+				await getFieldAddedRevenueReport(q.startDate, q.endDate, orgId);
+			// fieldAddedItems is the distinct item count from the controller. It is
+			// not recomputed in filteredSummary: a per-tech itemCount credits a split
+			// item to every tech on the visit, so summing rows double-counts, and the
+			// per-tech rows carry no item ids to dedupe by.
+			return {
+				rows: rows.map(fieldAddedRow),
+				summary: { orgVisitRevenue, fieldAddedItems: fieldAddedItemCount, truncated, trend },
+			};
+		},
+		filteredSummary: (rows) => {
+			const totalFieldAddedRevenue = round2(rows.reduce((s, r) => s + num(r.fieldAddedRevenue), 0));
+			const top = rows.reduce<ReportRow | null>(
+				(best, r) => (!best || num(r.fieldAddedRevenue) > num(best.fieldAddedRevenue) ? r : best),
+				null,
+			);
+			return {
+				technicianCount: rows.length,
+				totalFieldAddedRevenue,
+				topTechnician: top ? String(top.technician) : "—",
+			};
+		},
+	},
+	"revenue-by-line-item-type": {
+		load: async (orgId, q) => ({
+			rows: (await getRevenueByLineItemType(q.startDate, q.endDate, orgId)).map(lineItemTypeRow),
+		}),
+		filteredSummary: (rows) => ({
+			totalRevenue: round2(rows.reduce((s, r) => s + num(r.revenue), 0)),
+			totalLineItems: rows.reduce((s, r) => s + num(r.lineCount), 0),
+		}),
+	},
+	"revenue-line-items": {
+		load: async (orgId, q) => {
+			const { rows, truncated } = await getRevenueLineItemsReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(revenueLineItemRow), summary: { truncated } };
+		},
+		loadPage: async (orgId, q, params) =>
+			mapPage(
+				await getRevenueLineItemsReportPage(q.startDate, q.endDate, orgId, params),
+				revenueLineItemRow,
+			),
 	},
 };
 

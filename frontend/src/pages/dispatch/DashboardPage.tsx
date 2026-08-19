@@ -30,7 +30,7 @@ import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurring
 import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
-import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, getActiveCols, fitDashboard, randomizeLayout } from "../../lib/DashboardConfig";
+import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, WIDGET_CATALOG, resolveConstraints, getActiveCols, fitDashboard, randomizeLayout } from "../../lib/DashboardConfig";
 import { QUICKBOOKS_ENABLED } from "../../config/features";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import OverviewWidget from "../../components/widgets/OverviewWidget";
@@ -42,8 +42,10 @@ import QuotePipelineWidget from "../../components/widgets/QuotePipelineWidget";
 import ArrivalPerformanceWidget from "../../components/widgets/ArrivalPerformanceWidget";
 import MileageSummaryWidget from "../../components/widgets/MileageSummaryWidget";
 import AgedReceivablesColumnWidget from "../../components/widgets/AgedReceivablesColumnWidget";
+import JobBacklogWidget from "../../components/widgets/JobBacklogWidget";
 import MapWidget from "../../components/widgets/MapWidget";
 import QBWidget from "../../components/widgets/QBWidget";
+import PageReportWidget from "../../components/widgets/PageReportWidget";
 
 
 export default function DashboardPage() {
@@ -157,7 +159,7 @@ export default function DashboardPage() {
 					nextVisit: upcomingVisits[0] || null,
 				};
 			})
-			.sort((a, b) => (a.currentVisit ? -1 : 1));
+			.sort((a) => (a.currentVisit ? -1 : 1));
 	}, [allTechnicians, jobs]);
 
 	const getStatusBorderClass = (status: string) => {
@@ -468,6 +470,8 @@ export default function DashboardPage() {
 			case "report-arrival":         return <ArrivalPerformanceWidget />;
 			case "report-mileage":         return <MileageSummaryWidget />;
 			case "report-aged-receivables-bar": return <AgedReceivablesColumnWidget />;
+			case "report-page-summary":    return <PageReportWidget />;
+			case "report-job-backlog":     return <JobBacklogWidget />;
 			default: return <div>Unknown widget: {id}</div>;
 		}
 	}

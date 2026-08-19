@@ -28,6 +28,13 @@ export interface Dispatcher {
   dashboard_layout: Layout | null;
   report_layout: ReportLayout | null;
   mfaEnabled?: boolean;
+  _count?: {
+    created_quotes: number;
+    created_invoices: number;
+    created_requests: number;
+    created_recurring_plans: number;
+    managed_projects: number;
+  };
 }
 
 export interface CreateDispatcherInput {

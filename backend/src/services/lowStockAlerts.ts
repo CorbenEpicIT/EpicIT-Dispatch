@@ -1,10 +1,11 @@
 import { db } from "../db.js";
+import type { StockQty } from "../lib/inventory.js";
 import { sendEmail } from "./emailService.js";
 
 interface AlertableItem {
 	name: string;
-	quantity: number;
-	low_stock_threshold: number | null;
+	quantity: StockQty;
+	low_stock_threshold: StockQty | null;
 	alert_emails_enabled: boolean;
 	alert_email: string | null;
 }
@@ -16,8 +17,9 @@ export async function sendLowStockAlert(item: AlertableItem): Promise<void> {
 	try {
 		await sendEmail(item.alert_email, "low-stock-alert", {
 			item_name: item.name,
-			current_quantity: item.quantity,
-			threshold: item.low_stock_threshold,
+			// Decimal objects render as their object form, not "12.5", in the email template.
+			current_quantity: Number(item.quantity),
+			threshold: item.low_stock_threshold === null ? null : Number(item.low_stock_threshold),
 			inventory_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/dispatch/inventory`,
 		});
 	} catch (e) {

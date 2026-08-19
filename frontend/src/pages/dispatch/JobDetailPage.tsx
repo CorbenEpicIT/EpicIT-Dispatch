@@ -43,6 +43,7 @@ import { InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus } from "..
 import { formatCurrency, formatDateTime, formatTime } from "../../util/util";
 import FinancialSummary, { type FinancialSummaryLineItem } from "../../components/pagesections/FinancialSummary";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 export default function JobDetailPage() {
 	const { jobId } = useParams<{ jobId: string }>();
@@ -851,7 +852,7 @@ export default function JobDetailPage() {
 											const count = visit._count?.invoice_visits ?? 0;
 											if (count === 0) return null;
 											const billed = visitBilledMap[visit.id] ?? 0;
-											const visitTotal = Number((visit as any).total ?? 0);
+											const visitTotal = Number(visit.total ?? 0);
 											const isPartial = visitTotal > 0 && billed < visitTotal;
 											return (
 												<span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
@@ -1228,6 +1229,8 @@ export default function JobDetailPage() {
 			</div>
 
 			<JobNoteManager jobId={jobId!} visits={visits} />
+
+			<ChangeHistory scope={ { kind: "entity", type: "job", id: jobId ?? ""} }  />
 
 			{job && isEditModalOpen && (
 				<EditJob

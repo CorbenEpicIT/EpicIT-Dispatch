@@ -12,7 +12,7 @@ import type { NotePhoto } from "../../components/technicianComponents/AddNotePho
 
 function NoteItem({ note, tz }: { note: JobNote; tz: string }) {
 	return (
-		<div className="px-4 py-3 border-b border-border-subtle/60 last:border-0">
+		<div className="px-4 py-3 border-b border-border-subtle last:border-0">
 			{note.content && (
 				<p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{note.content}</p>
 			)}
@@ -39,7 +39,7 @@ export default function WorkPerformedSection({
 }) {
 	const { user } = useAuthStore();
 	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
-	const { data: notes = [] } = useJobNotesQuery(jobId);
+	const { data: notes = [], isLoading: notesLoading } = useJobNotesQuery(jobId);
 	const createNote = useCreateJobNoteMutation();
 
 	const [showNotePhotoModal, setShowNotePhotoModal] = useState(false);
@@ -73,13 +73,13 @@ export default function WorkPerformedSection({
 	};
 
 	return (
-		<div className="rounded-xl border border-border-subtle overflow-hidden">
+		<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 			{/* Header */}
 			<button
 				onClick={() => setExpanded((p) => !p)}
 				aria-expanded={expanded}
 				aria-controls="work-performed-panel"
-				className="w-full flex items-center justify-between px-4 py-3 bg-base/60 border-b border-border-subtle"
+				className="w-full flex items-center justify-between px-4 py-3 bg-base border-b border-border-subtle"
 			>
 				<span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
 					Work Performed
@@ -95,7 +95,7 @@ export default function WorkPerformedSection({
 			{expanded && (
 				<>
 					{/* Action row */}
-					<div id="work-performed-panel" className="px-4 py-3 border-b border-border-subtle">
+					<div id="work-performed-panel" className="px-4 py-3 border-b border-border-subtle bg-surface">
 						<button
 							onClick={() => setShowNotePhotoModal(true)}
 							className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors"
@@ -106,10 +106,17 @@ export default function WorkPerformedSection({
 					</div>
 
 					{/* Note list */}
-					{visitNotes.length === 0 ? (
-						<p className="px-4 py-6 text-center text-sm text-text-faint">No notes yet</p>
+					{notesLoading ? (
+						// Reserves roughly a NoteItem's height so real notes popping in
+						// don't shift the page layout (was a measured CLS contributor).
+						<div className="px-4 py-3 space-y-2 animate-pulse">
+							<div className="h-3.5 w-3/4 bg-surface rounded" />
+							<div className="h-2.5 w-1/4 bg-surface rounded" />
+						</div>
+					) : visitNotes.length === 0 ? (
+						<p className="px-4 py-6 text-center text-sm text-text-faint bg-surface">No notes yet</p>
 					) : (
-						<div>
+						<div className="bg-surface">
 							{visitNotes.map((note) => (
 								<NoteItem key={note.id} note={note} tz={tz} />
 							))}

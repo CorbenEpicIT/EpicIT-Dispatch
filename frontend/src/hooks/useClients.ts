@@ -33,12 +33,13 @@ export const useAllClientsQuery = (): UseQueryResult<Client[], Error> => {
 
 export const useClientByIdQuery = (
 	id: string | null | undefined,
-	options?: { enabled?: boolean }
+	options?: { enabled?: boolean; retry?: boolean }
 ): UseQueryResult<Client, Error> => {
 	return useQuery({
 		queryKey: ["clients", id],
 		queryFn: () => clientApi.getClientById(id!),
 		enabled: options?.enabled !== undefined ? options.enabled : !!id,
+		...(options?.retry !== undefined ? { retry: options.retry } : {}),
 	});
 };
 

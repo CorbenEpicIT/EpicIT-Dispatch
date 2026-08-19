@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { Prisma } from "../../generated/prisma/client.js";
+import { STOCK_QTY_MESSAGE, isStorableStockQty } from "../lib/validate/shared.js";
 import {
 	applyTracking,
 	type ItemTrackingFlags,
@@ -35,6 +36,15 @@ export class InsufficientStockError extends Error {
 	}
 }
 
+/** Throws instead of defaulting — a guessed unit would silently misdenominate the ledger. */
+function mustGetUnit(units: Map<string, string>, itemId: string): string {
+	const unit = units.get(itemId);
+	if (unit === undefined) {
+		throw new Error(`Cannot stamp movement unit: inventory item ${itemId} not found in org scope`);
+	}
+	return unit;
+}
+
 export interface ActorInfo {
 	actor_type: "technician" | "dispatcher" | "system";
 	actor_id?: string;
@@ -42,7 +52,7 @@ export interface ActorInfo {
 
 export interface MovementInput {
 	inventory_item_id: string;
-	/** Must be > 0. Fractional qty rejected when movement touches warehouse (Int column). */
+	/** Must be > 0, with at most 2 decimal places (every qty column is numeric(10,2)). */
 	qty: number;
 	from_location_type: "warehouse" | "vehicle" | "consumed" | "adjustment" | "external";
 	from_vehicle_id?: string;
@@ -61,6 +71,8 @@ export interface MovementInput {
 		| "initial"
 		| "supplier_purchase";
 	note?: string;
+	/** Per-unit cost paid, for intake movements only (reason "receive"/"supplier_purchase"); omit elsewhere. */
+	unit_cost?: number;
 	visit_id?: string;
 	visit_line_item_id?: string;
 	restock_record_id?: string;
@@ -117,11 +129,11 @@ export async function recordMovements(
 	for (const m of movements) {
 		if (m.qty <= 0) throw new Error(`Movement qty must be > 0; got ${m.qty}`);
 
-		const touchesWarehouse =
-			m.from_location_type === "warehouse" || m.to_location_type === "warehouse";
-		if (touchesWarehouse && !Number.isInteger(m.qty)) {
+		// A third decimal is refused here rather than silently rounded by Postgres,
+		// which would desync the cached on-hand from this ledger.
+		if (!isStorableStockQty(m.qty)) {
 			throw new Error(
-				`Fractional qty (${m.qty}) rejected for warehouse movement on item ${m.inventory_item_id}; inventory_item.quantity is Int`,
+				`Movement qty (${m.qty}) on item ${m.inventory_item_id} is not storable: ${STOCK_QTY_MESSAGE}`,
 			);
 		}
 	}
@@ -143,32 +155,37 @@ export async function recordMovements(
 		_id: randomUUID(),
 	}));
 
-	// 3. Aggregate cache deltas
-	const itemDeltas = new Map<string, number>(); // inventory_item.quantity
+	// 3. Aggregate cache deltas — in Decimal, not float. Quantities are 2-dp
+	// decimals, and summing them as doubles (0.1 + 0.2 = 0.30000000000000004)
+	// produced a third decimal that made the overdraw guard below report a false
+	// InsufficientStock (0.3 on hand minus 0.1 and 0.2 is -5.5e-17 < 0).
+	const ZERO = new Prisma.Decimal(0);
+	const itemDeltas = new Map<string, Prisma.Decimal>(); // inventory_item.quantity
 	// vehicle key = `${vehicle_id}::${item_id}`
 	const vehicleItemDeltaMap = new Map<
 		string,
-		{ vehicle_id: string; inventory_item_id: string; delta: number }
+		{ vehicle_id: string; inventory_item_id: string; delta: Prisma.Decimal }
 	>();
 
 	for (const m of withIds) {
+		const qty = new Prisma.Decimal(m.qty);
 		if (m.from_location_type === "warehouse") {
-			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? 0) - m.qty);
+			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? ZERO).minus(qty));
 		}
 		if (m.to_location_type === "warehouse") {
-			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? 0) + m.qty);
+			itemDeltas.set(m.inventory_item_id, (itemDeltas.get(m.inventory_item_id) ?? ZERO).plus(qty));
 		}
 		if (m.from_vehicle_id) {
 			const key = `${m.from_vehicle_id}::${m.inventory_item_id}`;
 			const e = vehicleItemDeltaMap.get(key);
-			if (e) e.delta -= m.qty;
-			else vehicleItemDeltaMap.set(key, { vehicle_id: m.from_vehicle_id, inventory_item_id: m.inventory_item_id, delta: -m.qty });
+			if (e) e.delta = e.delta.minus(qty);
+			else vehicleItemDeltaMap.set(key, { vehicle_id: m.from_vehicle_id, inventory_item_id: m.inventory_item_id, delta: qty.negated() });
 		}
 		if (m.to_vehicle_id) {
 			const key = `${m.to_vehicle_id}::${m.inventory_item_id}`;
 			const e = vehicleItemDeltaMap.get(key);
-			if (e) e.delta += m.qty;
-			else vehicleItemDeltaMap.set(key, { vehicle_id: m.to_vehicle_id, inventory_item_id: m.inventory_item_id, delta: m.qty });
+			if (e) e.delta = e.delta.plus(qty);
+			else vehicleItemDeltaMap.set(key, { vehicle_id: m.to_vehicle_id, inventory_item_id: m.inventory_item_id, delta: qty });
 		}
 	}
 
@@ -178,7 +195,7 @@ export async function recordMovements(
 
 	// 5. Warehouse overdraw guard
 	if (!opts.allowNegative) {
-		const deductions = itemIds.filter((id) => (itemDeltas.get(id) ?? 0) < 0);
+		const deductions = itemIds.filter((id) => (itemDeltas.get(id) ?? ZERO).lessThan(0));
 		if (deductions.length > 0) {
 			const rows = await tx.inventory_item.findMany({
 				where: { id: { in: deductions } },
@@ -187,8 +204,8 @@ export async function recordMovements(
 
 			const insufficient: Record<string, number> = {};
 			for (const row of rows) {
-				const projected = Number(row.quantity) + itemDeltas.get(row.id)!;
-				if (projected < 0) insufficient[row.id] = Number(row.quantity);
+				const projected = new Prisma.Decimal(row.quantity).plus(itemDeltas.get(row.id)!);
+				if (projected.lessThan(0)) insufficient[row.id] = Number(row.quantity);
 			}
 			if (Object.keys(insufficient).length > 0) throw new InsufficientStockError(insufficient);
 		}
@@ -197,7 +214,7 @@ export async function recordMovements(
 	// 6. Apply inventory_item deltas (deterministic order)
 	for (const itemId of itemIds) {
 		const delta = itemDeltas.get(itemId)!;
-		if (delta === 0) continue;
+		if (delta.isZero()) continue;
 		await tx.inventory_item.update({
 			where: { id: itemId },
 			data: { quantity: { increment: delta } },
@@ -211,7 +228,7 @@ export async function recordMovements(
 	});
 
 	for (const entry of vehicleEntries) {
-		if (entry.delta === 0) continue;
+		if (entry.delta.isZero()) continue;
 		await tx.vehicle_stock_item.upsert({
 			where: {
 				vehicle_id_inventory_item_id: {
@@ -222,17 +239,17 @@ export async function recordMovements(
 			create: {
 				vehicle_id: entry.vehicle_id,
 				inventory_item_id: entry.inventory_item_id,
-				qty_on_hand: new Prisma.Decimal(entry.delta),
+				qty_on_hand: entry.delta,
 				qty_min: 0,
 			},
 			update: {
-				qty_on_hand: { increment: new Prisma.Decimal(entry.delta) },
+				qty_on_hand: { increment: entry.delta },
 			},
 		});
 	}
 
 	// 7b. Auto-resolve pending/acknowledged restock requests for items restocked onto a vehicle
-	const inboundVehicleEntries = [...vehicleItemDeltaMap.values()].filter((e) => e.delta > 0);
+	const inboundVehicleEntries = [...vehicleItemDeltaMap.values()].filter((e) => e.delta.greaterThan(0));
 	if (inboundVehicleEntries.length > 0) {
 		// Find stock_item IDs for (vehicle_id, inventory_item_id) pairs receiving stock
 		const stockItemRows = await tx.vehicle_stock_item.findMany({
@@ -266,16 +283,21 @@ export async function recordMovements(
 	// rows to insert after the movement rows). May append TRACKING_GAP to notes.
 	const allItemIds = [...new Set(withIds.map((m) => m.inventory_item_id))];
 	const flags = new Map<string, ItemTrackingFlags>();
+	// Read alongside tracking flags (no second round trip), inside the transaction
+	// so the stamp matches the unit the item had when the stock moved.
+	const units = new Map<string, string>();
 	if (allItemIds.length > 0) {
 		const flagRows = await tx.inventory_item.findMany({
 			where: { id: { in: allItemIds }, organization_id: orgId },
-			select: { id: true, is_serialized: true, is_batch_tracked: true },
+			select: { id: true, is_serialized: true, is_batch_tracked: true, unit: true },
 		});
-		for (const r of flagRows)
+		for (const r of flagRows) {
 			flags.set(r.id, {
 				is_serialized: !!r.is_serialized,
 				is_batch_tracked: !!r.is_batch_tracked,
 			});
+			units.set(r.id, r.unit);
+		}
 	}
 
 	const tracking = await applyTracking(tx, orgId, flags, withIds as TrackedMovement[], {
@@ -290,12 +312,14 @@ export async function recordMovements(
 			organization_id: orgId,
 			inventory_item_id: m.inventory_item_id,
 			qty: new Prisma.Decimal(m.qty),
+			unit: mustGetUnit(units, m.inventory_item_id),
 			from_location_type: m.from_location_type,
 			from_vehicle_id: m.from_vehicle_id ?? null,
 			to_location_type: m.to_location_type,
 			to_vehicle_id: m.to_vehicle_id ?? null,
 			reason: m.reason,
 			note: m.note ?? null,
+			unit_cost: m.unit_cost != null ? new Prisma.Decimal(m.unit_cost) : null,
 			actor_type: actor.actor_type,
 			actor_id: actor.actor_id ?? null,
 			visit_id: m.visit_id ?? null,
@@ -326,7 +350,9 @@ export async function recordMovements(
 		.filter(
 			(item) =>
 				item.low_stock_threshold !== null &&
-				Number(item.quantity) <= item.low_stock_threshold,
+				// Both sides coerced explicitly: these are Decimals, and `<=` between
+				// them compares their string forms, making "9" <= "10" false.
+				Number(item.quantity) <= Number(item.low_stock_threshold),
 		)
 		.map((item) => item.id);
 

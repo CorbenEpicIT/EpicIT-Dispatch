@@ -10,9 +10,11 @@ import type {
 	MileageReportVisit,
 	TimesheetReportEntry,
 	AgedReceivablesResponse,
+	JobBacklogResponse,
 	TechScorecardVisitRow,
 	Paginated,
 	ReportFetchParams,
+	PageSummaryResponse,
 } from "../types/reports";
 import * as reportsApi from "../api/reports";
 
@@ -136,6 +138,13 @@ export const useAgedReceivablesQuery = (): UseQueryResult<AgedReceivablesRespons
 	});
 };
 
+export const useJobBacklogQuery = (): UseQueryResult<JobBacklogResponse, Error> => {
+	return useQuery({
+		queryKey: ["reports", "job-backlog"],
+		queryFn: () => reportsApi.getJobBacklog(),
+	});
+};
+
 export const useAgedReceivablesByClientQuery = (
 	params: ReportFetchParams,
 ): UseQueryResult<Paginated, Error> =>
@@ -190,12 +199,66 @@ export const useClientRetentionQuery = (
 		placeholderData: keepPreviousData,
 	});
 
+export const useClientLifetimeValueQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "client-ltv", params],
+		queryFn: () => reportsApi.getClientLifetimeValueReport(params),
+		placeholderData: keepPreviousData,
+	});
+
+export const useClientDiscountsQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "client-discounts", params],
+		queryFn: () => reportsApi.getClientDiscountsReport(params),
+		placeholderData: keepPreviousData,
+	});
+
+export const useFieldAddedRevenueQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "field-added-revenue", params],
+		queryFn: () => reportsApi.getFieldAddedRevenueReport(params),
+		placeholderData: keepPreviousData,
+	});
+
+export const useRecurringRevenueQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "recurring-revenue", params],
+		queryFn: () => reportsApi.getRecurringRevenueReport(params),
+		placeholderData: keepPreviousData,
+	});
+
 export const usePaymentsReportQuery = (
 	params: ReportFetchParams,
 ): UseQueryResult<Paginated, Error> =>
 	useQuery({
 		queryKey: ["reports", "payments", params],
 		queryFn: () => reportsApi.getPaymentsReport(params),
+		placeholderData: keepPreviousData,
+	});
+
+export const useRevenueByLineItemTypeQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "revenue-by-line-item-type", params],
+		queryFn: () => reportsApi.getRevenueByLineItemTypeReport(params),
+		placeholderData: keepPreviousData,
+	});
+
+export const useRevenueLineItemsQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "revenue-line-items", params],
+		queryFn: () => reportsApi.getRevenueLineItemsReport(params),
 		placeholderData: keepPreviousData,
 	});
 
@@ -224,5 +287,17 @@ export const useTechnicianScorecardQuery = (
 	return useQuery({
 		queryKey: ["reports", "technician-scorecard", startDate, endDate],
 		queryFn: () => reportsApi.getTechnicianScorecard(startDate, endDate),
+	});
+};
+
+export const usePageSummaryQuery = (
+	page: string,
+	startDate?: string,
+	endDate?: string,
+	groupBy?: string,
+): UseQueryResult<PageSummaryResponse, Error> => {
+	return useQuery({
+		queryKey: ["reports", "page-summary", page, startDate, endDate, groupBy],
+		queryFn: () => reportsApi.getPageSummary(page, startDate, endDate, groupBy),
 	});
 };

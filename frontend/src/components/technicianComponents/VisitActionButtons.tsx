@@ -89,7 +89,6 @@ export default function VisitActionButtons({
 				{isClockOut && (
 					<>
 						<button
-							// eslint-disable-next-line jsx-a11y/no-autofocus
 							autoFocus
 							onClick={handleConfirmComplete}
 							disabled={isLoading}
@@ -106,7 +105,6 @@ export default function VisitActionButtons({
 					{PAUSE_REASONS.map((r, i) => (
 						<button
 							key={r.value}
-							// eslint-disable-next-line jsx-a11y/no-autofocus
 							autoFocus={!isClockOut && i === 0}
 							onClick={() => handleReasonSelected(r.value)}
 							disabled={isLoading}
@@ -136,7 +134,6 @@ export default function VisitActionButtons({
 				<p className="text-xs text-text-secondary text-center font-medium">Still on site or heading out?</p>
 				<div className="flex gap-2">
 					<button
-						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
 						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
@@ -173,7 +170,6 @@ export default function VisitActionButtons({
 				</div>
 				<div className="flex gap-2">
 					<button
-						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
 						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
@@ -207,7 +203,6 @@ export default function VisitActionButtons({
 				</div>
 				<div className="flex gap-2">
 					<button
-						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
 						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
@@ -232,7 +227,6 @@ export default function VisitActionButtons({
 				<p className="text-xs text-text-secondary text-center font-medium">Complete this visit?</p>
 				<div className="flex gap-2">
 					<button
-						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={handleDeclineComplete}
 						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
@@ -262,7 +256,6 @@ export default function VisitActionButtons({
 				</div>
 				<div className="flex">
 					<button
-						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
 						className={`${btn} bg-surface border border-border text-text-secondary hover:bg-surface-raised hover:text-text-primary`}
@@ -282,7 +275,6 @@ export default function VisitActionButtons({
 				</p>
 				<div className="flex gap-2">
 					<button
-						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 						onClick={dismiss}
 						className={`${btn} bg-surface border border-border text-text-primary hover:bg-surface-raised hover:text-text-primary`}
@@ -418,7 +410,7 @@ export default function VisitActionButtons({
 						<button
 							onClick={handleClockOut}
 							disabled={isLoading}
-							className={`${btn} border border-border/60 text-text-muted hover:bg-surface hover:text-text-tertiary`}
+							className={`${btn} border border-border text-text-muted hover:bg-surface hover:text-text-tertiary`}
 						>
 							<Clock size={iconSize} />
 							{isLoading ? "Clocking Out…" : "Clock Out"}

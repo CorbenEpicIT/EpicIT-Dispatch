@@ -127,6 +127,7 @@ export interface Technician {
 	last_edited_job_notes?: unknown[];
 	role_id: string | null;
 	organization_role: { id: string; name: string } | null;
+	permissions: string[];
 	theme: "dark" | "light" | "system";
 	mfaEnabled?: boolean;
 }

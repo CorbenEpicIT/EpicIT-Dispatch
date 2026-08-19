@@ -568,7 +568,7 @@ const CreateJobVisit = ({
 	const invokeCreate = useCallback(async () => {
 		if (isLoading) return;
 
-		let combinedStartDate = new Date(startDate);
+		const combinedStartDate = new Date(startDate);
 		let combinedEndDate = new Date(startDate);
 
 		if (
@@ -689,7 +689,8 @@ const CreateJobVisit = ({
 					.mutateAsync(currentDraftId)
 					.catch(() => {});
 			}
-			onSuccess?.(created) ?? setIsModalOpen(false);
+			if (onSuccess) onSuccess(created);
+			else setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to create visit:", error);
 		} finally {
@@ -826,6 +827,7 @@ const CreateJobVisit = ({
 								Visit Date *
 							</label>
 							<DatePicker
+								portal
 								value={startDate}
 								onChange={(d) => {
 									setStartDate(

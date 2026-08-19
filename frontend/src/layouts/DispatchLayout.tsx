@@ -19,6 +19,7 @@ import {
 	UserRoundCog,
 	Plus,
 	Mail,
+	FolderKanban,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
@@ -33,7 +34,6 @@ import { useSocketQuerySync } from "../hooks/useSocketQuerySync";
 import type { VehicleRestockShortfallEvent } from "../types/socketEvents";
 
 export default function DispatchLayout() {
-	const { logout } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const toast = useToast();
@@ -57,6 +57,7 @@ export default function DispatchLayout() {
 		"manage_roles",
 	]);
 	const canViewFollowups = usePermission("view_followups");
+	const canViewProjects = usePermission("view_projects");
 
 	useSocketQuerySync();
 
@@ -188,6 +189,18 @@ export default function DispatchLayout() {
 									/>
 								}
 								label="Jobs"
+							/>
+						)}
+						{canViewProjects && (
+							<SideNavItem
+								expanded={expanded}
+								to="/dispatch/projects"
+								icon={
+									<FolderKanban
+										size={ICON_SIZE}
+									/>
+								}
+								label="Projects"
 							/>
 						)}
 						{canViewInvoices && (
@@ -325,7 +338,7 @@ export default function DispatchLayout() {
 				</header>
 
 				<main className="flex-1 overflow-hidden bg-canvas">
-					<div className="p-4 md:p-6 h-full overflow-y-auto">
+					<div className="pt-4 px-4 md:pt-6 md:px-6 h-full overflow-y-auto">
 						<Outlet />
 					</div>
 				</main>

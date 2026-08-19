@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from "react";
-import { Upload, Trash2, Building2, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Upload, Trash2, Building2, Loader2 } from "lucide-react";
 import {
 	useOrgSettings,
 	useUploadOrgLogo,
@@ -88,6 +88,7 @@ function OrgSettingsSection() {
 				email: org.email ?? "",
 				website: org.website ?? "",
 				restock_mode: org.restock_mode,
+				measurement_system: org.measurement_system,
 				mfa_required: org.mfa_required,
 				brand_color: org.brand_color ?? DEFAULT_BRAND_COLOR,
 				followups_enabled: org.followups_enabled,
@@ -159,6 +160,9 @@ function OrgSettingsSection() {
 				email: form.email || null,
 				website: form.website || null,
 				...(form.restock_mode ? { restock_mode: form.restock_mode } : {}),
+				...(form.measurement_system
+					? { measurement_system: form.measurement_system }
+					: {}),
 				mfa_required: !!form.mfa_required,
 				brand_color: form.brand_color || null,
 				followups_enabled: form.followups_enabled ?? false,
@@ -439,6 +443,64 @@ function OrgSettingsSection() {
 									checked={form.restock_mode === opt.value}
 									onChange={() =>
 										setForm((prev) => ({ ...prev, restock_mode: opt.value }))
+									}
+									className="mt-0.5 accent-(--color-primary)"
+								/>
+								<span>
+									<span className="block text-xs font-medium text-text-primary">
+										{opt.label}
+									</span>
+									<span className="block text-xs text-text-muted">
+										{opt.description}
+									</span>
+								</span>
+							</label>
+						))}
+					</div>
+				</div>
+
+				{/* Measurement system — orders the unit picker, never converts or hides units */}
+				<div className="mt-5 border-t border-border-subtle pt-5">
+					<span className="mb-1 block text-xs font-medium text-text-tertiary">
+						Measurement System
+					</span>
+					<p className="mb-2 text-xs text-text-muted">
+						Orders unit choices for your region. Does not convert existing
+						quantities.
+					</p>
+					<div className="space-y-2">
+						{(
+							[
+								{
+									value: "imperial" as const,
+									label: "Imperial",
+									description: "ft, lb, gal lead the unit picker",
+								},
+								{
+									value: "metric" as const,
+									label: "Metric",
+									description: "mm, kg, l lead the unit picker",
+								},
+							]
+						).map((opt) => (
+							<label
+								key={opt.value}
+								className={`flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
+									form.measurement_system === opt.value
+										? "border-primary bg-primary-bg-subtle"
+										: "border-border-subtle hover:bg-surface"
+								}`}
+							>
+								<input
+									type="radio"
+									name="measurement-system"
+									value={opt.value}
+									checked={form.measurement_system === opt.value}
+									onChange={() =>
+										setForm((prev) => ({
+											...prev,
+											measurement_system: opt.value,
+										}))
 									}
 									className="mt-0.5 accent-(--color-primary)"
 								/>

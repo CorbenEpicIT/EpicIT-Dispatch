@@ -12,6 +12,7 @@ import {
 } from "../lib/validate/invoices.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidInvoiceTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
@@ -650,6 +651,7 @@ export const deleteInvoicePayment = async (
 			changes: {
 				invoice_id: { old: invoiceId, new: null },
 				amount: { old: existing.amount, new: null },
+				...parentBreadcrumb("invoice", invoiceId),
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,
@@ -872,6 +874,7 @@ export const deleteInvoiceNote = async (
 			changes: {
 				invoice_id: { old: invoiceId, new: null },
 				content: { old: existing.content, new: null },
+				...parentBreadcrumb("invoice", invoiceId),
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,

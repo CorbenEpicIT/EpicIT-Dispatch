@@ -103,7 +103,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 	const lineItemsForCalc = useMemo(
 		() =>
 			lineItems.activeLineItems
-				.filter((li) => !(li as any).isDeleted)
+				.filter((li) => !("isDeleted" in li && li.isDeleted))
 				.map((li) => ({
 					id: li.id,
 					total: Number(li.total),
@@ -282,7 +282,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 	);
 
 	const buildScheduledDates = useCallback(() => {
-		let combinedStartDate = new Date(getValue("startDate"));
+		const combinedStartDate = new Date(getValue("startDate"));
 		let combinedEndDate = new Date(getValue("startDate"));
 
 		if (
@@ -572,6 +572,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 								Visit Date *
 							</label>
 							<DatePicker
+								portal
 								mode="edit"
 								originalValue={
 									fields.startDate
@@ -656,7 +657,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 							onTaxGroupBulkSet={lineItems.setAllLineItemsTaxGroup}
 						/>
 
-						{lineItems.activeLineItems.some((li) => !(li as any).isDeleted) && (
+						{lineItems.activeLineItems.some((li) => !("isDeleted" in li && li.isDeleted)) && (
 							<div className="p-3 bg-surface rounded-lg border border-border text-sm space-y-1.5">
 								<div className="flex justify-between text-text-tertiary">
 									<span>Subtotal</span>

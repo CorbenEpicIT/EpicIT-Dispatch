@@ -19,7 +19,7 @@ interface UseMasonryReturn {
 }
 
 export function useMasonry(
-	dependencies: any[] = [],
+	dependencies: React.DependencyList = [],
 	options: UseMasonryOptions = { itemSelector: ".masonry-item" }
 ): UseMasonryReturn {
 	const containerRef = useRef<HTMLDivElement | null>(null);

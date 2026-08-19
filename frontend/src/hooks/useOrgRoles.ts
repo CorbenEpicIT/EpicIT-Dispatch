@@ -6,17 +6,19 @@ import {
     getOrgRoleById,
     assignOrgRole,
 } from "../api/organizations";
-import type { OrganizationRole } from "../types/organizations";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePermission } from "./usePermission";
 
 // ============================================================================
 // Queries
 // ============================================================================
 
 export const useOrgRolesQuery = () => {
+    const canManageRoles = usePermission("manage_roles");
     return useQuery({
         queryKey: ["organizationRoles"],
         queryFn: getOrgRoles,
+        enabled: canManageRoles,
     });
 };
 
@@ -49,6 +51,8 @@ export const useUpdateOrgRoleMutation = () => {
             updateOrgRole(id, input),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["organizationRoles"] });
+            queryClient.invalidateQueries({ queryKey: ["dispatchers"] });
+            queryClient.invalidateQueries({ queryKey: ["technicians"] });
         },
     });
 };

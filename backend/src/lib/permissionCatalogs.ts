@@ -11,6 +11,7 @@ const DISPATCHER_CATALOG = [
 	{ category: "Administration", permissions: ["view_admin", "manage_roles", "manage_organization", "manage_taxes"] },
 	{ category: "Vehicles", permissions: ["view_vehicles", "manage_vehicles"] },
 	{ category: "Followups", permissions: ["view_followups", "manage_followups"] },
+	{ category: "Projects", permissions: ["view_projects", "create_projects", "edit_projects", "delete_projects"] },
 ] as const;
 
 const TECHNICIAN_CATALOG = [

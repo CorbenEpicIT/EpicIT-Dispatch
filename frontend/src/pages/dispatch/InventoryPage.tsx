@@ -1,12 +1,11 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-import { Plus, Trash2, FileSpreadsheet, Settings2, ChevronDown, ChevronUp, Barcode, X, QrCode } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { Plus, FileSpreadsheet, Settings2, ChevronDown, ChevronUp, Barcode, X } from "lucide-react";
 import { BarcodeScanner } from "../../components/inventory/BarcodeScanner";
 import { useBarcodeScanner } from "../../hooks/useBarcodeScanner";
-import { useBarcodeScanHandler } from "../../hooks/useInventory";
+import { useScanDispatcher } from "../../hooks/useScanDispatcher";
 import InventoryItemView from "../../components/inventory/InventoryItemView";
 import LowStockList from "../../components/inventory/LowStockList";
-import EditInventory from "../../components/inventory/EditInventory";
 import CreateInventoryItem from "../../components/inventory/CreateInventoryItem";
 import InventoryImportExport from "../../components/inventory/InventoryImportExport";
 import TagPicker from "../../components/inventory/TagPicker";
@@ -27,13 +26,15 @@ import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
-import { 
+import PageReportSection from "../../components/reports/PageReportSection";
+import {
 	useQBStatusQuery,
 	useQBMappedItemsQuery,
 } from "../../hooks/useQuickbooks";
 import LinkQBItemModal from "../../components/quickbooks/LinkQBItemModal";
 import LabelQueueToast from "../../components/inventory/labels/LabelQueueToast";
-import { useLabelQueueStore } from "../../stores/labelQueueStore";
+import LabelQueueButton from "../../components/inventory/labels/LabelQueueButton";
+import { useInventoryViewMode } from "../../hooks/useInventoryViewMode";
 
 const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 	{ value: "name", label: "Name A-Z" },
@@ -45,17 +46,17 @@ const SORT_OPTIONS: { value: InventorySortOption; label: string }[] = [
 
 export default function InventoryPage() {
 	const [searchParams, setSearchParams] = useSearchParams();
+	const navigate = useNavigate();
 	const [sort, setSort] = useState<InventorySortOption>("name");
 	const [search, setSearch] = useState("");
 	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-	const [thresholdItem, setThresholdItem] = useState<InventoryItem | null>(null);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [isImportExportOpen, setIsImportExportOpen] = useState(false);
 	const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
-	const [viewMode, setViewMode] = useState<"card" | "list">("card");
+	const [viewMode, setViewMode] = useInventoryViewMode();
 	const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
 	const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -66,8 +67,6 @@ export default function InventoryPage() {
 	const [isScannerOpen, setIsScannerOpen] = useState(false);
 	const [scanNotFoundCode, setScanNotFoundCode] = useState<string | null>(null);
 	const [createPrefillBarcode, setCreatePrefillBarcode] = useState<string | undefined>(undefined);
-
-	const labelQueueCount = useLabelQueueStore((s) => s.items.length);
 
 	//permissions
 	const MANAGE_INVENTORY = usePermission("manage_inventory");
@@ -81,6 +80,17 @@ export default function InventoryPage() {
 
 	const deleteMutation = useDeleteInventoryItemMutation();
 
+	// Distinct categories already in use, fed to the create/edit form's datalist.
+	// Derived from the list this page already holds — no extra request, and no
+	// new endpoint, since category is freetext with no canonical vocabulary.
+	const categorySuggestions = useMemo(
+		() =>
+			[...new Set(inventoryItems.map((i) => i.category).filter(Boolean))]
+				.sort((a, b) => a!.localeCompare(b!))
+				.map((c) => c as string),
+		[inventoryItems]
+	);
+
 	const filteredItems = useMemo(() => {
 		let items = inventoryItems;
 
@@ -92,6 +102,9 @@ export default function InventoryPage() {
 					(item.sku && item.sku.toLowerCase().includes(q)) ||
 					(item.barcode && item.barcode.toLowerCase().includes(q)) ||
 					item.location.toLowerCase().includes(q) ||
+					// Matches the technician vehicle page and AdjustStockModal,
+					// which already searched category — this page was the outlier.
+					(item.category?.toLowerCase().includes(q) ?? false) ||
 					(item.alt_ids?.some((id) => id.toLowerCase().includes(q)) ?? false),
 			);
 		}
@@ -155,13 +168,23 @@ export default function InventoryPage() {
 		[filteredItems, scrollAndHighlight]
 	);
 
-	const { handleScan: scanAndBranch } = useBarcodeScanHandler(
-		(item) => {
+	// useScanDispatcher directly rather than the useBarcodeScanHandler wrapper:
+	// the wrapper collapses every code shape onto onItem, discarding the serial.
+	// A `SN:` label needs to open that exact unit's drawer, not just its card.
+	const { handleScan: scanAndBranch } = useScanDispatcher({
+		onItem: (item) => {
 			setSearch("");
 			handleLowStockClick(item.id);
 		},
-		(code) => setScanNotFoundCode(code),
-	);
+		onSerial: (serial) =>
+			navigate(
+				`/dispatch/inventory/items/${serial.item.id}?tab=tracking&serial=${serial.serialUnitId}`,
+			),
+		// onBatch omitted deliberately — it falls back to onItem(batch.item),
+		// which highlights the parent item's card. Batch detail is still a full
+		// page; routing a scan straight there is a separate decision.
+		onNotFound: (code) => setScanNotFoundCode(code),
+	});
 
 	const handleBarcodeScan = useCallback(
 		async (code: string) => {
@@ -215,21 +238,9 @@ export default function InventoryPage() {
 	return (
 		<div className="flex h-full text-text-primary">
 			{/* Main content */}
-			<div className="flex-1 flex flex-col min-h-0 p-4 mr-7">
+			<div className="flex-1 overflow-y-auto p-4 mr-7">
 				<PageHeader title="Inventory">
-						{labelQueueCount > 0 && (
-							<Link
-								to="/dispatch/inventory/labels/print"
-								className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
-								title="View and print queued labels"
-							>
-								<QrCode size={14} />
-								Print Labels
-								<span className="inline-flex items-center justify-center h-5 min-w-5 rounded-full bg-primary text-on-primary text-xs font-bold px-1.5">
-									{labelQueueCount}
-								</span>
-							</Link>
-						)}
+						<LabelQueueButton />
 						<button
 						onClick={() => setIsTagManagerOpen(true)}
 						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
@@ -258,12 +269,14 @@ export default function InventoryPage() {
 						</button>
 				</PageHeader>
 
+				<PageReportSection page="inventory" label="Inventory report" />
+
 				<PageControls
 					className="mb-4"
 					left={
 						<div className="flex items-center gap-2 w-full">
 							<SearchBar
-								placeholder="Search items..."
+								placeholder="Search name, SKU, barcode, category, location..."
 								value={search}
 								onChange={setSearch}
 							/>
@@ -286,11 +299,15 @@ export default function InventoryPage() {
 							<StatusFilter
 								placeholder="Sort"
 								hideAll
-								value={sort}
+								// StatusFilter became multi-select upstream, but a
+								// sort is one-of: the array holds exactly the
+								// active option, and picking another replaces it.
+								values={[sort]}
 								onChange={(v) =>
 									v && setSort(v as InventorySortOption)
 								}
 								options={SORT_OPTIONS}
+								exclusive
 							/>
 						</div>
 					}
@@ -340,12 +357,15 @@ export default function InventoryPage() {
 					</div>
 				)}
 
-				<div className="flex-1 overflow-auto min-h-0">
+				<div>
+					{/* @container/list lets each list row decide whether it has
+					    room to show Item Settings + Delete outright or must fold
+					    them into its kebab — see InventoryItemView. */}
 					<div
 						className={
 							viewMode === "card"
 								? "grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3"
-								: "flex flex-col gap-2"
+								: "@container/list flex flex-col gap-2"
 						}
 					>
 						{filteredItems.map((item) => (
@@ -355,48 +375,44 @@ export default function InventoryPage() {
 									if (el) cardRefs.current.set(item.id, el);
 									else cardRefs.current.delete(item.id);
 								}}
-								className="relative group h-full"
+								// min-w-0: a grid item defaults to min-width:auto, so a
+								// card holding an unbreakable 100-character SKU grew
+								// its own track past its 1fr share and out of the
+								// container.
+								className="relative group h-full min-w-0"
 							>
 								<InventoryItemView
 									item={item}
 									viewMode={viewMode}
 									isHighlighted={highlightedItemId === item.id}
 									onHighlightMouseLeave={() => handleHighlightMouseLeave(item.id)}
-									onEditThreshold={() =>
-										setThresholdItem(
-											item
-										)
+									// Gated like onDelete below: the server enforces
+									// manage_inventory on PATCH, so without it the edit
+									// affordance only led to a rejected save.
+									onEditItem={
+										MANAGE_INVENTORY
+											? () => setEditingItem(item)
+											: undefined
 									}
-									onClick={() => {
-										if (!MANAGE_INVENTORY) return;
-										setEditingItem(item);
-									}}
-									onDelete={() => {
-										if (!MANAGE_INVENTORY) return;
-										setDeleteConfirmId(
-											item.id
-										)
-									}}
+									onClick={() =>
+										navigate(`/dispatch/inventory/items/${item.id}`)
+									}
+									// Undefined without permission rather than a
+									// no-op handler — the row/card then renders no
+									// delete affordance at all instead of a button
+									// that silently does nothing.
+									onDelete={
+										MANAGE_INVENTORY
+											? () =>
+													setDeleteConfirmId(
+														item.id
+													)
+											: undefined
+									}
 									onLinkQB={MANAGE_INVENTORY ? () => setLinkItem(item) : undefined}
 									isLinkedToQB={mappedIds.has(item.id)}
 									qbConnected={qbConnected}
 								/>
-								{/* Delete overlay — card mode only; list mode uses inline actions */}
-								{(viewMode === "card" && !MANAGE_INVENTORY) && (
-									<button
-										onClick={(e) => {
-											e.stopPropagation();
-											if (!MANAGE_INVENTORY) return;
-											setDeleteConfirmId(
-												item.id
-											);
-										}}
-										className="absolute top-2 right-2 p-1.5 rounded-md bg-surface/80 text-text-muted hover:text-error-text hover:bg-surface opacity-0 group-hover:opacity-100 transition-all"
-										title="Delete item"
-									>
-										<Trash2 size={14} />
-									</button>
-								)}
 							</div>
 						))}
 
@@ -413,15 +429,6 @@ export default function InventoryPage() {
 
 			{/* Low Stock Sidebar */}
 			<LowStockList items={inventoryItems} onItemClick={handleLowStockClick} />
-
-			{/* Edit Threshold Modal */}
-			{thresholdItem && (
-				<EditInventory
-					isOpen
-					onClose={() => setThresholdItem(null)}
-					item={thresholdItem}
-				/>
-			)}
 
 			{/* Import / Export Modal */}
 			<InventoryImportExport
@@ -445,6 +452,7 @@ export default function InventoryPage() {
 				}}
 				existingItem={editingItem}
 				prefillBarcode={createPrefillBarcode}
+				categorySuggestions={categorySuggestions}
 			/>
 
 			{/* Barcode Scanner */}

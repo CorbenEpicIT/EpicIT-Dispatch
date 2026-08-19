@@ -29,6 +29,7 @@ import {
     requirePermissionOrSelf,
     requireAnyPermissionOrSelf
 } from '../lib/requirePermissions.js';
+import { getActorHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -423,6 +424,37 @@ router.post("/:id/mfa/reset", requirePermissionOrSelf("manage_technicians"), asy
 	} catch (err) {
 		next(err);
 	}
+});
+
+router.get("/:id/changes", requirePermissionOrSelf("view_technicians"), async (req, res, next) => {
+    try {
+        const id = req.params.id as string;
+        const orgId = req.user!.organization_id as string;
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
+
+        const results = await getActorHistory(orgId, "technician", id, limit);
+
+        if (results.err) {
+            return res
+                .status(500)
+                .json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+        }
+
+        res.json(createSuccessResponse(results.rows, {
+            count: results.rows.length,
+            hasMore: results.hasMore,
+            total: results.total,
+        }));
+    } catch (err) {
+        next(err);
+    }
 });
 
 export default router;

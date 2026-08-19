@@ -4,6 +4,10 @@ export type DateRangeOption =
 	| "last_7_days"
 	| "last_30_days"
 	| "this_month"
+	| "tomorrow"
+	| "next_7_days"
+	| "next_30_days"
+	| "next_month"
 	| "custom";
 
 export interface DateRangeValue {
@@ -18,6 +22,10 @@ const VALID_OPTIONS: DateRangeOption[] = [
 	"last_7_days",
 	"last_30_days",
 	"this_month",
+	"tomorrow",
+	"next_7_days",
+	"next_30_days",
+	"next_month",
 	"custom",
 ];
 
@@ -38,7 +46,7 @@ function localEndOfDay(d: Date): Date {
  * as a local Date. For example, new Date("2025-01-01") is UTC midnight which
  * in UTC-5 is Dec 31 local — this returns a local-time date for Jan 1.
  */
-function toLocalDate(d: Date): Date {
+export function toLocalDate(d: Date): Date {
 	// Use UTC components to extract the intended calendar date,
 	// then construct it as a local-time date.
 	return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -48,6 +56,13 @@ function toLocalDate(d: Date): Date {
 function subDays(d: Date, days: number): Date {
 	const result = new Date(d);
 	result.setDate(result.getDate() - days);
+	return result;
+}
+
+/** Adds `days` to a Date (local calendar days). */
+function addDays(d: Date, days: number): Date {
+	const result = new Date(d);
+	result.setDate(result.getDate() + days);
 	return result;
 }
 
@@ -77,6 +92,18 @@ export function resolveDateRange(value: DateRangeValue): { start: Date; end: Dat
 			return { start: localStartOfDay(subDays(now, 29)), end: localEndOfDay(now) };
 		case "this_month":
 			return { start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0), end: localEndOfDay(now) };
+		case "tomorrow":
+			return { start: localStartOfDay(addDays(now, 1)), end: localEndOfDay(addDays(now, 1)) };
+		case "next_7_days":
+			return { start: localStartOfDay(now), end: localEndOfDay(addDays(now, 6)) };
+		case "next_30_days":
+			return { start: localStartOfDay(now), end: localEndOfDay(addDays(now, 29)) };
+		case "next_month":
+			// day 0 of month m+2 is the last day of month m+1
+			return {
+				start: new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0),
+				end: new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59, 999),
+			};
 		case "custom":
 			if (!value.startDate || !value.endDate) return null;
 			return {
@@ -106,6 +133,14 @@ export function formatTriggerLabel(value: DateRangeValue): string {
 			return "Last 30 days";
 		case "this_month":
 			return "This month";
+		case "tomorrow":
+			return "Tomorrow";
+		case "next_7_days":
+			return "Next 7 days";
+		case "next_30_days":
+			return "Next 30 days";
+		case "next_month":
+			return "Next month";
 		case "custom":
 			if (value.startDate && value.endDate) {
 				return `${formatMonthDay(value.startDate)} – ${formatMonthDay(value.endDate)}`;

@@ -10,15 +10,14 @@ export interface UserContext {
 }
 
 
+// Actor identity comes exclusively from the verified JWT (req.user). Request
+// headers are client-controlled and must never be able to override it.
 export const getUserContext = (req: Request): UserContext => {
-	const headerUserId = req.headers["x-user-id"] as string | undefined;
-	const headerUserType = req.headers["x-user-type"] as "tech" | "dispatcher" | undefined;
 	const userAgent = req.headers["user-agent"] || undefined;
-
-	// Fall back to JWT payload when explicit headers are absent (standard frontend requests)
-	const userId = headerUserId ?? req.user?.uid;
-	const isTech = headerUserType === "tech" || (!headerUserType && req.user?.role === "technician");
-	const isDispatcher = headerUserType === "dispatcher" || (!headerUserType && (req.user?.role === "dispatcher" || req.user?.role === "admin"));
+	const userId = req.user?.uid;
+	const role = req.user?.role;
+	const isTech = role === "technician";
+	const isDispatcher = role === "dispatcher" || role === "admin";
 
 	return {
 		techId: isTech ? userId : undefined,
@@ -66,6 +65,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"followup_enrollment",
 	"followup_send",
 	"email_template",
+	"project",
 ]);
 
 /**

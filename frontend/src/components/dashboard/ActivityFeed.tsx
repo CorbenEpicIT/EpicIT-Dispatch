@@ -76,7 +76,9 @@ const FEED_FILTERS = [
 
 const ITEM_HEIGHT_ESTIMATE = 60;
 
-export default function ActivityFeed() {
+export default function ActivityFeed(
+	{title = "Live Activity Feed", userId = undefined}: {title?: string, userId?: string}
+) {
 	const navigate = useNavigate();
 	const { user } = useAuthStore();
 	const tz = user?.orgTimezone ?? FALLBACK_TIMEZONE;
@@ -92,7 +94,7 @@ export default function ActivityFeed() {
 		loadMore,
 		newItemSignal,
 		socketConnected,
-	} = useActivityFeed();
+	} = useActivityFeed({userId});
 
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
@@ -144,7 +146,7 @@ export default function ActivityFeed() {
 	);
 
 	return (
-		<Card title="Live Activity Feed" className="h-full" headerAction={statusIndicator}>
+		<Card title={title} className="h-full" headerAction={statusIndicator}>
 			{/* Filter strip — full card width, always visible */}
 			<div className="flex flex-wrap items-center gap-1 -mx-4 px-4 pb-3 mb-1 border-b border-border-subtle/60">
 				{FEED_FILTERS.map((f) => {

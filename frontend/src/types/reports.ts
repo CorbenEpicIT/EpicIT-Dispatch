@@ -1,5 +1,5 @@
 import type { ColumnType, FilterCondition, FilterJoin } from "../reports/reportSources";
-import type { StockStatus } from "./inventory";
+import type { StockStatus, UnitBasis } from "./inventory";
 
 // ============================================================================
 // REPORT CATEGORIES
@@ -122,6 +122,33 @@ export interface UnscheduledRevenueResponse {
 }
 
 // ============================================================================
+// WORK ORDER STATUS BACKLOG
+// ============================================================================
+
+export type JobBacklogStatus = "Unscheduled" | "Scheduled" | "InProgress";
+
+export interface JobBacklogBucket {
+	count: number;
+	revenue: number;
+}
+
+export interface JobBacklogRow {
+	fresh: JobBacklogBucket;
+	aging: JobBacklogBucket;
+	stalled: JobBacklogBucket;
+	total: JobBacklogBucket;
+}
+
+export interface JobBacklogStatusRow extends JobBacklogRow {
+	status: JobBacklogStatus;
+}
+
+export interface JobBacklogResponse {
+	statuses: JobBacklogStatusRow[];
+	totals: JobBacklogRow;
+}
+
+// ============================================================================
 // QUOTE PIPELINE
 // ============================================================================
 
@@ -195,19 +222,52 @@ export interface TimesheetReportEntry {
 // INVENTORY REORDER FORECAST
 // ============================================================================
 
-// Calculated over the last 90 days
+// The reorder verdict, computed server-side in reportsController's
+// buildReorderForecast so this report's table, the priority chart, and the item
+// detail page can never disagree about the same item. Never re-derive it
+// locally from daysOfStock — that drift is exactly what this replaced.
+export type ReorderSeverity = 'critical' | 'warning' | 'healthy' | 'unknown';
+
+// Calculated over the last REORDER_FORECAST_WINDOW_DAYS days.
 export interface ReorderForecastRow {
 	itemId: string;
 	itemName: string;
 	sku: string | null;
 	category: string | null;
 	unit: string | null;
+	// ORG-WIDE on-hand: warehouse + every vehicle, matching the org-wide
+	// consumption it's divided by. The split is carried separately because
+	// "order more" and "move some out to a van" are different actions.
 	currentQuantity: number;
-	qtyConsumed: number;
-	avgDailyUsage: number;
+	warehouseQuantity: number;
+	vehicleQuantity: number;
+	// null when the consumption behind them spans a unit change (consumptionBasis
+	// below). The on-hand figures above stay non-null: they come from the cached
+	// quantity columns, always in the item's current unit, not from a ledger sum.
+	qtyConsumed: number | null;
+	avgDailyUsage: number | null;
+	// Denomination of the consumption this forecast burns down, from the units stamped
+	// on the movements — never from `unit` above, which is the item's CURRENT unit.
+	// When mixed, the rate, runway and stockout date are withheld together and
+	// `severity` falls back to the bands that need no rate.
+	consumptionBasis: UnitBasis;
+	// Days of history the rate was actually measured over — less than the window
+	// for a young item. Carried so a rate built on 4 days isn't read as a 90-day
+	// average. A time span, so it survives a unit break.
+	observedDays: number;
 	daysOfStock: number | null;
 	projectedStockoutDate: string | null;
+	// Warehouse-scoped reorder trigger (the low-stock threshold is a warehouse
+	// number), unlike the org-wide runway above.
+	lowStockThreshold: number | null;
+	belowReorderPoint: boolean;
+	severity: ReorderSeverity;
 }
+
+// The forecast window is FIXED server-side (reportRegistry.ts's "reorder-forecast"
+// entry defaults lookbackDays to 90 and this report sends no override). Stated in
+// one place so the report labels the same window ReorderHealthCard does.
+export const REORDER_FORECAST_WINDOW_DAYS = 90;
 
 export interface InventoryReportRow {
 	id: string;
@@ -225,7 +285,11 @@ export interface InventoryReportRow {
 	cost: number | null;
 	unitPrice: number | null;
 	assetValue: number | null;
-	qtyUsed: number;
+	// null when this item's consumption spans a unit change — never 0, which is the
+	// real answer for "never consumed" and has to stay distinguishable in a report
+	// people export and act on.
+	qtyUsed: number | null;
+	qtyUsedBasis: UnitBasis;
 	stockStatus: StockStatus;
 	location: string;
 	tags: { label: string }[];
@@ -354,6 +418,146 @@ export interface ClientRetentionRow {
 	lastActivity: string;
 	lifetimeRevenue: number;
 	jobCount: number;
+}
+
+export interface ClientLifetimeValueRow {
+	id: string;
+	name: string;
+	primaryContact: string;
+	firstPurchaseAt: string;
+	tenureMonths: number;
+	jobCount: number;
+	invoiceCount: number;
+	lifetimeRevenue: number;
+	avgInvoiceValue: number;
+}
+
+export interface ClientLifetimeValueSummary {
+	clientCount: number;
+	totalLifetimeRevenue: number;
+	avgClv: number;
+}
+
+// ============================================================================
+// DISCOUNTING BY CLIENT
+// ============================================================================
+
+export interface ClientDiscountRow {
+	id: string;
+	clientName: string;
+	invoiceCount: number;
+	totalBilled: number;
+	totalDiscount: number;
+	discountRate: number;
+	avgDiscount: number;
+}
+
+export interface ClientDiscountSummary {
+	clientCount: number;
+	totalDiscount: number;
+	totalBilled: number;
+	avgDiscountRate: number;
+}
+
+// ============================================================================
+// FIELD-ADDED REVENUE (TECH UPSELL)
+// ============================================================================
+
+export interface FieldAddedRevenueRow {
+	id: string;
+	technician: string;
+	itemCount: number;
+	jobCount: number;
+	fieldAddedRevenue: number;
+	avgPerItem: number;
+}
+
+export interface FieldAddedRevenueTrend {
+	// Filter options, ordered by revenue desc (same order as rows), incl. "Unassigned".
+	techs: { id: string; name: string }[];
+	// Long format: one entry per (tech, month) with field-added revenue.
+	points: { month: string; techId: string; revenue: number }[];
+}
+
+export interface FieldAddedRevenueSummary {
+	technicianCount: number;
+	totalFieldAddedRevenue: number;
+	// distinct field-added items (a split item counts once here, once per tech in rows)
+	fieldAddedItems: number;
+	topTechnician: string;
+	// org-wide denominator for upsell rate = fieldAdded / orgVisitRevenue
+	orgVisitRevenue: number;
+	// the backend row cap was reached; totals cover only the newest items
+	truncated?: boolean;
+	// per-(tech, month) field-added revenue for the trend chart's local tech filter
+	trend: FieldAddedRevenueTrend;
+}
+
+// ============================================================================
+// RECURRING REVENUE (MRR)
+// ============================================================================
+
+export interface RecurringRevenueRow {
+	id: string;
+	name: string;
+	clientName: string;
+	status: string;
+	billingBasis: string;
+	perPeriodAmount: number | string;
+	monthlyValue: number;
+	nextInvoiceAt: string;
+	lastInvoicedAt: string;
+	occCompleted: number;
+	occSkipped: number;
+}
+
+export interface RecurringRevenueTrendPoint {
+	month: string; // YYYY-MM
+	revenue: number;
+}
+
+export interface RecurringRevenueSummary {
+	mrr: number;
+	arr: number;
+	activePlans: number;
+	pausedPlans: number;
+	newPlans: number;
+	churnedPlans: number;
+	churnedMrr: number;
+	completionRate: number;
+	skipRate: number;
+	trend: RecurringRevenueTrendPoint[];
+}
+
+// ============================================================================
+// REVENUE BY LINE ITEM TYPE
+// ============================================================================
+
+export interface RevenueByLineItemTypeRow {
+	id: string; // the item_type key: labor | material | equipment | other
+	label: string;
+	revenue: number;
+	lineCount: number;
+	pctOfTotal: number;
+}
+
+export interface RevenueByLineItemTypeSummary {
+	totalRevenue: number;
+	totalLineItems: number;
+}
+
+export interface RevenueLineItemRow {
+	id: string;
+	_invoiceId: string;
+	invoiceNumber: string;
+	clientName: string;
+	issueDate: string;
+	name: string;
+	description: string;
+	quantity: number;
+	unitPrice: number;
+	total: number;
+	itemType: string;
 }
 
 // ============================================================================
@@ -510,4 +714,14 @@ export interface ReportFavorite {
 export interface CreateFavoriteInput {
 	kind: ReportFavoriteKind;
 	ref: string;
+}
+
+// ===========================================================================
+// Page summary
+// ===========================================================================
+export interface PageSummaryResponse {
+	page: string;
+	stats: { label: string; value: number; format: "number" | "currency" | "percent" | "duration" }[];
+	breakdown: { label: string; value: number; }[];
+	breakdownLabel: string;
 }

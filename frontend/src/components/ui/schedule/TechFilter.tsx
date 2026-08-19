@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { ChevronDown, Check, Users } from "lucide-react";
 import type { Technician } from "../../../types/technicians";
 
@@ -12,10 +12,12 @@ interface TechFilterProps {
 export default function TechFilter({ technicians, selected, onChange, techColorMap }: TechFilterProps) {
 	const [dropdownOpen, setDropdownOpen] = useState(false);
 	const [mode, setMode] = useState<"pills" | "dropdown">("pills");
+	const [menuMaxH, setMenuMaxH] = useState<number | undefined>(undefined);
 
 	const wrapRef     = useRef<HTMLDivElement>(null);
 	const probeRef    = useRef<HTMLDivElement>(null);
 	const dropdownRef = useRef<HTMLDivElement>(null);
+	const triggerRef  = useRef<HTMLButtonElement>(null);
 
 	// Auto-detect: measure whether pills fit in available container width
 	useEffect(() => {
@@ -41,6 +43,31 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 		}
 		document.addEventListener("mousedown", handleClick);
 		return () => document.removeEventListener("mousedown", handleClick);
+	}, [dropdownOpen]);
+
+	// used to avoid the selction from overflowing 
+	useLayoutEffect(() => {
+		if (!dropdownOpen) return;
+		const compute = () => {
+			const btn = triggerRef.current;
+			if (!btn) return;
+			let el: HTMLElement | null = btn.parentElement;
+			let bound = window.innerHeight;
+			while (el) {
+				const s = getComputedStyle(el);
+				if (s.overflowY === "hidden" || s.overflow === "hidden") {
+					bound = Math.min(bound, el.getBoundingClientRect().bottom);
+					break;
+				}
+				el = el.parentElement;
+			}
+			const btnBottom = btn.getBoundingClientRect().bottom;
+			// Never exceed the space left in the card
+			setMenuMaxH(Math.max(96, bound - btnBottom - 10));
+		};
+		compute();
+		window.addEventListener("resize", compute);
+		return () => window.removeEventListener("resize", compute);
 	}, [dropdownOpen]);
 
 	function toggleTech(id: string) {
@@ -110,10 +137,12 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 
 	function renderDropdown() {
 		return (
-			<div className="relative" ref={dropdownRef}>
+			<div className="relative min-w-0" ref={dropdownRef}>
 				<button
+					ref={triggerRef}
 					onClick={() => setDropdownOpen((v) => !v)}
-					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors shrink-0 ${
+					title="Technicians"
+					className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-[11px] font-medium border transition-colors min-w-0 w-full ${
 						isFiltered
 							? "bg-primary/10 border-primary/25 text-primary-text"
 							: "border-border text-text-tertiary hover:border-border-strong hover:text-text-secondary"
@@ -123,7 +152,7 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 
 					{/* Color dots for selected techs */}
 					{isFiltered && (
-						<span className="flex items-center gap-0.5">
+						<span className="flex items-center gap-0.5 shrink-0">
 							{selectedArr.slice(0, 4).map((t) => (
 								<span
 									key={t.id}
@@ -134,7 +163,8 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 						</span>
 					)}
 
-					<span>
+					{/* Label truncates so the button can shrink to just the icon when the toolbar is tight */}
+					<span className="truncate">
 						{isFiltered ? `${selected.size} of ${technicians.length}` : "Technicians"}
 					</span>
 
@@ -146,9 +176,12 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 				</button>
 
 				{dropdownOpen && (
-					<div className="absolute left-0 top-full mt-1 z-50 w-52 bg-base border border-border-subtle rounded-lg shadow-2xl overflow-hidden">
+					<div
+						className="absolute right-0 top-full mt-1 z-50 w-52 flex flex-col bg-base border border-border-subtle rounded-lg shadow-2xl overflow-hidden"
+						style={{ maxHeight: menuMaxH }}
+					>
 						{/* All technicians */}
-						<div className="p-1">
+						<div className="p-1 shrink-0">
 							<button
 								onClick={selectAll}
 								className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] text-left transition-colors hover:bg-surface"
@@ -168,10 +201,10 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 							</button>
 						</div>
 
-						<div className="h-px bg-surface" />
+						<div className="h-px bg-surface shrink-0" />
 
-						{/* Scrollable tech list */}
-						<div className="p-1 overflow-y-auto" style={{ maxHeight: 272 }}>
+						{/* Scrollable tech list — flexes so the header + footer stay pinned/visible */}
+						<div className="p-1 flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 272 }}>
 							{technicians.map((tech) => {
 								const color = techColorMap.get(tech.id) ?? "var(--color-tech-unassigned)";
 								const isSel = selected.has(tech.id);
@@ -204,8 +237,8 @@ export default function TechFilter({ technicians, selected, onChange, techColorM
 						{/* Footer: clear selection */}
 						{isFiltered && (
 							<>
-								<div className="h-px bg-surface" />
-								<div className="p-1">
+								<div className="h-px bg-surface shrink-0" />
+								<div className="p-1 shrink-0">
 									<button
 										onClick={selectAll}
 										className="w-full px-2.5 py-1.5 rounded text-[10px] text-text-muted hover:text-text-secondary hover:bg-surface text-left transition-colors"

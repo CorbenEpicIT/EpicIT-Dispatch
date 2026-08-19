@@ -30,9 +30,10 @@ export type ResolveCodeResult = { type: "item"; item: InventoryItem } | Resolved
 
 export type SerialUnitStatus = "in_warehouse" | "on_vehicle" | "consumed" | "lost" | "returned";
 
-// Shared serial status copy/styling — ItemTrackingPage and SerialDetailPage both
-// render this exact label set and (desktop) badge classes so a unit's status reads
-// identically whether a dispatcher lands on the list or drills into a single unit.
+// Shared serial status copy/styling — the detail page's Tracking tab and
+// SerialDetailBody both render this exact label set and (desktop) badge classes
+// so a unit's status reads identically whether a dispatcher lands on the list
+// or drills into a single unit.
 export const SERIAL_STATUS_LABEL: Record<SerialUnitStatus, string> = {
 	in_warehouse: "In Warehouse",
 	on_vehicle: "On Vehicle",
@@ -137,10 +138,18 @@ export interface ReceiveInventoryInput {
 	serial_numbers?: string[];
 	/** Serialized items: let the backend synthesize AUTO- serial numbers instead of supplying them. */
 	auto_serial?: boolean;
+	/**
+	 * Per-unit cost the supplier billed on THIS receipt. Omit when unknown — a
+	 * missing cost is recorded as unknown and excluded from the item's
+	 * weighted-average paid cost, never treated as 0.
+	 */
+	unit_cost?: number;
 	batch?: {
 		batch_number: string;
 		expires_at?: string | null;
 		supplier?: string;
+		/** Lot-level cost; falls back to the receive-level unit_cost. */
+		unit_cost?: number;
 	};
 	batch_id?: string;
 	note?: string;
@@ -170,15 +179,74 @@ export interface ReceiveInventoryResponse {
 //
 // Matches toggleTrackingSchema (backend/src/lib/validate/inventoryTracking.ts).
 // Each flag can be turned ON or OFF (enable, disable, or switch serialized↔batch)
-// — a `false` disables that dimension. The backend rejects any change that
-// disables or switches an already-tracked dimension unless the item is fully
-// empty (zero on-hand qty AND no serial_unit/stock_batch rows), and rejects all
-// changes for provisional items.
+// — a `false` disables that dimension. The backend rejects any change while the
+// item has stock on hand (warehouse OR any vehicle), rejects a disable/switch
+// while a serial is in_warehouse/on_vehicle or a lot still holds stock, and
+// rejects all changes for provisional items. Terminal serials and drained lots
+// do NOT block a disable — they persist as read-only history.
 // ============================================================================
 
 export interface UpdateItemTrackingInput {
 	is_serialized?: boolean;
 	is_batch_tracked?: boolean;
+}
+
+// ============================================================================
+// Vehicle stock breakdown — GET /inventory/:itemId/vehicle-stock
+//
+// Per-vehicle qty for the Overview tab's "on vehicles" drill-in. Sourced from
+// vehicle_stock_item.qty_on_hand — the one cache every movement updates
+// regardless of tracking mode — so it's the same shape for untracked,
+// serialized, batch, and dual-tracked items. Mirrors getItemVehicleStock's
+// return shape.
+// ============================================================================
+
+export interface VehicleStockRow {
+	vehicle_id: string;
+	vehicle_name: string;
+	vehicle_status: string;
+	/** Currently assigned technician, if any. */
+	technician_name: string | null;
+	qty_on_hand: number;
+}
+
+export interface VehicleStockResponse {
+	rows: VehicleStockRow[];
+}
+
+// ============================================================================
+// Tracking eligibility — GET /inventory/:itemId/tracking-eligibility
+//
+// The same facts PATCH /inventory/:id/tracking gates on, so the edit form can
+// lock its toggles and explain WHY before the user saves. Mirrors
+// getTrackingEligibility's return shape.
+//
+// `qty_on_vehicles` is the field the form previously had no access to: it read
+// InventoryItem.quantity alone, which is blind to stock sitting on a van.
+// `history_*` are lifetime row counts — nonzero on an item whose tracking was
+// turned off, which is what drives the archived view on the Tracking tab.
+// ============================================================================
+
+export interface TrackingEligibility {
+	provisional: boolean;
+	is_serialized: boolean;
+	is_batch_tracked: boolean;
+	qty_warehouse: number;
+	qty_on_vehicles: number;
+	/** How many vehicles hold a nonzero quantity of this item. */
+	vehicle_count: number;
+	/** Serials in in_warehouse/on_vehicle — these block a disable. */
+	live_serials: number;
+	/** Lots still holding stock in the warehouse or on a vehicle — these block a disable. */
+	live_lots: number;
+	/** Lifetime serial_unit rows, live and terminal. */
+	history_serials: number;
+	/** Lifetime stock_batch rows, including drained lots. */
+	history_lots: number;
+	can_enable: boolean;
+	can_disable: boolean;
+	/** Human-readable blockers, worded identically to the API's rejection messages. */
+	blockers: string[];
 }
 
 // ============================================================================
@@ -281,6 +349,7 @@ export interface BatchImpactReport {
 		batch_number: string;
 		item_id: string;
 		item_name: string;
+		supplier: string | null;
 		expires_at: string | null;
 		recalled_at: string | null;
 	};

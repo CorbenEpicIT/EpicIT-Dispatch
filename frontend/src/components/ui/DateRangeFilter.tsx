@@ -12,25 +12,40 @@ import {
 	serializeDateRange,
 } from "../../util/dateRangeUtils";
 
+/**
+ * Which half of the presets to offer. Defaults to "past" so existing filters
+ * keep their original menu without opting out of the future options.
+ */
+type PresetDirection = "past" | "future" | "both";
+
 interface DateRangeFilterUrlProps {
 	paramKey: string;
 	presets?: DateRangeOption[];
+	direction?: PresetDirection;
+	label?: string;
 }
 
 interface DateRangeFilterControlledProps {
 	value: DateRangeValue;
 	onChange: (value: DateRangeValue) => void;
 	presets?: DateRangeOption[];
+	direction?: PresetDirection;
+	label?: string;
 }
 
 type DateRangeFilterProps = DateRangeFilterUrlProps | DateRangeFilterControlledProps;
 
-const PRESET_OPTIONS: { value: DateRangeOption; label: string }[] = [
+/** Options with no `group` are direction-neutral and always shown. */
+const PRESET_OPTIONS: { value: DateRangeOption; label: string; group?: "past" | "future" }[] = [
 	{ value: "all", label: "All" },
 	{ value: "today", label: "Today" },
-	{ value: "last_7_days", label: "Last 7 days" },
-	{ value: "last_30_days", label: "Last 30 days" },
-	{ value: "this_month", label: "This month" },
+	{ value: "last_7_days", label: "Last 7 days", group: "past" },
+	{ value: "last_30_days", label: "Last 30 days", group: "past" },
+	{ value: "this_month", label: "This month", group: "past" },
+	{ value: "tomorrow", label: "Tomorrow", group: "future" },
+	{ value: "next_7_days", label: "Next 7 days", group: "future" },
+	{ value: "next_30_days", label: "Next 30 days", group: "future" },
+	{ value: "next_month", label: "Next month", group: "future" },
 	{ value: "custom", label: "Custom range" },
 ];
 
@@ -41,7 +56,7 @@ export default function DateRangeFilter(props: DateRangeFilterProps) {
 	return <DateRangeDropdown {...props} />;
 }
 
-function UrlDateRangeFilter({ paramKey, presets }: DateRangeFilterUrlProps) {
+function UrlDateRangeFilter({ paramKey, presets, direction, label="Date" }: DateRangeFilterUrlProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const value = parseDateRangeFromParams(searchParams, paramKey);
 
@@ -49,13 +64,14 @@ function UrlDateRangeFilter({ paramKey, presets }: DateRangeFilterUrlProps) {
 		setSearchParams((prev) => serializeDateRange(newValue, paramKey, prev));
 	};
 
-	return <DateRangeDropdown value={value} onChange={handleChange} presets={presets} />;
+	return <DateRangeDropdown value={value} onChange={handleChange} presets={presets} direction={direction} label={label}/>;
 }
 
-function DateRangeDropdown({ value, onChange, presets }: DateRangeFilterControlledProps) {
+function DateRangeDropdown({ value, onChange, presets, direction="past", label="Date" }: DateRangeFilterControlledProps) {
+	// An explicit `presets` list wins; otherwise fall back to the direction groups.
 	const presetOptions = presets
 		? PRESET_OPTIONS.filter((o) => presets.includes(o.value))
-		: PRESET_OPTIONS;
+		: PRESET_OPTIONS.filter((o) => !o.group || direction === "both" || o.group === direction);
 	const [open, setOpen] = useState(false);
 	const [openAbove, setOpenAbove] = useState(false);
 	const [editingField, setEditingField] = useState<"start" | "end" | null>(null);
@@ -188,11 +204,11 @@ function DateRangeDropdown({ value, onChange, presets }: DateRangeFilterControll
 				className={`flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
 					isActive
 						? "bg-primary-bg border-primary text-primary-text"
-						: "bg-surface border-border text-text-tertiary hover:text-text-primary"
+						: "bg-base border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
 				<Calendar size={14} className="shrink-0" />
-				<span>{isActive ? `Date: ${formatTriggerLabel(value)}` : "Date"}</span>
+				<span>{isActive ? `${label}: ${formatTriggerLabel(value)}` : `${label}`}</span>
 				{isActive ? (
 					<X
 						size={14}

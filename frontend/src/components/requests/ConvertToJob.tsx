@@ -35,7 +35,7 @@ export default function ConvertToJob({
 	useEffect(() => {
 		if (isModalOpen && priorityRef.current) {
 			const requestPriority = request.priority;
-			if (PriorityValues.includes(requestPriority as any)) {
+			if (PriorityValues.includes(requestPriority)) {
 				priorityRef.current.value = requestPriority;
 			} else {
 				priorityRef.current.value = "Medium";

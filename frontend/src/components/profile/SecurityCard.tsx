@@ -2,6 +2,7 @@ import { useChangeDispatcherPasswordMutation } from "../../hooks/useDispatchers"
 import { useChangeTechnicianPasswordMutation } from "../../hooks/useTechnicians";
 import { useAuthStore } from "../../auth/authStore";
 import { useState } from "react";
+import { isAxiosError } from "axios";
 import { Loader2 } from "lucide-react";
 
 export default function SecurityCard() {
@@ -65,8 +66,11 @@ export default function SecurityCard() {
 			setNewPassword("");
 			setConfirmNewPassword("");
 			setTimeout(() => setSuccess(false), 3000);
-		}).catch((error: any) => {
-			const msg = error?.response?.data?.error?.message || error?.message || "Failed to change password";
+		}).catch((error: unknown) => {
+			const msg =
+				(isAxiosError(error) ? error.response?.data?.error?.message : undefined) ||
+				(error instanceof Error ? error.message : undefined) ||
+				"Failed to change password";
 			setError(msg);
 		}).finally(() => {
 			setSaving(false);

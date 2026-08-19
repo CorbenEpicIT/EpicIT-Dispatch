@@ -12,7 +12,9 @@ import type {
 	MileageReportVisit,
 	TimesheetReportEntry,
 	AgedReceivablesResponse,
+	JobBacklogResponse,
 	TechScorecardVisitRow,
+	PageSummaryResponse,
 	Paginated,
 	ReportFetchParams,
 } from "../types/reports";
@@ -228,6 +230,16 @@ export const getAgedReceivables = async (): Promise<AgedReceivablesResponse> => 
 	return response.data.data;
 };
 
+export const getJobBacklog = async (): Promise<JobBacklogResponse> => {
+	const response = await api.get<ApiResponse<JobBacklogResponse>>("/reports/job-backlog");
+
+	if (!response.data.data) {
+		throw new Error("Failed to fetch job backlog");
+	}
+
+	return response.data.data;
+};
+
 export const getAgedReceivablesByClient = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated(
 		"/reports/receivables/aging/by-client",
@@ -250,8 +262,46 @@ export const getClientsReport = (params: ReportFetchParams = {}): Promise<Pagina
 export const getClientRetentionReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated("/reports/clients/retention", params, "Failed to fetch client retention report");
 
+export const getClientLifetimeValueReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
+		"/reports/clients/lifetime-value",
+		params,
+		"Failed to fetch client lifetime value report",
+	);
+
+export const getClientDiscountsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
+		"/reports/clients/discounts",
+		params,
+		"Failed to fetch client discounts report",
+	);
+
+export const getFieldAddedRevenueReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
+		"/reports/field-added-revenue",
+		params,
+		"Failed to fetch field-added revenue report",
+	);
+
+export const getRecurringRevenueReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
+		"/reports/recurring-revenue",
+		params,
+		"Failed to fetch recurring revenue report",
+	);
+
 export const getPaymentsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated("/reports/payments", params, "Failed to fetch payments report");
+
+export const getRevenueByLineItemTypeReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated(
+		"/reports/revenue-by-line-item-type",
+		params,
+		"Failed to fetch revenue by line item type report",
+	);
+
+export const getRevenueLineItemsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/revenue-line-items", params, "Failed to fetch revenue line items");
 
 export const getQuoteFunnelReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated("/reports/quote-funnel", params, "Failed to fetch quote funnel report");
@@ -304,6 +354,24 @@ export const exportReport = async ({
 	);
 	triggerDownload(response.data as Blob, filename);
 };
+
+export const getPageSummary = async (
+	page: string,
+	startDate?: string,
+	endDate?: string,
+	groupBy?: string,
+): Promise<PageSummaryResponse> => {
+	const params: Record<string, string> = {};
+	params.page = page;
+	if (startDate) params.startDate = startDate;
+	if (endDate) params.endDate = endDate;
+	if (groupBy) params.groupBy = groupBy;
+	const response = await api.get("/reports/page-summary", { params });
+	if (!response.data.data){
+		throw new Error("Failed to fetch page summary");
+	}
+	return response.data.data;
+}
 
 export interface ExportServerArgs {
 	report: string;

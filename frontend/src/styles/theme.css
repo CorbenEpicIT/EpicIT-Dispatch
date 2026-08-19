@@ -4,9 +4,9 @@
 	   Structure from layer contrast, not border strokes. */
 	--color-canvas:         #e6eaf0;   /* page floor — darkened so it sits clearly below surface (was #edf0f4) */
 	--color-base:           #ffffff;   /* brightest card/panel layer */
-	--color-surface:        #eef1f6;   /* secondary layer — now one clear step above canvas (was #ebf1f7) */
-	--color-surface-raised: #f6f8fb;   /* elevated/hover — distinct step above surface (was #f4f8fb) */
-	--color-surface-inset:  #d3d9e3;   /* recessed wells/inputs — one firm step below canvas, not a cliff (was #c8d0df) */
+	--color-surface:        #fafcfe;   /* secondary layer — near-white, 5 units off base (was #f5f7fa) */
+	--color-surface-raised: #f0f3f7;   /* hover/selected — now DARKER than surface, see note (was #fdfeff) */
+	--color-surface-inset:  #dde2ea;   /* recessed wells/inputs — brightened, still below canvas (was #d3d9e3) */
 
 	/* ── Text ────────────────────────────────────────────────────────────── */
 	/* Slate hierarchy — cool authority, matches dark mode's zinc personality */
@@ -217,7 +217,7 @@
 	/* Surfaces */
 	--color-canvas:         #09090b;
 	--color-base:           #18181b;
-	--color-surface:        #27272a;
+	--color-surface:        #111115;   /* recessed layer — sits between canvas and base, closer to canvas */
 	--color-surface-raised: #3f3f46;
 	--color-surface-inset:  #09090b;
 
@@ -226,7 +226,7 @@
 	--color-text-secondary:  #e4e4e7;   /* zinc-200 — was zinc-300 */
 	--color-text-tertiary:   #c4c4c8;   /* custom zinc-300/400 mid — was zinc-400 */
 	--color-text-muted:      #a1a1aa;   /* zinc-400 — was zinc-500 (~4:1 → ~7.7:1) */
-	--color-text-faint:      #71717a;   /* zinc-500 — was zinc-600 (~2.4:1 → ~4:1) */
+	--color-text-faint:      #82828b;   /* was zinc-500 #71717a (~3.66:1, failed WCAG AA) — now ~4.65:1 on #18181b */
 	--color-text-inverse:    #18181b;
 	--color-text-link:       #3b82f6;
 	--color-text-on-surface: #e4e4e7;
@@ -326,10 +326,10 @@
 [data-palette="warm"] {
 	--color-test: 			#edf0f4;
 	--color-canvas:         #efe7db; /* floor — now drops below surface (was #f4f0eb, sat above it) */
-	--color-base:           #fdfbf7; /* warm white card top */
-	--color-surface:        #f4eee4; /* sits above canvas, ascending (was #ece6dd, below it) */
-	--color-surface-raised: #f8f4ec; /* distinct step above surface */
-	--color-surface-inset:  #e4dccd; /* one firm step below canvas, not a cliff (was #d5ccbe) */
+	--color-base:           #fefdfa; /* warm white card top — lifted to keep headroom above surface (was #fdfbf7) */
+	--color-surface:        #fbf7f0; /* near-white warm (was #f9f3ea) */
+	--color-surface-raised: #f5efe4; /* hover/selected — now darker than surface (was #fdfaf5) */
+	--color-surface-inset:  #ebe4d7; /* brightened, still below canvas (was #e4dccd) */
 	--color-border-subtle:  #e7ded1; /* dividers recede (was #cec5b8) */
 	--color-border:         #d9cebe; /* quiet default edge (was #b0a294) */
 	--color-border-strong:  #bcae9b; /* emphasized edge (was #8f7e6d) */
@@ -348,9 +348,9 @@
 [data-palette="neutral"] {
 	--color-canvas:         #e9e9e9; /* floor — now drops below surface (was #f0f0f0, sat above it) */
 	--color-base:           #ffffff; /* card top */
-	--color-surface:        #f0f0f0; /* sits above canvas, ascending (was #e8e8e8, below it) */
-	--color-surface-raised: #f6f6f6; /* distinct step above surface */
-	--color-surface-inset:  #dcdcdc; /* one firm step below canvas, not a cliff (was #cbcbcb) */
+	--color-surface:        #fbfbfb; /* near-white (was #f7f7f7) */
+	--color-surface-raised: #f2f2f2; /* hover/selected — now darker than surface (was #fdfdfd) */
+	--color-surface-inset:  #e3e3e3; /* brightened, still below canvas (was #dcdcdc) */
 	--color-border-subtle:  #e4e4e4; /* dividers recede (was #c0c0c0) */
 	--color-border:         #d4d4d4; /* quiet default edge — was very heavy #999999 */
 	--color-border-strong:  #b3b3b3; /* emphasized edge (was #707070) */

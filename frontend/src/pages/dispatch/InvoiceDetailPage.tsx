@@ -62,6 +62,7 @@ import {
 	useQBInvoiceSyncMutation, 
 	useQBInvoiceEmailMutation
 } from "../../hooks/useQuickbooks";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -1499,6 +1500,8 @@ export default function InvoiceDetailPage() {
 
 			{/* Notes */}
 			<InvoiceNoteManager invoiceId={invoiceId!} />
+
+			<ChangeHistory scope={ { kind: "entity", type: "invoice", id: invoiceId ?? ""} }  />
 
 			{/* Record Payment Modal */}
 			{isPaymentModalOpen && (
