@@ -2726,11 +2726,16 @@ export async function getUsageToday(
 		})
 	).map((u) => u.technician_id);
 
+	// Same definition of consumption as lib/inventory.ts CONSUMPTION_MOVEMENT_PREDICATE
+	// (Prisma form, since this read isn't raw SQL): parts_used + direct_consumption,
+	// NET of reversals back onto this vehicle — an Edit-Parts decrease writes a
+	// consumed → vehicle "reversal" that cancels demand that never happened.
 	const movements = await sdb.stock_movement.findMany({
 		where: {
 			created_at: { gte: since, lte: new Date() },
 			OR: [
 				{ from_vehicle_id: vehicleId, reason: "parts_used" },
+				{ to_vehicle_id: vehicleId, reason: "reversal", from_location_type: "consumed" },
 				...(vehicleUsageTechIds.length > 0
 					? [{
 							reason: "direct_consumption" as const,
@@ -2753,7 +2758,10 @@ export async function getUsageToday(
 		orderBy: { created_at: "asc" },
 	});
 
-	const byVisit = new Map<string, UsageTodayGroup>();
+	// Netted per (visit, item): a part used twice on one visit is one line, and a
+	// reversal subtracts from it. Items that net to zero (added, then removed) and
+	// visits left with nothing are dropped.
+	const byVisit = new Map<string, UsageTodayGroup & { qtyByItem: Map<string, number> }>();
 
 	for (const m of movements) {
 		const visitId = m.visit_id ?? "no-visit";
@@ -2763,15 +2771,28 @@ export async function getUsageToday(
 				visitName: m.visit?.job?.name ?? "Unknown visit",
 				scheduledAt: m.visit?.scheduled_start_at?.toISOString() ?? null,
 				items: [],
+				qtyByItem: new Map(),
 			});
 		}
-		byVisit.get(visitId)!.items.push({
-			itemName: m.inventory_item.name,
-			qtyUsed: Number(m.qty),
-		});
+		const signedQty = m.reason === "reversal" ? -Number(m.qty) : Number(m.qty);
+		const group = byVisit.get(visitId)!;
+		const name = m.inventory_item.name;
+		group.qtyByItem.set(name, (group.qtyByItem.get(name) ?? 0) + signedQty);
 	}
 
-	return { data: Array.from(byVisit.values()) };
+	const data: UsageTodayGroup[] = [];
+	for (const { qtyByItem, ...group } of byVisit.values()) {
+		const items: UsageTodayItem[] = [];
+		for (const [itemName, qty] of qtyByItem) {
+			// Two decimals is the ledger's own scale; this also clears float noise
+			// from summing fractional quantities.
+			const qtyUsed = Math.round(qty * 100) / 100;
+			if (qtyUsed !== 0) items.push({ itemName, qtyUsed });
+		}
+		if (items.length > 0) data.push({ ...group, items });
+	}
+
+	return { data };
 }
 
 // ── Tomorrow Requirements ─────────────────────────────────────────────────────

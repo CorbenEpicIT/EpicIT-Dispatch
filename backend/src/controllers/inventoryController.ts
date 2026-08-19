@@ -46,7 +46,14 @@ import {
 	lockSerialRows,
 	type ItemTrackingFlags,
 } from "../services/inventoryTracking.js";
-import { withStockStatus, unitBasis, mergeUnitBases, type StockQty } from "../lib/inventory.js";
+import {
+	withStockStatus,
+	unitBasis,
+	mergeUnitBases,
+	CONSUMPTION_MOVEMENT_PREDICATE,
+	CONSUMPTION_SIGNED_QTY,
+	type StockQty,
+} from "../lib/inventory.js";
 import { DEFAULT_UNIT_CODE, normalizeUnitCode } from "../lib/units.js";
 import { emitInventoryUpdated } from "../services/socketService.js";
 
@@ -1506,19 +1513,25 @@ export const getItemUsage = async (itemId: string, organizationId: string, query
 			j.name AS "jobName",
 			c.id AS "clientId",
 			c.name AS "clientName",
-			SUM(sm.qty)::float AS "qtyConsumed",
+			-- Net of reversals (lib/inventory.ts CONSUMPTION_*), same as the forecast.
+			SUM(${CONSUMPTION_SIGNED_QTY})::float AS "qtyConsumed",
 			-- Per-row units, so a mixed-unit group's sum can be withheld per row.
 			array_agg(DISTINCT sm.unit) AS "units",
 			MAX(sm.created_at) AS "lastConsumedAt"
 		FROM stock_movement sm
-		JOIN job_visit_line_item jli ON jli.id = sm.visit_line_item_id
-		JOIN job_visit jv ON jv.id = jli.visit_id
+		-- Joined through the visit, not the line item: reversing a parts-used line
+		-- to zero deletes the line (SetNull on sm.visit_line_item_id), and an
+		-- INNER JOIN on it would drop both the original and its reversal so the
+		-- group no longer netted to zero. Every consumption movement carries visit_id.
+		JOIN job_visit jv ON jv.id = sm.visit_id
 		JOIN job j ON j.id = jv.job_id
 		JOIN client c ON c.id = j.client_id
 		WHERE sm.inventory_item_id = ${itemId}
 			AND sm.organization_id = ${organizationId}
-			AND sm.reason IN ('parts_used', 'direct_consumption')
+			AND ${CONSUMPTION_MOVEMENT_PREDICATE}
 		GROUP BY j.id, j.job_number, j.name, c.id, c.name
+		-- A job whose usage fully reversed (added, then removed) is not usage.
+		HAVING SUM(${CONSUMPTION_SIGNED_QTY}) <> 0
 		ORDER BY MAX(sm.created_at) DESC
 		LIMIT ${take + 1} OFFSET ${offset}
 	`;
@@ -1623,11 +1636,12 @@ export const getItemConsumptionTrend = async (
 		consumption AS (
 			SELECT
 				date_trunc(${bucket}, sm.created_at) AS period_start,
-				SUM(sm.qty) AS qty
+				-- Net of reversals (lib/inventory.ts CONSUMPTION_*), same as the forecast.
+				SUM(${CONSUMPTION_SIGNED_QTY}) AS qty
 			FROM stock_movement sm
 			WHERE sm.inventory_item_id = ${itemId}
 				AND sm.organization_id = ${organizationId}
-				AND sm.reason IN ('parts_used', 'direct_consumption')
+				AND ${CONSUMPTION_MOVEMENT_PREDICATE}
 				AND sm.created_at >= (SELECT start_period FROM bucket_range)
 			GROUP BY 1
 		),
@@ -1639,7 +1653,7 @@ export const getItemConsumptionTrend = async (
 			FROM stock_movement sm
 			WHERE sm.inventory_item_id = ${itemId}
 				AND sm.organization_id = ${organizationId}
-				AND sm.reason IN ('parts_used', 'direct_consumption')
+				AND ${CONSUMPTION_MOVEMENT_PREDICATE}
 				AND sm.created_at >= (SELECT start_period FROM bucket_range)
 		)
 		SELECT

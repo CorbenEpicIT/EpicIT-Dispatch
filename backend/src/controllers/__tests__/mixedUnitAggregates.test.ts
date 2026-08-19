@@ -7,6 +7,7 @@ import {
 } from "../inventoryController.js";
 import { getInventoryReorderForecast, getInventoryReport } from "../reportsController.js";
 import { db } from "../../db.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 
 /**
  * Mixed-unit READ behaviour across every aggregate that sums `stock_movement.qty`.
@@ -188,6 +189,68 @@ describe("getItemConsumptionTrend — mixed units", () => {
 
 		expect(result.unitBasis.unit).toBe("each");
 		expect(result.unitBasis.unit).not.toBe(ITEM_UNIT);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reversal netting — usage + consumption-trend must agree with the forecast
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Flattens a mocked `$queryRaw` tagged-template call (strings + values, where a
+ * value may itself be a nested Prisma.sql fragment) into one SQL string with `?`
+ * placeholders — the text Prisma would actually send. */
+function sqlSentTo(call: unknown[]): string {
+	const [strings, ...values] = call as [TemplateStringsArray, ...unknown[]];
+	return Prisma.sql(strings, ...values).sql.replace(/\s+/g, " ");
+}
+
+const REVERSAL_CASE = "CASE WHEN sm.reason = 'reversal' THEN -sm.qty ELSE sm.qty END";
+const CONSUMPTION_PREDICATE =
+	"( sm.reason IN ('parts_used', 'direct_consumption') OR (sm.reason = 'reversal' AND sm.from_location_type = 'consumed') )";
+
+describe("reversal netting — the SQL sent to Postgres", () => {
+	// updatePartsUsedQty writes `reversal` movements (consumed → vehicle) when a
+	// parts-used line is decreased/deleted. The reorder forecast already subtracts
+	// them; before this the item page summed parts_used/direct_consumption only, so
+	// the detail page said 5 while Reorder Health said 2.
+	it("getItemUsage nets reversals with the shared predicate + signed CASE", async () => {
+		mockDb.$queryRaw.mockResolvedValue([]);
+
+		await getItemUsage(ITEM, ORG);
+
+		const sql = sqlSentTo(mockDb.$queryRaw.mock.calls[0]);
+		expect(sql).toContain(`SUM(${REVERSAL_CASE})::float AS "qtyConsumed"`);
+		expect(sql).toContain(CONSUMPTION_PREDICATE);
+		// The unsigned sum is gone entirely — no path still adds reversals as usage.
+		expect(sql).not.toContain("SUM(sm.qty)");
+	});
+
+	// Reversing a line to zero DELETES the line item (SetNull on
+	// stock_movement.visit_line_item_id). An INNER JOIN through the line item then
+	// dropped the original AND its reversal, so the group no longer netted to 0.
+	it("getItemUsage joins the job through sm.visit_id, not the (deletable) line item", async () => {
+		mockDb.$queryRaw.mockResolvedValue([]);
+
+		await getItemUsage(ITEM, ORG);
+
+		const sql = sqlSentTo(mockDb.$queryRaw.mock.calls[0]);
+		expect(sql).toContain("JOIN job_visit jv ON jv.id = sm.visit_id");
+		expect(sql).not.toContain("JOIN job_visit_line_item");
+		// Fully-reversed jobs are not usage.
+		expect(sql).toContain(`HAVING SUM(${REVERSAL_CASE}) <> 0`);
+	});
+
+	it("getItemConsumptionTrend nets reversals in the bucketed sum and its unit basis", async () => {
+		mockDb.$queryRaw.mockResolvedValue([]);
+
+		await getItemConsumptionTrend(ITEM, ORG);
+
+		const sql = sqlSentTo(mockDb.$queryRaw.mock.calls[0]);
+		expect(sql).toContain(`SUM(${REVERSAL_CASE}) AS qty`);
+		// Both the consumption CTE and the series_units CTE carry the predicate, so
+		// the basis is derived from exactly the rows that were summed.
+		expect(sql.split(CONSUMPTION_PREDICATE)).toHaveLength(3);
+		expect(sql).not.toContain("SUM(sm.qty)");
 	});
 });
 
