@@ -5,6 +5,7 @@ import {
 	updateJobNoteSchema,
 } from "../lib/validate/jobs.js";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { createNotification } from "./notificationsController.js";
@@ -412,6 +413,7 @@ export const deleteJobNote = async (
 					content: { old: existing.content, new: null },
 					job_id: { old: existing.job_id, new: null },
 					visit_id: { old: existing.visit_id, new: null },
+					...parentBreadcrumb("job", existing.job_id),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,

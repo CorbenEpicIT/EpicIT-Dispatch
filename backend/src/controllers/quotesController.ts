@@ -7,6 +7,7 @@ import {
 } from "../lib/validate/quotes.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
@@ -459,6 +460,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 						changes: {
 							name: { old: item.name, new: null },
 							quote_id: { old: item.quote_id, new: null },
+							...parentBreadcrumb("quote", item.quote_id),
 						},
 						ip_address: context?.ipAddress,
 						user_agent: context?.userAgent,
@@ -1075,6 +1077,7 @@ export const deleteQuoteItem = async (
 				action: "deleted",
 				entity_type: "quote_line_item",
 				entity_id: itemId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1084,6 +1087,7 @@ export const deleteQuoteItem = async (
 				changes: {
 					name: { old: existing.name, new: null },
 					quote_id: { old: existing.quote_id, new: null },
+					...parentBreadcrumb("quote", existing.quote_id),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,

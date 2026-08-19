@@ -79,6 +79,27 @@ type GroupMember = {
 
 const pluck = (rows: { id: string }[]) => rows.map((r) => r.id);
 
+/**
+ * Parent breadcrumb on child log rows.
+ *
+ * Child ids for an entity's history are resolved from the *current* child
+ * tables, so a `*.deleted` row for a child that no longer exists would never be
+ * matched. Child-delete log sites therefore stamp the parent on the row itself:
+ *
+ *   changes: { ..., _parent_type: { old: null, new: "job" }, _parent_id: { old: null, new: "<jobId>" } }
+ *
+ * `_`-prefixed keys are treated as breadcrumbs (hidden from the rendered rows)
+ * by the frontend formatter, and the `{ old, new }` shape keeps the ChangeSet
+ * contract. getEntityHistory ORs `changes->_parent_id->new == <id>` into the
+ * lookup for every child entity type of the group (Postgres JSON path filter).
+ */
+export const PARENT_ID_PATH = ["_parent_id", "new"] as const;
+
+export const parentBreadcrumb = (type: entity, id: string) => ({
+    _parent_type: { old: null, new: type },
+    _parent_id: { old: null, new: id },
+});
+
 const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
     job: [
         { entity_type: "job" },
@@ -224,11 +245,19 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
             })),
         );
 
-        const scopedOr = groups
+        const scopedOr: Prisma.logWhereInput[] = groups
             .filter((g) => g.ids.length > 0)
             .map((g) => ({ entity_type: g.entity_type, entity_id: { in: g.ids } }));
 
-        if (scopedOr.length === 0) return { err: "", rows: [] as log_row[], hasMore: false, total: 0 };
+        // Children that no longer exist (deleted rows) can't be resolved from
+        // the child tables — match them through the parent breadcrumb instead.
+        for (const member of group) {
+            if (!member.resolve) continue;
+            scopedOr.push({
+                entity_type: member.entity_type,
+                changes: { path: [...PARENT_ID_PATH], equals: id },
+            });
+        }
 
         const scopedWhere = { AND: [{ OR: scopedOr }, RENDERABLE, NOT_SENSITIVE_EVENT] };
 

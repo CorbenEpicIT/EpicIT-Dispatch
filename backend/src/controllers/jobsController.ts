@@ -11,6 +11,7 @@ import {
 } from "../lib/validate/jobs.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
 import { log } from "../services/appLogger.js";
 import { generateJobNumber } from "../db.js";
@@ -715,6 +716,7 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 						changes: {
 							name: { old: item.name, new: null },
 							job_id: { old: item.job_id, new: null },
+							...parentBreadcrumb("job", item.job_id),
 						},
 						ip_address: context?.ipAddress,
 						user_agent: context?.userAgent,
@@ -1007,6 +1009,7 @@ export const deleteJob = async (id: string, organizationId: string, context?: Us
 					job_number: { old: existing.job_number, new: null },
 					name: { old: existing.name, new: null },
 					status: { old: existing.status, new: null },
+					...(existing.project_id ? parentBreadcrumb("project", existing.project_id) : {}),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -1263,6 +1266,7 @@ export const deleteJobLineItem = async (
 				action: "deleted",
 				entity_type: "job_line_item",
 				entity_id: itemId,
+				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"
 					: context?.dispatcherId
@@ -1272,6 +1276,7 @@ export const deleteJobLineItem = async (
 				changes: {
 					name: { old: existing.name, new: null },
 					job_id: { old: existing.job_id, new: null },
+					...parentBreadcrumb("job", existing.job_id),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,

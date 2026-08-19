@@ -9,6 +9,7 @@ import {
 } from "../lib/validate/jobVisits.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
 import { onVisitScheduled, onVisitRescheduled, onVisitCancelled } from "../services/followupTriggers.js";
@@ -1880,6 +1881,7 @@ export const deleteJobVisit = async (id: string, organizationId: string, context
 						new: null,
 					},
 					status: { old: visit.status, new: null },
+					...parentBreadcrumb("job", visit.job_id),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
