@@ -28,7 +28,8 @@ const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 
 const sortLabels: Record<string, string> = {
 	status: "Status",
-	date: "Date",
+	issued: "Issue Date",
+	date: "Due Date",
 };
 
 export default function InvoicesPage() {
@@ -43,7 +44,8 @@ export default function InvoicesPage() {
 
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const { removeTerm: removeStatus } = useMultiSearch("status");
-	const termsKey = terms.join("");
+	// Collision-free memo key (["ab"] vs ["a","b"] must differ)
+	const termsKey = JSON.stringify(terms);
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
@@ -159,6 +161,8 @@ export default function InvoicesPage() {
 		const comparator: (a: InvoiceRow, b: InvoiceRow) => number =
 			sortParam === "status"
 				? withDir((a, b) => compareByOrder(a._rawStatus, b._rawStatus, InvoiceStatusValues), dir)
+				: sortParam === "issued"
+				? (a, b) => compareDateNullsLast(dir)(a._issueDate, b._issueDate)
 				: sortParam === "date"
 				? (a, b) => compareDateNullsLast(dir)(a._rawDueDate, b._rawDueDate)
 				: (a, b) => {
@@ -357,9 +361,10 @@ export default function InvoicesPage() {
 						<SortControl
 							options={[
 								{ value: "status", label: "Status" },
-								{ value: "date", label: "Date" },
+								{ value: "issued", label: "Issue Date" },
+								{ value: "date", label: "Due Date" },
 							]}
-							defaultDirByField={{ status: "asc", date: "desc" }}
+							defaultDirByField={{ status: "asc", issued: "desc", date: "desc" }}
 						/>
 					</div>
 				}

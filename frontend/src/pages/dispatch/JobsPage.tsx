@@ -93,7 +93,8 @@ export default function JobsPage() {
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const { removeTerm: removeStatus } = useMultiSearch("status");
 	const { removeTerm: removePriority } = useMultiSearch("priority");
-	const termsKey = terms.join("");
+	// Collision-free memo key (["ab"] vs ["a","b"] must differ)
+	const termsKey = JSON.stringify(terms);
 	const [showActionsMenu, setShowActionsMenu] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
@@ -641,7 +642,7 @@ export default function JobsPage() {
 							navigate(`/dispatch/jobs/${row.id}`);
 						}
 					}}
-					columnVisibility={ {property: false} }
+					columnVisibility={viewMode === "templates" ? undefined : { property: false }}
 					cellRenderers={{
 						jobNumber: (row) => {
 							const r = row as JobRow;

@@ -61,7 +61,8 @@ export default function RequestsPage() {
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const { removeTerm: removeStatus } = useMultiSearch("status");
 	const { removeTerm: removePriority } = useMultiSearch("priority");
-	const termsKey = terms.join("");
+	// Collision-free memo key (["ab"] vs ["a","b"] must differ)
+	const termsKey = JSON.stringify(terms);
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
