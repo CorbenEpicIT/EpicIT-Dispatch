@@ -51,6 +51,8 @@ import quotesRouter from "./routes/quotes.js";
 import recurringPlansRouter from "./routes/recurringPlans.js";
 import reportsRouter from "./routes/reports.js";
 import requestsRouter from "./routes/requests.js";
+import suppliersRouter from "./routes/suppliers.js";
+import supplierItemsRouter from "./routes/supplierItems.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
@@ -533,6 +535,12 @@ app.use("/email", verifyToken, emailRouter);
 // INVENTORY
 // ============================================
 app.use("/inventory", verifyToken, inventoryRouter);
+
+// ============================================
+// SUPPLIERS (vendor origin for purchased stock)
+// ============================================
+app.use("/suppliers", verifyToken, suppliersRouter);
+app.use("/supplier-items", verifyToken, supplierItemsRouter);
 
 // ── Org settings ─────────────────────────────────────────────────────────────
 app.use("/org", verifyToken, orgRouter);

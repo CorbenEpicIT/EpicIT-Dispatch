@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Plus, FileSpreadsheet, Settings2, ChevronDown, ChevronUp, Barcode, X } from "lucide-react";
+import { Plus, FileSpreadsheet, ChevronDown, ChevronUp, Barcode, Truck, X } from "lucide-react";
 import { BarcodeScanner } from "../../components/inventory/BarcodeScanner";
 import { useBarcodeScanner } from "../../hooks/useBarcodeScanner";
 import { useScanDispatcher } from "../../hooks/useScanDispatcher";
@@ -242,11 +242,11 @@ export default function InventoryPage() {
 				<PageHeader title="Inventory">
 						<LabelQueueButton />
 						<button
-						onClick={() => setIsTagManagerOpen(true)}
+							onClick={() => navigate("/dispatch/inventory/suppliers")}
 						className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-sm font-medium text-text-secondary transition-colors"
-						title="Manage tags"
 					>
-						<Settings2 size={14} />
+						<Truck size={14} />
+						Suppliers
 					</button>
 					<button
 						onClick={() => setIsImportExportOpen(true)}
@@ -295,6 +295,7 @@ export default function InventoryPage() {
 								tags={allTags}
 								selectedIds={selectedTagIds}
 								onChange={setSelectedTagIds}
+								onManage={() => setIsTagManagerOpen(true)}
 							/>
 							<StatusFilter
 								placeholder="Sort"

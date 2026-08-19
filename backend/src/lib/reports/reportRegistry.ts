@@ -294,6 +294,21 @@ const forecastRow = (r: ForecastRaw): ReportRow => ({
 	unit: unitDisplay(r.unit).label,
 	observedDays: r.observedDays,
 	qtyConsumed: r.qtyConsumed ?? UNIT_BREAK_SHORT,
+	// Who to buy it from. A "~" marks a vendor INFERRED from the last purchase
+	// rather than one anybody chose — the report may suggest, but it must not
+	// pass a guess off as a decision.
+	buyFrom: r.preferredSupplierName
+		? r.vendorSource === "preferred"
+			? r.preferredSupplierName
+			: `~${r.preferredSupplierName}`
+		: "—",
+	// Export-only, like unit/observedDays above: the part number you actually
+	// order by, and what closing the gap to the reorder point would cost.
+	vendorSku: r.vendorSku ?? "—",
+	estimatedCost:
+		r.estimatedShortfallCost != null && r.shortfallQty != null
+			? `$${r.estimatedShortfallCost.toFixed(2)} (${fmtQty(r.shortfallQty)} @ ${r.priceSource})`
+			: "—",
 });
 
 const receivableRow = (r: ReceivableRaw): ReportRow => ({

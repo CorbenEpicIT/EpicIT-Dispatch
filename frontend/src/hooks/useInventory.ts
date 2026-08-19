@@ -90,12 +90,17 @@ export const useInventoryMovementsQuery = (
 // cursor (these are GROUP BY aggregate rows with no stable row id).
 export const useItemUsageQuery = (
 	itemId: string | undefined,
-	opts?: { limit?: number },
+	opts?: { limit?: number; createdAfter?: string },
 ): UseInfiniteQueryResult<InfiniteData<ItemUsage, number>, Error> => {
 	const limit = opts?.limit;
 	return useInfiniteQuery({
 		queryKey: qk.inventory.usage(itemId ?? "", opts),
-		queryFn: ({ pageParam }) => inventoryApi.getItemUsage(itemId!, { limit, offset: pageParam }),
+		queryFn: ({ pageParam }) =>
+			inventoryApi.getItemUsage(itemId!, {
+				limit,
+				offset: pageParam,
+				createdAfter: opts?.createdAfter,
+			}),
 		initialPageParam: 0,
 		getNextPageParam: (last, pages) =>
 			last.hasMore ? pages.reduce((n, p) => n + p.usage.length, 0) : undefined,
@@ -298,6 +303,10 @@ export const useUpdateInventoryTagMutation = (): UseMutationResult<
 		mutationFn: ({ tagId, label }) => inventoryApi.updateInventoryTag(tagId, label),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: qk.inventory.tags });
+			// Item lists/details cache each tag's label at fetch time (item.tags[].label),
+			// not a live join against the tags query — a rename left those showing the old
+			// label until an unrelated refetch, same gap delete already closes below.
+			invalidate.warehouse(queryClient);
 		},
 	});
 };

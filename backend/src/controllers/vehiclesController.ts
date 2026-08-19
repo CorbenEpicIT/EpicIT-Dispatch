@@ -4,6 +4,8 @@ import { log } from "../services/appLogger.js";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { db } from "../db.js";
 import { getScopedDb, UserContext } from "../lib/context.js";
+import { resolveSupplier, SupplierValidationError } from "../services/suppliers.js";
+import { supplierCaptureFields } from "../lib/validate/suppliers.js";
 import { utcDayRange, localDateString } from "../lib/dayRange.js";
 import {
 	recordMovements,
@@ -100,7 +102,7 @@ function trackingErrorResponse(e: unknown): { err: string; available?: Record<st
 	if (e instanceof InsufficientBatchStockError) {
 		return { err: "insufficient_batch_stock", available: e.available };
 	}
-	if (e instanceof TrackingValidationError) {
+	if (e instanceof TrackingValidationError || e instanceof SupplierValidationError) {
 		return { err: e.message };
 	}
 	return null;
@@ -437,10 +439,17 @@ const adjustStockSchema = z
 						// history; ignored by every other adjustment type, which move
 						// stock the org already owns and therefore has no purchase price.
 						unit_cost:       z.number().nonnegative().optional(),
+						// Who sold this line. Read only on a supplier_purchase, for
+						// the same reason as unit_cost above. Per line, not per
+						// adjustment: one field run can hit two supply houses.
+						...supplierCaptureFields,
 						new_batch: z
 							.object({
 								batch_number: z.string().trim().min(1).max(100),
 								expires_at:   expiresAtField,
+								// Legacy free-text vendor, superseded by the line's
+								// supplier_id/supplier_name; still promoted to an
+								// entity by the controller.
 								supplier:     z.string().trim().max(200).optional(),
 								unit_cost:    z.number().nonnegative().optional(),
 							})
@@ -2439,11 +2448,41 @@ export async function adjustStock(
 					batch_picks?: MovementInput["batch_allocations"];
 				};
 			}[] = [];
+			// Keyed by the ORIGINAL line index, since zero-delta lines are skipped
+			// here but the movement loop below still walks computedLines by index.
+			const supplierIdByLine = new Map<number, string>();
+			// A supplier_purchase adjustment is one supply run naming one vendor, not
+			// one vendor per catalog line — the frontend spreads the same
+			// {supplier_id, supplier_name} onto every line. Cache resolveSupplier's
+			// result per distinct (id, name) pair so an N-line purchase resolves the
+			// vendor once instead of once per line.
+			const supplierResolutionCache = new Map<string, { id: string; name: string } | null>();
 			for (let i = 0; i < computedLines.length; i++) {
 				const line = computedLines[i];
 				if (line.delta === 0) continue;
 				const raw = parsed.lines[i];
 				const itemFlags = flags.get(line.inventory_item_id);
+
+				// Vendor only for a genuine purchase, same reasoning as the lot cost
+				// below: every other adjustment type moves stock the org already
+				// owns, so naming a supplier would invent a purchase that never
+				// happened. The legacy new_batch.supplier is promoted here so an
+				// older client still attributes the movement, not just the lot.
+				let lineSupplier: { id: string; name: string } | null = null;
+				if (parsed.type === "supplier_purchase") {
+					const supplierName = raw.supplier_name ?? raw.new_batch?.supplier;
+					const cacheKey = `${raw.supplier_id ?? ""}::${supplierName ?? ""}`;
+					if (supplierResolutionCache.has(cacheKey)) {
+						lineSupplier = supplierResolutionCache.get(cacheKey)!;
+					} else {
+						lineSupplier = await resolveSupplier(tx as unknown as Prisma.TransactionClient, orgId, {
+							supplier_id: raw.supplier_id,
+							supplier_name: supplierName,
+						});
+						supplierResolutionCache.set(cacheKey, lineSupplier);
+					}
+				}
+				if (lineSupplier) supplierIdByLine.set(i, lineSupplier.id);
 
 				let batchId: string | undefined;
 				if (itemFlags?.is_batch_tracked && raw.new_batch) {
@@ -2451,7 +2490,8 @@ export async function adjustStock(
 						inventory_item_id: line.inventory_item_id,
 						batch_number: raw.new_batch.batch_number,
 						expires_at: raw.new_batch.expires_at ? new Date(raw.new_batch.expires_at) : null,
-						supplier: raw.new_batch.supplier ?? null,
+						supplier: lineSupplier?.name ?? raw.new_batch.supplier ?? null,
+						supplier_id: lineSupplier?.id ?? null,
 						// Lot cost only for a genuine purchase — a transfer or
 						// audit correction of an existing lot paid nothing.
 						unit_cost:
@@ -2556,6 +2596,7 @@ export async function adjustStock(
 						// new_item.cost is NOT a fallback — that's the standard cost
 						// being configured on a freshly created item, not a receipt.
 						unit_cost:          parsed.lines[i]?.unit_cost,
+						supplier_id:        supplierIdByLine.get(i),
 						...tracking,
 					});
 				} else {
@@ -3293,11 +3334,14 @@ const supplierPartUsedSchema = z
 		// external → vehicle leg (the purchase); the vehicle → consumed leg is the
 		// same stock being used, not a second purchase, so it carries no cost.
 		unit_cost:         z.number().nonnegative().optional(),
+		...supplierCaptureFields,
 		new_serials:       z.array(z.string().trim().min(1).max(100)).optional(),
 		batch: z
 			.object({
 				batch_number: z.string().trim().min(1).max(100),
 				expires_at:   expiresAtField,
+				// Legacy free-text vendor — superseded by supplier_id/supplier_name
+				// above, still promoted to an entity by the controller.
 				supplier:     z.string().trim().max(200).optional(),
 				unit_cost:    z.number().nonnegative().optional(),
 			})
@@ -3351,6 +3395,15 @@ export async function addSupplierPartUsed(
 			let leg2Serial: MovementInput["serial"];
 			let batchAllocations: MovementInput["batch_allocations"];
 
+			// Leg 1 is the purchase, so it's the leg that carries the vendor — leg 2
+			// consumes stock the org now owns. batch.supplier is folded in so a
+			// client that only fills the lot's legacy field still attributes the
+			// movement, not just the lot.
+			const supplier = await resolveSupplier(txc, orgId, {
+				supplier_id: parsed.supplier_id,
+				supplier_name: parsed.supplier_name ?? parsed.batch?.supplier,
+			});
+
 			if (inv.is_serialized) {
 				if (!Number.isInteger(parsed.qty_used)) {
 					throw new TrackingValidationError("qty_used must be an integer for a serialized item");
@@ -3371,7 +3424,8 @@ export async function addSupplierPartUsed(
 						inventory_item_id: inventoryItemId,
 						batch_number:      parsed.batch.batch_number,
 						expires_at:        parsed.batch.expires_at ? new Date(parsed.batch.expires_at) : null,
-						supplier:          parsed.batch.supplier ?? null,
+						supplier:          supplier?.name ?? parsed.batch.supplier ?? null,
+						supplier_id:       supplier?.id ?? null,
 						unit_cost:         parsed.batch.unit_cost ?? parsed.unit_cost ?? null,
 					});
 				} else {
@@ -3395,6 +3449,7 @@ export async function addSupplierPartUsed(
 					to_vehicle_id:      vehicleId,
 					reason:             "supplier_purchase",
 					unit_cost:          parsed.unit_cost,
+					supplier_id:        supplier?.id,
 					...(leg1Serial ? { serial: leg1Serial } : {}),
 					...(batchAllocations ? { batch_allocations: batchAllocations } : {}),
 				},

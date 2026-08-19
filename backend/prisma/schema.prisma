@@ -356,6 +356,8 @@ model organization {
   stock_movements       stock_movement[]
   serial_units          serial_unit[]
   stock_batches         stock_batch[]
+  suppliers             supplier[]
+  supplier_items        supplier_item[]
 
   requests              request[]
   quotes                quote[]
@@ -1294,6 +1296,7 @@ model inventory_item {
   tags             inventory_tag[]
   stock_movements  stock_movement[]
   external_mappings item_external_mapping[]
+  supplier_items    supplier_item[]
   invoice_line_items invoice_line_item[]
   serial_units     serial_unit[]
   stock_batches    stock_batch[]
@@ -1507,6 +1510,108 @@ model vehicle_restock_request {
 }
 
 // ============================================================================
+// SUPPLIERS (vendor origin for purchased stock)
+// ============================================================================
+
+model supplier {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+
+  // As typed by whoever received the stock — this is what the UI shows.
+  name     String
+  // Lowercased, whitespace-collapsed `name`. The dedupe key, and the reason
+  // the unique index below can exist: it folds "Ferguson " and "ferguson" into
+  // one vendor WITHOUT fuzzy matching, which would wrongly fold "Ferguson"
+  // into "Ferguson Plumbing" — a different company that bills different prices.
+  name_key String
+
+  account_number String?
+  contact_name   String?
+  phone          String?
+  email          String?
+  notes          String? @db.Text
+  // Retire a vendor without rewriting history: deactivating hides it from the
+  // pickers while every movement that names it keeps resolving.
+  is_active      Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  movements         stock_movement[]
+  batches           stock_batch[]
+  external_mappings supplier_external_mapping[]
+  items             supplier_item[]
+
+  @@unique([organization_id, name_key])
+  @@index([organization_id, is_active])
+}
+
+// Same shape as client_external_mapping / item_external_mapping — one convention
+// for "this local row is that provider's row", so a second accounting provider
+// costs a row here rather than another column on `supplier`.
+model supplier_external_mapping {
+  id          String @id @default(uuid())
+  supplier_id String
+  provider    String
+  account_id  String @default("")
+  external_id String
+
+  supplier supplier @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+
+  // Neither side can be double-linked: one QBO vendor maps to one supplier, and
+  // one supplier maps to one QBO vendor, per connected company file.
+  @@unique([provider, account_id, external_id])
+  @@unique([provider, supplier_id, account_id])
+  @@index([supplier_id])
+}
+
+// What a given vendor charges for a given item. The catalog that lets the
+// reorder forecast say WHO to buy from and at WHAT price instead of dead-ending
+// at a quantity.
+model supplier_item {
+  id                String         @id @default(uuid())
+  organization_id   String
+  organization      organization   @relation(fields: [organization_id], references: [id])
+  supplier_id       String
+  supplier          supplier       @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  inventory_item_id String
+  inventory_item    inventory_item @relation(fields: [inventory_item_id], references: [id], onDelete: Cascade)
+
+  // The vendor's own part number — what you read off their quote and order by.
+  // Rarely the same string as our SKU.
+  vendor_sku String?
+
+  // Negotiated rate, entered by hand. Beats last_price in the forecast: a
+  // contract is what you WILL pay, an observation is what you happened to pay.
+  contract_price Decimal? @db.Decimal(10, 2)
+
+  // Written by recordMovements on every intake movement that names this vendor
+  // and carries a cost. A price list nobody maintains by hand is the only kind
+  // that stays true, so this one maintains itself.
+  last_price        Decimal?  @db.Decimal(10, 2)
+  last_purchased_at DateTime?
+
+  // Exactly one preferred vendor per item, enforced on write AND by a partial
+  // unique index (inventory_item_id WHERE is_preferred) added by hand in the
+  // migration — Prisma's DSL can't express a partial index, so this line will
+  // always look unenforced from here alone. The forecast has to name one
+  // vendor per item or it isn't actionable.
+  is_preferred Boolean @default(false)
+
+  lead_time_days Int?
+  min_order_qty  Decimal? @db.Decimal(10, 2)
+  notes          String?  @db.Text
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([supplier_id, inventory_item_id])
+  @@index([organization_id, inventory_item_id])
+  @@index([inventory_item_id, is_preferred])
+}
+
+// ============================================================================
 // STOCK MOVEMENT LEDGER
 // Source of truth for all inventory changes. Cached quantities
 // (inventory_item.quantity, vehicle_stock_item.qty_on_hand) are derived and
@@ -1535,6 +1640,17 @@ model stock_movement {
   // What supplier actually billed PER UNIT for this movement. Only ever set
   // on intake movements (reason 'receive' / 'supplier_purchase'); omit elsewhere.
   unit_cost         Decimal?     @db.Decimal(10, 2)
+  // WHO the stock was bought from. Same contract as unit_cost directly above:
+  // only ever set on intake movements, dropped by recordMovements() elsewhere.
+  //
+  // Nullable forever, not just until backfill. Before this column the only
+  // supplier anywhere was stock_batch.supplier — free text captured solely when
+  // a NEW lot was created, so a plain non-batch-tracked receive recorded no
+  // origin at all. Those rows stay NULL on purpose: the vendor genuinely was
+  // never written down, and inferring one would corrupt the exact per-supplier
+  // figures the cost history is meant to report.
+  supplier_id       String?
+  supplier          supplier?    @relation(fields: [supplier_id], references: [id])
 
   from_location_type stock_location_type
   from_vehicle_id    String?
@@ -1564,6 +1680,7 @@ model stock_movement {
 
   @@index([organization_id, inventory_item_id, created_at])
   @@index([organization_id, created_at])
+  @@index([supplier_id, created_at])
   @@index([from_vehicle_id, created_at])
   @@index([to_vehicle_id, created_at])
   @@index([visit_id])
@@ -1630,7 +1747,13 @@ model stock_batch {
   code              String @unique @default(uuid()) // stable QR payload
 
   expires_at  DateTime? @db.Date
+  // Legacy free-text vendor name. Superseded by supplier_id below and kept ONLY
+  // as a read fallback for lots the backfill couldn't resolve to an entity
+  // (blank, or a name that normalized into nothing). Never write it alone —
+  // writers set both, so a future pass can drop this column with no data loss.
   supplier    String?
+  supplier_id String?
+  supplier_ref supplier? @relation(fields: [supplier_id], references: [id])
   unit_cost   Decimal?  @db.Decimal(10, 2)
   recalled_at DateTime? // recall flag blocks FIFO picks
   qty_received     Decimal @default(0) @db.Decimal(10, 2) // cumulative received
@@ -1648,6 +1771,7 @@ model stock_batch {
   @@unique([organization_id, inventory_item_id, batch_number])
   @@index([inventory_item_id, received_at])
   @@index([organization_id])
+  @@index([supplier_id])
 }
 
 model vehicle_stock_batch {

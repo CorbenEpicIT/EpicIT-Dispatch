@@ -1,6 +1,7 @@
 import z from "zod";
 import { UNIT_CODES, normalizeUnitCode } from "../units.js";
 import { STOCK_QTY_MESSAGE, isStorableStockQty } from "./shared.js";
+import { supplierCaptureFields } from "./suppliers.js";
 
 // Quantities are fractional (12.5 ft of line set is ordinary), bounded to
 // numeric(10,2) via isStorableStockQty rather than left to Postgres — see
@@ -68,6 +69,9 @@ export const createInventoryItemSchema = z
 		// configured standard cost) — deriving one from the other would invent
 		// purchase history that was never stated.
 		cost_at_receipt: z.number().min(0).nullable().optional(),
+		// Only consulted when quantity > 0 — an opening count of zero is not a
+		// purchase, so there's no vendor to attribute it to.
+		...supplierCaptureFields,
 	})
 	// Plain create doesn't accept serial/batch capture data — a tracked item's
 	// initial stock must go through POST /inventory/:id/receive instead, which
@@ -132,6 +136,7 @@ export type ScanQueryInput = z.infer<typeof scanQuerySchema>;
 export const usageQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).optional(),
 	offset: z.coerce.number().int().min(0).optional(),
+	created_after: z.coerce.date().optional(),
 });
 
 export type UsageQueryInput = z.infer<typeof usageQuerySchema>;

@@ -113,13 +113,23 @@ vi.mock("../tracking/SerialCaptureList", () => ({
 	),
 }));
 
+// Stubbed for the same reason as the capture components: it fetches the vendor
+// list, and the wizard's create/receive payloads are what these tests assert.
+vi.mock("../SupplierPicker", () => ({
+	default: ({ onChange }: { onChange: (v: { supplier_name?: string }) => void }) => (
+		<button type="button" onClick={() => onChange({ supplier_name: "Ferguson" })}>
+			Pick Supplier
+		</button>
+	),
+}));
+
 vi.mock("../tracking/BatchCaptureFields", () => ({
 	default: ({ itemId, onChange }: BatchCaptureFieldsProps) => (
 		<div data-testid="batch-capture" data-item-id={itemId}>
 			<button
 				type="button"
 				onClick={() =>
-					onChange({ mode: "new", batch_number: "LOT-1", expires_at: null, supplier: "" })
+					onChange({ mode: "new", batch_number: "LOT-1", expires_at: null })
 				}
 			>
 				Fill Batch

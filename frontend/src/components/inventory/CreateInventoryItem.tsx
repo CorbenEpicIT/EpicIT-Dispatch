@@ -37,6 +37,8 @@ import type {
 import type { ReceiveInventoryInput } from "../../types/tracking";
 import SerialCaptureList from "./tracking/SerialCaptureList";
 import BatchCaptureFields, { type BatchCaptureValue } from "./tracking/BatchCaptureFields";
+import SupplierPicker from "./SupplierPicker";
+import type { SupplierCapture } from "../../types/suppliers";
 import UnitSelect from "../ui/forms/UnitSelect";
 import {
 	DEFAULT_UNIT_CODE,
@@ -261,8 +263,10 @@ export default function CreateInventoryItem({
 		mode: "new",
 		batch_number: "",
 		expires_at: null,
-		supplier: "",
 	});
+	// Who the opening quantity was bought from. Only meaningful on create: an
+	// edit never moves stock, so there's no receipt to attribute.
+	const [openingSupplier, setOpeningSupplier] = useState<SupplierCapture>({});
 
 	const createMutation = useCreateInventoryItemMutation();
 	const updateMutation = useUpdateInventoryItemMutation();
@@ -513,7 +517,8 @@ export default function CreateInventoryItem({
 		setIsSerialized(false);
 		setIsBatchTracked(false);
 		setSerialCaptureValues([]);
-		setBatchCaptureValue({ mode: "new", batch_number: "", expires_at: null, supplier: "" });
+		setBatchCaptureValue({ mode: "new", batch_number: "", expires_at: null });
+		setOpeningSupplier({});
 	}, [resetWizard]);
 
 	useEffect(() => {
@@ -913,7 +918,9 @@ export default function CreateInventoryItem({
 					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
 				}
 			} else {
-				const data: CreateInventoryItemInput = buildPayload();
+				// The opening quantity is a receipt, so it carries a vendor; the
+				// server drops the field when quantity is 0 and nothing moves.
+				const data: CreateInventoryItemInput = { ...buildPayload(), ...openingSupplier };
 				// Tracked-but-zero-qty items are created in a single call same as
 				// any plain item — there's nothing to receive (see
 				// handleCreateTrackedItemStage for the tracked+qty>0 path, which
@@ -975,6 +982,7 @@ export default function CreateInventoryItem({
 
 			const input: ReceiveInventoryInput = {
 				qty: quantity,
+				...openingSupplier,
 				...(isSerialized ? { serial_numbers: serialCaptureValues.map((s) => s.trim()) } : {}),
 				...(isBatchTracked
 					? batchCaptureValue.mode === "existing"
@@ -983,7 +991,6 @@ export default function CreateInventoryItem({
 								batch: {
 									batch_number: batchCaptureValue.batch_number.trim(),
 									expires_at: batchCaptureValue.expires_at,
-									supplier: batchCaptureValue.supplier.trim() || undefined,
 								},
 							}
 					: {}),
@@ -1679,6 +1686,23 @@ export default function CreateInventoryItem({
 								<FieldMessage>{shownErrors.cost}</FieldMessage>
 							</div>
 						</div>
+
+						{/* Only on create with stock arriving: an edit moves nothing, so
+						    there is no receipt to attribute to a vendor. */}
+						{!isEdit && quantity > 0 && (
+							<div className="min-w-0 max-w-sm">
+								<SupplierPicker
+									value={openingSupplier}
+									onChange={setOpeningSupplier}
+									label="Supplier (optional)"
+									disabled={isLoading}
+								/>
+								<p className="mt-1 text-[11px] leading-relaxed text-text-muted">
+									Who the opening {unitLabel(unit, quantity)} came from.
+									Recorded on the receipt, not on the item.
+								</p>
+							</div>
+						)}
 
 						{showTrackingControls && (
 							<div className="border border-border rounded-lg p-3 space-y-3">

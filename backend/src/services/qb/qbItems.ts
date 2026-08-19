@@ -4,6 +4,7 @@ import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
 import { httpError, ErrorCodes } from "../../types/responses.js";
 import { recordMovements, type ActorInfo } from "../stockMovements.js";
+import { throwOnMappingConflict } from "./qbMappingErrors.js";
 
 export interface QBItem {
     Id: string;
@@ -166,10 +167,7 @@ export async function linkQBItem(orgId: string, inventoryItemId: string, qbItemI
             }
         });
     } catch (error: any) {
-        if (error?.code === "P2002") {
-            throw httpError(409, ErrorCodes.CONFLICT, "This item or QuickBooks item has already been linked.");
-        }
-        throw error;
+        throwOnMappingConflict(error, "This item or QuickBooks item has already been linked.");
     }
 };
 

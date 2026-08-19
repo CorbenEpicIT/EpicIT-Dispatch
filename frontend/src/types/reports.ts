@@ -229,7 +229,7 @@ export interface TimesheetReportEntry {
 export type ReorderSeverity = 'critical' | 'warning' | 'healthy' | 'unknown';
 
 // Calculated over the last REORDER_FORECAST_WINDOW_DAYS days.
-export interface ReorderForecastRow {
+export interface ReorderForecastRow extends VendorSuggestion {
 	itemId: string;
 	itemName: string;
 	sku: string | null;
@@ -262,6 +262,29 @@ export interface ReorderForecastRow {
 	lowStockThreshold: number | null;
 	belowReorderPoint: boolean;
 	severity: ReorderSeverity;
+}
+
+/**
+ * Who to buy an item from, attached to any forecast row. Declared once and
+ * extended by both forecast shapes so the org-wide report and the item detail
+ * page can't drift apart on what "preferred vendor" means.
+ *
+ * Every field is null when the item has no vendor on file — the forecast still
+ * says what to buy, it just can't say where.
+ */
+export interface VendorSuggestion {
+	preferredSupplierId: string | null;
+	preferredSupplierName: string | null;
+	/** The vendor's own part number — what you actually order by. */
+	vendorSku: string | null;
+	preferredUnitPrice: number | null;
+	/** A negotiated rate and a one-off counter price deserve different confidence. */
+	priceSource: "contract" | "observed" | "none";
+	/** Whether someone CHOSE this vendor, or we fell back to whoever sold it last. */
+	vendorSource: "preferred" | "recent" | "none";
+	/** Units to get back to the reorder point. Null when no threshold is set. */
+	shortfallQty: number | null;
+	estimatedShortfallCost: number | null;
 }
 
 // The forecast window is FIXED server-side (reportRegistry.ts's "reorder-forecast"

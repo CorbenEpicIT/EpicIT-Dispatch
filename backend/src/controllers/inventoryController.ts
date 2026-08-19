@@ -47,6 +47,12 @@ import {
 	type ItemTrackingFlags,
 } from "../services/inventoryTracking.js";
 import {
+	resolveSupplier,
+	SupplierValidationError,
+	normalizeSupplierName,
+	resolveVendorPrice,
+} from "../services/suppliers.js";
+import {
 	withStockStatus,
 	unitBasis,
 	mergeUnitBases,
@@ -417,6 +423,11 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 			});
 
 			if (parsed.quantity > 0) {
+				const supplier = await resolveSupplier(
+					tx as unknown as Prisma.TransactionClient,
+					organizationId,
+					parsed,
+				);
 				await recordMovements(tx as unknown as Prisma.TransactionClient, organizationId, toActorInfo(context), [
 					{
 						inventory_item_id: created.id,
@@ -425,6 +436,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 						to_location_type: "warehouse",
 						reason: "receive",
 						unit_cost: parsed.cost_at_receipt ?? undefined,
+						supplier_id: supplier?.id,
 					},
 				]);
 			}
@@ -464,6 +476,9 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 			return {
 				err: zodMessage(e),
 			};
+		}
+		if (e instanceof SupplierValidationError) {
+			return { err: e.message };
 		}
 		const createConflict = uniqueConflictField(e);
 		if (createConflict) {
@@ -884,12 +899,25 @@ export const receiveInventoryItem = async (
 		const { item, createdSerials, batchInfo } = await sdb.$transaction(async (tx) => {
 			let resolvedBatch: { id: string; code: string; batch_number: string } | undefined;
 
+			// A legacy client sends its vendor only as batch.supplier free text;
+			// promoting it here means the movement gets an origin too, instead of
+			// the lot being the sole place the purchase was ever attributed.
+			const supplier = await resolveSupplier(
+				tx as unknown as Prisma.TransactionClient,
+				organizationId,
+				{
+					supplier_id: parsed.supplier_id,
+					supplier_name: parsed.supplier_name ?? parsed.batch?.supplier,
+				},
+			);
+
 			if (parsed.batch) {
 				const created = await getOrCreateBatch(tx as unknown as Prisma.TransactionClient, organizationId, {
 					inventory_item_id: itemId,
 					batch_number: parsed.batch.batch_number,
 					expires_at: parsed.batch.expires_at ? new Date(parsed.batch.expires_at) : null,
-					supplier: parsed.batch.supplier ?? null,
+					supplier: supplier?.name ?? parsed.batch.supplier ?? null,
+					supplier_id: supplier?.id ?? null,
 					// Falls back to the receive-level cost — one purchase, one price.
 					unit_cost: parsed.batch.unit_cost ?? parsed.unit_cost ?? null,
 				});
@@ -911,6 +939,7 @@ export const receiveInventoryItem = async (
 				reason: "receive",
 				note: parsed.note,
 				unit_cost: parsed.unit_cost,
+				supplier_id: supplier?.id,
 				serial: newSerialTracking
 					? {
 							create: (newSerialTracking.create ?? []).map((c) => ({
@@ -970,7 +999,11 @@ export const receiveInventoryItem = async (
 		if (e instanceof ZodError) {
 			return { err: zodMessage(e) };
 		}
-		if (e instanceof InsufficientBatchStockError || e instanceof TrackingValidationError) {
+		if (
+			e instanceof InsufficientBatchStockError ||
+			e instanceof TrackingValidationError ||
+			e instanceof SupplierValidationError
+		) {
 			return { err: e.message };
 		}
 		if (e instanceof Error && e.message === "Batch not found") {
@@ -1553,6 +1586,8 @@ export const getInventoryMovements = async (
 // GET /inventory/:id/usage — consumption of this item traced back to the job +
 // client it was used on, grouped per job+client. Offset-paginated since these are
 // GROUP BY aggregate rows, not raw ledger rows with a stable cursor id.
+// created_after narrows server-side, same contract as getInventoryMovements —
+// the History tab's range control feeds this the same way it feeds the ledger.
 export const getItemUsage = async (itemId: string, organizationId: string, query: unknown = {}) => {
 	const sdb = getScopedDb(organizationId);
 
@@ -1603,6 +1638,7 @@ export const getItemUsage = async (itemId: string, organizationId: string, query
 		WHERE sm.inventory_item_id = ${itemId}
 			AND sm.organization_id = ${organizationId}
 			AND ${CONSUMPTION_MOVEMENT_PREDICATE}
+			AND sm.created_at >= COALESCE(${parsed.created_after ?? null}::timestamptz, '-infinity'::timestamptz)
 		GROUP BY j.id, j.job_number, j.name, c.id, c.name
 		-- A job whose usage fully reversed (added, then removed) is not usage.
 		HAVING SUM(${CONSUMPTION_SIGNED_QTY}) <> 0
@@ -2068,7 +2104,8 @@ export const getItemPriceHistory = async (
 	const chargedTruncated = desiredCutoff.getTime() < capCutoff.getTime();
 	const cutoff = chargedTruncated ? capCutoff : desiredCutoff;
 
-	const [logEntries, chargedRows, receiptRows] = await Promise.all([
+	const [logEntries, chargedRows, chargedExtremes, allChargedSaleRows, recentSaleRows, receiptRows, supplierItems] =
+		await Promise.all([
 		// Ascending: the series is built forward, and the FIRST entry's `old`
 		// value is what anchors it at created_at.
 		sdb.log.findMany({
@@ -2086,7 +2123,17 @@ export const getItemPriceHistory = async (
 		// counting both would double every sale. Bucketed by when the work happened
 		// (actual_end_at, falling back to scheduled/created), not row-insertion time.
 		// Cancelled visits/jobs excluded — never billed.
-		sdb.$queryRaw<{ periodStart: Date; qty: number; revenue: number }[]>`
+		sdb.$queryRaw<
+			{
+				periodStart: Date;
+				qty: number;
+				revenue: number;
+				low: number | null;
+				high: number | null;
+				median: number | null;
+				sales: number;
+			}[]
+		>`
 			WITH bucket_range AS (
 				SELECT
 					date_trunc(${bucket}, ${cutoff}::timestamptz) AS start_period,
@@ -2100,7 +2147,19 @@ export const getItemPriceHistory = async (
 				SELECT
 					date_trunc(${bucket}, COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at)) AS period_start,
 					SUM(jli.quantity) AS qty,
-					SUM(jli.quantity * jli.unit_price) AS revenue
+					SUM(jli.quantity * jli.unit_price) AS revenue,
+					-- Dispersion within the bucket. The average above is the
+					-- money-true figure and stays the plotted line; these expose
+					-- that the same month held a $560 wholesale and a $660 retail
+					-- sale, which one averaged point erases.
+					--
+					-- Per SALE, unweighted: one 1-unit sale at $900 counts as much
+					-- as a 50-unit one. That's the intended read of "what did this
+					-- item go out at", not a confidence interval.
+					MIN(jli.unit_price) AS low,
+					MAX(jli.unit_price) AS high,
+					percentile_cont(0.5) WITHIN GROUP (ORDER BY jli.unit_price) AS median,
+					COUNT(*) AS sales
 				FROM job_visit_line_item jli
 				JOIN job_visit jv ON jv.id = jli.visit_id
 				JOIN job j ON j.id = jv.job_id
@@ -2115,10 +2174,101 @@ export const getItemPriceHistory = async (
 			SELECT
 				b.period_start AS "periodStart",
 				COALESCE(c.qty, 0)::float AS "qty",
-				COALESCE(c.revenue, 0)::float AS "revenue"
+				COALESCE(c.revenue, 0)::float AS "revenue",
+				-- Left NULL on an empty bucket rather than zero-filled like qty:
+				-- a month with no sales has no realized price, and a $0 band would
+				-- draw one straight through the floor of the chart.
+				c.low::float AS "low",
+				c.high::float AS "high",
+				c.median::float AS "median",
+				COALESCE(c.sales, 0)::int AS "sales"
 			FROM buckets b
 			LEFT JOIN charged c ON c.period_start = b.period_start
 			ORDER BY b.period_start ASC
+		`,
+		// Who was behind each bucket's cheapest and dearest sale. Separate query
+		// because the aggregate above can't carry a row-level attribute out of a
+		// GROUP BY, and window functions can't live inside it.
+		//
+		// EVERY filter and the bucket expression are duplicated verbatim from the
+		// aggregate — a divergence here (a different clock, a missing cancellation
+		// filter) would name a client for a price that isn't in the bucket.
+		sdb.$queryRaw<{ periodStart: Date; lowClient: string | null; highClient: string | null }[]>`
+			WITH sales AS (
+				SELECT
+					date_trunc(${bucket}, COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at)) AS period_start,
+					jli.unit_price AS unit_price,
+					cl.name AS client_name
+				FROM job_visit_line_item jli
+				JOIN job_visit jv ON jv.id = jli.visit_id
+				JOIN job j ON j.id = jv.job_id
+				JOIN client cl ON cl.id = j.client_id
+				WHERE jli.inventory_item_id = ${itemId}
+					AND j.organization_id = ${organizationId}
+					AND jv.status <> 'Cancelled'::visit_status
+					AND j.status <> 'Cancelled'::job_status
+					AND COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at)
+						>= (SELECT date_trunc(${bucket}, ${cutoff}::timestamptz))
+			),
+			ranked AS (
+				SELECT
+					period_start,
+					client_name,
+					-- Name breaks ties so two clients at the same low price don't
+					-- swap places between requests.
+					row_number() OVER (PARTITION BY period_start ORDER BY unit_price ASC, client_name ASC) AS lo_rank,
+					row_number() OVER (PARTITION BY period_start ORDER BY unit_price DESC, client_name ASC) AS hi_rank
+				FROM sales
+			)
+			SELECT
+				period_start AS "periodStart",
+				MAX(client_name) FILTER (WHERE lo_rank = 1) AS "lowClient",
+				MAX(client_name) FILTER (WHERE hi_rank = 1) AS "highClient"
+			FROM ranked
+			WHERE lo_rank = 1 OR hi_rank = 1
+			GROUP BY period_start
+		`,
+		// EVERY sale in the window, unaggregated — the per-bucket hard numbers the
+		// chart tooltip lists (price · client · date) instead of just the bucket's
+		// average and its two extremes. Same filters/clock/window as the aggregate
+		// above, boundary included, so a sale that's in one is in the other.
+		sdb.$queryRaw<{ at: Date; unitPrice: number; clientName: string | null }[]>`
+			SELECT
+				COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at) AS "at",
+				jli.unit_price AS "unitPrice",
+				cl.name AS "clientName"
+			FROM job_visit_line_item jli
+			JOIN job_visit jv ON jv.id = jli.visit_id
+			JOIN job j ON j.id = jv.job_id
+			JOIN client cl ON cl.id = j.client_id
+			WHERE jli.inventory_item_id = ${itemId}
+				AND j.organization_id = ${organizationId}
+				AND jv.status <> 'Cancelled'::visit_status
+				AND j.status <> 'Cancelled'::job_status
+				AND COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at)
+					>= date_trunc(${bucket}, ${cutoff}::timestamptz)
+			ORDER BY "at" ASC
+		`,
+		// The two most recent individual sales, unaggregated — the "what did we
+		// actually just charge" fact a manager wants, not a bucket average. Same
+		// filters/clock as the aggregate above so it can't disagree with the chart
+		// about which sales count.
+		sdb.$queryRaw<{ at: Date; unitPrice: number; clientName: string | null }[]>`
+			SELECT
+				COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at) AS "at",
+				jli.unit_price AS "unitPrice",
+				cl.name AS "clientName"
+			FROM job_visit_line_item jli
+			JOIN job_visit jv ON jv.id = jli.visit_id
+			JOIN job j ON j.id = jv.job_id
+			JOIN client cl ON cl.id = j.client_id
+			WHERE jli.inventory_item_id = ${itemId}
+				AND j.organization_id = ${organizationId}
+				AND jv.status <> 'Cancelled'::visit_status
+				AND j.status <> 'Cancelled'::job_status
+				AND COALESCE(jv.actual_end_at, jv.scheduled_start_at, jli.created_at) >= ${cutoff}::timestamptz
+			ORDER BY "at" DESC
+			LIMIT 2
 		`,
 		// Per-receipt purchase cost. Includes `supplier_purchase` (field purchase, never
 		// touches the warehouse) alongside `receive`. Rows with no unit_cost are still
@@ -2136,15 +2286,69 @@ export const getItemPriceHistory = async (
 				qty: true,
 				unit: true,
 				unit_cost: true,
+				supplier: { select: { id: true, name: true } },
 				movement_batches: {
-					select: { batch: { select: { batch_number: true } } },
+					select: {
+						batch: {
+							select: {
+								batch_number: true,
+								// Both the entity and the legacy free-text column:
+								// pre-migration lots only ever had the text, and the
+								// backfill can't resolve a blank or unparseable one.
+								supplier: true,
+								supplier_ref: { select: { id: true, name: true } },
+							},
+						},
+					},
 					take: 1,
 				},
 			},
 			orderBy: [{ created_at: "asc" }, { id: "asc" }],
 			take: PRICE_HISTORY_LOG_CAP,
 		}),
+		// The vendor price list, unwindowed like the WAC average above — "last
+		// paid" and "contract" are facts about the vendor relationship, not about
+		// this chart's date range.
+		sdb.supplier_item.findMany({
+			where: { organization_id: organizationId, inventory_item_id: itemId },
+			select: { supplier_id: true, contract_price: true, last_price: true, is_preferred: true },
+		}),
 	]);
+
+	// Keyed by supplier id: only entity-linked receipts (never the unattributed
+	// or legacy free-text rows) can join a price-list row, since supplier_item
+	// itself requires a supplier entity.
+	const priceListBySupplier = new Map(supplierItems.map((s) => [s.supplier_id, s]));
+
+	// Newest first, guarded against a malformed row rather than trusting the
+	// query — this is the fact the headline stat anchors on, so a bad row
+	// should drop out silently rather than crash the whole endpoint.
+	const recentSales = (recentSaleRows ?? [])
+		.filter((r) => r?.at != null && r?.unitPrice != null)
+		.map((r) => ({
+			at: new Date(r.at).toISOString(),
+			unitPrice: Number(r.unitPrice),
+			clientName: r.clientName ?? null,
+		}));
+
+	// Same guard, same shape, for the full per-bucket breakdown the tooltip
+	// lists — every sale in the window, not just the last two.
+	const chargedSales = (allChargedSaleRows ?? [])
+		.filter((r) => r?.at != null && r?.unitPrice != null)
+		.map((r) => ({
+			at: new Date(r.at).toISOString(),
+			unitPrice: Number(r.unitPrice),
+			clientName: r.clientName ?? null,
+		}));
+
+	// Keyed on the same ISO stamp the points below emit, so the join can't drift
+	// from the aggregate's bucket boundaries.
+	const extremesByPeriod = new Map(
+		chargedExtremes.map((e) => [
+			e.periodStart.toISOString(),
+			{ lowClient: e.lowClient, highClient: e.highClient },
+		]),
+	);
 
 	const nowIso = new Date().toISOString();
 	const currentCost = item.cost != null ? Number(item.cost) : null;
@@ -2172,10 +2376,40 @@ export const getItemPriceHistory = async (
 		qty: number;
 		unit: string;
 		batchNumber: string | null;
+		supplierId: string | null;
+		supplierName: string | null;
 	}[] = [];
 	const allWac: { at: string; value: number }[] = [];
 
+	const fromMs = parsed.created_after?.getTime();
+
+	// Origin of one receipt, in the order the data became trustworthy: the
+	// movement's own supplier (recorded from this release on), then the lot's
+	// entity, then the lot's legacy free text. A legacy name has no id, so it
+	// groups under its name below — dropping it would report vendors the org DID
+	// record, just not as entities, as if nobody had written them down.
+	const receiptOrigin = (r: (typeof receiptRows)[number]) => {
+		const batch = r.movement_batches[0]?.batch;
+		return {
+			supplierId: r.supplier?.id ?? batch?.supplier_ref?.id ?? null,
+			supplierName:
+				r.supplier?.name ?? batch?.supplier_ref?.name ?? batch?.supplier ?? null,
+		};
+	};
+
+	// Counted over EVERY windowed receipt, not just the priced ones, so the
+	// coverage line compares against the same denominator as `receipts` below.
+	let windowWithSupplier = 0;
+
 	for (const r of receiptRows) {
+		const origin = receiptOrigin(r);
+		if (
+			(fromMs == null || r.created_at.getTime() >= fromMs) &&
+			(origin.supplierId != null || origin.supplierName != null)
+		) {
+			windowWithSupplier++;
+		}
+
 		if (r.unit_cost == null) continue;
 		const unitCost = Number(r.unit_cost);
 		const qty = Number(r.qty);
@@ -2191,6 +2425,7 @@ export const getItemPriceHistory = async (
 			// denomination instead of borrowing the item's.
 			unit: r.unit,
 			batchNumber: r.movement_batches[0]?.batch?.batch_number ?? null,
+			...origin,
 		});
 
 		// Skipped entirely (not emitted-and-flagged) on a unit break — a plotted
@@ -2203,7 +2438,6 @@ export const getItemPriceHistory = async (
 
 	// The average carries in at the window start (same contract as the step series);
 	// individual receipt markers do NOT — re-stamping one would invent a purchase.
-	const fromMs = parsed.created_after?.getTime();
 	const wac = windowStepSeries(allWac, parsed.created_after);
 	const receipts =
 		fromMs == null
@@ -2214,6 +2448,99 @@ export const getItemPriceHistory = async (
 			? receiptRows.length
 			: receiptRows.filter((r) => r.created_at.getTime() >= fromMs).length;
 
+	// Per-vendor rollup over the windowed, priced receipts. Unattributed ones
+	// collapse into a single explicit row rather than being dropped — a chart
+	// claiming three suppliers when a third of the spend has no origin recorded
+	// is the exact overstatement this feature exists to remove.
+	const supplierGroups = new Map<
+		string,
+		{
+			supplierId: string | null;
+			supplierName: string;
+			unattributed: boolean;
+			receipts: number;
+			qty: number;
+			spend: number;
+			minUnitCost: number;
+			maxUnitCost: number;
+			firstAt: string;
+			lastAt: string;
+		}
+	>();
+
+	for (const r of receipts) {
+		// Match the same normalization resolveSupplier/mergeSuppliers use for
+		// dedupe, so two legacy free-text spellings that differ only by
+		// whitespace don't fragment into separate rows here.
+		const key =
+			r.supplierId ?? (r.supplierName ? `name:${normalizeSupplierName(r.supplierName)}` : "");
+		const existing = supplierGroups.get(key);
+		if (existing) {
+			existing.receipts++;
+			existing.qty += r.qty;
+			existing.spend += r.qty * r.unitCost;
+			existing.minUnitCost = Math.min(existing.minUnitCost, r.unitCost);
+			existing.maxUnitCost = Math.max(existing.maxUnitCost, r.unitCost);
+			// receiptRows is ordered by created_at asc, so first/last need no comparison.
+			existing.lastAt = r.at;
+			continue;
+		}
+		supplierGroups.set(key, {
+			supplierId: r.supplierId,
+			supplierName: r.supplierName ?? "Unrecorded",
+			unattributed: key === "",
+			receipts: 1,
+			qty: r.qty,
+			spend: r.qty * r.unitCost,
+			minUnitCost: r.unitCost,
+			maxUnitCost: r.unitCost,
+			firstAt: r.at,
+			lastAt: r.at,
+		});
+	}
+
+	const bySupplier = [...supplierGroups.values()]
+		.map((g) => {
+			// Null for the unattributed row and any legacy free-text vendor — both
+			// lack a supplierId, and supplier_item requires a real entity to key on.
+			const priceList = g.supplierId != null ? priceListBySupplier.get(g.supplierId) : undefined;
+			const { price: lastPaid, priceSource } = resolveVendorPrice(
+				priceList?.contract_price,
+				priceList?.last_price,
+			);
+			return {
+				supplierId: g.supplierId,
+				supplierName: g.supplierName,
+				unattributed: g.unattributed,
+				receipts: g.receipts,
+				spend: g.spend,
+				firstAt: g.firstAt,
+				lastAt: g.lastAt,
+				// Money sums across a unit break; per-unit figures do not. 10 boxes at
+				// $18 and 4 units at $3 have a real combined spend and no real average.
+				...(receiptBasis.mixed
+					? { qty: null, avgUnitCost: null, minUnitCost: null, maxUnitCost: null }
+					: {
+							qty: g.qty,
+							avgUnitCost: g.qty > 0 ? g.spend / g.qty : null,
+							minUnitCost: g.minUnitCost,
+							maxUnitCost: g.maxUnitCost,
+						}),
+				// From the self-maintaining vendor price list, not from receipts in
+				// this window — resolveVendorPrice is the same rule attachPreferredVendors
+				// uses for the reorder forecast, so the two never disagree.
+				lastPaid,
+				priceSource,
+				isPreferred: priceList?.is_preferred ?? false,
+			};
+		})
+		.sort((a, b) => {
+			// Unrecorded sits last regardless of spend — it's a gap in the data,
+			// not a vendor competing for the top of the list.
+			if (a.unattributed !== b.unattributed) return a.unattributed ? 1 : -1;
+			return b.spend - a.spend;
+		});
+
 	return {
 		err: "",
 		cost: { current: currentCost, points: costPoints },
@@ -2223,15 +2550,40 @@ export const getItemPriceHistory = async (
 			points: chargedRows.map((r) => {
 				const qty = Number(r.qty);
 				const revenue = Number(r.revenue);
+				const periodStart = r.periodStart.toISOString();
+				const sales = Number(r.sales);
+				const low = r.low != null ? Number(r.low) : null;
+				const high = r.high != null ? Number(r.high) : null;
+				// A band needs two prices that actually differ. One sale, or many
+				// at one price, would otherwise draw a zero-height ribbon that
+				// reads as "we measured a spread" when there was none.
+				const hasBand = sales > 1 && low != null && high != null && low !== high;
+				const extremes = extremesByPeriod.get(periodStart);
 				return {
-					periodStart: r.periodStart.toISOString(),
+					periodStart,
 					qty,
 					revenue,
 					avgUnitPrice: qty > 0 ? revenue / qty : null,
+					sales,
+					low: hasBand ? low : null,
+					high: hasBand ? high : null,
+					median: r.median != null ? Number(r.median) : null,
+					lowClient: hasBand ? (extremes?.lowClient ?? null) : null,
+					highClient: hasBand ? (extremes?.highClient ?? null) : null,
 				};
 			}),
+			// Every sale in the window, unaggregated — what the chart tooltip lists
+			// per bucket (price · client · date) instead of just `points`' average
+			// and two extremes. The frontend buckets these itself against the
+			// `periodStart` values above.
+			sales: chargedSales,
 		},
+		// The last 1-2 individual sales, unaveraged — what the "(latest)" headline
+		// stat actually reads. `charged.points` stays a bucketed average; this is
+		// the real last invoice line.
+		recentSales,
 		receipts,
+		bySupplier,
 		wac,
 		// Denomination of the two MOVEMENT-derived series only — set-cost/list-price are
 		// configured amounts off the item, unaffected by a unit break.
@@ -2242,6 +2594,10 @@ export const getItemPriceHistory = async (
 			receipts: windowReceiptRows,
 			withCost: receipts.length,
 			wacBasisReceipts: allReceipts.length,
+			// Attribution is its own gap: a receipt can carry a cost and still
+			// name nobody. Stated so the chart reads "12 of 18 name a supplier"
+			// instead of implying the rollup covers every purchase.
+			withSupplier: windowWithSupplier,
 		},
 		// Where the charged series actually starts, and whether older sales were
 		// cut off by the bucket cap. Never inferred from the first bucket — a

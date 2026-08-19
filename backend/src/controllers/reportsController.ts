@@ -1,4 +1,5 @@
 import { getScopedDb } from "../lib/context.js";
+import { resolveVendorPrice } from "../services/suppliers.js";
 import {
 	normalizedMonthly,
 	planPerPeriodAmount,
@@ -896,6 +897,23 @@ type ReorderForecastRow = {
 	belowReorderPoint: boolean;
 	// Computed once here so every surface (table, chart, detail page, export) agrees. Band geometry stays frontend.
 	severity: ReorderSeverity;
+	// Who to buy it from. Null throughout when the item has no vendor on file —
+	// the forecast still says what to buy, it just can't say where.
+	preferredSupplierId: string | null;
+	preferredSupplierName: string | null;
+	// The vendor's part number, which is what you actually order by.
+	vendorSku: string | null;
+	preferredUnitPrice: number | null;
+	// Which figure the price came from. Stated because a negotiated rate and a
+	// one-off counter price deserve different confidence.
+	priceSource: "contract" | "observed" | "none";
+	// Whether someone CHOSE this vendor or we fell back to whoever sold it last.
+	// Without this the table would present a guess as a decision.
+	vendorSource: "preferred" | "recent" | "none";
+	// Units needed to get back to the reorder point — the existing warehouse-scoped
+	// threshold, not an invented order policy. Null when no threshold is set.
+	shortfallQty: number | null;
+	estimatedShortfallCost: number | null;
 };
 
 export type ReorderSeverity = "critical" | "warning" | "healthy" | "unknown";
@@ -955,6 +973,73 @@ export const reorderSeverity = (input: {
 // "Days of stock" = org-wide on-hand (warehouse + vehicles) / org-wide daily
 // consumption. Warehouse<->vehicle transfers are not demand; `loss` is excluded
 // from the rate even though it does drain stock.
+/**
+ * Names a vendor and a price on every forecast row that has one.
+ *
+ * The forecast has always been able to say WHAT to buy and WHEN, then stopped
+ * there. One query for the whole page (not one per row) attaches the rest.
+ *
+ * Vendor choice: an explicitly preferred row wins; otherwise the most recent
+ * purchase stands in, flagged as such — falling back is more useful than a blank
+ * column, but presenting the fallback as a decision would be a lie.
+ *
+ * Price choice: a negotiated `contract_price` beats an observed `last_price`,
+ * because one is what you WILL pay and the other is what you happened to pay.
+ */
+const attachPreferredVendors = async (
+	organizationId: string,
+	rows: ReorderForecastRow[],
+): Promise<void> => {
+	if (rows.length === 0) return;
+	const sdb = getScopedDb(organizationId);
+
+	const vendorRows = await sdb.supplier_item.findMany({
+		where: {
+			organization_id: organizationId,
+			inventory_item_id: { in: rows.map((r) => r.itemId) },
+			// A retired vendor must not be the answer to "who do I buy this from".
+			supplier: { is_active: true },
+		},
+		select: {
+			inventory_item_id: true,
+			supplier_id: true,
+			vendor_sku: true,
+			contract_price: true,
+			last_price: true,
+			last_purchased_at: true,
+			is_preferred: true,
+			supplier: { select: { name: true } },
+		},
+		// Preferred first, then most recently purchased — so the first row seen
+		// per item is the one to use and later rows can be skipped. Postgres
+		// defaults NULLS FIRST on a desc sort, which would rank a contract-only
+		// row (never actually purchased, last_purchased_at: null) ahead of a row
+		// with a real recent purchase date — the opposite of "most recent" wins.
+		orderBy: [{ is_preferred: "desc" }, { last_purchased_at: { sort: "desc", nulls: "last" } }],
+	});
+
+	const chosen = new Map<string, (typeof vendorRows)[number]>();
+	for (const v of vendorRows) {
+		if (!chosen.has(v.inventory_item_id)) chosen.set(v.inventory_item_id, v);
+	}
+
+	for (const row of rows) {
+		const v = chosen.get(row.itemId);
+		if (!v) continue;
+
+		const { price, priceSource } = resolveVendorPrice(v.contract_price, v.last_price);
+
+		row.preferredSupplierId = v.supplier_id;
+		row.preferredSupplierName = v.supplier.name;
+		row.vendorSku = v.vendor_sku;
+		row.preferredUnitPrice = price;
+		row.priceSource = priceSource;
+		row.vendorSource = v.is_preferred ? "preferred" : "recent";
+		row.estimatedShortfallCost =
+			price != null && row.shortfallQty != null ? price * row.shortfallQty : null;
+	}
+};
+
 const buildReorderForecast = async (
 	organizationId: string,
 	opts: { lookbackDays: number; itemId?: string },
@@ -1117,8 +1202,23 @@ const buildReorderForecast = async (
 				lowStockThreshold,
 				warehouseQuantity,
 			}),
+			// Filled in below, once the vendor rows for the whole page are read
+			// in one query instead of one per item.
+			preferredSupplierId: null,
+			preferredSupplierName: null,
+			vendorSku: null,
+			preferredUnitPrice: null,
+			priceSource: "none" as const,
+			vendorSource: "none" as const,
+			shortfallQty:
+				lowStockThreshold == null
+					? null
+					: Math.max(0, lowStockThreshold - warehouseQuantity),
+			estimatedShortfallCost: null,
 		};
 	});
+
+	await attachPreferredVendors(organizationId, built);
 
 	// Severity first, then runway. Sorting on projectedStockoutDate alone mapped
 	// null to Infinity, burying rows with no measured usage below every healthy
