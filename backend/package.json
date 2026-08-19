@@ -6,6 +6,9 @@
 	"scripts": {
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"typecheck:test": "tsc --noEmit -p tsconfig.test.json",
 		"build": "tsc",
 		"start": "node dist/src/index.js"
 	},
@@ -23,6 +26,7 @@
 		"@types/jsonwebtoken": "^9.0.10",
 		"@types/node": "^24.10.2",
 		"@types/react": "^18.3.23",
+		"@vitest/coverage-v8": "^2.1.9",
 		"prisma": "^7.5.0",
 		"tsx": "^4.19.0",
 		"typescript": "^5.9.3",
