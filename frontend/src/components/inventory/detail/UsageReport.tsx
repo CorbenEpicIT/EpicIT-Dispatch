@@ -9,6 +9,7 @@ import EmptyState from "../../ui/EmptyState";
 import Card from "../../ui/Card";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
 import { UNIT_BREAK_DETAIL, unitBreakNote, unitBreakShort } from "./chartNotes";
+import { QueryErrorState } from "./chartShared";
 
 const PAGE_SIZE = 20;
 
@@ -20,9 +21,8 @@ const PAGE_SIZE = 20;
 // width each, where a 600px column floor would have forced a nested
 // horizontal scrollbar.
 export default function UsageReport({ itemId }: { itemId: string }) {
-	const { data, isLoading, isFetching, hasNextPage, fetchNextPage } = useItemUsageQuery(itemId, {
-		limit: PAGE_SIZE,
-	});
+	const { data, isLoading, isFetching, isError, refetch, hasNextPage, fetchNextPage } =
+		useItemUsageQuery(itemId, { limit: PAGE_SIZE });
 
 	const rows: ItemUsageRow[] = useMemo(
 		() => data?.pages.flatMap((p) => p.usage) ?? [],
@@ -48,7 +48,11 @@ export default function UsageReport({ itemId }: { itemId: string }) {
 				</div>
 			)}
 
-			{!isFirstLoad && rows.length === 0 && (
+			{isError && rows.length === 0 && (
+				<QueryErrorState what="usage by job" onRetry={() => refetch()} />
+			)}
+
+			{!isFirstLoad && !isError && rows.length === 0 && (
 				<EmptyState
 					icon={<ClipboardList size={26} />}
 					title="No usage yet"

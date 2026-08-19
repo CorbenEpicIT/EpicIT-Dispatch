@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTrackingSummaryQuery } from "../../../hooks/useTracking";
 import type { InventoryItem } from "../../../types/inventory";
+import { QueryErrorState } from "./chartShared";
 import {
 	BATCH_GROUP_HEADING,
 	BATCH_SUMMARY_ROWS,
@@ -60,7 +61,7 @@ export default function TrackingSummaryStats({
 	/** Batch tracking is off but lots survive — show the group, labelled archived. */
 	archivedLots?: boolean;
 }) {
-	const { data, isLoading } = useTrackingSummaryQuery(item.id);
+	const { data, isLoading, isError, refetch } = useTrackingSummaryQuery(item.id);
 	const n = (v: number | undefined) => (isLoading ? "…" : String(v ?? 0));
 	const serials = data?.serials;
 	const batches = data?.batches;
@@ -86,6 +87,16 @@ export default function TrackingSummaryStats({
 					value={n(values?.[key])}
 				/>
 			));
+
+	// A failed read would otherwise tile as a row of zeros — a confident wrong
+	// answer about stock that is still there.
+	if (isError) {
+		return (
+			<div className="bg-base border border-border-subtle rounded-lg">
+				<QueryErrorState what="the tracking summary" onRetry={() => refetch()} />
+			</div>
+		);
+	}
 
 	return (
 		<div className="flex flex-wrap gap-6">

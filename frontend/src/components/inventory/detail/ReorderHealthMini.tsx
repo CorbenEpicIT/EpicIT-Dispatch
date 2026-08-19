@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useItemForecastQuery } from "../../../hooks/useInventory";
 import type { ReorderSeverity } from "../../../types/reports";
 import { formatDate } from "../../../util/util";
@@ -78,7 +78,7 @@ export default function ReorderHealthMini({
 	itemId: string;
 	onViewHistory: () => void;
 }) {
-	const { data, isLoading } = useItemForecastQuery(itemId);
+	const { data, isLoading, isError, refetch } = useItemForecastQuery(itemId);
 
 	// Line-for-line the geometry of the loaded strip, so the cards below it in the
 	// rail don't jump when the forecast lands.
@@ -91,6 +91,31 @@ export default function ReorderHealthMini({
 					<div className="h-3 w-16 animate-pulse rounded bg-surface-raised" />
 				</div>
 				<div className="mt-1 h-3 w-32 animate-pulse rounded bg-surface-raised" />
+			</div>
+		);
+	}
+
+	// A failed read is neither "not forecast" nor "no signal" — both of those are
+	// claims about the item. Same strip geometry, with a way back.
+	if (isError) {
+		return (
+			<div className={SHELL}>
+				<div className="flex items-center gap-2">
+					<AlertTriangle size={12} className="shrink-0 text-text-tertiary" />
+					<span className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+						Reorder health unavailable
+					</span>
+				</div>
+				<p className="mt-1.5 text-[11px] leading-relaxed text-text-faint">
+					Couldn't load the forecast.{" "}
+					<button
+						type="button"
+						onClick={() => refetch()}
+						className="font-medium text-primary hover:underline"
+					>
+						Retry
+					</button>
+				</p>
 			</div>
 		);
 	}

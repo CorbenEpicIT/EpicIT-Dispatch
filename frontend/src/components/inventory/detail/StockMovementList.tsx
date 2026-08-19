@@ -25,6 +25,7 @@ import { formatDateTime } from "../../../util/util";
 import { unitLabel } from "../../../lib/units";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
 import EmptyState from "../../ui/EmptyState";
+import { QueryErrorState } from "./chartShared";
 
 const REASON_META: Record<StockMovementReason, { label: string; icon: LucideIcon }> = {
 	receive: { label: "Received", icon: ArrowDownToLine },
@@ -123,7 +124,7 @@ export default function StockMovementList({
 	itemId: string;
 	createdAfter?: string;
 }) {
-	const { data, isLoading, isFetching, hasNextPage, fetchNextPage } =
+	const { data, isLoading, isFetching, isError, refetch, hasNextPage, fetchNextPage } =
 		useInventoryMovementsQuery(itemId, { createdAfter });
 
 	const rows: StockMovement[] = useMemo(
@@ -150,10 +151,15 @@ export default function StockMovementList({
 				</div>
 			)}
 
+			{/* A failed read is not an empty ledger — say so, with a way back. */}
+			{isError && rows.length === 0 && (
+				<QueryErrorState what="stock history" onRetry={() => refetch()} />
+			)}
+
 			{/* One empty state, not two: with a server-side filter an empty
 			    response IS "nothing in this range", so the copy points at the
 			    range control when one is active. */}
-			{!isFirstLoad && rows.length === 0 && (
+			{!isFirstLoad && !isError && rows.length === 0 && (
 				<EmptyState
 					icon={<History size={26} />}
 					title={createdAfter ? "No movements in this range" : "No stock movements yet"}

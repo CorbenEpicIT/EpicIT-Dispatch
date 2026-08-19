@@ -1,7 +1,32 @@
 import type { ReactNode } from "react";
+import { AlertTriangle } from "lucide-react";
+import EmptyState from "../../ui/EmptyState";
 
 // Shared chrome for the History tab's chart cards. Caveat disclosure is a
 // hook, so it lives in chartNotes.tsx instead.
+
+/**
+ * A failed read, rendered as a failed read. Every detail card used to fall
+ * through to its empty state on a query error ("No history yet" over a 500),
+ * which is a false claim about the data. `onRetry` is the query's refetch.
+ */
+export function QueryErrorState({
+	what,
+	onRetry,
+}: {
+	/** What couldn't be loaded, lowercase noun phrase: "stock history". */
+	what: string;
+	onRetry: () => void;
+}) {
+	return (
+		<EmptyState
+			icon={<AlertTriangle size={26} />}
+			title={`Couldn't load ${what}`}
+			description="Something went wrong fetching this. The data is still there — try again."
+			action={{ label: "Retry", onClick: onRetry }}
+		/>
+	);
+}
 
 /** Header chip: a fact about the whole series that the plot can't state itself. */
 export function ChartChip({ children }: { children: ReactNode }) {

@@ -9,6 +9,7 @@ import PlacementSummaryBody from "./PlacementSummaryBody";
 import PlacementTile from "./PlacementTile";
 import ProportionBar from "./ProportionBar";
 import VehicleAllotmentDropdown from "./VehicleAllotmentDropdown";
+import { QueryErrorState } from "./chartShared";
 import {
 	BATCH_GROUP_HEADING,
 	BATCH_SUMMARY_ROWS,
@@ -110,18 +111,41 @@ export default function StockPlacementCard({
 	// `enabled: !!itemId` on the hook — an untracked item with no archive has no
 	// rollup to read, and shouldn't spend a request finding that out.
 	const needsTracking = tracked || archived;
-	const { data: summary, isLoading: summaryLoading } = useTrackingSummaryQuery(
-		needsTracking ? item.id : ""
-	);
+	const {
+		data: summary,
+		isLoading: summaryLoading,
+		isError: summaryError,
+		refetch: refetchSummary,
+	} = useTrackingSummaryQuery(needsTracking ? item.id : "");
 	// Same query key ReorderHealthMini holds directly above this card in the rail,
 	// so in practice this is free.
-	const { data: forecastResult, isLoading: forecastLoading } = useItemForecastQuery(item.id);
+	const {
+		data: forecastResult,
+		isLoading: forecastLoading,
+		isError: forecastError,
+		refetch: refetchForecast,
+	} = useItemForecastQuery(item.id);
 
 	const isLoading = tracked ? summaryLoading : forecastLoading;
 	if (isLoading) {
 		return (
 			<Card title="Stock Placement">
 				<div className="h-10 animate-pulse rounded bg-surface-raised" />
+			</Card>
+		);
+	}
+
+	// Only the source this card actually reads from can fail it: tracked items
+	// read the tracking summary, untracked the forecast split. Without this the
+	// tracked branch tiled zeros over a failed read.
+	const isError = tracked ? summaryError : forecastError;
+	if (isError) {
+		return (
+			<Card title="Stock Placement">
+				<QueryErrorState
+					what="stock placement"
+					onRetry={() => (tracked ? refetchSummary() : refetchForecast())}
+				/>
 			</Card>
 		);
 	}

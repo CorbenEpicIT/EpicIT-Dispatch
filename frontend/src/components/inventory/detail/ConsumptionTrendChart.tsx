@@ -14,7 +14,7 @@ import { useItemConsumptionTrendQuery } from "../../../hooks/useInventory";
 import { unitLabel } from "../../../lib/units";
 import Card from "../../ui/Card";
 import EmptyState from "../../ui/EmptyState";
-import { ChartTooltipShell } from "./chartShared";
+import { ChartTooltipShell, QueryErrorState } from "./chartShared";
 import { CHART_BODY_H, CHART_GRID, CHART_TICK, timeXAxis } from "./chartAxis";
 import { useChartNotes, unitBreakNote, UNIT_BREAK_DETAIL } from "./chartNotes";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
@@ -84,7 +84,10 @@ export default function ConsumptionTrendChart({
 	range?: number;
 	xDomain?: [number, number];
 }) {
-	const { data, isLoading } = useItemConsumptionTrendQuery(itemId, { bucket, range });
+	const { data, isLoading, isError, refetch } = useItemConsumptionTrendQuery(itemId, {
+		bucket,
+		range,
+	});
 
 	const points: ChartDatum[] = useMemo(
 		() =>
@@ -125,6 +128,18 @@ export default function ConsumptionTrendChart({
 			<Card title="Consumption Trend">
 				<div className={`${CHART_BODY_H} flex justify-center items-center`}>
 					<LoadSvg className="w-7 h-7" />
+				</div>
+			</Card>
+		);
+	}
+
+	// Checked before the zero/too-few branches: an errored query has no points,
+	// and falling through would claim "not enough history" over a failed read.
+	if (isError) {
+		return (
+			<Card title="Consumption Trend">
+				<div className={`${CHART_BODY_H} flex flex-col justify-center`}>
+					<QueryErrorState what="the consumption trend" onRetry={() => refetch()} />
 				</div>
 			</Card>
 		);
