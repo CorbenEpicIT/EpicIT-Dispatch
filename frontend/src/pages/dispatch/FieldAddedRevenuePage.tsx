@@ -125,6 +125,14 @@ export default function FieldAddedRevenuePage() {
 				))}
 			</div>
 
+			{summary?.truncated && (
+				<div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-text">
+					Only the newest field-added items were counted — the report row cap was
+					reached, so these totals are partial. Narrow the date range for a complete
+					picture.
+				</div>
+			)}
+
 			{!isLoading && !error && (summary?.trend?.points.length ?? 0) > 0 && (
 				<div className="h-80 mb-4">
 					<FieldAddedRevenueTrendChart

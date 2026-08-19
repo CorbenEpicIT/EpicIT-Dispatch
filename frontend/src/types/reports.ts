@@ -482,10 +482,13 @@ export interface FieldAddedRevenueTrend {
 export interface FieldAddedRevenueSummary {
 	technicianCount: number;
 	totalFieldAddedRevenue: number;
+	// distinct field-added items (a split item counts once here, once per tech in rows)
 	fieldAddedItems: number;
 	topTechnician: string;
 	// org-wide denominator for upsell rate = fieldAdded / orgVisitRevenue
 	orgVisitRevenue: number;
+	// the backend row cap was reached; totals cover only the newest items
+	truncated?: boolean;
 	// per-(tech, month) field-added revenue for the trend chart's local tech filter
 	trend: FieldAddedRevenueTrend;
 }
