@@ -69,7 +69,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		priority: Priority;
 	};
 
-	const { fields, updateField, undoField, setOriginals, isDirty, getValue } =
+	const { updateField, undoField, setOriginals, isDirty, getValue } =
 		useDirtyTracking<FormFields>({
 			title: "",
 			description: "",

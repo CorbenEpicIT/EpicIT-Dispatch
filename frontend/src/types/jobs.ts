@@ -1,5 +1,5 @@
 ﻿import z from "zod";
-import type { ClientSummary, ClientWithPrimaryContact } from "./clients";
+import type { ClientWithPrimaryContact } from "./clients";
 import type { BillingRef } from "./invoices";
 import type { Coordinates } from "./location";
 import type {
@@ -11,12 +11,9 @@ import type {
 	LineItemSource,
 	PricingBreakdown,
 	ExecutionTotals,
-	DiscountType,
 } from "./common";
 import {
 	PriorityValues,
-	PriorityLabels,
-	PriorityColors,
 	LineItemTypeValues,
 	LineItemSourceValues,
 	DiscountTypeValues,

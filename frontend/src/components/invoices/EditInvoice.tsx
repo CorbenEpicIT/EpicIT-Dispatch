@@ -4,7 +4,7 @@ import {
 	type UpdateInvoiceInput,
 	type UpdateInvoiceLineItemInput,
 } from "../../types/invoices";
-import { type LineItemType, type BaseLineItem, type EditableLineItem } from "../../types/common";
+import { type LineItemType, type EditableLineItem } from "../../types/common";
 import { useUpdateInvoiceMutation } from "../../hooks/useInvoices";
 import DatePicker from "../ui/DatePicker";
 import Dropdown from "../ui/Dropdown";
@@ -71,7 +71,6 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 	const [paymentTermsDays, setPaymentTermsDays] = useState<string>("");
 	const [originalIssueDate, setOriginalIssueDate] = useState<Date | null>(null);
 	const [originalDueDate, setOriginalDueDate] = useState<Date | null>(null);
-	const [originalPaymentTermsDays, setOriginalPaymentTermsDays] = useState<string>("");
 
 	// ── Line items ────────────────────────────────────────────────────────
 	const { data: taxGroups = [] } = useTaxGroups();
@@ -167,7 +166,6 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		setPaymentTermsDays(terms);
 		setOriginalIssueDate(issDate);
 		setOriginalDueDate(duDate);
-		setOriginalPaymentTermsDays(terms);
 
 		// Line items — seed from existing invoice line items
 		const initialLineItems: EditableLineItem[] = (invoice.line_items ?? []).map(

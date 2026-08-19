@@ -1,5 +1,4 @@
 ﻿import { Phone, Mail, Briefcase, Clock, Trash2, ShieldCheck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import type { Dispatcher } from "../../types/dispatchers";
 import { MoreHorizontal } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
@@ -58,7 +57,6 @@ function formatLastLogin(raw: unknown) {
 }
 
 export function DispatcherCard({ dispatcher, onClick, onEdit, onAssignRole, viewMode }: DispatcherCardProps) {
-    const navigate = useNavigate();
     const displayName = capitalizeWords(dispatcher.name);
     const lastLoginText = formatLastLogin(dispatcher.last_login);
     const mfaBadge = dispatcher.mfaEnabled ? (

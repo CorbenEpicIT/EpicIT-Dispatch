@@ -59,7 +59,7 @@ const EditJob = ({ isModalOpen, setIsModalOpen, job }: EditJobProps) => {
 		priority: Priority;
 	};
 
-	const { fields, updateField, undoField, setOriginals, isDirty, getValue } =
+	const { updateField, undoField, setOriginals, isDirty, getValue } =
 		useDirtyTracking<FormFields>({
 			name: "",
 			description: "",

@@ -1,5 +1,4 @@
 ﻿import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import type { Technician, UpdateTechnicianInput } from "../../types/technicians";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
 import { useOrgRolesQuery, useAssignOrgRoleMutation } from "../../hooks/useOrgRoles";
@@ -31,8 +30,6 @@ const INPUT =
 const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 export default function EditTechnician({ isOpen, onClose, technician }: EditTechnicianProps) {
-	const navigate = useNavigate();
-
 	const [name, setName] = useState(technician.name);
 	const [email, setEmail] = useState(technician.email);
 	const [phone, setPhone] = useState(technician.phone);

@@ -98,15 +98,6 @@ function RequireDispatcher({ children }: { children: JSX.Element }) {
 	if (user.role === "technician") return <Navigate to="/technician" replace />;
 	return children;
 }
-// stops dispatch users from accessing admin page unless they have view_admin permission
-function RequireAdmin({ children }: { children: JSX.Element }) {
-	const { user } = useAuthStore();
-	const hasViewAdmin = usePermission("view_admin");
-	if (!user) return <Navigate to="/login" replace />;
-	if (user.role !== "admin" && !hasViewAdmin) return <Navigate to="/dispatch" replace />;
-	return children;
-}
-
 function RequirePermission({ permission, children }: { permission: string; children: JSX.Element }) {
 	const allowed = usePermission(permission);
 	return allowed ? children : <Navigate to="/dispatch" replace />;

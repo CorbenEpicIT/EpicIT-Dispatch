@@ -14,7 +14,7 @@ import {
 	useUpdateDraftMutation,
 	useDeleteDraftMutation,
 } from "../../hooks/forms/useDrafts";
-import { getDraft, deleteDraft } from "../../api/drafts";
+import { getDraft } from "../../api/drafts";
 import type { DraftSummary, SourceType } from "../../types/drafts";
 import type { GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";

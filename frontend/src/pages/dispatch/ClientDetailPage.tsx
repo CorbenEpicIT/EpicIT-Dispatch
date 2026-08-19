@@ -55,7 +55,6 @@ export default function ClientDetailsPage() {
 
 	//permissions
 	const EDIT_CLIENT = usePermission("edit_clients");
-	const DELETE_CLIENT = usePermission("delete_clients");
 
 	const workflowData = useMemo(() => {
 		if (!client) return { active: [], requests: [], quotes: [], jobs: [], plans: [], invoices: [] };

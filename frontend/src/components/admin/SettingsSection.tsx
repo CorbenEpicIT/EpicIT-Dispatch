@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from "react";
-import { Upload, Trash2, Building2, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Upload, Trash2, Building2, Loader2 } from "lucide-react";
 import {
 	useOrgSettings,
 	useUploadOrgLogo,

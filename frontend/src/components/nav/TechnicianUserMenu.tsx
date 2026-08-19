@@ -6,7 +6,7 @@ import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check, Use
 import { useOrgSettings } from "../../hooks/useOrg";
 import { useThemeStore } from "../../stores/themeStore";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
-import { useRememberedAccountsStore, type RememberedAccount } from "../../stores/rememberedAccountsStore";
+import { useRememberedAccountsStore } from "../../stores/rememberedAccountsStore";
 import { logoutBeacon } from "../../api/authenticate";
 
 export default function TechnicianUserMenu() {
@@ -14,7 +14,7 @@ export default function TechnicianUserMenu() {
     const [menuOpen, setMenuOpen] = useState(false);
     const [themeOpen, setThemeOpen] = useState(false);
     const [switchUserOpen, setSwitchUserOpen] = useState(false);
-    const {accounts, upsertAccount, patchAccount, removeAccount} = useRememberedAccountsStore();
+    const {accounts, patchAccount, removeAccount} = useRememberedAccountsStore();
     const [accountSwitching, setAccountSwitching] = useState(false);
     const otherAccounts = accounts.filter((a) => a.userId !== user?.userId);
     const wrapperRef = useRef<HTMLDivElement>(null);

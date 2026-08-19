@@ -100,7 +100,6 @@ export default function InvoicesPage() {
 			invoices?.map((inv) => {
 				const overdue = isOverdue(inv);
 				const clientName = inv.client?.name || "Unknown Client";
-				const qbSync = inv.qb_sync_status;
 
 				const subject = inv.memo
 					? inv.memo.length > 60

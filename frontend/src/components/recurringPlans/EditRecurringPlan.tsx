@@ -11,7 +11,6 @@ import {
 } from "../../types/recurringPlans";
 import {
 	type LineItemType,
-	type EditableLineItem,
 	PriorityValues,
 	type Priority,
 } from "../../types/common";
@@ -365,21 +364,6 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		if (!date) return null;
 		return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 	};
-
-	const clientDropdownEntries = useMemo(() => {
-		if (clients?.length) {
-			return clients.map((c) => (
-				<option value={c.id} key={c.id}>
-					{c.name}
-				</option>
-			));
-		}
-		return (
-			<option disabled value="">
-				No clients found
-			</option>
-		);
-	}, [clients]);
 
 	const invokeUpdate = async () => {
 		if (isLoading) return;

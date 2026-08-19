@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import Card from "../ui/Card";
+import { XCircle, Loader2 } from "lucide-react";
 import { useQBStatusQuery, useQBConnectMutation, useQBDisconnectMutation } from "../../hooks/useQuickbooks";
 import { usePermission } from "../../hooks/usePermission";
 

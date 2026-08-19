@@ -252,7 +252,6 @@ export const useFinancialCalculations = (
 		if (!snapshot) return null;
 		const snap = snapshot;
 
-		const snapSubtotal = snap.subtotal_cents / 100;
 		const snapDiscount = snap.discount_cents / 100;
 		const snapTax = snap.total_tax_cents / 100;
 		const snapTotal = snap.total_cents / 100;

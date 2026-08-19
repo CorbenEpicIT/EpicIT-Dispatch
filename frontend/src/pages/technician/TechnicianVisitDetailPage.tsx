@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useJobVisitByIdQuery } from "../../hooks/useJobs";
-import Card from "../../components/ui/Card";
 import VisitActionButtons from "../../components/technicianComponents/VisitActionButtons";
 import TechnicianQuoteModal from "../../components/quotes/TechnicianQuoteModal";
 import WorkPerformedSection from "../../components/technicianComponents/WorkPerformedSection";

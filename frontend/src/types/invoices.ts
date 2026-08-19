@@ -1,5 +1,5 @@
 ﻿import type { ClientDetailsProps } from "../components/clients/ClientDetailsCard";
-import type { BaseNote, TechReference, DispatcherReference, PricingBreakdown } from "./common";
+import type { BaseNote, PricingBreakdown } from "./common";
 
 // ============================================================================
 // INVOICE STATUS
