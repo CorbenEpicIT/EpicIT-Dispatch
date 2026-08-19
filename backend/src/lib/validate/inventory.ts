@@ -85,6 +85,11 @@ export const updateInventoryItemSchema = z.object({
 	location: z.string().min(1).max(255).optional(),
 	// quantity intentionally omitted — stock changes go through adjustInventoryStock → recordMovements
 	unit: unitField.optional(),
+	// Changing `unit` while stock is on hand re-denominates that stock (250 each
+	// silently becomes 250 box — nothing is converted). The controller refuses
+	// such a change unless the caller explicitly acknowledges it with this flag.
+	// Not persisted; stripped before the row is written.
+	acknowledge_unit_change: z.boolean().optional(),
 	unit_price: z.number().min(0).nullable().optional(),
 	cost: z.number().min(0).nullable().optional(),
 	sku: z.string().max(100).nullable().optional(),

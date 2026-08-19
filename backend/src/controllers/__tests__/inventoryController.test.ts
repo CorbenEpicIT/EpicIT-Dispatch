@@ -205,6 +205,14 @@ function setupTransaction() {
 		item_external_mapping: {
 			deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
 		},
+		// updateInventoryItem's unit-change gate reads on-hand under the item lock:
+		// vehicle cache + (for tracked items) live serial/lot counts. Empty by default.
+		vehicle_stock_item: {
+			aggregate: vi.fn().mockResolvedValue({ _sum: { qty_on_hand: null } }),
+		},
+		serial_unit: { count: vi.fn().mockResolvedValue(0) },
+		stock_batch: { count: vi.fn().mockResolvedValue(0) },
+		vehicle_stock_batch: { count: vi.fn().mockResolvedValue(0) },
 	};
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => unknown) =>
@@ -1851,6 +1859,151 @@ describe("inventoryController", () => {
 			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
 			const result = await updateInventoryItem("item-1", { unit: "widgets" });
 			expect(result.err).toMatch(/Validation failed/);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// unit change with stock on hand — decision 5: allowed only with explicit
+	// acknowledgement. Nothing is converted; the cached quantities simply start
+	// reading in the new unit, so the caller must say they know that.
+	// ---------------------------------------------------------------------------
+	describe("updateInventoryItem — unit change acknowledgement", () => {
+		const ACK_MESSAGE = /pass acknowledge_unit_change to confirm/;
+
+		function setupUnitChange(opts: { warehouse?: number; vehicles?: number | null } = {}) {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "each", quantity: opts.warehouse ?? 10 }));
+			const tx = setupTransaction();
+			// The on-hand check re-reads the row under lock, not the pre-tx snapshot.
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: opts.warehouse ?? 10 });
+			tx.vehicle_stock_item.aggregate.mockResolvedValue({
+				_sum: { qty_on_hand: opts.vehicles === undefined ? null : opts.vehicles },
+			});
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "box" }));
+			return tx;
+		}
+
+		it("refuses a unit change on an item with warehouse stock unless acknowledged", async () => {
+			const tx = setupUnitChange({ warehouse: 250 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe(
+				"Changing the unit re-denominates 250 units on hand; pass acknowledge_unit_change to confirm",
+			);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+			expect(logActivity).not.toHaveBeenCalled();
+		});
+
+		it("counts vehicle stock as on hand (warehouse 0, 4.5 on trucks)", async () => {
+			const tx = setupUnitChange({ warehouse: 0, vehicles: 4.5 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe(
+				"Changing the unit re-denominates 4.5 units on hand; pass acknowledge_unit_change to confirm",
+			);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("applies the change when acknowledged, strips the flag, and writes an explicit audit note", async () => {
+			const tx = setupUnitChange({ warehouse: 250, vehicles: 3 });
+
+			const result = await updateInventoryItem(
+				"item-1",
+				{ unit: "box", acknowledge_unit_change: true },
+				"org-1",
+			);
+
+			expect(result.err).toBe("");
+			const updateData = tx.inventory_item.update.mock.calls[0][0].data;
+			expect(updateData.unit).toBe("box");
+			expect(updateData).not.toHaveProperty("acknowledge_unit_change");
+			expect(logActivity).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event_type: "inventory_item.updated",
+					changes: expect.objectContaining({
+						unit_change_note: {
+							old: null,
+							new: expect.stringMatching(
+								/^Unit changed from each to box with 253 on hand \(warehouse 250, vehicles 3\); quantities were NOT converted/,
+							),
+						},
+					}),
+				}),
+			);
+		});
+
+		it("reads on-hand under the item lock (SELECT … FOR UPDATE) rather than from the pre-tx snapshot", async () => {
+			const tx = setupUnitChange({ warehouse: 0 });
+
+			await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(mockLockInventoryRows).toHaveBeenCalledWith(expect.anything(), ["item-1"]);
+			expect(tx.inventory_item.findUnique).toHaveBeenCalledWith(
+				expect.objectContaining({ where: { id: "item-1" } }),
+			);
+		});
+
+		it("needs no acknowledgement when nothing is on hand", async () => {
+			const tx = setupUnitChange({ warehouse: 0, vehicles: null });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe("");
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "box" }) }),
+			);
+			expect(logActivity).not.toHaveBeenCalledWith(
+				expect.objectContaining({ changes: expect.objectContaining({ unit_change_note: expect.anything() }) }),
+			);
+		});
+
+		it("treats a re-spelling of the same unit (legacy 'Each' -> 'each') as no change, stock or not", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "Each", quantity: 40 }));
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: 40 });
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "each" }));
+
+			const result = await updateInventoryItem("item-1", { unit: "each" });
+
+			expect(result.err).toBe("");
+			expect(mockLockInventoryRows).not.toHaveBeenCalled();
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "each" }) }),
+			);
+		});
+
+		it("does not gate (or lock) edits that leave the unit alone", async () => {
+			const tx = setupUnitChange({ warehouse: 250 });
+
+			const result = await updateInventoryItem("item-1", { name: "Renamed" });
+
+			expect(result.err).toBe("");
+			expect(mockLockInventoryRows).not.toHaveBeenCalled();
+			expect(tx.vehicle_stock_item.aggregate).not.toHaveBeenCalled();
+		});
+
+		it("also refuses when the caches read zero but a tracked item still has live lots", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ unit: "each", quantity: 0, is_batch_tracked: true }),
+			);
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: 0 });
+			tx.stock_batch.count.mockResolvedValueOnce(2); // live warehouse lots
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toMatch(ACK_MESSAGE);
+			expect(result.err).toMatch(/live lot\(s\)/);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("ignores a false acknowledgement the same as a missing one", async () => {
+			setupUnitChange({ warehouse: 1 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box", acknowledge_unit_change: false });
+
+			expect(result.err).toMatch(ACK_MESSAGE);
 		});
 	});
 

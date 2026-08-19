@@ -474,6 +474,13 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 	}
 };
 
+// Business-rule failure raised inside the update transaction when `unit` would
+// change on an item that still has stock on hand and the caller did not
+// acknowledge the re-denomination. Thrown so nothing commits; mapped to a
+// 400-style { err } result in the catch below (same idiom as
+// TrackingStockNotZeroError in updateItemTracking).
+class UnitChangeNotAcknowledgedError extends Error {}
+
 export const updateInventoryItem = async (
 	itemId: string,
 	data: unknown,
@@ -481,7 +488,10 @@ export const updateInventoryItem = async (
 	context?: UserContext,
 ) => {
 	try {
-		const parsed = updateInventoryItemSchema.parse(data);
+		// acknowledge_unit_change is a request flag, not a column — split it off so
+		// the spread into `data` below never reaches Prisma.
+		const { acknowledge_unit_change: acknowledgeUnitChange, ...parsed } =
+			updateInventoryItemSchema.parse(data);
 
 		const sdb = getScopedDb(organizationId);
 		const existing = await sdb.inventory_item.findFirst({
@@ -491,6 +501,13 @@ export const updateInventoryItem = async (
 		if (!existing) {
 			return { err: "Inventory item not found" };
 		}
+
+		// A re-spelling of the same unit ("Each" -> "each", "gallon" -> "gal" — the
+		// column was freetext before the catalog) is not a unit change and needs no
+		// acknowledgement; only a different catalog code re-denominates stock.
+		const unitChanged =
+			parsed.unit !== undefined &&
+			parsed.unit !== (normalizeUnitCode(existing.unit) ?? existing.unit);
 
 		// No "quantity" here — the schema omits it; warehouse qty only moves via recordMovements.
 		const changes = buildChanges(existing, parsed, [
@@ -511,6 +528,55 @@ export const updateInventoryItem = async (
 		] as const);
 
 		const updated = await sdb.$transaction(async (tx) => {
+			// Decision 5: a unit change on an item with stock on hand is allowed
+			// only with explicit acknowledgement. Nothing is converted — the cached
+			// quantities simply start reading in the new unit — so the caller has to
+			// say they know that. On-hand is read under the item lock, the same way
+			// updateItemTracking checks its zero-stock gate, and the check covers the
+			// warehouse cache, every vehicle's qty_on_hand, and (for tracked items)
+			// live serials/lots, since the caches can drift from the unit rows.
+			let unitChangeNote: string | null = null;
+			if (unitChanged) {
+				await lockInventoryRows(tx as unknown as Prisma.TransactionClient, [itemId]);
+				const locked = await tx.inventory_item.findUnique({
+					where: { id: itemId },
+					select: { quantity: true },
+				});
+				const vehicleSum = await tx.vehicle_stock_item.aggregate({
+					where: { inventory_item_id: itemId, vehicle: { organization_id: organizationId } },
+					_sum: { qty_on_hand: true },
+				});
+				const warehouseQty = Number(locked?.quantity ?? 0);
+				const vehicleQty = Number(vehicleSum._sum.qty_on_hand ?? 0);
+				// Two decimals is the ledger's own scale; clears float noise from the sum.
+				const totalOnHand = Math.round((warehouseQty + vehicleQty) * 100) / 100;
+
+				const live =
+					existing.is_serialized || existing.is_batch_tracked
+						? await countTrackingLiveness(
+								tx as unknown as Prisma.TransactionClient,
+								itemId,
+								organizationId,
+							)
+						: null;
+				const liveTracked = (live?.liveSerials ?? 0) + (live?.liveLots ?? 0);
+
+				if (totalOnHand !== 0 || liveTracked > 0) {
+					if (!acknowledgeUnitChange) {
+						throw new UnitChangeNotAcknowledgedError(
+							totalOnHand !== 0
+								? `Changing the unit re-denominates ${totalOnHand} units on hand; pass acknowledge_unit_change to confirm`
+								: `Changing the unit re-denominates ${live!.liveSerials} live serial unit(s) and ${live!.liveLots} live lot(s) still on hand; pass acknowledge_unit_change to confirm`,
+						);
+					}
+					unitChangeNote =
+						`Unit changed from ${existing.unit} to ${parsed.unit} with ${totalOnHand} on hand ` +
+						`(warehouse ${warehouseQty}, vehicles ${vehicleQty}` +
+						(live ? `, live serials ${live.liveSerials}, live lots ${live.liveLots}` : "") +
+						`); quantities were NOT converted — re-denomination acknowledged by the caller`;
+				}
+			}
+
 			const item = await tx.inventory_item.update({
 				where: { id: itemId },
 				data: {
@@ -527,7 +593,12 @@ export const updateInventoryItem = async (
 				include: { tags: true },
 			});
 
-			if (Object.keys(changes).length > 0) {
+			const auditChanges = {
+				...changes,
+				// ChangeSet is old/new per key; the note is a new fact, not a diff.
+				...(unitChangeNote ? { unit_change_note: { old: null, new: unitChangeNote } } : {}),
+			};
+			if (Object.keys(auditChanges).length > 0) {
 				await logActivity({
 					event_type: "inventory_item.updated",
 					action: "updated",
@@ -535,7 +606,7 @@ export const updateInventoryItem = async (
 					entity_id: itemId,
 					organization_id: organizationId,
 					...getActorInfo(context),
-					changes,
+					changes: auditChanges,
 				});
 			}
 
@@ -551,6 +622,9 @@ export const updateInventoryItem = async (
 			return {
 				err: zodMessage(e),
 			};
+		}
+		if (e instanceof UnitChangeNotAcknowledgedError) {
+			return { err: e.message };
 		}
 		const updateConflict = uniqueConflictField(e);
 		if (updateConflict) {
