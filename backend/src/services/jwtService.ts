@@ -204,19 +204,28 @@ export const refreshAccessToken = async (refreshToken: string) => {
 			);
 		}
 
+		// The refresh token's `role` claim only picks the table to look in; the
+		// role that gets minted into the new access token is re-read from the DB
+		// so a stale or tampered claim can never out-rank the current row.
 		const dbUser =
 			user.role === "technician"
 				? await db.technician.findUnique({
 						where: { id: user.id },
-						select: { organization_id: true, organization_role_id: true },
+						select: { email: true, organization_id: true, organization_role_id: true },
 					})
 				: await db.dispatcher.findUnique({
 						where: { id: user.id },
-						select: { organization_id: true, organization_role_id: true },
+						select: { email: true, organization_id: true, organization_role_id: true, role: true },
 					});
 
+		if (!dbUser) {
+			return createErrorResponse(ErrorCodes.INVALID_TOKEN, "User no longer exists");
+		}
+
+		const role = "role" in dbUser ? dbUser.role : "technician";
+
         let orgTimezone: string | null = null;
-        if (dbUser?.organization_id) {
+        if (dbUser.organization_id) {
             const org = await db.organization.findUnique({
                 where: { id: dbUser.organization_id },
                 select: { timezone: true },
@@ -224,9 +233,9 @@ export const refreshAccessToken = async (refreshToken: string) => {
             orgTimezone = org?.timezone ?? null;
         }
 		let permissions: string[];
-        if (user.role === "admin") {
+        if (role === "admin") {
             permissions = getAllPermissions("dispatcher");
-        } else if (dbUser?.organization_role_id) {
+        } else if (dbUser.organization_role_id) {
             const orgRole = await db.organization_role.findUnique({
                 where: { id: dbUser.organization_role_id },
                 select: { permissions: true },
@@ -238,9 +247,9 @@ export const refreshAccessToken = async (refreshToken: string) => {
         const jwtResult = jwt.sign(
                     {
                         uid: user.id,
-                        email: user.email,
-                        role: user.role,
-                        organization_id: dbUser?.organization_id ?? null,
+                        email: dbUser.email,
+                        role,
+                        organization_id: dbUser.organization_id ?? null,
                         organization_timezone: orgTimezone,
                         permissions,
                     },

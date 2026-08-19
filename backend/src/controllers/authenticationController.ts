@@ -1,4 +1,4 @@
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { db } from "../db.js";
 import bcrypt from "bcryptjs";
 import { getAllPermissions } from "../lib/permissionCatalogs.js";
@@ -362,6 +362,9 @@ export const requestPasswordReset = async (email: string, role: string) => {
 
 		const sent = await sendPasswordResetEmail(email, token, role);
 		if (!sent.success) {
+			// Never leave a live reset token behind when the email never went out —
+			// an unsent token is only useful to someone who can read the row.
+			await clearPasswordResetToken(role, email);
 			return { err: "Error sending password reset email" };
 		}
 		await logActivity({
@@ -387,49 +390,84 @@ export const requestPasswordReset = async (email: string, role: string) => {
 	}
 };
 
+const clearPasswordResetToken = async (role: string, email: string) => {
+	const data = { password_reset_token: null, password_reset_token_expires_at: null };
+	try {
+		if (role === "technician") {
+			await db.technician.update({ where: { email }, data });
+		} else {
+			await db.dispatcher.update({ where: { email }, data });
+		}
+	} catch (e) {
+		log.error({ err: e }, "Failed to clear password reset token after email failure");
+	}
+};
+
+const resetPasswordSchema = z.object({
+	token: z.string().min(1, "Reset token is required"),
+	newPassword: z
+		.string()
+		.min(8, "Password must be at least 8 characters")
+		.max(128, "Password must be at most 128 characters"),
+	// Optional hint for which table to check first; never trusted for authorization.
+	role: z.string().optional(),
+});
+
+type ResetTokenOwner = {
+	role: "technician" | "dispatcher" | "admin";
+	user: { id: string; organization_id: string | null; password_reset_token_expires_at: Date | null };
+};
+
+// Resolves the account that owns a reset token. The role is derived from the
+// row that holds the token (dispatcher.role may be "admin"), never from the
+// caller, so a reset can only ever re-issue the privileges the account already has.
+const findResetTokenOwner = async (token: string, roleHint?: string): Promise<ResetTokenOwner | null> => {
+	const select = { id: true, organization_id: true, password_reset_token_expires_at: true } as const;
+	const lookupTechnician = async (): Promise<ResetTokenOwner | null> => {
+		const tech = await db.technician.findFirst({ where: { password_reset_token: token }, select });
+		return tech ? { role: "technician", user: tech } : null;
+	};
+	const lookupDispatcher = async (): Promise<ResetTokenOwner | null> => {
+		const disp = await db.dispatcher.findFirst({
+			where: { password_reset_token: token },
+			select: { ...select, role: true },
+		});
+		return disp ? { role: disp.role, user: disp } : null;
+	};
+	return roleHint === "technician"
+		? (await lookupTechnician()) ?? (await lookupDispatcher())
+		: (await lookupDispatcher()) ?? (await lookupTechnician());
+};
+
 export const resetPassword = async (
-	token: string,
-	newPassword: string,
-	role: string,
+	token: unknown,
+	newPassword: unknown,
+	roleHint?: unknown,
 ) => {
 	try {
-		const isDispatcher = role !== "technician";
-		const user = isDispatcher
-			? await db.dispatcher.findFirst({
-					where: { password_reset_token: token },
-				})
-			: await db.technician.findFirst({
-					where: { password_reset_token: token },
-				});
+		const parsed = resetPasswordSchema.parse({ token, newPassword, role: roleHint });
+		const owner = await findResetTokenOwner(parsed.token, parsed.role);
 
 		if (
-			!user ||
-			!user.password_reset_token_expires_at ||
-			user.password_reset_token_expires_at < new Date()
+			!owner ||
+			!owner.user.password_reset_token_expires_at ||
+			owner.user.password_reset_token_expires_at < new Date()
 		) {
 			return { err: "Invalid or expired token" };
 		}
 
-		const hashedPassword = await bcrypt.hash(newPassword, 10);
+		const { role, user } = owner;
+		const hashedPassword = await bcrypt.hash(parsed.newPassword, 10);
 		await db.$transaction(async (tx) => {
-			if (isDispatcher) {
-				await tx.dispatcher.update({
-					where: { password_reset_token: token },
-					data: {
-						password: hashedPassword,
-						password_reset_token: null,
-						password_reset_token_expires_at: null,
-					},
-				});
+			const data = {
+				password: hashedPassword,
+				password_reset_token: null,
+				password_reset_token_expires_at: null,
+			};
+			if (role === "technician") {
+				await tx.technician.update({ where: { password_reset_token: parsed.token }, data });
 			} else {
-				await tx.technician.update({
-					where: { password_reset_token: token },
-					data: {
-						password: hashedPassword,
-						password_reset_token: null,
-						password_reset_token_expires_at: null,
-					},
-				});
+				await tx.dispatcher.update({ where: { password_reset_token: parsed.token }, data });
 			}
 		});
 		await logActivity({
@@ -442,9 +480,8 @@ export const resetPassword = async (
 			actor_id: user.id,
 			changes: { password: { old: "[hashed]", new: "[hashed]" } },
 		});
-		return { err: "", userId: user.id, role};
+		return { err: "", userId: user.id, role };
 	} catch (e) {
-		log.error({ err: e }, "Password reset error");
 		if (e instanceof ZodError) {
 			return {
 				err: `Validation failed: ${e.issues
@@ -452,6 +489,7 @@ export const resetPassword = async (
 					.join(", ")}`,
 			};
 		}
+		log.error({ err: e }, "Password reset error");
 		return { err: "Internal server error" };
 	}
 };
