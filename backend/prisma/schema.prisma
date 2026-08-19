@@ -439,6 +439,8 @@ model organization {
   followup_enrollments followup_enrollment[]
   followup_sends       followup_send[]
   email_templates      email_template[]
+
+  assistant_conversations assistant_conversation[]
 }
 
 model saved_report {
@@ -2982,5 +2984,82 @@ model oauth_refresh_token {
 
 	@@index([user_id, role])
 	@@index([client_id])
+}
+
+// ============================================================================
+// AI ASSISTANT
+// ============================================================================
+
+/// One chat thread between a person and the assistant.
+///
+/// `user_id` carries no foreign key on purpose: dispatchers and technicians live
+/// in separate tables, so a single column cannot reference both. `user_role`
+/// records which table it points at.
+model assistant_conversation {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  user_id   String
+  user_role String // dispatcher | technician | admin
+
+  title       String? // generated from the first exchange
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  archived_at DateTime?
+
+  messages assistant_message[]
+
+  @@index([organization_id, user_id, updated_at])
+  @@index([organization_id, updated_at])
+}
+
+/// One turn in a conversation. Assistant turns carry the token counts the turn
+/// cost, so the pricing question has data behind it before it has to be answered.
+model assistant_message {
+  id              String                 @id @default(uuid())
+  conversation_id String
+  conversation    assistant_conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  role    String // user | assistant
+  content String @db.Text
+
+  model         String?
+  finish_reason String?
+  input_tokens  Int?
+  output_tokens Int?
+
+  created_at DateTime @default(now())
+
+  tool_calls assistant_tool_call[]
+
+  @@index([conversation_id, created_at])
+}
+
+/// One tool invocation made while producing an assistant turn.
+///
+/// `provider_call_id` is the id the model provider assigned. It is stored because
+/// replaying a transcript on the next turn requires pairing each result back to
+/// the call that asked for it — without it the history cannot be reconstructed.
+model assistant_tool_call {
+  id         String            @id @default(uuid())
+  message_id String
+  message    assistant_message @relation(fields: [message_id], references: [id], onDelete: Cascade)
+
+  provider_call_id String
+  tool_name        String
+  input            Json
+  status           String // ok | error | pending_approval | approved | rejected
+  result           Json?
+  error_code       String?
+  duration_ms      Int?
+
+  // Set when a human approved a gated call (Phase 3). Null for reads.
+  approved_by  String?
+  created_at   DateTime  @default(now())
+  completed_at DateTime?
+
+  @@index([message_id])
+  @@index([tool_name])
 }
 

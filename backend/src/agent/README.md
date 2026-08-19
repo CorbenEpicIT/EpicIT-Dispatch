@@ -1,8 +1,8 @@
 # Agent tool layer
 
-One catalog of callable actions, shared by every AI surface: the MCP server
-(Phase 4) and the in-app assistant (Phase 2). Neither transport gets its own
-idea of what a tool is or who may call it.
+One catalog of callable actions, shared by every AI surface: the in-app
+assistant (`src/assistant/`, built) and the MCP server (Phase 4). Neither
+transport gets its own idea of what a tool is or who may call it.
 
 Nothing here talks to a model. The whole layer is typed and unit-testable
 without an API key — `npx vitest run src/agent`.

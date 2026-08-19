@@ -26,6 +26,8 @@ import GlobalSearch from "../components/nav/GlobalSearch";
 import { usePermission, useAnyPermission } from "../hooks/usePermission";
 import DispatcherUserMenu from "../components/nav/DispatcherUserMenu";
 import CreatePanel from "../components/nav/CreatePanel";
+import AssistantPanel from "../components/assistant/AssistantPanel";
+import AssistantTrigger from "../components/assistant/AssistantTrigger";
 import ToastViewport from "../components/ui/ToastViewport";
 import { useToast } from "../components/ui/useToast";
 import { socket } from "../lib/socket";
@@ -42,6 +44,7 @@ export default function DispatchLayout() {
 	const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
 	const [navOverflows, setNavOverflows] = useState(false);
 	const navRef = useRef<HTMLElement>(null);
+	const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 	const { user } = useAuthStore();
 
 	const canViewRequests = usePermission("view_requests");
@@ -362,6 +365,9 @@ export default function DispatchLayout() {
 					{/* RIGHT SIDE */}
 					<div className="flex items-center gap-3">
 						<GlobalSearch />
+						<AssistantTrigger
+							onClick={() => setIsAssistantOpen(true)}
+						/>
 						<DispatcherUserMenu />
 					</div>
 				</header>
@@ -375,6 +381,10 @@ export default function DispatchLayout() {
 			<CreatePanel
 				isOpen={isCreatePanelOpen}
 				onClose={() => setIsCreatePanelOpen(false)}
+			/>
+			<AssistantPanel
+				isOpen={isAssistantOpen}
+				onClose={() => setIsAssistantOpen(false)}
 			/>
 
 			<ToastViewport />

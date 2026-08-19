@@ -331,6 +331,51 @@ describe("getScopedDb — serial/batch tracking registries", () => {
 // silently dropping the tenant guard OR the caller's predicate. AND-compose keeps
 // both. These assert both conditions survive, per relation-scoped model.
 
+describe("getScopedDb — assistant conversation models", () => {
+	it("scopes assistant_conversation by its own organization_id", async () => {
+		const { query } = await runHook(ORG_A, "findMany", "assistant_conversation", { where: { user_id: "u1" } });
+		expect(query).toHaveBeenCalledWith({
+			where: { AND: [{ user_id: "u1" }, { organization_id: ORG_A }] },
+		});
+	});
+
+	it("scopes assistant_message through its conversation", async () => {
+		const { query } = await runHook(ORG_A, "findMany", "assistant_message", { where: { conversation_id: "c1" } });
+		expect(query).toHaveBeenCalledWith({
+			where: { AND: [{ conversation_id: "c1" }, { conversation: { organization_id: ORG_A } }] },
+		});
+	});
+
+	it("scopes assistant_tool_call two relations deep", async () => {
+		const { query } = await runHook(ORG_A, "findMany", "assistant_tool_call", {});
+		expect(query).toHaveBeenCalledWith({
+			where: { AND: [{}, { message: { conversation: { organization_id: ORG_A } } }] },
+		});
+	});
+
+	it("forces the caller's org onto a created conversation", async () => {
+		// A chat row that could be created into another org would let one tenant
+		// write history into another's account.
+		const { query } = await runHook(ORG_A, "create", "assistant_conversation", {
+			data: { organization_id: ORG_B, user_id: "u1", user_role: "dispatcher" },
+		});
+		expect(query).toHaveBeenCalledWith({
+			data: { organization_id: ORG_A, user_id: "u1", user_role: "dispatcher" },
+		});
+	});
+
+	it("refuses to update a conversation belonging to another org", async () => {
+		const { query } = await runHook(ORG_A, "update", "assistant_conversation", {
+			where: { id: "conv-1" },
+			data: { title: "x" },
+		});
+		expect(query).toHaveBeenCalledWith({
+			where: { id: "conv-1", organization_id: ORG_A },
+			data: { title: "x" },
+		});
+	});
+});
+
 describe("getScopedDb — same-key relation collision (H2)", () => {
 	it("keeps BOTH caller movement.to_location_type and injected movement.organization_id", async () => {
 		const callerWhere = { movement: { to_location_type: "consumed" } };

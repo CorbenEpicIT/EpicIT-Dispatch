@@ -66,6 +66,7 @@ import ssoRouter from "./routes/sso.js"
 import followupsRouter from "./routes/followups.js";
 import projectsRouter from "./routes/projects.js";
 import searchRouter from "./routes/search.js";
+import assistantRouter from "./routes/assistant.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -612,6 +613,11 @@ app.use("/followups", verifyToken, followupsRouter);
 // PROJECTS
 // ============================================
 app.use("/projects", verifyToken, projectsRouter);
+
+// ============================================
+// AI ASSISTANT
+// ============================================
+app.use("/assistant", verifyToken, assistantRouter);
 
 // ============================================
 // CROSS-ENTITY SEARCH
