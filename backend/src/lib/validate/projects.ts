@@ -4,6 +4,22 @@ export const projectStatusEnum = z.enum([
   "Planning", "Active", "OnHold", "Completed", "Cancelled",
 ]);
 
+// Matches Decimal(12, 2) on project.budget
+export const PROJECT_BUDGET_MAX = 9_999_999_999.99;
+
+const endNotBeforeStart = (d: { starts_at?: string | null; target_end_at?: string | null }) =>
+    !d.starts_at ||
+    !d.target_end_at ||
+    new Date(d.target_end_at).getTime() >= new Date(d.starts_at).getTime();
+
+const END_BEFORE_START = {
+    message: "Target end date cannot be before the start date",
+    path: ["target_end_at"],
+};
+
+// "" on a nullable column clears it; undefined (key absent) leaves it untouched.
+const emptyToNull = (v: string | null | undefined) => (v === "" ? null : v);
+
 export const createProjectSchema = z.object({
         name:  z.string().min(1),
         description: z.string().default(""),
@@ -15,11 +31,13 @@ export const createProjectSchema = z.object({
             .default("Medium"),
         address: z.string().optional(),
         coords: z.any().optional(),
-        budget: z.number().nonnegative().optional(),
+        budget: z.number().nonnegative().max(PROJECT_BUDGET_MAX).optional(),
         starts_at: z.string().datetime().optional(),
         target_end_at: z.string().datetime().optional(),
         manager_dispatcher_id: z.string().uuid().optional().nullable(),
-    }).transform((data)=>({
+    })
+    .refine(endNotBeforeStart, END_BEFORE_START)
+    .transform((data)=>({
         ...data,
         name: data.name,
         description: data.description,
@@ -44,32 +62,33 @@ export const updateProjectSchema = z
         priority: z
             .enum(["Low", "Medium", "High", "Urgent", "Emergency"])
             .optional(),
-        address: z.string().optional(),
+        address: z.string().optional().nullable(),
         coords: z.any().optional(),
-        budget: z.number().nonnegative().optional().nullable(),
+        budget: z.number().nonnegative().max(PROJECT_BUDGET_MAX).optional().nullable(),
         starts_at: z.string().datetime().optional().nullable(),
         target_end_at: z.string().datetime().optional().nullable(),
-        cancellation_reason: z.string().optional(),
+        cancellation_reason: z.string().optional().nullable(),
         manager_dispatcher_id: z.string().uuid().optional().nullable(),
     })
+    .refine(endNotBeforeStart, END_BEFORE_START)
     .transform((data) => ({
         ...data,
-        name: data.name || undefined,
-        description: data.description || undefined,
-        client_id: data.client_id ?? undefined,
-        status: data.status ?? undefined,
-        priority: data.priority ?? undefined,
-        address: data.address || undefined,
-        coords: data.coords ?? undefined,
-        cancellation_reason: data.cancellation_reason || undefined,
-        manager_dispatcher_id: data.manager_dispatcher_id ?? undefined,
+        // description is NOT NULL in the schema, so "" is a legitimate cleared value
+        address: emptyToNull(data.address),
+        cancellation_reason: emptyToNull(data.cancellation_reason),
     }));
 
-export const attachJobSchema = z.object({
-    jobId: z.string().uuid("Invalid job ID"),
-});
+// jobId comes from the URL; a body jobId is tolerated only when it agrees with the URL.
+export const attachJobSchema = z
+    .object({
+        jobId: z.string().uuid("Invalid job ID"),
+        bodyJobId: z.unknown().optional(),
+    })
+    .refine((d) => d.bodyJobId === undefined || d.bodyJobId === d.jobId, {
+        message: "jobId in the request body does not match the URL",
+        path: ["jobId"],
+    });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 export type AttachJobInput = z.infer<typeof attachJobSchema>;
-
