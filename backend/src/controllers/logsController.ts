@@ -74,9 +74,13 @@ export const redactSensitiveChanges = <T extends { changes: unknown }>(row: T): 
     };
 };
 
+// "agent" rows carry the HUMAN in actor_id, so pairing the type with an actor_id
+// filter (as getActorHistory does) keeps them scoped to that one person — there
+// is no cross-contamination from listing it under both buckets. A dispatcher
+// reviewing someone's activity should see what that person's agent did for them.
 const ACTOR_TYPES: Record<actor, string[]> = {
-    technician: ["technician"],
-    dispatcher: ["dispatcher", "admin"],
+    technician: ["technician", "agent"],
+    dispatcher: ["dispatcher", "admin", "agent"],
 }
 
 type ScopedDb = ReturnType<typeof getScopedDb>;

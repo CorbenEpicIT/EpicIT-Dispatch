@@ -65,6 +65,7 @@ import mfaRouter from "./routes/mfa.js";
 import ssoRouter from "./routes/sso.js"
 import followupsRouter from "./routes/followups.js";
 import projectsRouter from "./routes/projects.js";
+import searchRouter from "./routes/search.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -611,6 +612,13 @@ app.use("/followups", verifyToken, followupsRouter);
 // PROJECTS
 // ============================================
 app.use("/projects", verifyToken, projectsRouter);
+
+// ============================================
+// CROSS-ENTITY SEARCH
+// ============================================
+// Must stay above the clientsContacts mount below: that router is mounted at
+// "/" and would otherwise swallow this path.
+app.use("/search", verifyToken, searchRouter);
 
 // ============================================
 // CLIENTS + CONTACTS

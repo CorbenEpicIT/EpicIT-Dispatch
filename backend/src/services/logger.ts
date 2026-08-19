@@ -32,8 +32,15 @@ interface LogActivityParams {
 
 	organization_id?: string | null;
 
-	actor_type: string; // "technician", "dispatcher", "system"
+	actor_type: string; // "technician", "dispatcher", "system", "agent"
 	actor_id?: string | null; // UUID (null for system events)
+	/**
+	 * Display name override. Supplied when the caller already knows the name and
+	 * the actor_type has no table to look it up in — an "agent" row carries the
+	 * human it acted for in actor_id, but its name is "Assistant · <human>",
+	 * which no lookup below can produce.
+	 */
+	actor_name?: string | null;
 
 	changes?: ChangeSet; // For audit trail: { field: { old, new } }
 	reason?: string;
@@ -48,9 +55,9 @@ interface LogActivityParams {
 export const logActivity = async (params: LogActivityParams) => {
 	try {
 		// Auto-populate actor_name from database
-		let actorName: string | null = null;
+		let actorName: string | null = params.actor_name ?? null;
 
-		if (params.actor_id) {
+		if (!actorName && params.actor_id) {
 			if (params.actor_type === "technician") {
 				const tech = await db.technician.findUnique({
 					where: { id: params.actor_id },
