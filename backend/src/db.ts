@@ -37,8 +37,8 @@ if (process.env.NODE_ENV !== "production") {
 
 // Narrow Tx types — loose enough to accept both Prisma.TransactionClient and
 // the extended client returned by getScopedDb's $transaction callback.
-// Advisory lock constants: 1=quote, 2=job, 3=invoice (two-int overload, separate
-// PG lock space from any single-bigint locks; no cross-entity collision possible).
+// Advisory lock constants: 1=quote, 2=job, 3=invoice, 4=project (two-int overload,
+// separate PG lock space from any single-bigint locks; no cross-entity collision possible).
 
 type QuoteNumberTx = {
 	$executeRaw: (
@@ -186,7 +186,7 @@ export async function generateProjectNumber(
 	tx: ProjectNumberTx,
 	organizationId: string,
 ): Promise<string> {
-	await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, hashtext(${organizationId}))`;
+	await tx.$executeRaw`SELECT pg_advisory_xact_lock(4, hashtext(${organizationId}))`;
 
 	const lastProject = await tx.project.findFirst({
 		where: {
