@@ -842,9 +842,17 @@ async function autoAllocateFifo(
 			remaining = remaining.minus(take);
 		}
 	} else {
-		// from vehicle — FIFO across the truck's batches by batch received_at.
+		// from vehicle — FIFO across the truck's batches OF THIS ITEM by batch
+		// received_at. vehicle_stock_batch has no item column of its own, so the
+		// item filter must go through the batch relation; without it a truck
+		// carrying lots of two batch-tracked items hands item B's deduction to
+		// item A's older lot (then fails loadBatchForMovement's item check).
 		const rows = await tx.vehicle_stock_batch.findMany({
-			where: { vehicle_id: m.from_vehicle_id, qty_on_hand: { gt: 0 }, batch: { recalled_at: null } },
+			where: {
+				vehicle_id: m.from_vehicle_id,
+				qty_on_hand: { gt: 0 },
+				batch: { inventory_item_id: m.inventory_item_id, recalled_at: null },
+			},
 			orderBy: [{ batch: { received_at: "asc" } }, { batch_id: "asc" }],
 			select: { batch_id: true, qty_on_hand: true },
 		});
@@ -901,7 +909,10 @@ async function findSinkBatch(
 		return batch?.id ?? null;
 	}
 	const row = await tx.vehicle_stock_batch.findFirst({
-		where: { vehicle_id: m.from_vehicle_id, batch: { recalled_at: null } },
+		where: {
+			vehicle_id: m.from_vehicle_id,
+			batch: { inventory_item_id: m.inventory_item_id, recalled_at: null },
+		},
 		orderBy: [{ batch: { received_at: "asc" } }, { batch_id: "asc" }],
 		select: { batch_id: true },
 	});
@@ -959,8 +970,14 @@ async function collectLockTargets(
 				});
 				for (const r of rows) batchIds.add(r.id);
 			} else if (m.from_vehicle_id) {
+				// Same item + recall predicate as autoAllocateFifo's candidate query,
+				// so the lock set is exactly the rows FIFO may pick.
 				const rows = await tx.vehicle_stock_batch.findMany({
-					where: { vehicle_id: m.from_vehicle_id, qty_on_hand: { gt: 0 } },
+					where: {
+						vehicle_id: m.from_vehicle_id,
+						qty_on_hand: { gt: 0 },
+						batch: { inventory_item_id: m.inventory_item_id, recalled_at: null },
+					},
 					select: { batch_id: true },
 				});
 				for (const r of rows) batchIds.add(r.batch_id);
