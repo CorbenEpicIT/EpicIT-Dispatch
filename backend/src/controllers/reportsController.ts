@@ -2590,7 +2590,7 @@ export const getRecurringRevenueReport = async (
 	// "New" is a fixed trailing-30-day window, independent of the report period.
 	const newSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-	const [plans, trailing, occGroups, trendRaw] = await Promise.all([
+	const [plans, trailing, churnedTrailing, occGroups, trendRaw] = await Promise.all([
 		sdb.recurring_plan.findMany({
 			where: { organization_id: organizationId },
 			include: {
@@ -2613,6 +2613,21 @@ export const getRecurringRevenueReport = async (
 			},
 			_sum: { total: true },
 		}),
+		// Same 90-day window, but anchored at each churned plan's end date rather
+		// than now: a variable-basis plan cancelled more than 90 days ago has no
+		// live trailing revenue, yet the MRR it took with it is what churnedMrr
+		// reports. Anchor matches the churn date used below (ends_at ?? updated_at).
+		sdb.$queryRaw<{ planId: string; revenue: number | null }[]>`
+			SELECT p.id AS "planId", SUM(i.total)::float AS revenue
+			FROM recurring_plan p
+			JOIN invoice i ON i.recurring_plan_id = p.id
+			WHERE p.organization_id = ${organizationId}
+			  AND p.status IN ('Cancelled', 'Completed')
+			  AND i.status NOT IN ('Draft', 'Void')
+			  AND COALESCE(i.issue_date, i.created_at) <= COALESCE(p.ends_at, p.updated_at)
+			  AND COALESCE(i.issue_date, i.created_at) >= COALESCE(p.ends_at, p.updated_at) - ${TRAILING_DAYS} * INTERVAL '1 day'
+			GROUP BY p.id
+		`,
 		sdb.recurring_occurrence.groupBy({
 			by: ["recurring_plan_id", "status"],
 			where: {
@@ -2639,6 +2654,9 @@ export const getRecurringRevenueReport = async (
 	for (const t of trailing) {
 		if (t.recurring_plan_id) trailingMap.set(t.recurring_plan_id, Number(t._sum.total ?? 0));
 	}
+	const churnedTrailingMap = new Map<string, number>(
+		churnedTrailing.map((r) => [r.planId, Number(r.revenue ?? 0)]),
+	);
 
 	const occByPlan = new Map<string, { completed: number; skipped: number }>();
 	let occCompletedTotal = 0;
@@ -2662,6 +2680,9 @@ export const getRecurringRevenueReport = async (
 	const inRange = (d: Date | null): boolean =>
 		d != null && (!df.gte || d >= df.gte) && (!df.lte || d <= df.lte);
 
+	const isChurned = (plan: (typeof plans)[number]): boolean =>
+		plan.status === "Cancelled" || plan.status === "Completed";
+
 	const monthlyValueOf = (plan: (typeof plans)[number]): number => {
 		const schedule = plan.invoice_schedule;
 		const perPeriod = planPerPeriodAmount({
@@ -2677,7 +2698,11 @@ export const getRecurringRevenueReport = async (
 		if (perPeriod != null && schedule && schedule.frequency !== "on_visit_completion") {
 			return normalizedMonthly(perPeriod, schedule.frequency as ScheduleFrequency);
 		}
-		return (trailingMap.get(plan.id) ?? 0) / 3;
+		// Churned plans read their trailing window as of when they ended.
+		const trailingRevenue = isChurned(plan)
+			? (churnedTrailingMap.get(plan.id) ?? 0)
+			: (trailingMap.get(plan.id) ?? 0);
+		return trailingRevenue / (TRAILING_DAYS / 30);
 	};
 
 	const perPeriodOf = (plan: (typeof plans)[number]): number | null =>
@@ -2702,16 +2727,17 @@ export const getRecurringRevenueReport = async (
 
 	const rows: RecurringRevenueRow[] = plans.map((plan) => {
 		const monthly = round2(monthlyValueOf(plan));
-		const activeForMrr =
+		// A plan whose ends_at has passed is finished even if nothing flipped its
+		// status yet: it neither counts as active nor contributes to MRR.
+		const isActive =
 			plan.status === "Active" && (!plan.ends_at || new Date(plan.ends_at) > now);
-		if (activeForMrr) mrr += monthly;
-		if (plan.status === "Active") activePlans++;
+		if (isActive) {
+			mrr += monthly;
+			activePlans++;
+		}
 		if (plan.status === "Paused") pausedPlans++;
 		if (plan.starts_at >= newSince) newPlans++;
-		if (
-			(plan.status === "Cancelled" || plan.status === "Completed") &&
-			inRange(plan.ends_at ?? plan.updated_at)
-		) {
+		if (isChurned(plan) && inRange(plan.ends_at ?? plan.updated_at)) {
 			churnedPlans++;
 			churnedMrr += monthly;
 		}
