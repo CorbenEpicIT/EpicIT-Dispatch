@@ -926,12 +926,7 @@ export default function InventoryItemDetailPage() {
 				/>
 			)}
 			{!isTracked && (
-				// Keyed on the current quantity: the modal seeds its input from
-				// it once, and Drawer keeps the component mounted through the
-				// close transition, so without a key a reopen after a successful
-				// adjustment would show the previous target.
 				<AdjustStockModal
-					key={item.quantity}
 					item={item}
 					isOpen={adjustOpen}
 					onClose={() => setAdjustOpen(false)}
