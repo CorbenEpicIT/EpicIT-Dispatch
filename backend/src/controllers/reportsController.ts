@@ -3257,8 +3257,9 @@ export const getTechnicianScorecard = async (
 	return rows;
 };
 
-const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"];
-const BREAKDOWNS: Record<string, string[]> = {
+export const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"] as const;
+export type SummaryPage = (typeof PAGES)[number];
+export const BREAKDOWNS: Record<SummaryPage, string[]> = {
 	jobs: ["status", "priority", "type"],
 	quotes: ["status", "priority"],
 	requests: ["status", "priority"],
@@ -3276,9 +3277,17 @@ interface PageSummaryResponse {
 	breakdownLabel: string;
 }
 
+// Draft invoices are not issued yet and Void ones are cancelled (voiding only stamps
+// voided_at — total/balance_due keep their values), so the money figures below leave
+// both out, matching the invoices, revenue and aged-receivables reports.
+const ISSUED_INVOICE_STATUS = { notIn: ["Draft", "Void"] } satisfies Prisma.invoiceWhereInput["status"];
+
+export const isSummaryPage = (page: string): page is SummaryPage =>
+	(PAGES as readonly string[]).includes(page);
+
 export const getPageSummary = async (orgId: string, page:string, startDate?: string, endDate?: string, groupBy?: string): Promise<PageSummaryResponse> => {
-	if (!PAGES.includes(page))
-		throw new Error("Unknown page");
+	if (!isSummaryPage(page))
+		throw httpError(400, ErrorCodes.VALIDATION_ERROR, `Unknown page: ${page}`);
 	const allowed = BREAKDOWNS[page] ?? ["status"];
 	const grouping = groupBy && allowed.includes(groupBy) ? groupBy : allowed[0];
 	const sdb = getScopedDb(orgId);
@@ -3409,19 +3418,27 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			const invoiceDateWhere: Prisma.invoiceWhereInput = dated
 				? { OR: [{ issue_date: dated }, { issue_date: null, created_at: dated }] }
 				: {};
-			const paidAtFilter = dated ? dated : { not: null };
 			const issueRangeSql = Prisma.sql`
 				${dated?.gte ? Prisma.sql`AND issue_date >= ${dated.gte}` : Prisma.empty}
 				${dated?.lte ? Prisma.sql`AND issue_date <= ${dated.lte}` : Prisma.empty}`;
 			const [total, issued, collected, rows] = await Promise.all([
-				sdb.invoice.count({ where: { organization_id: orgId, ...invoiceDateWhere } }),
-				sdb.invoice.aggregate({
-					where: { organization_id: orgId, ...invoiceDateWhere },
-					_sum: { total: true },
+				sdb.invoice.count({
+					where: { organization_id: orgId, status: ISSUED_INVOICE_STATUS, ...invoiceDateWhere },
 				}),
 				sdb.invoice.aggregate({
-					where: { organization_id: orgId, paid_at: paidAtFilter },
-					_sum: { amount_paid: true },
+					where: { organization_id: orgId, status: ISSUED_INVOICE_STATUS, ...invoiceDateWhere },
+					_sum: { total: true },
+				}),
+				// Collected = payments recorded in the range, partials included — the same
+				// definition as the Payments report. invoice.paid_at/amount_paid only move
+				// once an invoice is fully paid, so they drop partial payments and date the
+				// rest by the final one.
+				sdb.invoice_payment.aggregate({
+					where: {
+						invoice: { organization_id: orgId, status: ISSUED_INVOICE_STATUS },
+						...(dated ? { paid_at: dated } : {}),
+					},
+					_sum: { amount: true },
 				}),
 				sdb.$queryRaw<{ avg_seconds: number | null }[]>(Prisma.sql`
 					SELECT EXTRACT(EPOCH FROM AVG(paid_at - issue_date)) AS avg_seconds
@@ -3433,6 +3450,9 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			]);
 			const avgSeconds = rows[0]?.avg_seconds ?? null;
 			const avgDays = avgSeconds != null ? avgSeconds / 86_400 : null;
+			// The breakdowns deliberately keep every status: each slice drills into the
+			// Invoices list filtered by that status, and that list shows Draft and Void
+			// rows, so the slice counts must match what the user lands on.
 			if (grouping === "qb_sync") {
 				const g = await sdb.invoice.groupBy({ by: ["qb_sync_status"], where: { organization_id: orgId, ...invoiceDateWhere }, _count: { _all: true } });
 				breakdown = g.map((r) => ({ label: r.qb_sync_status, value: r._count._all }));
@@ -3445,7 +3465,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			stats = [
 				{ label: "Total",           value: total,                                    format: "number" },
 				{ label: "Issued",          value: Number(issued._sum.total ?? 0),           format: "currency" },
-				{ label: "Collected",       value: Number(collected._sum.amount_paid ?? 0),  format: "currency" },
+				{ label: "Collected",       value: Number(collected._sum.amount ?? 0),       format: "currency" },
 				{ label: "Avg. Days to Pay", value: Number(avgDays),                          format: "duration" },
 			];
 			break;
@@ -3455,12 +3475,17 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 				sdb.client.count({ where: { organization_id: orgId } }),
 				sdb.client.count({ where: { organization_id: orgId, ...createdWhere } }),
 				sdb.client.count({ where: { organization_id: orgId, is_active: true } }),
+				// Mirrors aged receivables: only issued, unpaid invoices carry a real balance.
 				sdb.invoice.aggregate({
-					where: { organization_id: orgId, balance_due: { gt: 0 } },
+					where: {
+						organization_id: orgId,
+						status: { notIn: ["Draft", "Paid", "Void"] },
+						balance_due: { gt: 0 },
+					},
 					_sum: { balance_due: true },
 				}),
 				sdb.invoice.aggregate({
-					where: { organization_id: orgId },
+					where: { organization_id: orgId, status: ISSUED_INVOICE_STATUS },
 					_sum: { total: true },
 				}),
 			]);
