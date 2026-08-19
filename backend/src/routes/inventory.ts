@@ -56,7 +56,7 @@ import {
 import { uploadFile, signImageUrl, signImageUrls, toRawUrl } from "../services/wasabiService.js";
 import { imageUpload, spreadsheetUpload } from "../lib/upload.js";
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
-import { scanQuerySchema } from '../lib/validate/inventory.js';
+import { scanQuerySchema, forecastQuerySchema } from '../lib/validate/inventory.js';
 
 
 
@@ -816,7 +816,11 @@ router.get("/:id/usage", requireAnyPermission("view_inventory", "manage_inventor
         const id = req.params.id as string;
         const result = await getItemUsage(id, orgId, req.query);
         if (result.err) return sendControllerErr(res, result);
-        res.json(createSuccessResponse({ usage: result.usage, hasMore: result.hasMore }));
+        // Spread, not a hand-picked field list: `unitBasis` was silently dropped
+        // here, so a mixed-unit item's withheld totals reached the client with no
+        // explanation (same lesson as value-history below).
+        const { err: _err, ...payload } = result;
+        res.json(createSuccessResponse(payload));
     } catch (err) {
         next(err);
     }
@@ -828,7 +832,8 @@ router.get("/:id/consumption-trend", requireAnyPermission("view_inventory", "man
         const id = req.params.id as string;
         const result = await getItemConsumptionTrend(id, orgId, req.query);
         if (result.err) return sendControllerErr(res, result);
-        res.json(createSuccessResponse({ bucket: result.bucket, points: result.points }));
+        const { err: _err, ...payload } = result;
+        res.json(createSuccessResponse(payload));
     } catch (err) {
         next(err);
     }
@@ -838,11 +843,18 @@ router.get("/:id/forecast", requireAnyPermission("view_inventory", "manage_inven
     try {
         const orgId = req.user!.organization_id as string;
         const id = req.params.id as string;
-        const { lookbackDays } = req.query as { lookbackDays?: string };
-        const n = lookbackDays != null ? Number(lookbackDays) : NaN;
-        const result = await getItemForecast(id, orgId, {
-            lookbackDays: Number.isFinite(n) && n > 0 ? n : undefined,
-        });
+        const query = forecastQuerySchema.safeParse(req.query);
+        if (!query.success) {
+            return res
+                .status(400)
+                .json(
+                    createErrorResponse(
+                        ErrorCodes.VALIDATION_ERROR,
+                        `Validation failed: ${query.error.issues.map((i) => i.message).join(", ")}`,
+                    ),
+                );
+        }
+        const result = await getItemForecast(id, orgId, { lookbackDays: query.data.lookbackDays });
         if (result.err) {
             return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
         }

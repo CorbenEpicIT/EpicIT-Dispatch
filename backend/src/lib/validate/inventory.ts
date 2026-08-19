@@ -150,6 +150,16 @@ export const consumptionTrendQuerySchema = z.object({
 
 export type ConsumptionTrendQueryInput = z.infer<typeof consumptionTrendQuerySchema>;
 
+// GET /inventory/:id/forecast — lookbackDays is the consumption window the
+// reorder forecast averages over. Bounded: an unbounded or non-numeric value
+// used to reach `new Date(now - NaN)` / an absurd window and 500. 10 years is
+// far past any useful average; default matches getItemForecast's own fallback.
+export const forecastQuerySchema = z.object({
+	lookbackDays: z.coerce.number().int().min(1).max(3650).default(90),
+});
+
+export type ForecastQueryInput = z.infer<typeof forecastQuerySchema>;
+
 // GET /inventory/:id/value-history — created_after narrows the ledger window
 // but does NOT replace the controller's newest-N row cap + computed opening
 // balance, so a narrowed range still starts from real on-hand stock, not zero.
