@@ -156,6 +156,16 @@ function getApiErrorMessage(e: unknown, fallback: string): string {
 	return e instanceof Error ? e.message : fallback;
 }
 
+/**
+ * What the unit field is seeded with for a stored value: the canonical catalog
+ * code for a code or alias ("LBS" → "lb"), the RAW string for a legacy value
+ * outside the catalog (kept verbatim so an unrelated edit can't rewrite it), or
+ * the default for a blank.
+ */
+function seedUnit(stored: string): string {
+	return normalizeUnitCode(stored) ?? (stored.trim() || DEFAULT_UNIT_CODE);
+}
+
 // Shared role="switch" toggle markup used for every on/off control in this
 // form (tracking toggles, low-stock alert, email alerts).
 function ToggleSwitch({
@@ -212,7 +222,16 @@ export default function CreateInventoryItem({
 	const [description, setDescription] = useState("");
 	const [location, setLocation] = useState("");
 	const [quantity, setQuantity] = useState(0);
-	const [unit, setUnit] = useState<UnitCode>(DEFAULT_UNIT_CODE);
+	// A string, not a UnitCode: an item saved before the unit catalog existed can
+	// hold a value no alias maps onto ("skein"), and that raw value has to
+	// survive an unrelated edit untouched (see seedUnit / unitChanged below).
+	const [unit, setUnit] = useState<string>(DEFAULT_UNIT_CODE);
+	// Decision 5: changing the unit of an item with stock on hand re-reads that
+	// stock in the new unit, so the server requires an explicit acknowledgement.
+	const [acknowledgeUnitChange, setAcknowledgeUnitChange] = useState(false);
+	// Set when the server rejected the save for want of the acknowledgement on
+	// stock this form couldn't see — shows the checkbox so the user can answer.
+	const [ackRequiredByServer, setAckRequiredByServer] = useState(false);
 	const [unitPrice, setUnitPrice] = useState("");
 	const [cost, setCost] = useState("");
 	const [lowStockEnabled, setLowStockEnabled] = useState(false);
@@ -335,11 +354,33 @@ export default function CreateInventoryItem({
 	// check needs a real itemId, which doesn't exist until then. Non-tracked
 	// items and tracked-but-zero-qty items keep the plain 3-step flow
 	// (nothing to capture).
-	// Compared against the NORMALIZED stored unit, not the raw string, so a
-	// pre-catalog value like "Each" or "ea" doesn't look like a change on load.
-	// A superset of "has movements" (no movement count to check here) — a false
-	// positive on a brand-new item is safer than staying silent on one with history.
-	const unitChanged = isEdit && !!existingItem && unit !== normalizeUnitCode(existingItem.unit);
+	// Compared against what the select was SEEDED with: the canonical code for
+	// a catalog alias ("LBS" → lb), or the raw string for a legacy value outside
+	// the catalog. Only a pick the user actually made registers as a change —
+	// which is what decides whether `unit` travels in the PATCH at all. The old
+	// normalized comparison hid the flip on legacy values and the payload sent
+	// `unit` unconditionally, silently rewriting "gallon"/"Each" on any edit.
+	const seededUnit = existingItem ? seedUnit(existingItem.unit) : DEFAULT_UNIT_CODE;
+	const unitChanged = isEdit && !!existingItem && unit !== seededUnit;
+	// Stored unit isn't in the catalog and nothing maps onto it.
+	const legacyUnit =
+		isEdit &&
+		!!existingItem &&
+		normalizeUnitCode(existingItem.unit) === null &&
+		existingItem.unit.trim() !== "";
+	// On-hand as the server would count it for decision 5: warehouse + vehicles
+	// (and live serials/lots), from the eligibility read when it has landed, else
+	// the warehouse-only column this form always has.
+	const onHandForUnitChange = eligibility
+		? eligibility.qty_warehouse + eligibility.qty_on_vehicles
+		: (existingItem?.quantity ?? 0);
+	const hasStockOnHand =
+		isEdit &&
+		!!existingItem &&
+		(eligibility
+			? onHandForUnitChange !== 0 || eligibility.live_serials > 0 || eligibility.live_lots > 0
+			: existingItem.quantity !== 0);
+	const showUnitAcknowledgement = unitChanged && (hasStockOnHand || ackRequiredByServer);
 
 	const showCaptureStep = !isEdit && !selectedQBId && (isSerialized || isBatchTracked) && quantity > 0;
 
@@ -410,8 +451,7 @@ export default function CreateInventoryItem({
 			setDescription(existingItem.description);
 			setLocation(existingItem.location);
 			setQuantity(existingItem.quantity);
-			// Normalized on load, or the select would have no matching option.
-			setUnit(normalizeUnitCode(existingItem.unit) ?? DEFAULT_UNIT_CODE);
+			setUnit(seedUnit(existingItem.unit));
 			setUnitPrice(
 				existingItem.unit_price != null
 					? String(existingItem.unit_price)
@@ -453,7 +493,9 @@ export default function CreateInventoryItem({
 		setDescription("");
 		setLocation("");
 		setQuantity(0);
-		setUnit("each");
+		setUnit(DEFAULT_UNIT_CODE);
+		setAcknowledgeUnitChange(false);
+		setAckRequiredByServer(false);
 		setUnitPrice("");
 		setCost("");
 		setLowStockEnabled(false);
@@ -763,7 +805,8 @@ export default function CreateInventoryItem({
 			description: description.trim(),
 			location: location.trim(),
 			quantity,
-			// No trim-or-default: the select can't emit a blank or an alias.
+			// No trim-or-default: the select can't emit a blank or an alias. On an
+			// edit, handleSubmit strips this unless the user actually changed it.
 			unit,
 			unit_price: unitPrice ? Number(unitPrice) : null,
 			cost: cost ? Number(cost) : null,
@@ -829,7 +872,23 @@ export default function CreateInventoryItem({
 				// server strips it from PATCH /inventory/:id anyway. Stock moves via
 				// Adjust Stock / Receive Stock.
 				delete data.quantity;
-				await updateMutation.mutateAsync({ itemId: existingItem.id, data });
+				// `unit` only travels when the user changed it. Sending the seeded
+				// value back would rewrite a legacy/aliased stored unit on an
+				// unrelated edit — the ledger keeps every movement's own unit, so
+				// the item's label must not drift without anyone asking for it.
+				if (!unitChanged) delete data.unit;
+				else if (acknowledgeUnitChange) data.acknowledge_unit_change = true;
+				try {
+					await updateMutation.mutateAsync({ itemId: existingItem.id, data });
+				} catch (updateErr) {
+					// The server saw stock this form didn't (e.g. the eligibility
+					// read hadn't landed): surface the checkbox so the user can
+					// confirm and resubmit, instead of a dead end.
+					if (unitChanged && /acknowledge_unit_change/.test(getApiErrorMessage(updateErr, ""))) {
+						setAckRequiredByServer(true);
+					}
+					throw updateErr;
+				}
 				await setTagsMutation.mutateAsync({ itemId: existingItem.id, tagIds: selectedTagIds });
 			} else if (selectedQBId) {
 				// Create the item + QB mapping from the QB item, then apply any edits
@@ -1483,11 +1542,44 @@ export default function CreateInventoryItem({
 								<label className={LABEL}>
 									Unit
 								</label>
-								<UnitSelect
-									value={unit}
-									onChange={setUnit}
-									disabled={isLoading}
-								/>
+								{/* A legacy unit can't sit in the select: a native
+								    <select> whose value matches no option falls back
+								    to its first option, which would SHOW "Each" over a
+								    stored "skein". So the raw value is shown as-is, and
+								    the select only appears once the user asks to pick —
+								    the stored unit stays untouched until then. */}
+								{legacyUnit && !unitChanged && existingItem ? (
+									<>
+										<div className="flex items-center gap-2">
+											<div
+												className="flex-1 min-w-0 h-[34px] px-2.5 flex items-center rounded border border-border bg-surface text-sm lg:text-base text-text-primary truncate"
+												title={existingItem.unit}
+												aria-label="Unit of measure (legacy)"
+											>
+												{existingItem.unit}
+											</div>
+											<button
+												type="button"
+												onClick={() => setUnit(DEFAULT_UNIT_CODE)}
+												disabled={isLoading}
+												className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+											>
+												Choose a catalog unit
+											</button>
+										</div>
+										<p className="mt-1 text-[11px] leading-relaxed text-text-muted">
+											Legacy unit “{existingItem.unit}” — choose a catalog
+											unit. It isn’t in the unit catalog, so it stays
+											exactly as stored until you pick one.
+										</p>
+									</>
+								) : (
+									<UnitSelect
+										value={unit as UnitCode}
+										onChange={setUnit}
+										disabled={isLoading}
+									/>
+								)}
 								{/* Informational only, not a block: the ledger keeps each
 								    movement's original unit, but totals spanning the
 								    change can't be summed across units. */}
@@ -1500,7 +1592,39 @@ export default function CreateInventoryItem({
 										mixed units instead of a total,
 										until the whole range shares one
 										unit.
+										{legacyUnit && existingItem && (
+											<>
+												{" "}
+												<button
+													type="button"
+													onClick={() => setUnit(seededUnit)}
+													disabled={isLoading}
+													className="font-medium text-primary hover:underline disabled:opacity-50"
+												>
+													Keep “{existingItem.unit}”
+												</button>
+											</>
+										)}
 									</p>
+								)}
+								{/* Decision 5: stock on hand is re-read in the new unit,
+								    not converted. The server refuses the change without
+								    this flag, so the checkbox is the form's way of asking
+								    the question before the server has to. */}
+								{showUnitAcknowledgement && (
+									<label className="mt-2 flex items-start gap-2 rounded-lg border border-warning-border bg-warning-bg px-3 py-2 text-xs text-text-primary cursor-pointer">
+										<input
+											type="checkbox"
+											checked={acknowledgeUnitChange}
+											onChange={(e) => setAcknowledgeUnitChange(e.target.checked)}
+											disabled={isLoading}
+											className="mt-0.5 h-3.5 w-3.5 rounded border-border bg-base text-primary focus:ring-primary cursor-pointer"
+										/>
+										<span>
+											I understand the on-hand quantity ({onHandForUnitChange}) will now be read in{" "}
+											{unitLabel(unit)}.
+										</span>
+									</label>
 								)}
 							</div>
 							<div className="min-w-0">

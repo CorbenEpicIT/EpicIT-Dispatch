@@ -67,7 +67,15 @@ export interface CreateInventoryItemInput {
 	is_batch_tracked?: boolean;
 }
 
-export type UpdateInventoryItemInput = Partial<CreateInventoryItemInput>;
+export type UpdateInventoryItemInput = Partial<CreateInventoryItemInput> & {
+	/**
+	 * Required by PATCH /inventory/:id when `unit` changes on an item with
+	 * stock on hand (warehouse + vehicles, or live serials/lots): the quantity
+	 * is re-read in the new unit, not converted, so the server refuses the
+	 * change without this explicit confirmation (400 otherwise).
+	 */
+	acknowledge_unit_change?: boolean;
+};
 
 // Mirrors backend enum stock_location_type (schema.prisma).
 export type StockLocationType =

@@ -591,8 +591,25 @@ describe("unit of measure", () => {
 		expect(await openUnitStep(makeItem({ unit: "LBS" }))).toHaveValue("lb");
 	});
 
-	it("falls back to each for a unit outside the catalog", async () => {
-		expect(await openUnitStep(makeItem({ unit: "widgets" }))).toHaveValue("each");
+	// A stored value nothing maps onto is NOT re-read as each (review P2-1): a
+	// native select whose value matches no option would display its first
+	// option, so the raw unit is shown as-is and the picker only appears on ask.
+	it("shows a unit outside the catalog verbatim with a legacy callout instead of the select", async () => {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={makeItem({ unit: "skein" })} />);
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(screen.queryByLabelText("Unit of measure")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("Unit of measure (legacy)")).toHaveTextContent("skein");
+		expect(screen.getByText(/Legacy unit “skein” — choose a catalog unit/)).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: "Choose a catalog unit" }));
+		expect(screen.getByLabelText("Unit of measure")).toHaveValue("each");
+		expect(screen.getByText(/Past movements stay recorded in skein/)).toBeInTheDocument();
+
+		// Escape hatch back to the stored value.
+		await userEvent.click(screen.getByRole("button", { name: "Keep “skein”" }));
+		expect(screen.queryByLabelText("Unit of measure")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("Unit of measure (legacy)")).toHaveTextContent("skein");
 	});
 
 	it("groups the options so a long list stays scannable", async () => {
@@ -661,6 +678,106 @@ describe("edit — form seeding", () => {
 			/>,
 		);
 		expect(screen.getByPlaceholderText("Item Name")).toHaveValue("Gadget");
+	});
+});
+
+// `unit` travels in the PATCH only when the user changed it, and a change on an
+// item with stock on hand carries the decision-5 acknowledgement (review P2-1).
+describe("edit — unit change payload", () => {
+	async function saveEdit(item: InventoryItem) {
+		render(<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={item} />);
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+	}
+	async function finish() {
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+		await waitFor(() => expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(1));
+		return mockUpdateMutateAsync.mock.calls[0][0].data as Record<string, unknown>;
+	}
+
+	beforeEach(() => {
+		mockUpdateMutateAsync.mockResolvedValue(makeItem());
+		mockSetTagsMutateAsync.mockResolvedValue(undefined);
+	});
+
+	it("does not send unit when the user left it alone", async () => {
+		await saveEdit(makeItem({ unit: "each" }));
+		const data = await finish();
+		expect(data).not.toHaveProperty("unit");
+		expect(data).not.toHaveProperty("acknowledge_unit_change");
+	});
+
+	it("does not rewrite a catalog alias on an unrelated edit", async () => {
+		await saveEdit(makeItem({ unit: "LBS" }));
+		// Pre-selected by its canonical code, but the stored "LBS" is left alone.
+		expect(screen.getByLabelText("Unit of measure")).toHaveValue("lb");
+		expect(await finish()).not.toHaveProperty("unit");
+	});
+
+	it("does not rewrite a legacy unit on an unrelated edit", async () => {
+		await saveEdit(makeItem({ unit: "skein" }));
+		expect(screen.getByLabelText("Unit of measure (legacy)")).toHaveTextContent("skein");
+		expect(await finish()).not.toHaveProperty("unit");
+	});
+
+	it("sends the new unit, without the acknowledgement, when there is no stock on hand", async () => {
+		mockEligibilityQuery.mockReturnValue(eligibility({ qty_warehouse: 0, qty_on_vehicles: 0 }));
+		await saveEdit(makeItem({ unit: "each", quantity: 0 }));
+		await userEvent.selectOptions(screen.getByLabelText("Unit of measure"), "box");
+		expect(screen.queryByRole("checkbox", { name: /I understand/ })).not.toBeInTheDocument();
+
+		const data = await finish();
+		expect(data.unit).toBe("box");
+		expect(data).not.toHaveProperty("acknowledge_unit_change");
+	});
+
+	it("asks for, and sends, the acknowledgement when the unit changes on stock on hand", async () => {
+		mockEligibilityQuery.mockReturnValue(
+			eligibility({ qty_warehouse: 12, qty_on_vehicles: 3, can_enable: false, can_disable: false }),
+		);
+		await saveEdit(makeItem({ unit: "each", quantity: 12 }));
+		await userEvent.selectOptions(screen.getByLabelText("Unit of measure"), "box");
+
+		// Warehouse + vehicles, in the NEW unit's word.
+		const ack = screen.getByRole("checkbox", {
+			name: "I understand the on-hand quantity (15) will now be read in boxes.",
+		});
+		expect(ack).not.toBeChecked();
+
+		// Unchecked: the flag is simply absent — the server decides.
+		let data = await finish();
+		expect(data.unit).toBe("box");
+		expect(data).not.toHaveProperty("acknowledge_unit_change");
+
+		mockUpdateMutateAsync.mockClear();
+		await userEvent.click(screen.getByRole("button", { name: "Back" }));
+		await userEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+		data = await finish();
+		expect(data.unit).toBe("box");
+		expect(data.acknowledge_unit_change).toBe(true);
+	});
+
+	it("renders the server's refusal and offers the checkbox when it saw stock this form didn't", async () => {
+		// Eligibility never landed and the warehouse column says 0 — the server
+		// still knows about vehicle stock.
+		mockEligibilityQuery.mockReturnValue({ data: undefined, isLoading: false });
+		mockUpdateMutateAsync.mockRejectedValueOnce(
+			new Error(
+				"Changing the unit re-denominates 3 units on hand; pass acknowledge_unit_change to confirm",
+			),
+		);
+		await saveEdit(makeItem({ unit: "each", quantity: 0 }));
+		await userEvent.selectOptions(screen.getByLabelText("Unit of measure"), "box");
+		expect(screen.queryByRole("checkbox", { name: /I understand/ })).not.toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: "Next" }));
+		await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+		expect(
+			await screen.findByText(/re-denominates 3 units on hand; pass acknowledge_unit_change/),
+		).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: "Back" }));
+		expect(screen.getByRole("checkbox", { name: /I understand/ })).toBeInTheDocument();
 	});
 });
 
