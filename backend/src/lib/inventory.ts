@@ -1,4 +1,5 @@
 import { Prisma } from "../../generated/prisma/client.js";
+import { normalizeUnitCode } from "./units.js";
 
 export type StockStatus = "sufficient" | "low" | "out_of_stock" | null;
 
@@ -101,7 +102,10 @@ export function withStockStatus<T extends { quantity: StockQty; low_stock_thresh
  * each)" and never imply a direction ("each → box") the basis cannot support.
  */
 export interface UnitBasis {
-	/** Distinct stamped units across the aggregated rows, sorted. Empty if no rows. */
+	/**
+	 * Distinct stamped units across the aggregated rows, sorted, as CATALOG CODES
+	 * where the stamp is a recognised spelling (see {@link unitBasis}). Empty if no rows.
+	 */
 	units: string[];
 	/** The unit every row shares. `null` when the rows are mixed OR there are none. */
 	unit: string | null;
@@ -117,11 +121,19 @@ export interface UnitBasis {
  * per-row `unit` values off a `findMany`. Blanks are ignored rather than counted as
  * a distinct unit — a blank is missing information, and treating it as a second
  * denomination would flag a clean series.
+ *
+ * Each stamp is normalised through the unit catalog before de-duplication:
+ * `inventory_item.unit` was freetext before the catalog existed, and the
+ * 20260805 migration backfilled `stock_movement.unit` verbatim, so a ledger can
+ * legitimately carry "Each" beside "each", or "gallon" beside "gal". Those are the
+ * SAME denomination spelled two ways, not a unit change, and flagging them as
+ * mixed would withhold every total for an item whose history is perfectly
+ * summable. A spelling the catalog does not know is kept as-is (still distinct).
  */
 export function unitBasis(units: Iterable<string | null | undefined> | null | undefined): UnitBasis {
 	const seen = new Set<string>();
 	for (const u of units ?? []) {
-		if (typeof u === "string" && u.trim() !== "") seen.add(u);
+		if (typeof u === "string" && u.trim() !== "") seen.add(normalizeUnitCode(u) ?? u);
 	}
 	const sorted = [...seen].sort();
 	return {

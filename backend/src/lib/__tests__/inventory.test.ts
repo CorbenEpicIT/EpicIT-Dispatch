@@ -143,6 +143,31 @@ describe("unitBasis", () => {
 		});
 	});
 
+	// inventory_item.unit was freetext before the catalog, and the 20260805
+	// migration backfilled stock_movement.unit verbatim — so "Each" next to "each"
+	// (or "gallon" next to "gal") is one denomination spelled two ways, not a unit
+	// change. Treating it as mixed withheld every total on a perfectly summable item.
+	test("collapses catalog aliases and casing to one basis instead of flagging a unit break", () => {
+		expect(unitBasis(["Each", "each", "EACH "])).toEqual({ units: ["each"], unit: "each", mixed: false });
+		expect(unitBasis(["gallon", "gal", "Gallons"])).toEqual({ units: ["gal"], unit: "gal", mixed: false });
+	});
+
+	test("reports the canonical code, so a legacy spelling can't leak into a display label", () => {
+		expect(unitBasis(["feet"]).unit).toBe("ft");
+	});
+
+	test("still flags two different real units even when both are legacy spellings", () => {
+		expect(unitBasis(["Each", "gallon"])).toEqual({ units: ["each", "gal"], unit: null, mixed: true });
+	});
+
+	test("keeps a spelling the catalog does not know, as its own distinct unit", () => {
+		expect(unitBasis(["widgets", "each"])).toEqual({
+			units: ["each", "widgets"],
+			unit: null,
+			mixed: true,
+		});
+	});
+
 	test("merges page-level bases so one column can flag what its rows cannot", () => {
 		const perRow = [unitBasis(["each"]), unitBasis(["box"]), unitBasis(["each"])];
 		expect(perRow.every((b) => !b.mixed)).toBe(true);
