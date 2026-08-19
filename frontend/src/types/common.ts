@@ -16,12 +16,14 @@ export const PriorityLabels: Record<Priority, string> = {
 	Emergency: "Emergency",
 };
 
+// Theme-token classes only (see styles/theme.css) so badges and filter chips stay
+// readable in both light and dark themes.
 export const PriorityColors: Record<Priority, string> = {
-    Low: "bg-cyan-600/20 text-cyan-400 border-cyan-700",
-	Medium: "bg-blue-600/20 text-blue-400 border-blue-700",
-	High: "bg-orange-600/20 text-orange-400 border-orange-700",
-	Urgent: "bg-red-600/20 text-red-400 border-red-700",
-	Emergency: "bg-red-700/30 text-red-500 border-red-600 font-bold",
+	Low: "bg-info/20 text-info-text border-info/30",
+	Medium: "bg-primary/20 text-primary-text border-primary/30",
+	High: "bg-orange/20 text-orange-text border-orange/30",
+	Urgent: "bg-error/20 text-error-text border-error/30",
+	Emergency: "bg-error/30 text-error-text border-error/50 font-bold",
 };
 
 // ============================================================================
