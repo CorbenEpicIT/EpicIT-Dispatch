@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Briefcase, ClipboardList, User } from "lucide-react";
 import { useItemUsageQuery } from "../../../hooks/useInventory";
-import type { ItemUsageRow } from "../../../types/inventory";
+import type { ItemUsageRow, UnitBasis } from "../../../types/inventory";
 import { formatDate } from "../../../util/util";
+import { unitLabel } from "../../../lib/units";
 import EmptyState from "../../ui/EmptyState";
 import Card from "../../ui/Card";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
+import { UNIT_BREAK_DETAIL, unitBreakNote, unitBreakShort } from "./chartNotes";
 
 const PAGE_SIZE = 20;
 
@@ -26,6 +28,15 @@ export default function UsageReport({ itemId }: { itemId: string }) {
 		() => data?.pages.flatMap((p) => p.usage) ?? [],
 		[data],
 	);
+
+	// Union across every loaded row (the same fold the server does per page,
+	// extended over pages): every row can be single-unit while the column still
+	// stacks `each` totals against `box` totals, which only this can see.
+	const columnBasis: UnitBasis = useMemo(() => {
+		const units = [...new Set(rows.flatMap((r) => r.unitBasis.units))].sort();
+		return { units, unit: units.length === 1 ? units[0] : null, mixed: units.length > 1 };
+	}, [rows]);
+	const columnBreak = unitBreakNote(columnBasis, "the Used column");
 
 	const isFirstLoad = isLoading && rows.length === 0;
 
@@ -94,10 +105,22 @@ export default function UsageReport({ itemId }: { itemId: string }) {
 										</span>
 									</div>
 								</div>
+								{/* A withheld total is a fact about the row (its movements span a
+								    unit change), not a missing number — say so rather than
+								    rendering a blank. A real total names its own unit. */}
 								<div className="shrink-0 text-right">
-									<div className="text-sm font-semibold tabular-nums text-text-primary">
-										{r.qtyConsumed}
-									</div>
+									{r.qtyConsumed == null ? (
+										<div className="text-xs font-medium text-text-secondary">
+											{unitBreakShort(r.unitBasis) ?? "—"}
+										</div>
+									) : (
+										<div className="text-sm font-semibold tabular-nums text-text-primary">
+											{r.qtyConsumed}{" "}
+											<span className="text-xs font-normal text-text-muted">
+												{unitLabel(r.unitBasis.unit, r.qtyConsumed)}
+											</span>
+										</div>
+									)}
 									<div className="text-[10px] font-semibold uppercase tracking-wider text-text-faint">
 										Used
 									</div>
@@ -106,6 +129,12 @@ export default function UsageReport({ itemId }: { itemId: string }) {
 						))}
 					</div>
 				</div>
+			)}
+
+			{columnBreak && (
+				<p className="mt-3 text-[11px] text-text-faint" title={UNIT_BREAK_DETAIL}>
+					{columnBreak}
+				</p>
 			)}
 
 			{hasNextPage && (

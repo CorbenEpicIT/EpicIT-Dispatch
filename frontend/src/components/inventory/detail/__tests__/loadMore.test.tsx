@@ -25,6 +25,7 @@ function mv(id: string, overrides: Partial<StockMovement> = {}): StockMovement {
 	return {
 		id,
 		qty: 1,
+		unit: "each",
 		from_location_type: "warehouse",
 		from_vehicle: null,
 		to_location_type: "consumed",

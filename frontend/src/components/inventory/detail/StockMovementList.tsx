@@ -22,6 +22,7 @@ import type {
 	StockMovementReason,
 } from "../../../types/inventory";
 import { formatDateTime } from "../../../util/util";
+import { unitLabel } from "../../../lib/units";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
 import EmptyState from "../../ui/EmptyState";
 
@@ -78,8 +79,10 @@ function MovementRow({ m }: { m: StockMovement }) {
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2 flex-wrap">
 					<span className="text-sm font-medium text-text-primary">{meta.label}</span>
+					{/* The row's OWN stamped unit, not the item's current one — the
+					    ledger keeps each movement in the unit it was made in. */}
 					<span className="text-xs font-semibold tabular-nums text-text-secondary bg-surface border border-border-subtle rounded px-1.5 py-0.5">
-						{qty}
+						{qty} {unitLabel(m.unit, qty)}
 					</span>
 				</div>
 				<div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-muted flex-wrap">

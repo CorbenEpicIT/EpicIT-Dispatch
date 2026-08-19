@@ -97,6 +97,10 @@ export type StockMovementReason =
 export interface StockMovement {
 	id: string;
 	qty: number | string;
+	// Stamped at write time from the item's unit THEN, not the item's unit now
+	// — a ledger can span a unit change, so a row must carry its own (see
+	// UnitBasis below). Render qty with this, never with the item's current unit.
+	unit: string;
 	from_location_type: StockLocationType;
 	from_vehicle: { id: string; name: string } | null;
 	to_location_type: StockLocationType;
