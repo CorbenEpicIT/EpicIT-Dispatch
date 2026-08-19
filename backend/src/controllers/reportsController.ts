@@ -603,6 +603,9 @@ export const getJobBacklog = async (organizationId: string) => {
 			FROM job
 			WHERE status IN ('Unscheduled', 'Scheduled', 'InProgress')
 				AND organization_id = ${organizationId}
+				-- Recurring-plan container jobs are created InProgress and stay there for
+				-- the life of the plan; they are not work waiting to be scheduled.
+				AND recurring_plan_id IS NULL
 		) t
 		GROUP BY status, bucket
 	`;
@@ -2484,16 +2487,23 @@ export const getFieldAddedRevenueReport = async (
 ): Promise<{
 	rows: FieldAddedRevenueRow[];
 	orgVisitRevenue: number;
+	fieldAddedItemCount: number;
+	truncated: boolean;
 	trend: FieldAddedRevenueTrend;
 }> => {
 	const sdb = getScopedDb(organizationId);
 	const dateFilter = buildDateFilter(startDate, endDate);
+	// Completed visits only (same as the technician scorecard): a line added on a
+	// Scheduled/Paused/Cancelled visit is not realized revenue yet, or ever.
 	const visitWhere = {
 		job: { organization_id: organizationId },
+		status: "Completed" as const,
 		...(Object.keys(dateFilter).length && { scheduled_start_at: dateFilter }),
 	};
 
 	const [items, revenueAgg, techs] = await Promise.all([
+		// Newest first, so the row cap drops the oldest items rather than an
+		// arbitrary set; `truncated` tells the page the totals are partial.
 		sdb.job_visit_line_item.findMany({
 			where: { source: "field_addition", visit: visitWhere },
 			select: {
@@ -2507,6 +2517,8 @@ export const getFieldAddedRevenueReport = async (
 					},
 				},
 			},
+			orderBy: { visit: { scheduled_start_at: "desc" } },
+			take: REPORT_ROW_CAP,
 		}),
 		// Upsell-rate: all visit line-item revenue
 		sdb.job_visit_line_item.aggregate({
@@ -2525,6 +2537,10 @@ export const getFieldAddedRevenueReport = async (
 	return {
 		rows,
 		orgVisitRevenue: round2(Number(revenueAgg._sum.total ?? 0)),
+		// Distinct line items. Per-tech itemCount credits a split item to every tech
+		// on the visit, so summing those would overstate this.
+		fieldAddedItemCount: items.length,
+		truncated: items.length >= REPORT_ROW_CAP,
 		trend,
 	};
 };

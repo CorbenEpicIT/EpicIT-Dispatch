@@ -604,16 +604,19 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 	},
 	"field-added-revenue": {
 		load: async (orgId, q) => {
-			const { rows, orgVisitRevenue, trend } = await getFieldAddedRevenueReport(
-				q.startDate,
-				q.endDate,
-				orgId,
-			);
-			return { rows: rows.map(fieldAddedRow), summary: { orgVisitRevenue, trend } };
+			const { rows, orgVisitRevenue, fieldAddedItemCount, truncated, trend } =
+				await getFieldAddedRevenueReport(q.startDate, q.endDate, orgId);
+			// fieldAddedItems is the distinct item count from the controller. It is
+			// not recomputed in filteredSummary: a per-tech itemCount credits a split
+			// item to every tech on the visit, so summing rows double-counts, and the
+			// per-tech rows carry no item ids to dedupe by.
+			return {
+				rows: rows.map(fieldAddedRow),
+				summary: { orgVisitRevenue, fieldAddedItems: fieldAddedItemCount, truncated, trend },
+			};
 		},
 		filteredSummary: (rows) => {
 			const totalFieldAddedRevenue = round2(rows.reduce((s, r) => s + num(r.fieldAddedRevenue), 0));
-			const fieldAddedItems = rows.reduce((s, r) => s + num(r.itemCount), 0);
 			const top = rows.reduce<ReportRow | null>(
 				(best, r) => (!best || num(r.fieldAddedRevenue) > num(best.fieldAddedRevenue) ? r : best),
 				null,
@@ -621,7 +624,6 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			return {
 				technicianCount: rows.length,
 				totalFieldAddedRevenue,
-				fieldAddedItems,
 				topTechnician: top ? String(top.technician) : "—",
 			};
 		},
