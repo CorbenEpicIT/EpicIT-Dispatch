@@ -77,6 +77,12 @@ vi.mock("../../../lib/queryKeys", () => ({
 	invalidate: { warehouse: vi.fn() },
 }));
 
+// UnitSelect reads the org's measurement system to ORDER the picker (nothing
+// is hidden), so an unmocked hook here meant a real GET /org per render.
+vi.mock("../../../hooks/useOrg", () => ({
+	useOrgSettings: () => ({ data: undefined, isLoading: false }),
+}));
+
 vi.mock("../../../hooks/useQuickbooks", () => ({
 	useQBStatusQuery: () => ({ data: { connected: false } }),
 	useQBItemsQuery: () => ({ data: [], isLoading: false }),
