@@ -434,9 +434,36 @@ describe("getInventoryReport — mixed units", () => {
 
 		await getInventoryReport(ORG, { includeInactive: false });
 
+		// reason is in the key only so reversal rows can be subtracted; the unit
+		// dimension is what makes a break visible.
 		expect(mockDb.stock_movement.groupBy.mock.calls[0][0].by).toEqual([
 			"inventory_item_id",
 			"unit",
+			"reason",
+		]);
+	});
+
+	it("nets consumption reversals like the reorder forecast does", async () => {
+		mockDb.stock_movement.groupBy.mockResolvedValue([
+			{ inventory_item_id: ITEM, unit: "each", reason: "parts_used", _sum: { qty: 30 } },
+			{ inventory_item_id: ITEM, unit: "each", reason: "reversal", _sum: { qty: 10 } },
+		]);
+
+		const [row] = await getInventoryReport(ORG, { includeInactive: false });
+
+		// 30 used, 10 of that reversed → 20 consumed; one unit, so not a break.
+		expect(row.qtyUsed).toBe(20);
+		expect(row.qtyUsedBasis).toEqual({ units: ["each"], unit: "each", mixed: false });
+	});
+
+	it("only pulls reversals that undo consumption, not transfer reversals", async () => {
+		mockDb.stock_movement.groupBy.mockResolvedValue([]);
+
+		await getInventoryReport(ORG, { includeInactive: false });
+
+		expect(mockDb.stock_movement.groupBy.mock.calls[0][0].where.OR).toEqual([
+			{ reason: { in: ["parts_used", "direct_consumption"] } },
+			{ reason: "reversal", from_location_type: "consumed" },
 		]);
 	});
 });

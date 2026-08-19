@@ -1148,6 +1148,12 @@ const inventoryBaseWhere = (includeInactive: boolean): Record<string, unknown> =
 // Grouped by (item, unit), not item alone — the extra key is what surfaces a
 // unit break: >1 group per item means its consumption can't be totalled.
 // `itemIds` scopes the group-by to a hydrated page's rows.
+//
+// Net of reversals (from_location_type = 'consumed' cancels demand that never
+// happened) — the same netting buildReorderForecast applies, so the inventory
+// report and the forecast agree on what was consumed. `reason` is in the group
+// key only so the reversal rows can be subtracted; it is folded away below.
+// TODO(orchestrator): use CONSUMPTION_MOVEMENT_PREDICATE from lib/inventory.ts
 const inventoryUsageByItem = async (
 	sdb: ReturnType<typeof getScopedDb>,
 	organizationId: string,
@@ -1156,10 +1162,13 @@ const inventoryUsageByItem = async (
 	itemIds?: string[],
 ): Promise<Map<string, { qty: number; units: string[] }>> => {
 	const usage = await sdb.stock_movement.groupBy({
-		by: ["inventory_item_id", "unit"],
+		by: ["inventory_item_id", "unit", "reason"],
 		where: {
 			organization_id: organizationId,
-			reason: { in: ["parts_used", "direct_consumption"] },
+			OR: [
+				{ reason: { in: ["parts_used", "direct_consumption"] } },
+				{ reason: "reversal", from_location_type: "consumed" },
+			],
 			...(from && to ? { created_at: { gte: from, lte: to } } : {}),
 			...(itemIds ? { inventory_item_id: { in: itemIds } } : {}),
 		},
@@ -1168,8 +1177,9 @@ const inventoryUsageByItem = async (
 	const byItem = new Map<string, { qty: number; units: string[] }>();
 	for (const u of usage) {
 		const entry = byItem.get(u.inventory_item_id) ?? { qty: 0, units: [] };
-		entry.qty += Number(u._sum.qty ?? 0);
-		entry.units.push(u.unit);
+		const qty = Number(u._sum.qty ?? 0);
+		entry.qty += u.reason === "reversal" ? -qty : qty;
+		if (!entry.units.includes(u.unit)) entry.units.push(u.unit);
 		byItem.set(u.inventory_item_id, entry);
 	}
 	return byItem;
