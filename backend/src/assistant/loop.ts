@@ -18,6 +18,7 @@ import { executeTool, toolRequiresApproval } from "../agent/execute.js";
 import { getTool } from "../agent/registry.js";
 import type { AgentContext, AgentPolicy } from "../agent/types.js";
 import { log } from "../services/appLogger.js";
+import { assistantTokens, assistantTurns } from "../services/metricsService.js";
 import { ASSISTANT_MODEL, MAX_COMPLETION_TOKENS, MAX_TOOL_ITERATIONS } from "./config.js";
 import {
 	appendAssistantMessage,
@@ -166,6 +167,7 @@ async function driveLoop(
 				outputTokens: turn.usage?.output ?? null,
 				toolCalls: [],
 			});
+			recordTurn(ctx.surface, "answered", totalIn, totalOut);
 			emit({ type: "done", messageId: saved.id, usage: { input: totalIn, output: totalOut } });
 			return "done";
 		}
@@ -247,6 +249,7 @@ async function driveLoop(
 					input: call.input,
 				});
 			}
+			recordTurn(ctx.surface, "awaiting_approval", totalIn, totalOut);
 			emit({ type: "done", messageId: lastMessageId, usage: { input: totalIn, output: totalOut } });
 			return "paused";
 		}
@@ -280,9 +283,29 @@ async function driveLoop(
 		code: "ITERATION_LIMIT",
 		message: `I looked things up ${MAX_TOOL_ITERATIONS} times without reaching an answer. Try narrowing the question.`,
 	});
+	recordTurn(ctx.surface, "iteration_limit", totalIn, totalOut);
 	emit({ type: "done", messageId: lastMessageId, usage: { input: totalIn, output: totalOut } });
 	return "done";
 }
+
+/**
+ * One place that records how a turn ended and what it cost.
+ *
+ * Token counts are also stored per message (see appendAssistantMessage) — the
+ * metric answers "what is this costing us right now", the table answers "what
+ * did this organization cost last month". Neither substitutes for the other.
+ */
+function recordTurn(surface: string, outcome: string, input: number, output: number): void {
+	assistantTurns.add(1, { surface, outcome });
+	if (input) assistantTokens.add(input, { direction: "input", model: ASSISTANT_MODEL });
+	if (output) assistantTokens.add(output, { direction: "output", model: ASSISTANT_MODEL });
+}
+
+/** `get_technician_availability` → "Get technician availability" */
+const humanise = (name: string): string => {
+	const words = name.replace(/_/g, " ");
+	return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 /** Emit the result of one executed call, plus any cache keys it invalidated. */
 function emitToolResult(
@@ -309,7 +332,9 @@ function emitToolResult(
 			type: "tool_result",
 			id,
 			ok: false,
-			summary: `${name} failed`,
+			// The reason, not just the fact. "propose_draft failed" tells a
+			// dispatcher nothing they can act on or report.
+			summary: `${humanise(name)} failed — ${result.error.message}`,
 			errorCode: result.error.code,
 			errorMessage: result.error.message,
 			durationMs,

@@ -102,6 +102,24 @@ describe("Phase 1 tool catalog", () => {
 		}
 	});
 
+	it("advertises the parameters each tool actually takes", () => {
+		// `type: "object"` alone is not enough — an empty properties map satisfies
+		// it while telling the model the tool takes nothing, which is precisely how
+		// propose_draft shipped broken. Every tool here has required inputs.
+		for (const tool of listTools()) {
+			const schema = toolInputSchema(tool.input);
+			expect(Object.keys(schema.properties as object).length, `${tool.name} advertises no parameters`).
+				toBeGreaterThan(0);
+		}
+	});
+
+	it("lets a model see how to fill in propose_draft", () => {
+		const schema = toolInputSchema(listTools().find((t) => t.name === "propose_draft")!.input);
+		const props = schema.properties as Record<string, Record<string, unknown>>;
+		expect(props.form_type.enum).toContain("quote");
+		expect((props.payload.anyOf as unknown[]).length).toBe(5);
+	});
+
 	it("describes every tool for the model in more than a few words", () => {
 		for (const tool of listTools()) {
 			expect(tool.description.length, tool.name).toBeGreaterThan(60);

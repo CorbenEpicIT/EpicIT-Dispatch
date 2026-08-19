@@ -51,13 +51,27 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
 				/>
 			</button>
 
+			{/*
+			 * A failure states its reason without being expanded. Hiding it behind a
+			 * click is how "propose_draft failed" reached a user with no way to see
+			 * that the model had sent an empty payload.
+			 */}
+			{failed && call.errorMessage && !open && (
+				<p className="border-t border-error-border px-2.5 py-1.5 text-[11px] text-error-text">
+					{call.errorMessage}
+				</p>
+			)}
+
 			{open && (
 				<div className="border-t border-border-subtle px-2.5 py-2">
 					<div className="font-mono text-[11px] text-text-muted">{call.name}</div>
-					<pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-text-muted">
+					{call.errorMessage && (
+						<p className="mt-1 text-[11px] text-error-text">{call.errorMessage}</p>
+					)}
+					<div className="mt-1.5 font-mono text-[10px] uppercase tracking-wide text-faint">Sent</div>
+					<pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-text-muted">
 						{JSON.stringify(call.input ?? {}, null, 2)}
 					</pre>
-					{call.errorMessage && <div className="mt-1 text-[11px] text-error-text">{call.errorMessage}</div>}
 				</div>
 			)}
 		</div>

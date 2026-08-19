@@ -14,6 +14,7 @@ import { describeTools } from "../agent/registry.js";
 import type { AgentContext } from "../agent/types.js";
 import { getScopedDb } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
+import { assistantApprovals } from "../services/metricsService.js";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
 import {
 	areWritesEnabled,
@@ -446,6 +447,13 @@ router.post("/approvals/:id", async (req, res, next) => {
 	try {
 		const conversationId = pending.message.conversation.id;
 		const approved = parsed.data.decision === "approve";
+
+		// How often people decline is the clearest signal available on whether the
+		// assistant is proposing the right things.
+		assistantApprovals.add(1, {
+			tool: pending.tool_name,
+			decision: approved ? "approved" : "declined",
+		});
 
 		if (approved) {
 			const tool = getTool(pending.tool_name);

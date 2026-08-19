@@ -20,6 +20,7 @@
 
 import { logActivity } from "../services/logger.js";
 import { log } from "../services/appLogger.js";
+import { agentToolCalls, agentToolDuration } from "../services/metricsService.js";
 import type { AgentContext, RiskClass, ToolResult } from "./types.js";
 
 export interface ToolCallRecord {
@@ -50,6 +51,8 @@ export function agentActorName(ctx: AgentContext): string {
 export async function recordToolCall(record: ToolCallRecord): Promise<void> {
 	const { tool, risk, ctx, result, durationMs } = record;
 
+	// Structured so a Loki query can answer "what failed, for whom, and why"
+	// without joining anything: evt is the stable selector, code is the reason.
 	log.info(
 		{
 			evt: "agent.tool_call",
@@ -61,10 +64,27 @@ export async function recordToolCall(record: ToolCallRecord): Promise<void> {
 			role: ctx.role,
 			ok: result.ok,
 			code: result.ok ? undefined : result.error.code,
+			// The input is what makes a validation failure diagnosable — without it
+			// you can see that a call was rejected but not what the model sent.
+			input: result.ok ? undefined : record.input,
+			detail: result.ok ? undefined : result.error.message,
 			ms: durationMs,
 		},
 		"Agent tool call",
 	);
+
+	// Cardinality note: tool and code are bounded (a fixed catalog, a fixed error
+	// enum), so these are safe as labels. Organization deliberately is not — it
+	// is unbounded and belongs in logs, not in a metric series.
+	const labels = {
+		tool,
+		risk,
+		surface: ctx.surface,
+		outcome: result.ok ? "ok" : "error",
+		code: result.ok ? "none" : result.error.code,
+	};
+	agentToolCalls.add(1, labels);
+	agentToolDuration.record(durationMs / 1000, { tool, surface: ctx.surface });
 
 	// Reads never reach the audit table; failures never do either — a refused or
 	// invalid call changed nothing, and recording it as an event would imply it did.

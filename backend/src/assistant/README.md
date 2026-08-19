@@ -88,6 +88,66 @@ Two consequences worth knowing:
   minutes and three questions later would fire an action nobody is thinking
   about.
 
+## Finding out what the agent did, and why it failed
+
+Three places, in the order you should reach for them.
+
+**1. The tool card in the panel.** A failed call states its reason inline;
+expanding it shows the exact arguments the model sent. That "Sent" block is
+usually the answer — a validation failure means the model sent something the
+schema did not allow, and seeing what it sent tells you whether the model
+guessed badly or the schema advertised the wrong thing.
+
+**2. The database.** Every call is stored, including failures:
+
+```sql
+select tool_name, status, error_code, duration_ms, input, result
+from assistant_tool_call
+order by created_at desc
+limit 20;
+```
+
+`input` is what the model sent; `result` carries the structured error with its
+Zod issues. Join through `assistant_message` → `assistant_conversation` to scope
+to one person or organization.
+
+**3. Logs.** Every call — read or write, success or failure — emits a pino line
+with `evt: "agent.tool_call"`, carrying tool, surface, org, user, ok, code, ms,
+and on failure the input and message. In Loki:
+
+```logql
+{app="hvac-backend"} | json | evt = "agent.tool_call" and ok = "false"
+```
+
+Writes additionally land in the `log` table with `actor_type: "agent"` and
+`actor_id` set to the human, so they show up in that person's change history.
+
+## Metrics
+
+Exported through the existing Prometheus endpoint (`/metrics`) and the Grafana
+Cloud OTLP exporter, alongside the HTTP metrics:
+
+| Metric | Labels | Answers |
+| --- | --- | --- |
+| `hvac_agent_tool_calls_total` | tool, risk, surface, outcome, code | Which tools are used, which fail, and why |
+| `hvac_agent_tool_duration` | tool, surface | Which tools are slow |
+| `hvac_assistant_turns_total` | surface, outcome | How turns end: answered, awaiting_approval, iteration_limit |
+| `hvac_assistant_tokens_total` | direction, model | What the model is costing |
+| `hvac_assistant_approvals_total` | tool, decision | How often people decline — the clearest signal on whether the assistant proposes the right things |
+
+Organization is deliberately **not** a metric label: it is unbounded and would
+blow up series cardinality. Per-org cost comes from `assistant_message`, which
+stores `input_tokens` / `output_tokens` / `model` per turn:
+
+```sql
+select c.organization_id, m.model,
+       sum(m.input_tokens) as input, sum(m.output_tokens) as output
+from assistant_message m
+join assistant_conversation c on c.id = m.conversation_id
+where m.created_at >= now() - interval '30 days'
+group by 1, 2;
+```
+
 ## Rules
 
 - **The loop never widens what Phase 1 decided.** It passes `AgentContext` and

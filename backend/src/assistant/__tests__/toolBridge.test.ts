@@ -97,8 +97,20 @@ describe("summariseToolResult", () => {
 		["get_entity_history", {}, { entries: [1, 2] }, "2 history entries"],
 		["get_record", { type: "job" }, { found: false }, "not found"],
 		["get_record", {}, { type: "job", job_number: "J-1042" }, "Opened job J-1042"],
+		[
+			"propose_draft",
+			{},
+			{ status: "saved_as_draft", form_type: "request", label: "Pipe replacement" },
+			"Drafted a request — “Pipe replacement”",
+		],
 	])("summarises %s for a person", (tool, input, data, expected) => {
 		expect(summariseToolResult(tool, input, data)).toContain(expected);
+	});
+
+	it("says a draft still needs review, so nobody reads it as created", () => {
+		expect(
+			summariseToolResult("propose_draft", {}, { status: "saved_as_draft", form_type: "quote", label: "X" }),
+		).toContain("needs review before it exists");
 	});
 
 	it("falls back to the tool name for an unrecognised shape", () => {

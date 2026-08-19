@@ -107,10 +107,19 @@ export function toolInputSchema(schema: z.ZodType): JsonSchemaNode {
 
 	const pruned = pruneSchema(raw) as JsonSchemaNode;
 
-	// Anthropic and MCP both expect an object at the top level, including for
-	// tools that take nothing.
+	// Providers expect an object at the top level. A schema that is not one — a
+	// discriminated union renders as a bare `oneOf`, for instance — cannot be
+	// advertised faithfully, and MUST NOT be quietly replaced with an empty
+	// object: that tells the model the tool takes no arguments, it calls with
+	// `{}`, validation rejects it, and the model invents a plausible explanation
+	// for a failure it cannot see the cause of. That exact bug shipped in
+	// `propose_draft`. Fail at registration instead, where it is obvious.
 	if (pruned.type !== "object") {
-		return { type: "object", properties: {}, additionalProperties: false };
+		const shape = Object.keys(pruned).filter((k) => k !== "$schema").join(", ") || "nothing";
+		throw new Error(
+			`Tool input must be an object schema at the top level, got: ${shape}. ` +
+				"Wrap it in z.object({...}); a discriminated union cannot be advertised as-is.",
+		);
 	}
 	if (!pruned.properties) pruned.properties = {};
 	return pruned;

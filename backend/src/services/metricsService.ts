@@ -46,6 +46,36 @@ export const httpRequestDuration = meter.createHistogram("hvac_http_request_dura
 	},
 });
 
+// ── Agent & assistant ───────────────────────────────────────────────────────
+// Exported through the same Prometheus endpoint and Grafana Cloud exporter as
+// the HTTP metrics above. The questions these exist to answer: which tools are
+// being called, which are failing and why, how long they take, and what the
+// model is costing per organization.
+
+export const agentToolCalls = meter.createCounter("hvac_agent_tool_calls", {
+	description: "Agent tool calls by tool, surface and outcome",
+});
+
+export const agentToolDuration = meter.createHistogram("hvac_agent_tool_duration", {
+	description: "Agent tool execution time in seconds",
+	unit: "s",
+	advice: {
+		explicitBucketBoundaries: [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+	},
+});
+
+export const assistantTurns = meter.createCounter("hvac_assistant_turns", {
+	description: "Assistant turns by surface and outcome",
+});
+
+export const assistantTokens = meter.createCounter("hvac_assistant_tokens", {
+	description: "Model tokens consumed, by direction and model",
+});
+
+export const assistantApprovals = meter.createCounter("hvac_assistant_approvals", {
+	description: "Human decisions on gated tool calls",
+});
+
 export const httpMetricsMiddleware = (req: Request, res: Response, next: NextFunction) => {
 	const start = performance.now();
 	res.on("finish", () => {

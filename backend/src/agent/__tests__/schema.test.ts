@@ -49,6 +49,47 @@ describe("toolInputSchema", () => {
 		expect(schema.properties).toHaveProperty("name");
 	});
 
+	describe("refuses a schema it cannot advertise faithfully", () => {
+		// Regression: a discriminated union renders as a bare top-level `oneOf`
+		// with no `type`. An earlier version quietly substituted an empty object
+		// schema, which told the model propose_draft took NO arguments — it called
+		// with {}, validation rejected it, and the model invented an explanation
+		// for a failure whose cause it could not see. Failing at registration is
+		// the only version of this that is debuggable.
+		it("throws on a discriminated union rather than emptying it", () => {
+			const schema = z.discriminatedUnion("kind", [
+				z.object({ kind: z.literal("a"), value: z.string() }),
+				z.object({ kind: z.literal("b"), count: z.number() }),
+			]);
+			expect(() => toolInputSchema(schema)).toThrow(/must be an object schema/);
+		});
+
+		it("names what it got, so the fix is obvious", () => {
+			expect(() => toolInputSchema(z.union([z.object({ a: z.string() }), z.object({ b: z.string() })]))).toThrow(
+				/got: anyOf/,
+			);
+		});
+
+		it.each([
+			["array", z.array(z.string())],
+			["string", z.string()],
+			["number", z.number()],
+		])("throws on a top-level %s", (_label, schema) => {
+			expect(() => toolInputSchema(schema)).toThrow(/must be an object schema/);
+		});
+
+		it("accepts a union nested inside a property", () => {
+			// The supported way to express "one of these shapes": keep the top level
+			// an object and put the union on a field.
+			const schema = toolInputSchema(
+				z.object({ payload: z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]) }),
+			);
+			expect(schema.type).toBe("object");
+			const payload = (schema.properties as Record<string, Record<string, unknown>>).payload;
+			expect((payload.anyOf as unknown[]).length).toBe(2);
+		});
+	});
+
 	it("always yields an object schema, even for a tool taking nothing", () => {
 		const schema = toolInputSchema(z.object({}));
 		expect(schema.type).toBe("object");

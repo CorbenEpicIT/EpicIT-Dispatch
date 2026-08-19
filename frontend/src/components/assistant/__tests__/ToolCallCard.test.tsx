@@ -36,10 +36,32 @@ describe("ToolCallCard", () => {
 		expect(screen.getByText("get_schedule")).toBeInTheDocument();
 	});
 
-	it("surfaces the error message on a failed call", async () => {
-		render(<ToolCallCard call={call({ state: "error", summary: "get_record failed", errorMessage: "gone" })} />);
+	it("states the reason for a failure without being expanded", async () => {
+		// Regression: a real failure reached a user as "propose_draft failed" with
+		// the cause one click away, so nobody saw that the model had sent {}.
+		render(
+			<ToolCallCard
+				call={call({
+					state: "error",
+					summary: "Propose draft failed",
+					errorMessage: "Input did not validate",
+				})}
+			/>,
+		);
+		expect(screen.getByText("Input did not validate")).toBeInTheDocument();
+	});
+
+	it("shows what the model sent when expanded", async () => {
+		render(<ToolCallCard call={call({ state: "error", errorMessage: "gone" })} />);
 		await userEvent.click(screen.getByRole("button"));
-		expect(screen.getByText("gone")).toBeInTheDocument();
+		expect(screen.getByText("Sent")).toBeInTheDocument();
+		expect(screen.getByText(/start_date/)).toBeInTheDocument();
+	});
+
+	it("does not repeat the error twice when expanded", async () => {
+		render(<ToolCallCard call={call({ state: "error", errorMessage: "gone" })} />);
+		await userEvent.click(screen.getByRole("button"));
+		expect(screen.getAllByText("gone")).toHaveLength(1);
 	});
 
 	it.each([

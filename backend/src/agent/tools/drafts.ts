@@ -89,6 +89,15 @@ const recurringPlanPayload = z.object({
 	line_items: z.array(lineItem).default([]),
 });
 
+/** The authoritative schema per draft type, applied by the refinement below. */
+const PAYLOAD_FOR = {
+	request: requestPayload,
+	quote: quotePayload,
+	job: jobPayload,
+	job_visit: visitPayload,
+	recurring_plan: recurringPlanPayload,
+} as const;
+
 /** Permission needed to propose each kind, matching the create permission for the real thing. */
 const PERMISSION_FOR = {
 	request: "create_requests",
@@ -112,13 +121,39 @@ export const proposeDraft = defineTool({
 	// The draft IS the review step. Gating it would ask for the same approval twice.
 	requiresApproval: false,
 	permissions: [...new Set(Object.values(PERMISSION_FOR))],
-	input: z.discriminatedUnion("form_type", [
-		z.object({ form_type: z.literal("request"), payload: requestPayload }),
-		z.object({ form_type: z.literal("quote"), payload: quotePayload }),
-		z.object({ form_type: z.literal("job"), payload: jobPayload }),
-		z.object({ form_type: z.literal("job_visit"), payload: visitPayload }),
-		z.object({ form_type: z.literal("recurring_plan"), payload: recurringPlanPayload }),
-	]),
+	/**
+	 * A flat object, NOT a discriminated union.
+	 *
+	 * `z.discriminatedUnion` renders as a bare top-level `oneOf` with no `type`,
+	 * which providers cannot advertise as function parameters — the model ends up
+	 * being told this tool takes no arguments at all. `payload` carries the union
+	 * instead, so the top level stays an object and every field stays visible.
+	 * The `form_type` ↔ `payload` pairing is enforced in the refinement below,
+	 * which is also what produces a useful error when they disagree.
+	 */
+	input: z
+		.object({
+			form_type: z
+				.enum(["request", "quote", "job", "job_visit", "recurring_plan"])
+				.describe("What kind of record to draft. The payload must match this."),
+			payload: z
+				.union([requestPayload, quotePayload, jobPayload, visitPayload, recurringPlanPayload])
+				.describe("The draft's contents. Which fields apply depends on form_type."),
+		})
+		.superRefine((value, ctx) => {
+			// The union above accepts any of the five shapes; this is what pins the
+			// payload to the type actually requested, and reports precisely what is
+			// wrong rather than "no matching variant".
+			const parsed = PAYLOAD_FOR[value.form_type].safeParse(value.payload);
+			if (parsed.success) return;
+			for (const issue of parsed.error.issues) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["payload", ...issue.path],
+					message: `${issue.message} (required for a ${value.form_type} draft)`,
+				});
+			}
+		}),
 	audit: (input, result) => ({
 		event_type: "form_draft.created",
 		action: "created",
@@ -138,11 +173,17 @@ export const proposeDraft = defineTool({
 			);
 		}
 
+		// Re-parse with the type's own schema so defaults are applied and the
+		// controller stores the coerced payload, not the raw union match.
+		const payload = PAYLOAD_FOR[input.form_type].parse(input.payload);
+
 		const outcome = (await insertDraft(
 			requestFor(ctx, {
 				form_type: input.form_type,
-				payload: input.payload,
-				entity_context_id: "job_id" in input.payload ? input.payload.job_id : null,
+				payload,
+				// A visit draft belongs to a job; the Create panel uses this to offer
+				// the draft on that job's page.
+				entity_context_id: "job_id" in payload ? payload.job_id : null,
 			}),
 		)) as ControllerOutcome<{ id: string; label: string; form_type: string }>;
 

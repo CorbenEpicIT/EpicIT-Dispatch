@@ -129,6 +129,9 @@ export function summariseToolResult(toolName: string, input: unknown, data: unkn
 	if (Array.isArray(record.entries)) {
 		return `Read ${record.entries.length} history entr${record.entries.length === 1 ? "y" : "ies"}`;
 	}
+	if (record.status === "saved_as_draft") {
+		return `Drafted a ${String(record.form_type ?? "record")} — “${String(record.label ?? "untitled")}” (needs review before it exists)`;
+	}
 	if (record.found === false) {
 		return `Looked up a ${String(args.type ?? "record")} — not found`;
 	}
