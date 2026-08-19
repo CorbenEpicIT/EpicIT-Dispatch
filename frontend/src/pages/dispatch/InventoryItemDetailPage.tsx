@@ -908,8 +908,9 @@ export default function InventoryItemDetailPage() {
 			)}
 
 			{/* Queue-add confirmation for every add on this page — the kebab
-			    action, the Tracking tab's per-row buttons, and ReceiveStockModal
-			    all push to labelQueueStore and were otherwise silent here. */}
+			    action, the Tracking tab's per-row buttons, ReceiveStockModal and
+			    the serial drawer all push to labelQueueStore. The ONE watcher on
+			    this page; SerialDetailDrawer deliberately doesn't mount its own. */}
 			<LabelQueueToast />
 
 			{/* Modals */}

@@ -4,7 +4,6 @@ import Drawer from "../../ui/Drawer";
 import ConfirmDialog from "../../ui/ConfirmDialog";
 import SerialDetailBody from "./SerialDetailBody";
 import LabelQueueButton from "../labels/LabelQueueButton";
-import LabelQueueToast from "../labels/LabelQueueToast";
 import { useSerialActions } from "../../../hooks/useSerialActions";
 import { usePermission } from "../../../hooks/usePermission";
 
@@ -146,9 +145,9 @@ export default function SerialDetailDrawer({
 					setActionError(null);
 				}}
 			/>
-
-			{/* Confirms the queue-add, since navigating away is otherwise the only signal. */}
-			<LabelQueueToast />
+			{/* No LabelQueueToast here: both mount points (InventoryItemDetailPage,
+			    BatchDetailPage) already render one, and a second watcher fired a
+			    second toast for every queue-add made from this drawer. */}
 		</>
 	);
 }
