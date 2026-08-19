@@ -23,6 +23,7 @@ import {
 	getRevenueByLineItemType,
 	getRevenueLineItemsReport,
 	getRevenueLineItemsReportPage,
+	reportInstant,
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
@@ -427,8 +428,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		load: async (orgId, q) => {
 			let raw = await getClientsReport(orgId);
 			if (q.startDate || q.endDate) {
-				const gte = q.startDate ? new Date(q.startDate).getTime() : -Infinity;
-				const lte = q.endDate ? new Date(q.endDate).getTime() : Infinity;
+				const gte = q.startDate ? reportInstant(q.startDate).getTime() : -Infinity;
+				const lte = q.endDate ? reportInstant(q.endDate).getTime() : Infinity;
 				raw = raw.filter((c) => {
 					const t = new Date(c.createdAt).getTime();
 					return t >= gte && t <= lte;
@@ -441,8 +442,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		load: async (orgId, q) => ({
 			rows: (
 				await getInventoryReport(orgId, {
-					from: q.startDate ? new Date(q.startDate) : undefined,
-					to: q.endDate ? new Date(q.endDate) : undefined,
+					from: q.startDate ? reportInstant(q.startDate) : undefined,
+					to: q.endDate ? reportInstant(q.endDate) : undefined,
 					includeInactive: q.includeInactive ?? true,
 				})
 			).map(inventoryRow),
@@ -452,8 +453,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 				await getInventoryReportPage(
 					orgId,
 					{
-						from: q.startDate ? new Date(q.startDate) : undefined,
-						to: q.endDate ? new Date(q.endDate) : undefined,
+						from: q.startDate ? reportInstant(q.startDate) : undefined,
+						to: q.endDate ? reportInstant(q.endDate) : undefined,
 						includeInactive: q.includeInactive ?? true,
 					},
 					params,

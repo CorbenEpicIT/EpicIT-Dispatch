@@ -18,10 +18,47 @@ import type { PaginateParams } from "../lib/reports/filterEngine.js";
 import { round2 } from "../lib/reports/numbers.js";
 import { getOrgRealmId } from "../services/quickbooksService.js";
 import { log } from "../services/appLogger.js";
-import { createErrorResponse, ErrorCodes } from "../types/responses.js";
+import { createErrorResponse, ErrorCodes, httpError } from "../types/responses.js";
 
 // Upper bound on rows pulled into memory for the in-JS report aggregations
 const REPORT_ROW_CAP = 10000;
+
+// ============================================================================
+// DATE RANGE PARSING (shared by every dated report)
+// ============================================================================
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Parses a date query param, rejecting garbage with a 400 instead of letting an
+// Invalid Date reach Prisma/SQL and surface as a 500. No normalization.
+export const reportInstant = (value: string): Date => {
+	const d = new Date(value);
+	if (Number.isNaN(d.getTime())) {
+		throw httpError(400, ErrorCodes.VALIDATION_ERROR, `Invalid date: ${value}`);
+	}
+	return d;
+};
+
+// One report bound. A bare `YYYY-MM-DD` means "that whole UTC day", so it is
+// widened to the day's start or end. Anything else (the frontend sends full ISO
+// instants for the user's local range) is used exactly as sent — flooring those
+// to UTC day bounds stretched every window by up to a day at each end for any
+// non-UTC user and double-counted rows at the seams.
+export const parseReportDate = (value: string, edge: "start" | "end"): Date => {
+	const d = reportInstant(value);
+	if (DATE_ONLY_RE.test(value)) {
+		if (edge === "start") d.setUTCHours(0, 0, 0, 0);
+		else d.setUTCHours(23, 59, 59, 999);
+	}
+	return d;
+};
+
+export const buildDateFilter = (startDate?: string, endDate?: string) => {
+	const filter: { gte?: Date; lte?: Date } = {};
+	if (startDate) filter.gte = parseReportDate(startDate, "start");
+	if (endDate) filter.lte = parseReportDate(endDate, "end");
+	return filter;
+};
 
 // Only text is searchable
 const t = (expr: string): ColumnDef => ({ expr, type: "text", filterable: true, sortable: true, searchable: true });
@@ -92,8 +129,8 @@ export const getOverviewMetrics = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	const end = new Date(endDate);
+	const start = reportInstant(startDate);
+	const end = reportInstant(endDate);
 	const sdb = getScopedDb(organizationId);
 	// Last Month
 	const previousStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
@@ -394,8 +431,8 @@ export const getRevenueByJobType = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	const end = new Date(endDate);
+	const start = reportInstant(startDate);
+	const end = reportInstant(endDate);
 
 	const sdb = getScopedDb(organizationId);
 
@@ -443,10 +480,8 @@ export const getLeadsBySource = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	start.setUTCHours(0, 0, 0, 0);
-	const end = new Date(endDate);
-	end.setUTCHours(23, 59, 59, 999);
+	const start = parseReportDate(startDate, "start");
+	const end = parseReportDate(endDate, "end");
 	const sdb = getScopedDb(organizationId);
 
 	// Count of requests/leads grouped by the source
@@ -636,10 +671,8 @@ export const getArrivalPerformance = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	const end   = new Date(endDate);
-	start.setUTCHours(0, 0, 0, 0);
-	end.setUTCHours(23, 59, 59, 999);
+	const start = parseReportDate(startDate, "start");
+	const end = parseReportDate(endDate, "end");
 
 	const sdb = getScopedDb(organizationId);
 	const result = await sdb.$queryRaw<[{ early: number, on_time: number, late: number }]>`
@@ -673,10 +706,8 @@ export const getArrivalPerformance = async (
 // ============================================================================
 
 export const getQuotePipeline = async (startDate: string, endDate: string, organizationId: string) => {
-	const start = new Date(startDate);
-	const end   = new Date(endDate);
-	start.setUTCHours(0, 0, 0, 0);
-	end.setUTCHours(23, 59, 59, 999);
+	const start = parseReportDate(startDate, "start");
+	const end = parseReportDate(endDate, "end");
 
 	const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
 
@@ -746,17 +777,7 @@ export const getMileageReport = async (
 ): Promise<MileageReportVisitRow[]> => {
 	const sdb = getScopedDb(organizationId);
 
-	const dateFilter: { gte?: Date; lte?: Date } = {};
-	if (startDate) {
-		const s = new Date(startDate);
-		s.setUTCHours(0, 0, 0, 0);
-		dateFilter.gte = s;
-	}
-	if (endDate) {
-		const e = new Date(endDate);
-		e.setUTCHours(23, 59, 59, 999);
-		dateFilter.lte = e;
-	}
+	const dateFilter = buildDateFilter(startDate, endDate);
 
 	const visits = await sdb.job_visit.findMany({
 		where: {
@@ -815,17 +836,7 @@ export const getTimesheetReport = async (
 ): Promise<TimesheetReportRow[]> => {
 	const sdb = getScopedDb(organizationId);
 
-	const dateFilter: { gte?: Date; lte?: Date } = {};
-	if (startDate) {
-		const s = new Date(startDate);
-		s.setUTCHours(0, 0, 0, 0);
-		dateFilter.gte = s;
-	}
-	if (endDate) {
-		const e = new Date(endDate);
-		e.setUTCHours(23, 59, 59, 999);
-		dateFilter.lte = e;
-	}
+	const dateFilter = buildDateFilter(startDate, endDate);
 
 	const shifts = await sdb.technician_shift.findMany({
 		where: {
@@ -1407,21 +1418,6 @@ export const getAgedReceivablesByClient = async (organizationId: string) => {
 		total: round2(r.total),
 		count: r.count,
 	}));
-};
-
-const buildDateFilter = (startDate?: string, endDate?: string) => {
-	const filter: { gte?: Date; lte?: Date } = {};
-	if (startDate) {
-		const s = new Date(startDate);
-		s.setUTCHours(0, 0, 0, 0);
-		filter.gte = s;
-	}
-	if (endDate) {
-		const e = new Date(endDate);
-		e.setUTCHours(23, 59, 59, 999);
-		filter.lte = e;
-	}
-	return filter;
 };
 
 export interface TaxLiabilityRow {
