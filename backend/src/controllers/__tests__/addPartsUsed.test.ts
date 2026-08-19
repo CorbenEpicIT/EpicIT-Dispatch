@@ -166,6 +166,34 @@ describe("addPartsUsed", () => {
 		);
 	});
 
+	it("accepts a fractional qty_used (12.5 ft) — vehicle stock is numeric(10,2)", async () => {
+		makeSdb();
+
+		const result = await addPartsUsed(
+			VISIT_ID,
+			{ stock_item_id: STOCK_ITEM_ID, qty_used: 12.5, technician_id: TECH_ID },
+			ORG_ID,
+		);
+
+		expect(result.err).toBe("");
+		expect(movementsFromLastCall()).toEqual([expect.objectContaining({ qty: 12.5 })]);
+	});
+
+	it("rejects a qty_used the numeric(10,2) ledger cannot store, before opening a transaction", async () => {
+		const sdb = makeSdb();
+
+		const result = await addPartsUsed(
+			VISIT_ID,
+			{ stock_item_id: STOCK_ITEM_ID, qty_used: 1.234, technician_id: TECH_ID },
+			ORG_ID,
+		);
+
+		expect(result.err).toMatch(/Validation failed/);
+		expect(result.err).toMatch(/decimal places/);
+		expect(sdb.$transaction).not.toHaveBeenCalled();
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
 	// ── Serialized item ────────────────────────────────────────────────────────
 
 	it("passes serial_unit_ids through to the movement for a serialized item", async () => {

@@ -365,15 +365,15 @@ const updateVehicleSchema = createVehicleSchema.partial();
 
 const addStockItemSchema = z.object({
 	inventory_item_id: z.string().uuid(),
-	qty_on_hand:       z.number().min(0).default(0),
-	qty_min:           z.number().min(0).default(0),
-	qty_standard:      z.number().min(0).nullable().optional(),
+	qty_on_hand:       stockQtyField(z.number().min(0)).default(0),
+	qty_min:           stockQtyField(z.number().min(0)).default(0),
+	qty_standard:      stockQtyField(z.number().min(0)).nullable().optional(),
 });
 
 const updateStockItemSchema = z.object({
-	qty_on_hand:  z.number().min(0).optional(),
-	qty_min:      z.number().min(0).optional(),
-	qty_standard: z.number().min(0).nullable().optional(),
+	qty_on_hand:  stockQtyField(z.number().min(0)).optional(),
+	qty_min:      stockQtyField(z.number().min(0)).optional(),
+	qty_standard: stockQtyField(z.number().min(0)).nullable().optional(),
 });
 
 const restockRequestSchema = z.object({
@@ -394,7 +394,7 @@ const completeRestockSchema = z.object({
 				// through untracked (allowUntracked) and records a gap instead of blocking.
 				serial_unit_ids: z.array(z.string().uuid()).optional(),
 				batch_picks:     z
-					.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
+					.array(z.object({ batch_id: z.string().uuid(), qty: stockQtyField(z.number().positive()) }))
 					.optional(),
 			}),
 		)
@@ -422,14 +422,14 @@ const adjustStockSchema = z
 						stock_item_id:     z.string().uuid().optional(),
 						inventory_item_id: z.string().uuid().optional(),
 						new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
-						qty_after:         z.number().min(0),
+						qty_after:         stockQtyField(z.number().min(0)),
 						// Serial/batch tracking (B-T3) — which fields apply depends on the
 						// resolved item's is_serialized/is_batch_tracked flags, which Zod
 						// can't see; the controller validates that once the item is loaded.
 						serial_unit_ids: z.array(z.string().uuid()).optional(),
 						new_serials:     z.array(z.string().trim().min(1).max(100)).optional(),
 						batch_picks:     z
-							.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
+							.array(z.object({ batch_id: z.string().uuid(), qty: stockQtyField(z.number().positive()) }))
 							.optional(),
 						// Per-unit cost paid — only meaningful on a supplier_purchase
 						// line (a tech buying a part in the field). Recorded on the
@@ -468,19 +468,10 @@ const adjustStockSchema = z
 			),
 	})
 	.superRefine((data, ctx) => {
-		// Warehouse quantity is an Int column — fractional targets would produce
-		// fractional warehouse movements, which the ledger rejects
-		if (data.type === "warehouse_exchange") {
-			data.lines.forEach((line, i) => {
-				if (!Number.isInteger(line.qty_after)) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						path: ["lines", i, "qty_after"],
-						message: "Warehouse exchange requires whole-number quantities",
-					});
-				}
-			});
-		} else if (data.type === "supplier_purchase") {
+		// No whole-number rule for warehouse_exchange: inventory_item.quantity is
+		// numeric(10,2) like every other qty column, so a fractional target is a
+		// perfectly storable warehouse movement (qty_after above bounds it to 2 dp).
+		if (data.type === "supplier_purchase") {
 			// supplier_purchase lines must carry inventory_item_id OR new_item
 			// (not stock_item_id), and must have an integer qty > 0
 			data.lines.forEach((line, i) => {
@@ -499,7 +490,7 @@ const adjustStockSchema = z
 					});
 				}
 			});
-		} else {
+		} else if (data.type !== "warehouse_exchange") {
 			// Adding a new item from the catalog is only meaningful when stock
 			// moves to/from the warehouse — reject it for every other type
 			data.lines.forEach((line, i) => {
@@ -1255,7 +1246,7 @@ export const setTechnicianVehicle = async (technicianId: string, vehicleId: stri
 
 const addPartsUsedSchema = z.object({
 	stock_item_id:   z.string().uuid(),
-	qty_used:        z.number().positive(),
+	qty_used:        stockQtyField(z.number().positive()),
 	technician_id:   z.string().uuid(),
 	serial_unit_ids: z.array(z.string().uuid()).optional(),
 	batch_id:        z.string().uuid().optional(),
@@ -1669,7 +1660,7 @@ const applyFillSchema = z.object({
 				// Serial/batch tracking (B-T4) — see completeRestockSchema comment above.
 				serial_unit_ids: z.array(z.string().uuid()).optional(),
 				batch_picks:     z
-					.array(z.object({ batch_id: z.string().uuid(), qty: z.number().positive() }))
+					.array(z.object({ batch_id: z.string().uuid(), qty: stockQtyField(z.number().positive()) }))
 					.optional(),
 			}),
 		)
@@ -3295,7 +3286,7 @@ export async function getStockConflicts(orgId: string, scopeVehicleId?: string):
 const supplierPartUsedSchema = z
 	.object({
 		technician_id:     z.string().uuid(),
-		qty_used:          z.number().positive(),
+		qty_used:          stockQtyField(z.number().positive()),
 		inventory_item_id: z.string().uuid().optional(),
 		new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
 		// What the tech paid the supplier per unit for this part. Recorded on the
