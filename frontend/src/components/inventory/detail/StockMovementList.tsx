@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import {
 	ArrowDownToLine,
 	ArrowLeftRight,
@@ -103,14 +103,16 @@ function MovementRow({ m }: { m: StockMovement }) {
 	);
 }
 
-// Cursor-paginated stock-movement ledger for a single item. Accumulates pages
-// into `rows` as the user hits "Load more" — the same append-on-cursor pattern
-// as the Tracking tab's SerialsTable. keepPreviousData (in the hook) keeps the
-// visible list stable while the next page loads.
+// Cursor-paginated stock-movement ledger for a single item. The pages live in
+// the infinite query (hook), so "Load more" is fetchNextPage and the rows are
+// a flatMap over what the cache holds — nothing is accumulated in component
+// state, so a page can't be appended twice and a cursor can't outlive the
+// result set it came from. keepPreviousData (in the hook) keeps the visible
+// list stable while a new range's first page loads.
 //
 // Range is a SERVER-side filter (`created_after`, from the tab-level control),
 // so it applies to the whole ledger, not just pages already fetched. Changing
-// it resets pagination, since the cursor belongs to the old result set.
+// it is a new query key, which is what resets pagination.
 export default function StockMovementList({
 	itemId,
 	createdAfter,
@@ -118,23 +120,13 @@ export default function StockMovementList({
 	itemId: string;
 	createdAfter?: string;
 }) {
-	const [cursor, setCursor] = useState<string | undefined>(undefined);
-	const [rows, setRows] = useState<StockMovement[]>([]);
-	const { data, isLoading, isFetching } = useInventoryMovementsQuery(itemId, cursor, {
-		createdAfter,
-	});
+	const { data, isLoading, isFetching, hasNextPage, fetchNextPage } =
+		useInventoryMovementsQuery(itemId, { createdAfter });
 
-	// A new range is a new result set: drop the accumulated pages and the cursor
-	// rather than appending rows from a different query onto them.
-	useEffect(() => {
-		setCursor(undefined);
-		setRows([]);
-	}, [createdAfter, itemId]);
-
-	useEffect(() => {
-		if (!data) return;
-		setRows((prev) => (cursor ? [...prev, ...data.movements] : data.movements));
-	}, [data, cursor]);
+	const rows: StockMovement[] = useMemo(
+		() => data?.pages.flatMap((p) => p.movements) ?? [],
+		[data],
+	);
 
 	const isFirstLoad = isLoading && rows.length === 0;
 
@@ -181,11 +173,11 @@ export default function StockMovementList({
 				</ol>
 			)}
 
-			{data?.nextCursor && (
+			{hasNextPage && (
 				<div className="px-3 py-3 flex justify-center border-t border-border-subtle">
 					<button
 						type="button"
-						onClick={() => setCursor(data.nextCursor ?? undefined)}
+						onClick={() => fetchNextPage()}
 						disabled={isFetching}
 						className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors disabled:opacity-50"
 					>

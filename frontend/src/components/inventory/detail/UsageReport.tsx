@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Briefcase, ClipboardList, User } from "lucide-react";
 import { useItemUsageQuery } from "../../../hooks/useInventory";
@@ -11,24 +11,21 @@ import LoadSvg from "../../../assets/icons/loading.svg?react";
 const PAGE_SIZE = 20;
 
 // Offset-paginated (see usageQuerySchema on the backend — these are GROUP BY
-// aggregate rows, not raw ledger rows with a stable cursor id). Accumulates
-// pages into `rows` the same append-on-page pattern StockMovementList uses
-// for its cursor, just keyed on offset instead. Rows mirror that component's
-// two-line shape rather than BatchDetailPage's four-column grid: the two cards
-// sit side by side at half width each, where a 600px column floor would have
-// forced a nested horizontal scrollbar.
+// aggregate rows, not raw ledger rows with a stable cursor id). Pages live in
+// the infinite query, same as StockMovementList, so "Load more" can't append
+// a page twice. Rows mirror that component's two-line shape rather than
+// BatchDetailPage's four-column grid: the two cards sit side by side at half
+// width each, where a 600px column floor would have forced a nested
+// horizontal scrollbar.
 export default function UsageReport({ itemId }: { itemId: string }) {
-	const [offset, setOffset] = useState(0);
-	const [rows, setRows] = useState<ItemUsageRow[]>([]);
-	const { data, isLoading, isFetching } = useItemUsageQuery(itemId, {
+	const { data, isLoading, isFetching, hasNextPage, fetchNextPage } = useItemUsageQuery(itemId, {
 		limit: PAGE_SIZE,
-		offset,
 	});
 
-	useEffect(() => {
-		if (!data) return;
-		setRows((prev) => (offset > 0 ? [...prev, ...data.usage] : data.usage));
-	}, [data, offset]);
+	const rows: ItemUsageRow[] = useMemo(
+		() => data?.pages.flatMap((p) => p.usage) ?? [],
+		[data],
+	);
 
 	const isFirstLoad = isLoading && rows.length === 0;
 
@@ -111,11 +108,11 @@ export default function UsageReport({ itemId }: { itemId: string }) {
 				</div>
 			)}
 
-			{data?.hasMore && (
+			{hasNextPage && (
 				<div className="pt-3 flex justify-center">
 					<button
 						type="button"
-						onClick={() => setOffset((o) => o + PAGE_SIZE)}
+						onClick={() => fetchNextPage()}
 						disabled={isFetching}
 						className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors disabled:opacity-50"
 					>
