@@ -14,6 +14,7 @@ import Card from "../../components/ui/Card"
 import EditProjectModal from "../../components/projects/EditProjectModal"
 import AttachJobModal from "../../components/projects/AttachJobModal";
 import ChangeHistory from "../../components/activity/ChangeHistory";
+import { useToast } from "../../components/ui/useToast";
 
 export default function ProjectDetailPage() {
     const { projectId } = useParams<{ projectId: string }>();
@@ -30,6 +31,7 @@ export default function ProjectDetailPage() {
     const [pendingDetachJobId, setPendingDetachJobId] = useState<string | null>(null);
     const [detachError, setDetachError] = useState<string | null>(null);
     const optionsMenuRef = useRef<HTMLDivElement>(null);
+    const toast = useToast();
 
     // permissions
     const EDIT_PROJECTS = usePermission("edit_projects");
@@ -83,7 +85,8 @@ export default function ProjectDetailPage() {
             setIsOptionsMenuOpen(false);
             navigate("/dispatch/projects");
         } catch (error) {
-            console.error("Failed to delete project:", error);
+            setDeleteConfirm(false);
+            toast.error(error instanceof Error ? error.message : "Failed to delete project");
         }
     };
 

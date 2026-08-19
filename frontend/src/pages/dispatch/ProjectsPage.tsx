@@ -1,16 +1,15 @@
-import { lazy, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProjectsQuery, useCreateProjectMutation } from "../../hooks/useProjects";
 import { useClientByIdQuery } from "../../hooks/useClients";
 import PageReportSection from "../../components/reports/PageReportSection";
-//const PageReportSection = lazy(()=> import ("../../components/reports/PageReportSection"))
 import StatusFilter from "../../components/ui/StatusFilter";
 import SortControl from "../../components/ui/SortControl";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import SearchBar from "../../components/ui/SearchBar";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
-import { Plus, Briefcase, Badge, } from "lucide-react";
+import { Plus, Briefcase } from "lucide-react";
 import PageControls from "../../components/ui/PageControls";
 import FilterChips from "../../components/ui/FilterChips";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
@@ -71,11 +70,11 @@ export default function ProjectsPage() {
     const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
     const { removeTerm: removeStatus } = useMultiSearch("status");
     const { removeTerm: removePriority } = useMultiSearch("priority");
-    const termsKey = terms.join("");
+    // Terms can contain any character, so a delimiter-free join could collide; JSON is unambiguous.
+    const termsKey = JSON.stringify(terms);
 
     const queryParams = new URLSearchParams(location.search);
     const clientFilter = queryParams.get("client");
-	const requestFilter = queryParams.get("request");
 	const statusFilter = queryParams.getAll("status");
 	const statusKey = statusFilter.join(",");
 	const priorityFilter = queryParams.getAll("priority");
@@ -197,7 +196,7 @@ export default function ProjectsPage() {
                     targetEnd: p.target_end_at ? formatDateOnly(p.target_end_at) : "—",
                     _name: p.name, _actual: actual, _budget: budget, _variance: variance,
             })});
-    }, [projects, termsKey, clientFilter, requestFilter, statusKey, priorityKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam, searchInput, targetDateParamKey, targetDateParamFrom, targetDateParamTo]);
+    }, [projects, termsKey, clientFilter, statusKey, priorityKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam, searchInput, targetDateParamKey, targetDateParamFrom, targetDateParamTo]);
 
     const removeFilter = (filterType: "client" | "request") => {
 		const newParams = new URLSearchParams(location.search);
@@ -223,6 +222,9 @@ export default function ProjectsPage() {
 		next.delete("date");
 		next.delete("dateFrom");
 		next.delete("dateTo");
+		next.delete("targetDate");
+		next.delete("targetDateFrom");
+		next.delete("targetDateTo");
 		next.delete("sort");
 		next.delete("dir");
 		navigate(`/dispatch/projects${next.toString() ? `?${next.toString()}` : ""}`);
@@ -265,7 +267,7 @@ export default function ProjectsPage() {
                                 { value: "date", label: "Date" },
                                 { value: "targetDate", label: "Target Date"},
                             ]}
-                            defaultDirByField={{ priority: "desc", status: "asc", date: "desc" }}
+                            defaultDirByField={{ priority: "desc", status: "asc", date: "desc", targetDate: "asc" }}
                         />
                     </div>
                 }
