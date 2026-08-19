@@ -620,6 +620,50 @@ describe("unit of measure", () => {
 	});
 });
 
+// The detail page passes the LIVE query result as existingItem, so any refetch
+// (tracking flip onSuccess, socket inventory:updated, signed image URLs
+// rotating) hands the form a new object for the same item. Seeding must key on
+// open + item id, not object identity, or it wipes in-progress edits (review U8).
+describe("edit — form seeding", () => {
+	it("keeps in-progress edits when the item is refetched as a new object with the same id", async () => {
+		const { rerender } = render(
+			<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={makeItem()} />,
+		);
+		const nameInput = screen.getByPlaceholderText("Item Name");
+		expect(nameInput).toHaveValue("Widget");
+
+		await userEvent.clear(nameInput);
+		await userEvent.type(nameInput, "Widget Renamed");
+
+		// Same content, new identity (updated_at bumped by a refetch).
+		rerender(
+			<CreateInventoryItem
+				isOpen
+				onClose={vi.fn()}
+				existingItem={makeItem({ updated_at: "2026-01-01T00:00:01.000Z" })}
+			/>,
+		);
+		expect(screen.getByPlaceholderText("Item Name")).toHaveValue("Widget Renamed");
+	});
+
+	it("re-seeds when the drawer is pointed at a different item", async () => {
+		const { rerender } = render(
+			<CreateInventoryItem isOpen onClose={vi.fn()} existingItem={makeItem()} />,
+		);
+		await userEvent.type(screen.getByPlaceholderText("Item Name"), " X");
+		expect(screen.getByPlaceholderText("Item Name")).toHaveValue("Widget X");
+
+		rerender(
+			<CreateInventoryItem
+				isOpen
+				onClose={vi.fn()}
+				existingItem={makeItem({ id: "item-2", name: "Gadget" })}
+			/>,
+		);
+		expect(screen.getByPlaceholderText("Item Name")).toHaveValue("Gadget");
+	});
+});
+
 // Covers the form reflecting PATCH /inventory/:id/tracking's gate accurately
 // before the user saves, rather than unlocking toggles the server will reject.
 describe("edit — tracking gate and callout", () => {

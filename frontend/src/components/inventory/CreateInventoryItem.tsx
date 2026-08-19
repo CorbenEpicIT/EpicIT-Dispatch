@@ -392,7 +392,16 @@ export default function CreateInventoryItem({
 		pruneVisited((s) => s <= currentStepRef.current);
 	}, [showCaptureStep, pruneVisited]);
 
+	// Seed the form from the item ONCE per open (or when the drawer is pointed at
+	// a different item) — not on every new object identity. The detail page
+	// passes the live query result, which is a fresh object on every refetch
+	// (tracking flip, socket update, even presigned image URLs rotating), and
+	// re-seeding on identity wiped whatever the user had typed mid-edit.
+	const existingItemRef = useRef(existingItem);
+	existingItemRef.current = existingItem;
+	const existingItemId = existingItem?.id;
 	useEffect(() => {
+		const existingItem = existingItemRef.current;
 		if (isOpen && existingItem) {
 			setName(existingItem.name);
 			setSku(existingItem.sku || "");
@@ -425,7 +434,7 @@ export default function CreateInventoryItem({
 			setIsSerialized(existingItem.is_serialized);
 			setIsBatchTracked(existingItem.is_batch_tracked);
 		}
-	}, [isOpen, existingItem]);
+	}, [isOpen, existingItemId]);
 
 	useEffect(() => {
 		if (isOpen && !existingItem && prefillBarcode) {
