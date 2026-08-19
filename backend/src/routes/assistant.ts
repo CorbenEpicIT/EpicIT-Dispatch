@@ -1,5 +1,11 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
+// SIDE-EFFECT IMPORT, load-bearing. Tools call defineTool() at module load, and
+// importing agent/registry.js alone does not pull them in — so without this the
+// registry is empty here, /assistant/status reports enabled:false, and the panel
+// hides itself with nothing anywhere saying why. Verified by
+// routes/__tests__/assistantCatalog.test.ts.
+import "../agent/index.js";
 import { buildAgentContext } from "../agent/context.js";
 import { executeTool } from "../agent/execute.js";
 import { getTool } from "../agent/registry.js";

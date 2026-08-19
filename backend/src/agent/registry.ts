@@ -68,6 +68,17 @@ export function describeTools(options: {
 	allowWrites: boolean;
 	allowDestructive: boolean;
 }): Array<{ name: string; title: string; description: string; risk: RiskClass; inputSchema: Record<string, unknown> }> {
+	// An empty registry is a wiring mistake, never a legitimate state: tools
+	// register by side-effect import, so a consumer that pulled in this module
+	// without `agent/index.js` sees a catalog that is silently empty. That failure
+	// looks exactly like "this user has no permissions", which is how it survives
+	// review. Make it loud instead.
+	if (registry.size === 0) {
+		throw new Error(
+			"The agent tool registry is empty. Import \"agent/index.js\" for its side effect before describing tools.",
+		);
+	}
+
 	const held = new Set(options.permissions);
 	return listTools()
 		.filter((tool) => {
