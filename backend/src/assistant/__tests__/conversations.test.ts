@@ -101,6 +101,51 @@ describe("toTranscript", () => {
 		expect(JSON.parse((transcript[1] as { content: string }).content)).toMatchObject({ ok: false });
 	});
 
+	describe("calls awaiting or refused a decision", () => {
+		// Every tool_call needs a matching tool message or the API rejects the whole
+		// request — so an undecided call still gets one, saying plainly that it did
+		// not run.
+		it("tells the model an undecided call has NOT run", () => {
+			const transcript = toTranscript([
+				message({ role: "assistant", content: "", tool_calls: [call({ status: "pending_approval", result: null })] as never }),
+			]);
+			const body = JSON.parse((transcript[1] as { content: string }).content);
+			expect(body).toMatchObject({ ok: false, error: { code: "APPROVAL_PENDING" } });
+			expect(body.error.message).toMatch(/not run/i);
+			expect(body.error.message).toMatch(/do not report it as done/i);
+		});
+
+		it("tells the model a refused call was declined and not to retry", () => {
+			const transcript = toTranscript([
+				message({ role: "assistant", content: "", tool_calls: [call({ status: "rejected", result: null })] as never }),
+			]);
+			const body = JSON.parse((transcript[1] as { content: string }).content);
+			expect(body.error.code).toBe("REJECTED");
+			expect(body.error.message).toMatch(/do not retry/i);
+		});
+
+		it("tells the model a lapsed call was cancelled", () => {
+			const transcript = toTranscript([
+				message({ role: "assistant", content: "", tool_calls: [call({ status: "expired", result: null })] as never }),
+			]);
+			expect(JSON.parse((transcript[1] as { content: string }).content).error.code).toBe("EXPIRED");
+		});
+
+		it("still emits one tool message per undecided call", () => {
+			const transcript = toTranscript([
+				message({
+					role: "assistant",
+					content: "",
+					tool_calls: [
+						call({ provider_call_id: "a", status: "pending_approval", result: null }),
+						call({ provider_call_id: "b", status: "ok" }),
+					] as never,
+				}),
+			]);
+			expect(transcript.map((m) => m.role)).toEqual(["assistant", "tool", "tool"]);
+		});
+	});
+
 	it("preserves a failed call so the model does not retry it blindly", () => {
 		const transcript = toTranscript([
 			message({

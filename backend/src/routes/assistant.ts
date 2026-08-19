@@ -1,13 +1,16 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { buildAgentContext } from "../agent/context.js";
-import { READ_ONLY_POLICY } from "../agent/policy.js";
+import { executeTool } from "../agent/execute.js";
+import { getTool } from "../agent/registry.js";
+import { READ_ONLY_POLICY, WRITE_POLICY } from "../agent/policy.js";
 import { describeTools } from "../agent/registry.js";
 import type { AgentContext } from "../agent/types.js";
 import { getScopedDb } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
 import {
+	areWritesEnabled,
 	ASSISTANT_MODEL,
 	assistantUnavailableReason,
 	isAssistantEnabled,
@@ -20,13 +23,18 @@ import {
 	createConversation,
 	deriveTitle,
 	getConversation,
+	getPendingApproval,
 	listConversations,
+	listPendingApprovals,
 	loadMessages,
 	renameConversation,
+	resolveToolCall,
+	TOOL_CALL_STATUS,
 } from "../assistant/conversations.js";
 import { openEventStream } from "../assistant/events.js";
-import { runTurn } from "../assistant/loop.js";
+import { resumeTurn, runTurn } from "../assistant/loop.js";
 import { AssistantNotConfiguredError } from "../assistant/openaiClient.js";
+import { describeToolCall, summariseToolResult } from "../assistant/toolBridge.js";
 
 const router = Router();
 
@@ -50,6 +58,15 @@ async function agentContextFrom(req: Request): Promise<AgentContext> {
 		{ ipAddress: req.ip, userAgent: req.headers["user-agent"] },
 	);
 }
+
+/**
+ * The policy every route here runs under.
+ *
+ * One function so a route cannot accidentally construct a more permissive
+ * policy than the one `/status` advertised — the panel decides what to show a
+ * person from that response.
+ */
+const activePolicy = () => (areWritesEnabled() ? WRITE_POLICY : READ_ONLY_POLICY);
 
 /** The org's IANA zone, so the model reasons about "today" in the right one. */
 async function orgTimezone(organizationId: string): Promise<string> {
@@ -95,10 +112,11 @@ const releaseStream = (userId: string): void => {
 router.get("/status", async (req, res, next) => {
 	try {
 		const ctx = await agentContextFrom(req);
+		const policy = activePolicy();
 		const tools = describeTools({
 			permissions: ctx.permissions,
-			allowWrites: READ_ONLY_POLICY.allowWrites,
-			allowDestructive: READ_ONLY_POLICY.allowDestructive,
+			allowWrites: policy.allowWrites,
+			allowDestructive: policy.allowDestructive,
 		});
 
 		res.json(
@@ -110,7 +128,7 @@ router.get("/status", async (req, res, next) => {
 						? "Your permissions do not reach anything the assistant can look up."
 						: null,
 				model: isAssistantEnabled() ? ASSISTANT_MODEL : null,
-				readOnly: !READ_ONLY_POLICY.allowWrites,
+				readOnly: !policy.allowWrites,
 				toolCount: tools.length,
 				tools: tools.map((t) => ({ name: t.name, title: t.title })),
 			}),
@@ -221,10 +239,11 @@ router.post("/stream", async (req, res, next) => {
 		return next(err);
 	}
 
+	const policy = activePolicy();
 	const tools = describeTools({
 		permissions: ctx.permissions,
-		allowWrites: READ_ONLY_POLICY.allowWrites,
-		allowDestructive: READ_ONLY_POLICY.allowDestructive,
+		allowWrites: policy.allowWrites,
+		allowDestructive: policy.allowDestructive,
 	});
 	if (!tools.length) {
 		return res
@@ -274,7 +293,7 @@ router.post("/stream", async (req, res, next) => {
 
 		await runTurn({
 			ctx,
-			policy: READ_ONLY_POLICY,
+			policy,
 			timezone,
 			conversationId,
 			userMessage: parsed.data.message,
@@ -297,6 +316,221 @@ router.post("/stream", async (req, res, next) => {
 				code: "SERVER_ERROR",
 				message: "Something went wrong reaching the assistant. Try again.",
 			});
+		}
+	} finally {
+		clearTimeout(timeout);
+		releaseStream(ctx.userId);
+		sink.close();
+	}
+});
+
+// ── Approvals ───────────────────────────────────────────────────────────────
+
+const approvalSchema = z.object({ decision: z.enum(["approve", "reject"]) });
+
+/**
+ * GET /assistant/conversations/:id/approvals
+ *
+ * What is still waiting on this person. The panel calls it on open so a pending
+ * action survives a page refresh — an approval that vanishes when a tab reloads
+ * is one that gets forgotten, and forgotten work is the thing dispatch software
+ * exists to prevent.
+ */
+router.get("/conversations/:id/approvals", async (req, res, next) => {
+	try {
+		const ctx = await agentContextFrom(req);
+		const conversationId = req.params.id as string;
+		await getConversation(ctx, conversationId);
+
+		const pending = await listPendingApprovals(ctx, conversationId);
+		res.json(
+			createSuccessResponse(
+				pending.map((call) => ({
+					approvalId: call.id,
+					id: call.provider_call_id,
+					name: call.tool_name,
+					title: getTool(call.tool_name)?.title ?? call.tool_name,
+					summary: describeToolCall(call.tool_name, call.input),
+					input: call.input,
+				})),
+				{ count: pending.length },
+			),
+		);
+	} catch (err) {
+		if (err instanceof ConversationAccessError) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "No such conversation"));
+		}
+		next(err);
+	}
+});
+
+/**
+ * POST /assistant/approvals/:id
+ *
+ * Decide one pending call, then resume the turn on the same response.
+ *
+ * The decision is recorded before anything runs, and the transcript is rebuilt
+ * from the database rather than from memory — so a decision made after a refresh,
+ * or from a second tab, resumes correctly. Once every pending call in the
+ * conversation is decided, the model continues; until then the stream just
+ * confirms this one and closes.
+ */
+router.post("/approvals/:id", async (req, res, next) => {
+	if (!isAssistantEnabled()) {
+		return res
+			.status(503)
+			.json(createErrorResponse(ErrorCodes.SERVER_ERROR, assistantUnavailableReason() ?? "Assistant unavailable"));
+	}
+
+	const parsed = approvalSchema.safeParse(req.body);
+	if (!parsed.success) {
+		return res
+			.status(400)
+			.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "decision must be \"approve\" or \"reject\""));
+	}
+
+	let ctx: AgentContext;
+	try {
+		ctx = await agentContextFrom(req);
+	} catch (err) {
+		return next(err);
+	}
+
+	const approvalId = req.params.id as string;
+
+	// Resolve and validate before opening a stream, so a bad request still gets a
+	// normal JSON error rather than an error event nobody is listening for.
+	let pending: Awaited<ReturnType<typeof getPendingApproval>>;
+	try {
+		pending = await getPendingApproval(ctx, approvalId);
+	} catch (err) {
+		if (err instanceof ConversationAccessError) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "No such pending action"));
+		}
+		return next(err);
+	}
+
+	if (pending.status !== TOOL_CALL_STATUS.PENDING) {
+		return res
+			.status(409)
+			.json(
+				createErrorResponse(
+					ErrorCodes.CONFLICT,
+					`That action was already ${pending.status === TOOL_CALL_STATUS.EXPIRED ? "cancelled" : "decided"}.`,
+				),
+			);
+	}
+
+	if (!acquireStream(ctx.userId)) {
+		return res
+			.status(429)
+			.json(
+				createErrorResponse(
+					ErrorCodes.TOO_MANY_REQUESTS,
+					"You already have the maximum number of assistant replies in flight. Wait for one to finish.",
+				),
+			);
+	}
+
+	const sink = openEventStream(res);
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), TURN_TIMEOUT_MS);
+	req.on("close", () => controller.abort());
+
+	try {
+		const conversationId = pending.message.conversation.id;
+		const approved = parsed.data.decision === "approve";
+
+		if (approved) {
+			const tool = getTool(pending.tool_name);
+			if (!tool) {
+				// The catalog changed under a pending approval. Refusing is the only
+				// safe reading — running a differently-named tool is not what anyone agreed to.
+				await resolveToolCall(ctx, approvalId, {
+					status: TOOL_CALL_STATUS.ERROR,
+					result: { ok: false, error: { code: "UNKNOWN_TOOL", message: "That action no longer exists." } },
+					errorCode: "UNKNOWN_TOOL",
+				});
+				sink.send({ type: "error", code: "UNKNOWN_TOOL", message: "That action no longer exists." });
+			} else {
+				const started = Date.now();
+				const result = await executeTool(pending.tool_name, pending.input, ctx, activePolicy(), {
+					approved: true,
+				});
+				const durationMs = Date.now() - started;
+
+				await resolveToolCall(ctx, approvalId, {
+					status: result.ok ? TOOL_CALL_STATUS.OK : TOOL_CALL_STATUS.ERROR,
+					result,
+					errorCode: result.ok ? null : result.error.code,
+					durationMs,
+				});
+
+				sink.send({ type: "approval_resolved", approvalId, id: pending.provider_call_id, approved: true });
+				if (result.ok) {
+					sink.send({
+						type: "tool_result",
+						id: pending.provider_call_id,
+						ok: true,
+						summary: summariseToolResult(pending.tool_name, pending.input, result.data),
+						durationMs,
+					});
+					if (result.meta?.invalidates?.length) {
+						sink.send({ type: "invalidate", keys: result.meta.invalidates });
+					}
+				} else {
+					sink.send({
+						type: "tool_result",
+						id: pending.provider_call_id,
+						ok: false,
+						summary: `${pending.tool_name} failed`,
+						errorCode: result.error.code,
+						errorMessage: result.error.message,
+						durationMs,
+					});
+				}
+			}
+		} else {
+			await resolveToolCall(ctx, approvalId, {
+				status: TOOL_CALL_STATUS.REJECTED,
+				result: { ok: false, error: { code: "REJECTED", message: "The person declined this action." } },
+				errorCode: "REJECTED",
+			});
+			sink.send({ type: "approval_resolved", approvalId, id: pending.provider_call_id, approved: false });
+			sink.send({
+				type: "tool_result",
+				id: pending.provider_call_id,
+				ok: false,
+				summary: "Declined",
+				errorCode: "REJECTED",
+				errorMessage: "You declined this action.",
+				durationMs: 0,
+			});
+		}
+
+		// Only continue once nothing else in this conversation is waiting — a turn
+		// resumed with a call still undecided would ask the model to reason about
+		// an action whose outcome nobody has chosen.
+		const stillPending = await listPendingApprovals(ctx, conversationId);
+		if (stillPending.length) {
+			sink.send({ type: "done", messageId: null, usage: null });
+		} else {
+			const timezone = await orgTimezone(ctx.organizationId);
+			await resumeTurn({
+				ctx,
+				policy: activePolicy(),
+				timezone,
+				conversationId,
+				emit: (event) => sink.send(event),
+				signal: controller.signal,
+			});
+		}
+	} catch (err) {
+		if (controller.signal.aborted) {
+			log.info({ evt: "assistant.approval_aborted", org: ctx.organizationId }, "Approval resume aborted");
+		} else {
+			log.error({ err, evt: "assistant.approval_failed", org: ctx.organizationId }, "Approval failed");
+			sink.send({ type: "error", code: "SERVER_ERROR", message: "Something went wrong applying that decision." });
 		}
 	} finally {
 		clearTimeout(timeout);

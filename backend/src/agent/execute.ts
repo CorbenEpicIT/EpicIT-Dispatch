@@ -25,6 +25,15 @@ import { log } from "../services/appLogger.js";
 import { recordToolCall } from "./audit.js";
 import { READ_ONLY_POLICY } from "./policy.js";
 import { getTool } from "./registry.js";
+import type { AnyToolDefinition } from "./types.js";
+
+/**
+ * Whether this tool needs a human to say yes first. Destructive by default;
+ * a tool may opt in explicitly (scheduling writes do) but never out.
+ */
+export function toolRequiresApproval(tool: AnyToolDefinition): boolean {
+	return tool.requiresApproval ?? tool.risk === "destructive";
+}
 import {
 	AgentErrorCodes,
 	AgentToolError,
@@ -113,23 +122,28 @@ export async function executeTool(
 	if (tool.risk === "destructive" && !policy.allowDestructive) {
 		return settle(fail(AgentErrorCodes.POLICY_DENIED, `"${name}" is irreversible and this session does not permit it`));
 	}
-	if (tool.risk === "destructive" && !options.approved) {
-		return settle(
-			fail(
-				AgentErrorCodes.APPROVAL_REQUIRED,
-				`"${name}" is irreversible and needs explicit human approval before it runs`,
-			),
-		);
-	}
 
 	// ANY-OF, matching requireAnyPermission. ctx.permissions is already the
 	// ceiling-intersected set — see policy.resolveAgentPermissions.
+	//
+	// Checked BEFORE approval on purpose: asking a person to approve an action
+	// that will then be refused wastes their attention and teaches them that
+	// approval prompts are noise.
 	const held = new Set(ctx.permissions);
 	if (!tool.permissions.some((p) => held.has(p))) {
 		return settle(
 			fail(
 				AgentErrorCodes.FORBIDDEN,
 				`Not permitted. "${name}" needs one of: ${tool.permissions.join(", ")}`,
+			),
+		);
+	}
+
+	if (toolRequiresApproval(tool) && !options.approved) {
+		return settle(
+			fail(
+				AgentErrorCodes.APPROVAL_REQUIRED,
+				`"${name}" changes live data and needs explicit human approval before it runs`,
 			),
 		);
 	}

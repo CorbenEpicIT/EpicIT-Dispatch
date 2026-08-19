@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronRight, Loader2, TriangleAlert } from "lucide-react";
+import { Ban, Check, ChevronRight, Loader2, TriangleAlert } from "lucide-react";
 import type { UiToolCall } from "../../types/assistant";
 
 /**
@@ -14,6 +14,7 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
 
 	const label = call.summary ?? humanise(call.name);
 	const failed = call.state === "error";
+	const declined = call.state === "declined";
 
 	return (
 		<div
@@ -30,13 +31,17 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
 				<span className="shrink-0">
 					{call.state === "running" ? (
 						<Loader2 size={13} className="animate-spin text-text-muted" />
+					) : declined ? (
+						<Ban size={13} className="text-text-muted" />
 					) : failed ? (
 						<TriangleAlert size={13} className="text-error-text" />
 					) : (
 						<Check size={13} className="text-success-text" />
 					)}
 				</span>
-				<span className={`flex-1 truncate ${failed ? "text-error-text" : "text-text-secondary"}`}>{label}</span>
+				<span className={`flex-1 truncate ${failed ? "text-error-text" : "text-text-secondary"}`}>
+					{declined ? `Declined — ${label}` : label}
+				</span>
 				{call.durationMs !== undefined && (
 					<span className="shrink-0 tabular-nums text-faint">{formatDuration(call.durationMs)}</span>
 				)}

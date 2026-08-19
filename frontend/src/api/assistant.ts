@@ -14,7 +14,13 @@
  */
 
 import { api } from "./axiosClient";
-import type { AssistantConversation, AssistantEvent, AssistantStatus, StoredMessage } from "../types/assistant";
+import type {
+	AssistantConversation,
+	AssistantEvent,
+	AssistantStatus,
+	PendingApproval,
+	StoredMessage,
+} from "../types/assistant";
 
 const BASE_URL: string = import.meta.env.VITE_BACKEND_URL;
 
@@ -42,6 +48,12 @@ export const renameConversation = async (id: string, title: string): Promise<Ass
 
 export const archiveConversation = async (id: string): Promise<void> => {
 	await api.delete(`/assistant/conversations/${id}`);
+};
+
+/** Actions in this conversation still waiting on a decision. Survives a refresh. */
+export const getPendingApprovals = async (id: string): Promise<PendingApproval[]> => {
+	const { data } = await api.get<{ data: PendingApproval[] }>(`/assistant/conversations/${id}/approvals`);
+	return data.data;
 };
 
 // ── The streaming turn ──────────────────────────────────────────────────────
@@ -77,23 +89,6 @@ interface StreamOptions {
 	conversationId?: string;
 	onEvent: (event: AssistantEvent) => void;
 	signal: AbortSignal;
-}
-
-async function openStream(options: StreamOptions, token: string | null): Promise<Response> {
-	return fetch(`${BASE_URL}/assistant/stream`, {
-		method: "POST",
-		credentials: "include",
-		headers: {
-			"Content-Type": "application/json",
-			Accept: "text/event-stream",
-			...(token ? { Authorization: `Bearer ${token}` } : {}),
-		},
-		body: JSON.stringify({
-			message: options.message,
-			...(options.conversationId ? { conversation_id: options.conversationId } : {}),
-		}),
-		signal: options.signal,
-	});
 }
 
 /** Read an SSE body, dispatching each `data:` frame. Comment frames (heartbeats) are skipped. */
@@ -144,18 +139,67 @@ async function describeFailure(response: Response): Promise<string> {
 		: "The assistant is unavailable right now.";
 }
 
-export async function streamAssistantTurn(options: StreamOptions): Promise<void> {
-	let response = await openStream(options, localStorage.getItem("accessToken"));
+/** POST a request that streams back, retrying once through the axios refresh on a 401. */
+async function streamRequest(
+	path: string,
+	body: unknown,
+	onEvent: (event: AssistantEvent) => void,
+	signal: AbortSignal,
+): Promise<void> {
+	const send = (token: string | null) =>
+		fetch(`${BASE_URL}${path}`, {
+			method: "POST",
+			credentials: "include",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+				...(token ? { Authorization: `Bearer ${token}` } : {}),
+			},
+			body: JSON.stringify(body),
+			signal,
+		});
+
+	let response = await send(localStorage.getItem("accessToken"));
 
 	if (response.status === 401) {
 		const fresh = await refreshViaAxios();
 		if (!fresh) throw new AssistantStreamError("Your session expired. Sign in again.", 401);
-		response = await openStream(options, fresh);
+		response = await send(fresh);
 	}
 
 	if (!response.ok) {
 		throw new AssistantStreamError(await describeFailure(response), response.status);
 	}
 
-	await consume(response, options.onEvent);
+	await consume(response, onEvent);
+}
+
+export async function streamAssistantTurn(options: StreamOptions): Promise<void> {
+	await streamRequest(
+		"/assistant/stream",
+		{
+			message: options.message,
+			...(options.conversationId ? { conversation_id: options.conversationId } : {}),
+		},
+		options.onEvent,
+		options.signal,
+	);
+}
+
+/**
+ * Decide one pending action. The response streams the outcome and, once nothing
+ * else in the conversation is waiting, the model's continuation.
+ */
+export async function resolveApproval(options: {
+	approvalId: string;
+	decision: "approve" | "reject";
+	onEvent: (event: AssistantEvent) => void;
+	signal: AbortSignal;
+}): Promise<void> {
+	await streamRequest(
+		`/assistant/approvals/${options.approvalId}`,
+		{ decision: options.decision },
+		options.onEvent,
+		options.signal,
+	);
 }

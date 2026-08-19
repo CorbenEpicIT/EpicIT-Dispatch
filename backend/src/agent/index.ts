@@ -8,12 +8,13 @@
 import "./tools/index.js";
 
 export { buildAgentContext, AgentContextError, type AgentClaims } from "./context.js";
-export { executeTool, type ExecuteOptions } from "./execute.js";
+export { executeTool, toolRequiresApproval, type ExecuteOptions } from "./execute.js";
 export { describeTools, getTool, listTools } from "./registry.js";
 export { toolInputSchema } from "./schema.js";
 export {
 	AGENT_PERMISSION_CEILING,
 	READ_ONLY_POLICY,
+	WRITE_POLICY,
 	actorTypeForRole,
 	expandUserPermissions,
 	resolveAgentPermissions,

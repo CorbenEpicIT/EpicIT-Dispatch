@@ -61,15 +61,44 @@ tools, answers, then calls more tools has an order that matters —
 also why `provider_call_id` is stored rather than regenerated: a `tool` message
 with no matching `tool_call_id` is a hard error.
 
+## Approvals
+
+A gated call pauses the turn rather than blocking the stream:
+
+1. The loop records the call as `pending_approval`, emits `approval_required`,
+   and ends the turn.
+2. The panel renders Approve / Decline with the exact arguments.
+3. `POST /assistant/approvals/:id` records the decision, runs the tool if
+   approved, and — once nothing else in the conversation is waiting — resumes
+   the model on the same response.
+
+The transcript is rebuilt from the database on resume, never carried in memory,
+so a decision made after a page refresh or from a second tab works. Blocking the
+open SSE connection instead would tie a pending action to a socket that a reload
+destroys.
+
+Two consequences worth knowing:
+
+- **`toTranscript` renders undecided calls explicitly.** Every `tool_calls`
+  entry needs a matching `tool` message or the API rejects the request, so a
+  pending call gets one saying it has not run, and telling the model not to
+  report it as done. Rejected and expired calls get their own wording.
+- **Asking something new lapses anything undecided.** `runTurn` expires pending
+  approvals for the conversation before it starts. Agreeing to a reschedule ten
+  minutes and three questions later would fire an action nobody is thinking
+  about.
+
 ## Rules
 
 - **The loop never widens what Phase 1 decided.** It passes `AgentContext` and
   `AgentPolicy` straight through to `executeTool`. If the assistant needs a
   capability, it gets it by changing the policy it is constructed with, never by
   adding an exception here.
-- **Read-only, for now.** Routes construct `READ_ONLY_POLICY`, so write tools are
-  not advertised and would be refused if called. Phase 3 changes the policy and
-  adds the approval round trip the executor already supports.
+- **Writes stop for a person.** Routes construct `WRITE_POLICY` unless
+  `ASSISTANT_WRITES_ENABLED=false`. That flag governs whether write tools are
+  *advertised*, never whether the agent can act unattended — every scheduling
+  tool sets `requiresApproval`, and the executor refuses an unapproved call
+  regardless of policy.
 - **Failures go into the thread.** A tool error is fed back to the model, which
   usually corrects itself. A turn error becomes an `error` event the panel
   renders inline — not a toast, and not a thrown exception.

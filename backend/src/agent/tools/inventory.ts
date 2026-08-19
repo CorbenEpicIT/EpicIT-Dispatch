@@ -74,27 +74,6 @@ export const getInventoryLevels = defineTool({
 			...(input.low_stock_only ? { low_stock_threshold: { not: null } } : {}),
 		};
 
-		// Two statically-shaped queries rather than one with a conditional `select`.
-		// A spread inside `select` defeats Prisma's payload inference, and the
-		// resulting `any` would silently hide a wrong column name at compile time.
-		const baseSelect = {
-			id: true,
-			name: true,
-			sku: true,
-			location: true,
-			quantity: true,
-			unit: true,
-			low_stock_threshold: true,
-		} as const;
-
-		const vehicleSelect = {
-			select: {
-				qty_on_hand: true,
-				qty_min: true,
-				vehicle: { select: { id: true, name: true, status: true } },
-			},
-		} as const;
-
 		const total = await db.inventory_item.count({ where });
 
 		/** Common projection. `vehicles` is undefined when the caller did not ask for it. */

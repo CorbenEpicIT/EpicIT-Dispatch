@@ -71,6 +71,18 @@ defineTool({
 });
 
 defineTool({
+	name: "exec_gated_write",
+	title: "Gated write",
+	description: "d",
+	risk: "write",
+	requiresApproval: true,
+	permissions: ["edit_jobs"],
+	input: z.object({}),
+	handler,
+	audit: auditDescriptor,
+});
+
+defineTool({
 	name: "exec_destructive",
 	title: "Destroy",
 	description: "d",
@@ -142,6 +154,36 @@ describe("executeTool — the gate", () => {
 			const r = await executeTool("exec_destructive", {}, { ...ctx, permissions: ["edit_jobs"] }, FULL);
 			expect(r).toMatchObject({ ok: false, error: { code: AgentErrorCodes.APPROVAL_REQUIRED } });
 			expect(handler).not.toHaveBeenCalled();
+		});
+
+		it("requires approval for a write tool that opts in", async () => {
+			// Scheduling writes are not destructive, but they change live dispatch
+			// state and must not run unattended.
+			const r = await executeTool("exec_gated_write", {}, { ...ctx, permissions: ["edit_jobs"] }, FULL);
+			expect(r).toMatchObject({ ok: false, error: { code: AgentErrorCodes.APPROVAL_REQUIRED } });
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		it("runs a gated write once approved", async () => {
+			const r = await executeTool("exec_gated_write", {}, { ...ctx, permissions: ["edit_jobs"] }, FULL, {
+				approved: true,
+			});
+			expect(r).toMatchObject({ ok: true });
+		});
+
+		it("runs an ungated write without approval", async () => {
+			// propose_draft writes a draft a person then reviews; gating it would
+			// ask for the same approval twice.
+			const r = await executeTool("exec_write", {}, { ...ctx, permissions: ["edit_jobs"] }, FULL);
+			expect(r).toMatchObject({ ok: true });
+			expect(handler).toHaveBeenCalledOnce();
+		});
+
+		it("refuses a caller who lacks permission BEFORE asking anyone to approve", async () => {
+			// Prompting a person to approve an action that will then 403 wastes
+			// their attention and teaches them the prompts are noise.
+			const r = await executeTool("exec_gated_write", {}, { ...ctx, permissions: [] }, FULL);
+			expect(r).toMatchObject({ ok: false, error: { code: AgentErrorCodes.FORBIDDEN } });
 		});
 
 		it("runs a destructive call once approved", async () => {

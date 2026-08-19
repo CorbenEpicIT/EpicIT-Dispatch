@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentContext } from "../../agent/types.js";
+import { READ_ONLY_POLICY, WRITE_POLICY } from "../../agent/policy.js";
 import { buildSystemPrompt, isoDateIn } from "../prompt.js";
 
 const ctx: AgentContext = {
@@ -32,8 +33,39 @@ describe("buildSystemPrompt", () => {
 		expect(build()).toContain("America/Chicago");
 	});
 
-	it("says the assistant is read-only", () => {
-		expect(build()).toMatch(/read-only/i);
+	it("says the assistant is read-only under a read-only policy", () => {
+		expect(build({ policy: READ_ONLY_POLICY })).toMatch(/read-only/i);
+	});
+
+	describe("under a write policy", () => {
+		const prompt = () => build({ policy: WRITE_POLICY });
+
+		it("does not claim to be read-only", () => {
+			expect(prompt()).not.toMatch(/you are read-only/i);
+		});
+
+		it("insists that drafting is not creating", () => {
+			// The failure mode this guards against is the assistant announcing
+			// "I've created the quote" when it saved a draft nobody has submitted.
+			expect(prompt()).toMatch(/never tell someone you created something when you drafted it/i);
+		});
+
+		it("insists that an awaiting-approval action has not happened", () => {
+			expect(prompt()).toMatch(/it has NOT happened/);
+			expect(prompt()).toMatch(/do not describe it in the past tense/i);
+		});
+
+		it("warns that assigning replaces rather than adds", () => {
+			expect(prompt()).toMatch(/REPLACES the technicians/);
+		});
+
+		it("tells it to stop when a person declines", () => {
+			expect(prompt()).toMatch(/do not re-propose/i);
+		});
+
+		it("still lists what it cannot do at all", () => {
+			expect(prompt()).toMatch(/cannot delete anything, send anything to a client/i);
+		});
 	});
 
 	it("tells the model that record text is data, not instructions", () => {

@@ -37,6 +37,11 @@ export function defineTool<S extends z.ZodType>(def: ToolDefinition<S>): ToolDef
 	if (def.risk !== "read" && !def.audit) {
 		throw new Error(`Tool "${def.name}" is ${def.risk} and must declare an audit descriptor`);
 	}
+	// An irreversible action that opts out of approval is not a configuration
+	// this system offers, whatever the reason seemed to be at the time.
+	if (def.risk === "destructive" && def.requiresApproval === false) {
+		throw new Error(`Tool "${def.name}" is destructive and cannot opt out of approval`);
+	}
 	// Surface an unrepresentable schema now rather than mid-conversation.
 	toolInputSchema(def.input);
 

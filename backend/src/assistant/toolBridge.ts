@@ -56,6 +56,50 @@ export function parseToolArguments(raw: string): { ok: true; value: unknown } | 
 }
 
 /**
+ * A one-line account of what a call is ABOUT to do, for the approval prompt.
+ *
+ * This is the sentence a dispatcher decides on, so it has to say what will
+ * change in their words, not restate the arguments. Anything it cannot describe
+ * precisely falls back to the tool's own title — vague is acceptable here,
+ * wrong is not: the card also shows the exact arguments underneath.
+ */
+export function describeToolCall(toolName: string, input: unknown): string {
+	const args = (input ?? {}) as Record<string, unknown>;
+	const when = (value: unknown): string | null => {
+		if (typeof value !== "string") return null;
+		const parsed = new Date(value);
+		return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().replace("T", " ").slice(0, 16);
+	};
+
+	switch (toolName) {
+		case "schedule_visit": {
+			const start = when(args.scheduled_start_at);
+			const techs = Array.isArray(args.tech_ids) ? args.tech_ids.length : 0;
+			const who = techs === 0 ? "no technician assigned" : `${techs} technician${techs === 1 ? "" : "s"}`;
+			return `Schedule “${String(args.name ?? "a visit")}”${start ? ` for ${start}` : ""} — ${who}`;
+		}
+		case "reschedule_visit": {
+			const start = when(args.scheduled_start_at);
+			return start ? `Move this visit to ${start}` : "Change this visit's timing";
+		}
+		case "assign_technician": {
+			const techs = Array.isArray(args.tech_ids) ? args.tech_ids.length : 0;
+			return techs === 0
+				? "Remove every technician from this visit"
+				: `Set this visit's technicians — ${techs} assigned, replacing whoever is on it now`;
+		}
+		case "update_job_status": {
+			const status = String(args.status ?? "");
+			return status === "Cancelled"
+				? `Cancel this job — ${String(args.cancellation_reason ?? "no reason given")}`
+				: `Set this job's status to ${status}`;
+		}
+		default:
+			return `Run ${toolName.replace(/_/g, " ")}`;
+	}
+}
+
+/**
  * A one-line, human-readable account of what a call did, for the tool card in
  * the UI. The model gets the full result; a dispatcher gets a sentence.
  */

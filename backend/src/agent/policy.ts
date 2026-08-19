@@ -134,13 +134,32 @@ export function actorTypeForRole(role: string): "dispatcher" | "technician" {
 }
 
 /**
- * Phase 1 default: reads only.
+ * Reads only. The safe default, and what a caller gets if nobody chose.
  *
- * Writes are unlocked by passing an explicit policy, so a write tool that gets
- * registered before its approval flow exists fails closed instead of running.
+ * A write tool executed under this policy fails closed rather than running, so
+ * a tool registered before its approval flow exists cannot do damage.
  */
 export const READ_ONLY_POLICY = {
 	allowWrites: false,
+	allowDestructive: false,
+	ceiling: AGENT_PERMISSION_CEILING,
+} as const;
+
+/**
+ * Reads and writes; still no destructive actions.
+ *
+ * "Write" here does not mean unattended. Every scheduling tool sets
+ * `requiresApproval`, so this policy permits the agent to *propose* a change and
+ * nothing more — the executor still refuses to run one without a human decision.
+ * What this policy actually unlocks is the tools being advertised to the model
+ * at all.
+ *
+ * Destructive stays off: deletes, client emails and invoice issuance are not
+ * things this system lets an agent do, whoever is asking. That is enforced twice
+ * over — the ceiling withholds every `delete_*` permission as well.
+ */
+export const WRITE_POLICY = {
+	allowWrites: true,
 	allowDestructive: false,
 	ceiling: AGENT_PERMISSION_CEILING,
 } as const;

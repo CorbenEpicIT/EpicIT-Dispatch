@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { create, executeTool, appendUserMessage, appendAssistantMessage, loadMessages } = vi.hoisted(() => ({
+const {
+	create,
+	executeTool,
+	appendUserMessage,
+	appendAssistantMessage,
+	loadMessages,
+	expirePendingApprovals,
+} = vi.hoisted(() => ({
 	create: vi.fn(),
 	executeTool: vi.fn(),
 	appendUserMessage: vi.fn(async () => ({ id: "um-1", created_at: new Date() })),
-	appendAssistantMessage: vi.fn(async () => ({ id: "am-1", created_at: new Date() })),
-	loadMessages: vi.fn(async () => [] as unknown[]),
+	appendAssistantMessage: vi.fn(async () => ({ id: "am-1", created_at: new Date(), tool_calls: [] as unknown[] })),
+	loadMessages: vi.fn(async (_ctx: unknown, _id: string, _limit?: number) => [] as unknown[]),
+	expirePendingApprovals: vi.fn(async () => 0),
 }));
 
 vi.mock("../openaiClient.js", () => ({
@@ -17,8 +25,18 @@ vi.mock("../conversations.js", async (importOriginal) => ({
 	appendUserMessage,
 	appendAssistantMessage,
 	loadMessages,
+	expirePendingApprovals,
 }));
-vi.mock("../../agent/execute.js", () => ({ executeTool }));
+vi.mock("../../agent/execute.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../agent/execute.js")>()),
+	executeTool,
+}));
+vi.mock("../../agent/registry.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../agent/registry.js")>()),
+	// The loop asks the registry whether a tool needs approval. Tests register
+	// their own stand-ins rather than importing the real catalog.
+	getTool: (name: string) => registeredTools.get(name),
+}));
 vi.mock("../../services/appLogger.js", () => ({
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -28,10 +46,22 @@ vi.mock("../toolBridge.js", async (importOriginal) => ({
 	toolsForOpenAI: () => [{ type: "function", function: { name: "get_record", parameters: {} } }],
 }));
 
-import { READ_ONLY_POLICY } from "../../agent/policy.js";
+import { WRITE_POLICY } from "../../agent/policy.js";
 import type { AgentContext } from "../../agent/types.js";
 import type { AssistantEvent } from "../events.js";
 import { runTurn } from "../loop.js";
+
+/** Minimal tool definitions the loop can look up, keyed by name. */
+const registeredTools = new Map<string, { name: string; title: string; risk: string; requiresApproval?: boolean }>([
+	["get_record", { name: "get_record", title: "Get record", risk: "read" }],
+	["get_schedule", { name: "get_schedule", title: "Get schedule", risk: "read" }],
+	["search_records", { name: "search_records", title: "Search", risk: "read" }],
+	[
+		"reschedule_visit",
+		{ name: "reschedule_visit", title: "Reschedule a visit", risk: "write", requiresApproval: true },
+	],
+	["add_job_note", { name: "add_job_note", title: "Add a note", risk: "write", requiresApproval: false }],
+]);
 
 const ctx: AgentContext = {
 	userId: "u1",
@@ -67,7 +97,7 @@ async function run(overrides: Partial<Parameters<typeof runTurn>[0]> = {}) {
 	const events: AssistantEvent[] = [];
 	await runTurn({
 		ctx,
-		policy: READ_ONLY_POLICY,
+		policy: WRITE_POLICY,
 		timezone: "America/Chicago",
 		conversationId: "conv-1",
 		userMessage: "what is on for tuesday?",
@@ -86,9 +116,12 @@ describe("runTurn", () => {
 		create.mockReset();
 		executeTool.mockReset();
 		appendAssistantMessage.mockClear();
+		appendAssistantMessage.mockResolvedValue({ id: "am-1", created_at: new Date(), tool_calls: [] });
 		appendUserMessage.mockClear();
 		loadMessages.mockClear();
 		loadMessages.mockResolvedValue([]);
+		expirePendingApprovals.mockClear();
+		expirePendingApprovals.mockResolvedValue(0);
 	});
 
 	it("streams a plain answer and finishes", async () => {
@@ -148,7 +181,7 @@ describe("runTurn", () => {
 			await run();
 
 			expect(executeTool.mock.calls[0][2]).toBe(ctx);
-			expect(executeTool.mock.calls[0][3]).toBe(READ_ONLY_POLICY);
+			expect(executeTool.mock.calls[0][3]).toBe(WRITE_POLICY);
 		});
 
 		it("runs several calls from one turn in order", async () => {
@@ -222,6 +255,101 @@ describe("runTurn", () => {
 			const events = await run();
 
 			expect(events.at(-1)).toMatchObject({ type: "done", usage: { input: 400, output: 30 } });
+		});
+	});
+
+	describe("approval", () => {
+		it("pauses instead of running a gated call, and says which one", async () => {
+			create.mockResolvedValueOnce(
+				streamOf([
+					...toolCallChunks(0, "call_1", "reschedule_visit", '{"visit_id":"v1"}'),
+					finish("tool_calls"),
+				]),
+			);
+			// The ids the approval endpoint takes come back from the write itself.
+			appendAssistantMessage.mockResolvedValueOnce({
+				id: "am-1",
+				created_at: new Date(),
+				tool_calls: [
+					{
+						id: "stored-1",
+						provider_call_id: "call_1",
+						tool_name: "reschedule_visit",
+						input: { visit_id: "v1" },
+						status: "pending_approval",
+					},
+				],
+			});
+
+			const events = await run();
+
+			expect(executeTool).not.toHaveBeenCalled();
+			const approval = events.find((e) => e.type === "approval_required");
+			expect(approval).toMatchObject({
+				approvalId: "stored-1",
+				id: "call_1",
+				name: "reschedule_visit",
+				title: "Reschedule a visit",
+				summary: expect.any(String),
+			});
+			// The turn stops rather than calling the model again with a hole in the
+			// transcript where the result should be.
+			expect(create).toHaveBeenCalledOnce();
+			expect(events.at(-1)?.type).toBe("done");
+		});
+
+		it("persists the gated call as pending rather than as a result", async () => {
+			create.mockResolvedValueOnce(
+				streamOf([...toolCallChunks(0, "c1", "reschedule_visit", "{}"), finish("tool_calls")]),
+			);
+			await run();
+
+			expect(appendAssistantMessage.mock.calls[0][2].toolCalls[0]).toMatchObject({
+				tool_name: "reschedule_visit",
+				status: "pending_approval",
+				result: null,
+			});
+		});
+
+		it("still runs ungated calls in the same batch", async () => {
+			// A read that came alongside a gated write has already been permitted to
+			// run unattended; holding it hostage to the approval helps nobody.
+			create.mockResolvedValueOnce(
+				streamOf([
+					...toolCallChunks(0, "c1", "get_schedule", "{}"),
+					...toolCallChunks(1, "c2", "reschedule_visit", "{}"),
+					finish("tool_calls"),
+				]),
+			);
+			executeTool.mockResolvedValue({ ok: true, data: {} });
+
+			const events = await run();
+
+			expect(executeTool).toHaveBeenCalledOnce();
+			expect(executeTool.mock.calls[0][0]).toBe("get_schedule");
+			expect(events.filter((e) => e.type === "tool_result")).toHaveLength(1);
+		});
+
+		it("runs a write that does not require approval", async () => {
+			create
+				.mockResolvedValueOnce(
+					streamOf([...toolCallChunks(0, "c1", "add_job_note", "{}"), finish("tool_calls")]),
+				)
+				.mockResolvedValueOnce(streamOf([textChunk("Noted."), finish("stop")]));
+			executeTool.mockResolvedValue({ ok: true, data: {} });
+
+			await run();
+
+			expect(executeTool).toHaveBeenCalledOnce();
+			expect(executeTool.mock.calls[0][0]).toBe("add_job_note");
+		});
+
+		it("lapses anything still undecided when the person asks something else", async () => {
+			// Approving ten minutes later would fire an action nobody is thinking
+			// about any more.
+			create.mockResolvedValueOnce(streamOf([textChunk("ok"), finish("stop")]));
+			await run();
+			expect(expirePendingApprovals).toHaveBeenCalledWith(ctx, "conv-1");
 		});
 	});
 

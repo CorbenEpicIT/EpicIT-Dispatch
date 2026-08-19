@@ -28,10 +28,23 @@ export type AssistantEvent =
 			durationMs: number;
 	  }
 	/**
-	 * Cache keys the client should invalidate. Inert while the assistant is
-	 * read-only — no read tool declares `invalidates` — and wired now so Phase 3
-	 * does not have to touch the protocol.
+	 * A call that will not run until a person says yes. The turn pauses here;
+	 * deciding it (POST /assistant/approvals/:id) resumes with a fresh stream.
 	 */
+	| {
+			type: "approval_required";
+			/** assistant_tool_call.id — what the approval endpoint takes. */
+			approvalId: string;
+			/** The provider's call id, for matching the card already on screen. */
+			id: string;
+			name: string;
+			title: string;
+			summary: string;
+			input: unknown;
+	  }
+	/** A pending call was decided. Emitted on the resumed stream. */
+	| { type: "approval_resolved"; approvalId: string; id: string; approved: boolean }
+	/** Cache keys the client should invalidate after a write. */
 	| { type: "invalidate"; keys: string[] }
 	/** Terminal success. */
 	| { type: "done"; messageId: string | null; usage: { input: number; output: number } | null }

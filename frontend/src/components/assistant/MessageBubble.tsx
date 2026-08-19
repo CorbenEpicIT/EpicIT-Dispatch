@@ -1,5 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import type { UiMessage } from "../../types/assistant";
+import ApprovalCard from "./ApprovalCard";
 import ToolCallCard from "./ToolCallCard";
 
 /**
@@ -9,7 +10,15 @@ import ToolCallCard from "./ToolCallCard";
  * as markdown — a half-supported markdown renderer that mangles a job number is
  * worse than no markdown at all. Revisit when the content calls for it.
  */
-export default function MessageBubble({ message }: { message: UiMessage }) {
+export default function MessageBubble({
+	message,
+	onDecide,
+	busy = false,
+}: {
+	message: UiMessage;
+	onDecide?: (approvalId: string, decision: "approve" | "reject") => void;
+	busy?: boolean;
+}) {
 	if (message.role === "user") {
 		return (
 			<div className="flex justify-end">
@@ -33,9 +42,13 @@ export default function MessageBubble({ message }: { message: UiMessage }) {
 		<div className="flex flex-col gap-2">
 			{message.toolCalls.length > 0 && (
 				<div className="flex flex-col gap-1">
-					{message.toolCalls.map((call) => (
-						<ToolCallCard key={call.id} call={call} />
-					))}
+					{message.toolCalls.map((call) =>
+						call.state === "awaiting_approval" && onDecide ? (
+							<ApprovalCard key={call.id} call={call} onDecide={onDecide} busy={busy} />
+						) : (
+							<ToolCallCard key={call.id} call={call} />
+						),
+					)}
 				</div>
 			)}
 

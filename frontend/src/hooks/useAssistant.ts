@@ -13,10 +13,12 @@ import {
 	AssistantStreamError,
 	getAssistantStatus,
 	getConversationMessages,
+	getPendingApprovals,
 	listConversations,
+	resolveApproval,
 	streamAssistantTurn,
 } from "../api/assistant";
-import type { AssistantEvent, StoredMessage, UiMessage, UiToolCall } from "../types/assistant";
+import type { AssistantEvent, PendingApproval, StoredMessage, UiMessage, UiToolCall } from "../types/assistant";
 
 const assistantRoot = ["assistant"] as const;
 
@@ -25,6 +27,7 @@ export const assistantKeys = {
 	status: [...assistantRoot, "status"] as const,
 	conversations: [...assistantRoot, "conversations"] as const,
 	messages: (id: string) => [...assistantRoot, "conversation", id, "messages"] as const,
+	approvals: (id: string) => [...assistantRoot, "conversation", id, "approvals"] as const,
 };
 
 export function useAssistantStatus() {
@@ -55,6 +58,8 @@ type TurnAction =
 	| { kind: "reset"; messages: UiMessage[] }
 	| { kind: "user"; content: string }
 	| { kind: "start" }
+	/** Continue after an approval: no new bubble, the existing thread carries on. */
+	| { kind: "resume" }
 	| { kind: "event"; event: AssistantEvent }
 	| { kind: "fail"; message: string };
 
@@ -89,6 +94,16 @@ function turnReducer(state: TurnState, action: TurnAction): TurnState {
 					...state.messages,
 					{ id: nextLocalId(), role: "assistant", content: "", toolCalls: [], streaming: true },
 				],
+			};
+
+		case "resume":
+			// Reopen the last assistant message so text deltas from the resumed turn
+			// land on it rather than creating a stray bubble.
+			return {
+				streaming: true,
+				messages: state.messages.map((m, i): UiMessage =>
+					m.role === "assistant" && i === state.messages.length - 1 ? { ...m, streaming: true } : m,
+				),
 			};
 
 		case "fail": {
@@ -127,21 +142,72 @@ function turnReducer(state: TurnState, action: TurnAction): TurnState {
 					};
 
 				case "tool_result":
+					// Searched across every message, not just the streaming one: a
+					// resumed turn settles a call that belongs to an earlier message.
+					return {
+						...state,
+						messages: state.messages.map((m): UiMessage =>
+							m.role === "assistant" && m.toolCalls.some((c) => c.id === event.id)
+								? {
+										...m,
+										toolCalls: m.toolCalls.map((call) =>
+											call.id === event.id
+												? {
+														...call,
+														state: event.ok ? "ok" : "error",
+														summary: event.summary,
+														errorMessage: event.errorMessage,
+														durationMs: event.durationMs,
+														approvalId: undefined,
+													}
+												: call,
+										),
+									}
+								: m,
+						),
+					};
+
+				case "approval_required":
 					return {
 						...state,
 						messages: updateStreaming(state.messages, (m) => {
-							m.toolCalls = m.toolCalls.map((call) =>
-								call.id === event.id
-									? {
-											...call,
-											state: event.ok ? "ok" : "error",
-											summary: event.summary,
-											errorMessage: event.errorMessage,
-											durationMs: event.durationMs,
-										}
-									: call,
-							);
+							const existing = m.toolCalls.find((c) => c.id === event.id);
+							const pending: UiToolCall = {
+								id: event.id,
+								name: event.name,
+								title: event.title,
+								input: event.input,
+								state: "awaiting_approval",
+								summary: event.summary,
+								approvalId: event.approvalId,
+							};
+							// The loop announces a gated call without a preceding tool_call
+							// event, so this usually adds rather than updates.
+							m.toolCalls = existing
+								? m.toolCalls.map((c) => (c.id === event.id ? pending : c))
+								: [...m.toolCalls, pending];
 						}),
+					};
+
+				case "approval_resolved":
+					return {
+						...state,
+						messages: state.messages.map((m): UiMessage =>
+							m.role === "assistant"
+								? {
+										...m,
+										toolCalls: m.toolCalls.map((c) =>
+											c.approvalId === event.approvalId
+												? {
+														...c,
+														state: event.approved ? "running" : "declined",
+														approvalId: undefined,
+													}
+												: c,
+										),
+									}
+								: m,
+						),
 					};
 
 				case "error":
@@ -165,8 +231,33 @@ function turnReducer(state: TurnState, action: TurnAction): TurnState {
 	}
 }
 
-/** Server rows → the panel's message shape. */
-function fromStored(rows: StoredMessage[]): UiMessage[] {
+/** Stored status → the state the card renders in. */
+function stateForStatus(status: string): UiToolCall["state"] {
+	switch (status) {
+		case "ok":
+			return "ok";
+		case "pending_approval":
+			return "awaiting_approval";
+		case "rejected":
+			return "declined";
+		default:
+			// "error" and "expired" both read as a call that did not succeed; the
+			// stored result carries the distinction for anyone who expands the card.
+			return "error";
+	}
+}
+
+/**
+ * Server rows → the panel's message shape.
+ *
+ * `pending` supplies the approval ids for calls still awaiting a decision. They
+ * live on a separate endpoint because the message row stores the provider's call
+ * id, and the approval endpoint takes our own — reloading a conversation with a
+ * pending action has to recover the latter or the buttons would do nothing.
+ */
+function fromStored(rows: StoredMessage[], pending: PendingApproval[] = []): UiMessage[] {
+	const approvalByCallId = new Map(pending.map((p) => [p.id, p]));
+
 	return rows.map((row): UiMessage => {
 		if (row.role === "user") return { id: row.id, role: "user", content: row.content };
 		return {
@@ -174,13 +265,19 @@ function fromStored(rows: StoredMessage[]): UiMessage[] {
 			role: "assistant",
 			content: row.content,
 			streaming: false,
-			toolCalls: row.tool_calls.map((call) => ({
-				id: call.provider_call_id,
-				name: call.tool_name,
-				input: call.input,
-				state: call.status === "ok" ? "ok" : "error",
-				durationMs: call.duration_ms ?? undefined,
-			})),
+			toolCalls: row.tool_calls.map((call): UiToolCall => {
+				const waiting = approvalByCallId.get(call.provider_call_id);
+				return {
+					id: call.provider_call_id,
+					name: call.tool_name,
+					input: call.input,
+					state: stateForStatus(call.status),
+					durationMs: call.duration_ms ?? undefined,
+					...(waiting
+						? { approvalId: waiting.approvalId, summary: waiting.summary, title: waiting.title }
+						: {}),
+				};
+			}),
 		};
 	});
 }
@@ -203,11 +300,17 @@ export function useAssistantChat() {
 				dispatch({ kind: "reset", messages: [] });
 				return;
 			}
-			const rows = await queryClient.fetchQuery({
-				queryKey: assistantKeys.messages(id),
-				queryFn: () => getConversationMessages(id),
-			});
-			dispatch({ kind: "reset", messages: fromStored(rows) });
+			const [rows, pending] = await Promise.all([
+				queryClient.fetchQuery({
+					queryKey: assistantKeys.messages(id),
+					queryFn: () => getConversationMessages(id),
+				}),
+				queryClient.fetchQuery({
+					queryKey: assistantKeys.approvals(id),
+					queryFn: () => getPendingApprovals(id),
+				}),
+			]);
+			dispatch({ kind: "reset", messages: fromStored(rows, pending) });
 		},
 		[queryClient],
 	);
@@ -265,6 +368,56 @@ export function useAssistantChat() {
 		[conversationId, queryClient, state.streaming],
 	);
 
+	/**
+	 * Approve or decline one pending action.
+	 *
+	 * Shares the streaming plumbing with `send`, because the response is the same
+	 * shape — the outcome of the decision, then the model's continuation once
+	 * nothing else in the conversation is waiting.
+	 */
+	const decide = useCallback(
+		async (approvalId: string, decision: "approve" | "reject") => {
+			if (state.streaming) return;
+
+			const controller = new AbortController();
+			abortRef.current = controller;
+			dispatch({ kind: "resume" });
+
+			try {
+				await resolveApproval({
+					approvalId,
+					decision,
+					signal: controller.signal,
+					onEvent: (event) => {
+						if (event.type === "invalidate") {
+							for (const key of event.keys) {
+								queryClient.invalidateQueries({ queryKey: [key.split(":")[0]] });
+							}
+							return;
+						}
+						dispatch({ kind: "event", event });
+					},
+				});
+			} catch (err) {
+				if (controller.signal.aborted) return;
+				dispatch({
+					kind: "fail",
+					message:
+						err instanceof AssistantStreamError
+							? err.message
+							: "Could not apply that decision. Try again.",
+				});
+			} finally {
+				if (abortRef.current === controller) abortRef.current = null;
+				if (conversationId) {
+					queryClient.invalidateQueries({ queryKey: assistantKeys.messages(conversationId) });
+					queryClient.invalidateQueries({ queryKey: assistantKeys.approvals(conversationId) });
+				}
+			}
+		},
+		[conversationId, queryClient, state.streaming],
+	);
+
 	const stop = useCallback(() => {
 		abortRef.current?.abort();
 		dispatch({ kind: "event", event: { type: "done", messageId: null, usage: null } });
@@ -282,10 +435,11 @@ export function useAssistantChat() {
 			messages: state.messages,
 			streaming: state.streaming,
 			send,
+			decide,
 			stop,
 			startNew,
 			openConversation,
 		}),
-		[conversationId, state.messages, state.streaming, send, stop, startNew, openConversation],
+		[conversationId, state.messages, state.streaming, send, decide, stop, startNew, openConversation],
 	);
 }

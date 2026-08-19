@@ -42,6 +42,20 @@ describe("tool registry", () => {
 		expect(() => defineTool({ ...base, name: "reg_destroy", risk: "destructive" })).toThrow(/audit descriptor/);
 	});
 
+	it("refuses a destructive tool that opts out of approval", () => {
+		// An irreversible action that skips approval is not a configuration this
+		// system offers, whatever the reason seemed to be at the time.
+		expect(() =>
+			defineTool({
+				...base,
+				name: "reg_destroy_ungated",
+				risk: "destructive",
+				requiresApproval: false,
+				audit: () => ({ event_type: "e", action: "a", entity_type: "t", entity_id: "i" }),
+			}),
+		).toThrow(/cannot opt out of approval/);
+	});
+
 	it("accepts a write tool that declares one", () => {
 		expect(() =>
 			defineTool({

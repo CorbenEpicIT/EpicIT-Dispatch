@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
 vi.mock("../axiosClient", () => ({ api: { get: apiGet } }));
 
-import { AssistantStreamError, streamAssistantTurn } from "../assistant";
+import { AssistantStreamError, resolveApproval, streamAssistantTurn } from "../assistant";
 import type { AssistantEvent } from "../../types/assistant";
 
 /** Build a Response whose body streams the given SSE text, in arbitrary chunks. */
@@ -172,5 +172,72 @@ describe("streamAssistantTurn", () => {
 			});
 			expect.assertions(2);
 		});
+	});
+});
+
+describe("resolveApproval", () => {
+	beforeEach(() => {
+		apiGet.mockReset();
+		vi.unstubAllGlobals();
+	});
+
+	it("posts the decision to the approval endpoint", async () => {
+		const fetchMock = makeFetchMock([sseResponse([frame({ type: "done", messageId: null, usage: null })])]);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await resolveApproval({
+			approvalId: "approval-1",
+			decision: "approve",
+			onEvent: () => {},
+			signal: new AbortController().signal,
+		});
+
+		expect(String(fetchMock.mock.calls[0][0])).toContain("/assistant/approvals/approval-1");
+		expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({ decision: "approve" });
+	});
+
+	it("streams the resumed turn back", async () => {
+		const events: AssistantEvent[] = [];
+		vi.stubGlobal(
+			"fetch",
+			makeFetchMock([
+				sseResponse([
+					frame({ type: "approval_resolved", approvalId: "approval-1", id: "call_1", approved: true }),
+					frame({ type: "text_delta", text: "Done." }),
+					frame({ type: "done", messageId: "m2", usage: null }),
+				]),
+			]),
+		);
+
+		await resolveApproval({
+			approvalId: "approval-1",
+			decision: "approve",
+			onEvent: (e) => events.push(e),
+			signal: new AbortController().signal,
+		});
+
+		expect(events.map((e) => e.type)).toEqual(["approval_resolved", "text_delta", "done"]);
+	});
+
+	it("surfaces a conflict when the action was already decided", async () => {
+		// Two tabs, one pending action: the second decision has to say so rather
+		// than silently doing nothing.
+		vi.stubGlobal(
+			"fetch",
+			makeFetchMock([
+				new Response(JSON.stringify({ error: { message: "That action was already decided." } }), {
+					status: 409,
+				}),
+			]),
+		);
+
+		await expect(
+			resolveApproval({
+				approvalId: "approval-1",
+				decision: "approve",
+				onEvent: () => {},
+				signal: new AbortController().signal,
+			}),
+		).rejects.toThrow("That action was already decided.");
 	});
 });

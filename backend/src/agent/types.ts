@@ -163,6 +163,16 @@ export interface ToolDefinition<S extends z.ZodType = z.ZodType> {
 	 */
 	description: string;
 	risk: RiskClass;
+	/**
+	 * Whether a human must approve each call before it runs.
+	 *
+	 * Defaults to `risk === "destructive"`. Set it explicitly when the default is
+	 * wrong for a particular tool: `propose_draft` writes, but what it writes is
+	 * a draft a person then reviews in the UI, so gating it would be asking for
+	 * the same approval twice. A destructive tool may never set this to false —
+	 * the registry rejects that at boot.
+	 */
+	requiresApproval?: boolean;
 	/** ANY-OF. Must be non-empty. */
 	permissions: readonly string[];
 	input: S;

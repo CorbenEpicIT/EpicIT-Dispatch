@@ -52,19 +52,44 @@ export type AssistantEvent =
 			errorMessage?: string;
 			durationMs: number;
 	  }
+	| {
+			type: "approval_required";
+			/** What POST /assistant/approvals/:id takes. */
+			approvalId: string;
+			/** The provider's call id, matching the tool card already on screen. */
+			id: string;
+			name: string;
+			title: string;
+			summary: string;
+			input: unknown;
+	  }
+	| { type: "approval_resolved"; approvalId: string; id: string; approved: boolean }
 	| { type: "invalidate"; keys: string[] }
 	| { type: "done"; messageId: string | null; usage: { input: number; output: number } | null }
 	| { type: "error"; message: string; code?: string };
 
-/** A tool call as the panel renders it — running, then resolved. */
+/** A pending action, as the panel renders it and as GET .../approvals returns it. */
+export interface PendingApproval {
+	approvalId: string;
+	id: string;
+	name: string;
+	title: string;
+	summary: string;
+	input: unknown;
+}
+
+/** A tool call as the panel renders it — running, awaiting a decision, then resolved. */
 export interface UiToolCall {
 	id: string;
 	name: string;
 	input: unknown;
-	state: "running" | "ok" | "error";
+	state: "running" | "ok" | "error" | "awaiting_approval" | "declined";
 	summary?: string;
 	errorMessage?: string;
 	durationMs?: number;
+	/** Present while a human decision is outstanding. */
+	approvalId?: string;
+	title?: string;
 }
 
 export type UiMessage =

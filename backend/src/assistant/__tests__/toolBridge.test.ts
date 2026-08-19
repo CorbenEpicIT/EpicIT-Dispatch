@@ -1,14 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
+// The write tools reach the visit/job controllers, which transitively import
+// lowStockAlerts -> emailService — and emailService throws at import when no
+// Postmark env is set.
+vi.mock("../../services/lowStockAlerts.js", () => ({
+	fireLowStockAlerts: vi.fn().mockResolvedValue(undefined),
+	sendLowStockAlert: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../db.js", async () => ({
 	db: (await import("../../routes/__tests__/harness.js")).createFakeDb(),
 	generateJobNumber: vi.fn(),
 }));
 
 import "../../agent/index.js";
-import { READ_ONLY_POLICY } from "../../agent/policy.js";
+import { READ_ONLY_POLICY, WRITE_POLICY } from "../../agent/policy.js";
 import type { AgentContext } from "../../agent/types.js";
-import { parseToolArguments, summariseToolResult, toolsForOpenAI } from "../toolBridge.js";
+import { describeToolCall, parseToolArguments, summariseToolResult, toolsForOpenAI } from "../toolBridge.js";
 
 const ctxWith = (...permissions: string[]): AgentContext => ({
 	userId: "u",
@@ -41,8 +49,20 @@ describe("toolsForOpenAI", () => {
 	});
 
 	it("hides write tools under the read-only policy", () => {
-		const risky = toolsForOpenAI(ctxWith("view_jobs", "edit_jobs", "create_jobs"), READ_ONLY_POLICY);
-		expect(risky.every((t) => t.function.name.startsWith("get") || t.function.name.startsWith("list") || t.function.name.startsWith("search") || t.function.name.startsWith("run"))).toBe(true);
+		const names = toolsForOpenAI(ctxWith("view_jobs", "edit_jobs", "create_jobs"), READ_ONLY_POLICY).map(
+			(t) => t.function.name,
+		);
+		expect(names).toContain("get_schedule");
+		expect(names).not.toContain("reschedule_visit");
+		expect(names).not.toContain("propose_draft");
+	});
+
+	it("advertises write tools under a write policy", () => {
+		const names = toolsForOpenAI(ctxWith("view_jobs", "edit_jobs", "create_quotes"), WRITE_POLICY).map(
+			(t) => t.function.name,
+		);
+		expect(names).toContain("reschedule_visit");
+		expect(names).toContain("propose_draft");
 	});
 });
 
@@ -87,5 +107,65 @@ describe("summariseToolResult", () => {
 
 	it("survives a null result", () => {
 		expect(summariseToolResult("get_record", {}, null)).toBe("Ran get_record");
+	});
+});
+
+describe("describeToolCall", () => {
+	// This is the sentence a dispatcher approves on, so it has to say what will
+	// change rather than restate the arguments.
+	it("says what scheduling a visit will do, including that nobody is assigned", () => {
+		expect(
+			describeToolCall("schedule_visit", {
+				name: "Spring maintenance",
+				scheduled_start_at: "2026-08-25T14:00:00Z",
+				tech_ids: [],
+			}),
+		).toBe("Schedule “Spring maintenance” for 2026-08-25 14:00 — no technician assigned");
+	});
+
+	it("counts assigned technicians", () => {
+		expect(
+			describeToolCall("schedule_visit", {
+				name: "Repair",
+				scheduled_start_at: "2026-08-25T14:00:00Z",
+				tech_ids: ["a", "b"],
+			}),
+		).toContain("2 technicians");
+	});
+
+	it("names the new time when rescheduling", () => {
+		expect(describeToolCall("reschedule_visit", { scheduled_start_at: "2026-09-01T09:30:00Z" })).toBe(
+			"Move this visit to 2026-09-01 09:30",
+		);
+	});
+
+	it("describes a timing-only change when no new start is given", () => {
+		expect(describeToolCall("reschedule_visit", { name: "renamed" })).toBe("Change this visit's timing");
+	});
+
+	it("warns that assigning replaces the current technicians", () => {
+		expect(describeToolCall("assign_technician", { tech_ids: ["a"] })).toContain("replacing whoever is on it now");
+	});
+
+	it("calls an empty assignment what it is", () => {
+		expect(describeToolCall("assign_technician", { tech_ids: [] })).toBe(
+			"Remove every technician from this visit",
+		);
+	});
+
+	it("surfaces the reason when cancelling a job", () => {
+		expect(
+			describeToolCall("update_job_status", { status: "Cancelled", cancellation_reason: "client rescheduled" }),
+		).toBe("Cancel this job — client rescheduled");
+	});
+
+	it("falls back to the tool name rather than guessing", () => {
+		expect(describeToolCall("something_new", {})).toBe("Run something new");
+	});
+
+	it("ignores an unparseable date instead of printing Invalid Date", () => {
+		expect(describeToolCall("reschedule_visit", { scheduled_start_at: "next tuesday" })).toBe(
+			"Change this visit's timing",
+		);
 	});
 });

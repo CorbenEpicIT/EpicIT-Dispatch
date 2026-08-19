@@ -19,6 +19,7 @@ without an API key — `npx vitest run src/agent`.
 | `execute.ts` | The gate every call passes through |
 | `audit.ts` | Where agent activity is recorded, and where it deliberately is not |
 | `records.ts` | Agent-sized projections behind `get_record` / `list_records` |
+| `controllerBridge.ts` | Calling the domain controllers from a tool |
 | `tools/` | The tools themselves |
 
 ## The gate
@@ -29,11 +30,15 @@ the database being touched:
 
 1. Does the tool exist?
 2. Does policy permit this risk class?
-3. Is a destructive call carrying human approval?
-4. Does the caller hold one of the tool's permissions?
+3. Does the caller hold one of the tool's permissions?
+4. If the tool needs approval, is this call carrying one?
 5. Does the input validate?
 6. Run it, against `getScopedDb(ctx.organizationId)` and nothing else.
 7. Audit.
+
+Permission is checked *before* approval on purpose: asking a person to approve
+an action that will then be refused wastes their attention and teaches them the
+prompts are noise.
 
 It never throws. A model that gets `{ ok: false, error }` can correct itself;
 an exception just ends the turn.
@@ -46,6 +51,7 @@ export const doTheThing = defineTool({
 	title: "Do the thing",
 	description: "...",            // written for the model — see below
 	risk: "read",                  // read | write | destructive
+	requiresApproval: true,        // defaults to risk === "destructive"
 	permissions: ["view_jobs"],    // ANY-OF, must be non-empty
 	input: z.object({ ... }),      // reuse lib/validate/* for writes
 	async handler({ input, ctx, db }) { ... },
@@ -58,7 +64,21 @@ exist, which is what that test is for.
 
 Registration fails at boot — not at call time — if the tool declares no
 permissions, collides with an existing name, is a write with no audit
-descriptor, or has a schema Zod cannot represent.
+descriptor, is destructive while opting out of approval, or has a schema Zod
+cannot represent.
+
+### Approval
+
+`requiresApproval` defaults to `risk === "destructive"`. Two deliberate
+exceptions:
+
+- **Scheduling writes set it to `true`.** They are not destructive, but they
+  change live dispatch state, so they stop for a person.
+- **`propose_draft` sets it to `false`.** What it writes is a draft somebody
+  then reviews in the Create panel — gating it would ask for the same approval
+  twice.
+
+A destructive tool may never set it to `false`; the registry refuses.
 
 ### Rules that are not optional
 
@@ -68,7 +88,9 @@ descriptor, or has a schema Zod cannot represent.
 - **Writes call the controllers.** That is where status guards, total
   recomputation, tax rules, and activity logging live. Reads use the explicit
   projections in `records.ts` instead, because the controllers' UI-shaped
-  payloads are far too large for a context window.
+  payloads are far too large for a context window. Several write controllers
+  take an Express `Request`; `controllerBridge.ts` hands them the shape they
+  read, and confines that compromise to one file.
 - **Handlers get `db`, never the raw client.** It is already org-scoped.
 - **Cap everything.** Every list takes a limit and reports `total` so the model
   can tell when it is seeing a subset.

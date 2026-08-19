@@ -3,15 +3,19 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-const { streamAssistantTurn, getConversationMessages } = vi.hoisted(() => ({
+const { streamAssistantTurn, getConversationMessages, getPendingApprovals, resolveApproval } = vi.hoisted(() => ({
 	streamAssistantTurn: vi.fn(),
 	getConversationMessages: vi.fn(),
+	getPendingApprovals: vi.fn(async () => [] as unknown[]),
+	resolveApproval: vi.fn(),
 }));
 
 vi.mock("../../api/assistant", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../../api/assistant")>()),
 	streamAssistantTurn,
 	getConversationMessages,
+	getPendingApprovals,
+	resolveApproval,
 	getAssistantStatus: vi.fn(),
 	listConversations: vi.fn(),
 }));
@@ -37,6 +41,9 @@ describe("useAssistantChat", () => {
 	beforeEach(() => {
 		streamAssistantTurn.mockReset();
 		getConversationMessages.mockReset();
+		resolveApproval.mockReset();
+		getPendingApprovals.mockReset();
+		getPendingApprovals.mockResolvedValue([]);
 	});
 
 	it("shows the user's message immediately, before the model replies", async () => {
@@ -158,6 +165,192 @@ describe("useAssistantChat", () => {
 			const message = assistantMessage(result.current.messages);
 			// Results can arrive out of order; each must land on its own call.
 			expect(message?.role === "assistant" && message.toolCalls.map((c) => c.summary)).toEqual(["first", "second"]);
+		});
+	});
+
+	describe("approvals", () => {
+		const pendingEvents: AssistantEvent[] = [
+			{ type: "text_delta", text: "I can move that." },
+			{
+				type: "approval_required",
+				approvalId: "approval-1",
+				id: "call_1",
+				name: "reschedule_visit",
+				title: "Reschedule a visit",
+				summary: "Move this visit to 2026-09-01 09:30",
+				input: { visit_id: "v1" },
+			},
+			{ type: "done", messageId: "m1", usage: null },
+		];
+
+		it("renders a pending action rather than reporting it as done", async () => {
+			scripted(pendingEvents);
+			const { result } = renderHook(() => useAssistantChat(), { wrapper });
+
+			await act(() => result.current.send("move the miller visit"));
+
+			const message = assistantMessage(result.current.messages);
+			expect(message?.role === "assistant" && message.toolCalls[0]).toMatchObject({
+				id: "call_1",
+				approvalId: "approval-1",
+				state: "awaiting_approval",
+				summary: "Move this visit to 2026-09-01 09:30",
+			});
+			expect(result.current.streaming).toBe(false);
+		});
+
+		it("sends the decision and settles the card on approval", async () => {
+			scripted(pendingEvents);
+			const { result } = renderHook(() => useAssistantChat(), { wrapper });
+			await act(() => result.current.send("move it"));
+
+			resolveApproval.mockImplementation(async (opts: { onEvent: (e: AssistantEvent) => void }) => {
+				opts.onEvent({ type: "approval_resolved", approvalId: "approval-1", id: "call_1", approved: true });
+				opts.onEvent({
+					type: "tool_result",
+					id: "call_1",
+					ok: true,
+					summary: "Moved the visit",
+					durationMs: 30,
+				});
+				opts.onEvent({ type: "text_delta", text: " Done." });
+				opts.onEvent({ type: "done", messageId: "m2", usage: null });
+			});
+
+			await act(() => result.current.decide("approval-1", "approve"));
+
+			expect(resolveApproval.mock.calls[0][0]).toMatchObject({
+				approvalId: "approval-1",
+				decision: "approve",
+			});
+			const message = assistantMessage(result.current.messages);
+			expect(message?.role === "assistant" && message.toolCalls[0]).toMatchObject({
+				state: "ok",
+				summary: "Moved the visit",
+				approvalId: undefined,
+			});
+			expect(message).toMatchObject({ content: "I can move that. Done." });
+		});
+
+		it("marks the card declined when the person says no", async () => {
+			scripted(pendingEvents);
+			const { result } = renderHook(() => useAssistantChat(), { wrapper });
+			await act(() => result.current.send("move it"));
+
+			resolveApproval.mockImplementation(async (opts: { onEvent: (e: AssistantEvent) => void }) => {
+				opts.onEvent({ type: "approval_resolved", approvalId: "approval-1", id: "call_1", approved: false });
+				opts.onEvent({
+					type: "tool_result",
+					id: "call_1",
+					ok: false,
+					summary: "Declined",
+					errorCode: "REJECTED",
+					errorMessage: "You declined this action.",
+					durationMs: 0,
+				});
+				opts.onEvent({ type: "done", messageId: "m2", usage: null });
+			});
+
+			await act(() => result.current.decide("approval-1", "reject"));
+
+			const message = assistantMessage(result.current.messages);
+			expect(message?.role === "assistant" && message.toolCalls[0]).toMatchObject({
+				state: "error",
+				errorMessage: "You declined this action.",
+			});
+		});
+
+		it("does not decide while a turn is already streaming", async () => {
+			let release: (() => void) | undefined;
+			streamAssistantTurn.mockImplementation(() => new Promise<void>((r) => { release = r; }));
+			const { result } = renderHook(() => useAssistantChat(), { wrapper });
+			act(() => void result.current.send("hi"));
+			await waitFor(() => expect(result.current.streaming).toBe(true));
+
+			await act(() => result.current.decide("approval-1", "approve"));
+
+			expect(resolveApproval).not.toHaveBeenCalled();
+			await act(async () => release?.());
+		});
+
+		it("restores a pending action after a reload, with its approval id", async () => {
+			// The message row stores the provider's call id; the buttons need ours.
+			getConversationMessages.mockResolvedValue([
+				{
+					id: "m1",
+					role: "assistant",
+					content: "I can move that.",
+					created_at: "",
+					input_tokens: null,
+					output_tokens: null,
+					tool_calls: [
+						{
+							id: "x",
+							provider_call_id: "call_1",
+							tool_name: "reschedule_visit",
+							input: {},
+							status: "pending_approval",
+							result: null,
+							error_code: null,
+							duration_ms: null,
+						},
+					],
+				},
+			]);
+			getPendingApprovals.mockResolvedValue([
+				{
+					approvalId: "approval-1",
+					id: "call_1",
+					name: "reschedule_visit",
+					title: "Reschedule a visit",
+					summary: "Move this visit",
+					input: {},
+				},
+			]);
+
+			const { result } = renderHook(() => useAssistantChat(), { wrapper });
+			await act(() => result.current.openConversation("conv-3"));
+
+			const message = result.current.messages[0];
+			expect(message.role === "assistant" && message.toolCalls[0]).toMatchObject({
+				state: "awaiting_approval",
+				approvalId: "approval-1",
+				summary: "Move this visit",
+			});
+		});
+
+		it.each([
+			["rejected", "declined"],
+			["expired", "error"],
+			["ok", "ok"],
+		])("renders a stored %s call as %s", async (status, expected) => {
+			getConversationMessages.mockResolvedValue([
+				{
+					id: "m1",
+					role: "assistant",
+					content: "",
+					created_at: "",
+					input_tokens: null,
+					output_tokens: null,
+					tool_calls: [
+						{
+							id: "x",
+							provider_call_id: "c",
+							tool_name: "reschedule_visit",
+							input: {},
+							status,
+							result: null,
+							error_code: null,
+							duration_ms: null,
+						},
+					],
+				},
+			]);
+			const { result } = renderHook(() => useAssistantChat(), { wrapper });
+			await act(() => result.current.openConversation("conv-3"));
+
+			const message = result.current.messages[0];
+			expect(message.role === "assistant" && message.toolCalls[0].state).toBe(expected);
 		});
 	});
 

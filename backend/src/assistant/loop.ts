@@ -14,21 +14,24 @@
  */
 
 import type OpenAI from "openai";
-import { executeTool } from "../agent/execute.js";
+import { executeTool, toolRequiresApproval } from "../agent/execute.js";
+import { getTool } from "../agent/registry.js";
 import type { AgentContext, AgentPolicy } from "../agent/types.js";
 import { log } from "../services/appLogger.js";
 import { ASSISTANT_MODEL, MAX_COMPLETION_TOKENS, MAX_TOOL_ITERATIONS } from "./config.js";
 import {
 	appendAssistantMessage,
 	appendUserMessage,
+	expirePendingApprovals,
 	loadMessages,
 	toTranscript,
+	TOOL_CALL_STATUS,
 	type PersistedToolCall,
 } from "./conversations.js";
 import type { AssistantEvent } from "./events.js";
 import { getOpenAI } from "./openaiClient.js";
 import { buildSystemPrompt } from "./prompt.js";
-import { parseToolArguments, summariseToolResult, toolsForOpenAI } from "./toolBridge.js";
+import { describeToolCall, parseToolArguments, summariseToolResult, toolsForOpenAI } from "./toolBridge.js";
 
 export interface TurnOptions {
 	ctx: AgentContext;
@@ -124,32 +127,31 @@ async function streamOnce(
 }
 
 /**
- * Run one user turn to completion, emitting events as it goes.
+ * Drive the model→tool→model loop over an already-built transcript.
  *
- * Returns rather than throws on failure: the caller has an open SSE stream, and
- * the useful thing to do with an error is put it in the thread.
+ * Shared by a fresh turn and by one resumed after an approval, so the two cannot
+ * drift on how tools are run, how failures are reported, or when the loop stops.
+ *
+ * Returns `paused` when a call needs a human decision: the turn stops there, the
+ * pending call is persisted, and deciding it starts a new stream that calls back
+ * into here. Blocking the open SSE connection instead would tie the action to a
+ * socket that a page refresh destroys.
  */
-export async function runTurn(options: TurnOptions): Promise<void> {
-	const { ctx, policy, timezone, conversationId, userMessage, emit, signal } = options;
-	const now = options.now ?? new Date();
+async function driveLoop(
+	options: TurnOptions,
+	messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+	seed: { input: number; output: number } = { input: 0, output: 0 },
+): Promise<"done" | "paused" | "aborted"> {
+	const { ctx, policy, conversationId, emit, signal } = options;
 	const client = getOpenAI();
-
-	await appendUserMessage(ctx, conversationId, userMessage);
-
-	const history = await loadMessages(ctx, conversationId);
-	const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-		{ role: "system", content: buildSystemPrompt({ ctx, timezone, now }) },
-		...toTranscript(history),
-	];
-
 	const tools = toolsForOpenAI(ctx, policy);
 
 	let lastMessageId: string | null = null;
-	let totalIn = 0;
-	let totalOut = 0;
+	let totalIn = seed.input;
+	let totalOut = seed.output;
 
 	for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-		if (signal.aborted) return;
+		if (signal.aborted) return "aborted";
 
 		const turn = await streamOnce(client, messages, tools, emit, signal);
 		totalIn += turn.usage?.input ?? 0;
@@ -165,16 +167,35 @@ export async function runTurn(options: TurnOptions): Promise<void> {
 				toolCalls: [],
 			});
 			emit({ type: "done", messageId: saved.id, usage: { input: totalIn, output: totalOut } });
-			return;
+			return "done";
 		}
 
 		const persisted: PersistedToolCall[] = [];
+		let paused = false;
 
 		for (const call of turn.calls) {
-			if (signal.aborted) return;
+			if (signal.aborted) return "aborted";
 
 			const parsed = parseToolArguments(call.args);
 			const input = parsed.ok ? parsed.value : {};
+			const definition = getTool(call.name);
+
+			// A call that needs a decision is recorded, announced, and not run.
+			// Everything already executed in this batch stands — those calls were
+			// permitted to run unattended, and undoing them is not this loop's job.
+			if (parsed.ok && definition && toolRequiresApproval(definition)) {
+				paused = true;
+				persisted.push({
+					provider_call_id: call.id,
+					tool_name: call.name,
+					input,
+					status: TOOL_CALL_STATUS.PENDING,
+					result: null,
+					duration_ms: null,
+				});
+				continue;
+			}
+
 			emit({ type: "tool_call", id: call.id, name: call.name, input });
 
 			const started = Date.now();
@@ -186,34 +207,13 @@ export async function runTurn(options: TurnOptions): Promise<void> {
 				: ({ ok: false, error: { code: "VALIDATION_ERROR" as const, message: parsed.message } } as const);
 			const durationMs = Date.now() - started;
 
-			if (result.ok) {
-				emit({
-					type: "tool_result",
-					id: call.id,
-					ok: true,
-					summary: summariseToolResult(call.name, input, result.data),
-					durationMs,
-				});
-				if (result.meta?.invalidates?.length) {
-					emit({ type: "invalidate", keys: result.meta.invalidates });
-				}
-			} else {
-				emit({
-					type: "tool_result",
-					id: call.id,
-					ok: false,
-					summary: `${call.name} failed`,
-					errorCode: result.error.code,
-					errorMessage: result.error.message,
-					durationMs,
-				});
-			}
+			emitToolResult(emit, call.id, call.name, input, result, durationMs);
 
 			persisted.push({
 				provider_call_id: call.id,
 				tool_name: call.name,
 				input,
-				status: result.ok ? "ok" : "error",
+				status: result.ok ? TOOL_CALL_STATUS.OK : TOOL_CALL_STATUS.ERROR,
 				result,
 				error_code: result.ok ? null : result.error.code,
 				duration_ms: durationMs,
@@ -229,6 +229,27 @@ export async function runTurn(options: TurnOptions): Promise<void> {
 			toolCalls: persisted,
 		});
 		lastMessageId = saved.id;
+
+		if (paused) {
+			// Announce every pending call with its stored id, which is what the
+			// approval endpoint takes — the ids come back from the write itself
+			// rather than from a follow-up read of "the newest message".
+			for (const call of saved.tool_calls) {
+				if (call.status !== TOOL_CALL_STATUS.PENDING) continue;
+				const definition = getTool(call.tool_name);
+				emit({
+					type: "approval_required",
+					approvalId: call.id,
+					id: call.provider_call_id,
+					name: call.tool_name,
+					title: definition?.title ?? call.tool_name,
+					summary: describeToolCall(call.tool_name, call.input),
+					input: call.input,
+				});
+			}
+			emit({ type: "done", messageId: lastMessageId, usage: { input: totalIn, output: totalOut } });
+			return "paused";
+		}
 
 		messages.push({
 			role: "assistant",
@@ -260,4 +281,88 @@ export async function runTurn(options: TurnOptions): Promise<void> {
 		message: `I looked things up ${MAX_TOOL_ITERATIONS} times without reaching an answer. Try narrowing the question.`,
 	});
 	emit({ type: "done", messageId: lastMessageId, usage: { input: totalIn, output: totalOut } });
+	return "done";
+}
+
+/** Emit the result of one executed call, plus any cache keys it invalidated. */
+function emitToolResult(
+	emit: (event: AssistantEvent) => void,
+	id: string,
+	name: string,
+	input: unknown,
+	result: Awaited<ReturnType<typeof executeTool>>,
+	durationMs: number,
+): void {
+	if (result.ok) {
+		emit({
+			type: "tool_result",
+			id,
+			ok: true,
+			summary: summariseToolResult(name, input, result.data),
+			durationMs,
+		});
+		if (result.meta?.invalidates?.length) {
+			emit({ type: "invalidate", keys: result.meta.invalidates });
+		}
+	} else {
+		emit({
+			type: "tool_result",
+			id,
+			ok: false,
+			summary: `${name} failed`,
+			errorCode: result.error.code,
+			errorMessage: result.error.message,
+			durationMs,
+		});
+	}
+}
+
+/**
+ * Run one user turn, emitting events as it goes.
+ *
+ * Returns rather than throws on failure: the caller has an open SSE stream, and
+ * the useful thing to do with an error is put it in the thread.
+ */
+export async function runTurn(options: TurnOptions): Promise<void> {
+	const { ctx, timezone, conversationId, userMessage } = options;
+	const now = options.now ?? new Date();
+
+	// Asking something new supersedes anything still awaiting a decision. Saying
+	// yes ten minutes later would fire an action nobody is thinking about.
+	const expired = await expirePendingApprovals(ctx, conversationId);
+	if (expired) {
+		log.info(
+			{ evt: "assistant.approvals_expired", conversation: conversationId, count: expired },
+			"Pending approvals lapsed because the conversation moved on",
+		);
+	}
+
+	await appendUserMessage(ctx, conversationId, userMessage);
+
+	const history = await loadMessages(ctx, conversationId);
+	const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+		{ role: "system", content: buildSystemPrompt({ ctx, timezone, now, policy: options.policy }) },
+		...toTranscript(history),
+	];
+
+	await driveLoop(options, messages);
+}
+
+/**
+ * Continue a turn that paused for approval, once every pending call is decided.
+ *
+ * The transcript is rebuilt from the database rather than carried in memory, so
+ * a decision made after a page refresh — or from another tab — resumes correctly.
+ */
+export async function resumeTurn(options: Omit<TurnOptions, "userMessage">): Promise<void> {
+	const { ctx, timezone, conversationId } = options;
+	const now = options.now ?? new Date();
+
+	const history = await loadMessages(ctx, conversationId);
+	const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+		{ role: "system", content: buildSystemPrompt({ ctx, timezone, now, policy: options.policy }) },
+		...toTranscript(history),
+	];
+
+	await driveLoop({ ...options, userMessage: "" }, messages);
 }

@@ -33,7 +33,11 @@ export default function AssistantPanel({ isOpen, onClose }: { isOpen: boolean; o
 				<div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-2">
 					<div className="flex items-center gap-1.5 text-xs text-text-muted">
 						<Sparkles size={13} />
-						<span>{status?.readOnly ? "Read-only — it can look things up, not change them" : "Assistant"}</span>
+						<span>
+							{status?.readOnly
+								? "Read-only — it can look things up, not change them"
+								: "Changes need your approval before they happen"}
+						</span>
 					</div>
 					<div className="flex items-center gap-1">
 						<button
@@ -89,9 +93,16 @@ export default function AssistantPanel({ isOpen, onClose }: { isOpen: boolean; o
 					{unavailable ? (
 						<p className="text-sm text-text-muted">{status?.reason}</p>
 					) : chat.messages.length === 0 ? (
-						<EmptyState onPick={(text) => void chat.send(text)} />
+						<EmptyState onPick={(text) => void chat.send(text)} readOnly={status?.readOnly ?? true} />
 					) : (
-						chat.messages.map((message) => <MessageBubble key={message.id} message={message} />)
+						chat.messages.map((message) => (
+							<MessageBubble
+								key={message.id}
+								message={message}
+								onDecide={(approvalId, decision) => void chat.decide(approvalId, decision)}
+								busy={chat.streaming}
+							/>
+						))
 					)}
 				</div>
 
@@ -112,21 +123,31 @@ export default function AssistantPanel({ isOpen, onClose }: { isOpen: boolean; o
  * Openers that demonstrate what the tools can actually answer. Generic prompts
  * ("ask me anything") teach nothing; these show the shape of a good question.
  */
-const STARTERS = [
+const READ_STARTERS = [
 	"What's on the schedule this week?",
 	"Which visits still need a technician?",
 	"Show me quotes waiting on approval",
 	"What inventory is running low?",
 ];
 
-function EmptyState({ onPick }: { onPick: (text: string) => void }) {
+/** Openers that show what the write tools are for, without implying they run unattended. */
+const WRITE_STARTERS = [
+	"Which visits still need a technician?",
+	"Move tomorrow's afternoon visits to Thursday",
+	"Draft a quote for a condenser replacement",
+	"Log a call from a client as a new request",
+];
+
+function EmptyState({ onPick, readOnly }: { onPick: (text: string) => void; readOnly: boolean }) {
 	return (
 		<div className="flex flex-col gap-3">
 			<p className="text-sm text-text-muted">
-				Ask about your organization's jobs, schedule, clients, quotes, invoices, stock or reports.
+				{readOnly
+					? "Ask about your organization's jobs, schedule, clients, quotes, invoices, stock or reports."
+					: "Ask about your work, or ask for a change — scheduling happens only after you approve it, and new records arrive as drafts for you to review."}
 			</p>
 			<div className="flex flex-col gap-1.5">
-				{STARTERS.map((starter) => (
+				{(readOnly ? READ_STARTERS : WRITE_STARTERS).map((starter) => (
 					<button
 						key={starter}
 						type="button"

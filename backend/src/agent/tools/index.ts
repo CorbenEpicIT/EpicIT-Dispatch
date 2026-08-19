@@ -8,9 +8,11 @@
  * catalog test asserts the expected names.
  */
 
+export { proposeDraft } from "./drafts.js";
 export { getEntityHistoryTool } from "./history.js";
 export { getInventoryLevels } from "./inventory.js";
 export { getRecord, listRecords } from "./records.js";
 export { runReport } from "./reports.js";
 export { getSchedule, getTechnicianAvailability } from "./schedule.js";
+export { addJobNote, assignTechnician, rescheduleVisit, scheduleVisit, updateJobStatus } from "./scheduling.js";
 export { searchRecordsTool } from "./search.js";

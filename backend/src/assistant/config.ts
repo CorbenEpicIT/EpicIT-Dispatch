@@ -35,6 +35,18 @@ export const MAX_CONCURRENT_STREAMS_PER_USER = Number(process.env.ASSISTANT_MAX_
 /** Longest a single turn may run before the server gives up on it. */
 export const TURN_TIMEOUT_MS = Number(process.env.ASSISTANT_TURN_TIMEOUT_MS) || 120_000;
 
+/**
+ * Whether the assistant may propose changes at all.
+ *
+ * "Writes enabled" is narrower than it sounds. Every scheduling tool requires an
+ * explicit human approval before it runs, so this flag governs whether those
+ * tools are advertised to the model — not whether it can act unattended. It
+ * cannot: the executor refuses an unapproved call regardless of this setting.
+ *
+ * Set ASSISTANT_WRITES_ENABLED=false to run the assistant read-only.
+ */
+export const areWritesEnabled = (): boolean => process.env.ASSISTANT_WRITES_ENABLED !== "false";
+
 export const isAssistantEnabled = (): boolean => Boolean(process.env.OPENAI_API_KEY);
 
 /** Why the assistant is unavailable, in words a dispatcher can act on. */

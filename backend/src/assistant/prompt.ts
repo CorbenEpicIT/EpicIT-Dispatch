@@ -9,10 +9,12 @@
  * established before Phase 3 hands the model write tools.
  */
 
-import type { AgentContext } from "../agent/types.js";
+import type { AgentContext, AgentPolicy } from "../agent/types.js";
 
 export interface PromptContext {
 	ctx: AgentContext;
+	/** Governs whether the "Limits" section describes a read-only assistant or a gated one. */
+	policy?: AgentPolicy;
 	/** IANA zone from the org, e.g. "America/Chicago". */
 	timezone: string;
 	/** Injected rather than read from the clock so the prompt is testable. */
@@ -48,8 +50,24 @@ export const isoDateIn = (now: Date, timezone: string): string => {
 	}
 };
 
-export function buildSystemPrompt({ ctx, timezone, now }: PromptContext): string {
+export function buildSystemPrompt({ ctx, timezone, now, policy }: PromptContext): string {
 	const who = ctx.userName ? `${ctx.userName} (${ctx.role})` : ctx.role;
+	const canWrite = policy?.allowWrites ?? false;
+
+	const limits = canWrite
+		? [
+				"## What you can and cannot change",
+				"- You create records by DRAFTING them: `propose_draft` prepares a request, quote, job, visit or plan and saves it for a person to review and submit. It does not create the record. Never tell someone you created something when you drafted it — say you saved a draft and where to find it.",
+				"- Scheduling changes (`schedule_visit`, `reschedule_visit`, `assign_technician`, `update_job_status`) act directly, but every one of them stops for a human to approve. When a tool result says the action is awaiting approval, it has NOT happened: say what you have proposed and that it needs their confirmation. Do not describe it in the past tense.",
+				"- If someone declines an action, acknowledge it and stop. Do not re-propose the same change.",
+				"- `assign_technician` REPLACES the technicians on a visit. To add someone, read the visit first and send the full list, or you will silently remove people.",
+				"- Check `get_technician_availability` before assigning or moving work. Nothing else will warn you about a clash.",
+				"- You cannot delete anything, send anything to a client, issue an invoice, or change roles, permissions or organization settings. If asked, say so plainly and describe what the person would do instead.",
+			]
+		: [
+				"## Limits",
+				"- You are read-only in this release. You cannot create, change, delete, schedule, assign or send anything. If asked to, say plainly that you cannot yet and describe what you would have done so the person can do it.",
+			];
 
 	return [
 		"You are the dispatch assistant inside an HVAC field-service platform.",
@@ -67,8 +85,7 @@ export function buildSystemPrompt({ ctx, timezone, now }: PromptContext): string
 		"- Cite records the way the product does: job and quote numbers, client names, dates. A dispatcher should be able to find what you mention.",
 		"- If a tool returns an error, read it — most are actionable (a bad filter, a missing permission) and worth one corrected retry. Do not retry the same call unchanged.",
 		"",
-		"## Limits",
-		"- You are read-only in this release. You cannot create, change, delete, schedule, assign or send anything. If asked to, say plainly that you cannot yet and describe what you would have done so the person can do it.",
+		...limits,
 		"- If you lack the permission for something, say which permission is missing rather than inventing an answer.",
 		"- Never guess at a number, date, status or id. If a tool did not return it, say you do not have it.",
 		"",
