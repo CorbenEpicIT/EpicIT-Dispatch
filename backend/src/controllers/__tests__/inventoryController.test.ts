@@ -32,6 +32,7 @@ import {
 	getItemValueHistory,
 	getItemForecast,
 	getInventoryMovements,
+	getInventoryItemById,
 } from "../inventoryController.js";
 import { db } from "../../db.js";
 import { logActivity, buildChanges } from "../../services/logger.js";
@@ -293,6 +294,50 @@ describe("inventoryController", () => {
 			expect(mockDb.inventory_item.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ orderBy: expectedOrderBy }),
 			);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getInventoryItemById — unlike the list, provisional/inactive items are still
+	// returned so a direct link (from a ledger row, an alert email) never 404s.
+	// ---------------------------------------------------------------------------
+	describe("getInventoryItemById", () => {
+		it("returns an inactive (soft-deleted) item with stock_status", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ is_active: false, quantity: 0, low_stock_threshold: 2 }),
+			);
+
+			const result = await getInventoryItemById("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.item?.is_active).toBe(false);
+			expect(result.item?.stock_status).toBe("out_of_stock");
+		});
+
+		it("returns a provisional item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ provisional: true }));
+
+			const result = await getInventoryItemById("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.item?.provisional).toBe(true);
+		});
+
+		it("does not filter on is_active or provisional (the list does)", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+
+			await getInventoryItemById("item-1", "org-1");
+
+			const where = mockDb.inventory_item.findFirst.mock.calls[0][0].where;
+			expect(where).toEqual({ id: "item-1" });
+		});
+
+		it("returns not found for a missing/foreign id", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+
+			const result = await getInventoryItemById("missing", "org-1");
+
+			expect(result.err).toBe("Inventory item not found");
 		});
 	});
 
@@ -2748,6 +2793,93 @@ describe("inventoryController", () => {
 
 			expect(result.conflict).toBe(true);
 			expect(result.err).toMatch(/already exist/i);
+		});
+
+		// unit_cost is what the supplier billed per unit on THIS receipt. It must
+		// reach the ledger row (price-history reports read it from there) and, for
+		// a lot, the stock_batch header (the batch-level cost is readable without
+		// walking movements). Batch-level unit_cost overrides; receive-level is the
+		// fallback — one purchase, one price.
+		describe("unit_cost propagation", () => {
+			it("stamps the receive-level unit_cost onto the movement", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+				const result = await receiveInventoryItem("item-1", { qty: 5, unit_cost: 12.34 }, "org-1");
+
+				expect(result.err).toBe("");
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBe(12.34);
+			});
+
+			it("leaves unit_cost undefined on the movement when none was given (never a fake 0)", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+				await receiveInventoryItem("item-1", { qty: 5 }, "org-1");
+
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBeUndefined();
+			});
+
+			it("passes the batch-level unit_cost to getOrCreateBatch, overriding the receive-level one", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				const result = await receiveInventoryItem(
+					"item-1",
+					{ qty: 10, unit_cost: 9, batch: { batch_number: "B-100", unit_cost: 8.5 } },
+					"org-1",
+				);
+
+				expect(result.err).toBe("");
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ inventory_item_id: "item-1", batch_number: "B-100", unit_cost: 8.5 }),
+				);
+				// The movement still carries the receive-level cost.
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBe(9);
+			});
+
+			it("falls back to the receive-level unit_cost for the lot header when the batch names none", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				await receiveInventoryItem(
+					"item-1",
+					{ qty: 10, unit_cost: 9, batch: { batch_number: "B-100" } },
+					"org-1",
+				);
+
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ unit_cost: 9 }),
+				);
+			});
+
+			it("stores a null lot cost when neither level names one", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				await receiveInventoryItem("item-1", { qty: 10, batch: { batch_number: "B-100" } }, "org-1");
+
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ unit_cost: null }),
+				);
+			});
 		});
 	});
 
