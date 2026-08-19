@@ -32,11 +32,15 @@ export const useAllJobsQuery = (): UseQueryResult<Job[], Error> => {
 	});
 };
 
-export const useJobByIdQuery = (id: string): UseQueryResult<Job, Error> => {
+export const useJobByIdQuery = (
+	id: string,
+	options?: { retry?: boolean }
+): UseQueryResult<Job, Error> => {
 	return useQuery({
 		queryKey: ["jobs", id],
 		queryFn: () => jobApi.getJobById(id),
 		enabled: !!id,
+		...(options?.retry !== undefined ? { retry: options.retry } : {}),
 	});
 };
 

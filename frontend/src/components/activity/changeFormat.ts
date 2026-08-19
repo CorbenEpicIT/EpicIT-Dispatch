@@ -60,6 +60,8 @@ const VERB_STYLES: Record<string, EntryStyle> = {
 	removed: { icon: UserX, color: "text-error-text", bg: "bg-error/10" },
 };
 
+export const OTHER_FILTER_KEY = "other";
+
 export const ACTION_FILTERS = [
 	{ key: "created", label: "Created", verbs: ["created"], ...VERB_STYLES.created },
 	{ key: "updated", label: "Updated", verbs: ["updated", "changed"], ...VERB_STYLES.updated },
@@ -70,7 +72,18 @@ export const ACTION_FILTERS = [
 	{ key: "detached", label: "Detached", verbs: ["detached"], ...VERB_STYLES.detached },
 	{ key: "sent", label: "Sent", verbs: ["sent"], ...VERB_STYLES.sent },
 	{ key: "authorized", label: "Authorized", verbs: ["authorized"], ...VERB_STYLES.authorized },
+	// Catch-all for verbs no chip above lists (failed, push_failed, reuse_detected, …)
+	{ key: OTHER_FILTER_KEY, label: "Other", verbs: [], ...DEFAULT_STYLE },
 ] as const;
+
+/** The chip a log belongs to: the one listing its verb, or "Other" for anything else. */
+export const actionFilterKeyFor = (log: ActivityLog): string => {
+	const verb = getVerb(log);
+	return (
+		ACTION_FILTERS.find((f) => (f.verbs as readonly string[]).includes(verb))?.key ??
+		OTHER_FILTER_KEY
+	);
+};
 
 const ENTITY_LABELS: Record<string, string> = {
 	job: "Job",
