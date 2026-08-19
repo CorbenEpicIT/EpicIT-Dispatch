@@ -466,6 +466,42 @@ export function hhmmToPickerDate(hhmm: string): Date | null {
 	return d;
 }
 
+/** Default width of the click-detail popups (VisitClickPopup / OccurrenceClickPopup) */
+export const CLICK_POPUP_W = 224;
+
+/**
+ * Viewport coordinates for a popup anchored beside an element.
+ *
+ * VisitClickPopup renders through a portal on document.body, so callers must
+ * supply viewport (position: fixed) coordinates — offsets relative to a day
+ * column resolve against the page instead and land in the wrong column.
+ */
+export function getAnchoredPopupPos(
+	anchor: { left: number; right: number; top: number },
+	{
+		popupH,
+		popupW = CLICK_POPUP_W,
+		viewport,
+	}: {
+		popupH: number;
+		popupW?: number;
+		viewport?: { width: number; height: number };
+	},
+): { top: number; left: number } {
+	const PAD = 8;
+	const GAP = 4;
+	const vw = viewport?.width ?? window.innerWidth;
+	const vh = viewport?.height ?? window.innerHeight;
+
+	const fitsRight = anchor.right + GAP + popupW + PAD <= vw;
+	const left = fitsRight
+		? anchor.right + GAP
+		: Math.max(PAD, anchor.left - popupW - GAP);
+	const top = Math.max(PAD, Math.min(anchor.top, vh - popupH - PAD));
+
+	return { top, left };
+}
+
 /** Shared style for column-label headings inside reschedule popups */
 export const POPUP_LABEL_STYLE: CSSProperties = {
 	fontSize: 9,
