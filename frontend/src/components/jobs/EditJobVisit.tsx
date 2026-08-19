@@ -282,7 +282,7 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 	);
 
 	const buildScheduledDates = useCallback(() => {
-		let combinedStartDate = new Date(getValue("startDate"));
+		const combinedStartDate = new Date(getValue("startDate"));
 		let combinedEndDate = new Date(getValue("startDate"));
 
 		if (

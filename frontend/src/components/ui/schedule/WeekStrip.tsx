@@ -13,7 +13,6 @@ import {
 	getWeekDays,
 	groupVisitsByDay,
 	visitStartLabel,
-	visitEndLabel,
 	getPriorityColor,
 	SCROLL_ZONE_W,
 	SCROLL_DELAY_MS,
@@ -971,7 +970,14 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					technicians={technicians}
 					techColorMap={techColorMap}
 					anchorRect={pendingClickReschedule.anchorRect}
-					onSave={async (data) => { try { await updateVisit({ id: v.id, data }); } catch {} setPendingClickReschedule(null); }}
+					onSave={async (data) => {
+						try {
+							await updateVisit({ id: v.id, data });
+						} catch {
+							// A failed update leaves the visit as-is; dismiss the popover regardless.
+						}
+						setPendingClickReschedule(null);
+					}}
 					onUndo={() => setPendingClickReschedule(null)}
 				/>
 			);
@@ -988,7 +994,11 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					newDateStr={nd}
 					anchorRect={pendingClickReschedule.anchorRect}
 					onReschedule={async (input) => {
-						try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input }); } catch {}
+						try {
+							await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
+						} catch {
+							// A failed reschedule leaves the occurrence as-is; dismiss the popover regardless.
+						}
 						setPendingClickReschedule(null);
 					}}
 					onGenerate={async (input) => {
@@ -997,7 +1007,9 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 						try {
 							await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
 							await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
-						} catch {}
+						} catch {
+							// A failed generation leaves the occurrence as-is; clear the spinner regardless.
+						}
 						setGeneratingVisitId(null);
 					}}
 					onCancel={() => setPendingClickReschedule(null)}

@@ -236,7 +236,11 @@ export default function DashboardCalendar({
 						onGenerate={async () => {
 							setGeneratingVisitId(occ.id);
 							setClickedOccurrence(null);
-							try { await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id }); } catch {}
+							try {
+								await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
+							} catch {
+								// A failed generation leaves the occurrence as-is; clear the spinner regardless.
+							}
 							setGeneratingVisitId(null);
 						}}
 						onRescheduleClick={() => { setClickedOccurrence(null); setPendingClickReschedule({ type: "occurrence", occurrence: occ, anchorRect: new DOMRect(x, y, 0, 0) }); }}
@@ -265,7 +269,14 @@ export default function DashboardCalendar({
 						technicians={technicians}
 						techColorMap={techColorMap}
 						anchorRect={pendingClickReschedule.anchorRect}
-						onSave={async (data) => { try { await updateVisit({ id: v.id, data }); } catch {} setPendingClickReschedule(null); }}
+						onSave={async (data) => {
+							try {
+								await updateVisit({ id: v.id, data });
+							} catch {
+								// A failed update leaves the visit as-is; dismiss the popover regardless.
+							}
+							setPendingClickReschedule(null);
+						}}
 						onUndo={() => setPendingClickReschedule(null)}
 					/>
 				);
@@ -282,7 +293,11 @@ export default function DashboardCalendar({
 						newDateStr={nd}
 						anchorRect={pendingClickReschedule.anchorRect}
 						onReschedule={async (input) => {
-							try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input }); } catch {}
+							try {
+								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
+							} catch {
+								// A failed reschedule leaves the occurrence as-is; dismiss the popover regardless.
+							}
 							setPendingClickReschedule(null);
 						}}
 						onGenerate={async (input) => {
@@ -291,7 +306,9 @@ export default function DashboardCalendar({
 							try {
 								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
 								await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
-							} catch {}
+							} catch {
+								// A failed generation leaves the occurrence as-is; clear the spinner regardless.
+							}
 							setGeneratingVisitId(null);
 						}}
 						onCancel={() => setPendingClickReschedule(null)}
