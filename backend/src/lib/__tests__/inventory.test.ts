@@ -8,7 +8,6 @@ import {
 	CONSUMPTION_MOVEMENT_PREDICATE,
 	CONSUMPTION_SIGNED_QTY,
 } from "../inventory.js";
-import { Prisma } from "../../../generated/prisma/client.js";
 
 const dec = (v: string | number) => new Prisma.Decimal(v);
 
