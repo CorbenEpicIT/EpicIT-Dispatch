@@ -22,7 +22,7 @@ import {
 } from "../../types/project";
 import { PriorityValues, PriorityLabels, type Priority, PriorityColors } from "../../types/common";
 import { matchesDateRange, parseDateRangeFromParams, toLocalDate } from "../../util/dateRangeUtils";
-import { compareByOrder, compareDate, comparePriority, withDir, type SortDir } from "../../util/sortUtil";
+import { compareByOrder, compareDateNullsLast, comparePriority, withDir, type SortDir } from "../../util/sortUtil";
 import { formatCurrency, formatDateOnly } from "../../util/util";
 import AdaptableTable from "../../components/AdaptableTable";
 import CreateProjectModal from "../../components/projects/CreateProjectModal";
@@ -163,9 +163,9 @@ export default function ProjectsPage() {
                 : sortParam === "status"
                 ? withDir((a, b) => compareByOrder(a.status, b.status, ProjectStatusValues), dir)
                 : sortParam === "date"
-                ? withDir((a, b) => compareDate(a.created_at, b.created_at), dir)
+                ? (a, b) => compareDateNullsLast(dir)(a.created_at, b.created_at)
                 : sortParam === "targetDate"
-                ? withDir((a, b) => compareDate(a.target_end_at, b.target_end_at), dir)
+                ? (a, b) => compareDateNullsLast(dir)(a.target_end_at, b.target_end_at)
                 : (a, b) => {
                     const statusDiff =
                     ProjectStatusValues.indexOf(a.status as ProjectStatus) -

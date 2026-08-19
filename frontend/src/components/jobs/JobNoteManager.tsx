@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { Plus, Edit2, Trash2, X, Calendar } from "lucide-react";
 import Card from "../ui/Card";
 import type { JobNote, JobVisit, JobNotePhoto, NotePhoto, UpdateJobNoteInput } from "../../types/jobs";
@@ -201,6 +201,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 
 							<NotePhotoPicker
 								jobId={jobId}
+								capture={false}
 								photos={photos}
 								onPhotosChange={setPhotos}
 								disabled={createNote.isPending}
@@ -432,6 +433,7 @@ export default function JobNoteManager({ jobId, visits, visitId }: JobNoteManage
 
 												<NotePhotoPicker
 													jobId={jobId}
+													capture={false}
 													photos={photos}
 													onPhotosChange={setPhotos}
 													existingPhotos={existingPhotos}

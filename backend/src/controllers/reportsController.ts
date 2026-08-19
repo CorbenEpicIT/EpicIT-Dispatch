@@ -1156,7 +1156,9 @@ const inventoryBaseWhere = (includeInactive: boolean): Record<string, unknown> =
 // happened) — the same netting buildReorderForecast applies, so the inventory
 // report and the forecast agree on what was consumed. `reason` is in the group
 // key only so the reversal rows can be subtracted; it is folded away below.
-// TODO(orchestrator): use CONSUMPTION_MOVEMENT_PREDICATE from lib/inventory.ts
+// This is a Prisma groupBy, so it uses the object form of the predicate; the raw-SQL
+// reports use CONSUMPTION_MOVEMENT_PREDICATE / CONSUMPTION_SIGNED_QTY from lib/inventory.ts.
+// Keep the two in lockstep.
 const inventoryUsageByItem = async (
 	sdb: ReturnType<typeof getScopedDb>,
 	organizationId: string,
