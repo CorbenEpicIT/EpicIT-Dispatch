@@ -561,10 +561,10 @@ export const sendPasswordResetEmail = async (
 	role: string,
 ) => {
 	if (EMAIL_DISABLED) {
-		const passwordResetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&role=${role}`;
+		// Never log the reset token: logs are broadly readable and the token is a credential.
 		log.info(
-			{ to, passwordResetLink },
-			"[EMAIL DISABLED] Skipping password reset email — pending Postmark approval. Use the logged link to reset.",
+			{ to, role },
+			"[EMAIL DISABLED] Skipping password reset email — pending Postmark approval.",
 		);
 		return createSuccessResponse(null);
 	}

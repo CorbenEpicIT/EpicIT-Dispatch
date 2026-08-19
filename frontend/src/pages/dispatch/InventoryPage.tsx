@@ -307,6 +307,7 @@ export default function InventoryPage() {
 									v && setSort(v as InventorySortOption)
 								}
 								options={SORT_OPTIONS}
+								exclusive
 							/>
 						</div>
 					}

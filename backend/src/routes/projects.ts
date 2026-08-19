@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { z, ZodError } from "zod";
 import {
     ErrorCodes,
     createSuccessResponse,
@@ -16,14 +15,9 @@ import {
 } from "../controllers/projectsController.js";
 import { denyTechnicians, requirePermission, } from "../lib/requirePermissions.js";
 import { getUserContext } from "../lib/context.js";
-import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
-
-// TODO(orchestrator): replace with parseHistoryLimit from logsController
-const historyLimitSchema = z.coerce.number().int().min(1).max(MAX_HISTORY_LIMIT);
-const parseHistoryLimit = (raw: unknown): number =>
-    raw === undefined ? DEFAULT_HISTORY_LIMIT : historyLimitSchema.parse(raw);
 
 // Maps a controller `err` string onto an HTTP status + error code.
 const projectFailure = (err: string) => {
@@ -162,13 +156,10 @@ router.get("/:id/changes", requirePermission("view_projects"), async (req, res, 
         let limit: number;
         try {
             limit = parseHistoryLimit(req.query.limit);
-        } catch (err) {
-            if (err instanceof ZodError) {
-                return res
-                    .status(400)
-                    .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "Invalid limit"));
-            }
-            throw err;
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
         }
 
         const results = await getEntityHistory(orgId, "project", id, limit);
