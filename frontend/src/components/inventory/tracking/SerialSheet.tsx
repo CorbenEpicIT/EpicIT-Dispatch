@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, PackageX } from "lucide-react";
 import Drawer from "../../ui/Drawer";
-import { Field, SheetError, formatDate } from "./sheetShared";
+import { Field, SheetError } from "./sheetShared";
+import { formatDate } from "./sheetFormat";
 import { movementReasonLabel as reasonLabel } from "../../../lib/movementReasons";
 import { useSerialHistoryQuery, useSerialsQuery } from "../../../hooks/useTracking";
 import { SERIAL_STATUS_LABEL } from "../../../types/tracking";

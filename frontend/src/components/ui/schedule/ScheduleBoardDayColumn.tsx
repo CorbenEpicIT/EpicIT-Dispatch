@@ -26,10 +26,9 @@ import type { Technician } from "../../../types/technicians";
 import type { OccurrenceWithPlan, VisitWithJob } from "./dashboardCalendarUtils";
 import type { RescheduleOccurrenceInput, VisitGenerationResult } from "../../../types/recurringPlans";
 import { useVehicleStockConflictsQuery } from "../../../hooks/useVehicleStock";
+import { getSharedDragOffset, setSharedDragOffset } from "./scheduleBoardDragState";
 
 // Shared across all column instances — only one drag is ever active at a time.
-let sharedDragOffsetY = 0;
-export function setSharedDragOffset(v: number) { sharedDragOffsetY = v; }
 let sharedDraggedVisit: VisitWithJob | null = null;
 let sharedDraggedOccurrence: OccurrenceWithPlan | null = null;
 
@@ -294,7 +293,7 @@ export default function ScheduleBoardDayColumn({
 			const columnTop = columnRef.current.getBoundingClientRect().top;
 			const cardTop   = calcCardTop(visit);
 			dragOffsetY.current = (e.clientY - columnTop) - cardTop;
-			sharedDragOffsetY   = dragOffsetY.current;
+			setSharedDragOffset(dragOffsetY.current);
 		}
 		e.dataTransfer.setData(
 			"text/plain",
@@ -334,7 +333,7 @@ export default function ScheduleBoardDayColumn({
 			const columnTop = columnRef.current.getBoundingClientRect().top;
 			const cardTop   = calcTopFromDatetime(occ.occurrence_start_at);
 			dragOffsetY.current = (e.clientY - columnTop) - cardTop;
-			sharedDragOffsetY   = dragOffsetY.current;
+			setSharedDragOffset(dragOffsetY.current);
 		}
 		e.dataTransfer.setData(
 			"text/plain",
@@ -361,7 +360,7 @@ export default function ScheduleBoardDayColumn({
 		e.dataTransfer.dropEffect = "move";
 		if (!columnRef.current) return;
 		const rect = columnRef.current.getBoundingClientRect();
-		const y = e.clientY - rect.top - sharedDragOffsetY;
+		const y = e.clientY - rect.top - getSharedDragOffset();
 		setDragOverMinutes(snapTo15Min((y / SLOT_H) * 60));
 	}
 
@@ -400,7 +399,7 @@ export default function ScheduleBoardDayColumn({
 		}
 
 		const rect = columnRef.current.getBoundingClientRect();
-		const y = e.clientY - rect.top - sharedDragOffsetY;
+		const y = e.clientY - rect.top - getSharedDragOffset();
 		const snappedMins = snapTo15Min((y / SLOT_H) * 60);
 		const clampedMins = Math.max(0, Math.min(snappedMins, (DAY_END - DAY_START) * 60));
 		const [year, month, day] = dateStr.split("-").map(Number);
@@ -459,7 +458,7 @@ export default function ScheduleBoardDayColumn({
 		}
 
 		// ── Visit drag ────────────────────────────────────────────────────────
-		const { visitId, arrival_constraint, arrival_time, arrival_window_start, arrival_window_end } = parsed;
+		const { visitId, arrival_constraint, arrival_window_start, arrival_window_end } = parsed;
 		const newHHMM = minsToHHMM(clampedMins);
 
 		const data: UpdateJobVisitInput = {
