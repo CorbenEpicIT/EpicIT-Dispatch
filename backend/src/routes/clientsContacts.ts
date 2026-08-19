@@ -37,7 +37,7 @@ import { getRequestsByClientId } from '../controllers/requestsController.js';
 import * as invoicesController from '../controllers/invoicesController.js';
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 import { getProjectsByClientId } from '../controllers/projectsController.js';
-import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -201,7 +201,14 @@ router.get("/clients/:clientId/changes", requirePermission("view_clients"), asyn
     try {
         const orgId = req.user!.organization_id as string;
         const clientId = req.params.clientId as string;
-        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
 
         const results = await getEntityHistory(orgId, "client", clientId, limit);
 

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { getScopedDb } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
 import { Prisma } from "../../generated/prisma/client.js";
@@ -7,6 +8,20 @@ export type entity = "job" | "quote" | "request" | "invoice" | "client" | "proje
 
 export const DEFAULT_HISTORY_LIMIT = 20;
 export const MAX_HISTORY_LIMIT = 200;
+
+const historyLimitSchema = z.coerce.number().int().min(1).max(MAX_HISTORY_LIMIT);
+export const INVALID_HISTORY_LIMIT = `limit must be an integer between 1 and ${MAX_HISTORY_LIMIT}`;
+
+/**
+ * Parses the `?limit=` query value for the change-history routes.
+ * Returns DEFAULT_HISTORY_LIMIT when absent; throws a ZodError for anything
+ * that is not an integer in [1, MAX_HISTORY_LIMIT] so the route can answer 400
+ * instead of handing Prisma a negative/fractional `take`.
+ */
+export const parseHistoryLimit = (raw: unknown): number => {
+    if (raw === undefined || raw === null || raw === "") return DEFAULT_HISTORY_LIMIT;
+    return historyLimitSchema.parse(raw);
+};
 
 const RENDERABLE = {
     OR: [
