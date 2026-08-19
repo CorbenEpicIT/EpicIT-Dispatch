@@ -23,6 +23,7 @@ import ExistingBatchPicker from "../vehicles/ExistingBatchPicker";
 import type { VehicleStockItem, SupplierPartUsedInput, AddPartsUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 import { unitLabel } from "../../lib/units";
+import { isStorableStockQty } from "../inventory/stockQtyPrecision";
 
 type Mode = "edit" | "stock" | "supplier";
 
@@ -213,6 +214,12 @@ function StockPartPicker({
 				setErr("Enter a valid quantity.");
 				return;
 			}
+			// The ledger stores two decimals; the server would silently round
+			// 2.505, so catch it here where the tech can still correct it.
+			if (!isStorableStockQty(parsedQty)) {
+				setErr("Quantity must be to two decimal places.");
+				return;
+			}
 			if (parsedQty > Number(selected.qty_on_hand)) {
 				setErr("Not enough stock on hand.");
 				return;
@@ -306,7 +313,9 @@ function StockPartPicker({
 						</label>
 						<input
 							type="number"
-							min="1"
+							min="0.01"
+							step="0.01"
+							inputMode="decimal"
 							max={Number(selected.qty_on_hand)}
 							value={qty}
 							onChange={(e) => setQty(e.target.value)}
@@ -476,6 +485,7 @@ function SupplierPartForm({
 		const parsedCost = Number(unitCost);
 		if (!name.trim()) { setErr("Part name required."); return; }
 		if (!parsedQty || parsedQty <= 0) { setErr("Enter a valid quantity."); return; }
+		if (!isStorableStockQty(parsedQty)) { setErr("Quantity must be to two decimal places."); return; }
 		setErr(null);
 		try {
 			await mutation.mutateAsync({
@@ -503,7 +513,7 @@ function SupplierPartForm({
 			<div className="flex gap-2">
 				<div className="flex-1">
 					<label className="text-xs text-text-tertiary mb-1 block">Qty</label>
-					<input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)}
+					<input type="number" min="0.01" step="0.01" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)}
 						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong tabular-nums" />
 				</div>
 				<div className="flex-1">
