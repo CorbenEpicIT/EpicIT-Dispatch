@@ -1,4 +1,5 @@
 import { Router, type Response } from 'express';
+import { z } from "zod";
 import {
     ErrorCodes,
     createSuccessResponse,
@@ -17,7 +18,9 @@ import { getAgedReceivables,
     getTechnicianScorecard,
     getTimesheetReport,
     getUnscheduledRevenue,
-	getPageSummary
+	getPageSummary,
+	PAGES,
+	BREAKDOWNS,
 } from '../controllers/reportsController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
 import { rowsToXlsxBuffer } from '../lib/excel/reportExcel.js';
@@ -771,10 +774,29 @@ router.delete("/favorites/:id", requirePermission("view_reports"), async (req, r
 	}
 });
 
+// A bound is either a full ISO instant (what the frontend sends) or a bare
+// YYYY-MM-DD, which the controller widens to that UTC day.
+const reportDateParam = z.union([z.iso.datetime({ offset: true }), z.iso.date()]);
+const GROUPINGS = [...new Set(Object.values(BREAKDOWNS).flat())] as [string, ...string[]];
+const pageSummaryQuerySchema = z.object({
+	page: z.enum(PAGES),
+	startDate: reportDateParam.optional(),
+	endDate: reportDateParam.optional(),
+	// Per-page applicability is resolved in the controller (falls back to the
+	// page's default dimension); this just rejects values that exist nowhere.
+	groupBy: z.enum(GROUPINGS).optional(),
+});
+
 router.get("/page-summary", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
-		const { page, startDate, endDate, groupBy } = req.query as { page: string, startDate?: string, endDate?: string, groupBy?: string};
+		const parsed = pageSummaryQuerySchema.safeParse(req.query);
+		if (!parsed.success) {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, parsed.error.message));
+		}
+		const { page, startDate, endDate, groupBy } = parsed.data;
 
 		const result = await getPageSummary(orgId, page, startDate, endDate, groupBy);
 
@@ -782,6 +804,6 @@ router.get("/page-summary", requirePermission("view_reports"), async (req, res, 
 	} catch (err) {
 		next(err);
 	}
-})
+});
 
 export default router;
