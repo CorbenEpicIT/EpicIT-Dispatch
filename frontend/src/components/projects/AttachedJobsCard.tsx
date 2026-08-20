@@ -30,7 +30,7 @@ interface AttachedJobsCardProps {
 
 export default function AttachedJobsCard({ jobs, onAttach, onDetach, className }: AttachedJobsCardProps) {
 	const navigate = useNavigate();
-	const ATTACH_JOBS = usePermission("edit_projects");
+	const EDIT_PROJECTS = usePermission("edit_projects");
 
 	const jobRows = jobs.map((j) => ({
 		id: j.id,
@@ -53,7 +53,7 @@ export default function AttachedJobsCard({ jobs, onAttach, onDetach, className }
 			title="Attached Jobs"
 			className={className}
 			headerAction={
-				ATTACH_JOBS && (
+				EDIT_PROJECTS && (
 					<button
 						className="flex items-center gap-2 px-4 py-2 bg-primary-hover hover:enabled:bg-primary-active rounded-md text-sm font-medium text-on-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						onClick={onAttach}
@@ -118,21 +118,25 @@ export default function AttachedJobsCard({ jobs, onAttach, onDetach, className }
 						);
 					},
 				}}
-				actionColumn={{
-					header: "",
-					cell: (row) => (
-						<button
-							title="Detach job from project"
-							onClick={(e) => {
-								e.stopPropagation();
-								onDetach(row.id as string);
-							}}
-							className="p-1 rounded text-text-muted hover:text-error-text hover:bg-error-bg hover:cursor-pointer"
-						>
-							<X size={16} />
-						</button>
-					),
-				}}
+				actionColumn={
+					EDIT_PROJECTS
+						? {
+								header: "",
+								cell: (row) => (
+									<button
+										title="Detach job from project"
+										onClick={(e) => {
+											e.stopPropagation();
+											onDetach(row.id as string);
+										}}
+										className="p-1 rounded text-text-muted hover:text-error-text hover:bg-error-bg hover:cursor-pointer"
+									>
+										<X size={16} />
+									</button>
+								),
+							}
+						: undefined
+				}
 			/>
 		</Card>
 	);

@@ -34,7 +34,6 @@ import { useSocketQuerySync } from "../hooks/useSocketQuerySync";
 import type { VehicleRestockShortfallEvent } from "../types/socketEvents";
 
 export default function DispatchLayout() {
-	const { logout } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const toast = useToast();

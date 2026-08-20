@@ -1,4 +1,4 @@
-﻿import type { JSX } from "react";
+﻿import { useEffect, type JSX } from "react";
 import { createPortal } from "react-dom";
 
 interface FullPopupProps {
@@ -13,10 +13,22 @@ interface FullPopupProps {
 const FullPopup = ({
 	content,
 	isModalOpen,
+	onClose,
 	size = "md",
 	hasBackground = true,
 	overflowVisible = false,
 }: FullPopupProps) => {
+	// Off-click never closes the modal (deliberate — forms inside would lose state),
+	// but Escape does. Listener is only attached while open and removed on close/unmount.
+	useEffect(() => {
+		if (!isModalOpen) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onClose();
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [isModalOpen, onClose]);
+
 	const backdropClass =
 		"transition-opacity duration-300 fixed inset-0 z-[4000] bg-black " +
 		(isModalOpen ? "opacity-50 pointer-events-auto" : "opacity-0 pointer-events-none");

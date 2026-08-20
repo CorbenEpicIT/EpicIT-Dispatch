@@ -1,4 +1,4 @@
-import { History, Key, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
+import { History, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
 import type React from "react";
 import type { ActivityLog } from "../../types/logs";
 
@@ -60,6 +60,8 @@ const VERB_STYLES: Record<string, EntryStyle> = {
 	removed: { icon: UserX, color: "text-error-text", bg: "bg-error/10" },
 };
 
+export const OTHER_FILTER_KEY = "other";
+
 export const ACTION_FILTERS = [
 	{ key: "created", label: "Created", verbs: ["created"], ...VERB_STYLES.created },
 	{ key: "updated", label: "Updated", verbs: ["updated", "changed"], ...VERB_STYLES.updated },
@@ -70,7 +72,18 @@ export const ACTION_FILTERS = [
 	{ key: "detached", label: "Detached", verbs: ["detached"], ...VERB_STYLES.detached },
 	{ key: "sent", label: "Sent", verbs: ["sent"], ...VERB_STYLES.sent },
 	{ key: "authorized", label: "Authorized", verbs: ["authorized"], ...VERB_STYLES.authorized },
+	// Catch-all for verbs no chip above lists (failed, push_failed, reuse_detected, …)
+	{ key: OTHER_FILTER_KEY, label: "Other", verbs: [], ...DEFAULT_STYLE },
 ] as const;
+
+/** The chip a log belongs to: the one listing its verb, or "Other" for anything else. */
+export const actionFilterKeyFor = (log: ActivityLog): string => {
+	const verb = getVerb(log);
+	return (
+		ACTION_FILTERS.find((f) => (f.verbs as readonly string[]).includes(verb))?.key ??
+		OTHER_FILTER_KEY
+	);
+};
 
 const ENTITY_LABELS: Record<string, string> = {
 	job: "Job",
@@ -153,6 +166,11 @@ const BREADCRUMB_KEYS = new Set([
 ]);
 
 const isBreadcrumb = (key: string): boolean => key.startsWith("_") || BREADCRUMB_KEYS.has(key);
+
+// Never render credential-ish fields, whatever the backend happened to log for them.
+const SENSITIVE_KEY = /password|token|secret|otp|mfa/i;
+
+export const isSensitiveKey = (key: string): boolean => SENSITIVE_KEY.test(key);
 
 const REFERENCE_KEYS = [
 	"_job_number",
@@ -260,7 +278,7 @@ export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 
 	const rows: ChangeRow[] = log.changes
 		? Object.entries(log.changes).flatMap(([key, delta]) => {
-				if (isBreadcrumb(key)) return [];
+				if (isBreadcrumb(key) || isSensitiveKey(key)) return [];
 
 				const from = formatValue(key, delta.old, tz);
 				const to = formatValue(key, delta.new, tz);

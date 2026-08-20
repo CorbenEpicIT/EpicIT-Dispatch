@@ -129,6 +129,9 @@ export interface SupplierPartUsedInput {
 	qty_used: number;
 	inventory_item_id?: string;
 	new_item?: { name: string; cost: number };
+	/** Vendor of the part. Attributed to the purchase leg only, never the consumption. */
+	supplier_id?: string;
+	supplier_name?: string;
 }
 
 export interface RestockRequestInput {
@@ -260,6 +263,12 @@ export interface AdjustStockInput {
 		new_serials?: string[];
 		batch_picks?: Array<{ batch_id: string; qty: number }>;
 		new_batch?: { batch_number: string; expires_at?: string | null; supplier?: string };
+		/**
+		 * Vendor for a supplier_purchase line. Dropped by the server on every
+		 * other adjustment type — an internal move has no vendor to inherit.
+		 */
+		supplier_id?: string;
+		supplier_name?: string;
 	}>;
 }
 

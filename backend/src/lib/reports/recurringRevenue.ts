@@ -39,9 +39,11 @@ export function normalizedMonthly(perPeriod: number, freq: ScheduleFrequency): n
 	return perPeriod * periodsPerMonth(freq);
 }
 
+// null = "no deterministic amount" — the caller falls back to trailing actuals.
+// A fixed_amount plan with no amount configured is such a case, not a $0 plan.
 export function planPerPeriodAmount(plan: PlanMonetizationInput): number | null {
 	if (plan.billing_basis === "fixed_amount") {
-		return plan.fixed_amount != null ? Number(plan.fixed_amount) : 0;
+		return plan.fixed_amount != null ? Number(plan.fixed_amount) : null;
 	}
 	if (plan.billing_basis === "plan_line_items") {
 		return plan.line_items.reduce(

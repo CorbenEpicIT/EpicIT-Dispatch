@@ -97,6 +97,7 @@ export default function PasswordSetField({
 						<div className="relative min-w-0">
 							<input
 								type={showPassword ? "text" : "password"}
+								autoComplete="new-password"
 								placeholder="Enter password"
 								value={password}
 								onChange={(e) => onPasswordChange(e.target.value)}

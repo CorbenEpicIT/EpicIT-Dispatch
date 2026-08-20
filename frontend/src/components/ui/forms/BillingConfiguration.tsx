@@ -67,8 +67,6 @@ const ordinal = (n: number) => {
 	return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
-const DAY_OF_MONTH_OPTIONS = Array.from({ length: 28 }, (_, i) => i + 1);
-
 const SCHEDULE_FREQUENCIES: [InvoiceScheduleFrequency, string][] = [
 	["weekly", "Weekly"],
 	["biweekly", "Biweekly"],

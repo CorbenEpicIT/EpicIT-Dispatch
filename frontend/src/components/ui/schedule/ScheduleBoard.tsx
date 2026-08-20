@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import ScheduleBoardDayColumn, { setSharedDragOffset } from "./ScheduleBoardDayColumn";
+import ScheduleBoardDayColumn from "./ScheduleBoardDayColumn";
+import { setSharedDragOffset } from "./scheduleBoardDragState";
 import MonthGrid from "./MonthGrid";
 import TechFilter from "./TechFilter";
 import {
@@ -11,8 +12,6 @@ import {
 	formatDayHeader,
 	groupVisitsByDay,
 	getPriorityColor,
-	visitStartLabel,
-	visitEndLabel,
 	SLOT_H,
 	DAY_START,
 	DAY_END,

@@ -4,6 +4,7 @@ import { getScopedDb } from "../../lib/context.js";
 import { db } from "../../db.js";
 import { httpError, ErrorCodes } from "../../types/responses.js";
 import { recordMovements, type ActorInfo } from "../stockMovements.js";
+import { throwOnMappingConflict } from "./qbMappingErrors.js";
 
 export interface QBItem {
     Id: string;
@@ -78,9 +79,13 @@ export async function importQBItem(orgId: string, qbItemId: string, actor?: Acto
         throw httpError(409, ErrorCodes.CONFLICT, "This QuickBooks item has already been imported.");
     }
 
-    // QuickBooks item quantities are treated as whole units on import; floor a
-    // fractional QtyOnHand rather than fail the import.
-    const qtyOnHand = Math.max(0, Math.floor(qbItem.QtyOnHand ?? 0));
+    // Keep the QBO quantity at the ledger's own scale (numeric(10,2)) instead of
+    // flooring it: 12.5 gal on hand in QuickBooks is 12.5 here, not 12. Rounding
+    // to 2 dp is what makes it storable for recordMovements' precision guard;
+    // anything QBO sends with more precision than that is not representable and
+    // is rounded rather than failing the import. Negative QBO balances still
+    // import as 0 — the opening movement can't be negative.
+    const qtyOnHand = Math.max(0, Math.round((qbItem.QtyOnHand ?? 0) * 100) / 100);
 
     try {
         const item = await db.$transaction(async (tx) => {
@@ -162,10 +167,7 @@ export async function linkQBItem(orgId: string, inventoryItemId: string, qbItemI
             }
         });
     } catch (error: any) {
-        if (error?.code === "P2002") {
-            throw httpError(409, ErrorCodes.CONFLICT, "This item or QuickBooks item has already been linked.");
-        }
-        throw error;
+        throwOnMappingConflict(error, "This item or QuickBooks item has already been linked.");
     }
 };
 

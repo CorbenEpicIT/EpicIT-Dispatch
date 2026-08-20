@@ -35,7 +35,10 @@ export const qk = {
 			opts
 				? ([...inventoryRoot, "detail", itemId, "movements", opts] as const)
 				: ([...inventoryRoot, "detail", itemId, "movements"] as const),
-		usage: (itemId: string, opts?: { limit?: number; offset?: number }) =>
+		usage: (
+			itemId: string,
+			opts?: { limit?: number; offset?: number; createdAfter?: string },
+		) =>
 			opts
 				? ([...inventoryRoot, "detail", itemId, "usage", opts] as const)
 				: ([...inventoryRoot, "detail", itemId, "usage"] as const),
@@ -86,6 +89,21 @@ export const qk = {
 				: (["vehicles", "detail", id, "readiness"] as const),
 		stockConflicts: ["vehicles", "stock-conflicts"] as const,
 	},
+	suppliers: {
+		all: ["suppliers"] as const,
+		list: (opts?: { search?: string; active?: string; includeUsage?: boolean }) =>
+			opts ? (["suppliers", "list", opts] as const) : (["suppliers", "list"] as const),
+		detail: (id: string) => ["suppliers", "detail", id] as const,
+		movements: (id: string) => ["suppliers", "detail", id, "movements"] as const,
+		batches: (id: string) => ["suppliers", "detail", id, "batches"] as const,
+	},
+	supplierItems: {
+		all: ["supplier-items"] as const,
+		list: (opts?: { supplierId?: string; inventoryItemId?: string }) =>
+			opts
+				? (["supplier-items", "list", opts] as const)
+				: (["supplier-items", "list"] as const),
+	},
 	restockRequests: {
 		all: ["restock-requests"] as const,
 		list: (filter?: { status?: string; vehicleId?: string }) =>
@@ -100,7 +118,15 @@ export const qk = {
 // ============================================================================
 
 export const invalidate = {
-	warehouse: (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.inventory.all }),
+	// Also invalidates vendor price-list data: stockMovements.ts upserts
+	// supplier_item.last_price/last_purchased_at on every priced, vendor-attributed
+	// receive/adjustment, so a stock write can silently stale the price list too.
+	warehouse: (qc: QueryClient) =>
+		Promise.all([
+			qc.invalidateQueries({ queryKey: qk.inventory.all }),
+			qc.invalidateQueries({ queryKey: qk.supplierItems.all }),
+			qc.invalidateQueries({ queryKey: qk.suppliers.all }),
+		]),
 
 	vehicleStock: (qc: QueryClient, vehicleId?: string) =>
 		Promise.all([

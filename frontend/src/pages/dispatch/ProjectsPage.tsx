@@ -1,16 +1,15 @@
-import { lazy, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProjectsQuery, useCreateProjectMutation } from "../../hooks/useProjects";
 import { useClientByIdQuery } from "../../hooks/useClients";
 import PageReportSection from "../../components/reports/PageReportSection";
-//const PageReportSection = lazy(()=> import ("../../components/reports/PageReportSection"))
 import StatusFilter from "../../components/ui/StatusFilter";
 import SortControl from "../../components/ui/SortControl";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import SearchBar from "../../components/ui/SearchBar";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
-import { Plus, Briefcase, Badge, } from "lucide-react";
+import { Plus, Briefcase } from "lucide-react";
 import PageControls from "../../components/ui/PageControls";
 import FilterChips from "../../components/ui/FilterChips";
 import { useMultiSearch } from "../../hooks/useMultiSearch";
@@ -23,7 +22,7 @@ import {
 } from "../../types/project";
 import { PriorityValues, PriorityLabels, type Priority, PriorityColors } from "../../types/common";
 import { matchesDateRange, parseDateRangeFromParams, toLocalDate } from "../../util/dateRangeUtils";
-import { compareByOrder, compareDate, comparePriority, withDir, type SortDir } from "../../util/sortUtil";
+import { compareByOrder, compareDateNullsLast, comparePriority, withDir, type SortDir } from "../../util/sortUtil";
 import { formatCurrency, formatDateOnly } from "../../util/util";
 import AdaptableTable from "../../components/AdaptableTable";
 import CreateProjectModal from "../../components/projects/CreateProjectModal";
@@ -57,9 +56,8 @@ type ProjectRow = {
     targetEnd: string;
     _name: string;
     _actual: number;
-    _budget: number;
-    _variance: number;
-    _pct: number;
+    _budget: number | null;
+    _variance: number | null;
 };
 
 export default function ProjectsPage() {
@@ -72,11 +70,11 @@ export default function ProjectsPage() {
     const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
     const { removeTerm: removeStatus } = useMultiSearch("status");
     const { removeTerm: removePriority } = useMultiSearch("priority");
-    const termsKey = terms.join("");
+    // Terms can contain any character, so a delimiter-free join could collide; JSON is unambiguous.
+    const termsKey = JSON.stringify(terms);
 
     const queryParams = new URLSearchParams(location.search);
     const clientFilter = queryParams.get("client");
-	const requestFilter = queryParams.get("request");
 	const statusFilter = queryParams.getAll("status");
 	const statusKey = statusFilter.join(",");
 	const priorityFilter = queryParams.getAll("priority");
@@ -165,9 +163,9 @@ export default function ProjectsPage() {
                 : sortParam === "status"
                 ? withDir((a, b) => compareByOrder(a.status, b.status, ProjectStatusValues), dir)
                 : sortParam === "date"
-                ? withDir((a, b) => compareDate(a.created_at, b.created_at), dir)
+                ? (a, b) => compareDateNullsLast(dir)(a.created_at, b.created_at)
                 : sortParam === "targetDate"
-                ? withDir((a, b) => compareDate(a.target_end_at, b.target_end_at), dir)
+                ? (a, b) => compareDateNullsLast(dir)(a.target_end_at, b.target_end_at)
                 : (a, b) => {
                     const statusDiff =
                     ProjectStatusValues.indexOf(a.status as ProjectStatus) -
@@ -182,8 +180,9 @@ export default function ProjectsPage() {
             .map((p) => {
                 const jobCount = p.jobs?.length ?? 0;
                 const actual = p.jobs?.reduce((acc, j) => acc + Number(j.actual_total ?? 0), 0) ?? 0;
-                const budget = Number(p.budget ?? 0);
-                const variance = budget - actual;
+                // null budget = never set; keep it null so the renderers can say so instead of "$0 over".
+                const budget = p.budget === null || p.budget === undefined ? null : Number(p.budget);
+                const variance = budget === null ? null : budget - actual;
                 return ({
                     id: p.id,
                     projectNumber: p.project_number,   
@@ -197,7 +196,7 @@ export default function ProjectsPage() {
                     targetEnd: p.target_end_at ? formatDateOnly(p.target_end_at) : "—",
                     _name: p.name, _actual: actual, _budget: budget, _variance: variance,
             })});
-    }, [projects, termsKey, clientFilter, requestFilter, statusKey, priorityKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam, searchInput, targetDateParamKey, targetDateParamFrom, targetDateParamTo]);
+    }, [projects, termsKey, clientFilter, statusKey, priorityKey, dateParamKey, dateParamFrom, dateParamTo, sortParam, dirParam, searchInput, targetDateParamKey, targetDateParamFrom, targetDateParamTo]);
 
     const removeFilter = (filterType: "client" | "request") => {
 		const newParams = new URLSearchParams(location.search);
@@ -223,6 +222,9 @@ export default function ProjectsPage() {
 		next.delete("date");
 		next.delete("dateFrom");
 		next.delete("dateTo");
+		next.delete("targetDate");
+		next.delete("targetDateFrom");
+		next.delete("targetDateTo");
 		next.delete("sort");
 		next.delete("dir");
 		navigate(`/dispatch/projects${next.toString() ? `?${next.toString()}` : ""}`);
@@ -265,7 +267,7 @@ export default function ProjectsPage() {
                                 { value: "date", label: "Date" },
                                 { value: "targetDate", label: "Target Date"},
                             ]}
-                            defaultDirByField={{ priority: "desc", status: "asc", date: "desc" }}
+                            defaultDirByField={{ priority: "desc", status: "asc", date: "desc", targetDate: "asc" }}
                         />
                     </div>
                 }
@@ -347,6 +349,9 @@ export default function ProjectsPage() {
                         },
                         variance: (row) => {
                             const r = row as ProjectRow;
+                            if (r._variance === null) {
+                                return <span className="text-text-muted tabular-nums">—</span>;
+                            }
                             const pos = r._variance >= 0;
                             return (
                                 <span className={`font-semibold tabular-nums ${pos ? "text-success-text" : "text-error-text"}`}>
@@ -356,6 +361,16 @@ export default function ProjectsPage() {
                         },
                         budget: (row) => {
                             const r = row as ProjectRow;
+                            if (r._budget === null) {
+                                return (
+                                    <div className="min-w-[150px]">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="font-semibold text-text-primary tabular-nums">{formatCurrency(r._actual)}</span>
+                                            <span className="text-text-muted">No budget set</span>
+                                        </div>
+                                    </div>
+                                );
+                            }
                             const pct = r._budget > 0 ? Math.min((r._actual / r._budget) * 100, 100) : 0;
                             const over = r._actual > r._budget;
                             return (

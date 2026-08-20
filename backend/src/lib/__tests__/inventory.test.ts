@@ -1,6 +1,13 @@
 import { describe, test, expect } from "vitest";
 import { Prisma } from "../../../generated/prisma/client.js";
-import { getStockStatus, withStockStatus, unitBasis, mergeUnitBases } from "../inventory.js";
+import {
+	getStockStatus,
+	withStockStatus,
+	unitBasis,
+	mergeUnitBases,
+	CONSUMPTION_MOVEMENT_PREDICATE,
+	CONSUMPTION_SIGNED_QTY,
+} from "../inventory.js";
 
 const dec = (v: string | number) => new Prisma.Decimal(v);
 
@@ -135,9 +142,61 @@ describe("unitBasis", () => {
 		});
 	});
 
+	// inventory_item.unit was freetext before the catalog, and the 20260805
+	// migration backfilled stock_movement.unit verbatim — so "Each" next to "each"
+	// (or "gallon" next to "gal") is one denomination spelled two ways, not a unit
+	// change. Treating it as mixed withheld every total on a perfectly summable item.
+	test("collapses catalog aliases and casing to one basis instead of flagging a unit break", () => {
+		expect(unitBasis(["Each", "each", "EACH "])).toEqual({ units: ["each"], unit: "each", mixed: false });
+		expect(unitBasis(["gallon", "gal", "Gallons"])).toEqual({ units: ["gal"], unit: "gal", mixed: false });
+	});
+
+	test("reports the canonical code, so a legacy spelling can't leak into a display label", () => {
+		expect(unitBasis(["feet"]).unit).toBe("ft");
+	});
+
+	test("still flags two different real units even when both are legacy spellings", () => {
+		expect(unitBasis(["Each", "gallon"])).toEqual({ units: ["each", "gal"], unit: null, mixed: true });
+	});
+
+	test("keeps a spelling the catalog does not know, as its own distinct unit", () => {
+		expect(unitBasis(["widgets", "each"])).toEqual({
+			units: ["each", "widgets"],
+			unit: null,
+			mixed: true,
+		});
+	});
+
 	test("merges page-level bases so one column can flag what its rows cannot", () => {
 		const perRow = [unitBasis(["each"]), unitBasis(["box"]), unitBasis(["each"])];
 		expect(perRow.every((b) => !b.mixed)).toBe(true);
 		expect(mergeUnitBases(perRow)).toEqual({ units: ["box", "each"], unit: null, mixed: true });
+	});
+});
+
+// The one definition of "consumption" shared by every aggregate over the ledger.
+// Asserted as text because callers splice it into $queryRaw templates — a typo
+// here would silently change every report at once.
+describe("CONSUMPTION_MOVEMENT_PREDICATE / CONSUMPTION_SIGNED_QTY", () => {
+	const flat = (sql: Prisma.Sql) => sql.sql.replace(/\s+/g, " ").trim();
+
+	test("selects parts_used + direct_consumption and consumed-sourced reversals, on alias sm", () => {
+		expect(flat(CONSUMPTION_MOVEMENT_PREDICATE)).toBe(
+			"( sm.reason IN ('parts_used', 'direct_consumption') OR (sm.reason = 'reversal' AND sm.from_location_type = 'consumed') )",
+		);
+		expect(CONSUMPTION_MOVEMENT_PREDICATE.values).toEqual([]);
+	});
+
+	test("signs reversals negative so SUM() nets them", () => {
+		expect(flat(CONSUMPTION_SIGNED_QTY)).toBe(
+			"CASE WHEN sm.reason = 'reversal' THEN -sm.qty ELSE sm.qty END",
+		);
+	});
+
+	test("embeds into a $queryRaw template as SQL text, not a bound parameter", () => {
+		const q = Prisma.sql`SELECT SUM(${CONSUMPTION_SIGNED_QTY}) FROM stock_movement sm WHERE ${CONSUMPTION_MOVEMENT_PREDICATE} AND sm.inventory_item_id = ${"item-1"}`;
+		expect(flat(q)).toContain("SUM(CASE WHEN sm.reason = 'reversal' THEN -sm.qty ELSE sm.qty END)");
+		expect(flat(q)).toContain("WHERE ( sm.reason IN");
+		expect(q.values).toEqual(["item-1"]);
 	});
 });

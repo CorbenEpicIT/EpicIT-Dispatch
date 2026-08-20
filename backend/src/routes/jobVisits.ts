@@ -401,7 +401,10 @@ router.patch("/:id/parts-used/:lineItemId", requireAnyPermission("edit_jobs", "u
         const id = req.params.id as string;
         const lineItemId = req.params.lineItemId as string;
         const orgId = req.user!.organization_id as string;
-        const result = await updatePartsUsedQty(id, lineItemId, req.body, orgId);
+        // The ledger actor is the authenticated caller (dispatcher or technician),
+        // never a technician_id from the body.
+        const context = getUserContext(req);
+        const result = await updatePartsUsedQty(id, lineItemId, req.body, orgId, context);
         if (result.err) {
             if (result.err.toLowerCase().includes("not found")) {
                 return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));

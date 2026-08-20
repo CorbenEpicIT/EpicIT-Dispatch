@@ -1,16 +1,9 @@
 import { AlertTriangle } from "lucide-react";
 
 // Shared primitives for the field-side tracking sheets (SerialSheet, LotSheet).
-// Both render the same centered-modal detail layout, so the label/value row, the
-// date formatter, and the inline error banner live here rather than duplicated.
-
-export function formatDate(iso: string): string {
-	return new Date(iso).toLocaleDateString(undefined, {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
-}
+// Both render the same centered-modal detail layout, so the label/value row and
+// the inline error banner live here rather than duplicated (the date formatter
+// is in sheetFormat.ts).
 
 export function Field({ label, value }: { label: string; value: string }) {
 	return (

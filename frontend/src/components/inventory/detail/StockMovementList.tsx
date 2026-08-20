@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import {
 	ArrowDownToLine,
 	ArrowLeftRight,
@@ -22,8 +22,10 @@ import type {
 	StockMovementReason,
 } from "../../../types/inventory";
 import { formatDateTime } from "../../../util/util";
+import { unitLabel } from "../../../lib/units";
 import LoadSvg from "../../../assets/icons/loading.svg?react";
 import EmptyState from "../../ui/EmptyState";
+import { QueryErrorState } from "./chartShared";
 
 const REASON_META: Record<StockMovementReason, { label: string; icon: LucideIcon }> = {
 	receive: { label: "Received", icon: ArrowDownToLine },
@@ -78,8 +80,10 @@ function MovementRow({ m }: { m: StockMovement }) {
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2 flex-wrap">
 					<span className="text-sm font-medium text-text-primary">{meta.label}</span>
+					{/* The row's OWN stamped unit, not the item's current one — the
+					    ledger keeps each movement in the unit it was made in. */}
 					<span className="text-xs font-semibold tabular-nums text-text-secondary bg-surface border border-border-subtle rounded px-1.5 py-0.5">
-						{qty}
+						{qty} {unitLabel(m.unit, qty)}
 					</span>
 				</div>
 				<div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-muted flex-wrap">
@@ -103,14 +107,16 @@ function MovementRow({ m }: { m: StockMovement }) {
 	);
 }
 
-// Cursor-paginated stock-movement ledger for a single item. Accumulates pages
-// into `rows` as the user hits "Load more" — the same append-on-cursor pattern
-// as the Tracking tab's SerialsTable. keepPreviousData (in the hook) keeps the
-// visible list stable while the next page loads.
+// Cursor-paginated stock-movement ledger for a single item. The pages live in
+// the infinite query (hook), so "Load more" is fetchNextPage and the rows are
+// a flatMap over what the cache holds — nothing is accumulated in component
+// state, so a page can't be appended twice and a cursor can't outlive the
+// result set it came from. keepPreviousData (in the hook) keeps the visible
+// list stable while a new range's first page loads.
 //
 // Range is a SERVER-side filter (`created_after`, from the tab-level control),
 // so it applies to the whole ledger, not just pages already fetched. Changing
-// it resets pagination, since the cursor belongs to the old result set.
+// it is a new query key, which is what resets pagination.
 export default function StockMovementList({
 	itemId,
 	createdAfter,
@@ -118,23 +124,13 @@ export default function StockMovementList({
 	itemId: string;
 	createdAfter?: string;
 }) {
-	const [cursor, setCursor] = useState<string | undefined>(undefined);
-	const [rows, setRows] = useState<StockMovement[]>([]);
-	const { data, isLoading, isFetching } = useInventoryMovementsQuery(itemId, cursor, {
-		createdAfter,
-	});
+	const { data, isLoading, isFetching, isError, refetch, hasNextPage, fetchNextPage } =
+		useInventoryMovementsQuery(itemId, { createdAfter });
 
-	// A new range is a new result set: drop the accumulated pages and the cursor
-	// rather than appending rows from a different query onto them.
-	useEffect(() => {
-		setCursor(undefined);
-		setRows([]);
-	}, [createdAfter, itemId]);
-
-	useEffect(() => {
-		if (!data) return;
-		setRows((prev) => (cursor ? [...prev, ...data.movements] : data.movements));
-	}, [data, cursor]);
+	const rows: StockMovement[] = useMemo(
+		() => data?.pages.flatMap((p) => p.movements) ?? [],
+		[data],
+	);
 
 	const isFirstLoad = isLoading && rows.length === 0;
 
@@ -155,10 +151,15 @@ export default function StockMovementList({
 				</div>
 			)}
 
+			{/* A failed read is not an empty ledger — say so, with a way back. */}
+			{isError && rows.length === 0 && (
+				<QueryErrorState what="stock history" onRetry={() => refetch()} />
+			)}
+
 			{/* One empty state, not two: with a server-side filter an empty
 			    response IS "nothing in this range", so the copy points at the
 			    range control when one is active. */}
-			{!isFirstLoad && rows.length === 0 && (
+			{!isFirstLoad && !isError && rows.length === 0 && (
 				<EmptyState
 					icon={<History size={26} />}
 					title={createdAfter ? "No movements in this range" : "No stock movements yet"}
@@ -181,11 +182,11 @@ export default function StockMovementList({
 				</ol>
 			)}
 
-			{data?.nextCursor && (
+			{hasNextPage && (
 				<div className="px-3 py-3 flex justify-center border-t border-border-subtle">
 					<button
 						type="button"
-						onClick={() => setCursor(data.nextCursor ?? undefined)}
+						onClick={() => fetchNextPage()}
 						disabled={isFetching}
 						className="px-3 py-1.5 text-xs font-medium bg-surface border border-border rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary transition-colors disabled:opacity-50"
 					>

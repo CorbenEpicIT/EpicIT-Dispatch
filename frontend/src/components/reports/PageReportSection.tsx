@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { startOfMonth, endOfMonth } from "date-fns";
 import { usePageSummaryQuery } from "../../hooks/useReports";
 import PageSummary from "./PageSummary";
 import DateRangeFilter from "../ui/DateRangeFilter";
@@ -17,6 +16,7 @@ interface PageReportSectionProps {
 }
 
 const DATE_PRESETS: DateRangeOption[] = [
+	"all",
 	"today",
 	"last_7_days",
 	"last_30_days",
@@ -62,12 +62,10 @@ function ReportBody(
 			if (!statusValue) return null;
 
 			let params = new URLSearchParams({ status: statusValue });
-			// The Jobs list filters by SCHEDULED date, so Unscheduled/Cancelled jobs get dropped
-			const noScheduleDate = ["Unscheduled", "Cancelled"].includes(statusValue);
-			const carryDate =
-				page === "jobs"
-					? !noScheduleDate
-					: ["quotes", "requests", "invoices", "projects"].includes(page);
+			// The summary counts jobs by CREATED date but the Jobs list filters by
+			// SCHEDULED date, so carrying the range there would land on a different
+			// set than the bar shows — never carry it for jobs.
+			const carryDate = ["quotes", "requests", "invoices", "projects"].includes(page);
 			if (carryDate) {
 				params = serializeDateRange(range, "date", params);
 			}
@@ -123,7 +121,7 @@ export default function PageReportSection({
 }: PageReportSectionProps) {
 	const [open, setOpen] = useState(defaultOpen);
 	const [range, setRange] = useState<DateRangeValue>({ option: "this_month"});
-	const [groupBy, setGroupBy] = useState<string>(BREAKDOWNS[page][0]);
+	const [groupBy, setGroupBy] = useState<string>(() => (BREAKDOWNS[page] ?? ["status"])[0]);
 
 	// QuickBooks breakdowns (qb_sync, qb_linked) are only used when QB is connected
 	const hasQbDim = (BREAKDOWNS[page] ?? []).some((d) => d.startsWith("qb_"));
@@ -137,16 +135,14 @@ export default function PageReportSection({
 	// Clamp the active dimension in case it was dropped 
 	const effectiveGroupBy = options.includes(groupBy) ? groupBy : options[0];
 
+	// "All" (the cleared state) sends no bounds, so the summary is all-time —
+	// the same thing the control says. Defaulting to this month here while the
+	// trigger showed no range made the numbers lie.
 	const { startDateStr, endDateStr } = useMemo(() => {
-		const now = new Date();
-		const resolved =
-			resolveDateRange(range) ?? {
-				start: startOfMonth(now),
-				end: endOfMonth(now),
-			};
+		const resolved = resolveDateRange(range);
 		return {
-			startDateStr: resolved.start.toISOString(),
-			endDateStr: resolved.end.toISOString(),
+			startDateStr: resolved?.start.toISOString(),
+			endDateStr: resolved?.end.toISOString(),
 		};
 	}, [range]);
 

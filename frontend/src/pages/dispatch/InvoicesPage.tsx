@@ -19,7 +19,7 @@ import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { usePermission } from "../../hooks/usePermission";
 import PageReportSection from "../../components/reports/PageReportSection";
 import type { SortDir } from "../../util/sortUtil";
-import { withDir, compareByOrder, compareDate } from "../../util/sortUtil";
+import { withDir, compareByOrder, compareDateNullsLast } from "../../util/sortUtil";
 
 const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 	value: s,
@@ -28,7 +28,8 @@ const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 
 const sortLabels: Record<string, string> = {
 	status: "Status",
-	date: "Date",
+	issued: "Issue Date",
+	date: "Due Date",
 };
 
 export default function InvoicesPage() {
@@ -43,7 +44,8 @@ export default function InvoicesPage() {
 
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const { removeTerm: removeStatus } = useMultiSearch("status");
-	const termsKey = terms.join("");
+	// Collision-free memo key (["ab"] vs ["a","b"] must differ)
+	const termsKey = JSON.stringify(terms);
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
@@ -98,7 +100,6 @@ export default function InvoicesPage() {
 			invoices?.map((inv) => {
 				const overdue = isOverdue(inv);
 				const clientName = inv.client?.name || "Unknown Client";
-				const qbSync = inv.qb_sync_status;
 
 				const subject = inv.memo
 					? inv.memo.length > 60
@@ -159,8 +160,10 @@ export default function InvoicesPage() {
 		const comparator: (a: InvoiceRow, b: InvoiceRow) => number =
 			sortParam === "status"
 				? withDir((a, b) => compareByOrder(a._rawStatus, b._rawStatus, InvoiceStatusValues), dir)
+				: sortParam === "issued"
+				? (a, b) => compareDateNullsLast(dir)(a._issueDate, b._issueDate)
 				: sortParam === "date"
-				? withDir((a, b) => compareDate(a._rawDueDate, b._rawDueDate), dir)
+				? (a, b) => compareDateNullsLast(dir)(a._rawDueDate, b._rawDueDate)
 				: (a, b) => {
 					// default: status, then schedule date (nulls last)
 					if (a._isOverdue && !b._isOverdue) return -1;
@@ -357,9 +360,10 @@ export default function InvoicesPage() {
 						<SortControl
 							options={[
 								{ value: "status", label: "Status" },
-								{ value: "date", label: "Date" },
+								{ value: "issued", label: "Issue Date" },
+								{ value: "date", label: "Due Date" },
 							]}
-							defaultDirByField={{ status: "asc", date: "desc" }}
+							defaultDirByField={{ status: "asc", issued: "desc", date: "desc" }}
 						/>
 					</div>
 				}

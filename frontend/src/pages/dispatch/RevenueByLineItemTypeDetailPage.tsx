@@ -85,6 +85,8 @@ export default function RevenueByLineItemTypeDetailPage() {
 	const rows = useMemo(() => (data?.rows ?? []) as unknown as RevenueLineItemRow[], [data]);
 	const total = data?.total ?? 0;
 	const hasMore = data?.hasMore ?? false;
+	// Set only by the in-memory fallback path when the backend row cap was hit.
+	const truncated = data?.summary?.truncated === true;
 
 	const filterKey = JSON.stringify([startDate, endDate, searchTerms, itemType, pageSize]);
 	useEffect(() => {
@@ -136,6 +138,13 @@ export default function RevenueByLineItemTypeDetailPage() {
 					</Link>
 				}
 			/>
+
+			{truncated && (
+				<div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-text">
+					Showing the newest line items only — the report row cap was reached, so
+					this list is incomplete. Narrow the date range for a complete picture.
+				</div>
+			)}
 
 			<PageControls
 				className="mb-4"

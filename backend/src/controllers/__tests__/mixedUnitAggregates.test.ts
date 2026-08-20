@@ -7,6 +7,7 @@ import {
 } from "../inventoryController.js";
 import { getInventoryReorderForecast, getInventoryReport } from "../reportsController.js";
 import { db } from "../../db.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 
 /**
  * Mixed-unit READ behaviour across every aggregate that sums `stock_movement.qty`.
@@ -21,6 +22,9 @@ vi.mock("../../db.js", () => {
 		inventory_item: { findFirst: vi.fn(), findMany: vi.fn() },
 		log: { findMany: vi.fn() },
 		stock_movement: { findMany: vi.fn(), groupBy: vi.fn() },
+		// The forecast now attaches a preferred vendor per row; these fixtures
+		// have no vendors, so an empty list is the truthful stub.
+		supplier_item: { findMany: vi.fn().mockResolvedValue([]) },
 		$queryRaw: vi.fn(),
 		$extends,
 	};
@@ -192,6 +196,68 @@ describe("getItemConsumptionTrend — mixed units", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Reversal netting — usage + consumption-trend must agree with the forecast
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Flattens a mocked `$queryRaw` tagged-template call (strings + values, where a
+ * value may itself be a nested Prisma.sql fragment) into one SQL string with `?`
+ * placeholders — the text Prisma would actually send. */
+function sqlSentTo(call: unknown[]): string {
+	const [strings, ...values] = call as [TemplateStringsArray, ...unknown[]];
+	return Prisma.sql(strings, ...values).sql.replace(/\s+/g, " ");
+}
+
+const REVERSAL_CASE = "CASE WHEN sm.reason = 'reversal' THEN -sm.qty ELSE sm.qty END";
+const CONSUMPTION_PREDICATE =
+	"( sm.reason IN ('parts_used', 'direct_consumption') OR (sm.reason = 'reversal' AND sm.from_location_type = 'consumed') )";
+
+describe("reversal netting — the SQL sent to Postgres", () => {
+	// updatePartsUsedQty writes `reversal` movements (consumed → vehicle) when a
+	// parts-used line is decreased/deleted. The reorder forecast already subtracts
+	// them; before this the item page summed parts_used/direct_consumption only, so
+	// the detail page said 5 while Reorder Health said 2.
+	it("getItemUsage nets reversals with the shared predicate + signed CASE", async () => {
+		mockDb.$queryRaw.mockResolvedValue([]);
+
+		await getItemUsage(ITEM, ORG);
+
+		const sql = sqlSentTo(mockDb.$queryRaw.mock.calls[0]);
+		expect(sql).toContain(`SUM(${REVERSAL_CASE})::float AS "qtyConsumed"`);
+		expect(sql).toContain(CONSUMPTION_PREDICATE);
+		// The unsigned sum is gone entirely — no path still adds reversals as usage.
+		expect(sql).not.toContain("SUM(sm.qty)");
+	});
+
+	// Reversing a line to zero DELETES the line item (SetNull on
+	// stock_movement.visit_line_item_id). An INNER JOIN through the line item then
+	// dropped the original AND its reversal, so the group no longer netted to 0.
+	it("getItemUsage joins the job through sm.visit_id, not the (deletable) line item", async () => {
+		mockDb.$queryRaw.mockResolvedValue([]);
+
+		await getItemUsage(ITEM, ORG);
+
+		const sql = sqlSentTo(mockDb.$queryRaw.mock.calls[0]);
+		expect(sql).toContain("JOIN job_visit jv ON jv.id = sm.visit_id");
+		expect(sql).not.toContain("JOIN job_visit_line_item");
+		// Fully-reversed jobs are not usage.
+		expect(sql).toContain(`HAVING SUM(${REVERSAL_CASE}) <> 0`);
+	});
+
+	it("getItemConsumptionTrend nets reversals in the bucketed sum and its unit basis", async () => {
+		mockDb.$queryRaw.mockResolvedValue([]);
+
+		await getItemConsumptionTrend(ITEM, ORG);
+
+		const sql = sqlSentTo(mockDb.$queryRaw.mock.calls[0]);
+		expect(sql).toContain(`SUM(${REVERSAL_CASE}) AS qty`);
+		// Both the consumption CTE and the series_units CTE carry the predicate, so
+		// the basis is derived from exactly the rows that were summed.
+		expect(sql.split(CONSUMPTION_PREDICATE)).toHaveLength(3);
+		expect(sql).not.toContain("SUM(sm.qty)");
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /inventory/:id/value-history — running warehouse balance + paid-cost WAC
 // ─────────────────────────────────────────────────────────────────────────────
 describe("getItemValueHistory — mixed units", () => {
@@ -307,23 +373,24 @@ describe("getItemPriceHistory — mixed units", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Reorder forecast — consumption rate, runway and severity
 // ─────────────────────────────────────────────────────────────────────────────
-describe("buildReorderForecast — mixed units", () => {
-	const forecastRow = (overrides: Record<string, unknown> = {}) => ({
-		itemId: ITEM,
-		itemName: "Line set",
-		sku: "LS-1",
-		category: null,
-		unit: ITEM_UNIT,
-		warehouseQty: 100,
-		vehicleQty: 0,
-		qtyConsumed: 90,
-		consumedUnits: ["each"],
-		lowStockThreshold: null,
-		createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-		firstConsumedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-		...overrides,
-	});
+// Module-scoped so the vendor suite below can build the same raw row.
+const forecastRow = (overrides: Record<string, unknown> = {}) => ({
+	itemId: ITEM,
+	itemName: "Line set",
+	sku: "LS-1",
+	category: null,
+	unit: ITEM_UNIT,
+	warehouseQty: 100,
+	vehicleQty: 0,
+	qtyConsumed: 90,
+	consumedUnits: ["each"],
+	lowStockThreshold: null,
+	createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+	firstConsumedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+	...overrides,
+});
 
+describe("buildReorderForecast — mixed units", () => {
 	it("computes a rate and a runway from single-unit consumption", async () => {
 		mockDb.$queryRaw.mockResolvedValue([forecastRow()]);
 
@@ -367,6 +434,85 @@ describe("buildReorderForecast — mixed units", () => {
 		expect(rows[0].belowReorderPoint).toBe(true);
 		expect(rows[0].severity).toBe("critical");
 		expect(rows[0].avgDailyUsage).toBeNull();
+	});
+});
+
+// The forecast could always say WHAT to buy and WHEN. These cover the half that
+// was missing: who from, at what price, and how confident either answer is.
+describe("reorder forecast — preferred vendor", () => {
+	const vendorRow = (over: Record<string, unknown> = {}) => ({
+		inventory_item_id: "item-1",
+		supplier_id: "sup-1",
+		vendor_sku: "FRG-88213",
+		contract_price: null,
+		last_price: 572.15,
+		last_purchased_at: new Date("2026-08-02T00:00:00.000Z"),
+		is_preferred: false,
+		supplier: { name: "Ferguson" },
+		...over,
+	});
+
+	beforeEach(() => {
+		mockDb.$queryRaw.mockResolvedValue([
+			forecastRow({ itemId: "item-1", warehouseQty: 2, lowStockThreshold: 10 }),
+		]);
+	});
+
+	it("names a chosen vendor and prices the gap to the reorder point", async () => {
+		mockDb.supplier_item.findMany.mockResolvedValue([
+			vendorRow({ is_preferred: true, contract_price: 560 }),
+		]);
+
+		const { rows } = await getInventoryReorderForecast(ORG, { lookbackDays: 90 });
+
+		expect(rows[0].preferredSupplierName).toBe("Ferguson");
+		expect(rows[0].vendorSku).toBe("FRG-88213");
+		expect(rows[0].vendorSource).toBe("preferred");
+		// A negotiated rate beats what we happened to pay last time.
+		expect(rows[0].preferredUnitPrice).toBe(560);
+		expect(rows[0].priceSource).toBe("contract");
+		// 10 threshold − 2 on hand = 8 to buy.
+		expect(rows[0].shortfallQty).toBe(8);
+		expect(rows[0].estimatedShortfallCost).toBe(4480);
+	});
+
+	it("falls back to the last vendor bought from, and says that's what it did", async () => {
+		mockDb.supplier_item.findMany.mockResolvedValue([vendorRow()]);
+
+		const { rows } = await getInventoryReorderForecast(ORG, { lookbackDays: 90 });
+
+		// Useful, but flagged — presenting a fallback as a decision would be a lie.
+		expect(rows[0].preferredSupplierName).toBe("Ferguson");
+		expect(rows[0].vendorSource).toBe("recent");
+		expect(rows[0].priceSource).toBe("observed");
+		expect(rows[0].preferredUnitPrice).toBe(572.15);
+	});
+
+	it("leaves every vendor field null when nobody sells it to us on record", async () => {
+		mockDb.supplier_item.findMany.mockResolvedValue([]);
+
+		const { rows } = await getInventoryReorderForecast(ORG, { lookbackDays: 90 });
+
+		expect(rows[0].preferredSupplierId).toBeNull();
+		expect(rows[0].preferredUnitPrice).toBeNull();
+		expect(rows[0].vendorSource).toBe("none");
+		expect(rows[0].priceSource).toBe("none");
+		// The quantity is still known — only the vendor half is missing.
+		expect(rows[0].shortfallQty).toBe(8);
+		expect(rows[0].estimatedShortfallCost).toBeNull();
+	});
+
+	it("ignores a deactivated vendor", async () => {
+		mockDb.supplier_item.findMany.mockResolvedValue([]);
+
+		await getInventoryReorderForecast(ORG, { lookbackDays: 90 });
+
+		// A retired vendor must not be the answer to "who do I buy this from".
+		expect(mockDb.supplier_item.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({ supplier: { is_active: true } }),
+			}),
+		);
 	});
 });
 
@@ -434,9 +580,36 @@ describe("getInventoryReport — mixed units", () => {
 
 		await getInventoryReport(ORG, { includeInactive: false });
 
+		// reason is in the key only so reversal rows can be subtracted; the unit
+		// dimension is what makes a break visible.
 		expect(mockDb.stock_movement.groupBy.mock.calls[0][0].by).toEqual([
 			"inventory_item_id",
 			"unit",
+			"reason",
+		]);
+	});
+
+	it("nets consumption reversals like the reorder forecast does", async () => {
+		mockDb.stock_movement.groupBy.mockResolvedValue([
+			{ inventory_item_id: ITEM, unit: "each", reason: "parts_used", _sum: { qty: 30 } },
+			{ inventory_item_id: ITEM, unit: "each", reason: "reversal", _sum: { qty: 10 } },
+		]);
+
+		const [row] = await getInventoryReport(ORG, { includeInactive: false });
+
+		// 30 used, 10 of that reversed → 20 consumed; one unit, so not a break.
+		expect(row.qtyUsed).toBe(20);
+		expect(row.qtyUsedBasis).toEqual({ units: ["each"], unit: "each", mixed: false });
+	});
+
+	it("only pulls reversals that undo consumption, not transfer reversals", async () => {
+		mockDb.stock_movement.groupBy.mockResolvedValue([]);
+
+		await getInventoryReport(ORG, { includeInactive: false });
+
+		expect(mockDb.stock_movement.groupBy.mock.calls[0][0].where.OR).toEqual([
+			{ reason: { in: ["parts_used", "direct_consumption"] } },
+			{ reason: "reversal", from_location_type: "consumed" },
 		]);
 	});
 });

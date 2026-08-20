@@ -22,7 +22,7 @@ import {
 } from "../../hooks/useJobs";
 import CreateJobVisit from "../../components/jobs/CreateJobVisit";
 import { useMasonry } from "../../hooks/useMasonry";
-import type { Job, JobVisit, ArrivalConstraint, FinishConstraint } from "../../types/jobs";
+import type { Job, JobVisit } from "../../types/jobs";
 import type { Priority } from "../../types/common";
 import LoadSvg from "../../assets/icons/loading.svg?react";
 import BoxSvg from "../../assets/icons/box.svg?react";

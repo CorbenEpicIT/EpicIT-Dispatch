@@ -32,7 +32,15 @@ import {
 	getQBInvoicePrefill,
 	importQBInvoices
 } from "../services/qb/qbInvoices.js"
-import { linkQBItemSchema } from "../lib/validate/quickbooks.js"
+import {
+	getQBVendors,
+	getMappedQBVendors,
+	linkQBVendor,
+	unlinkQBVendor,
+	importQBVendor,
+	pushVendor,
+} from "../services/qb/qbVendors.js";
+import { linkQBItemSchema, linkQBVendorSchema } from "../lib/validate/quickbooks.js"
 import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
 import { queryProfitAndLossQBReport } from "../services/qb/qbReports.js";
@@ -227,6 +235,89 @@ router.post("/items/:id/push", requirePermission("manage_inventory"), async (req
 		const itemId = req.params.id as string;
 		await pushItem(orgId, itemId);
 		res.json(createSuccessResponse({ pushed: true }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// ── Vendors ──────────────────────────────────────────────────────────────────
+// Same permission split as items: vendor identity is inventory metadata, not an
+// accounting setting, and the people receiving stock are the ones who notice a
+// vendor is missing.
+
+router.get("/vendors", requirePermission("view_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		res.json(createSuccessResponse(await getQBVendors(orgId)));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/vendors/mappings", requirePermission("view_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		res.json(createSuccessResponse(await getMappedQBVendors(orgId)));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/vendor-mappings", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const parsed = linkQBVendorSchema.safeParse(req.body);
+		if (!parsed.success) {
+			return res
+				.status(400)
+				.json(
+					createErrorResponse(
+						ErrorCodes.VALIDATION_ERROR,
+						parsed.error.issues[0].message,
+					),
+				);
+		}
+		await linkQBVendor(orgId, parsed.data.supplier_id, parsed.data.qb_vendor_id);
+		res.status(201).json(createSuccessResponse({ linked: true }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.delete(
+	"/vendor-mappings/:supplierId",
+	requirePermission("manage_inventory"),
+	async (req, res, next) => {
+		try {
+			const orgId = req.user!.organization_id as string;
+			await unlinkQBVendor(orgId, req.params.supplierId as string);
+			res.json(createSuccessResponse({ unlinked: true }));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+router.post(
+	"/vendors/:id/import",
+	requirePermission("manage_inventory"),
+	async (req, res, next) => {
+		try {
+			const orgId = req.user!.organization_id as string;
+			const result = await importQBVendor(orgId, req.params.id as string);
+			res.status(201).json(createSuccessResponse(result));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+// `:id` here is OUR supplier id, matching /items/:id/push.
+router.post("/vendors/:id/push", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const qbVendorId = await pushVendor(orgId, req.params.id as string);
+		res.json(createSuccessResponse({ pushed: true, qb_vendor_id: qbVendorId }));
 	} catch (err) {
 		next(err);
 	}

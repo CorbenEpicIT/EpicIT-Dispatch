@@ -73,11 +73,15 @@ export default function RevenueByLineItemTypePage() {
 		[rows],
 	);
 
+	// The backend sums invoice_line_item.total, which is before any invoice-level
+	// discount and before tax, so this cannot reconcile with "Issued" on the
+	// Invoices page — the label says what it actually is.
 	const stats = useMemo(
 		() => [
 			{
-				label: "Total Billed Revenue",
+				label: "Line-Item Subtotal (pre-discount, pre-tax)",
 				value: summary ? formatCurrency(summary.totalRevenue) : "—",
+				hint: "Sum of invoice lines; invoice-level discounts and tax are not allocated.",
 			},
 			{
 				label: "Total Line Items",

@@ -43,12 +43,14 @@ const AccessCard = ({ user, tier, readOnly = false }: AccessCardProps) => {
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState<Set<string>>(new Set());
 	const { data: candidateRoles } = useOrgRolesQuery();
-	const { mutate: assignRole, mutateAsync: assignRoleAsync, isPending: assigning } = useAssignOrgRoleMutation();
-	const { mutate: updateRole} = useUpdateOrgRoleMutation();
+	const { mutateAsync: assignRoleAsync, isPending: assigning } = useAssignOrgRoleMutation();
+	const { mutateAsync: updateRoleAsync, isPending: updating } = useUpdateOrgRoleMutation();
 	const { mutateAsync: createRoleAsync, isPending: creating } = useCreateOrgRoleMutation();
 	const [namingOpen, setNamingOpen] = useState(false);
 	const [newName, setNewName] = useState("");
 	const [nameError, setNameError] = useState<string | null>(null);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const saving = assigning || updating;
 
 	const catalog = PERMISSION_CATALOGS[tier];
 
@@ -77,6 +79,7 @@ const AccessCard = ({ user, tier, readOnly = false }: AccessCardProps) => {
 
 	useEffect(() => {
 		if (editing) setDraft(new Set(user.permissions));
+		setSaveError(null);
 	}, [editing]);
 
 	const togglePerm = (id: string) =>
@@ -91,26 +94,51 @@ const AccessCard = ({ user, tier, readOnly = false }: AccessCardProps) => {
 		a.size === b.size && [...a].every((id) => b.has(id));
 
 	const currentRole = candidateRoles?.find((r) => r.id === user.organization_role?.id);
+	// Only roles of this user's tier are candidates — dispatcher and technician
+	// permission sets overlap (view_clients, view_inventory...), so a cross-tier
+	// match would silently put a dispatcher on a technician role.
+	const tierRoles = (candidateRoles ?? []).filter((r) => r.base_tier === tier);
 
-	const handleRoleUpdate = () => {
+	const handleRoleUpdate = async () => {
+		setSaveError(null);
+
 		// if current role is same as the new draft
 		if (currentRole && setEq(draft, new Set(currentRole.permissions))){
 			setEditing(false);
 			return;
 		}
 
-		// looks for exisitng role that matches new draft
-		const match = candidateRoles?.find((r) => setEq(draft, new Set(r.permissions)));
+		// looks for an existing same-tier role that matches the new draft
+		const match = tierRoles.find((r) => setEq(draft, new Set(r.permissions)));
 		if (match) {
-			assignRole({ user_id: user.id, user_type: tier, role_id: match.id });
-			setEditing(false);
+			try {
+				await assignRoleAsync({ user_id: user.id, user_type: tier, role_id: match.id });
+				setEditing(false);
+			} catch (e) {
+				setSaveError(e instanceof Error ? e.message : "Failed to assign the role");
+			}
 			return;
 		}
 
-		// if the user is the only one assigned then just update the role
-		if ((currentRole?._count?.dispatchers === 1 && currentRole._count.technicians === 0) || (currentRole?._count?.dispatchers === 0 && currentRole._count.technicians === 1)) {
-			updateRole({id: currentRole.id, name: currentRole.name, base_tier: currentRole.base_tier, permissions: [...draft], is_default: currentRole.is_default});
-			setEditing(false);
+		// if the user is the only one assigned then just update the role — but
+		// never rewrite the org's default role in place, since that silently
+		// changes what every future hire is granted.
+		const soleMember =
+			(currentRole?._count?.dispatchers === 1 && currentRole._count.technicians === 0) ||
+			(currentRole?._count?.dispatchers === 0 && currentRole._count.technicians === 1);
+		if (currentRole && soleMember && !currentRole.is_default && currentRole.base_tier === tier) {
+			try {
+				await updateRoleAsync({
+					id: currentRole.id,
+					name: currentRole.name,
+					base_tier: currentRole.base_tier,
+					permissions: [...draft],
+					is_default: currentRole.is_default,
+				});
+				setEditing(false);
+			} catch (e) {
+				setSaveError(e instanceof Error ? e.message : "Failed to update the role");
+			}
 			return;
 		}
 
@@ -168,18 +196,19 @@ const AccessCard = ({ user, tier, readOnly = false }: AccessCardProps) => {
 								<button
 									type="button"
 									onClick={() => setEditing(false)}
-									className="px-2.5 py-1 rounded-md text-xs font-semibold text-text-secondary border border-border-subtle hover:bg-surface-raised hover:text-text-primary transition-colors cursor-pointer"
+									disabled={saving}
+									className="px-2.5 py-1 rounded-md text-xs font-semibold text-text-secondary border border-border-subtle hover:bg-surface-raised hover:text-text-primary transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									Cancel
 								</button>
 								<button
 									type="button"
-									disabled={!dirty}
+									disabled={!dirty || saving}
 									title={!dirty ? "No changes to save" : undefined}
 									onClick={handleRoleUpdate}
 									className="px-2.5 py-1 rounded-md text-xs font-semibold text-on-primary bg-primary border border-primary hover:bg-primary-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
 								>
-									Save changes
+									{saving ? "Saving..." : "Save changes"}
 								</button>
 							</div>
 						) : (
@@ -210,6 +239,14 @@ const AccessCard = ({ user, tier, readOnly = false }: AccessCardProps) => {
 							<>No organization role assigned.</>
 						)}
 					</p>
+					{saveError && (
+						<div
+							role="alert"
+							className="mb-3 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text"
+						>
+							{saveError}
+						</div>
+					)}
 					<AdaptableTable
 						data={editing ? tempRows : rows}
 						cellRenderers={{

@@ -15,6 +15,8 @@ import SerialCaptureList from "../inventory/tracking/SerialCaptureList";
 import BatchCaptureFields, {
 	type BatchCaptureValue,
 } from "../inventory/tracking/BatchCaptureFields";
+import SupplierPicker from "../inventory/SupplierPicker";
+import type { SupplierCapture } from "../../types/suppliers";
 import ExistingUnitPicker from "./ExistingUnitPicker";
 import ExistingBatchPicker, { type BatchPickDirection } from "./ExistingBatchPicker";
 import type { SerialUnitStatus } from "../../types/tracking";
@@ -303,6 +305,8 @@ function SupplierStep({
 	onNewItemChange,
 	newItem,
 	onNoteChange,
+	supplier,
+	onSupplierChange,
 	onBack,
 	onNext,
 }: {
@@ -312,6 +316,9 @@ function SupplierStep({
 	onNewItemChange: (field: "name" | "cost" | "qty", value: string | number) => void;
 	newItem: { name: string; cost: number; qty: number };
 	onNoteChange: (v: string) => void;
+	/** One vendor for the whole purchase — a supply run is one trip, not one per line. */
+	supplier: SupplierCapture;
+	onSupplierChange: (v: SupplierCapture) => void;
 	onBack: () => void;
 	onNext: () => void;
 }) {
@@ -571,6 +578,14 @@ function SupplierStep({
 							</div>
 						);
 					})}
+				</div>
+
+				<div className="mt-3 max-w-xs">
+					<SupplierPicker
+						value={supplier}
+						onChange={onSupplierChange}
+						label="Bought from (optional)"
+					/>
 				</div>
 
 				<NoteField value={note} onChange={onNoteChange} />
@@ -895,7 +910,6 @@ const DEFAULT_NEW_BATCH: BatchCaptureValue = {
 	mode: "new",
 	batch_number: "",
 	expires_at: null,
-	supplier: "",
 };
 
 function TrackingStep({
@@ -1091,6 +1105,7 @@ export default function AdjustStockModal({
 		Record<string, { cost: number; qty: number }>
 	>({});
 	const [supplierNewItem, setSupplierNewItem] = useState({ name: "", cost: 0, qty: 1 });
+	const [purchaseSupplier, setPurchaseSupplier] = useState<SupplierCapture>({});
 
 	// Tracking-step capture state, keyed by TrackingLineReq.key (stock_item_id
 	// for existing lines, inventory_item_id for supplier_purchase catalog
@@ -1221,6 +1236,9 @@ export default function AdjustStockModal({
 						const line: AdjustStockInput["lines"][number] = {
 							inventory_item_id,
 							qty_after: r.qty,
+							// Same vendor on every line — the picker sits on the
+							// purchase, not the row.
+							...purchaseSupplier,
 						};
 						if (item?.is_serialized) {
 							line.new_serials =
@@ -1235,9 +1253,6 @@ export default function AdjustStockModal({
 									batch_number:
 										bv.batch_number.trim(),
 									expires_at: bv.expires_at,
-									supplier:
-										bv.supplier.trim() ||
-										undefined,
 								};
 							} else if (bv?.mode === "existing") {
 								line.batch_picks = [
@@ -1406,6 +1421,8 @@ export default function AdjustStockModal({
 								}
 								newItem={supplierNewItem}
 								onNoteChange={setNote}
+								supplier={purchaseSupplier}
+								onSupplierChange={setPurchaseSupplier}
 								onBack={() => {
 									setSupplierRows({});
 									setSupplierNewItem({
@@ -1413,6 +1430,7 @@ export default function AdjustStockModal({
 										cost: 0,
 										qty: 1,
 									});
+									setPurchaseSupplier({});
 									setNote("");
 									setModalStep("type");
 								}}

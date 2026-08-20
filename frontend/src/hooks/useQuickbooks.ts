@@ -20,12 +20,19 @@ import {
     getQBInvoicePrefill,
     importQBInvoices,
     getQBProfitAndLossReport,
+    getQBVendors,
+    getQBMappedVendors,
+    linkQBVendor,
+    unlinkQBVendor,
+    importQBVendor,
+    pushQBVendor,
 
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { ImportQBItemResult, QBProfitAndLossQuery } from "../types/quickbooks";
-import { invalidate } from "../lib/queryKeys";
+import type { Supplier } from "../types/suppliers";
+import { invalidate, qk } from "../lib/queryKeys";
 
 type QBInvoiceEmailVars = {
   invoiceId: string;
@@ -92,6 +99,67 @@ export const useQBMappedItemsQuery = (enabled = true) => {
         queryFn: getQBMappedItems,
         enabled,
         retry: false,
+    });
+};
+
+// ── Vendors ──────────────────────────────────────────────────────────────────
+// Every mutation here also invalidates the supplier list: an import creates or
+// enriches a supplier, and a link changes what the Suppliers page can show as
+// connected.
+
+export const useQBVendorsQuery = (enabled = true) => {
+    return useQuery({
+        queryKey: ["qbVendors"],
+        queryFn: getQBVendors,
+        enabled,
+        retry: false,
+    });
+};
+
+export const useQBMappedVendorsQuery = (enabled = true) => {
+    return useQuery({
+        queryKey: ["qbMappedVendors"],
+        queryFn: getQBMappedVendors,
+        enabled,
+        retry: false,
+    });
+};
+
+const invalidateVendors = (queryClient: ReturnType<typeof useQueryClient>) => {
+    queryClient.invalidateQueries({ queryKey: ["qbVendors"] });
+    queryClient.invalidateQueries({ queryKey: ["qbMappedVendors"] });
+    queryClient.invalidateQueries({ queryKey: qk.suppliers.all });
+};
+
+export const useLinkQBVendorMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<unknown, Error, { supplier_id: string; qb_vendor_id: string }>({
+        mutationFn: ({ supplier_id, qb_vendor_id }) => linkQBVendor(supplier_id, qb_vendor_id),
+        onSuccess: () => invalidateVendors(queryClient),
+    });
+};
+
+export const useUnlinkQBVendorMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<unknown, Error, string>({
+        mutationFn: (supplierId) => unlinkQBVendor(supplierId),
+        onSuccess: () => invalidateVendors(queryClient),
+    });
+};
+
+export const useImportQBVendorMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<{ supplier: Supplier; linkedExisting: boolean }, Error, string>({
+        mutationFn: (qbVendorId) => importQBVendor(qbVendorId),
+        onSuccess: () => invalidateVendors(queryClient),
+    });
+};
+
+export const usePushQBVendorMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<{ pushed: boolean; qb_vendor_id: string }, Error, string>({
+        mutationFn: (supplierId) => pushQBVendor(supplierId),
+        onSuccess: () => invalidateVendors(queryClient),
     });
 };
 

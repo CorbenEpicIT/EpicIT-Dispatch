@@ -1,4 +1,5 @@
-import type { Prisma } from "../../generated/prisma/client.js";
+import { Prisma } from "../../generated/prisma/client.js";
+import { normalizeUnitCode } from "./units.js";
 
 export type StockStatus = "sufficient" | "low" | "out_of_stock" | null;
 
@@ -101,7 +102,10 @@ export function withStockStatus<T extends { quantity: StockQty; low_stock_thresh
  * each)" and never imply a direction ("each → box") the basis cannot support.
  */
 export interface UnitBasis {
-	/** Distinct stamped units across the aggregated rows, sorted. Empty if no rows. */
+	/**
+	 * Distinct stamped units across the aggregated rows, sorted, as CATALOG CODES
+	 * where the stamp is a recognised spelling (see {@link unitBasis}). Empty if no rows.
+	 */
 	units: string[];
 	/** The unit every row shares. `null` when the rows are mixed OR there are none. */
 	unit: string | null;
@@ -117,11 +121,19 @@ export interface UnitBasis {
  * per-row `unit` values off a `findMany`. Blanks are ignored rather than counted as
  * a distinct unit — a blank is missing information, and treating it as a second
  * denomination would flag a clean series.
+ *
+ * Each stamp is normalised through the unit catalog before de-duplication:
+ * `inventory_item.unit` was freetext before the catalog existed, and the
+ * 20260805 migration backfilled `stock_movement.unit` verbatim, so a ledger can
+ * legitimately carry "Each" beside "each", or "gallon" beside "gal". Those are the
+ * SAME denomination spelled two ways, not a unit change, and flagging them as
+ * mixed would withhold every total for an item whose history is perfectly
+ * summable. A spelling the catalog does not know is kept as-is (still distinct).
  */
 export function unitBasis(units: Iterable<string | null | undefined> | null | undefined): UnitBasis {
 	const seen = new Set<string>();
 	for (const u of units ?? []) {
-		if (typeof u === "string" && u.trim() !== "") seen.add(u);
+		if (typeof u === "string" && u.trim() !== "") seen.add(normalizeUnitCode(u) ?? u);
 	}
 	const sorted = [...seen].sort();
 	return {
@@ -135,3 +147,34 @@ export function unitBasis(units: Iterable<string | null | undefined> | null | un
 export function mergeUnitBases(bases: UnitBasis[]): UnitBasis {
 	return unitBasis(bases.flatMap((b) => b.units));
 }
+
+// ---------------------------------------------------------------------------
+// Consumption aggregates
+// ---------------------------------------------------------------------------
+
+/**
+ * The one definition of "consumption" every aggregate over `stock_movement`
+ * shares (item usage, consumption trend, reorder forecast, usage-by-item).
+ *
+ * Consumption is `parts_used` + `direct_consumption`, NET of reversals: a
+ * `reversal` whose `from_location_type` is `consumed` (updatePartsUsedQty
+ * decreasing or deleting a parts-used line) cancels demand that never happened
+ * and must be subtracted, not ignored — otherwise the item page says 5 were
+ * used while the reorder forecast (which already nets) says 2.
+ *
+ * Both fragments expect the `stock_movement` table to be aliased **`sm`** in
+ * the surrounding query. Embed them in a `$queryRaw` tagged template directly:
+ *
+ *   SUM(${CONSUMPTION_SIGNED_QTY}) … WHERE ${CONSUMPTION_MOVEMENT_PREDICATE}
+ *
+ * Keep the two in lockstep: rows selected by the predicate are exactly the rows
+ * the signed qty knows how to sign. If a new reversal writer appears, extend
+ * the predicate here rather than in any one caller.
+ */
+export const CONSUMPTION_MOVEMENT_PREDICATE = Prisma.sql`(
+	sm.reason IN ('parts_used', 'direct_consumption')
+	OR (sm.reason = 'reversal' AND sm.from_location_type = 'consumed')
+)`;
+
+/** Signed qty for a row matched by {@link CONSUMPTION_MOVEMENT_PREDICATE}: reversals subtract. */
+export const CONSUMPTION_SIGNED_QTY = Prisma.sql`CASE WHEN sm.reason = 'reversal' THEN -sm.qty ELSE sm.qty END`;

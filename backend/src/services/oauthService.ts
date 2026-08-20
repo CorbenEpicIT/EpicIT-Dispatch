@@ -51,8 +51,9 @@ const randomToken = () => {
 
 export const authenticateUser = async (email: string, password: string) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
-    const user = (await db.dispatcher.findUnique({ where: { email } }))
-              ?? (await db.technician.findUnique({ where: { email } }));
+    // password is omitted globally (db.ts); opt back in for the credential check.
+    const user = (await db.dispatcher.findUnique({ where: { email }, omit: { password: false } }))
+              ?? (await db.technician.findUnique({ where: { email }, omit: { password: false } }));
     const ok = await bcrypt.compare(password, user?.password ?? DUMMY_PASSWORD_HASH);
     if (!user || !ok) return null;
     const role = "role" in user ? user.role : "technician";

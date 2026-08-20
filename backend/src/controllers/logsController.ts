@@ -1,12 +1,29 @@
+import type { NextFunction, Request, Response } from "express";
+import { z } from "zod";
 import { getScopedDb } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
 
 export type actor = "technician" | "dispatcher";
 export type entity = "job" | "quote" | "request" | "invoice" | "client" | "project";
 
 export const DEFAULT_HISTORY_LIMIT = 20;
 export const MAX_HISTORY_LIMIT = 200;
+
+const historyLimitSchema = z.coerce.number().int().min(1).max(MAX_HISTORY_LIMIT);
+export const INVALID_HISTORY_LIMIT = `limit must be an integer between 1 and ${MAX_HISTORY_LIMIT}`;
+
+/**
+ * Parses the `?limit=` query value for the change-history routes.
+ * Returns DEFAULT_HISTORY_LIMIT when absent; throws a ZodError for anything
+ * that is not an integer in [1, MAX_HISTORY_LIMIT] so the route can answer 400
+ * instead of handing Prisma a negative/fractional `take`.
+ */
+export const parseHistoryLimit = (raw: unknown): number => {
+    if (raw === undefined || raw === null || raw === "") return DEFAULT_HISTORY_LIMIT;
+    return historyLimitSchema.parse(raw);
+};
 
 const RENDERABLE = {
     OR: [
@@ -18,6 +35,34 @@ const RENDERABLE = {
             ],
         },
     ],
+};
+
+/**
+ * Read-side denylist for the change-history views. Credential and session
+ * events (password changes/resets, logins, MFA, OAuth) are audit-only and are
+ * never surfaced through /:id/changes, whatever the caller's permissions.
+ */
+const SENSITIVE_EVENT_PREFIXES = ["auth.", "mfa.", "oauth"] as const;
+const NOT_SENSITIVE_EVENT = {
+    NOT: [
+        ...SENSITIVE_EVENT_PREFIXES.map((prefix) => ({ event_type: { startsWith: prefix } })),
+        { event_type: { contains: ".password." } },
+    ],
+};
+
+// Keys that must never leave the server inside `changes`, even on otherwise
+// harmless events (defence in depth on top of the event-type denylist).
+const SENSITIVE_CHANGE_KEY = /password|token|secret|otp|mfa/i;
+
+export const redactSensitiveChanges = <T extends { changes: unknown }>(row: T): T => {
+    const changes = row.changes;
+    if (!changes || typeof changes !== "object" || Array.isArray(changes)) return row;
+    const entries = Object.entries(changes as Record<string, unknown>);
+    if (!entries.some(([key]) => SENSITIVE_CHANGE_KEY.test(key))) return row;
+    return {
+        ...row,
+        changes: Object.fromEntries(entries.filter(([key]) => !SENSITIVE_CHANGE_KEY.test(key))),
+    };
 };
 
 const ACTOR_TYPES: Record<actor, string[]> = {
@@ -35,6 +80,27 @@ type GroupMember = {
 };
 
 const pluck = (rows: { id: string }[]) => rows.map((r) => r.id);
+
+/**
+ * Parent breadcrumb on child log rows.
+ *
+ * Child ids for an entity's history are resolved from the *current* child
+ * tables, so a `*.deleted` row for a child that no longer exists would never be
+ * matched. Child-delete log sites therefore stamp the parent on the row itself:
+ *
+ *   changes: { ..., _parent_type: { old: null, new: "job" }, _parent_id: { old: null, new: "<jobId>" } }
+ *
+ * `_`-prefixed keys are treated as breadcrumbs (hidden from the rendered rows)
+ * by the frontend formatter, and the `{ old, new }` shape keeps the ChangeSet
+ * contract. getEntityHistory ORs `changes->_parent_id->new == <id>` into the
+ * lookup for every child entity type of the group (Postgres JSON path filter).
+ */
+export const PARENT_ID_PATH = ["_parent_id", "new"] as const;
+
+export const parentBreadcrumb = (type: entity, id: string) => ({
+    _parent_type: { old: null, new: type },
+    _parent_id: { old: null, new: id },
+});
 
 const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
     job: [
@@ -140,7 +206,9 @@ export const getActorHistory = async (orgId: string, type: actor, id: string, li
         if (!actorTypes) return { err: `Unknown actor type: ${type}`, rows: [] as log_row[], hasMore: false, total: 0 };
 
         const sdb = getScopedDb(orgId);
-        const scopedWhere = { actor_type: { in: actorTypes }, actor_id: id, ...RENDERABLE };
+        const scopedWhere = {
+            AND: [{ actor_type: { in: actorTypes }, actor_id: id }, RENDERABLE, NOT_SENSITIVE_EVENT],
+        };
 
         const [rows, total] = await Promise.all([
             sdb.log.findMany({
@@ -152,8 +220,9 @@ export const getActorHistory = async (orgId: string, type: actor, id: string, li
         ]);
 
         const hasMore = rows.length > limit;
+        const page = (hasMore ? rows.slice(0, limit) : rows).map(redactSensitiveChanges);
 
-        return { err: "", rows: hasMore ? rows.slice(0, limit) : rows, hasMore, total };
+        return { err: "", rows: page, hasMore, total };
 
     } catch (err) {
         if (err instanceof Error) {
@@ -178,13 +247,21 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
             })),
         );
 
-        const scopedOr = groups
+        const scopedOr: Prisma.logWhereInput[] = groups
             .filter((g) => g.ids.length > 0)
             .map((g) => ({ entity_type: g.entity_type, entity_id: { in: g.ids } }));
 
-        if (scopedOr.length === 0) return { err: "", rows: [] as log_row[], hasMore: false, total: 0 };
+        // Children that no longer exist (deleted rows) can't be resolved from
+        // the child tables — match them through the parent breadcrumb instead.
+        for (const member of group) {
+            if (!member.resolve) continue;
+            scopedOr.push({
+                entity_type: member.entity_type,
+                changes: { path: [...PARENT_ID_PATH], equals: id },
+            });
+        }
 
-        const scopedWhere = { AND: [{ OR: scopedOr }, RENDERABLE] };
+        const scopedWhere = { AND: [{ OR: scopedOr }, RENDERABLE, NOT_SENSITIVE_EVENT] };
 
         const [rows, total] = await Promise.all([
             sdb.log.findMany({
@@ -196,8 +273,9 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
         ]);
 
         const hasMore = rows.length > limit;
+        const page = (hasMore ? rows.slice(0, limit) : rows).map(redactSensitiveChanges);
 
-        return { err: "", rows: hasMore ? rows.slice(0, limit) : rows, hasMore, total };
+        return { err: "", rows: page, hasMore, total };
     } catch (err) {
         if (err instanceof Error) {
             return { err: err.message, rows: [] as log_row[], hasMore: false, total: 0 };
@@ -206,3 +284,90 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
         return { err: "Internal server error", rows: [] as log_row[], hasMore: false, total: 0 };
     }
 };
+
+// ============================================================
+// ACTIVITY FEED (GET /logs/recent)
+// ============================================================
+
+const FEED_EVENTS = [
+    "job.created",
+    "job_visit.created",
+    "job_visit.updated",
+    "job_visit.technicians_assigned",
+    "request.created",
+    "request.updated",
+    "quote.created",
+    "quote.updated",
+    "invoice.created",
+    "invoice.updated",
+    "invoice_payment.created",
+    "recurring_plan.created",
+    "recurring_occurrence.generated",
+    "technician.updated",
+];
+
+// technician.updated carries contact details and GPS coords — keep the event in
+// the feed (status changes are useful) but never ship the PII diffs.
+const FEED_PII_KEYS: Record<string, ReadonlySet<string>> = {
+    "technician.updated": new Set(["email", "phone", "coords", "hire_date", "last_login"]),
+};
+
+export const redactFeedRow = <T extends { event_type: string; changes: unknown }>(row: T): T => {
+    const denied = FEED_PII_KEYS[row.event_type];
+    const changes = row.changes;
+    if (!denied || !changes || typeof changes !== "object" || Array.isArray(changes)) return row;
+    const entries = Object.entries(changes as Record<string, unknown>);
+    if (!entries.some(([key]) => denied.has(key))) return row;
+    return { ...row, changes: Object.fromEntries(entries.filter(([key]) => !denied.has(key))) };
+};
+
+const FEED_DEFAULT_LIMIT = 25;
+const FEED_MAX_LIMIT = 50;
+const FEED_VIEWER_PERMISSIONS = ["view_dispatchers", "view_technicians"];
+
+const forbidden = (res: Response) =>
+    res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, "Insufficient permissions"));
+
+/**
+ * Access rule for the activity feed:
+ *  - `?userId=<own id>`: anyone may read their own activity;
+ *  - `?userId=<someone else>`: needs view_dispatchers or view_technicians (admin passes);
+ *  - unfiltered org-wide feed: dispatchers/admins only — technicians are denied.
+ */
+export const requireFeedAccess = (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user) return forbidden(res);
+    const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+    if (userId && userId === user.uid) return next();
+    if (user.role === "admin") return next();
+    if (userId) {
+        const perms = Array.isArray(user.permissions) ? user.permissions : [];
+        return FEED_VIEWER_PERMISSIONS.some((p) => perms.includes(p)) ? next() : forbidden(res);
+    }
+    return user.role === "technician" ? forbidden(res) : next();
+};
+
+export const getRecentActivity = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const limit = Math.min(Number(req.query.limit) || FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT);
+        const cursor = req.query.cursor as string | undefined;
+        const userId = req.query.userId as string | undefined;
+        const orgId = req.user!.organization_id as string;
+        const sdb = getScopedDb(orgId);
+        const logs = await sdb.log.findMany({
+            where: {
+                event_type: { in: FEED_EVENTS },
+                ...(cursor ? { timestamp: { lt: new Date(cursor) } } : {}),
+                ...(userId ? { OR: [{ actor_id: userId }, { entity_id: userId }] } : {}),
+            },
+            orderBy: { timestamp: "desc" },
+            take: limit,
+        });
+        const hasMore = logs.length === limit;
+        res.json(createSuccessResponse(logs.map(redactFeedRow), { count: logs.length, hasMore }));
+    } catch (err) {
+        next(err);
+    }
+};
+
+export const recentActivityRoute = [requireFeedAccess, getRecentActivity];

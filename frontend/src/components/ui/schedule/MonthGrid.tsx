@@ -899,7 +899,14 @@ export default function MonthGrid({
 						technicians={technicians}
 						techColorMap={techColorMap}
 						anchorRect={pendingClickReschedule.anchorRect}
-						onSave={async (data) => { try { await updateVisit({ id: v.id, data }); } catch {} setPendingClickReschedule(null); }}
+						onSave={async (data) => {
+							try {
+								await updateVisit({ id: v.id, data });
+							} catch {
+								// A failed update leaves the visit as-is; dismiss the popover regardless.
+							}
+							setPendingClickReschedule(null);
+						}}
 						onUndo={() => setPendingClickReschedule(null)}
 					/>
 				);
@@ -916,7 +923,11 @@ export default function MonthGrid({
 						newDateStr={nd}
 						anchorRect={pendingClickReschedule.anchorRect}
 						onReschedule={async (input) => {
-							try { await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input }); } catch {}
+							try {
+								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
+							} catch {
+								// A failed reschedule leaves the occurrence as-is; dismiss the popover regardless.
+							}
 							setPendingClickReschedule(null);
 						}}
 						onGenerate={async (input) => {
@@ -925,7 +936,9 @@ export default function MonthGrid({
 							try {
 								await rescheduleOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id, input });
 								await generateVisitFromOccurrence({ occurrenceId: occ.id, jobId: occ.job_obj.id });
-							} catch {}
+							} catch {
+								// A failed generation leaves the occurrence as-is; clear the spinner regardless.
+							}
 							setGeneratingVisitId(null);
 						}}
 						onCancel={() => setPendingClickReschedule(null)}

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import Drawer from "../../ui/Drawer";
-import { Field, SheetError, formatDate } from "./sheetShared";
+import { Field, SheetError } from "./sheetShared";
+import { formatDate } from "./sheetFormat";
 import { useBatchesQuery } from "../../../hooks/useTracking";
 import type { BatchListRow } from "../../../types/tracking";
 

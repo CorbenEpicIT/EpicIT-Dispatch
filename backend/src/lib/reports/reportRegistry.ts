@@ -23,6 +23,7 @@ import {
 	getRevenueByLineItemType,
 	getRevenueLineItemsReport,
 	getRevenueLineItemsReportPage,
+	reportInstant,
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
@@ -118,7 +119,7 @@ type FieldAddedRaw = Awaited<ReturnType<typeof getFieldAddedRevenueReport>>["row
 type RecurringRaw = Awaited<ReturnType<typeof getRecurringRevenueReport>>["plans"][number];
 type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
 type LineItemTypeRaw = Awaited<ReturnType<typeof getRevenueByLineItemType>>[number];
-type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>[number];
+type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>["rows"][number];
 
 const jobRow = (job: JobRaw): ReportRow => ({
 	id: job.id,
@@ -293,6 +294,21 @@ const forecastRow = (r: ForecastRaw): ReportRow => ({
 	unit: unitDisplay(r.unit).label,
 	observedDays: r.observedDays,
 	qtyConsumed: r.qtyConsumed ?? UNIT_BREAK_SHORT,
+	// Who to buy it from. A "~" marks a vendor INFERRED from the last purchase
+	// rather than one anybody chose — the report may suggest, but it must not
+	// pass a guess off as a decision.
+	buyFrom: r.preferredSupplierName
+		? r.vendorSource === "preferred"
+			? r.preferredSupplierName
+			: `~${r.preferredSupplierName}`
+		: "—",
+	// Export-only, like unit/observedDays above: the part number you actually
+	// order by, and what closing the gap to the reorder point would cost.
+	vendorSku: r.vendorSku ?? "—",
+	estimatedCost:
+		r.estimatedShortfallCost != null && r.shortfallQty != null
+			? `$${r.estimatedShortfallCost.toFixed(2)} (${fmtQty(r.shortfallQty)} @ ${r.priceSource})`
+			: "—",
 });
 
 const receivableRow = (r: ReceivableRaw): ReportRow => ({
@@ -427,8 +443,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		load: async (orgId, q) => {
 			let raw = await getClientsReport(orgId);
 			if (q.startDate || q.endDate) {
-				const gte = q.startDate ? new Date(q.startDate).getTime() : -Infinity;
-				const lte = q.endDate ? new Date(q.endDate).getTime() : Infinity;
+				const gte = q.startDate ? reportInstant(q.startDate).getTime() : -Infinity;
+				const lte = q.endDate ? reportInstant(q.endDate).getTime() : Infinity;
 				raw = raw.filter((c) => {
 					const t = new Date(c.createdAt).getTime();
 					return t >= gte && t <= lte;
@@ -441,8 +457,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		load: async (orgId, q) => ({
 			rows: (
 				await getInventoryReport(orgId, {
-					from: q.startDate ? new Date(q.startDate) : undefined,
-					to: q.endDate ? new Date(q.endDate) : undefined,
+					from: q.startDate ? reportInstant(q.startDate) : undefined,
+					to: q.endDate ? reportInstant(q.endDate) : undefined,
 					includeInactive: q.includeInactive ?? true,
 				})
 			).map(inventoryRow),
@@ -452,8 +468,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 				await getInventoryReportPage(
 					orgId,
 					{
-						from: q.startDate ? new Date(q.startDate) : undefined,
-						to: q.endDate ? new Date(q.endDate) : undefined,
+						from: q.startDate ? reportInstant(q.startDate) : undefined,
+						to: q.endDate ? reportInstant(q.endDate) : undefined,
 						includeInactive: q.includeInactive ?? true,
 					},
 					params,
@@ -603,16 +619,19 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 	},
 	"field-added-revenue": {
 		load: async (orgId, q) => {
-			const { rows, orgVisitRevenue, trend } = await getFieldAddedRevenueReport(
-				q.startDate,
-				q.endDate,
-				orgId,
-			);
-			return { rows: rows.map(fieldAddedRow), summary: { orgVisitRevenue, trend } };
+			const { rows, orgVisitRevenue, fieldAddedItemCount, truncated, trend } =
+				await getFieldAddedRevenueReport(q.startDate, q.endDate, orgId);
+			// fieldAddedItems is the distinct item count from the controller. It is
+			// not recomputed in filteredSummary: a per-tech itemCount credits a split
+			// item to every tech on the visit, so summing rows double-counts, and the
+			// per-tech rows carry no item ids to dedupe by.
+			return {
+				rows: rows.map(fieldAddedRow),
+				summary: { orgVisitRevenue, fieldAddedItems: fieldAddedItemCount, truncated, trend },
+			};
 		},
 		filteredSummary: (rows) => {
 			const totalFieldAddedRevenue = round2(rows.reduce((s, r) => s + num(r.fieldAddedRevenue), 0));
-			const fieldAddedItems = rows.reduce((s, r) => s + num(r.itemCount), 0);
 			const top = rows.reduce<ReportRow | null>(
 				(best, r) => (!best || num(r.fieldAddedRevenue) > num(best.fieldAddedRevenue) ? r : best),
 				null,
@@ -620,7 +639,6 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			return {
 				technicianCount: rows.length,
 				totalFieldAddedRevenue,
-				fieldAddedItems,
 				topTechnician: top ? String(top.technician) : "—",
 			};
 		},
@@ -635,9 +653,10 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		}),
 	},
 	"revenue-line-items": {
-		load: async (orgId, q) => ({
-			rows: (await getRevenueLineItemsReport(q.startDate, q.endDate, orgId)).map(revenueLineItemRow),
-		}),
+		load: async (orgId, q) => {
+			const { rows, truncated } = await getRevenueLineItemsReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(revenueLineItemRow), summary: { truncated } };
+		},
 		loadPage: async (orgId, q, params) =>
 			mapPage(
 				await getRevenueLineItemsReportPage(q.startDate, q.endDate, orgId, params),

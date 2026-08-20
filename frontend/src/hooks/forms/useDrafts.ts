@@ -1,8 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getDrafts, getDraft, createDraft, updateDraft, deleteDraft } from "../../api/drafts";
 import type {
-	Draft,
-	DraftSummary,
 	CreateDraftInput,
 	UpdateDraftInput,
 	ListDraftsQuery,

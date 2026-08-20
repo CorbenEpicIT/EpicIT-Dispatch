@@ -68,9 +68,13 @@ export const getInventoryMovements = async (
 
 export const getItemUsage = async (
 	itemId: string,
-	opts?: { limit?: number; offset?: number },
+	opts?: { limit?: number; offset?: number; createdAfter?: string },
 ): Promise<ItemUsage> => {
-	const params = queryParams({ limit: opts?.limit, offset: opts?.offset });
+	const params = queryParams({
+		limit: opts?.limit,
+		offset: opts?.offset,
+		created_after: opts?.createdAfter,
+	});
 	const response = await api.get<ApiResponse<ItemUsage>>(`/inventory/${itemId}/usage`, {
 		params,
 	});

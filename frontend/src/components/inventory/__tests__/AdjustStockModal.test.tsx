@@ -98,3 +98,56 @@ describe("AdjustStockModal — fractional on-hand", () => {
 		expect(mockMutateAsync).toHaveBeenCalledWith({ itemId: "item-1", delta: 2.1 });
 	});
 });
+
+// Review I6: Number("") is 0, so a cleared field used to preview "-10 ft" and
+// Save would zero the warehouse count.
+describe("AdjustStockModal — blank and unchanged input", () => {
+	it("treats a cleared field as invalid: Save is disabled, nothing is previewed or sent", async () => {
+		render(<AdjustStockModal item={makeItem({ quantity: 10 })} isOpen onClose={vi.fn()} />);
+
+		await userEvent.clear(screen.getByLabelText("New on-hand quantity"));
+		expect(screen.getByLabelText("New on-hand quantity")).toHaveValue(null);
+
+		const save = screen.getByRole("button", { name: "Save" });
+		expect(save).toBeDisabled();
+		expect(screen.queryByText(/-10/)).not.toBeInTheDocument();
+
+		await userEvent.click(save);
+		expect(mockMutateAsync).not.toHaveBeenCalled();
+	});
+
+	it("disables Save while the target equals the current count", () => {
+		render(<AdjustStockModal item={makeItem({ quantity: 10 })} isOpen onClose={vi.fn()} />);
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+	});
+
+	it("re-seeds from the current quantity each time it opens, not from the last typed target", async () => {
+		const { rerender } = render(
+			<AdjustStockModal item={makeItem({ quantity: 10 })} isOpen onClose={vi.fn()} />,
+		);
+		await setTarget("12.5");
+		expect(screen.getByLabelText("New on-hand quantity")).toHaveValue(12.5);
+
+		// Closed, adjustment landed (quantity now 12.5), reopened.
+		rerender(<AdjustStockModal item={makeItem({ quantity: 12.5 })} isOpen={false} onClose={vi.fn()} />);
+		rerender(<AdjustStockModal item={makeItem({ quantity: 12.5 })} isOpen onClose={vi.fn()} />);
+
+		expect(screen.getByLabelText("New on-hand quantity")).toHaveValue(12.5);
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+	});
+
+	it("does not overwrite a typed value when the item refetches while open", async () => {
+		const { rerender } = render(
+			<AdjustStockModal item={makeItem({ quantity: 10 })} isOpen onClose={vi.fn()} />,
+		);
+		await setTarget("14");
+		rerender(
+			<AdjustStockModal
+				item={makeItem({ quantity: 10, updated_at: "2026-01-01T00:00:01.000Z" })}
+				isOpen
+				onClose={vi.fn()}
+			/>,
+		);
+		expect(screen.getByLabelText("New on-hand quantity")).toHaveValue(14);
+	});
+});

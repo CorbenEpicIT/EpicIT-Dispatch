@@ -60,6 +60,8 @@ const RequestsPage = lazy(() => import("./pages/dispatch/RequestsPage"));
 const RequestDetailsPage = lazy(() => import("./pages/dispatch/RequestDetailPage"));
 const InventoryPage = lazy(() => import("./pages/dispatch/InventoryPage"));
 const InventoryItemDetailPage = lazy(() => import("./pages/dispatch/InventoryItemDetailPage"));
+const SuppliersPage = lazy(() => import("./pages/dispatch/SuppliersPage"));
+const SupplierDetailPage = lazy(() => import("./pages/dispatch/SupplierDetailPage"));
 const LabelPrintPage = lazy(() => import("./components/inventory/labels/LabelPrintPage"));
 const SerialRedirectPage = lazy(() => import("./pages/dispatch/SerialRedirectPage"));
 const BatchDetailPage = lazy(() => import("./pages/dispatch/BatchDetailPage"));
@@ -98,15 +100,6 @@ function RequireDispatcher({ children }: { children: JSX.Element }) {
 	if (user.role === "technician") return <Navigate to="/technician" replace />;
 	return children;
 }
-// stops dispatch users from accessing admin page unless they have view_admin permission
-function RequireAdmin({ children }: { children: JSX.Element }) {
-	const { user } = useAuthStore();
-	const hasViewAdmin = usePermission("view_admin");
-	if (!user) return <Navigate to="/login" replace />;
-	if (user.role !== "admin" && !hasViewAdmin) return <Navigate to="/dispatch" replace />;
-	return children;
-}
-
 function RequirePermission({ permission, children }: { permission: string; children: JSX.Element }) {
 	const allowed = usePermission(permission);
 	return allowed ? children : <Navigate to="/dispatch" replace />;
@@ -195,6 +188,10 @@ export default function AppRoutes() {
 				<Route path="timesheets" element={<RequirePermission permission="view_reports"><TimesheetsReportPage /></RequirePermission>} />
 				<Route path="inventory/reorder-forecast" element={<RequirePermission permission="view_reports"><ReorderForecastPage /></RequirePermission>} />
 				<Route path="inventory" element={<RequirePermission permission="view_inventory"><InventoryPage /></RequirePermission>} />
+				{/* Reading the vendor list is view_inventory (the capture typeahead needs it
+				    on every intake path); the page gates its own writes on manage_inventory. */}
+				<Route path="inventory/suppliers" element={<RequirePermission permission="view_inventory"><SuppliersPage /></RequirePermission>} />
+				<Route path="inventory/suppliers/:supplierId" element={<RequirePermission permission="view_inventory"><SupplierDetailPage /></RequirePermission>} />
 				<Route path="inventory/items/:itemId" element={<RequirePermission permission="view_inventory"><InventoryItemDetailPage /></RequirePermission>} />
 				<Route path="inventory/labels/print" element={<RequirePermission permission="manage_inventory"><LabelPrintPage /></RequirePermission>} />
 				<Route path="inventory/items/:itemId/tracking" element={<RedirectToItemDetail />} />

@@ -2,7 +2,7 @@
 import type { Coordinates } from "./location";
 import type { ClientWithPrimaryContact } from "./clients";
 import type { Priority, BaseNote, QuoteReference, JobReference } from "./common";
-import { PriorityValues, PriorityLabels, PriorityColors } from "./common";
+import { PriorityValues } from "./common";
 
 // ============================================================================
 // REQUEST-SPECIFIC TYPES

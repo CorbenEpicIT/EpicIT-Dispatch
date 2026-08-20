@@ -544,7 +544,7 @@ async function main() {
 		db.inventory_item.create({
 			data: {
 				organization_id: org.id,
-				name: "Compressor 3-Ton Scroll R410A",
+				name: "DEMO - Compressor 3-Ton Scroll R410A",
 				description:
 					"Copeland scroll compressor for 3-ton split systems. Serialized for warranty tracking and lot-tracked for defect recalls.",
 				location: "Warehouse — Shelf A2",
@@ -585,11 +585,13 @@ async function main() {
 		db.inventory_item.create({
 			data: {
 				organization_id: org.id,
-				// METRIC FIXTURE — the only `mm` item in the seed. On-hand arrives
-				// through the opening receive below, same as everything else.
+				// METRIC FIXTURE — the only `m` item in the seed. 9.52mm is the
+				// tube's OD spec (3/8"), not the stocking unit — sold by the meter
+				// off the coil. On-hand arrives through the opening receive below,
+				// same as everything else.
 				name: "Copper Refrigerant Tubing 9.52mm OD",
 				description:
-					"Seamless copper tubing in metric dimensions, standard for European HVAC systems and metric-spec installations.",
+					"Seamless copper tubing in metric dimensions, standard for European HVAC systems and metric-spec installations. Sold by the meter off the coil.",
 				location: "Warehouse — Rack C2",
 				quantity: 0,
 				unit_price: 22.0,
@@ -597,9 +599,9 @@ async function main() {
 				sku: "TUBE-9.52MM",
 				barcode: shortCode("ITM"),
 				alt_ids: ["TUBE-952-EU", "CU-TUBE-METRIC"],
-				low_stock_threshold: 100,
+				low_stock_threshold: 15,
 				category: "Refrigerants",
-				unit: "mm",
+				unit: "m",
 			},
 		}),
 	]);
@@ -3598,6 +3600,43 @@ async function main() {
 		stockMap.get(`${v.id}::${i.id}`)!;
 
 	// ============================================================================
+	// Suppliers — two real vendor entities, attached to the intake movements and
+	// lots below so cost origin has something to group by.
+	//
+	// Deliberately only two: the Refrigerant lots keep their free-text "Airgas" /
+	// "RefrigCo Supply" suppliers, which is the pre-migration shape. Keeping both
+	// forms in the seed is the point — the cost-origin rollup has to handle a
+	// named vendor with no id, and an unattributed receipt landing in
+	// "Unrecorded", and neither path is exercised if every row is a tidy FK.
+	// ============================================================================
+
+	const supplierFerguson = await db.supplier.create({
+		data: {
+			organization_id: org.id,
+			name: "Ferguson",
+			name_key: "ferguson",
+			account_number: "ACCT-88213",
+			contact_name: "Dana Whitfield",
+			phone: "(312) 555-0142",
+			email: "orders@example-ferguson.test",
+			notes: "Counter pickup on the house account. Warranty RMAs go through Dana.",
+		},
+	});
+
+	const supplierCopeland = await db.supplier.create({
+		data: {
+			organization_id: org.id,
+			name: "Copeland Distribution",
+			name_key: "copeland distribution",
+			account_number: "CPD-5510",
+			contact_name: "Ray Ortega",
+			phone: "(312) 555-0177",
+			email: "sales@example-copeland.test",
+			notes: "Compressor distributor. Freight adds ~3 days on non-stocked models.",
+		},
+	});
+
+	// ============================================================================
 	// Stock Ledger — every quantity change flows through recordMovements so the
 	// stock_movement ledger and cached on-hand columns always reconcile.
 	// ============================================================================
@@ -3702,7 +3741,10 @@ async function main() {
 	const makeLot = (args: {
 		inventory_item_id: string;
 		batch_number: string;
+		// Set BOTH on a lot from a real vendor: supplier_id is what the rollup
+		// groups by, `supplier` is the human-readable name older readers show.
 		supplier?: string;
+		supplier_id?: string;
 		expires_at?: Date;
 		// Twin of the receive movement's unit_cost — set both, or the lot header
 		// and the ledger disagree about what the delivery cost.
@@ -3837,19 +3879,35 @@ async function main() {
 		],
 	});
 
-	// Four historical compressor replacements. getItemUsage only sees consumption
-	// linked through visit_line_item -> visit -> job -> client, so two of the six
+	// Five historical compressor replacements. getItemUsage only sees consumption
+	// linked through visit_line_item -> visit -> job -> client, so two of the
 	// consumptions below are deliberately left unlinked (write-off, counter pull)
 	// to exercise that exclusion.
 	//
 	// `charged` is what the customer was actually billed, not list price — the
-	// chart's charged series is realized revenue, including a discount (J-0015)
-	// and a premium (J-0017).
+	// chart's charged series is realized revenue, including a discount (J-0015),
+	// a premium (J-0017) and a contract rate (J-0018).
+	// TWO SALES ON THE SAME DAY, AT TWO PRICES, TO TWO CLIENTS.
+	//
+	// This pair is the whole reason the charged series draws a band instead of a
+	// single averaged point: one contract-priced replacement for a property
+	// manager and one premium emergency job, both billed the same day. Averaged,
+	// they read as $602.50 — a figure neither customer paid. Same day rather
+	// than "same week" or "same month": the chart buckets by week by default,
+	// and a multi-day gap would only *usually* land in one bucket depending on
+	// which weekday the seed happens to run on. Same calendar day makes the
+	// band deterministic regardless of run date, and different hours (below)
+	// keep the two visits from reading as a duplicate.
+	const CMP_BAND_DAYS_AGO = 30;
+
 	const compressorJobSpecs = [
-		{ jobNumber: "J-0014", daysAgo: 290, charged: 560.0, client: client5, coords: { lat: 43.8198, lng: -91.2514 }, clientLabel: "Riverside Apartments", techId: tech1.id },
-		{ jobNumber: "J-0015", daysAgo: 260, charged: 540.0, client: client3, coords: { lat: 43.7889, lng: -91.2297 }, clientLabel: "Williams Property Management", techId: tech2.id },
-		{ jobNumber: "J-0016", daysAgo: 170, charged: 590.0, client: client4, coords: { lat: 43.8334, lng: -91.2601 }, clientLabel: "Anderson Office Complex", techId: tech1.id },
-		{ jobNumber: "J-0017", daysAgo: 30, charged: 660.0, client: client2, coords: { lat: 43.8129, lng: -91.2559 }, clientLabel: "Smith Commercial Properties", techId: tech3.id },
+		{ jobNumber: "J-0014", daysAgo: 290, startHour: 8, endHour: 15, charged: 560.0, client: client5, coords: { lat: 43.8198, lng: -91.2514 }, clientLabel: "Riverside Apartments", techId: tech1.id },
+		{ jobNumber: "J-0015", daysAgo: 260, startHour: 8, endHour: 15, charged: 540.0, client: client3, coords: { lat: 43.7889, lng: -91.2297 }, clientLabel: "Williams Property Management", techId: tech2.id },
+		{ jobNumber: "J-0016", daysAgo: 170, startHour: 8, endHour: 15, charged: 590.0, client: client4, coords: { lat: 43.8334, lng: -91.2601 }, clientLabel: "Anderson Office Complex", techId: tech1.id },
+		// The band's high end — after-hours emergency, billed at full premium.
+		{ jobNumber: "J-0017", daysAgo: CMP_BAND_DAYS_AGO, startHour: 6, endHour: 9, charged: 660.0, client: client2, coords: { lat: 43.8129, lng: -91.2559 }, clientLabel: "Smith Commercial Properties", techId: tech3.id },
+		// The band's low end — same day, same part, contract rate.
+		{ jobNumber: "J-0018", daysAgo: CMP_BAND_DAYS_AGO, startHour: 12, endHour: 15, charged: 545.0, client: client3, coords: { lat: 43.7889, lng: -91.2297 }, clientLabel: "Williams Property Management", techId: tech2.id },
 	];
 
 	// Derived per visit (not fixed) so job totals don't contradict the line items.
@@ -3860,6 +3918,8 @@ async function main() {
 	const compressorVisits: { visitId: string; lineId: string }[] = [];
 	for (const spec of compressorJobSpecs) {
 		const day = daysFromNow(-spec.daysAgo);
+		const startHour = spec.startHour;
+		const endHour = spec.endHour;
 		const subtotal = round2(spec.charged + CMP_LABOR_TOTAL);
 		const taxAmount = round2(subtotal * CMP_TAX_RATE);
 		const total = round2(subtotal + taxAmount);
@@ -3879,7 +3939,7 @@ async function main() {
 				tax_rate: CMP_TAX_RATE,
 				tax_amount: taxAmount,
 				actual_total: total,
-				completed_at: dateAt(day, 15),
+				completed_at: dateAt(day, endHour),
 			},
 		});
 		const histVisit = await db.job_visit.create({
@@ -3890,11 +3950,11 @@ async function main() {
 					"Recover charge, swap compressor, pull vacuum, recharge and verify superheat.",
 				arrival_constraint: "at",
 				finish_constraint: "when_done",
-				arrival_time: "08:00",
-				scheduled_start_at: dateAt(day, 8),
-				scheduled_end_at: dateAt(day, 15),
-				actual_start_at: dateAt(day, 8, 10),
-				actual_end_at: dateAt(day, 14, 45),
+				arrival_time: `${String(startHour).padStart(2, "0")}:00`,
+				scheduled_start_at: dateAt(day, startHour),
+				scheduled_end_at: dateAt(day, endHour),
+				actual_start_at: dateAt(day, startHour, 10),
+				actual_end_at: dateAt(day, endHour - 1, 45),
 				status: "Completed",
 				subtotal,
 				tax_rate: CMP_TAX_RATE,
@@ -3904,7 +3964,7 @@ async function main() {
 				line_items: {
 					create: [
 						{
-							name: "Compressor 3-Ton Scroll R410A",
+							name: "DEMO - Compressor 3-Ton Scroll R410A",
 							quantity: 1,
 							unit_price: spec.charged,
 							total: spec.charged,
@@ -3932,7 +3992,7 @@ async function main() {
 		});
 		compressorVisits.push({ visitId: histVisit.id, lineId: histLine.id });
 	}
-	const [cmpVisitA, cmpVisitB, cmpVisitC, cmpVisitD] = compressorVisits;
+	const [cmpVisitA, cmpVisitB, cmpVisitC, cmpVisitD, cmpVisitE] = compressorVisits;
 
 	// -- t-350d: opening receipt, lot LOT-COMP-23-08 (4 units) -> WH 4 --
 	// No unit_cost: reason "initial" is an opening count, not a supplier invoice,
@@ -3997,6 +4057,7 @@ async function main() {
 		inventory_item_id: invCompressor.id,
 		batch_number: "LOT-COMP-24-01",
 		supplier: "Copeland Distribution",
+		supplier_id: supplierCopeland.id,
 		unit_cost: 392.0,
 	});
 	await backdateLot(lotCompressorMid.id, at200);
@@ -4008,6 +4069,7 @@ async function main() {
 			to_location_type: "warehouse",
 			reason: "receive",
 			unit_cost: 392.0,
+			supplier_id: supplierCopeland.id,
 			note: "Replenishment PO — Lot LOT-COMP-24-01.",
 			serial: {
 				create: ["CMP24-0101", "CMP24-0102", "CMP24-0103"].map((serial_number) => ({
@@ -4051,11 +4113,17 @@ async function main() {
 	const at60 = daysFromNow(-60);
 	// Second priced receipt: 415/unit. The running weighted average lands between
 	// the two receipts (3 @ 392 then 3 @ 415 = 403.50), which is what the dashed
-	// paid-cost line steps to while the receipt markers stay at 392 and 415.
+	// paid-cost line steps to while the receipt markers stay at 392 and 415. The
+	// unattributed 1 @ 402 buy at t-45d nudges it again, to 403.29 over 7 units.
+	//
+	// Bought from Ferguson rather than Copeland this time, which is what gives
+	// the step a CAUSE: the item's cost-origin strip shows two vendors at two
+	// different average prices instead of one unexplained jump.
 	const lotCompressor = await makeLot({
 		inventory_item_id: invCompressor.id,
 		batch_number: "LOT-COMP-24-03",
-		supplier: "Copeland Distribution",
+		supplier: "Ferguson",
+		supplier_id: supplierFerguson.id,
 		unit_cost: 415.0,
 	});
 	await backdateLot(lotCompressor.id, at60);
@@ -4067,7 +4135,8 @@ async function main() {
 			to_location_type: "warehouse",
 			reason: "receive",
 			unit_cost: 415.0,
-			note: "Replenishment PO — Lot LOT-COMP-24-03.",
+			supplier_id: supplierFerguson.id,
+			note: "Replenishment PO — Lot LOT-COMP-24-03 (switched to Ferguson; Copeland was 3 weeks out).",
 			serial: {
 				create: ["CMP24-0001", "CMP24-0002", "CMP24-0003"].map((serial_number) => ({
 					serial_number,
@@ -4084,13 +4153,54 @@ async function main() {
 		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "vehicle", to_vehicle_id: truck4.id, reason: "restock", serial: { unit_ids: [await cmpUnit("CMP24-0002")] } },
 	]);
 
-	// -- t-30d: consumed on J-0017 (Smith). Inside the reorder card's fixed 90d
-	// window, so the forecast has real demand to work from. -> WH 4 / T4 0 --
-	const at30 = daysFromNow(-30);
+	// -- t-45d: UNATTRIBUTED receipt, 1 unit @ 402 -> WH 5 / T4 1 --
+	//
+	// An emergency counter buy where nobody wrote down who sold it. Deliberate:
+	// it is the third receipt dot on the chart, it lands in the origin strip's
+	// "Unrecorded" row, and it makes the coverage footnote read "2 of 3 receipts
+	// name a supplier" instead of a tidy 100% that hides the failure mode.
+	const at45 = daysFromNow(-45);
+	const lotCompressorGap = await makeLot({
+		inventory_item_id: invCompressor.id,
+		batch_number: "LOT-COMP-24-02",
+		unit_cost: 402.0,
+		note: "Emergency counter buy — vendor never recorded on the ticket.",
+	});
+	await backdateLot(lotCompressorGap.id, at45);
+	await moveAt(at45, dispActor, [
+		{
+			inventory_item_id: invCompressor.id,
+			qty: 1,
+			from_location_type: "external",
+			to_location_type: "warehouse",
+			reason: "receive",
+			unit_cost: 402.0,
+			note: "Emergency counter buy — vendor never recorded on the ticket.",
+			serial: {
+				create: [{ serial_number: "CMP24-0004", batch_id: lotCompressorGap.id }],
+			},
+		},
+	]);
+	await backdateReceived(["CMP24-0004"], at45);
+
+	// -- t-30d, early morning: consumed on J-0017 (Smith) — the band's HIGH end.
+	// Inside the reorder card's fixed 90d window, so the forecast has real
+	// demand to work from. -> WH 5 / T4 0 --
+	const at30 = daysFromNow(-CMP_BAND_DAYS_AGO);
 	await moveAt(at30, techActor(tech3.id), [
-		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitD.visitId, visit_line_item_id: cmpVisitD.lineId, serial: { unit_ids: [await cmpUnit("CMP24-0002")] }, note: "Compressor replacement on the Smith rooftop unit." },
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "vehicle", from_vehicle_id: truck4.id, to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitD.visitId, visit_line_item_id: cmpVisitD.lineId, serial: { unit_ids: [await cmpUnit("CMP24-0002")] }, note: "After-hours emergency callout — billed at premium." },
 	]);
 	await backdateConsumed(["CMP24-0002"], at30);
+
+	// -- t-30d, midday: consumed on J-0018 (Williams) — the band's LOW end,
+	// same calendar day as the sale above and $115 cheaper. Pulled from the
+	// shop rather than the truck, which is where the emergency unit had been
+	// sitting. -> WH 4 / T4 0 --
+	const atPairLow = daysFromNow(-CMP_BAND_DAYS_AGO);
+	await moveAt(atPairLow, techActor(tech2.id), [
+		{ inventory_item_id: invCompressor.id, qty: 1, from_location_type: "warehouse", to_location_type: "consumed", reason: "parts_used", visit_id: cmpVisitE.visitId, visit_line_item_id: cmpVisitE.lineId, serial: { unit_ids: [await cmpUnit("CMP24-0004")] }, note: "Contract-rate replacement — picked up from the shop en route." },
+	]);
+	await backdateConsumed(["CMP24-0004"], atPairLow);
 
 	// -- t-25d: re-stage the truck -> WH 3 / T4 1 --
 	const at25 = daysFromNow(-25);
@@ -4119,7 +4229,7 @@ async function main() {
 		// 12.5 exercises a non-integer on-hand end to end; both sit below threshold
 		// so they also appear in low-stock surfaces.
 		{ inventory_item_id: invLineSetSmall.id, qty: 12.5, from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count — partial spool." },
-		{ inventory_item_id: invTubingMetric.id, qty: 250,  from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
+		{ inventory_item_id: invTubingMetric.id, qty: 50,   from_location_type: "external", to_location_type: "warehouse", reason: "initial", note: "Opening warehouse count." },
 	]);
 
 	// (b) Base restock — warehouse → each vehicle.
@@ -4217,10 +4327,89 @@ async function main() {
 		},
 	});
 
-	// (g) Supplier purchase — Maria/John bought flame sensors at a local supply house (external → Van 12).
+	// (g) Supplier purchase — Maria/John bought flame sensors at a local supply
+	// house (external → Van 12). Priced and attributed, so the field-purchase
+	// path contributes to cost origin the same way a warehouse receipt does.
 	await move(techActor(tech1.id), [
-		{ inventory_item_id: invFlameSensor.id, qty: 2, from_location_type: "external", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "supplier_purchase", note: "Field purchase — 2 flame sensors from Ferguson." },
+		{ inventory_item_id: invFlameSensor.id, qty: 2, from_location_type: "external", to_location_type: "vehicle", to_vehicle_id: van12.id, reason: "supplier_purchase", unit_cost: 21.5, supplier_id: supplierFerguson.id, note: "Field purchase — 2 flame sensors from Ferguson." },
 	]);
+
+	// ============================================================================
+	// Vendor price list — the catalog the reorder forecast reads to answer
+	// "buy 8 from whom, at what?".
+	//
+	// The rows below ALREADY EXIST by this point: recordMovements writes
+	// last_price/last_purchased_at for every attributed, priced intake above.
+	// What it can't know is the negotiated side — part numbers, contract rates,
+	// lead times, and which vendor is the preferred one — so that's what gets
+	// filled in here. upsert, not update, so this stands on its own if the
+	// movements above ever change.
+	// ============================================================================
+
+	const priceListRow = (args: {
+		supplier_id: string;
+		inventory_item_id: string;
+		vendor_sku: string;
+		contract_price?: number;
+		lead_time_days?: number;
+		min_order_qty?: number;
+		is_preferred?: boolean;
+		notes?: string;
+	}) =>
+		db.supplier_item.upsert({
+			where: {
+				supplier_id_inventory_item_id: {
+					supplier_id: args.supplier_id,
+					inventory_item_id: args.inventory_item_id,
+				},
+			},
+			create: { organization_id: org.id, ...args },
+			update: args,
+		});
+
+	// Compressor, both vendors — the two-vendor split the cost-origin strip shows.
+	// Ferguson is preferred despite the higher last price: they had it on the
+	// shelf, and the forecast reports a contract rate that beats both receipts.
+	await priceListRow({
+		supplier_id: supplierFerguson.id,
+		inventory_item_id: invCompressor.id,
+		vendor_sku: "FRG-CMP-4T",
+		contract_price: 405.0,
+		lead_time_days: 2,
+		is_preferred: true,
+		notes: "Stocked locally — same-day counter pickup on the house account.",
+	});
+	await priceListRow({
+		supplier_id: supplierCopeland.id,
+		inventory_item_id: invCompressor.id,
+		vendor_sku: "CPD-ZR34K3",
+		lead_time_days: 9,
+		min_order_qty: 2,
+		notes: "Cheaper per unit, but 9-day freight and a 2-unit minimum.",
+	});
+
+	// Flame sensor — one vendor, observed price only. No contract rate, so the
+	// forecast prices this off what was actually paid and labels it as such.
+	await priceListRow({
+		supplier_id: supplierFerguson.id,
+		inventory_item_id: invFlameSensor.id,
+		vendor_sku: "FRG-FS-118",
+		lead_time_days: 1,
+		is_preferred: true,
+	});
+
+	// Igniter — the inverse case: a negotiated rate on an item we have never
+	// recorded a purchase for, so contract_price is the ONLY price available.
+	await priceListRow({
+		supplier_id: supplierFerguson.id,
+		inventory_item_id: invIgniter.id,
+		vendor_sku: "FRG-IGN-770",
+		contract_price: 18.75,
+		lead_time_days: 1,
+		min_order_qty: 5,
+		is_preferred: true,
+		notes: "Annual pricing agreement — held through year end.",
+	});
 
 	// ============================================================================
 	// Restock Requests — all four lifecycle states (each on a distinct stock item)
@@ -4673,6 +4862,14 @@ async function main() {
 	console.log(`  Inventory Tags:    4  Fast-moving, Electrical, Refrigerant, Controls`);
 	console.log(`  Serial Units:      5  Blower Motor — in_warehouse/on_vehicle/consumed/lost/returned`);
 	console.log(`  Stock Batches:     3  Refrigerant lots — fresh, near-expiry, recalled (2 consumed pre-recall)`);
+	console.log(`  Suppliers:         2  Ferguson + Copeland (Airgas/RefrigCo left as legacy free text)`);
+	console.log(`  Vendor Prices:     4  contract vs last-paid, incl. one contract-only item (Igniter)`);
+	console.log(
+		`  Cost & Pricing:       Compressor — 12mo ledger, 3 priced receipts (1 unattributed),`,
+	);
+	console.log(
+		`                        2 same-month sales @ 545/660 → range band + low/high client`,
+	);
 	console.log(`  Barcodes:          4  items pre-labeled (rest lazily assigned on first scan)`);
 	console.log(
 		`  Activity Logs:     41 entries covering all feed event types`,

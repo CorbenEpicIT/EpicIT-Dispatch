@@ -15,7 +15,6 @@ const EMPTY = ["", "", "", "", "", ""];
 
 export default function LoginPage() {
 	const email = new URLSearchParams(window.location.search).get("email") || "";
-	const sso = new URLSearchParams(window.location.search).get("sso") || "";
 	const [name, setName] = useState(email);
 	const [password, setPassword] = useState("");
 	const [otp, setOtp] = useState<string[]>(EMPTY);
@@ -49,7 +48,7 @@ export default function LoginPage() {
 			if (next === "enroll") {
 				setEnrollData(await setupMfa());
 			}
-		} catch (error) {
+		} catch {
 			setLoginError("Login failed");
 		} finally {
 			setIsLoading(false);
@@ -61,7 +60,7 @@ export default function LoginPage() {
 		setLoginError("");
 		try {
 			finishLogin(await verifyOTPCall(otp.join("")), name);
-		} catch (error) {
+		} catch {
 			setLoginError("Verification failed");
 		}
 	};
@@ -72,7 +71,7 @@ export default function LoginPage() {
 		try {
 			const args = useBackup ? { backupCode } : { code: otp.join("") };
 			finishLogin(await verifyMfaCall(args), name);
-		} catch (error) {
+		} catch {
 			setLoginError("Invalid code");
 		}
 	};
@@ -88,7 +87,7 @@ export default function LoginPage() {
 			} else {
 				setLoginError("Enrollment did not return a session");
 			}
-		} catch (error) {
+		} catch {
 			setLoginError("Invalid code");
 		}
 	};

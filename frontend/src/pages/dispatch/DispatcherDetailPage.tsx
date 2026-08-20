@@ -99,14 +99,6 @@ const DispatcherDetailPage = () => {
 		}
 	};
 
-
-	const initials = dispatcher?.name
-		?.split(" ")
-		.map((w) => w[0])
-		.join("")
-		.slice(0, 2)
-		.toUpperCase() ?? "?";
-
 	const formatLastLogin = (iso: string | null) => {
 		if (!iso) return "Never";
 		return new Date(iso).toLocaleDateString("en-US", {

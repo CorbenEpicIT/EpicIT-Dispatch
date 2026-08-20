@@ -104,7 +104,6 @@ export function TemplateSearch({
 	clients,
 	isLoading = false,
 	onSelect,
-	onClose,
 	onDelete,
 	isDeletingId = null,
 	scopeToggle,

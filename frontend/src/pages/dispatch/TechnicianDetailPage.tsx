@@ -16,7 +16,6 @@ import {
 	RotateCcw,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
-import DynamicMap from "../../components/ui/maps/DynamicMap";
 import EditTechnicianModal from "../../components/technicians/EditTechnician";
 import { useTechnicianByIdQuery, useDeleteTechnicianMutation } from "../../hooks/useTechnicians";
 import { TechnicianStatusColors, TechnicianStatusDotColors } from "../../types/technicians";
@@ -49,12 +48,12 @@ export default function TechnicianDetailsPage() {
 	const toggleJob = (jobId: string) =>
 		setExpandedJobs((prev) => {
 			const next = new Set(prev);
-			next.has(jobId) ? next.delete(jobId) : next.add(jobId);
+			if (next.has(jobId)) next.delete(jobId);
+			else next.add(jobId);
 			return next;
 		});
 
 	const optionsMenuRef = useRef<HTMLDivElement>(null);
-	const locationMapRef = useRef<HTMLDivElement>(null);
 	const deleteTechnician = useDeleteTechnicianMutation();
 	const { mutateAsync: resetMFA, isPending: isResettingMFA } = useResetMfaMutation();
 	const toast = useToast();
@@ -180,25 +179,9 @@ export default function TechnicianDetailsPage() {
 		return bLatest - aLatest;
 	});
 
-	const ACTIVE_STATUSES = ["InProgress", "OnSite", "Driving", "Paused", "Delayed"];
 	const hasActiveVisits = visitTechs.some((vt) =>
 		["Scheduled", "InProgress", "OnSite", "Driving", "Paused", "Delayed"].includes(vt.visit.status)
 	);
-	const activeVisit =
-		visitTechs
-			.map((vt) => vt.visit)
-			.filter((v) => ACTIVE_STATUSES.includes(v.status))
-			.sort((a, b) => {
-				const priority = [
-					"InProgress",
-					"OnSite",
-					"Driving",
-					"Paused",
-					"Delayed",
-				];
-				return priority.indexOf(a.status) - priority.indexOf(b.status);
-			})[0] ?? null;
-
 	const fmtTime = (d: Date | string) =>
 		new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 	const fmtDate = (d: Date | string) =>

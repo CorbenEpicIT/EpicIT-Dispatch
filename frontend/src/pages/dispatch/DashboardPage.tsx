@@ -31,7 +31,7 @@ import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import { DEFAULT_RESPONSIVE_LAYOUTS, WIDGET_CATALOG } from "../../lib/DashboardConfig";
-import { BREAKPOINTS, COLS, resolveConstraints, getActiveCols, fitLayout, randomizeLayout } from "../../lib/gridLayoutEngine";
+import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, randomizeLayout } from "../../lib/gridLayoutEngine";
 import { QUICKBOOKS_ENABLED } from "../../config/features";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import MapWidget from "../../components/widgets/MapWidget";
@@ -162,7 +162,7 @@ export default function DashboardPage() {
 					nextVisit: upcomingVisits[0] || null,
 				};
 			})
-			.sort((a, b) => (a.currentVisit ? -1 : 1));
+			.sort((a) => (a.currentVisit ? -1 : 1));
 	}, [allTechnicians, jobs]);
 
 	const getStatusBorderClass = (status: string) => {

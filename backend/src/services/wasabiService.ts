@@ -40,6 +40,28 @@ function rawUrlForKey(key: string): string {
 	return `https://s3.${WASABI_REGION}.wasabisys.com/${WASABI_BUCKET}/${key}`;
 }
 
+/**
+ * True when `url` points at an object in the configured bucket — either the
+ * path-style form this service emits (raw or pre-signed; query string ignored)
+ * or the virtual-host form. When Wasabi isn't configured (dev/test) there is
+ * nothing to compare against, so every URL is accepted.
+ */
+export const isOwnBucketUrl = (url: string): boolean => {
+	if (!WASABI_BUCKET) return true;
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return false;
+	}
+	if (parsed.protocol !== "https:") return false;
+	const endpointHost = `s3.${WASABI_REGION}.wasabisys.com`;
+	if (parsed.hostname === endpointHost) {
+		return parsed.pathname.startsWith(`/${WASABI_BUCKET}/`) && parsed.pathname.length > WASABI_BUCKET.length + 2;
+	}
+	return parsed.hostname === `${WASABI_BUCKET}.${endpointHost}` && parsed.pathname.length > 1;
+};
+
 export const uploadFile = async (
 	file: Buffer,
 	contentType: string,

@@ -36,12 +36,13 @@ interface WorkflowItem {
 	title: string;
 	status: string;
 	statusLabel?: string;
-	created_at: string;
+	created_at: Date | string;
 	address?: string;
 	total?: number | string;
 	number?: string;
-	starts_at?: string;
+	starts_at?: Date | string;
 	priority?: string;
+	is_active?: boolean;
 }
 
 export default function ClientDetailsPage() {
@@ -55,34 +56,34 @@ export default function ClientDetailsPage() {
 
 	//permissions
 	const EDIT_CLIENT = usePermission("edit_clients");
-	const DELETE_CLIENT = usePermission("delete_clients");
 
 	const workflowData = useMemo(() => {
 		if (!client) return { active: [], requests: [], quotes: [], jobs: [], plans: [], invoices: [] };
 
-		const requests: WorkflowItem[] = (client.requests || []).map((r: any) => ({
+		const requests: WorkflowItem[] = (client.requests || []).map((r) => ({
 			id: r.id,
 			type: "request",
 			title: r.title,
 			status: r.status,
 			created_at: r.created_at,
-			address: r.address || client.address,
+			address: client.address,
 			priority: r.priority,
 		}));
 
-		const quotes: WorkflowItem[] = (client.quotes || []).map((q: any) => ({
+		const quotes: WorkflowItem[] = (client.quotes || []).map((q) => ({
 			id: q.id,
 			type: "quote",
 			title: q.title,
 			number: q.quote_number,
 			status: q.status,
 			created_at: q.created_at,
-			address: q.address || client.address,
+			address: client.address,
 			total: q.total,
 			priority: q.priority,
+			is_active: q.is_active,
 		}));
 
-		const jobs: WorkflowItem[] = (client.jobs || []).map((j: any) => ({
+		const jobs: WorkflowItem[] = (client.jobs || []).map((j) => ({
 			id: j.id,
 			type: "job",
 			title: j.name,
@@ -90,41 +91,40 @@ export default function ClientDetailsPage() {
 			status: j.status,
 			created_at: j.created_at,
 			address: j.address || client.address,
-			total: j.actual_total || j.estimated_total,
+			total: (j.actual_total || j.estimated_total) ?? undefined,
 			priority: j.priority,
 		}));
 
-		const plans: WorkflowItem[] = (client.recurring_plans || []).map((p: any) => ({
+		const plans: WorkflowItem[] = (client.recurring_plans || []).map((p) => ({
 			id: p.id,
 			type: "plan",
 			title: p.name,
 			status: p.status,
 			created_at: p.created_at,
 			starts_at: p.starts_at,
-			address: p.address || client.address,
-			priority: p.priority,
+			address: client.address,
 		}));
 
-		const invoiceItems: WorkflowItem[] = (invoices ?? []).map((inv: any) => ({
+		const invoiceItems: WorkflowItem[] = (invoices ?? []).map((inv) => ({
 			id: inv.id,
 			type: "invoice" as const,
 			title: inv.memo || "Invoice",
 			number: inv.invoice_number,
 			status: inv.status,
-			statusLabel: InvoiceStatusLabels[inv.status as InvoiceStatus],
+			statusLabel: InvoiceStatusLabels[inv.status],
 			created_at: inv.created_at,
-			starts_at: inv.issue_date,
+			starts_at: inv.issue_date ?? undefined,
 			address: client.address,
 			total: inv.balance_due,
 		}));
 
-		const isActiveRequest = (r: any) =>
+		const isActiveRequest = (r: WorkflowItem) =>
 			r.status !== "Cancelled" && r.status !== "ConvertedToJob";
-		const isActiveQuote = (q: any) =>
+		const isActiveQuote = (q: WorkflowItem) =>
 			q.status !== "Cancelled" && q.status !== "Rejected" && q.is_active;
-		const isActiveJob = (j: any) =>
+		const isActiveJob = (j: WorkflowItem) =>
 			j.status !== "Cancelled" && j.status !== "Completed";
-		const isActivePlan = (p: any) => p.status === "Active";
+		const isActivePlan = (p: WorkflowItem) => p.status === "Active";
 		const isActiveInvoice = (i: WorkflowItem) =>
 			i.status !== "Paid" && i.status !== "Void";
 

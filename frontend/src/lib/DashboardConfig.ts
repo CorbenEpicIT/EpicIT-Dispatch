@@ -89,54 +89,63 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
                             },
     "report-overview":      {   label: "Overview Stats",
                                 defaultW: 12, defaultH: 3,  minW: 6, minH: 3, maxH: 3, maxW: 12,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12, maxH: 9, minH: 4 },
                                 ]
                             },
     "report-revenue-ytd":   {   label: "Revenue YTD",
                                 defaultW: 6,  defaultH: 7,  minW: 4, minH: 5, maxH: 12, maxW: 12,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-unscheduled-revenue":{ label: "Unscheduled Revenue",
                                 defaultW: 3,  defaultH: 5,  minW: 3, minH: 5, maxH: 7, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-revenue-by-type":{  label: "Revenue by Job Type",
                                 defaultW: 4,  defaultH: 9,  minW: 3, minH: 6, maxH: 13, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-leads-by-source":{  label: "Leads by Source",
                                 defaultW: 4,  defaultH: 9,  minW: 3, minH: 6, maxH: 13, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-quote-pipeline":{   label: "Quote Pipeline",
                                 defaultW: 3,  defaultH: 7,  minW: 3, minH: 7, maxH: 13, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-arrival":       {   label: "Arrival Performance",
                                 defaultW: 4,  defaultH: 8,  minW: 3, minH: 6, maxH: 10, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "report-mileage":       {   label: "Mileage Summary",
                                 defaultW: 4,  defaultH: 4,  minW: 4, minH: 4, maxH: 4, maxW: 12,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12, maxH: 8 },
                                 ]
                             },
     "report-aged-receivables-bar":{ label: "Aged Receivables (Bars)",
                                 defaultW: 4,  defaultH: 7,  minW: 3, minH: 6, maxH: 6, maxW: 6,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
@@ -150,6 +159,7 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
                             },
     "report-job-backlog":   {   label: "Job Backlog",
                                 defaultW: 4,  defaultH: 8,  minW: 3, minH: 6, maxH: 12, maxW: 8,
+                                requiredPermission: "view_reports",
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]

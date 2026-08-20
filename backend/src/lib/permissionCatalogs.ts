@@ -23,7 +23,6 @@ const TECHNICIAN_CATALOG = [
 	{ category: "Schedule", permissions: ["view_own_schedule", "view_team_schedule"] },
 	{ category: "Forms", permissions: ["view_forms", "submit_forms"] },
 	{ category: "Vehicles", permissions: ["view_vehicles", "use_vehicles"] },
-	{ category: "Projects", permissions: ["view_projects"] },
 ] as const;
 
 export const PERMISSION_CATALOGS = {

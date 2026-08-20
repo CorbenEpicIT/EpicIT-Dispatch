@@ -14,7 +14,7 @@ import {
 import { getUserContext } from '../lib/context.js';
 import * as requestNotesController from '../controllers/requestNotesController.js';
 import { requirePermission } from '../lib/requirePermissions.js';
-import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -252,7 +252,14 @@ router.get("/:requestId/changes", requirePermission("view_requests"), async (req
     try {
         const requestId = req.params.requestId as string;
         const orgId = req.user!.organization_id as string;
-        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
 
         const results = await getEntityHistory(orgId, "request", requestId, limit);
 

@@ -44,11 +44,13 @@ vi.mock("../../lib/recomputeDocumentTotals.js", () => ({
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 
 import { updatePartsUsedQty } from "../vehiclesController.js";
-import { getScopedDb } from "../../lib/context.js";
+import { getScopedDb, type UserContext } from "../../lib/context.js";
 import { recordMovements } from "../../services/stockMovements.js";
+import { logActivity } from "../../services/logger.js";
 
 const mockGetScopedDb = vi.mocked(getScopedDb);
 const mockRecordMovements = vi.mocked(recordMovements);
+const mockLogActivity = vi.mocked(logActivity);
 
 // ── UUIDs ─────────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,11 @@ const SERIAL_UUID_2 = "33333333-3333-4333-8333-333333333333";
 const ORG_ID = "org-1";
 const MOVEMENT_ID_1 = "55555555-5555-4555-8555-555555555555";
 const MOVEMENT_ID_2 = "66666666-6666-4666-8666-666666666666";
+const DISPATCHER_ID = "77777777-7777-4777-8777-777777777777";
+const OTHER_TECH_ID = "88888888-8888-4888-8888-888888888888";
+
+const TECH_CTX: UserContext = { techId: TECH_ID };
+const DISPATCHER_CTX: UserContext = { dispatcherId: DISPATCHER_ID };
 
 // ── Factory helpers ───────────────────────────────────────────────────────────
 
@@ -90,29 +97,37 @@ function makeLineItem(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-/** Build a scoped-db mock whose $transaction executes the callback inline. */
+function makeVisit(overrides: Record<string, unknown> = {}) {
+	return { id: VISIT_ID, status: "InProgress", _count: { invoice_visits: 0 }, ...overrides };
+}
+
+/**
+ * Build a scoped-db mock whose $transaction executes the callback inline.
+ *
+ * The visit is resolved via the scoped client BEFORE the transaction (tenancy
+ * gate); the line item is read INSIDE the transaction after a FOR UPDATE lock,
+ * so it lives on `tx`, not on `sdb`.
+ */
 function makeSdb(opts: {
+	visit?: unknown;
 	lineItem?: unknown;
 	originVehicleId?: string | null;
 	serialRows?: { id: string }[];
 	movementRows?: unknown[];
+	technician?: unknown;
 } = {}) {
 	const lineItem = "lineItem" in opts ? opts.lineItem : makeLineItem();
+	const visit = "visit" in opts ? opts.visit : makeVisit();
 	const tx = {
-		serial_unit: {
-			findMany: vi.fn().mockResolvedValue(opts.serialRows ?? []),
-		},
-		stock_movement: {
-			findMany: vi.fn().mockResolvedValue(opts.movementRows ?? []),
-		},
+		$queryRaw: vi.fn().mockResolvedValue([]),
 		job_visit_line_item: {
+			findFirst: vi.fn().mockResolvedValue(lineItem),
 			update: vi.fn().mockResolvedValue(makeLineItem()),
 			delete: vi.fn().mockResolvedValue(undefined),
 		},
-	};
-
-	const sdb = {
-		job_visit_line_item: { findFirst: vi.fn().mockResolvedValue(lineItem) },
+		serial_unit: {
+			findMany: vi.fn().mockResolvedValue(opts.serialRows ?? []),
+		},
 		stock_movement: {
 			findFirst: vi.fn().mockResolvedValue(
 				opts.originVehicleId === undefined
@@ -121,6 +136,14 @@ function makeSdb(opts: {
 						? null
 						: { from_vehicle_id: opts.originVehicleId },
 			),
+			findMany: vi.fn().mockResolvedValue(opts.movementRows ?? []),
+		},
+	};
+
+	const sdb = {
+		job_visit: { findFirst: vi.fn().mockResolvedValue(visit) },
+		technician: {
+			findFirst: vi.fn().mockResolvedValue("technician" in opts ? opts.technician : { id: TECH_ID }),
 		},
 		$transaction: vi.fn().mockImplementation(async (fn: (tx: typeof tx) => unknown) => fn(tx)),
 		_tx: tx,
@@ -153,6 +176,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 5 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -178,6 +202,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -206,6 +231,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 0 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -221,6 +247,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 3 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -229,7 +256,7 @@ describe("updatePartsUsedQty", () => {
 
 	// ── Serialized items ───────────────────────────────────────────────────────
 
-	it("rejects increasing a serialized line without opening a transaction", async () => {
+	it("rejects increasing a serialized line with no ledger or line writes", async () => {
 		const sdb = makeSdb({
 			lineItem: makeLineItem({
 				inventory_item: { ...makeLineItem().inventory_item, is_serialized: true },
@@ -241,11 +268,15 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 5 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toMatch(/can't be increased/);
-		expect(sdb.$transaction).not.toHaveBeenCalled();
+		// The line is read under lock inside the transaction, so the transaction
+		// opens — but it aborts (throws) before any write.
 		expect(mockRecordMovements).not.toHaveBeenCalled();
+		expect(sdb._tx.job_visit_line_item.update).not.toHaveBeenCalled();
+		expect(sdb._tx.job_visit_line_item.delete).not.toHaveBeenCalled();
 	});
 
 	it("releases the exact consumed serials when decreasing a serialized line", async () => {
@@ -261,6 +292,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -294,6 +326,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toMatch(/Only 1 consumed unit/);
@@ -321,6 +354,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -352,6 +386,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -375,6 +410,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 5 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("");
@@ -396,6 +432,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toMatch(/originating vehicle/);
@@ -410,6 +447,7 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toMatch(/regular line item/);
@@ -424,8 +462,237 @@ describe("updatePartsUsedQty", () => {
 			LINE_ITEM_ID,
 			{ technician_id: TECH_ID, quantity: 1 },
 			ORG_ID,
+			TECH_CTX,
 		);
 
 		expect(result.err).toBe("Line item not found");
+	});
+
+	// The commit's named case: a stock-linked line that is still planned (not
+	// "used") has no vehicle ledger behind it, so there is nothing to reverse.
+	it("rejects a line with inventory_item_id set whose fulfillment_status is not 'used'", async () => {
+		const sdb = makeSdb({ lineItem: makeLineItem({ fulfillment_status: "planned" }) });
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 1 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toMatch(/regular line item/);
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+		expect(sdb._tx.job_visit_line_item.update).not.toHaveBeenCalled();
+	});
+
+	it("rejects a fractional decrease on a serialized line before any serial lookup", async () => {
+		const sdb = makeSdb({
+			lineItem: makeLineItem({
+				inventory_item: { ...makeLineItem().inventory_item, is_serialized: true },
+			}),
+			serialRows: [{ id: SERIAL_UUID_1 }, { id: SERIAL_UUID_2 }],
+		});
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 1.5 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toMatch(/whole units/);
+		expect(sdb._tx.serial_unit.findMany).not.toHaveBeenCalled();
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	it("rejects a quantity the numeric(10,2) ledger cannot store", async () => {
+		const sdb = makeSdb();
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 1.234 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toMatch(/Validation failed/);
+		expect(result.err).toMatch(/decimal places/);
+		expect(sdb.$transaction).not.toHaveBeenCalled();
+	});
+
+	it("passes allowNegative on the increase path, matching addPartsUsed", async () => {
+		makeSdb();
+
+		await updatePartsUsedQty(VISIT_ID, LINE_ITEM_ID, { technician_id: TECH_ID, quantity: 5 }, ORG_ID, TECH_CTX);
+
+		const call = mockRecordMovements.mock.calls.at(-1)!;
+		expect(call[3][0]).toEqual(expect.objectContaining({ reason: "parts_used", qty: 2 }));
+		expect(call[4]).toEqual({ allowNegative: true });
+	});
+
+	// ── Tenancy + visit gate ───────────────────────────────────────────────────
+
+	it("returns 'Visit not found' for a foreign/missing visit before ever reading the line item", async () => {
+		const sdb = makeSdb({ visit: null });
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 3 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toBe("Visit not found");
+		expect(sdb.job_visit.findFirst).toHaveBeenCalledWith(
+			expect.objectContaining({ where: { id: VISIT_ID } }),
+		);
+		// No transaction, no line read — a foreign line item (org-2's data) can
+		// never be returned, not even on the delta === 0 no-op path.
+		expect(sdb.$transaction).not.toHaveBeenCalled();
+		expect(sdb._tx.job_visit_line_item.findFirst).not.toHaveBeenCalled();
+		expect(result).not.toHaveProperty("item");
+	});
+
+	it.each(["Completed", "Cancelled"])("rejects edits on a %s visit", async (status) => {
+		const sdb = makeSdb({ visit: makeVisit({ status }) });
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 1 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toBe(`Parts can't be changed on a ${status} visit`);
+		expect(sdb.$transaction).not.toHaveBeenCalled();
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
+	it("rejects edits on an invoiced visit", async () => {
+		const sdb = makeSdb({ visit: makeVisit({ _count: { invoice_visits: 1 } }) });
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 1 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toMatch(/invoiced/);
+		expect(sdb.$transaction).not.toHaveBeenCalled();
+	});
+
+	it("locks the line item (SELECT … FOR UPDATE) inside the transaction before reading it", async () => {
+		const sdb = makeSdb();
+		const order: string[] = [];
+		sdb._tx.$queryRaw.mockImplementation(async () => {
+			order.push("lock");
+			return [];
+		});
+		sdb._tx.job_visit_line_item.findFirst.mockImplementation(async () => {
+			order.push("read");
+			return makeLineItem();
+		});
+
+		await updatePartsUsedQty(VISIT_ID, LINE_ITEM_ID, { technician_id: TECH_ID, quantity: 1 }, ORG_ID, TECH_CTX);
+
+		expect(order).toEqual(["lock", "read"]);
+		const [strings, ...values] = sdb._tx.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+		expect(strings.join("?")).toMatch(/SELECT id FROM job_visit_line_item WHERE id = \? FOR UPDATE/);
+		expect(values).toEqual([LINE_ITEM_ID]);
+		expect(sdb._tx.job_visit_line_item.findFirst).toHaveBeenCalledWith(
+			expect.objectContaining({ where: { id: LINE_ITEM_ID, visit_id: VISIT_ID } }),
+		);
+	});
+
+	// ── Actor identity ─────────────────────────────────────────────────────────
+
+	it("records the authenticated technician as the ledger + log actor, not the body technician_id", async () => {
+		makeSdb({ technician: { id: OTHER_TECH_ID } });
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: OTHER_TECH_ID, quantity: 1 },
+			ORG_ID,
+			TECH_CTX,
+		);
+
+		expect(result.err).toBe("");
+		const [, , actor] = mockRecordMovements.mock.calls.at(-1)!;
+		expect(actor).toEqual({ actor_type: "technician", actor_id: TECH_ID });
+		expect(mockLogActivity).toHaveBeenCalledWith(
+			expect.objectContaining({
+				actor_type: "technician",
+				actor_id: TECH_ID,
+				// The body tech is kept only as attribution on the audit entry.
+				changes: expect.objectContaining({
+					technician_id: { old: null, new: OTHER_TECH_ID },
+				}),
+			}),
+		);
+	});
+
+	it("records a dispatcher caller as a dispatcher actor", async () => {
+		makeSdb();
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: TECH_ID, quantity: 1 },
+			ORG_ID,
+			DISPATCHER_CTX,
+		);
+
+		expect(result.err).toBe("");
+		const [, , actor] = mockRecordMovements.mock.calls.at(-1)!;
+		expect(actor).toEqual({ actor_type: "dispatcher", actor_id: DISPATCHER_ID });
+		expect(mockLogActivity).toHaveBeenCalledWith(
+			expect.objectContaining({ actor_type: "dispatcher", actor_id: DISPATCHER_ID }),
+		);
+	});
+
+	it("accepts a body with no technician_id (attribution is optional)", async () => {
+		const sdb = makeSdb();
+
+		const result = await updatePartsUsedQty(VISIT_ID, LINE_ITEM_ID, { quantity: 1 }, ORG_ID, DISPATCHER_CTX);
+
+		expect(result.err).toBe("");
+		expect(sdb.technician.findFirst).not.toHaveBeenCalled();
+		expect(mockLogActivity).toHaveBeenCalledWith(
+			expect.objectContaining({ changes: { quantity: { old: 3, new: 1 } } }),
+		);
+	});
+
+	it("rejects a body technician_id that does not belong to the org", async () => {
+		const sdb = makeSdb({ technician: null });
+
+		const result = await updatePartsUsedQty(
+			VISIT_ID,
+			LINE_ITEM_ID,
+			{ technician_id: OTHER_TECH_ID, quantity: 1 },
+			ORG_ID,
+			DISPATCHER_CTX,
+		);
+
+		expect(result.err).toBe("Technician not found");
+		expect(sdb.technician.findFirst).toHaveBeenCalledWith(
+			expect.objectContaining({ where: { id: OTHER_TECH_ID } }),
+		);
+		expect(sdb.$transaction).not.toHaveBeenCalled();
+	});
+
+	it("does not write an audit entry for a no-op edit", async () => {
+		makeSdb();
+
+		await updatePartsUsedQty(VISIT_ID, LINE_ITEM_ID, { technician_id: TECH_ID, quantity: 3 }, ORG_ID, TECH_CTX);
+
+		expect(mockLogActivity).not.toHaveBeenCalled();
 	});
 });

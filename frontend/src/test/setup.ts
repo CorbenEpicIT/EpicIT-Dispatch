@@ -39,3 +39,36 @@ Object.defineProperty(window, "matchMedia", {
 		dispatchEvent: vi.fn(),
 	})),
 });
+
+// Fail fast on anything that reaches the network. Every suite mocks its data
+// layer (a hook module or an api module); a request that escapes to XHR/fetch
+// is a mock gap. Without this it surfaced as an unhandled rejection from the
+// HTTP stack long after the test that caused it had passed, blamed on nothing.
+// The stub throws at the call site so the code under test sees an immediate
+// rejection, and afterEach fails the test that made the call by name.
+const unmockedNetworkCalls: string[] = [];
+const unmockedNetworkCall = (method: string, url: unknown): Error => {
+	const call = `${method.toUpperCase()} ${String(url)}`;
+	unmockedNetworkCalls.push(call);
+	return new Error(`Unmocked network call: ${call}`);
+};
+
+XMLHttpRequest.prototype.open = function open(method: string, url: string | URL) {
+	throw unmockedNetworkCall(method, url);
+} as typeof XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.send = function send() {
+	throw unmockedNetworkCall("SEND", "(XMLHttpRequest)");
+};
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+	const url =
+		typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+	throw unmockedNetworkCall(init?.method ?? "GET", url);
+}) as typeof fetch;
+
+afterEach(() => {
+	if (unmockedNetworkCalls.length === 0) return;
+	const calls = unmockedNetworkCalls.splice(0);
+	throw new Error(
+		`Unmocked network call(s) during this test — mock the hook or api module:\n  ${calls.join("\n  ")}`,
+	);
+});

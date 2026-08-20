@@ -83,6 +83,7 @@ export function DropdownFilter({
 	const handleSelect = (optionValue: string | null) => {
 		if (optionValue === null) {
 			onChange(null); // selects "All"
+			if (exclusive) setOpen(false);
 			return;
 		}
 		const alreadySelected = selectedOptions.some((o) => o.value === optionValue);
@@ -91,8 +92,16 @@ export function DropdownFilter({
 			onChange(null);
 			return;
 		}
-		onChange(optionValue); 
+		onChange(optionValue);
+		// Exclusive (one-of) callers are done after a single pick; multi-select stays open.
+		if (exclusive) setOpen(false);
 	};
+
+	const triggerLabel = !isActive
+		? placeholder
+		: selectedOptions.length === 1
+			? `${placeholder}: ${selectedOptions[0].label}`
+			: `${placeholder} (${selectedOptions.length})`;
 
 	return (
 		<div className="relative" ref={containerRef}>
@@ -107,11 +116,7 @@ export function DropdownFilter({
 						: "bg-base border-border text-text-tertiary hover:text-text-primary"
 				}`}
 			>
-				<span>
-					{isActive && selectedOptions
-						? `${placeholder}` // + selectedOptions.map((o) =>  ` ${o.label}` )
-						: placeholder}
-				</span>
+				<span>{triggerLabel}</span>
 				{!(isActive && !hideAll) && (
 					<ChevronDown size={14} className="shrink-0" />
 				)}

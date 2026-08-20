@@ -462,6 +462,7 @@ export default function SerialsTable({
 						}
 						placeholder="Status"
 						allLabel="All statuses"
+						exclusive
 					/>
 				}
 				right={

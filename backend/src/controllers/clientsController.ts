@@ -290,6 +290,7 @@ export const deleteClient = async (
 				recurring_plans: { select: { id: true } },
 				requests: { select: { id: true } },
 				quotes: { select: { id: true } },
+				projects: { select: { id: true } },
 			},
 		});
 
@@ -299,6 +300,9 @@ export const deleteClient = async (
 
 		if (existing.jobs.length > 0) {
 			return { err: "Cannot delete client with existing jobs" };
+		}
+		if (existing.projects.length > 0) {
+			return { err: "Cannot delete client with existing projects" };
 		}
 		if (existing.recurring_plans.length > 0) {
 			return {

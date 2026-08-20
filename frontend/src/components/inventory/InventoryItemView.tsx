@@ -27,6 +27,24 @@ interface InventoryItemViewProps {
   	onLinkQB?: () => void;
 }
 
+// Characters that fit inside the 32px stock ring at 11px bold.
+const RING_CHARS = 4;
+
+/**
+ * Quantity as it fits in the ring: thousands compact the same way the alert
+ * threshold does ("1.2K"); below that, decimals are trimmed only as far as
+ * needed ("12.5", "123.75" → "124", "0.42"). The exact value is in the ring's
+ * title/aria-label, so nothing is lost — only the tiny label is abbreviated.
+ */
+function ringQty(quantity: number): string {
+	if (Math.abs(quantity) >= 1000) return formatter.format(quantity);
+	for (const maximumFractionDigits of [2, 1, 0]) {
+		const s = quantity.toLocaleString(undefined, { maximumFractionDigits });
+		if (s.length <= RING_CHARS) return s;
+	}
+	return String(Math.round(quantity));
+}
+
 // Max rows of tag chips a list row absorbs before clipping.
 const TAG_ROWS = 2;
 
@@ -268,9 +286,12 @@ export default function InventoryItemView({
 								transform="rotate(-90 16 16)"
 							/>
 						</svg>
+						{/* Fitted to the ring (≈4 characters at this size): a raw
+						    1234.75 overflowed it. The exact figure stays in the
+						    title/aria-label above. */}
 						<div className="absolute inset-0 flex items-center justify-center">
 							<span className="text-[11px] font-bold text-text-primary leading-none">
-								{item.quantity}
+								{ringQty(item.quantity)}
 							</span>
 						</div>
 					</div>
