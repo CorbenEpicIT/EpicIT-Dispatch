@@ -1,6 +1,5 @@
 import type { AgendaGroup, VisitWithJob, OccurrenceWithPlan } from "./dashboardCalendarUtils";
 import { formatTime } from "./dashboardCalendarUtils";
-import Card from "../Card";
 import MonthMiniCard from "./MonthMiniCard";
 import { getPriorityColor, visitStartLabel } from "./scheduleBoardUtils";
 

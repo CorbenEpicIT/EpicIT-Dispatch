@@ -458,13 +458,13 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 		if (!EDIT_CONTACTS) return;
 		resetForm();
 		setFormMode("create");
-	}, [resetForm]);
+	}, [resetForm, EDIT_CONTACTS]);
 
 	const openLinkForm = useCallback(() => {
 		if (!EDIT_CONTACTS) return;
 		resetForm();
 		setFormMode("link");
-	}, [resetForm]);
+	}, [resetForm, EDIT_CONTACTS]);
 
 	const openEditForm = useCallback(
 		(contactLink: ClientContactLink) => {
@@ -611,6 +611,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 			updateContact,
 			updateRelationship,
 			createContact,
+			EDIT_CONTACTS,
 		]
 	);
 
@@ -623,7 +624,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 				contactId: contactLink.contact.id,
 			});
 		},
-		[clientId, unlinkContact]
+		[clientId, unlinkContact,EDIT_CONTACTS]
 	);
 
 	const handleDeleteClick = useCallback(
@@ -638,7 +639,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 				setTimeout(() => setConfirmingDeleteId(null), 3000);
 			}
 		},
-		[confirmingDeleteId, handleUnlink]
+		[confirmingDeleteId, handleUnlink, EDIT_CONTACTS]
 	);
 
 	const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -646,7 +647,7 @@ export default function ContactManager({ clientId }: ContactManagerProps) {
 		const { name, value } = e.target;
 		setFormData((prev) => ({ ...prev, [name]: value }));
 		setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
-	}, []);
+	}, [EDIT_CONTACTS]);
 
 	const handleSearchChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {

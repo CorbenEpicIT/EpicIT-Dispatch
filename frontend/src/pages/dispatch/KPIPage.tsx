@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { startOfMonth, endOfMonth, format } from "date-fns";
+import { startOfMonth, endOfMonth } from "date-fns";
 import { ResponsiveGridLayout, useContainerWidth } from "react-grid-layout";
 import type { Layout, ResponsiveLayouts } from "react-grid-layout";
 import 'react-grid-layout/css/styles.css';
@@ -29,7 +29,7 @@ import {
 	ArrivalPerformanceWidget,
 	MileageSummaryWidget,
 } from "../../components/widgets/reports";
-import { Unlock, LayoutDashboard, LayoutGrid, StretchHorizontal, RotateCcw, Shuffle } from "lucide-react";
+import { Unlock, LayoutDashboard, LayoutGrid, StretchHorizontal, RotateCcw } from "lucide-react";
 
 const KPI_PRESETS: DateRangeOption[] = [
 	"today",
@@ -189,7 +189,7 @@ export default function KPIPage() {
 
 	const [range, setRange] = useState<DateRangeValue>({ option: "this_month" });
 
-	const { startDateStr, endDateStr, startDate, endDate } = useMemo(() => {
+	const { startDateStr, endDateStr } = useMemo(() => {
 		const now = new Date();
 		const resolved =
 			resolveDateRange(range) ?? {
@@ -203,8 +203,6 @@ export default function KPIPage() {
 			endDateStr: resolved.end.toISOString(),
 		};
 	}, [range]);
-
-	const rangeLabel = `${format(startDate, "MMM d, yyyy")} - ${format(endDate, "MMM d, yyyy")}`;
 
 	return (
 		<div className="min-h-0 bg-canvas text-text-primary w-full">

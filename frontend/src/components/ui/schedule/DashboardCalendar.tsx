@@ -164,7 +164,7 @@ export default function DashboardCalendar({
 			...buildOccurrenceBadgeEvents(filteredJobs, showOccurrences),
 		];
 		eventsService.set(events);
-	}, [jobs, showVisits, showOccurrences, selectedTechs]);
+	}, [jobs, showVisits, showOccurrences, selectedTechs, eventsService]);
 
 	const toolbarComponent = useCallback(
 		() => (

@@ -40,8 +40,8 @@ const DEFAULT_SM_LAYOUT: Layout = [
 
 export const DEFAULT_RESPONSIVE_LAYOUTS: ResponsiveLayouts = {
     lg: DEFAULT_LAYOUT,
-    md: DEFAULT_LAYOUT,
-    sm: DEFAULT_LAYOUT,
+    md: DEFAULT_MD_LAYOUT,
+    sm: DEFAULT_SM_LAYOUT,
 };
 
 // KPI widgets — the reporting/metric tiles, shared with the dashboard's

@@ -40,7 +40,7 @@ const CreateDispatcher = ({
             const defaultRole = dispatcherRoles.find((r) => r.is_default);
             if (defaultRole) setOrganizationRoleId(defaultRole.id);
         }
-    }, [isModalOpen, dispatcherRoles]);
+    }, [isModalOpen, dispatcherRoles, organizationRoleId]);
 
     const resetForm = useCallback(() => {
         setName("");
@@ -235,6 +235,7 @@ const CreateDispatcher = ({
 			password,
 			organizationRoleId,
 			dispatcherRoles,
+			ErrorDisplay,
 		]
 	);
 

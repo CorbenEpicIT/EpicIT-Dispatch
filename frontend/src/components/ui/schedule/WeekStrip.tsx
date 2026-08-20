@@ -25,7 +25,6 @@ import type { Technician } from "../../../types/technicians";
 import { useUpdateJobVisitMutation } from "../../../hooks/useJobs";
 import { useRescheduleOccurrenceMutation, useGenerateVisitFromOccurrenceMutation } from "../../../hooks/useRecurringPlans";
 import type { RescheduleOccurrenceInput } from "../../../types/recurringPlans";
-import { useStepWizard } from "../../../hooks/forms/useStepWizard";
 
 interface PendingDrop {
 	visit: VisitWithJob;
@@ -696,22 +695,15 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 											onClick={() => setExpandedDate(null)}
 											aria-expanded={true}
 											aria-label="Collapse day"
+											className="flex items-center gap-1 rounded-md border border-border-subtle bg-surface text-text-secondary hover:bg-surface-raised hover:text-text-primary hover:cursor-pointer transition-colors"
 											style={{
-												display: "flex",
-												alignItems: "center",
-												gap: 2,
 												fontSize: 9,
 												fontWeight: 700,
-												color: "var(--color-text-muted)",
-												background: "none",
-												border: "none",
-												cursor: "pointer",
-												padding: "2px 4px",
-												borderRadius: 4,
+												padding: "2px 6px",
 												fontFamily: "inherit",
 											}}
 										>
-											<ChevronLeft size={12} /> <p className="font-bold text-text-primary text-md">Collapse</p>
+											<ChevronLeft size={12} /> Collapse
 										</button>
 									</>
 								)}

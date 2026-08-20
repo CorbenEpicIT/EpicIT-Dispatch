@@ -70,6 +70,10 @@ export interface AgendaGroup {
 	items: Array<{ type: "visit"; item: VisitWithJob } | { type: "occ"; item: OccurrenceWithPlan }>;
 }
 
+function itemStart(entry: AgendaGroup["items"][number]): number {
+    return new Date(entry.type === "visit" ? entry.item.scheduled_start_at : entry.item.occurrence_start_at).getTime();
+}
+
 export function buildAgendaGroups(
 	dayVisits: VisitWithJob[],
 	dayOccs: OccurrenceWithPlan[],
@@ -104,9 +108,6 @@ export function buildAgendaGroups(
 		groups.get("unassigned")?.items.push({ type: "occ", item: occ })
 	});
 
-	function itemStart(entry: AgendaGroup["items"][number]): number {
-		return new Date(entry.type === "visit" ? entry.item.scheduled_start_at : entry.item.occurrence_start_at).getTime();
-	}
 	groups.forEach((g) => g.items.sort((a, b) => itemStart(a) - itemStart(b)));
 
 	const result = globalTechOrder.map((t) => {
@@ -114,10 +115,6 @@ export function buildAgendaGroups(
 	});
 	result.push(groups.get("unassigned"));
 	return result.filter((ag) => ag !== undefined).filter((ag) => ag.items.length > 0);
-}
-
-function itemStart(entry: AgendaGroup["items"][number]): number {
-      return new Date(entry.type === "visit" ? entry.item.scheduled_start_at : entry.item.occurrence_start_at).getTime();
 }
 
 export function buildChronologicalAgenda(
