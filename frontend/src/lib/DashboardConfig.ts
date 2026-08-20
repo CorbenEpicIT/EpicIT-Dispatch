@@ -48,7 +48,7 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
     requiredPermission?: string;
 }> = {
     "week-strip":           {   label: "Week Schedule",
-                                defaultW: 12, defaultH: 5,  minW: 6, minH: 4, maxH: 5, maxW: 12,
+                                defaultW: 12, defaultH: 5,  minW: 6, minH: 4, maxH: 8, maxW: 12,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]

@@ -17,13 +17,15 @@ import {
 	SCROLL_ZONE_W,
 	SCROLL_DELAY_MS,
 } from "./scheduleBoardUtils";
-import { extractVisits, extractOccurrences, formatTime } from "./dashboardCalendarUtils";
+import { extractVisits, extractOccurrences, formatTime, buildAgendaGroups, buildChronologicalAgenda } from "./dashboardCalendarUtils";
 import type { OccurrenceWithPlan, VisitWithJob } from "./dashboardCalendarUtils";
+import DayAgenda from "./DayAgenda";
 import type { Job, UpdateJobVisitInput } from "../../../types/jobs";
 import type { Technician } from "../../../types/technicians";
 import { useUpdateJobVisitMutation } from "../../../hooks/useJobs";
 import { useRescheduleOccurrenceMutation, useGenerateVisitFromOccurrenceMutation } from "../../../hooks/useRecurringPlans";
 import type { RescheduleOccurrenceInput } from "../../../types/recurringPlans";
+import { useStepWizard } from "../../../hooks/forms/useStepWizard";
 
 interface PendingDrop {
 	visit: VisitWithJob;
@@ -68,6 +70,15 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE       = 3;
 const MAX_VISIBLE_TODAY = 8;
 const POPUP_W           = 224;
+const EXPANDED_FR       = 3;
+const COMPRESSED_FR     = 0.7;
+
+/** Fractional grid-track weight for a day column, single source of truth for
+ *  both the grid's gridTemplateColumns string and each column's pixel-width math. */
+function colWeight(dateStr: string, todayStr: string, expandedDate: string | null): number {
+	if (expandedDate) return dateStr === expandedDate ? EXPANDED_FR : COMPRESSED_FR;
+	return dateStr === todayStr ? 2 : 1;
+}
 
 function colMaxLines(pxWidth: number): number {
 	if (pxWidth >= 180) return 2;
@@ -129,6 +140,8 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		occurrence?: OccurrenceWithPlan;
 		anchorRect: DOMRect;
 	} | null>(null);
+	const [expandedDate, setExpandedDate] = useState<string | null>(null);
+	const [expandedSort, setExpandedSort] = useState<"tech" | "time">("time")
 
 	const popupRef = useRef<HTMLDivElement>(null);
 	const occurrencePopupRef = useRef<HTMLDivElement>(null);
@@ -199,6 +212,11 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		[globalTechOrder]
 	);
 
+	const prefersReducedMotion = useMemo(
+		() => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+		[]
+	);
+
 	const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
 	const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
 
@@ -210,6 +228,11 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		const start = Math.max(0, Math.min(todayIdx - 1, weekDays.length - 3));
 		return weekDays.slice(start, start + 3);
 	}, [colMode, weekDays, todayStr]);
+
+	// Auto collapse when expanded day scolls out of view
+	useEffect(() => {
+		if (expandedDate && !visibleDays.includes(expandedDate)) setExpandedDate(null);
+	}, [visibleDays, expandedDate]);
 
 	const isNarrow = colMode !== "full";
 
@@ -540,6 +563,8 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 		setGeneratingVisitId(null);
 	}
 
+	
+
 	return (
 		<div ref={containerRef} style={{
 			display: "flex",
@@ -625,9 +650,9 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 
 			{/* ── Week grid ────────────────────────────────────────────────────── */}
 			<div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-			<div
+			<div 
 				ref={weekGridRef}
-				style={{ display: "grid", gridTemplateColumns: visibleDays.map(d => d === todayStr ? "2fr" : "1fr").join(" "), gridTemplateRows: "minmax(0, 1fr)", flex: 1, minHeight: 0, position: "relative" }}
+				style={{ display: "grid", gridTemplateColumns: visibleDays.map(d => `${colWeight(d, todayStr, expandedDate)}fr`).join(" "), gridTemplateRows: "minmax(0, 1fr)", flex: 1, minHeight: 0, position: "relative", transition: prefersReducedMotion ? undefined : "grid-template-columns 220ms cubic-bezier(0.4,0,0.2,1)",}}
 				onDragOver={handleGridDragOver}
 				onDragLeave={handleGridDragLeave}
 			>
@@ -636,8 +661,8 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 					const isToday = dateStr === todayStr;
 					const weekIdx = weekDays.indexOf(dateStr);
 					const label = WEEKDAY_LABELS[weekIdx >= 0 ? weekIdx : i];
-					const totalFr = visibleDays.reduce((sum, d) => sum + (d === todayStr ? 2 : 1), 0);
-					const colFr   = isToday ? 2 : 1;
+					const totalFr = visibleDays.reduce((sum, d) => sum + colWeight(d, todayStr, expandedDate), 0);
+					const colFr   = colWeight(dateStr, todayStr, expandedDate);
 					const colPx   = containerWidth > 0 ? Math.floor(containerWidth * colFr / totalFr) : (isToday ? 200 : 120);
 					const maxLines = colMaxLines(colPx);
 					return (
@@ -664,6 +689,32 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 								<span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)" }}>
 									{label}
 								</span>
+								{dateStr === expandedDate && (
+									<>
+										
+										<button
+											onClick={() => setExpandedDate(null)}
+											aria-expanded={true}
+											aria-label="Collapse day"
+											style={{
+												display: "flex",
+												alignItems: "center",
+												gap: 2,
+												fontSize: 9,
+												fontWeight: 700,
+												color: "var(--color-text-muted)",
+												background: "none",
+												border: "none",
+												cursor: "pointer",
+												padding: "2px 4px",
+												borderRadius: 4,
+												fontFamily: "inherit",
+											}}
+										>
+											<ChevronLeft size={12} /> <p className="font-bold text-text-primary text-md">Collapse</p>
+										</button>
+									</>
+								)}
 								<div style={{
 									width: 22, height: 22, borderRadius: "50%",
 									display: "flex", alignItems: "center", justifyContent: "center",
@@ -696,7 +747,33 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 								onDragLeave={handleDragLeave}
 								onDrop={(e) => handleDrop(e, dateStr)}
 							>
-								{(() => {
+								{dateStr === expandedDate ? (() => {
+									const dayVisits = effectiveVisitsByDay[dateStr] ?? [];
+									const dayOccs   = effectiveOccurrencesByDay[dateStr] ?? [];
+									const groups    = expandedSort === "tech" 
+										? buildAgendaGroups(dayVisits, dayOccs, technicians, techColorMap, globalTechOrder)
+										: buildChronologicalAgenda(dayVisits, dayOccs);
+									return (
+										<DayAgenda
+											groups={groups}
+											techColorMap={techColorMap}
+											onVisitClick={(v, rect) => {
+												setClickedOccurrence(null);
+												setClickedVisit((prev) => prev?.visit.id === v.id ? null : { visit: v, rect });
+											}}
+											onVisitDragStart={(e, v) => handleVisitDragStart(e, v, dateStr)}
+											onOccurrenceClick={(occ, rect) => {
+												setClickedVisit(null);
+												setClickedOccurrence((prev) => prev?.occ.id === occ.id ? null : { occ, rect });
+											}}
+											onOccurrenceDragStart={(e, occ) => handleOccurrenceDragStart(e, occ, dateStr)}
+											onDragEnd={handleDragEnd}
+											onOpenFullSchedule={() => navigate("/dispatch/schedule")}
+											sortMode={expandedSort}
+											onSortModeChange={setExpandedSort}
+										/>
+									);
+								})() : (() => {
 									const dayVisits  = effectiveVisitsByDay[dateStr]      ?? [];
 									const dayOccs    = effectiveOccurrencesByDay[dateStr] ?? [];
 									const allItems   = [
@@ -775,7 +852,7 @@ export default function WeekStrip({ jobs, technicians }: WeekStripProps) {
 
 											{hiddenCount > 0 && (
 												<button
-													onClick={() => navigate("/dispatch/schedule")}
+													onClick={() => setExpandedDate(dateStr)}
 													style={{
 														fontSize: 9,
 														fontWeight: 600,
