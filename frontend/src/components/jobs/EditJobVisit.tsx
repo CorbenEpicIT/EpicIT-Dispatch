@@ -2,6 +2,8 @@
 import type { ZodError } from "zod";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
+import { useVehiclesQuery } from "../../hooks/useVehicles";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import DatePicker from "../ui/DatePicker";
 import { UndoButton, UndoButtonTop } from "../ui/forms/UndoButton";
@@ -97,6 +99,11 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 	// minItems: 0 — allow all items to be deleted, including recurring plan template items.
 	// Dispatchers and techs should be able to freely add, edit, and remove visit line items.
 	const lineItems = useLineItems({ minItems: 0, mode: "edit" });
+
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
+	// Destinations a `receive` can land on. Active only: retired vans are not
+	// somewhere stock can arrive.
+	const { data: vehicles = [] } = useVehiclesQuery("active");
 
 	const { data: taxGroups = [] } = useTaxGroups();
 
@@ -236,6 +243,9 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 						total: Number(item.total),
 						taxable: item.taxable ?? true,
 						tax_group_id: item.tax_group_id ?? null,
+						inventory_item_id: item.inventory_item_id ?? null,
+						disposition: item.disposition ?? null,
+						disposition_vehicle_id: item.disposition_vehicle_id ?? null,
 						isNew: false,
 						isDeleted: false,
 					}))
@@ -363,6 +373,9 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 				sort_order: index,
 				total: item.total,
 				tax_group_id: item.tax_group_id ?? undefined,
+				inventory_item_id: item.inventory_item_id ?? undefined,
+				disposition: item.disposition ?? null,
+				disposition_vehicle_id: item.disposition_vehicle_id ?? null,
 				taxable: item.taxable,
 			}));
 
@@ -640,6 +653,11 @@ export default function EditJobVisit({ isModalOpen, setIsModalOpen, visit, clien
 					<div className="min-w-0 flex flex-col gap-3">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
+							inventoryItems={inventoryItems}
+							onLinkInventory={lineItems.setLineItemInventoryItem}
+							showDisposition
+							vehicles={vehicles}
+							onDispositionChange={lineItems.setLineItemDisposition}
 							lineItems={lineItems.activeLineItems}
 							isLoading={isLoading}
 							onAdd={lineItems.addLineItem}

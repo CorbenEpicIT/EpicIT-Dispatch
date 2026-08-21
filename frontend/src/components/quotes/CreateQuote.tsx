@@ -23,6 +23,7 @@ import DatePicker from "../ui/DatePicker";
 import { type BaseLineItem, type Priority, PriorityValues } from "../../types/common";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
 import {
 	TemplateSearch,
@@ -110,10 +111,12 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		setLineItemInventoryItem,
 		setLineItemTaxGroup,
 		setAllLineItemsTaxGroup,
 	} = useLineItems({ minItems: 1, mode: "create", defaultTaxGroupId: defaultTaxGroup?.id ?? null });
 
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
 	const lineItemsForCalc = useMemo(
 		() =>
 			activeLineItems.map((item) => ({
@@ -268,6 +271,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 						item_type: li.item_type ?? "",
 						taxable: li.taxable ?? true,
 						tax_group_id: li.tax_group_id ?? null,
+						inventory_item_id: li.inventory_item_id ?? null,
 					}))
 				);
 			} else {
@@ -339,6 +343,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 							item_type: li.item_type ?? "",
 							taxable: li.taxable ?? true,
 							tax_group_id: li.tax_group_id ?? null,
+							inventory_item_id: li.inventory_item_id ?? null,
 						}))
 					);
 				}
@@ -375,6 +380,9 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 				unit_price: item.unit_price,
 				item_type: item.item_type,
 				total: item.total,
+				// Draft restore above reads this back — without it here a
+				// saved-and-reopened quote silently loses every catalog link.
+				inventory_item_id: item.inventory_item_id ?? null,
 			})),
 			tax_rate: taxRate / 100,
 			tax_amount: taxAmount,
@@ -501,6 +509,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 				item_type: item.item_type || undefined,
 				taxable: item.taxable,
 				tax_group_id: item.tax_group_id ?? undefined,
+				inventory_item_id: item.inventory_item_id ?? undefined,
 				sort_order: index,
 			})
 		);
@@ -733,6 +742,8 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 					<div className="space-y-2 min-w-0 pt-2">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
+							inventoryItems={inventoryItems}
+							onLinkInventory={setLineItemInventoryItem}
 							lineItems={activeLineItems}
 							isLoading={isLoading}
 							onAdd={dirtyAddLineItem}

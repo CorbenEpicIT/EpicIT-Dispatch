@@ -62,6 +62,7 @@ const RequestDetailsPage = lazy(() => import("./pages/dispatch/RequestDetailPage
 const InventoryPage = lazy(() => import("./pages/dispatch/InventoryPage"));
 const InventoryItemDetailPage = lazy(() => import("./pages/dispatch/InventoryItemDetailPage"));
 const SuppliersPage = lazy(() => import("./pages/dispatch/SuppliersPage"));
+const InventoryReconcilePage = lazy(() => import("./pages/dispatch/InventoryReconcilePage"));
 const SupplierDetailPage = lazy(() => import("./pages/dispatch/SupplierDetailPage"));
 const LabelPrintPage = lazy(() => import("./components/inventory/labels/LabelPrintPage"));
 const SerialRedirectPage = lazy(() => import("./pages/dispatch/SerialRedirectPage"));
@@ -195,6 +196,9 @@ export default function AppRoutes() {
 				{/* Reading the vendor list is view_inventory (the capture typeahead needs it
 				    on every intake path); the page gates its own writes on manage_inventory. */}
 				<Route path="inventory/suppliers" element={<RequirePermission permission="view_inventory"><SuppliersPage /></RequirePermission>} />
+				{/* Every verb here rewrites catalog or historical billing rows, so
+				    it is manage_inventory rather than view_inventory. */}
+				<Route path="inventory/reconcile" element={<RequirePermission permission="manage_inventory"><InventoryReconcilePage /></RequirePermission>} />
 				<Route path="inventory/suppliers/:supplierId" element={<RequirePermission permission="view_inventory"><SupplierDetailPage /></RequirePermission>} />
 				<Route path="inventory/items/:itemId" element={<RequirePermission permission="view_inventory"><InventoryItemDetailPage /></RequirePermission>} />
 				<Route path="inventory/labels/print" element={<RequirePermission permission="manage_inventory"><LabelPrintPage /></RequirePermission>} />

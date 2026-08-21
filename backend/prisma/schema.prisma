@@ -103,6 +103,21 @@ enum line_item_fulfillment {
   voided  // tech marked not used: billing zeroed, qty_planned kept for variance
 }
 
+// fulfillment_status above is lifecycle; this is what settling the line does.
+enum line_item_disposition {
+  consume   // deduct from stock at completion (pre-existing behaviour)
+  receive   // quantity LANDS in stock at cost, at disposition_location
+  non_stock // billed, never in our inventory (vendor direct) - no stock effect
+}
+
+// Backfilled from created_by_tech_id, so historical rows are approximate.
+enum inventory_item_origin {
+  tech_submission    // tech supplied new_item {name, cost} on a supplier purchase
+  dispatch_quick_add // created by dispatch: line-item quick-add or the New Item form
+  field_purchase     // emergency field procurement (receipt capture)
+  import             // spreadsheet import or a QuickBooks item pull
+}
+
 enum visit_status {
   Scheduled
   Driving
@@ -358,6 +373,7 @@ model organization {
   stock_batches         stock_batch[]
   suppliers             supplier[]
   supplier_items        supplier_item[]
+  unmapped_part_decisions unmapped_part_decision[]
 
   requests              request[]
   quotes                quote[]
@@ -707,8 +723,13 @@ model quote_line_item {
   taxable      Boolean    @default(true)
   tax_amount   Decimal?   @db.Decimal(10, 2)
 
+  // Reference only; carried so the link survives quote -> job -> visit.
+  inventory_item_id String?
+  inventory_item    inventory_item? @relation("QuoteLineItemInventory", fields: [inventory_item_id], references: [id], onDelete: SetNull)
+
   @@index([quote_id])
   @@index([sort_order])
+  @@index([inventory_item_id])
 }
 
 model quote_note {
@@ -818,9 +839,14 @@ model job_line_item {
   taxable      Boolean    @default(true)
   tax_amount   Decimal?   @db.Decimal(10, 2)
 
+  // Reference only; consumption is always visit-scoped.
+  inventory_item_id String?
+  inventory_item    inventory_item? @relation("JobLineItemInventory", fields: [inventory_item_id], references: [id], onDelete: SetNull)
+
   created_at DateTime @default(now())
 
   @@index([job_id])
+  @@index([inventory_item_id])
 }
 
 model job_visit {
@@ -904,6 +930,13 @@ model job_visit_line_item {
   reconciled_at         DateTime?
   reconciled_by_tech_id String?
 
+  // NULL reads as `consume` - what every linked line did before this column.
+  disposition            line_item_disposition?
+  // `receive` only. Vehicle is its own column so the FK is enforceable.
+  disposition_location   stock_location_type?
+  disposition_vehicle_id String?
+  disposition_vehicle    vehicle?               @relation("VisitLineDispositionVehicle", fields: [disposition_vehicle_id], references: [id], onDelete: SetNull)
+
   tax_group_id    String?
   tax_group       tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
   taxable         Boolean    @default(true)
@@ -919,6 +952,7 @@ model job_visit_line_item {
   @@index([sort_order])
   @@index([inventory_item_id])
   @@index([visit_id, fulfillment_status])
+  @@index([disposition_vehicle_id])
 }
 
 model job_visit_technician {
@@ -1147,11 +1181,17 @@ model recurring_plan_line_item {
   inventory_item_id String?
   inventory_item    inventory_item? @relation("RecurringPlanLineItemInventory", fields: [inventory_item_id], references: [id], onDelete: SetNull)
 
+  disposition            line_item_disposition?
+  disposition_location   stock_location_type?
+  disposition_vehicle_id String?
+  disposition_vehicle    vehicle?               @relation("PlanLineDispositionVehicle", fields: [disposition_vehicle_id], references: [id], onDelete: SetNull)
+
   created_at        DateTime       @default(now())
 
   @@index([recurring_plan_id])
   @@index([sort_order])
   @@index([inventory_item_id])
+  @@index([disposition_vehicle_id])
 }
 
 model recurring_plan_note {
@@ -1311,6 +1351,8 @@ model inventory_item {
   is_batch_tracked Boolean @default(false)
   low_stock_threshold Decimal? @db.Decimal(10, 2)
   provisional         Boolean   @default(false)
+  // Default only catches write paths added later; every known creator sets it.
+  origin              inventory_item_origin @default(dispatch_quick_add)
   created_by_tech_id  String?
   created_by_tech     technician? @relation("TechProvisionalItems", fields: [created_by_tech_id], references: [id], onDelete: SetNull)
   approved_at         DateTime?
@@ -1335,6 +1377,8 @@ model inventory_item {
 
   visit_line_items job_visit_line_item[]
   vehicle_stocks   vehicle_stock_item[]
+  quote_line_items          quote_line_item[]          @relation("QuoteLineItemInventory")
+  job_line_items            job_line_item[]            @relation("JobLineItemInventory")
   recurring_plan_line_items recurring_plan_line_item[] @relation("RecurringPlanLineItemInventory")
   tags             inventory_tag[]
   stock_movements  stock_movement[]
@@ -1351,6 +1395,23 @@ model inventory_item {
   @@index([is_active])
   @@index([organization_id])
   @@index([created_at])
+}
+
+// Terminal state of the reconcile queue. Name-scoped, matching the backfill
+// beside it. Attributed and reversible because dismissal is the lazy way out.
+model unmapped_part_decision {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+  // Folded as the matcher folds it, so "3/4 Copper" and "3/4 copper " are one.
+  folded_name     String
+  decided_by_id   String?
+  decided_by      dispatcher?  @relation(fields: [decided_by_id], references: [id], onDelete: SetNull)
+  decided_at      DateTime     @default(now())
+  reason          String?      @db.Text
+
+  @@unique([organization_id, folded_name])
+  @@index([organization_id])
 }
 
 model item_external_mapping {
@@ -1411,6 +1472,8 @@ model vehicle {
   movements_to        stock_movement[]     @relation("MovementToVehicle")
   serial_units        serial_unit[]
   stock_batches       vehicle_stock_batch[]
+  visit_line_dispositions job_visit_line_item[]      @relation("VisitLineDispositionVehicle")
+  plan_line_dispositions  recurring_plan_line_item[] @relation("PlanLineDispositionVehicle")
 
   @@index([organization_id])
   @@index([status])
@@ -1996,6 +2059,7 @@ model dispatcher {
   acknowledged_restock_requests vehicle_restock_request[] @relation("DispatcherAcknowledgedRequests")
 
   managed_projects project[] @relation("ProjectManager")
+  unmapped_part_decisions unmapped_part_decision[]
 
   @@index([email])
   @@index([organization_id])

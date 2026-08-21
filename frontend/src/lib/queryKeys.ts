@@ -26,6 +26,13 @@ export const qk = {
 		detail: (id: string) => [...inventoryRoot, "detail", id] as const,
 		tags: [...inventoryRoot, "tags"] as const,
 		provisional: [...inventoryRoot, "provisional"] as const,
+		// Filters are SERVER-side (dismissed rows and the origin filter are both
+		// query params), so two filter sets are two result sets and must not
+		// share a cache entry. Trailing segments keep prefix invalidation working.
+		reconcile: (opts?: { includeDismissed?: boolean; origin?: string }) =>
+			opts
+				? ([...inventoryRoot, "reconcile", opts] as const)
+				: ([...inventoryRoot, "reconcile"] as const),
 		// movements/valueHistory take an opts object for the same reason
 		// consumptionTrend does: the History tab's range control is a SERVER-side
 		// filter, so two ranges are two different result sets and must not share

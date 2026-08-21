@@ -23,6 +23,7 @@ import {
 } from "../services/stockMovements.js";
 import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
 import { expiresAtField } from "../lib/validate/inventoryTracking.js";
+import { READINESS_LINE_ITEM_WHERE } from "../lib/inventory.js";
 import { isStorableStockQty, STOCK_QTY_MESSAGE } from "../lib/validate/shared.js";
 import { emitToOrg, emitInventoryUpdated } from "../services/socketService.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
@@ -1459,7 +1460,17 @@ export const updatePartsUsedQty = async (
 				include: { inventory_item: true },
 			});
 			if (!lineItem) throw new PartsUsedEditError("Line item not found");
-			if (!lineItem.inventory_item_id || !lineItem.inventory_item || lineItem.fulfillment_status !== "used") {
+			// "used" alone no longer proves the stock came off a van: since
+			// 2026-08-20 completion also stamps `receive` and `non_stock` lines
+			// used, and reversing vehicle stock for a part that was received
+			// into the warehouse (or never ours at all) would invent movements.
+			const fromVehicleStock = (lineItem.disposition ?? "consume") === "consume";
+			if (
+				!lineItem.inventory_item_id ||
+				!lineItem.inventory_item ||
+				lineItem.fulfillment_status !== "used" ||
+				!fromVehicleStock
+			) {
 				throw new PartsUsedEditError(
 					"This line isn't linked to vehicle stock — edit it as a regular line item",
 				);
@@ -2267,6 +2278,9 @@ async function resolveOrCreateSupplierItem(
 			cost:               line.new_item!.cost,
 			unit_price:         line.new_item!.cost,
 			provisional:        true,
+			// A tech naming a part they just bought. Explicit now that origin is
+			// a column: it used to be inferred from created_by_tech_id below.
+			origin:             "tech_submission",
 			created_by_tech_id: context?.techId ?? null,
 		},
 		select: { id: true },
@@ -2876,12 +2890,12 @@ export async function getTomorrowRequirements(
 				scheduled_start_at: { gte: tomorrowStart, lt: tomorrowEnd },
 				status: { notIn: ["Completed", "Cancelled"] },
 				visit_techs: { some: { tech_id: { in: techIds } } },
-				line_items: { some: { inventory_item_id: { not: null } } },
+				line_items: { some: READINESS_LINE_ITEM_WHERE },
 			},
 			include: {
 				job: { include: { client: { select: { name: true } } } },
 				line_items: {
-					where: { inventory_item_id: { not: null } },
+					where: READINESS_LINE_ITEM_WHERE,
 					select: { inventory_item_id: true, quantity: true, name: true },
 				},
 			},
@@ -3005,7 +3019,7 @@ async function computeReadinessForVehicles(
 					},
 					include: {
 						line_items: {
-							where: { inventory_item_id: { not: null } },
+							where: READINESS_LINE_ITEM_WHERE,
 							include: { inventory_item: { select: { id: true, name: true } } },
 						},
 						visit_techs: { select: { tech_id: true } },

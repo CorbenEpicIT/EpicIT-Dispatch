@@ -19,6 +19,13 @@ import { getSocket } from "../services/socketService.js";
 import { buildRecurringPlanInvoicePayload } from "../services/invoiceGenerator.js";
 import { createInvoiceRecord } from "../services/invoiceService.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
+import {
+	findForeignInventoryItemIds,
+	dispositionFields,
+	plannedLineItemFields,
+	foreignDispositionVehicleIds,
+	unknownInventoryItemsMessage,
+} from "../lib/inventory.js";
 
 const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
 function toPauseReason(v: string | undefined): pause_reason_type | undefined {
@@ -404,6 +411,25 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 			}
 		}
 
+		if (parsed.line_items && parsed.line_items.length > 0) {
+			const foreignItems = await findForeignInventoryItemIds(
+				sdb,
+				organization_id,
+				parsed.line_items.map((li) => li.inventory_item_id),
+			);
+			if (foreignItems.length > 0) {
+				return { err: unknownInventoryItemsMessage(foreignItems) };
+			}
+			const foreignVehicles = await foreignDispositionVehicleIds(
+				sdb,
+				organization_id,
+				parsed.line_items.map((li) => li.disposition_vehicle_id),
+			);
+			if (foreignVehicles.length > 0) {
+				return { err: `Validation failed: unknown vehicle ${foreignVehicles.join(", ")}` };
+			}
+		}
+
 		const created = await sdb.$transaction(async (tx) => {
 			const visit = await tx.job_visit.create({
 				data: {
@@ -447,6 +473,7 @@ export const insertJobVisit = async (req: Request, organization_id: string, cont
 						source: "manual" as const,
 						tax_group_id: li.tax_group_id ?? null,
 						taxable: li.taxable ?? true,
+						...plannedLineItemFields(li.inventory_item_id, li.quantity, li),
 					})),
 				});
 				await recomputeVisitTotals(visit.id, organization_id, tx as unknown as Prisma.TransactionClient);
@@ -561,7 +588,13 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			where: { id, job: { organization_id: organizationId } },
 			include: {
 				job: true,
-				line_items: { select: { id: true } },
+				line_items: {
+					select: {
+						id: true,
+						fulfillment_status: true,
+						inventory_item_id: true,
+					},
+				},
 			},
 		});
 
@@ -584,6 +617,24 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 				if (foreign) {
 					return { err: `Tax group not found: ${foreign}` };
 				}
+			}
+
+			// Returned, not thrown: the catch below collapses every non-Zod Error.
+			const foreignItems = await findForeignInventoryItemIds(
+				sdb,
+				organizationId,
+				parsed.line_items.map((li) => li.inventory_item_id),
+			);
+			if (foreignItems.length > 0) {
+				return { err: unknownInventoryItemsMessage(foreignItems) };
+			}
+			const foreignVehicles = await foreignDispositionVehicleIds(
+				sdb,
+				organizationId,
+				parsed.line_items.map((li) => li.disposition_vehicle_id),
+			);
+			if (foreignVehicles.length > 0) {
+				return { err: `Validation failed: unknown vehicle ${foreignVehicles.join(", ")}` };
 			}
 		}
 
@@ -660,16 +711,21 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 			// Existing items absent from the incoming array → delete.
 			// If line_items is undefined (not sent), skip entirely — no change.
 			if (parsed.line_items !== undefined) {
-				const existingIds = new Set(
-					existingVisit.line_items.map((i) => i.id),
+				const existingById = new Map(
+					existingVisit.line_items.map((i) => [i.id, i]),
 				);
+				// Lines a technician already consumed: a stock_movement points at the row,
+				// and the dispatch form doesn't render them, so without this guard the
+				// delete pass below would wipe every one.
+				const isConsumed = (lineId: string) =>
+					existingById.get(lineId)?.fulfillment_status === "used";
 				const incomingIds = new Set(
 					parsed.line_items.filter((i) => i.id).map((i) => i.id!),
 				);
 
 				// Delete removed items
 				for (const item of existingVisit.line_items) {
-					if (!incomingIds.has(item.id)) {
+					if (!incomingIds.has(item.id) && !isConsumed(item.id)) {
 						await tx.job_visit_line_item.delete({
 							where: { id: item.id },
 						});
@@ -678,10 +734,12 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 
 				// Create or update
 				for (const item of parsed.line_items) {
-					if (item.id && existingIds.has(item.id)) {
+					if (item.id && isConsumed(item.id)) continue;
+					const existingLine = item.id ? existingById.get(item.id) : undefined;
+					if (existingLine) {
 						// Update existing
 						await tx.job_visit_line_item.update({
-							where: { id: item.id },
+							where: { id: existingLine.id },
 							data: {
 								name: item.name,
 								description: item.description ?? null,
@@ -695,6 +753,28 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 								sort_order: item.sort_order ?? 0,
 								tax_group_id: item.tax_group_id ?? null,
 								taxable: item.taxable ?? true,
+								// Only when the catalog link actually moved, so a retitle or requantify
+								// can't flip a tech's `voided` back to `planned`.
+								...(item.inventory_item_id !== undefined &&
+								item.inventory_item_id !==
+									existingLine.inventory_item_id
+									? plannedLineItemFields(
+											item.inventory_item_id,
+											item.quantity,
+											item,
+										)
+									: // Link unchanged: qty_planned still follows the
+										// quantity. Only while `planned` — `voided` keeps
+										// its planned figure as the variance.
+										existingLine.fulfillment_status ===
+											"planned"
+										? { qty_planned: item.quantity }
+										: {}),
+								// Applied on its own so switching a part to vendor-direct can't resurrect
+								// a tech's `voided` as `planned`.
+								...(item.disposition !== undefined
+									? dispositionFields(item)
+									: {}),
 							},
 						});
 					} else {
@@ -715,6 +795,11 @@ export const updateJobVisit = async (req: Request, organizationId: string, conte
 								sort_order: item.sort_order ?? 0,
 								tax_group_id: item.tax_group_id ?? null,
 								taxable: item.taxable ?? true,
+								...plannedLineItemFields(
+									item.inventory_item_id,
+									item.quantity,
+									item,
+								),
 							},
 						});
 					}

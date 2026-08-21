@@ -11,6 +11,7 @@ import Dropdown from "../ui/Dropdown";
 import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
 import { TemplateSearch, type TemplateSearchResult, type TemplateSearchClient } from "../ui/forms/TemplateSearch";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -135,10 +136,12 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 		undoLineItemField,
 		clearLineItemField,
 		originalLineItems,
+		setLineItemInventoryItem,
 		setLineItemTaxGroup,
 		setAllLineItemsTaxGroup,
 	} = useLineItems({ minItems: 0, mode: "create", defaultTaxGroupId: defaultTaxGroup?.id ?? null });
 
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
 	const lineItemsForCalc = useMemo(
 		() =>
 			activeLineItems.map((item) => ({
@@ -476,6 +479,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 						quantity: Number(item.quantity ?? 1),
 						unit_price: Number(item.unit_price ?? 0),
 						item_type: item.item_type ?? "",
+						inventory_item_id: item.inventory_item_id ?? null,
 						source_job_id: jobId,
 						source_visit_id: null,
 					});
@@ -516,6 +520,10 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							quantity: Number(li.quantity),
 							unit_price: Number(li.unit_price),
 							item_type: li.item_type ?? "",
+							// The visit is where the link is real — a tech
+							// scanned or picked this part. Dropping it here was
+							// severing the only populated link in the system.
+							inventory_item_id: li.inventory_item_id ?? null,
 							source_visit_id: visit.id,
 							source_job_id: visit.job?.id ?? null,
 						});
@@ -648,6 +656,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 					| undefined,
 				taxable: item.taxable,
 				tax_group_id: item.tax_group_id ?? undefined,
+				inventory_item_id: item.inventory_item_id ?? undefined,
 				source_job_id: item.source_job_id ?? undefined,
 				source_visit_id: item.source_visit_id ?? undefined,
 			}));
@@ -1431,6 +1440,8 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 							</div>
 						)}
 						<LineItemsSection
+							inventoryItems={inventoryItems}
+							onLinkInventory={setLineItemInventoryItem}
 							lineItems={activeLineItems}
 							isLoading={isLoading}
 							onAdd={dirtyAddLineItem}

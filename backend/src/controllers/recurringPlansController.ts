@@ -9,6 +9,12 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { parentBreadcrumb } from "./logsController.js";
 import { getScopedDb } from "../lib/context.js";
 import {
+	assertInventoryItemsInOrg,
+	assertDispositionVehiclesInOrg,
+	plannedLineItemFields,
+	templateDispositionFields,
+} from "../lib/inventory.js";
+import {
 	createRecurringPlanSchema,
 	updateRecurringPlanSchema,
 	updateRecurringPlanLineItemsSchema,
@@ -521,6 +527,16 @@ export const insertRecurringPlan = async (
 
 			// Create template line items
 			if (parsed.line_items && parsed.line_items.length > 0) {
+				await assertInventoryItemsInOrg(
+					tx,
+					organizationId,
+					parsed.line_items.map((i) => i.inventory_item_id),
+				);
+				await assertDispositionVehiclesInOrg(
+					tx,
+					organizationId,
+					parsed.line_items.map((i) => i.disposition_vehicle_id),
+				);
 				await tx.recurring_plan_line_item.createMany({
 					data: parsed.line_items.map((item, idx) => ({
 						recurring_plan_id: plan.id,
@@ -530,6 +546,8 @@ export const insertRecurringPlan = async (
 						unit_price: item.unit_price,
 						item_type: item.item_type ?? null,
 						sort_order: item.sort_order ?? idx,
+						inventory_item_id: item.inventory_item_id ?? null,
+						...templateDispositionFields(item.inventory_item_id, item),
 					})),
 				});
 			}
@@ -799,6 +817,16 @@ export const updateRecurringPlan = async (
 
 			// Update line items if provided
 			if (parsed.line_items) {
+				await assertInventoryItemsInOrg(
+					tx,
+					organizationId,
+					parsed.line_items.map((i) => i.inventory_item_id),
+				);
+				await assertDispositionVehiclesInOrg(
+					tx,
+					organizationId,
+					parsed.line_items.map((i) => i.disposition_vehicle_id),
+				);
 				const existingItemIds = new Set(
 					existing.line_items.map((item) => item.id),
 				);
@@ -831,6 +859,13 @@ export const updateRecurringPlan = async (
 								unit_price: item.unit_price,
 								item_type: item.item_type ?? null,
 								sort_order: item.sort_order ?? 0,
+								...(item.inventory_item_id !== undefined && {
+									inventory_item_id: item.inventory_item_id,
+									...templateDispositionFields(
+										item.inventory_item_id,
+										item,
+									),
+								}),
 							},
 						});
 					} else {
@@ -843,6 +878,11 @@ export const updateRecurringPlan = async (
 								unit_price: item.unit_price,
 								item_type: item.item_type ?? null,
 								sort_order: item.sort_order ?? 0,
+								inventory_item_id: item.inventory_item_id ?? null,
+								...templateDispositionFields(
+									item.inventory_item_id,
+									item,
+								),
 							},
 						});
 					}
@@ -1031,6 +1071,10 @@ export const updateRecurringPlan = async (
 					.join(", ")}`,
 			};
 		}
+		// Without this the org guards surface as an opaque internal error.
+		if (e instanceof Error && e.message.startsWith("Validation failed:")) {
+			return { err: e.message };
+		}
 		log.error({ err: e }, "Update recurring plan error");
 		return { err: "Internal server error" };
 	}
@@ -1061,6 +1105,16 @@ export const updateRecurringPlanLineItems = async (
 		}
 
 		const updated = await sdb.$transaction(async (tx) => {
+			await assertInventoryItemsInOrg(
+				tx,
+				organizationId,
+				parsed.line_items.map((i) => i.inventory_item_id),
+			);
+			await assertDispositionVehiclesInOrg(
+				tx,
+				organizationId,
+				parsed.line_items.map((i) => i.disposition_vehicle_id),
+			);
 			const existingItemIds = new Set(
 				plan.line_items.map((item) => item.id),
 			);
@@ -1093,6 +1147,10 @@ export const updateRecurringPlanLineItems = async (
 							unit_price: item.unit_price,
 							item_type: item.item_type ?? null,
 							sort_order: item.sort_order ?? 0,
+							...(item.inventory_item_id !== undefined && {
+								inventory_item_id: item.inventory_item_id,
+								...templateDispositionFields(item.inventory_item_id, item),
+							}),
 						},
 					});
 				} else {
@@ -1105,6 +1163,8 @@ export const updateRecurringPlanLineItems = async (
 							unit_price: item.unit_price,
 							item_type: item.item_type ?? null,
 							sort_order: item.sort_order ?? 0,
+							inventory_item_id: item.inventory_item_id ?? null,
+							...templateDispositionFields(item.inventory_item_id, item),
 						},
 					});
 				}
@@ -1150,6 +1210,10 @@ export const updateRecurringPlanLineItems = async (
 					.map((err) => err.message)
 					.join(", ")}`,
 			};
+		}
+		// Without this the org guards surface as an opaque internal error.
+		if (e instanceof Error && e.message.startsWith("Validation failed:")) {
+			return { err: e.message };
 		}
 		log.error({ err: e }, "Update recurring plan line items error");
 		return { err: "Internal server error" };
@@ -1808,7 +1872,19 @@ export const generateVisitFromOccurrence = async (
 								source: "recurring_plan",
 								item_type: item.item_type,
 								sort_order: idx,
-								inventory_item_id: item.inventory_item_id ?? null,
+								// A generated visit's parts are planned parts —
+								// same lifecycle a dispatcher gets when they
+								// attach an item by hand, so readiness and the
+								// completion deduction see them identically.
+								// Intent rides along with the link: a plan
+								// whose part is vendor-direct generates
+								// vendor-direct visit lines, not warehouse
+								// deductions.
+								...plannedLineItemFields(
+									item.inventory_item_id,
+									Number(item.quantity),
+									item,
+								),
 							})),
 						},
 					},

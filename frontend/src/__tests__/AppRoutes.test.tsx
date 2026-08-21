@@ -193,6 +193,13 @@ const ROUTES: RouteCase[] = [
 	},
 	{ path: "inventory", url: "/dispatch/inventory", page: "InventoryPage", perm: "view_inventory" },
 	{
+		// Every verb on this page rewrites catalog or historical billing rows.
+		path: "inventory/reconcile",
+		url: "/dispatch/inventory/reconcile",
+		page: "InventoryReconcilePage",
+		perm: "manage_inventory",
+	},
+	{
 		path: "inventory/items/:itemId",
 		url: "/dispatch/inventory/items/i1",
 		page: "InventoryItemDetailPage",

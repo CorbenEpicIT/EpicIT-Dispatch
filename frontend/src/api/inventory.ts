@@ -33,6 +33,156 @@ export const getAllInventory = async (
 	return response.data.data || [];
 };
 
+export type LinkageEntity = "quote" | "job" | "job_visit" | "recurring_plan" | "invoice";
+
+/** How confident a name -> catalog guess is: exact beats fold beats code. */
+export type LinkageMatchTier = "exact" | "case_insensitive" | "code";
+
+export interface LinkageCandidate {
+	name: string;
+	/** Every line table holding this name unmapped — one Map fixes all of them. */
+	entities: LinkageEntity[];
+	lines: number;
+	/** Summed line value. What the queue ranks on — money, not line count. */
+	value: number;
+	match: {
+		inventory_item_id: string;
+		name: string;
+		sku: string | null;
+		tier: LinkageMatchTier;
+	} | null;
+}
+
+export interface LinkageAudit {
+	counts: { entity: LinkageEntity; linked: number; unmapped: number; total: number }[];
+	candidates: LinkageCandidate[];
+	/** Distinct unmapped names in total — `candidates` is capped server-side. */
+	candidate_total: number;
+	/** Value of EVERY unmapped name, including the ones past the cap. */
+	candidate_value_total: number;
+}
+
+/** Backfilled from a null tech id before 2026-08-20, so old rows are approximate. */
+export type ItemOrigin = "tech_submission" | "dispatch_quick_add" | "field_purchase" | "import";
+
+export const ITEM_ORIGIN_LABELS: Record<ItemOrigin, string> = {
+	tech_submission: "Tech submission",
+	dispatch_quick_add: "Dispatch quick-add",
+	field_purchase: "Field purchase",
+	import: "Import",
+};
+
+export interface ReconcileProvisionalRow {
+	item_id: string;
+	name: string;
+	origin: ItemOrigin;
+	cost: number | null;
+	unit_price: number | null;
+	unit: string;
+	low_stock_threshold: number | null;
+	created_at: string;
+	submitted_by: { id: string; name: string } | null;
+	vehicle_stocks: { qty_on_hand: number; vehicle: { id: string; name: string } }[];
+	lines: number;
+	value: number;
+}
+
+export interface ReconcileDismissedRow {
+	folded_name: string;
+	decided_at: string;
+	decided_by: { id: string; name: string } | null;
+	reason: string | null;
+}
+
+/** An under-specified item row, and a billable line pointing nowhere. */
+export interface ReconcileQueue {
+	counts: LinkageAudit["counts"];
+	coverage: { linked: number; unmapped: number; total: number; pct: number };
+	unmapped: LinkageCandidate[];
+	unmapped_total: number;
+	unmapped_value: number;
+	provisional: ReconcileProvisionalRow[];
+	dismissed: ReconcileDismissedRow[];
+}
+
+export const getReconcileQueue = async (params?: {
+	include_dismissed?: boolean;
+	origin?: ItemOrigin;
+}): Promise<ReconcileQueue> => {
+	const response = await api.get<ApiResponse<ReconcileQueue>>("/inventory/reconcile", {
+		params: queryParams({
+			include_dismissed: params?.include_dismissed ? "true" : undefined,
+			origin: params?.origin,
+		}),
+	});
+
+	if (!response.data.success || !response.data.data) {
+		throw new Error(response.data.error?.message || "Failed to load the reconcile queue");
+	}
+
+	return response.data.data;
+};
+
+/** The queue's terminal state. Name-scoped: one decision covers every line. */
+export const dismissUnmappedName = async (input: {
+	name: string;
+	reason?: string;
+}): Promise<void> => {
+	await api.post("/inventory/reconcile/dismiss", input);
+};
+
+export const restoreUnmappedName = async (input: { name: string }): Promise<void> => {
+	await api.post("/inventory/reconcile/restore", input);
+};
+
+export const getLinkageAudit = async (): Promise<LinkageAudit> => {
+	const response = await api.get<ApiResponse<LinkageAudit>>("/inventory/linkage-audit");
+
+	if (!response.data.success || !response.data.data) {
+		throw new Error(response.data.error?.message || "Failed to load linkage audit");
+	}
+
+	return response.data.data;
+};
+
+export const applyLinkageMatch = async (input: {
+	name: string;
+	inventory_item_id: string;
+}): Promise<Record<LinkageEntity, number>> => {
+	const response = await api.post<ApiResponse<{ updated: Record<LinkageEntity, number> }>>(
+		"/inventory/linkage-audit/apply",
+		input,
+	);
+
+	if (!response.data.success || !response.data.data) {
+		throw new Error(response.data.error?.message || "Failed to link line items");
+	}
+
+	return response.data.data.updated;
+};
+
+/**
+ * Lands as provisional so the line can carry a real link immediately,
+ * without the dispatcher inventing a cost basis and unit mid-quote.
+ */
+export const createProvisionalItem = async (input: {
+	name: string;
+	unit?: string;
+	unit_price?: number;
+	cost?: number;
+}): Promise<InventoryItem> => {
+	const response = await api.post<ApiResponse<InventoryItem>>(
+		"/inventory/provisional",
+		input,
+	);
+
+	if (!response.data.success || !response.data.data) {
+		throw new Error(response.data.error?.message || "Failed to add item");
+	}
+
+	return response.data.data;
+};
+
 export const getInventoryItem = async (itemId: string): Promise<InventoryItem> => {
 	const response = await api.get<ApiResponse<InventoryItem>>(`/inventory/${itemId}`);
 

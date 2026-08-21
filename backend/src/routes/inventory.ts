@@ -41,6 +41,12 @@ import {
     updateSerial,
     deleteSerial,
     getTrackingReconciliation,
+    getLinkageAudit,
+    applyLinkageMatch,
+    getReconcileQueue,
+    dismissUnmappedName,
+    restoreUnmappedName,
+    createProvisionalItemForLine,
     listProvisionalItems,
     approveProvisionalItem,
     mergeProvisionalItem,
@@ -400,8 +406,94 @@ router.get("/:itemId/tracking-eligibility", requireAnyPermission("view_inventory
     }
 });
 
+// Literal first segment, so it must be registered before /:id.
+router.get("/linkage-audit", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const result = await getLinkageAudit(orgId);
+		if (result.err) return sendControllerErr(res, result);
+		res.json(
+			createSuccessResponse({
+				counts: result.counts,
+				candidates: result.candidates,
+				candidate_total: result.candidate_total,
+			}),
+		);
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Rewrites historical billing rows, so it stays at manage_inventory.
+router.post("/linkage-audit/apply", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await applyLinkageMatch(req.body, orgId, context);
+		if (result.err) return sendControllerErr(res, result);
+		res.json(createSuccessResponse({ updated: result.updated }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Literal-first-segment rule again: must precede /:id.
+router.get("/reconcile", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const result = await getReconcileQueue(orgId, {
+			includeDismissed: req.query.include_dismissed === "true",
+			origin: typeof req.query.origin === "string" ? req.query.origin : undefined,
+		});
+		if (result.err) return sendControllerErr(res, result);
+		res.json(createSuccessResponse(result.queue));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Reversible on purpose — dismissal is the lazy way out of the queue.
+router.post("/reconcile/dismiss", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await dismissUnmappedName(req.body, orgId, context);
+		if (result.err) return sendControllerErr(res, result);
+		res.status(201).json(createSuccessResponse(result.decision));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Reversible on purpose — dismissal is the lazy way out of the queue.
+router.post("/reconcile/restore", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await restoreUnmappedName(req.body, orgId, context);
+		if (result.err) return sendControllerErr(res, result);
+		res.json(createSuccessResponse(null));
+	} catch (err) {
+		next(err);
+	}
+});
+
 // ── Provisional item management ───────────────────────────────────────────────
 // NOTE: /provisional must be registered BEFORE any /:id routes to avoid param collision.
+
+// Deliberately a lower bar than POST /: a dispatcher mid-quote has a name
+// and a price, not a full catalog record.
+router.post("/provisional", requireAnyPermission("manage_inventory", "edit_quotes", "edit_jobs"), async (req, res, next) => {
+	try {
+		const context = getUserContext(req);
+		const orgId = req.user!.organization_id as string;
+		const result = await createProvisionalItemForLine(req.body, orgId, context);
+		if (result.err) return sendControllerErr(res, result);
+		res.status(201).json(createSuccessResponse(result.item));
+	} catch (err) {
+		next(err);
+	}
+});
 
 router.get("/provisional", requirePermission("manage_inventory"), async (req, res, next) => {
 	try {
@@ -422,9 +514,9 @@ router.post("/:id/approve", requirePermission("manage_inventory"), async (req, r
 		const orgId = req.user!.organization_id as string;
         const id = req.params.id as string;
 		const result = await approveProvisionalItem(id, orgId, req.body ?? {}, context);
-		if (result.err) {
-			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
-		}
+		// sendControllerErr rather than a flat 404: adopting without a cost
+		// basis is a bad request, and the client shows the message inline.
+		if (result.err) return sendControllerErr(res, result);
 		res.json(createSuccessResponse(result.item));
 	} catch (err) {
 		next(err);

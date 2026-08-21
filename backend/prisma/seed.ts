@@ -302,9 +302,10 @@ async function main() {
 	// Inventory — created early so visits can reference inventory_item_id
 	// ============================================================================
 
-	// NOTE: All inventory starts at quantity 0. Warehouse on-hand is established
-	// exclusively through recordMovements() ("receive") later in this seed, so the
-	// stock_movement ledger and the cached quantity columns always reconcile.
+	//
+		// Lines below MIX linked and freetext on purpose: whole rooftop units and
+		// fabricated curbs are freetext in the field, and the reconcile queue needs
+		// a real backlog to work through.
 	const [
 		invRefrigerant,
 		invFilter,
@@ -973,6 +974,7 @@ async function main() {
 						unit_price: 60.0,
 						total: 600.0,
 						item_type: "material",
+						inventory_item_id: invRefrigerant.id,
 						sort_order: 2,
 					},
 				],
@@ -1011,6 +1013,7 @@ async function main() {
 						unit_price: 65.0,
 						total: 195.0,
 						item_type: "equipment",
+						inventory_item_id: invThermostat.id,
 						sort_order: 0,
 					},
 					{
@@ -1106,6 +1109,7 @@ async function main() {
 						quantity: 4,
 						unit_price: 8.5,
 						item_type: "material",
+						inventory_item_id: invFilter.id,
 						sort_order: 1,
 					},
 				],
@@ -1388,6 +1392,7 @@ async function main() {
 							total: 85.0,
 							source: "field_addition",
 							item_type: "material",
+							inventory_item_id: invCapacitor.id,
 						},
 						{
 							name: "Service Labor (2.5 hrs)",
@@ -1446,6 +1451,7 @@ async function main() {
 							total: 600.0,
 							source: "quote",
 							item_type: "material",
+							inventory_item_id: invRefrigerant.id,
 						},
 					],
 				},
@@ -1668,6 +1674,7 @@ async function main() {
 							total: 600.0,
 							source: "manual",
 							item_type: "material",
+							inventory_item_id: invRefrigerant.id,
 						},
 					],
 				},
@@ -1838,6 +1845,7 @@ async function main() {
 							total: 189.0,
 							source: "manual",
 							item_type: "equipment",
+							inventory_item_id: invThermostat.id,
 						},
 						{
 							name: "Service Labor (1.5 hrs)",
@@ -1879,6 +1887,7 @@ async function main() {
 							total: 189.0,
 							source: "manual",
 							item_type: "equipment",
+							inventory_item_id: invThermostat.id,
 						},
 						{
 							name: "Service Labor (1.5 hrs)",
@@ -2536,6 +2545,7 @@ async function main() {
 						unit_price: 85.0,
 						total: 85.0,
 						item_type: "material",
+						inventory_item_id: invCapacitor.id,
 						sort_order: 0,
 					},
 					{
@@ -2616,6 +2626,7 @@ async function main() {
 						unit_price: 8.5,
 						total: 34.0,
 						item_type: "material",
+						inventory_item_id: invFilter.id,
 						sort_order: 1,
 					},
 				],

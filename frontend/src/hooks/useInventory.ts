@@ -26,6 +26,7 @@ import type {
 } from "../types/inventory";
 
 import * as inventoryApi from "../api/inventory";
+import type { ItemOrigin } from "../api/inventory";
 import * as orgApi from "../api/org";
 import { qk, invalidate } from "../lib/queryKeys";
 import { useScanDispatcher } from "./useScanDispatcher";
@@ -348,13 +349,95 @@ export const useProvisionalItemsQuery = (enabled = true) =>
 		enabled,
 	});
 
+export const useLinkageAuditQuery = (enabled = true) =>
+	useQuery({
+		queryKey: [...qk.inventory.all, "linkage-audit"],
+		queryFn: inventoryApi.getLinkageAudit,
+		staleTime: 60_000,
+		enabled,
+	});
+
+/**
+ * Invalidates broadly: linking historical lines changes what the item's
+ * usage, forecast and charged-price reads return, not just the audit.
+ */
+export const useApplyLinkageMatchMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: inventoryApi.applyLinkageMatch,
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+		},
+	});
+};
+
+/** Invalidates the catalog list too — the picker has to find the new item. */
+export const useCreateProvisionalItemMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: inventoryApi.createProvisionalItem,
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: qk.inventory.provisional });
+			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+		},
+	});
+};
+
+/** Filters live in the key because the server applies them. */
+export const useReconcileQueueQuery = (
+	opts?: { includeDismissed?: boolean; origin?: ItemOrigin },
+	enabled = true,
+) =>
+	useQuery({
+		queryKey: qk.inventory.reconcile(opts),
+		queryFn: () =>
+			inventoryApi.getReconcileQueue({
+				include_dismissed: opts?.includeDismissed,
+				origin: opts?.origin,
+			}),
+		staleTime: 60_000,
+		enabled,
+	});
+
+/** Both change what coverage counts, so they invalidate the inventory root. */
+export const useDismissUnmappedMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: inventoryApi.dismissUnmappedName,
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+		},
+	});
+};
+
+export const useRestoreUnmappedMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: inventoryApi.restoreUnmappedName,
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+		},
+	});
+};
+
+/** Cost is required unless the row already has one. */
 export const useApproveItemMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: ({ itemId, initial_warehouse_qty }: { itemId: string; initial_warehouse_qty?: number }) =>
-			orgApi.approveItem(itemId, initial_warehouse_qty !== undefined ? { initial_warehouse_qty } : undefined),
+		mutationFn: ({
+			itemId,
+			...body
+		}: {
+			itemId: string;
+			initial_warehouse_qty?: number;
+			cost?: number;
+			unit?: string;
+			low_stock_threshold?: number | null;
+		}) => orgApi.approveItem(itemId, body),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: qk.inventory.provisional });
+			// The catalog list and the provisional queue are separate cache entries.
+			await qc.invalidateQueries({ queryKey: qk.inventory.all });
 			await invalidate.warehouse(qc);
 		},
 	});
