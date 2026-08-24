@@ -2300,7 +2300,7 @@ async function main() {
 	// ============================================================================
 
 	// Today 1: Scheduled morning (active/next visit on dashboard)
-	await db.job_visit.create({
+	const todayFilterVisit = await db.job_visit.create({
 		data: {
 			job_id: job3.id,
 			name: "Filter Replacement — Anderson Bldg A",
@@ -2340,7 +2340,7 @@ async function main() {
 	});
 
 	// Today 2: Scheduled midday
-	await db.job_visit.create({
+	const todayFollowUpVisit = await db.job_visit.create({
 		data: {
 			job_id: job1.id,
 			name: "Follow-Up AC Check — Johnson Residence",
@@ -4416,8 +4416,8 @@ async function main() {
 	// ============================================================================
 	await db.technician_notification.createMany({
 		data: [
-			{ technician_id: tech1.id, type: "visit_assigned", title: "New visit assigned", body: "You've been assigned to Filter Replacement — Anderson Bldg A today at 8:00 AM.", action_url: `/tech/jobs/${job3.id}`, created_at: minsAgo(45) },
-			{ technician_id: tech1.id, type: "visit_changed", title: "Visit time updated", body: "Follow-Up AC Check — Johnson Residence moved to the 11:00–12:00 window.", action_url: `/tech/jobs/${job1.id}`, read_at: minsAgo(20), created_at: hrsAgo(3) },
+			{ technician_id: tech1.id, type: "visit_assigned", title: "New visit assigned", body: "You've been assigned to Filter Replacement — Anderson Bldg A today at 8:00 AM.", action_url: `/technician/visits/${todayFilterVisit.id}`, created_at: minsAgo(45) },
+			{ technician_id: tech1.id, type: "visit_changed", title: "Visit time updated", body: "Follow-Up AC Check — Johnson Residence moved to the 11:00–12:00 window.", action_url: `/technician/visits/${todayFollowUpVisit.id}`, read_at: minsAgo(20), created_at: hrsAgo(3) },
 			{ technician_id: tech1.id, type: "dispatch_message", title: "Message from dispatch", body: "Heads up — Kevin is riding with you on Van 12 this week. Coordinate the morning route.", created_at: hrsAgo(20) },
 		],
 	});
