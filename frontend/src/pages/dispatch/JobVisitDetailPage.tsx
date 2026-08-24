@@ -33,7 +33,7 @@ import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
 import CreateInvoice from "../../components/invoices/CreateInvoice";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
-import { formatCurrency, formatDate, formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
+import { formatCurrency, formatDate, formatDateTime, FALLBACK_TIMEZONE } from "../../util/util";
 import FinancialSummary from "../../components/pagesections/FinancialSummary";
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
@@ -160,7 +160,6 @@ export default function JobVisitDetailPage() {
 	};
 
 	const lineItems: VisitLineItem[] = visit.line_items || [];
-	const hasLineItems = lineItems.length > 0;
 
 	const formatConstraintTime = (time: string | null | undefined): string => {
 		if (!time) return "";

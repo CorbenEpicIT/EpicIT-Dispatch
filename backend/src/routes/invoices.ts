@@ -17,7 +17,7 @@ import { buildVisitInvoicePayload, buildRecurringPlanInvoicePayload } from '../s
 import { overlapCheckSchema, generateInvoiceSchema } from '../lib/validate/invoices.js';
 import { advanceNextInvoiceAt, calculateNextInvoiceAt, type ScheduleFrequency } from '../lib/invoiceSchedule.js';
 import { Prisma } from '../../generated/prisma/client.js';
-import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -465,7 +465,14 @@ router.get("/:invoiceId/changes", requirePermission("view_invoices"), async (req
     try {
         const invoiceId = req.params.invoiceId as string;
         const orgId = req.user!.organization_id as string;
-        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
 
         const results = await getEntityHistory(orgId, "invoice", invoiceId, limit);
 

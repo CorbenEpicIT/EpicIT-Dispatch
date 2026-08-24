@@ -19,5 +19,27 @@ export default defineConfig([
 			ecmaVersion: 2020,
 			globals: globals.browser,
 		},
+		rules: {
+			// Underscore-prefixed names mark intentionally unused bindings
+			// (e.g. destructuring a field out of a row to omit it from `rest`).
+			"@typescript-eslint/no-unused-vars": [
+				"error",
+				{
+					argsIgnorePattern: "^_",
+					varsIgnorePattern: "^_",
+					caughtErrorsIgnorePattern: "^_",
+					destructuredArrayIgnorePattern: "^_",
+					ignoreRestSiblings: true,
+				},
+			],
+		},
+	},
+	{
+		// Test files and test utilities are not HMR targets, so the fast-refresh
+		// "components only" export constraint does not apply to them.
+		files: ["**/*.test.{ts,tsx}", "src/test/**"],
+		rules: {
+			"react-refresh/only-export-components": "off",
+		},
 	},
 ]);

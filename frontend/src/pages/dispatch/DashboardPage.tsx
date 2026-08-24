@@ -3,7 +3,7 @@ import { ResponsiveGridLayout, useContainerWidth } from "react-grid-layout";
 import type { Layout, ResponsiveLayouts } from "react-grid-layout";
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import './DashboardPage.css';
+import '../../components/ui/GridLayout.css';
 import { useNavigate } from "react-router-dom";
 import {
 	AlertCircle,
@@ -30,22 +30,25 @@ import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurring
 import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
-import { DEFAULT_RESPONSIVE_LAYOUTS, BREAKPOINTS, COLS, WIDGET_CATALOG, resolveConstraints, getActiveCols, fitDashboard, randomizeLayout } from "../../lib/DashboardConfig";
+import { DEFAULT_RESPONSIVE_LAYOUTS, WIDGET_CATALOG } from "../../lib/DashboardConfig";
+import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, randomizeLayout } from "../../lib/gridLayoutEngine";
 import { QUICKBOOKS_ENABLED } from "../../config/features";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
-import OverviewWidget from "../../components/widgets/OverviewWidget";
-import RevenueYTDWidget from "../../components/widgets/RevenueYTDWidget";
-import UnscheduledRevenueWidget from "../../components/widgets/UnscheduledRevenueWidget";
-import RevenueByJobTypeWidget from "../../components/widgets/RevenueByJobTypeWidget";
-import LeadsBySourceWidget from "../../components/widgets/LeadsBySourceWidget";
-import QuotePipelineWidget from "../../components/widgets/QuotePipelineWidget";
-import ArrivalPerformanceWidget from "../../components/widgets/ArrivalPerformanceWidget";
-import MileageSummaryWidget from "../../components/widgets/MileageSummaryWidget";
-import AgedReceivablesColumnWidget from "../../components/widgets/AgedReceivablesColumnWidget";
-import JobBacklogWidget from "../../components/widgets/JobBacklogWidget";
 import MapWidget from "../../components/widgets/MapWidget";
 import QBWidget from "../../components/widgets/QBWidget";
-import PageReportWidget from "../../components/widgets/PageReportWidget";
+import {
+	OverviewWidget,
+	RevenueYTDWidget,
+	UnscheduledRevenueWidget,
+	RevenueByJobTypeWidget,
+	LeadsBySourceWidget,
+	QuotePipelineWidget,
+	ArrivalPerformanceWidget,
+	MileageSummaryWidget,
+	AgedReceivablesColumnWidget,
+	JobBacklogWidget,
+	PageReportWidget,
+} from "../../components/widgets/reports";
 
 
 export default function DashboardPage() {
@@ -159,7 +162,7 @@ export default function DashboardPage() {
 					nextVisit: upcomingVisits[0] || null,
 				};
 			})
-			.sort((a, b) => (a.currentVisit ? -1 : 1));
+			.sort((a) => (a.currentVisit ? -1 : 1));
 	}, [allTechnicians, jobs]);
 
 	const getStatusBorderClass = (status: string) => {
@@ -259,7 +262,7 @@ export default function DashboardPage() {
 		prevColsRef.current = activeCols.lg;
 		setDisplayLayouts(prev => ({
 			...prev,
-			lg: activeCols.lg === 12 ? (layouts.lg ?? []) : fitDashboard(layouts.lg ?? [], activeCols.lg),
+			lg: activeCols.lg === 12 ? (layouts.lg ?? []) : fitLayout(WIDGET_CATALOG, layouts.lg ?? [], activeCols.lg),
 		}));
 	}, [activeCols.lg, layouts.lg]);
 
@@ -267,7 +270,7 @@ export default function DashboardPage() {
 		const w = settledWidth || displayWidth;
 		const cols = activeCols.lg;
 		const display = (displayLayouts.lg ?? []).map(item => {
-			const c = resolveConstraints(item.i, w);
+			const c = resolveConstraints(WIDGET_CATALOG, item.i, w);
 			
 			const minW = Math.min(c.minW ?? 1, cols);
 			const maxW = Math.min(c.maxW ?? cols, cols);
@@ -571,7 +574,7 @@ export default function DashboardPage() {
 							</button>
 							<button
 								onClick={() => {
-									const fitted = fitDashboard(layouts.lg ?? [], activeCols.lg);
+									const fitted = fitLayout(WIDGET_CATALOG, layouts.lg ?? [], activeCols.lg);
 									if (activeCols.lg === 12) handleLayoutSave(fitted);
 									else setDisplayLayouts(prev => ({ ...prev, lg: fitted }));
 								}}
@@ -582,7 +585,7 @@ export default function DashboardPage() {
 								Fit
 							</button>
 							<button
-								onClick={() => setLayouts(prev => ({ ...prev, lg: randomizeLayout(prev.lg ?? []) }))}
+								onClick={() => setLayouts(prev => ({ ...prev, lg: randomizeLayout(WIDGET_CATALOG, prev.lg ?? []) }))}
 								title="Scramble widgets into a messy layout (for testing Fit)"
 								className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-surface hover:bg-surface-raised border border-border text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
 							>
@@ -594,7 +597,7 @@ export default function DashboardPage() {
 				</div>
 
 				{/* Dashboard grid */}
-				<div className={`dashboard-grid ${isEditMode ? "show-grid" : ""} ${isResizing ? "no-transitions" : ""} px-2 py-2`} style={{ '--grid-width': `${displayWidth}px` } as React.CSSProperties}>
+				<div className={`rgl-grid ${isEditMode ? "show-grid" : ""} ${isResizing ? "no-transitions" : ""} px-2 py-2`} style={{ '--grid-width': `${displayWidth}px` } as React.CSSProperties}>
 					{displayWidth > 0 && dispatcher && <ResponsiveGridLayout
 						key={`grid-${dispatcher.id}-${dispatcher.dashboard_layout ? 'saved' : 'default'}`}
 						width={displayWidth}
@@ -662,6 +665,7 @@ export default function DashboardPage() {
 				isOpen={isAddWidgetModalOpen}
 				onClose={() => setIsAddWidgetModalOpen(false)}
 				currentLayout={layouts.lg ?? []}
+				catalog={WIDGET_CATALOG}
 				onLayoutChange={(newLayout) => {
 					setLayouts(prev => ({ ...prev, lg: newLayout }));
 					if (dispatcher?.id) saveDashboardLayout(dispatcher.id, newLayout);

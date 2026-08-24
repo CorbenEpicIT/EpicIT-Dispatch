@@ -43,6 +43,10 @@ const COLS = cols(
 	"daysOfStock",
 	"projectedStockout",
 	"health",
+	// The report always said "buy this much, by then" with no answer to "from
+	// whom". A leading "~" means the vendor was inferred from the last purchase
+	// rather than chosen by anyone.
+	"buyFrom",
 );
 
 const SEVERITY_ORDER: ReorderSeverity[] = ["critical", "warning", "healthy", "unknown"];
@@ -54,6 +58,10 @@ const EXPORT_ONLY_COLS: ColumnOption[] = [
 	{ key: "unit", label: "Unit" },
 	{ key: "observedDays", label: "Days Observed" },
 	{ key: "qtyConsumed", label: `Qty Consumed (${REORDER_FORECAST_WINDOW_DAYS}d)` },
+	// Whoever works the export is the one placing the order: they need the
+	// vendor's own part number and what closing the gap costs.
+	{ key: "vendorSku", label: "Vendor Part #" },
+	{ key: "estimatedCost", label: "Est. Cost to Reorder" },
 ];
 
 // Label + tone for the server-computed reorder verdict. The row already CARRIES

@@ -5,11 +5,12 @@ import {
 	updateJobNoteSchema,
 } from "../lib/validate/jobs.js";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { createNotification } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
-import { signImageUrl, toRawUrl } from "../services/wasabiService.js";
+import { signImageUrl, deleteFile } from "../services/wasabiService.js";
 
 type NoteLike = { photos?: { photo_url: string }[] | null } | null | undefined;
 
@@ -276,6 +277,9 @@ export const updateJobNote = async (
 			"visit_id",
 		] as const);
 
+		// Wasabi objects for photos dropped from the note; deleted best-effort
+		// after the transaction commits so a storage hiccup can't fail the update.
+		const removedPhotoUrls: string[] = [];
 		const updated = await sdb.$transaction(async (tx) => {
 			const updateData: Prisma.job_noteUpdateInput = {
 				updated_at: new Date(),
@@ -313,14 +317,15 @@ export const updateJobNote = async (
 			if (parsed.photos !== undefined) {
 				const existingPhotos = await tx.job_note_photo.findMany({
 					where: { note_id: noteId},
-					select: { id: true },
+					select: { id: true, photo_url: true },
 				});
 				const incomingPhotos = new Set(parsed.photos.filter((p) => p.id).map((p) => p.id!));
-				const photosToDelete = existingPhotos.map((p) => p.id).filter((id) => !incomingPhotos.has(id));
+				const photosToDelete = existingPhotos.filter((p) => !incomingPhotos.has(p.id));
 				if (photosToDelete.length > 0){
 					await tx.job_note_photo.deleteMany({
-						where: { id: { in: photosToDelete }}
+						where: { id: { in: photosToDelete.map((p) => p.id) }}
 					});
+					removedPhotoUrls.push(...photosToDelete.map((p) => p.photo_url));
 				}
 
 				const photosToCreate = parsed.photos.filter((p) => !p.id);
@@ -361,6 +366,11 @@ export const updateJobNote = async (
 		});
 
 		if (!updated) return { err: "Failed to update note" };
+		for (const url of removedPhotoUrls) {
+			deleteFile(url).catch((err) =>
+				log.warn({ err, url, noteId }, "Failed to delete removed job note photo from storage"),
+			);
+		}
 		const signed = await signNotePhotos(updated);
 		return { err: "", item: signed };
 	} catch (e) {
@@ -412,6 +422,7 @@ export const deleteJobNote = async (
 					content: { old: existing.content, new: null },
 					job_id: { old: existing.job_id, new: null },
 					visit_id: { old: existing.visit_id, new: null },
+					...parentBreadcrumb("job", existing.job_id),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,

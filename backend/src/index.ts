@@ -22,7 +22,7 @@ import {
 } from "./controllers/authenticationController.js";
 import { verifyOTP } from "./services/otpServce.js";
 import { log } from "./services/appLogger.js";
-import { getScopedDb } from "./lib/context.js";
+import { recentActivityRoute } from "./controllers/logsController.js";
 import {
 	httpMetricsMiddleware,
 	prometheusExporter,
@@ -51,6 +51,8 @@ import quotesRouter from "./routes/quotes.js";
 import recurringPlansRouter from "./routes/recurringPlans.js";
 import reportsRouter from "./routes/reports.js";
 import requestsRouter from "./routes/requests.js";
+import suppliersRouter from "./routes/suppliers.js";
+import supplierItemsRouter from "./routes/supplierItems.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
@@ -534,6 +536,12 @@ app.use("/email", verifyToken, emailRouter);
 // ============================================
 app.use("/inventory", verifyToken, inventoryRouter);
 
+// ============================================
+// SUPPLIERS (vendor origin for purchased stock)
+// ============================================
+app.use("/suppliers", verifyToken, suppliersRouter);
+app.use("/supplier-items", verifyToken, supplierItemsRouter);
+
 // ── Org settings ─────────────────────────────────────────────────────────────
 app.use("/org", verifyToken, orgRouter);
 
@@ -578,44 +586,9 @@ app.use("/", verifyToken, clientsContactsRouter);
 // ACTIVITY FEED
 // ============================================================
 
-app.get("/logs/recent", async (req, res, next) => {
-	try {
-		const limit = Math.min(Number(req.query.limit) || 25, 50);
-		const cursor = req.query.cursor as string | undefined;
-		const userId = req.query.userId as string | undefined;
-		const orgId = req.user!.organization_id as string;
-		const sdb = getScopedDb(orgId);
-		const FEED_EVENTS = [
-			"job.created",
-			"job_visit.created",
-			"job_visit.updated",
-			"job_visit.technicians_assigned",
-			"request.created",
-			"request.updated",
-			"quote.created",
-			"quote.updated",
-			"invoice.created",
-			"invoice.updated",
-			"invoice_payment.created",
-			"recurring_plan.created",
-			"recurring_occurrence.generated",
-			"technician.updated",
-		];
-		const logs = await sdb.log.findMany({
-			where: {
-				event_type: { in: FEED_EVENTS },
-				...(cursor ? { timestamp: { lt: new Date(cursor) } } : {}),
-				...(userId ? { OR: [{ actor_id: userId }, { entity_id: userId }]} : {}),
-			},
-			orderBy: { timestamp: "desc" },
-			take: limit,
-		});
-		const hasMore = logs.length === limit;
-		res.json(createSuccessResponse(logs, { count: logs.length, hasMore }));
-	} catch (err) {
-		next(err);
-	}
-});
+// Access rules (self / view_* permission / no technicians on the org-wide
+// feed) live in logsController.requireFeedAccess.
+app.get("/logs/recent", verifyToken, ...recentActivityRoute);
 app.use(notFoundHandler);
 app.use(errorHandler);
 

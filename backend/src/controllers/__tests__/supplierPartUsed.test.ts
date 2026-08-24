@@ -290,6 +290,23 @@ describe("addSupplierPartUsed", () => {
 		expect(mockRecordMovements).not.toHaveBeenCalled();
 	});
 
+	it("rejects a qty_used with more than 2 decimal places (numeric(10,2) ledger)", async () => {
+		makeSdb();
+		mockTechOnVehicle();
+
+		const result = await addSupplierPartUsed(
+			VEHICLE_ID,
+			VISIT_ID,
+			{ technician_id: TECH_ID, qty_used: 0.125, inventory_item_id: INV_ITEM_ID },
+			ORG_ID,
+			TECH_CONTEXT,
+		);
+
+		expect(result.err).toMatch(/validation failed/i);
+		expect(result.err).toMatch(/decimal places/);
+		expect(mockRecordMovements).not.toHaveBeenCalled();
+	});
+
 	it("rejects negative qty_used", async () => {
 		makeSdb();
 		mockTechOnVehicle();

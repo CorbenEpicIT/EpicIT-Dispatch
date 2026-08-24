@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 export const linkQBItemSchema = z.object({
-    inventory_item_id: z.string().uuid(),
-    qb_item_id: z.string().min(1),
+	inventory_item_id: z.string().uuid(),
+	qb_item_id: z.string().min(1),
+});
+
+export const linkQBVendorSchema = z.object({
+	supplier_id: z.string().uuid(),
+	qb_vendor_id: z.string().min(1),
 });

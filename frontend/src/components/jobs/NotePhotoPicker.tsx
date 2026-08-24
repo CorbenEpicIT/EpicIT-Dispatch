@@ -1,11 +1,36 @@
 import { useRef, useState } from "react";
 import { X, Camera, Loader2 } from "lucide-react";
+import axios from "axios";
 import { useUploadNotePhotoMutation } from "../../hooks/useJobs";
 import type { NotePhoto, JobNotePhoto } from "../../types/jobs";
 import ImageCarousel from "../inventory/ImageCarousel";
 
 const PHOTO_LABELS = ["Before", "After", "Other"] as const;
 type PhotoLabel = (typeof PHOTO_LABELS)[number];
+
+// Mirrors backend/src/lib/upload.ts (noteImageUpload): jpeg/png/webp, 5MB.
+const NOTE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const NOTE_PHOTO_ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+
+/** Client-side pre-check so a rejected file never leaves the device; null when OK. */
+const validateNotePhoto = (file: Pick<File, "size" | "type">): string | null => {
+	if (!(NOTE_PHOTO_ACCEPTED_TYPES as readonly string[]).includes(file.type)) {
+		return "Unsupported file type. Please choose a JPEG, PNG, or WebP image.";
+	}
+	if (file.size > NOTE_PHOTO_MAX_BYTES) {
+		return `Photo is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum size is 5 MB.`;
+	}
+	return null;
+};
+
+const uploadErrorMessage = (err: unknown): string => {
+	if (axios.isAxiosError(err)) {
+		const serverMessage = err.response?.data?.error?.message;
+		if (typeof serverMessage === "string" && serverMessage) return serverMessage;
+	}
+	if (err instanceof Error && err.message) return err.message;
+	return "Upload failed. Please try again.";
+};
 
 interface NotePhotoPickerProps {
 	jobId: string;
@@ -14,6 +39,12 @@ interface NotePhotoPickerProps {
 	disabled?: boolean;
 	existingPhotos?: JobNotePhoto[];
 	onRemoveExisting?: (id: string) => void;
+	/**
+	 * Passed through to the file input. Defaults to "environment" (rear camera on
+	 * mobile) because the technician note modal relies on it; dispatcher callers can
+	 * pass `capture={false}` to get a plain file picker.
+	 */
+	capture?: "environment" | "user" | false;
 }
 
 export default function NotePhotoPicker({
@@ -23,6 +54,7 @@ export default function NotePhotoPicker({
 	disabled,
 	existingPhotos,
 	onRemoveExisting,
+	capture = "environment",
 }: NotePhotoPickerProps) {
 	const [pendingFile, setPendingFile] = useState<File | null>(null);
 	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
@@ -39,6 +71,12 @@ export default function NotePhotoPicker({
 		e.target.value = "";
 		if (!file) return;
 
+		const validationError = validateNotePhoto(file);
+		if (validationError) {
+			setUploadError(validationError);
+			return;
+		}
+
 		setUploadError(null);
 		setIsUploading(true);
 		setLabelPickerOpen(true);
@@ -48,8 +86,8 @@ export default function NotePhotoPicker({
 		try {
 			const res = await uploadMutation.mutateAsync({ jobId, file });
 			setPendingUpload(res);
-		} catch {
-			setUploadError("Upload failed. Please try again.");
+		} catch (err) {
+			setUploadError(uploadErrorMessage(err));
 			setLabelPickerOpen(false);
 			setPendingFile(null);
 		} finally {
@@ -153,8 +191,8 @@ export default function NotePhotoPicker({
 			<input
 				ref={fileInputRef}
 				type="file"
-				accept="image/*"
-				capture="environment"
+				accept={NOTE_PHOTO_ACCEPTED_TYPES.join(",")}
+				{...(capture ? { capture } : {})}
 				className="hidden"
 				onChange={handleFileChange}
 			/>

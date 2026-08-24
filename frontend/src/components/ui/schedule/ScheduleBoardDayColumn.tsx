@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useMemo } from "react";
+﻿import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleBoardCard, { type AssignedTech } from "./ScheduleBoardCard";
@@ -15,6 +15,7 @@ import {
 	visitEndLabel,
 	visitConstraintTimeLabel,
 	getPriorityColor,
+	getAnchoredPopupPos,
 	SLOT_H,
 	DAY_START,
 	DAY_END,
@@ -26,10 +27,12 @@ import type { Technician } from "../../../types/technicians";
 import type { OccurrenceWithPlan, VisitWithJob } from "./dashboardCalendarUtils";
 import type { RescheduleOccurrenceInput, VisitGenerationResult } from "../../../types/recurringPlans";
 import { useVehicleStockConflictsQuery } from "../../../hooks/useVehicleStock";
+import { getSharedDragOffset, setSharedDragOffset } from "./scheduleBoardDragState";
+
+// Approximate rendered height of VisitClickPopup — used to keep it inside the viewport.
+const VISIT_POPUP_H = 240;
 
 // Shared across all column instances — only one drag is ever active at a time.
-let sharedDragOffsetY = 0;
-export function setSharedDragOffset(v: number) { sharedDragOffsetY = v; }
 let sharedDraggedVisit: VisitWithJob | null = null;
 let sharedDraggedOccurrence: OccurrenceWithPlan | null = null;
 
@@ -294,7 +297,7 @@ export default function ScheduleBoardDayColumn({
 			const columnTop = columnRef.current.getBoundingClientRect().top;
 			const cardTop   = calcCardTop(visit);
 			dragOffsetY.current = (e.clientY - columnTop) - cardTop;
-			sharedDragOffsetY   = dragOffsetY.current;
+			setSharedDragOffset(dragOffsetY.current);
 		}
 		e.dataTransfer.setData(
 			"text/plain",
@@ -334,7 +337,7 @@ export default function ScheduleBoardDayColumn({
 			const columnTop = columnRef.current.getBoundingClientRect().top;
 			const cardTop   = calcTopFromDatetime(occ.occurrence_start_at);
 			dragOffsetY.current = (e.clientY - columnTop) - cardTop;
-			sharedDragOffsetY   = dragOffsetY.current;
+			setSharedDragOffset(dragOffsetY.current);
 		}
 		e.dataTransfer.setData(
 			"text/plain",
@@ -361,7 +364,7 @@ export default function ScheduleBoardDayColumn({
 		e.dataTransfer.dropEffect = "move";
 		if (!columnRef.current) return;
 		const rect = columnRef.current.getBoundingClientRect();
-		const y = e.clientY - rect.top - sharedDragOffsetY;
+		const y = e.clientY - rect.top - getSharedDragOffset();
 		setDragOverMinutes(snapTo15Min((y / SLOT_H) * 60));
 	}
 
@@ -400,7 +403,7 @@ export default function ScheduleBoardDayColumn({
 		}
 
 		const rect = columnRef.current.getBoundingClientRect();
-		const y = e.clientY - rect.top - sharedDragOffsetY;
+		const y = e.clientY - rect.top - getSharedDragOffset();
 		const snappedMins = snapTo15Min((y / SLOT_H) * 60);
 		const clampedMins = Math.max(0, Math.min(snappedMins, (DAY_END - DAY_START) * 60));
 		const [year, month, day] = dateStr.split("-").map(Number);
@@ -459,7 +462,7 @@ export default function ScheduleBoardDayColumn({
 		}
 
 		// ── Visit drag ────────────────────────────────────────────────────────
-		const { visitId, arrival_constraint, arrival_time, arrival_window_start, arrival_window_end } = parsed;
+		const { visitId, arrival_constraint, arrival_window_start, arrival_window_end } = parsed;
 		const newHHMM = minsToHHMM(clampedMins);
 
 		const data: UpdateJobVisitInput = {
@@ -647,6 +650,36 @@ export default function ScheduleBoardDayColumn({
 
 	// Popup goes right for columns 0–3, left for columns 4–6
 	const popupOnLeft = dayIndex >= 4;
+
+	// VisitClickPopup renders through a portal on document.body, so it needs viewport
+	// coordinates. Recomputed on scroll/resize so it stays beside its card.
+	const clickedCardTop = clickedVisit ? calcCardTop(clickedVisit) : null;
+	const [visitPopupPos, setVisitPopupPos] = useState<{ top: number; left: number } | null>(null);
+	useLayoutEffect(() => {
+		if (clickedCardTop === null) {
+			setVisitPopupPos(null);
+			return;
+		}
+		function reposition() {
+			const col = columnRef.current;
+			if (!col || clickedCardTop === null) return;
+			const colRect = col.getBoundingClientRect();
+			const next = getAnchoredPopupPos(
+				{ left: colRect.left, right: colRect.right, top: colRect.top + clickedCardTop },
+				{ popupH: VISIT_POPUP_H },
+			);
+			setVisitPopupPos((prev) =>
+				prev && prev.top === next.top && prev.left === next.left ? prev : next
+			);
+		}
+		reposition();
+		window.addEventListener("scroll", reposition, true); // capture: inner scroll containers too
+		window.addEventListener("resize", reposition);
+		return () => {
+			window.removeEventListener("scroll", reposition, true);
+			window.removeEventListener("resize", reposition);
+		};
+	}, [clickedCardTop, colWidth]);
 
 	const dropIndicatorTop =
 		dragOverMinutes !== null
@@ -938,18 +971,16 @@ export default function ScheduleBoardDayColumn({
 				})}
 
 				{/* Visit click popup */}
-				{clickedVisit && (
+				{clickedVisit && visitPopupPos && (
 					<VisitClickPopup
 						visit={clickedVisit}
 						popupRef={popupRef}
 						technicians={technicians}
 						techColorMap={techColorMap}
 						style={{
-							position: "absolute",
-							top: Math.min(calcCardTop(clickedVisit), columnHeight - 240),
-							...(popupOnLeft
-								? { right: colWidth + 4 }
-								: { left: colWidth + 4 }),
+							position: "fixed",
+							top: visitPopupPos.top,
+							left: visitPopupPos.left,
 						}}
 						onClose={() => setClickedCardId(null)}
 						onViewVisit={() => navigate(`/dispatch/jobs/${clickedVisit.job_obj.id}/visits/${clickedVisit.id}`)}

@@ -29,7 +29,7 @@ import {
     requirePermissionOrSelf,
     requireAnyPermissionOrSelf
 } from '../lib/requirePermissions.js';
-import { getActorHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getActorHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -430,7 +430,14 @@ router.get("/:id/changes", requirePermissionOrSelf("view_technicians"), async (r
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
-        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
 
         const results = await getActorHistory(orgId, "technician", id, limit);
 

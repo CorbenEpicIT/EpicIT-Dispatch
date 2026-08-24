@@ -395,6 +395,11 @@ export const assignOrgRole = async (
 		if (roleId && !role) {
 			return { err: "Role not found" };
 		}
+		if (role && role.base_tier !== userType) {
+			return {
+				err: `Role "${role.name}" is a ${role.base_tier} role and cannot be assigned to a ${userType}`,
+			};
+		}
 
 		const targetUser = userType === "technician"
 			? await sdb.technician.findFirst({ where: { id: userId } })

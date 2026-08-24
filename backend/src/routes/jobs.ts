@@ -6,7 +6,7 @@ import {
 } from "../types/responses.js";
 import { getUserContext } from '../lib/context.js';
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
-import { getEntityHistory, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getEntityHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 import {
     getAllJobs,
     getJobById,
@@ -728,7 +728,14 @@ router.get("/:jobId/changes", requirePermission("view_jobs"),  async (req, res, 
     try {
         const jobId = req.params.jobId as string;
         const orgId = req.user!.organization_id as string;
-        const limit = Math.min(Number(req.query.limit) || DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT);
+        let limit: number;
+        try {
+            limit = parseHistoryLimit(req.query.limit);
+        } catch {
+            return res
+                .status(400)
+                .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+        }
 
         const results = await getEntityHistory(orgId, "job", jobId, limit);
 

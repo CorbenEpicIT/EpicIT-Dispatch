@@ -10,8 +10,11 @@ import type {
     QBInvoiceImportResult, 
     QBInvoicePrefill,
     QBProfitAndLossQuery,
-    QBProfitAndLossReport
+    QBProfitAndLossReport,
+    QBVendorLite,
+    MappedQBVendor
 } from "../types/quickbooks";
+import type { Supplier } from "../types/suppliers";
  
 export const getQBStatus = async (): Promise<{ connected: boolean; realmId?: string }> => {
     const response = await api.get<ApiResponse<{ connected: boolean; realmId?: string }>>(`/integrations/quickbooks/connection`);
@@ -72,6 +75,8 @@ export const getQBMappedItems = async (): Promise<MappedQBItem[]> => {
 
 export const linkQBItem = async (inventory_item_id: string, qb_item_id:string) => {
     const response = await api.post<ApiResponse<{linked: boolean}>>(`integrations/quickbooks/item-mappings`, {inventory_item_id, qb_item_id});
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to link QB item");
+    return response.data.data!;
 }
 
 export const unlinkQBItem = async (inventory_item_id: string) => {
@@ -89,6 +94,42 @@ export const importQBItem = async (qb_item_id: string): Promise<ImportQBItemResu
 export const pushQBItem = async (itemId: string) => {
     const response = await api.post<ApiResponse<{pushed: boolean}>>(`integrations/quickbooks/items/${itemId}/push`);
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to push QB item");
+    return response.data.data!;
+}
+
+export const getQBVendors = async (): Promise<QBVendorLite[]> => {
+    const response = await api.get<ApiResponse<QBVendorLite[]>>("integrations/quickbooks/vendors");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB vendors");
+    return response.data.data!;
+}
+
+export const getQBMappedVendors = async (): Promise<MappedQBVendor[]> => {
+    const response = await api.get<ApiResponse<MappedQBVendor[]>>("integrations/quickbooks/vendors/mappings");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get mapped QB vendors");
+    return response.data.data!;
+}
+
+export const linkQBVendor = async (supplier_id: string, qb_vendor_id: string) => {
+    const response = await api.post<ApiResponse<{linked: boolean}>>("integrations/quickbooks/vendor-mappings", {supplier_id, qb_vendor_id});
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to link QB vendor");
+    return response.data.data!;
+}
+
+export const unlinkQBVendor = async (supplier_id: string) => {
+    const response = await api.delete<ApiResponse<{unlinked: boolean}>>(`integrations/quickbooks/vendor-mappings/${supplier_id}`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to unlink QB vendor");
+    return response.data.data!;
+}
+
+export const importQBVendor = async (qb_vendor_id: string) => {
+    const response = await api.post<ApiResponse<{ supplier: Supplier; linkedExisting: boolean }>>(`integrations/quickbooks/vendors/${qb_vendor_id}/import`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to import QB vendor");
+    return response.data.data!;
+}
+
+export const pushQBVendor = async (supplierId: string) => {
+    const response = await api.post<ApiResponse<{pushed: boolean; qb_vendor_id: string}>>(`integrations/quickbooks/vendors/${supplierId}/push`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to push supplier to QB");
     return response.data.data!;
 }
 

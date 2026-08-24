@@ -1,5 +1,6 @@
 import { db } from "../db.js";
 import { getSocket } from "./socketService.js";
+import { redactFeedRow } from "../controllers/logsController.js";
 
 const FEED_EVENTS = new Set([
 	"job.created",
@@ -95,7 +96,8 @@ export const logActivity = async (params: LogActivityParams) => {
 
 		if (FEED_EVENTS.has(params.event_type) && created.organization_id) {
 			try {
-				getSocket().to(`org:${created.organization_id}`).emit("activity-event", created);
+				// Same PII redaction as GET /logs/recent — the socket room is org-wide.
+				getSocket().to(`org:${created.organization_id}`).emit("activity-event", redactFeedRow(created));
 			} catch {
 				// socket not yet initialized — skip emission
 			}

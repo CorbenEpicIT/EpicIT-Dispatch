@@ -148,10 +148,22 @@ describe("adjustStock", () => {
 		expect(result.err).toMatch(/Validation failed/);
 	});
 
-	it("rejects fractional qty_after on warehouse_exchange", async () => {
+	// inventory_item.quantity is numeric(10,2) like every other qty column, so a
+	// fractional warehouse exchange is a storable movement; the old whole-number
+	// gate dated from when the warehouse column was Int. The ledger's real bound
+	// (2 decimal places) still applies.
+	it("allows fractional qty_after on warehouse_exchange (warehouse qty is numeric(10,2))", async () => {
 		makeSdb([STOCK_ITEM]);
 		const result = await adjustStock("vehicle-1", { type: "warehouse_exchange", lines: [{ stock_item_id: STOCK_ITEM_UUID, qty_after: 2.5 }] }, "org-1", CONTEXT);
+		expect(result.err).toBeUndefined();
+	});
+
+	it("rejects a qty_after with more than 2 decimal places with a clear validation error", async () => {
+		makeSdb([STOCK_ITEM]);
+		const result = await adjustStock("vehicle-1", { type: "audit", lines: [{ stock_item_id: STOCK_ITEM_UUID, qty_after: 2.555 }] }, "org-1", CONTEXT);
 		expect(result.err).toMatch(/Validation failed/);
+		expect(result.err).toMatch(/decimal places/);
+		expect(mockRecordMovements).not.toHaveBeenCalled();
 	});
 
 	it("allows fractional qty_after on non-warehouse types", async () => {

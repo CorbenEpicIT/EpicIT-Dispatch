@@ -23,7 +23,7 @@ import type { SortDir } from "../../util/sortUtil";
 import { 
 	withDir,
 	compareByOrder,
-	compareDate,
+	compareDateNullsLast,
 	comparePriority
 } from "../../util/sortUtil";
 
@@ -61,7 +61,8 @@ export default function RequestsPage() {
 	const { terms, addTerm, removeTerm, duplicateTerm } = useMultiSearch("search");
 	const { removeTerm: removeStatus } = useMultiSearch("status");
 	const { removeTerm: removePriority } = useMultiSearch("priority");
-	const termsKey = terms.join("");
+	// Collision-free memo key (["ab"] vs ["a","b"] must differ)
+	const termsKey = JSON.stringify(terms);
 
 	const queryParams = new URLSearchParams(location.search);
 	const clientFilter = queryParams.get("client");
@@ -135,7 +136,7 @@ export default function RequestsPage() {
 				: sortParam === "status"
 				? withDir((a, b) => compareByOrder(a.status, b.status, RequestStatusValues), dir)
 				: sortParam === "date"
-				? withDir((a, b) => compareDate(a.created_at, b.created_at), dir)
+				? (a, b) => compareDateNullsLast(dir)(a.created_at, b.created_at)
 				: (a, b) => {
 					// default: status, then priority (Emergency first)
 					const statusDiff = compareByOrder(a.status, b.status, RequestStatusValues);

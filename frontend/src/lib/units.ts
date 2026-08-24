@@ -747,13 +747,34 @@ export function normalizeUnitCode(raw: unknown): UnitCode | null {
 }
 
 /**
- * The definition for a stored unit value. Never throws: a legacy row holding an
- * unrecognized string, or a nullable forecast field, degrades to the `each`
- * definition so the surface still renders a sensible quantity instead of
- * interpolating "null" or crashing.
+ * A stored unit outside the catalog — a pre-catalog freetext value such as
+ * "gallon" that no alias maps onto. Rendered VERBATIM: the row's quantity means
+ * what that string says, and re-reading it as `each` (the old fallback) is the
+ * same silent re-denomination the stamped ledger unit exists to prevent.
+ * `label`/`singular`/`plural` are all the raw string, since nothing is known
+ * about it. Carries `legacy` so a surface can offer a catalog pick.
  */
-export function unitDef(code: string | null | undefined): UnitDef {
-	return UNITS[normalizeUnitCode(code) ?? DEFAULT_UNIT_CODE];
+export interface LegacyUnitDef {
+	code: string;
+	label: string;
+	singular: string;
+	plural: string;
+	legacy: true;
+}
+
+/**
+ * The definition for a stored unit value. Never throws. Catalog codes and their
+ * aliases resolve to the catalog definition; a nullable/blank value (e.g. the
+ * nullable forecast field) degrades to `each` so the surface still renders a
+ * sensible quantity instead of interpolating "null"; anything else is a legacy
+ * string and comes back as a verbatim `LegacyUnitDef`.
+ */
+export function unitDef(code: string | null | undefined): UnitDef | LegacyUnitDef {
+	const normalized = normalizeUnitCode(code);
+	if (normalized) return UNITS[normalized];
+	const raw = typeof code === "string" ? code.trim() : "";
+	if (!raw) return UNITS[DEFAULT_UNIT_CODE];
+	return { code: raw, label: raw, singular: raw, plural: raw, legacy: true };
 }
 
 /**

@@ -101,7 +101,7 @@ const AdaptableTable = ({
 				{
 					header: actionColumn.header,
 					id: 'actions',
-					cell: ({ row }: any) => actionColumn.cell(row.original),
+					cell: ({ row }) => actionColumn.cell(row.original),
 				},
 			] satisfies ColumnDef<Record<string, unknown>>[];
 		}

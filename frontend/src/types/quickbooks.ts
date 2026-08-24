@@ -17,6 +17,30 @@ export interface MappedQBItem {
     external_id: string;
 }
 
+// Mirrors QBVendorRow in backend/src/services/qb/qbVendors.ts.
+export interface QBVendorLite {
+    Id: string;
+    DisplayName: string;
+    CompanyName?: string;
+    AcctNum?: string;
+    PrimaryPhone?: { FreeFormNumber?: string };
+    PrimaryEmailAddr?: { Address?: string };
+    Active?: boolean;
+    /** Set when this QBO vendor already maps to one of our suppliers. */
+    linkedSupplierId: string | null;
+    /**
+     * An unlinked supplier with the same normalized name. Offered so the operator
+     * links what they already have instead of importing a second copy of it.
+     */
+    suggestedSupplierId: string | null;
+    suggestedSupplierName: string | null;
+}
+
+export interface MappedQBVendor {
+    supplier_id: string;
+    external_id: string;
+}
+
 export interface ImportQBItemResult{
     item: InventoryItem;
     warning?: string;

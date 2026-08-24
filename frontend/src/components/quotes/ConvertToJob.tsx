@@ -3,7 +3,7 @@ import FullPopup from "../ui/FullPopup";
 import { type CreateJobInput } from "../../types/jobs";
 import { PriorityValues } from "../../types/common";
 import type { Quote } from "../../types/quotes";
-import type { GeocodeResult } from "../../types/location";
+import type { Coordinates, GeocodeResult } from "../../types/location";
 import Dropdown from "../ui/Dropdown";
 import AddressForm from "../ui/AddressForm";
 import { RotateCcw } from "lucide-react";
@@ -34,7 +34,7 @@ export default function ConvertToJob({
 		description: "",
 		priority: "Medium" as (typeof PriorityValues)[number],
 		address: "",
-		coords: undefined as any,
+		coords: undefined as Coordinates | undefined,
 	});
 
 	const [dirty, setDirty] = useState<Record<string, boolean>>({});
@@ -73,8 +73,8 @@ export default function ConvertToJob({
 		const initialName = quote.title ?? "";
 		const initialDesc = quote.description ?? "";
 		const initialPriority = (
-			PriorityValues.includes(quote.priority as any)
-				? (quote.priority as any)
+			PriorityValues.includes(quote.priority)
+				? quote.priority
 				: "Medium"
 		) as (typeof PriorityValues)[number];
 		const initialAddress = quote.address ?? "";

@@ -174,12 +174,6 @@ export const TECHNICIAN_CATALOG = [
 			{ id: "use_vehicles", label: "Use Vehicles" },
 		],
 	},
-	{
-		category: "Projects",
-		permissions: [
-			{ id: "view_projects", label: "View Projects" },
-		],
-	},
 ] as const;
 
 export const PERMISSION_CATALOGS = {

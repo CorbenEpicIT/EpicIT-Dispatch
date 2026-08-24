@@ -1,24 +1,9 @@
 import {api} from "./axiosClient";
 import type { CreateProjectInput, Project, UpdateProjectInput } from "../types/project";
 
-interface ProjectMutationPayload {
-    err?: string;
-    project?: Project;
-}
-
-const unwrapProject = (
-    payload: ProjectMutationPayload | null | undefined,
-    fallback: string,
-): Project => {
-    if (payload?.err) throw new Error(payload.err);
-    if (!payload?.project) throw new Error(fallback);
-    return payload.project;
-};
-
-const assertNoError = (payload: ProjectMutationPayload | null | undefined) => {
-    if (payload?.err) throw new Error(payload.err);
-};
-
+// Mutations respond with non-2xx on validation / not-found / conflict, so axios
+// throws; re-throw the server's own message rather than "Request failed with
+// status code 4xx".
 const rethrowServerMessage = (err: unknown): never => {
     const message = (err as { response?: { data?: { error?: { message?: string } } } })
         ?.response?.data?.error?.message;
@@ -43,31 +28,39 @@ export const getProjectById = async (projectId: string): Promise<Project> => {
 };
 
 export const createProject = async (projectData: CreateProjectInput): Promise<Project> => {
-    const response = await api.post("/projects", projectData);
-    if (!response.data.success) {
-        throw new Error(response.data.error?.message || "Failed to create project");
+    try {
+        const response = await api.post("/projects", projectData);
+        if (!response.data.success || !response.data.data) {
+            throw new Error(response.data.error?.message || "Failed to create project");
+        }
+        return response.data.data;
+    } catch (err) {
+        return rethrowServerMessage(err);
     }
-    return unwrapProject(response.data.data, "Failed to create project");
 };
 
 export const updateProject = async (
     projectId: string,
     projectData: UpdateProjectInput,
 ): Promise<Project> => {
-    const response = await api.put(`/projects/${projectId}`, projectData);
-    if (!response.data.success) {
-        throw new Error(response.data.error?.message || "Failed to update project");
+    try {
+        const response = await api.put(`/projects/${projectId}`, projectData);
+        if (!response.data.success || !response.data.data) {
+            throw new Error(response.data.error?.message || "Failed to update project");
+        }
+        return response.data.data;
+    } catch (err) {
+        return rethrowServerMessage(err);
     }
-    return unwrapProject(response.data.data, "Failed to update project");
 };
 
 export const attachJobToProject = async (projectId: string, jobId: string): Promise<Project> => {
     try {
-        const response = await api.post(`/projects/${projectId}/jobs/${jobId}`, { jobId });
-        if (!response.data.success) {
+        const response = await api.post(`/projects/${projectId}/jobs/${jobId}`);
+        if (!response.data.success || !response.data.data) {
             throw new Error(response.data.error?.message || "Failed to attach job to project");
         }
-        return unwrapProject(response.data.data, "Failed to attach job to project");
+        return response.data.data;
     } catch (err) {
         return rethrowServerMessage(err);
     }
@@ -79,16 +72,18 @@ export const detachJobFromProject = async (projectId: string, jobId: string): Pr
         if (!response.data.success) {
             throw new Error(response.data.error?.message || "Failed to detach job from project");
         }
-        assertNoError(response.data.data);
     } catch (err) {
         rethrowServerMessage(err);
     }
 };
 
 export const deleteProject = async (projectId: string): Promise<void> => {
-    const response = await api.delete(`/projects/${projectId}`);
-    if (!response.data.success) {
-        throw new Error(response.data.error?.message || "Failed to delete project");
+    try {
+        const response = await api.delete(`/projects/${projectId}`);
+        if (!response.data.success) {
+            throw new Error(response.data.error?.message || "Failed to delete project");
+        }
+    } catch (err) {
+        rethrowServerMessage(err);
     }
-    assertNoError(response.data.data);
 };

@@ -1,8 +1,11 @@
 import {
+	useInfiniteQuery,
 	useMutation,
 	useQuery,
 	useQueryClient,
 	keepPreviousData,
+	type InfiniteData,
+	type UseInfiniteQueryResult,
 	type UseMutationResult,
 	type UseQueryResult,
 } from "@tanstack/react-query";
@@ -59,16 +62,22 @@ export const useInventoryItemQuery = (
 };
 
 // Cursor-paginated stock-movement ledger for the detail page's history section.
-// keepPreviousData keeps the current page visible while the next one loads, so
-// the "Load more" button doesn't flash the list back to a spinner.
+// An infinite query, not one query per cursor: the pages are owned by the
+// cache, so "Load more" can't append a page twice and a range change can't
+// pair the old result set's cursor with the new filter (the old per-cursor
+// query + accumulate-in-state pattern did both — review U1). keepPreviousData
+// keeps the current pages visible while a new range's first page loads, so
+// the range control doesn't flash the list back to a spinner.
 export const useInventoryMovementsQuery = (
 	itemId: string | undefined,
-	cursor?: string,
 	opts?: { createdAfter?: string },
-): UseQueryResult<MovementsPage, Error> => {
-	return useQuery({
-		queryKey: [...qk.inventory.movements(itemId ?? "", opts), cursor ?? "first"],
-		queryFn: () => inventoryApi.getInventoryMovements(itemId!, cursor, undefined, opts?.createdAfter),
+): UseInfiniteQueryResult<InfiniteData<MovementsPage, string | undefined>, Error> => {
+	return useInfiniteQuery({
+		queryKey: qk.inventory.movements(itemId ?? "", opts),
+		queryFn: ({ pageParam }) =>
+			inventoryApi.getInventoryMovements(itemId!, pageParam, undefined, opts?.createdAfter),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (last) => last.nextCursor ?? undefined,
 		enabled: !!itemId,
 		placeholderData: keepPreviousData,
 	});
@@ -76,14 +85,25 @@ export const useInventoryMovementsQuery = (
 
 // ── History & Reports tab (item detail page) ─────────────────────────────────
 
-// Offset-paginated usage report — jobs/clients this item was consumed on.
+// Offset-paginated usage report — jobs/clients this item was consumed on. Same
+// infinite-query shape as the movements ledger, keyed on offset instead of a
+// cursor (these are GROUP BY aggregate rows with no stable row id).
 export const useItemUsageQuery = (
 	itemId: string | undefined,
-	opts?: { limit?: number; offset?: number },
-): UseQueryResult<ItemUsage, Error> => {
-	return useQuery({
+	opts?: { limit?: number; createdAfter?: string },
+): UseInfiniteQueryResult<InfiniteData<ItemUsage, number>, Error> => {
+	const limit = opts?.limit;
+	return useInfiniteQuery({
 		queryKey: qk.inventory.usage(itemId ?? "", opts),
-		queryFn: () => inventoryApi.getItemUsage(itemId!, opts),
+		queryFn: ({ pageParam }) =>
+			inventoryApi.getItemUsage(itemId!, {
+				limit,
+				offset: pageParam,
+				createdAfter: opts?.createdAfter,
+			}),
+		initialPageParam: 0,
+		getNextPageParam: (last, pages) =>
+			last.hasMore ? pages.reduce((n, p) => n + p.usage.length, 0) : undefined,
 		enabled: !!itemId,
 		placeholderData: keepPreviousData,
 	});
@@ -283,6 +303,10 @@ export const useUpdateInventoryTagMutation = (): UseMutationResult<
 		mutationFn: ({ tagId, label }) => inventoryApi.updateInventoryTag(tagId, label),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: qk.inventory.tags });
+			// Item lists/details cache each tag's label at fetch time (item.tags[].label),
+			// not a live join against the tags query — a rename left those showing the old
+			// label until an unrelated refetch, same gap delete already closes below.
+			invalidate.warehouse(queryClient);
 		},
 	});
 };

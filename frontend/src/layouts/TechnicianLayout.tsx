@@ -6,7 +6,7 @@ import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
 import { useSocketQuerySync } from "../hooks/useSocketQuerySync";
 import type { TechnicianNotification } from "../types/notifications";
-import { usePermission, useAnyPermission } from "../hooks/usePermission";
+import { usePermission } from "../hooks/usePermission";
 import TechnicianUserMenu from "../components/nav/TechnicianUserMenu";
 import ToastViewport from "../components/ui/ToastViewport";
 

@@ -18,7 +18,7 @@ import { useLineItems } from "../../hooks/forms/useLineItems";
 import { useFinancialCalculations } from "../../hooks/forms/useFinancialCalculations";
 import { useTaxGroups, useDefaultTaxGroup } from "../../hooks/useTaxGroups";
 import { useQBStatusQuery, useImportableQBInvoicesQuery, useQBInvoicePrefillQuery } from "../../hooks/useQuickbooks";
-import { X, Briefcase, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 
 type Step = 1 | 2 | 3;
 
@@ -70,7 +70,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 	const [paymentTermsDays, setPaymentTermsDays] = useState<string>("");
 	const [dueDate, setDueDate] = useState<Date | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
-	const [isDirty, setIsDirty] = useState(false);
+	const [, setIsDirty] = useState(false);
 	const [qbSearchOpen, setQbSearchOpen] = useState(false);
 	const [selectedQBInvoice, setSelectedQBInvoice] = useState<string | null>(null);
 	// Tracks whether a source picker or other inner input was recently focused,

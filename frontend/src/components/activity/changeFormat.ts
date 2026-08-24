@@ -1,4 +1,4 @@
-import { Ban, History, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink } from "lucide-react";
+import { History, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
 import type React from "react";
 import type { ActivityLog } from "../../types/logs";
 
@@ -7,6 +7,7 @@ export type ChangeRow = {
 	label: string;
 	from: string;
 	to: string;
+	refType?: RefType;
 };
 
 export type ChangeEntry = {
@@ -32,7 +33,8 @@ const ACTION_VERBS: Record<string, string> = {
 	sent: "sent",
 	send: "sent",
 	authorized: "authorized",
-	stop: "stopped",
+	assigned: "assigned",
+	removed: "removed",
 };
 
 type EntryStyle = { icon: React.ElementType; color: string; bg: string };
@@ -43,6 +45,8 @@ const DEFAULT_STYLE: EntryStyle = {
 	bg: "bg-zinc-500/10",
 };
 
+export const getVerb = (log: ActivityLog): string => ACTION_VERBS[log.action] ?? humanize(log.action).toLowerCase();
+
 const VERB_STYLES: Record<string, EntryStyle> = {
 	created: { icon: Plus, color: "text-success-text", bg: "bg-success/10" },
 	updated: { icon: Pencil, color: "text-primary-text", bg: "bg-primary/10" },
@@ -52,7 +56,33 @@ const VERB_STYLES: Record<string, EntryStyle> = {
 	detached: { icon: Unlink, color: "text-warning-text", bg: "bg-warning/10" },
 	sent: { icon: Send, color: "text-primary-text", bg: "bg-primary/10" },
 	authorized: { icon: ShieldCheck, color: "text-success-text", bg: "bg-success/10" },
-	stopped: { icon: Ban, color: "text-error-text", bg: "bg-error/10" },
+	assigned: { icon: UserCheck, color: "text-success-text", bg: "bg-success/10" },
+	removed: { icon: UserX, color: "text-error-text", bg: "bg-error/10" },
+};
+
+export const OTHER_FILTER_KEY = "other";
+
+export const ACTION_FILTERS = [
+	{ key: "created", label: "Created", verbs: ["created"], ...VERB_STYLES.created },
+	{ key: "updated", label: "Updated", verbs: ["updated", "changed"], ...VERB_STYLES.updated },
+	{ key: "deleted", label: "Deleted", verbs: ["deleted"], ...VERB_STYLES.deleted },
+	{ key: "assigned", label: "Assigned", verbs: ["assigned"], ...VERB_STYLES.assigned },
+	{ key: "removed", label: "Removed", verbs: ["removed"], ...VERB_STYLES.removed },
+	{ key: "attached", label: "Attached", verbs: ["attached"], ...VERB_STYLES.attached },
+	{ key: "detached", label: "Detached", verbs: ["detached"], ...VERB_STYLES.detached },
+	{ key: "sent", label: "Sent", verbs: ["sent"], ...VERB_STYLES.sent },
+	{ key: "authorized", label: "Authorized", verbs: ["authorized"], ...VERB_STYLES.authorized },
+	// Catch-all for verbs no chip above lists (failed, push_failed, reuse_detected, …)
+	{ key: OTHER_FILTER_KEY, label: "Other", verbs: [], ...DEFAULT_STYLE },
+] as const;
+
+/** The chip a log belongs to: the one listing its verb, or "Other" for anything else. */
+export const actionFilterKeyFor = (log: ActivityLog): string => {
+	const verb = getVerb(log);
+	return (
+		ACTION_FILTERS.find((f) => (f.verbs as readonly string[]).includes(verb))?.key ??
+		OTHER_FILTER_KEY
+	);
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -105,6 +135,7 @@ const FIELD_LABELS: Record<string, string> = {
 	due_date: "Due date",
 	client_id: "Client",
 	project_id: "Project",
+	job_id: "Job",
 	manager_dispatcher_id: "Manager",
 	organization_role_id: "Role",
 	tech_status: "Technician status",
@@ -135,6 +166,11 @@ const BREADCRUMB_KEYS = new Set([
 ]);
 
 const isBreadcrumb = (key: string): boolean => key.startsWith("_") || BREADCRUMB_KEYS.has(key);
+
+// Never render credential-ish fields, whatever the backend happened to log for them.
+const SENSITIVE_KEY = /password|token|secret|otp|mfa/i;
+
+export const isSensitiveKey = (key: string): boolean => SENSITIVE_KEY.test(key);
 
 const REFERENCE_KEYS = [
 	"_job_number",
@@ -237,18 +273,18 @@ export const formatValue = (key: string, value: unknown, tz: string): string => 
 };
 
 export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
-	const verb = ACTION_VERBS[log.action] ?? humanize(log.action).toLowerCase();
+	const verb = getVerb(log);
 	const entity = ENTITY_LABELS[log.entity_type] ?? humanize(log.entity_type);
 
 	const rows: ChangeRow[] = log.changes
 		? Object.entries(log.changes).flatMap(([key, delta]) => {
-				if (isBreadcrumb(key)) return [];
+				if (isBreadcrumb(key) || isSensitiveKey(key)) return [];
 
 				const from = formatValue(key, delta.old, tz);
 				const to = formatValue(key, delta.new, tz);
 				if (from === to) return [];
 
-				return [{ key, label: labelFor(key), from, to }];
+				return [{ key, label: labelFor(key), from, to, refType: ID_REF_FIELDS[key]}];
 			})
 		: [];
 
@@ -261,3 +297,13 @@ export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 		...(VERB_STYLES[verb] ?? DEFAULT_STYLE),
 	};
 };
+
+export type RefType = "client" | "project" | "dispatcher" | "organization_role" | "job";
+
+export const ID_REF_FIELDS: Record<string, RefType> = {
+	client_id: "client",
+	project_id: "project",
+	manager_dispatcher_id: "dispatcher",
+	organization_role_id: "organization_role",
+	job_id: "job",
+}

@@ -18,6 +18,7 @@ interface MonthMiniCardProps {
 	timeLabel: string;
 	techs: MiniCardTech[];
 	maxLines?: number;
+	size?: "sm" | "lg";
 	isOccurrence?: boolean;
 	isDragging?: boolean;
 	isGhost?: boolean;
@@ -26,12 +27,18 @@ interface MonthMiniCardProps {
 	onClick?: (e: React.MouseEvent) => void;
 }
 
+const SIZE_CONFIG = {
+	sm: { stripeW: 5, padding: "2px 5px 2px 4px", titleFont: 9, timeFont: 8, dotSize: 6, overflowFont: 7, metaH: 11 },
+	lg: { stripeW: 6, padding: "4px 8px 4px 6px", titleFont: 12, timeFont: 10, dotSize: 8, overflowFont: 9, metaH: 14 },
+} as const;
+
 export default function MonthMiniCard({
 	visitName,
 	priorityColor,
 	timeLabel,
 	techs,
 	maxLines = 2,
+	size = "sm",
 	isOccurrence = false,
 	isDragging = false,
 	isGhost = false,
@@ -43,7 +50,8 @@ export default function MonthMiniCard({
 	const visibleTechs = techs.slice(0, 5);
 	const overflow = techs.length - visibleTechs.length;
 
-	const maxTitleH = Math.ceil(9 * 1.3 * maxLines);
+	const cfg = SIZE_CONFIG[size];
+	const maxTitleH = Math.ceil(cfg.titleFont * 1.3 * maxLines);
 	const titleRef = useRef<HTMLSpanElement>(null);
 
 	useLayoutEffect(() => {
@@ -103,7 +111,7 @@ export default function MonthMiniCard({
 			}}
 		>
 			{/* Priority strip — stretches to full card height */}
-			<div style={{ width: 5, flexShrink: 0, backgroundColor: priorityColor }} />
+			<div style={{ width: cfg.stripeW, flexShrink: 0, backgroundColor: priorityColor }} />
 
 			{/*
 			 * Layout:
@@ -121,7 +129,7 @@ export default function MonthMiniCard({
 				style={{
 					flex: 1,
 					minWidth: 0,
-					padding: "2px 5px 2px 4px",
+					padding: cfg.padding,
 					boxSizing: "border-box",
 					maxHeight: maxTitleH + 4,
 					overflow: "hidden",
@@ -135,14 +143,14 @@ export default function MonthMiniCard({
 							display: "flex",
 							alignItems: "center",
 							gap: 4,
-							height: 11,
+							height: cfg.metaH,
 							marginLeft: 4,
 						}}
 					>
 						{timeLabel && (
 							<span
 								style={{
-									fontSize: 8,
+									fontSize: cfg.timeFont,
 									color: TEXT_MUTED,
 									whiteSpace: "nowrap",
 									lineHeight: 1,
@@ -165,8 +173,8 @@ export default function MonthMiniCard({
 										key={t.id}
 										style={{
 											display: "block",
-											width: 6,
-											height: 6,
+											width: cfg.dotSize,
+											height: cfg.dotSize,
 											borderRadius:
 												"50%",
 											backgroundColor:
@@ -178,7 +186,7 @@ export default function MonthMiniCard({
 								{overflow > 0 && (
 									<span
 										style={{
-											fontSize: 7,
+											fontSize: cfg.overflowFont,
 											color: "rgba(255,255,255,0.4)",
 											lineHeight: 1,
 											flexShrink: 0,
@@ -199,7 +207,7 @@ export default function MonthMiniCard({
 					ref={titleRef}
 					style={{
 						display: "block",
-						fontSize: 9,
+						fontSize: cfg.titleFont,
 						fontWeight: 600,
 						color: isOccurrence
 							? OCCURRENCE_TITLE

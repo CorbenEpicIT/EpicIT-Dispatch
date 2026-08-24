@@ -32,6 +32,7 @@ import {
 	getItemValueHistory,
 	getItemForecast,
 	getInventoryMovements,
+	getInventoryItemById,
 } from "../inventoryController.js";
 import { db } from "../../db.js";
 import { logActivity, buildChanges } from "../../services/logger.js";
@@ -205,6 +206,14 @@ function setupTransaction() {
 		item_external_mapping: {
 			deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
 		},
+		// updateInventoryItem's unit-change gate reads on-hand under the item lock:
+		// vehicle cache + (for tracked items) live serial/lot counts. Empty by default.
+		vehicle_stock_item: {
+			aggregate: vi.fn().mockResolvedValue({ _sum: { qty_on_hand: null } }),
+		},
+		serial_unit: { count: vi.fn().mockResolvedValue(0) },
+		stock_batch: { count: vi.fn().mockResolvedValue(0) },
+		vehicle_stock_batch: { count: vi.fn().mockResolvedValue(0) },
 	};
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => unknown) =>
@@ -285,6 +294,50 @@ describe("inventoryController", () => {
 			expect(mockDb.inventory_item.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ orderBy: expectedOrderBy }),
 			);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// getInventoryItemById — unlike the list, provisional/inactive items are still
+	// returned so a direct link (from a ledger row, an alert email) never 404s.
+	// ---------------------------------------------------------------------------
+	describe("getInventoryItemById", () => {
+		it("returns an inactive (soft-deleted) item with stock_status", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ is_active: false, quantity: 0, low_stock_threshold: 2 }),
+			);
+
+			const result = await getInventoryItemById("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.item?.is_active).toBe(false);
+			expect(result.item?.stock_status).toBe("out_of_stock");
+		});
+
+		it("returns a provisional item", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ provisional: true }));
+
+			const result = await getInventoryItemById("item-1", "org-1");
+
+			expect(result.err).toBe("");
+			expect(result.item?.provisional).toBe(true);
+		});
+
+		it("does not filter on is_active or provisional (the list does)", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+
+			await getInventoryItemById("item-1", "org-1");
+
+			const where = mockDb.inventory_item.findFirst.mock.calls[0][0].where;
+			expect(where).toEqual({ id: "item-1" });
+		});
+
+		it("returns not found for a missing/foreign id", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(null);
+
+			const result = await getInventoryItemById("missing", "org-1");
+
+			expect(result.err).toBe("Inventory item not found");
 		});
 	});
 
@@ -1855,6 +1908,151 @@ describe("inventoryController", () => {
 	});
 
 	// ---------------------------------------------------------------------------
+	// unit change with stock on hand — decision 5: allowed only with explicit
+	// acknowledgement. Nothing is converted; the cached quantities simply start
+	// reading in the new unit, so the caller must say they know that.
+	// ---------------------------------------------------------------------------
+	describe("updateInventoryItem — unit change acknowledgement", () => {
+		const ACK_MESSAGE = /pass acknowledge_unit_change to confirm/;
+
+		function setupUnitChange(opts: { warehouse?: number; vehicles?: number | null } = {}) {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "each", quantity: opts.warehouse ?? 10 }));
+			const tx = setupTransaction();
+			// The on-hand check re-reads the row under lock, not the pre-tx snapshot.
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: opts.warehouse ?? 10 });
+			tx.vehicle_stock_item.aggregate.mockResolvedValue({
+				_sum: { qty_on_hand: opts.vehicles === undefined ? null : opts.vehicles },
+			});
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "box" }));
+			return tx;
+		}
+
+		it("refuses a unit change on an item with warehouse stock unless acknowledged", async () => {
+			const tx = setupUnitChange({ warehouse: 250 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe(
+				"Changing the unit re-denominates 250 units on hand; pass acknowledge_unit_change to confirm",
+			);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+			expect(logActivity).not.toHaveBeenCalled();
+		});
+
+		it("counts vehicle stock as on hand (warehouse 0, 4.5 on trucks)", async () => {
+			const tx = setupUnitChange({ warehouse: 0, vehicles: 4.5 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe(
+				"Changing the unit re-denominates 4.5 units on hand; pass acknowledge_unit_change to confirm",
+			);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("applies the change when acknowledged, strips the flag, and writes an explicit audit note", async () => {
+			const tx = setupUnitChange({ warehouse: 250, vehicles: 3 });
+
+			const result = await updateInventoryItem(
+				"item-1",
+				{ unit: "box", acknowledge_unit_change: true },
+				"org-1",
+			);
+
+			expect(result.err).toBe("");
+			const updateData = tx.inventory_item.update.mock.calls[0][0].data;
+			expect(updateData.unit).toBe("box");
+			expect(updateData).not.toHaveProperty("acknowledge_unit_change");
+			expect(logActivity).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event_type: "inventory_item.updated",
+					changes: expect.objectContaining({
+						unit_change_note: {
+							old: null,
+							new: expect.stringMatching(
+								/^Unit changed from each to box with 253 on hand \(warehouse 250, vehicles 3\); quantities were NOT converted/,
+							),
+						},
+					}),
+				}),
+			);
+		});
+
+		it("reads on-hand under the item lock (SELECT … FOR UPDATE) rather than from the pre-tx snapshot", async () => {
+			const tx = setupUnitChange({ warehouse: 0 });
+
+			await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(mockLockInventoryRows).toHaveBeenCalledWith(expect.anything(), ["item-1"]);
+			expect(tx.inventory_item.findUnique).toHaveBeenCalledWith(
+				expect.objectContaining({ where: { id: "item-1" } }),
+			);
+		});
+
+		it("needs no acknowledgement when nothing is on hand", async () => {
+			const tx = setupUnitChange({ warehouse: 0, vehicles: null });
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toBe("");
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "box" }) }),
+			);
+			expect(logActivity).not.toHaveBeenCalledWith(
+				expect.objectContaining({ changes: expect.objectContaining({ unit_change_note: expect.anything() }) }),
+			);
+		});
+
+		it("treats a re-spelling of the same unit (legacy 'Each' -> 'each') as no change, stock or not", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ unit: "Each", quantity: 40 }));
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: 40 });
+			tx.inventory_item.update.mockResolvedValue(makeItem({ unit: "each" }));
+
+			const result = await updateInventoryItem("item-1", { unit: "each" });
+
+			expect(result.err).toBe("");
+			expect(mockLockInventoryRows).not.toHaveBeenCalled();
+			expect(tx.inventory_item.update).toHaveBeenCalledWith(
+				expect.objectContaining({ data: expect.objectContaining({ unit: "each" }) }),
+			);
+		});
+
+		it("does not gate (or lock) edits that leave the unit alone", async () => {
+			const tx = setupUnitChange({ warehouse: 250 });
+
+			const result = await updateInventoryItem("item-1", { name: "Renamed" });
+
+			expect(result.err).toBe("");
+			expect(mockLockInventoryRows).not.toHaveBeenCalled();
+			expect(tx.vehicle_stock_item.aggregate).not.toHaveBeenCalled();
+		});
+
+		it("also refuses when the caches read zero but a tracked item still has live lots", async () => {
+			mockDb.inventory_item.findFirst.mockResolvedValue(
+				makeItem({ unit: "each", quantity: 0, is_batch_tracked: true }),
+			);
+			const tx = setupTransaction();
+			tx.inventory_item.findUnique.mockResolvedValue({ quantity: 0 });
+			tx.stock_batch.count.mockResolvedValueOnce(2); // live warehouse lots
+
+			const result = await updateInventoryItem("item-1", { unit: "box" });
+
+			expect(result.err).toMatch(ACK_MESSAGE);
+			expect(result.err).toMatch(/live lot\(s\)/);
+			expect(tx.inventory_item.update).not.toHaveBeenCalled();
+		});
+
+		it("ignores a false acknowledgement the same as a missing one", async () => {
+			setupUnitChange({ warehouse: 1 });
+
+			const result = await updateInventoryItem("item-1", { unit: "box", acknowledge_unit_change: false });
+
+			expect(result.err).toMatch(ACK_MESSAGE);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
 	// deleteInventoryItem
 	// ---------------------------------------------------------------------------
 	describe("deleteInventoryItem", () => {
@@ -2149,7 +2347,7 @@ describe("inventoryController", () => {
 			};
 		}
 
-		it("emits one batched direct_consumption movement set with allowNegative", async () => {
+		it("emits one batched direct_consumption movement set with allowNegative + allowUntracked", async () => {
 			const tx = makeTx([
 				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 3 },
 				{ id: "li-2", visit_id: "v1", inventory_item_id: "item-2", quantity: 2 },
@@ -2161,7 +2359,10 @@ describe("inventoryController", () => {
 			expect(mockRecordMovements).toHaveBeenCalledOnce();
 			const [, orgId, , movements, opts] = mockRecordMovements.mock.calls[0];
 			expect(orgId).toBe("org-1");
-			expect(opts).toEqual({ allowNegative: true });
+			// Completion must never block: a negative is recorded truthfully and a
+			// tracked item billed without scan data goes through as a TRACKING_GAP
+			// (the documented completion-path option) instead of throwing mid-tx.
+			expect(opts).toEqual({ allowNegative: true, allowUntracked: true });
 			expect(movements).toEqual([
 				expect.objectContaining({
 					inventory_item_id: "item-1",
@@ -2195,7 +2396,9 @@ describe("inventoryController", () => {
 			});
 		});
 
-		it("ceils fractional billed quantities (warehouse is integer)", async () => {
+		// Quantities are numeric(10,2) end to end: what was billed is what is
+		// consumed. The old Math.ceil here turned 12.5 ft billed into 13 ft consumed.
+		it("passes fractional billed quantities through unchanged (no ceil)", async () => {
 			const tx = makeTx([
 				{ id: "li-1", visit_id: "v1", inventory_item_id: "item-1", quantity: 2.3 },
 			]);
@@ -2204,7 +2407,24 @@ describe("inventoryController", () => {
 			await deductInventoryForVisit("v1", tx as any, "org-1");
 
 			const movements = mockRecordMovements.mock.calls[0][3];
-			expect(movements[0].qty).toBe(3);
+			expect(movements[0].qty).toBe(2.3);
+		});
+
+		it("coerces a Prisma Decimal quantity to its exact numeric value", async () => {
+			const tx = makeTx([
+				{
+					id: "li-1",
+					visit_id: "v1",
+					inventory_item_id: "item-1",
+					quantity: new Prisma.Decimal("12.5") as unknown as number,
+				},
+			]);
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await deductInventoryForVisit("v1", tx as any, "org-1");
+
+			const movements = mockRecordMovements.mock.calls[0][3];
+			expect(movements[0].qty).toBe(12.5);
 		});
 
 		it("does nothing when the visit has no linked line items", async () => {
@@ -2573,6 +2793,93 @@ describe("inventoryController", () => {
 
 			expect(result.conflict).toBe(true);
 			expect(result.err).toMatch(/already exist/i);
+		});
+
+		// unit_cost is what the supplier billed per unit on THIS receipt. It must
+		// reach the ledger row (price-history reports read it from there) and, for
+		// a lot, the stock_batch header (the batch-level cost is readable without
+		// walking movements). Batch-level unit_cost overrides; receive-level is the
+		// fallback — one purchase, one price.
+		describe("unit_cost propagation", () => {
+			it("stamps the receive-level unit_cost onto the movement", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+				const result = await receiveInventoryItem("item-1", { qty: 5, unit_cost: 12.34 }, "org-1");
+
+				expect(result.err).toBe("");
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBe(12.34);
+			});
+
+			it("leaves unit_cost undefined on the movement when none was given (never a fake 0)", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem());
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ quantity: 15 }));
+
+				await receiveInventoryItem("item-1", { qty: 5 }, "org-1");
+
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBeUndefined();
+			});
+
+			it("passes the batch-level unit_cost to getOrCreateBatch, overriding the receive-level one", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				const result = await receiveInventoryItem(
+					"item-1",
+					{ qty: 10, unit_cost: 9, batch: { batch_number: "B-100", unit_cost: 8.5 } },
+					"org-1",
+				);
+
+				expect(result.err).toBe("");
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ inventory_item_id: "item-1", batch_number: "B-100", unit_cost: 8.5 }),
+				);
+				// The movement still carries the receive-level cost.
+				const [movement] = mockRecordMovements.mock.calls.at(-1)![3] as Array<{ unit_cost?: number }>;
+				expect(movement.unit_cost).toBe(9);
+			});
+
+			it("falls back to the receive-level unit_cost for the lot header when the batch names none", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				await receiveInventoryItem(
+					"item-1",
+					{ qty: 10, unit_cost: 9, batch: { batch_number: "B-100" } },
+					"org-1",
+				);
+
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ unit_cost: 9 }),
+				);
+			});
+
+			it("stores a null lot cost when neither level names one", async () => {
+				mockDb.inventory_item.findFirst.mockResolvedValue(makeItem({ is_batch_tracked: true }));
+				const tx = setupReceiveTransaction();
+				tx.inventory_item.findUnique.mockResolvedValue(makeItem({ is_batch_tracked: true, quantity: 10 }));
+				mockGetOrCreateBatch.mockResolvedValue({ id: "batch-1", code: "LOT-XXXX" });
+
+				await receiveInventoryItem("item-1", { qty: 10, batch: { batch_number: "B-100" } }, "org-1");
+
+				expect(mockGetOrCreateBatch).toHaveBeenCalledWith(
+					expect.anything(),
+					"org-1",
+					expect.objectContaining({ unit_cost: null }),
+				);
+			});
 		});
 	});
 

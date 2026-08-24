@@ -852,7 +852,7 @@ export default function JobDetailPage() {
 											const count = visit._count?.invoice_visits ?? 0;
 											if (count === 0) return null;
 											const billed = visitBilledMap[visit.id] ?? 0;
-											const visitTotal = Number((visit as any).total ?? 0);
+											const visitTotal = Number(visit.total ?? 0);
 											const isPartial = visitTotal > 0 && billed < visitTotal;
 											return (
 												<span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${

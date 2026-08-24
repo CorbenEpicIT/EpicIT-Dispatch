@@ -350,7 +350,9 @@ export interface GetOrCreateBatchArgs {
 	inventory_item_id: string;
 	batch_number: string;
 	expires_at?: Date | null;
+	/** Legacy free-text vendor. Callers set it alongside supplier_id, never alone. */
 	supplier?: string | null;
+	supplier_id?: string | null;
 	note?: string | null;
 	/** Per-unit cost paid for this lot. Only recorded when the header is created. */
 	unit_cost?: number | null;
@@ -384,6 +386,7 @@ export async function getOrCreateBatch(
 			code: shortCode("LOT"),
 			expires_at: args.expires_at ?? null,
 			supplier: args.supplier ?? null,
+			supplier_id: args.supplier_id ?? null,
 			unit_cost: args.unit_cost ?? null,
 			note: args.note ?? null,
 		},
@@ -842,9 +845,17 @@ async function autoAllocateFifo(
 			remaining = remaining.minus(take);
 		}
 	} else {
-		// from vehicle — FIFO across the truck's batches by batch received_at.
+		// from vehicle — FIFO across the truck's batches OF THIS ITEM by batch
+		// received_at. vehicle_stock_batch has no item column of its own, so the
+		// item filter must go through the batch relation; without it a truck
+		// carrying lots of two batch-tracked items hands item B's deduction to
+		// item A's older lot (then fails loadBatchForMovement's item check).
 		const rows = await tx.vehicle_stock_batch.findMany({
-			where: { vehicle_id: m.from_vehicle_id, qty_on_hand: { gt: 0 }, batch: { recalled_at: null } },
+			where: {
+				vehicle_id: m.from_vehicle_id,
+				qty_on_hand: { gt: 0 },
+				batch: { inventory_item_id: m.inventory_item_id, recalled_at: null },
+			},
 			orderBy: [{ batch: { received_at: "asc" } }, { batch_id: "asc" }],
 			select: { batch_id: true, qty_on_hand: true },
 		});
@@ -901,7 +912,10 @@ async function findSinkBatch(
 		return batch?.id ?? null;
 	}
 	const row = await tx.vehicle_stock_batch.findFirst({
-		where: { vehicle_id: m.from_vehicle_id, batch: { recalled_at: null } },
+		where: {
+			vehicle_id: m.from_vehicle_id,
+			batch: { inventory_item_id: m.inventory_item_id, recalled_at: null },
+		},
 		orderBy: [{ batch: { received_at: "asc" } }, { batch_id: "asc" }],
 		select: { batch_id: true },
 	});
@@ -959,8 +973,14 @@ async function collectLockTargets(
 				});
 				for (const r of rows) batchIds.add(r.id);
 			} else if (m.from_vehicle_id) {
+				// Same item + recall predicate as autoAllocateFifo's candidate query,
+				// so the lock set is exactly the rows FIFO may pick.
 				const rows = await tx.vehicle_stock_batch.findMany({
-					where: { vehicle_id: m.from_vehicle_id, qty_on_hand: { gt: 0 } },
+					where: {
+						vehicle_id: m.from_vehicle_id,
+						qty_on_hand: { gt: 0 },
+						batch: { inventory_item_id: m.inventory_item_id, recalled_at: null },
+					},
 					select: { batch_id: true },
 				});
 				for (const r of rows) batchIds.add(r.batch_id);

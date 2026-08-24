@@ -5,6 +5,7 @@ import {
 	useVehicleStockAdjustmentHistoryQuery,
 	useVehicleRestockHistoryQuery,
 } from "../../hooks/useVehicleStock";
+import type { VehicleStockItem } from "../../types/vehicles";
 
 vi.mock("../../hooks/useVehicleStock", () => ({
 	useVehicleStockAdjustmentHistoryQuery: vi.fn(() => ({
@@ -55,31 +56,34 @@ const stockItems = [
 		qty_min: 2,
 		qty_standard: 8,
 	},
-] as any;
+] as unknown as VehicleStockItem[];
 
 describe("StockHistorySection", () => {
 	it("renders single-item row name and multi-item count", () => {
 		render(<StockHistorySection vehicleId="v1" stockItems={stockItems} />);
 		// adj1 has 1 line → shows item name directly
 		expect(screen.getByText("Copper Elbow")).toBeInTheDocument();
-		// adj2 has 2 lines → shows count
-		expect(screen.getByText("2 items")).toBeInTheDocument();
+		// adj2 has 2 lines → shows count + total units moved (|4-0| + |5-8|)
+		expect(screen.getByText("2 items · 7 units")).toBeInTheDocument();
 	});
 
 	it("type filter chip hides non-matching adjustments", () => {
 		render(<StockHistorySection vehicleId="v1" stockItems={stockItems} />);
-		fireEvent.click(screen.getByText("Field Loss"));
+		// Chips show the short badge word ("Loss"); the full type name is the title.
+		fireEvent.click(screen.getByTitle("Field Loss"));
 		expect(screen.getByText("Copper Elbow")).toBeInTheDocument();
 		// Warehouse Exchange row gone
-		expect(screen.queryByText("2 items")).not.toBeInTheDocument();
+		expect(screen.queryByText(/2 items/)).not.toBeInTheDocument();
 	});
 
 	it("shows clear filter link and resets to all", () => {
 		render(<StockHistorySection vehicleId="v1" stockItems={stockItems} />);
-		fireEvent.click(screen.getByText("Warehouse Exchange"));
+		fireEvent.click(screen.getByTitle("Warehouse Exchange"));
 		expect(screen.queryByText("Copper Elbow")).not.toBeInTheDocument();
-		fireEvent.click(screen.getByText("Clear filter"));
+		expect(screen.getByText("Filtered:")).toBeInTheDocument();
+		fireEvent.click(screen.getByText("Clear ×"));
 		expect(screen.getByText("Copper Elbow")).toBeInTheDocument();
+		expect(screen.queryByText("Filtered:")).not.toBeInTheDocument();
 	});
 
 	it("expands row to show before→after delta", () => {
@@ -105,7 +109,7 @@ describe("StockHistorySection", () => {
 
 	it("shows note in expanded row", () => {
 		render(<StockHistorySection vehicleId="v1" stockItems={stockItems} />);
-		fireEvent.click(screen.getByText("2 items"));
+		fireEvent.click(screen.getByText(/2 items/));
 		expect(screen.getByText(/"left on job"/)).toBeInTheDocument();
 	});
 
@@ -113,7 +117,7 @@ describe("StockHistorySection", () => {
 		vi.mocked(useVehicleStockAdjustmentHistoryQuery).mockReturnValueOnce({
 			data: [],
 			isLoading: true,
-		} as any);
+		} as unknown as ReturnType<typeof useVehicleStockAdjustmentHistoryQuery>);
 		render(<StockHistorySection vehicleId="v1" stockItems={stockItems} />);
 		const skeletons = document.querySelectorAll(".animate-pulse");
 		expect(skeletons.length).toBe(3);
@@ -131,17 +135,29 @@ describe("StockHistorySection", () => {
 				{ id: "rl1", stock_item_id: "si1", qty_restocked: 5, qty_shortfall: 0 },
 			],
 		};
-		vi.mocked(useVehicleRestockHistoryQuery).mockImplementation(() => ({
-			data: [restockRecord],
-			isLoading: false,
-		} as any));
+		vi.mocked(useVehicleRestockHistoryQuery).mockImplementation(
+			() =>
+				({
+					data: [restockRecord],
+					isLoading: false,
+				}) as unknown as ReturnType<typeof useVehicleRestockHistoryQuery>,
+		);
 		render(<StockHistorySection vehicleId="v1" stockItems={stockItems} />);
 		fireEvent.click(screen.getByText("Restock"));
+		// Collapsed row summarises the record; the per-line "+5" chip only
+		// renders once the row is expanded.
+		const summary = screen.getByText("1 item · +5");
+		expect(summary).toBeInTheDocument();
+		fireEvent.click(summary);
 		expect(screen.getByText("+5")).toBeInTheDocument();
+		expect(screen.getByText("Copper Elbow")).toBeInTheDocument();
 		// Restore default mock for subsequent tests
-		vi.mocked(useVehicleRestockHistoryQuery).mockImplementation(() => ({
-			data: [],
-			isLoading: false,
-		} as any));
+		vi.mocked(useVehicleRestockHistoryQuery).mockImplementation(
+			() =>
+				({
+					data: [],
+					isLoading: false,
+				}) as unknown as ReturnType<typeof useVehicleRestockHistoryQuery>,
+		);
 	});
 });

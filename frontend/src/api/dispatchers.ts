@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import { api } from "./axiosClient";
 import type { ApiResponse } from "../types/api";
 import type { 
@@ -68,8 +69,11 @@ export const changeDispatcherPassword = async (id: string, data: { current_passw
             throw new Error(response.data.error?.message || 'Failed to change password');
         }
         return response.data.data!;
-    } catch (err: any) {
-        const message = err.response?.data?.error?.message || err.message || 'Failed to change password';
+    } catch (err) {
+        const message =
+            (isAxiosError(err) ? err.response?.data?.error?.message : undefined) ||
+            (err instanceof Error ? err.message : undefined) ||
+            'Failed to change password';
         throw new Error(message);
     }
 }

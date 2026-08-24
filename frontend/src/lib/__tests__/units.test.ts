@@ -349,14 +349,30 @@ describe("normalizeUnitCode", () => {
 });
 
 describe("unitDef", () => {
-	// Legacy rows and the nullable ReorderForecastRow.unit both reach here. The
-	// old code interpolated those straight into a template literal, which is how
-	// the reorder card could print the string "null".
-	test("degrades to each instead of throwing or leaking a bad value", () => {
-		expect(unitDef("widgets").code).toBe(DEFAULT_UNIT_CODE);
+	// The nullable ReorderForecastRow.unit reaches here. The old code
+	// interpolated it straight into a template literal, which is how the
+	// reorder card could print the string "null".
+	test("degrades a missing value to each instead of throwing or leaking it", () => {
 		expect(unitDef(null).code).toBe(DEFAULT_UNIT_CODE);
 		expect(unitDef(undefined).code).toBe(DEFAULT_UNIT_CODE);
 		expect(unitDef("").code).toBe(DEFAULT_UNIT_CODE);
+		expect(unitDef("   ").code).toBe(DEFAULT_UNIT_CODE);
+	});
+
+	// A pre-catalog freetext unit is a real claim about the quantity. Reading
+	// "gallon" as `each` silently re-denominated every such row (review P2-1),
+	// so an unknown string now renders as itself.
+	test("renders a unit outside the catalog verbatim, flagged legacy", () => {
+		const def = unitDef("widgets");
+		expect(def.code).toBe("widgets");
+		expect(def.label).toBe("widgets");
+		expect(def.singular).toBe("widgets");
+		expect(def.plural).toBe("widgets");
+		expect("legacy" in def && def.legacy).toBe(true);
+		expect(unitDef(" Skein ").label).toBe("Skein");
+		// Catalog entries and their aliases never carry the flag.
+		expect("legacy" in unitDef("ft")).toBe(false);
+		expect("legacy" in unitDef("gallon")).toBe(false);
 	});
 
 	test("resolves aliases, so an unmigrated row still reads correctly", () => {
@@ -418,6 +434,11 @@ describe("formatQty", () => {
 		expect(formatQty(0, "each")).toBe("0 units");
 		expect(formatQty(0.42, "each")).toBe("0.42 units");
 		expect(formatQty(9, null)).toBe("9 units");
-		expect(formatQty(9, "widgets")).toBe("9 units");
+	});
+
+	test("keeps a legacy unit's own word instead of falling back to units", () => {
+		expect(formatQty(9, "widgets")).toBe("9 widgets");
+		expect(formatQty(1, "skein")).toBe("1 skein");
+		expect(unitLabel("skein")).toBe("skein");
 	});
 });

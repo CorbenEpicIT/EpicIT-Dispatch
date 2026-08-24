@@ -1,10 +1,8 @@
 ﻿import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import type { Dispatcher, UpdateDispatcherInput } from "../../types/dispatchers";
+import type { Dispatcher } from "../../types/dispatchers";
 import { useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import { useOrgRolesQuery, useAssignOrgRoleMutation } from "../../hooks/useOrgRoles";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
-import DatePicker from "../ui/DatePicker";
 
 interface EditDispatcherProps {
     isOpen: boolean;
@@ -17,8 +15,6 @@ const INPUT =
 const LABEL = "block mb-0.5 lg:mb-1 text-xs font-medium text-text-tertiary uppercase tracking-wider";
 
 export default function EditDispatcher({ isOpen, onClose, dispatcher }: EditDispatcherProps) {
-    const navigate = useNavigate();
-
     const [name, setName] = useState(dispatcher.name);
     const [email, setEmail] = useState(dispatcher.email);
     const [phone, setPhone] = useState(dispatcher.phone);
@@ -155,7 +151,7 @@ export default function EditDispatcher({ isOpen, onClose, dispatcher }: EditDisp
                 )}
             </div>
         ),
-        [name, email, phone, title, description, organizationRoleId, dispatcherRoles, isLoading]
+        [name, email, phone, title, description, organizationRoleId, dispatcherRoles, isLoading, dispatcher.role]
     );
 
     return (

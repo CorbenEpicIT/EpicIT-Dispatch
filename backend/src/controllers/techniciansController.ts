@@ -728,8 +728,10 @@ export const changeTechnicianPassword = async (
 ) => {
 	const parsed = changePasswordSchema.parse(data);
 	const sdb = getScopedDb(organization_id);
+	// password is omitted globally (db.ts); opt back in here to verify the current one.
 	const technician = await sdb.technician.findFirst({
 		where: { id },
+		omit: { password: false },
 	});
 
 	if (!technician) {
@@ -750,9 +752,9 @@ export const changeTechnicianPassword = async (
 		});
 
 		await logActivity({
-			event_type: "dispatcher.password.changed",
+			event_type: "technician.password.changed",
 			action: "changed",
-			entity_type: "dispatcher",
+			entity_type: "technician",
 			entity_id: id,
 			organization_id: organization_id,
 			actor_type: context?.techId
@@ -761,8 +763,10 @@ export const changeTechnicianPassword = async (
 				? "dispatcher"
 				: "system",
 			actor_id: context?.techId || context?.dispatcherId,
+			// Never persist hashes in the audit trail — they are readable by anyone
+			// with view_technicians via the change-history endpoints.
 			changes: {
-				password: { old: technician.password, new: hashedPassword },
+				password: { old: "[hashed]", new: "[hashed]" },
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,

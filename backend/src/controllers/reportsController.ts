@@ -1,4 +1,5 @@
 import { getScopedDb } from "../lib/context.js";
+import { resolveVendorPrice } from "../services/suppliers.js";
 import {
 	normalizedMonthly,
 	planPerPeriodAmount,
@@ -18,10 +19,47 @@ import type { PaginateParams } from "../lib/reports/filterEngine.js";
 import { round2 } from "../lib/reports/numbers.js";
 import { getOrgRealmId } from "../services/quickbooksService.js";
 import { log } from "../services/appLogger.js";
-import { createErrorResponse, ErrorCodes } from "../types/responses.js";
+import { createErrorResponse, ErrorCodes, httpError } from "../types/responses.js";
 
 // Upper bound on rows pulled into memory for the in-JS report aggregations
 const REPORT_ROW_CAP = 10000;
+
+// ============================================================================
+// DATE RANGE PARSING (shared by every dated report)
+// ============================================================================
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Parses a date query param, rejecting garbage with a 400 instead of letting an
+// Invalid Date reach Prisma/SQL and surface as a 500. No normalization.
+export const reportInstant = (value: string): Date => {
+	const d = new Date(value);
+	if (Number.isNaN(d.getTime())) {
+		throw httpError(400, ErrorCodes.VALIDATION_ERROR, `Invalid date: ${value}`);
+	}
+	return d;
+};
+
+// One report bound. A bare `YYYY-MM-DD` means "that whole UTC day", so it is
+// widened to the day's start or end. Anything else (the frontend sends full ISO
+// instants for the user's local range) is used exactly as sent — flooring those
+// to UTC day bounds stretched every window by up to a day at each end for any
+// non-UTC user and double-counted rows at the seams.
+export const parseReportDate = (value: string, edge: "start" | "end"): Date => {
+	const d = reportInstant(value);
+	if (DATE_ONLY_RE.test(value)) {
+		if (edge === "start") d.setUTCHours(0, 0, 0, 0);
+		else d.setUTCHours(23, 59, 59, 999);
+	}
+	return d;
+};
+
+export const buildDateFilter = (startDate?: string, endDate?: string) => {
+	const filter: { gte?: Date; lte?: Date } = {};
+	if (startDate) filter.gte = parseReportDate(startDate, "start");
+	if (endDate) filter.lte = parseReportDate(endDate, "end");
+	return filter;
+};
 
 // Only text is searchable
 const t = (expr: string): ColumnDef => ({ expr, type: "text", filterable: true, sortable: true, searchable: true });
@@ -92,8 +130,8 @@ export const getOverviewMetrics = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	const end = new Date(endDate);
+	const start = reportInstant(startDate);
+	const end = reportInstant(endDate);
 	const sdb = getScopedDb(organizationId);
 	// Last Month
 	const previousStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
@@ -394,8 +432,8 @@ export const getRevenueByJobType = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	const end = new Date(endDate);
+	const start = reportInstant(startDate);
+	const end = reportInstant(endDate);
 
 	const sdb = getScopedDb(organizationId);
 
@@ -443,10 +481,8 @@ export const getLeadsBySource = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	start.setUTCHours(0, 0, 0, 0);
-	const end = new Date(endDate);
-	end.setUTCHours(23, 59, 59, 999);
+	const start = parseReportDate(startDate, "start");
+	const end = parseReportDate(endDate, "end");
 	const sdb = getScopedDb(organizationId);
 
 	// Count of requests/leads grouped by the source
@@ -568,6 +604,9 @@ export const getJobBacklog = async (organizationId: string) => {
 			FROM job
 			WHERE status IN ('Unscheduled', 'Scheduled', 'InProgress')
 				AND organization_id = ${organizationId}
+				-- Recurring-plan container jobs are created InProgress and stay there for
+				-- the life of the plan; they are not work waiting to be scheduled.
+				AND recurring_plan_id IS NULL
 		) t
 		GROUP BY status, bucket
 	`;
@@ -636,10 +675,8 @@ export const getArrivalPerformance = async (
 	endDate: string,
 	organizationId: string,
 ) => {
-	const start = new Date(startDate);
-	const end   = new Date(endDate);
-	start.setUTCHours(0, 0, 0, 0);
-	end.setUTCHours(23, 59, 59, 999);
+	const start = parseReportDate(startDate, "start");
+	const end = parseReportDate(endDate, "end");
 
 	const sdb = getScopedDb(organizationId);
 	const result = await sdb.$queryRaw<[{ early: number, on_time: number, late: number }]>`
@@ -673,10 +710,8 @@ export const getArrivalPerformance = async (
 // ============================================================================
 
 export const getQuotePipeline = async (startDate: string, endDate: string, organizationId: string) => {
-	const start = new Date(startDate);
-	const end   = new Date(endDate);
-	start.setUTCHours(0, 0, 0, 0);
-	end.setUTCHours(23, 59, 59, 999);
+	const start = parseReportDate(startDate, "start");
+	const end = parseReportDate(endDate, "end");
 
 	const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
 
@@ -746,17 +781,7 @@ export const getMileageReport = async (
 ): Promise<MileageReportVisitRow[]> => {
 	const sdb = getScopedDb(organizationId);
 
-	const dateFilter: { gte?: Date; lte?: Date } = {};
-	if (startDate) {
-		const s = new Date(startDate);
-		s.setUTCHours(0, 0, 0, 0);
-		dateFilter.gte = s;
-	}
-	if (endDate) {
-		const e = new Date(endDate);
-		e.setUTCHours(23, 59, 59, 999);
-		dateFilter.lte = e;
-	}
+	const dateFilter = buildDateFilter(startDate, endDate);
 
 	const visits = await sdb.job_visit.findMany({
 		where: {
@@ -815,17 +840,7 @@ export const getTimesheetReport = async (
 ): Promise<TimesheetReportRow[]> => {
 	const sdb = getScopedDb(organizationId);
 
-	const dateFilter: { gte?: Date; lte?: Date } = {};
-	if (startDate) {
-		const s = new Date(startDate);
-		s.setUTCHours(0, 0, 0, 0);
-		dateFilter.gte = s;
-	}
-	if (endDate) {
-		const e = new Date(endDate);
-		e.setUTCHours(23, 59, 59, 999);
-		dateFilter.lte = e;
-	}
+	const dateFilter = buildDateFilter(startDate, endDate);
 
 	const shifts = await sdb.technician_shift.findMany({
 		where: {
@@ -882,6 +897,23 @@ type ReorderForecastRow = {
 	belowReorderPoint: boolean;
 	// Computed once here so every surface (table, chart, detail page, export) agrees. Band geometry stays frontend.
 	severity: ReorderSeverity;
+	// Who to buy it from. Null throughout when the item has no vendor on file —
+	// the forecast still says what to buy, it just can't say where.
+	preferredSupplierId: string | null;
+	preferredSupplierName: string | null;
+	// The vendor's part number, which is what you actually order by.
+	vendorSku: string | null;
+	preferredUnitPrice: number | null;
+	// Which figure the price came from. Stated because a negotiated rate and a
+	// one-off counter price deserve different confidence.
+	priceSource: "contract" | "observed" | "none";
+	// Whether someone CHOSE this vendor or we fell back to whoever sold it last.
+	// Without this the table would present a guess as a decision.
+	vendorSource: "preferred" | "recent" | "none";
+	// Units needed to get back to the reorder point — the existing warehouse-scoped
+	// threshold, not an invented order policy. Null when no threshold is set.
+	shortfallQty: number | null;
+	estimatedShortfallCost: number | null;
 };
 
 export type ReorderSeverity = "critical" | "warning" | "healthy" | "unknown";
@@ -941,6 +973,73 @@ export const reorderSeverity = (input: {
 // "Days of stock" = org-wide on-hand (warehouse + vehicles) / org-wide daily
 // consumption. Warehouse<->vehicle transfers are not demand; `loss` is excluded
 // from the rate even though it does drain stock.
+/**
+ * Names a vendor and a price on every forecast row that has one.
+ *
+ * The forecast has always been able to say WHAT to buy and WHEN, then stopped
+ * there. One query for the whole page (not one per row) attaches the rest.
+ *
+ * Vendor choice: an explicitly preferred row wins; otherwise the most recent
+ * purchase stands in, flagged as such — falling back is more useful than a blank
+ * column, but presenting the fallback as a decision would be a lie.
+ *
+ * Price choice: a negotiated `contract_price` beats an observed `last_price`,
+ * because one is what you WILL pay and the other is what you happened to pay.
+ */
+const attachPreferredVendors = async (
+	organizationId: string,
+	rows: ReorderForecastRow[],
+): Promise<void> => {
+	if (rows.length === 0) return;
+	const sdb = getScopedDb(organizationId);
+
+	const vendorRows = await sdb.supplier_item.findMany({
+		where: {
+			organization_id: organizationId,
+			inventory_item_id: { in: rows.map((r) => r.itemId) },
+			// A retired vendor must not be the answer to "who do I buy this from".
+			supplier: { is_active: true },
+		},
+		select: {
+			inventory_item_id: true,
+			supplier_id: true,
+			vendor_sku: true,
+			contract_price: true,
+			last_price: true,
+			last_purchased_at: true,
+			is_preferred: true,
+			supplier: { select: { name: true } },
+		},
+		// Preferred first, then most recently purchased — so the first row seen
+		// per item is the one to use and later rows can be skipped. Postgres
+		// defaults NULLS FIRST on a desc sort, which would rank a contract-only
+		// row (never actually purchased, last_purchased_at: null) ahead of a row
+		// with a real recent purchase date — the opposite of "most recent" wins.
+		orderBy: [{ is_preferred: "desc" }, { last_purchased_at: { sort: "desc", nulls: "last" } }],
+	});
+
+	const chosen = new Map<string, (typeof vendorRows)[number]>();
+	for (const v of vendorRows) {
+		if (!chosen.has(v.inventory_item_id)) chosen.set(v.inventory_item_id, v);
+	}
+
+	for (const row of rows) {
+		const v = chosen.get(row.itemId);
+		if (!v) continue;
+
+		const { price, priceSource } = resolveVendorPrice(v.contract_price, v.last_price);
+
+		row.preferredSupplierId = v.supplier_id;
+		row.preferredSupplierName = v.supplier.name;
+		row.vendorSku = v.vendor_sku;
+		row.preferredUnitPrice = price;
+		row.priceSource = priceSource;
+		row.vendorSource = v.is_preferred ? "preferred" : "recent";
+		row.estimatedShortfallCost =
+			price != null && row.shortfallQty != null ? price * row.shortfallQty : null;
+	}
+};
+
 const buildReorderForecast = async (
 	organizationId: string,
 	opts: { lookbackDays: number; itemId?: string },
@@ -1103,8 +1202,23 @@ const buildReorderForecast = async (
 				lowStockThreshold,
 				warehouseQuantity,
 			}),
+			// Filled in below, once the vendor rows for the whole page are read
+			// in one query instead of one per item.
+			preferredSupplierId: null,
+			preferredSupplierName: null,
+			vendorSku: null,
+			preferredUnitPrice: null,
+			priceSource: "none" as const,
+			vendorSource: "none" as const,
+			shortfallQty:
+				lowStockThreshold == null
+					? null
+					: Math.max(0, lowStockThreshold - warehouseQuantity),
+			estimatedShortfallCost: null,
 		};
 	});
+
+	await attachPreferredVendors(organizationId, built);
 
 	// Severity first, then runway. Sorting on projectedStockoutDate alone mapped
 	// null to Infinity, burying rows with no measured usage below every healthy
@@ -1137,6 +1251,14 @@ const inventoryBaseWhere = (includeInactive: boolean): Record<string, unknown> =
 // Grouped by (item, unit), not item alone — the extra key is what surfaces a
 // unit break: >1 group per item means its consumption can't be totalled.
 // `itemIds` scopes the group-by to a hydrated page's rows.
+//
+// Net of reversals (from_location_type = 'consumed' cancels demand that never
+// happened) — the same netting buildReorderForecast applies, so the inventory
+// report and the forecast agree on what was consumed. `reason` is in the group
+// key only so the reversal rows can be subtracted; it is folded away below.
+// This is a Prisma groupBy, so it uses the object form of the predicate; the raw-SQL
+// reports use CONSUMPTION_MOVEMENT_PREDICATE / CONSUMPTION_SIGNED_QTY from lib/inventory.ts.
+// Keep the two in lockstep.
 const inventoryUsageByItem = async (
 	sdb: ReturnType<typeof getScopedDb>,
 	organizationId: string,
@@ -1145,10 +1267,13 @@ const inventoryUsageByItem = async (
 	itemIds?: string[],
 ): Promise<Map<string, { qty: number; units: string[] }>> => {
 	const usage = await sdb.stock_movement.groupBy({
-		by: ["inventory_item_id", "unit"],
+		by: ["inventory_item_id", "unit", "reason"],
 		where: {
 			organization_id: organizationId,
-			reason: { in: ["parts_used", "direct_consumption"] },
+			OR: [
+				{ reason: { in: ["parts_used", "direct_consumption"] } },
+				{ reason: "reversal", from_location_type: "consumed" },
+			],
 			...(from && to ? { created_at: { gte: from, lte: to } } : {}),
 			...(itemIds ? { inventory_item_id: { in: itemIds } } : {}),
 		},
@@ -1157,8 +1282,9 @@ const inventoryUsageByItem = async (
 	const byItem = new Map<string, { qty: number; units: string[] }>();
 	for (const u of usage) {
 		const entry = byItem.get(u.inventory_item_id) ?? { qty: 0, units: [] };
-		entry.qty += Number(u._sum.qty ?? 0);
-		entry.units.push(u.unit);
+		const qty = Number(u._sum.qty ?? 0);
+		entry.qty += u.reason === "reversal" ? -qty : qty;
+		if (!entry.units.includes(u.unit)) entry.units.push(u.unit);
 		byItem.set(u.inventory_item_id, entry);
 	}
 	return byItem;
@@ -1407,21 +1533,6 @@ export const getAgedReceivablesByClient = async (organizationId: string) => {
 		total: round2(r.total),
 		count: r.count,
 	}));
-};
-
-const buildDateFilter = (startDate?: string, endDate?: string) => {
-	const filter: { gte?: Date; lte?: Date } = {};
-	if (startDate) {
-		const s = new Date(startDate);
-		s.setUTCHours(0, 0, 0, 0);
-		filter.gte = s;
-	}
-	if (endDate) {
-		const e = new Date(endDate);
-		e.setUTCHours(23, 59, 59, 999);
-		filter.lte = e;
-	}
-	return filter;
 };
 
 export interface TaxLiabilityRow {
@@ -1953,18 +2064,22 @@ const mapRevenueLineItemRaw = (
 	itemType: li.item_type ?? "other",
 });
 
+// Capped like the other in-memory reports; `truncated` is surfaced so the
+// fallback/export path can say the sheet is incomplete instead of passing off a
+// short list as the whole period.
 export const getRevenueLineItemsReport = async (
 	startDate: string | undefined,
 	endDate: string | undefined,
 	organizationId: string,
-) => {
+): Promise<{ rows: ReturnType<typeof mapRevenueLineItemRaw>[]; truncated: boolean }> => {
 	const sdb = getScopedDb(organizationId);
 	const items = await sdb.invoice_line_item.findMany({
 		where: revenueLineItemsWhere(organizationId, startDate, endDate),
 		orderBy: { invoice: { issue_date: "desc" } },
 		include: REVENUE_LINE_ITEM_INCLUDE,
+		take: REPORT_ROW_CAP,
 	});
-	return items.map(mapRevenueLineItemRaw);
+	return { rows: items.map(mapRevenueLineItemRaw), truncated: items.length >= REPORT_ROW_CAP };
 };
 
 const REVENUE_LINE_ITEM_SQL_COLUMNS: ColumnMap = {
@@ -2478,16 +2593,23 @@ export const getFieldAddedRevenueReport = async (
 ): Promise<{
 	rows: FieldAddedRevenueRow[];
 	orgVisitRevenue: number;
+	fieldAddedItemCount: number;
+	truncated: boolean;
 	trend: FieldAddedRevenueTrend;
 }> => {
 	const sdb = getScopedDb(organizationId);
 	const dateFilter = buildDateFilter(startDate, endDate);
+	// Completed visits only (same as the technician scorecard): a line added on a
+	// Scheduled/Paused/Cancelled visit is not realized revenue yet, or ever.
 	const visitWhere = {
 		job: { organization_id: organizationId },
+		status: "Completed" as const,
 		...(Object.keys(dateFilter).length && { scheduled_start_at: dateFilter }),
 	};
 
 	const [items, revenueAgg, techs] = await Promise.all([
+		// Newest first, so the row cap drops the oldest items rather than an
+		// arbitrary set; `truncated` tells the page the totals are partial.
 		sdb.job_visit_line_item.findMany({
 			where: { source: "field_addition", visit: visitWhere },
 			select: {
@@ -2501,6 +2623,8 @@ export const getFieldAddedRevenueReport = async (
 					},
 				},
 			},
+			orderBy: { visit: { scheduled_start_at: "desc" } },
+			take: REPORT_ROW_CAP,
 		}),
 		// Upsell-rate: all visit line-item revenue
 		sdb.job_visit_line_item.aggregate({
@@ -2519,6 +2643,10 @@ export const getFieldAddedRevenueReport = async (
 	return {
 		rows,
 		orgVisitRevenue: round2(Number(revenueAgg._sum.total ?? 0)),
+		// Distinct line items. Per-tech itemCount credits a split item to every tech
+		// on the visit, so summing those would overstate this.
+		fieldAddedItemCount: items.length,
+		truncated: items.length >= REPORT_ROW_CAP,
 		trend,
 	};
 };
@@ -2568,7 +2696,7 @@ export const getRecurringRevenueReport = async (
 	// "New" is a fixed trailing-30-day window, independent of the report period.
 	const newSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-	const [plans, trailing, occGroups, trendRaw] = await Promise.all([
+	const [plans, trailing, churnedTrailing, occGroups, trendRaw] = await Promise.all([
 		sdb.recurring_plan.findMany({
 			where: { organization_id: organizationId },
 			include: {
@@ -2591,6 +2719,21 @@ export const getRecurringRevenueReport = async (
 			},
 			_sum: { total: true },
 		}),
+		// Same 90-day window, but anchored at each churned plan's end date rather
+		// than now: a variable-basis plan cancelled more than 90 days ago has no
+		// live trailing revenue, yet the MRR it took with it is what churnedMrr
+		// reports. Anchor matches the churn date used below (ends_at ?? updated_at).
+		sdb.$queryRaw<{ planId: string; revenue: number | null }[]>`
+			SELECT p.id AS "planId", SUM(i.total)::float AS revenue
+			FROM recurring_plan p
+			JOIN invoice i ON i.recurring_plan_id = p.id
+			WHERE p.organization_id = ${organizationId}
+			  AND p.status IN ('Cancelled', 'Completed')
+			  AND i.status NOT IN ('Draft', 'Void')
+			  AND COALESCE(i.issue_date, i.created_at) <= COALESCE(p.ends_at, p.updated_at)
+			  AND COALESCE(i.issue_date, i.created_at) >= COALESCE(p.ends_at, p.updated_at) - ${TRAILING_DAYS} * INTERVAL '1 day'
+			GROUP BY p.id
+		`,
 		sdb.recurring_occurrence.groupBy({
 			by: ["recurring_plan_id", "status"],
 			where: {
@@ -2617,6 +2760,9 @@ export const getRecurringRevenueReport = async (
 	for (const t of trailing) {
 		if (t.recurring_plan_id) trailingMap.set(t.recurring_plan_id, Number(t._sum.total ?? 0));
 	}
+	const churnedTrailingMap = new Map<string, number>(
+		churnedTrailing.map((r) => [r.planId, Number(r.revenue ?? 0)]),
+	);
 
 	const occByPlan = new Map<string, { completed: number; skipped: number }>();
 	let occCompletedTotal = 0;
@@ -2640,6 +2786,9 @@ export const getRecurringRevenueReport = async (
 	const inRange = (d: Date | null): boolean =>
 		d != null && (!df.gte || d >= df.gte) && (!df.lte || d <= df.lte);
 
+	const isChurned = (plan: (typeof plans)[number]): boolean =>
+		plan.status === "Cancelled" || plan.status === "Completed";
+
 	const monthlyValueOf = (plan: (typeof plans)[number]): number => {
 		const schedule = plan.invoice_schedule;
 		const perPeriod = planPerPeriodAmount({
@@ -2655,7 +2804,11 @@ export const getRecurringRevenueReport = async (
 		if (perPeriod != null && schedule && schedule.frequency !== "on_visit_completion") {
 			return normalizedMonthly(perPeriod, schedule.frequency as ScheduleFrequency);
 		}
-		return (trailingMap.get(plan.id) ?? 0) / 3;
+		// Churned plans read their trailing window as of when they ended.
+		const trailingRevenue = isChurned(plan)
+			? (churnedTrailingMap.get(plan.id) ?? 0)
+			: (trailingMap.get(plan.id) ?? 0);
+		return trailingRevenue / (TRAILING_DAYS / 30);
 	};
 
 	const perPeriodOf = (plan: (typeof plans)[number]): number | null =>
@@ -2680,16 +2833,17 @@ export const getRecurringRevenueReport = async (
 
 	const rows: RecurringRevenueRow[] = plans.map((plan) => {
 		const monthly = round2(monthlyValueOf(plan));
-		const activeForMrr =
+		// A plan whose ends_at has passed is finished even if nothing flipped its
+		// status yet: it neither counts as active nor contributes to MRR.
+		const isActive =
 			plan.status === "Active" && (!plan.ends_at || new Date(plan.ends_at) > now);
-		if (activeForMrr) mrr += monthly;
-		if (plan.status === "Active") activePlans++;
+		if (isActive) {
+			mrr += monthly;
+			activePlans++;
+		}
 		if (plan.status === "Paused") pausedPlans++;
 		if (plan.starts_at >= newSince) newPlans++;
-		if (
-			(plan.status === "Cancelled" || plan.status === "Completed") &&
-			inRange(plan.ends_at ?? plan.updated_at)
-		) {
+		if (isChurned(plan) && inRange(plan.ends_at ?? plan.updated_at)) {
 			churnedPlans++;
 			churnedMrr += monthly;
 		}
@@ -3205,8 +3359,9 @@ export const getTechnicianScorecard = async (
 	return rows;
 };
 
-const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"];
-const BREAKDOWNS: Record<string, string[]> = {
+export const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"] as const;
+export type SummaryPage = (typeof PAGES)[number];
+export const BREAKDOWNS: Record<SummaryPage, string[]> = {
 	jobs: ["status", "priority", "type"],
 	quotes: ["status", "priority"],
 	requests: ["status", "priority"],
@@ -3224,9 +3379,17 @@ interface PageSummaryResponse {
 	breakdownLabel: string;
 }
 
+// Draft invoices are not issued yet and Void ones are cancelled (voiding only stamps
+// voided_at — total/balance_due keep their values), so the money figures below leave
+// both out, matching the invoices, revenue and aged-receivables reports.
+const ISSUED_INVOICE_STATUS = { notIn: ["Draft", "Void"] } satisfies Prisma.invoiceWhereInput["status"];
+
+export const isSummaryPage = (page: string): page is SummaryPage =>
+	(PAGES as readonly string[]).includes(page);
+
 export const getPageSummary = async (orgId: string, page:string, startDate?: string, endDate?: string, groupBy?: string): Promise<PageSummaryResponse> => {
-	if (!PAGES.includes(page))
-		throw new Error("Unknown page");
+	if (!isSummaryPage(page))
+		throw httpError(400, ErrorCodes.VALIDATION_ERROR, `Unknown page: ${page}`);
 	const allowed = BREAKDOWNS[page] ?? ["status"];
 	const grouping = groupBy && allowed.includes(groupBy) ? groupBy : allowed[0];
 	const sdb = getScopedDb(orgId);
@@ -3357,19 +3520,27 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			const invoiceDateWhere: Prisma.invoiceWhereInput = dated
 				? { OR: [{ issue_date: dated }, { issue_date: null, created_at: dated }] }
 				: {};
-			const paidAtFilter = dated ? dated : { not: null };
 			const issueRangeSql = Prisma.sql`
 				${dated?.gte ? Prisma.sql`AND issue_date >= ${dated.gte}` : Prisma.empty}
 				${dated?.lte ? Prisma.sql`AND issue_date <= ${dated.lte}` : Prisma.empty}`;
 			const [total, issued, collected, rows] = await Promise.all([
-				sdb.invoice.count({ where: { organization_id: orgId, ...invoiceDateWhere } }),
-				sdb.invoice.aggregate({
-					where: { organization_id: orgId, ...invoiceDateWhere },
-					_sum: { total: true },
+				sdb.invoice.count({
+					where: { organization_id: orgId, status: ISSUED_INVOICE_STATUS, ...invoiceDateWhere },
 				}),
 				sdb.invoice.aggregate({
-					where: { organization_id: orgId, paid_at: paidAtFilter },
-					_sum: { amount_paid: true },
+					where: { organization_id: orgId, status: ISSUED_INVOICE_STATUS, ...invoiceDateWhere },
+					_sum: { total: true },
+				}),
+				// Collected = payments recorded in the range, partials included — the same
+				// definition as the Payments report. invoice.paid_at/amount_paid only move
+				// once an invoice is fully paid, so they drop partial payments and date the
+				// rest by the final one.
+				sdb.invoice_payment.aggregate({
+					where: {
+						invoice: { organization_id: orgId, status: ISSUED_INVOICE_STATUS },
+						...(dated ? { paid_at: dated } : {}),
+					},
+					_sum: { amount: true },
 				}),
 				sdb.$queryRaw<{ avg_seconds: number | null }[]>(Prisma.sql`
 					SELECT EXTRACT(EPOCH FROM AVG(paid_at - issue_date)) AS avg_seconds
@@ -3381,6 +3552,9 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			]);
 			const avgSeconds = rows[0]?.avg_seconds ?? null;
 			const avgDays = avgSeconds != null ? avgSeconds / 86_400 : null;
+			// The breakdowns deliberately keep every status: each slice drills into the
+			// Invoices list filtered by that status, and that list shows Draft and Void
+			// rows, so the slice counts must match what the user lands on.
 			if (grouping === "qb_sync") {
 				const g = await sdb.invoice.groupBy({ by: ["qb_sync_status"], where: { organization_id: orgId, ...invoiceDateWhere }, _count: { _all: true } });
 				breakdown = g.map((r) => ({ label: r.qb_sync_status, value: r._count._all }));
@@ -3393,7 +3567,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			stats = [
 				{ label: "Total",           value: total,                                    format: "number" },
 				{ label: "Issued",          value: Number(issued._sum.total ?? 0),           format: "currency" },
-				{ label: "Collected",       value: Number(collected._sum.amount_paid ?? 0),  format: "currency" },
+				{ label: "Collected",       value: Number(collected._sum.amount ?? 0),       format: "currency" },
 				{ label: "Avg. Days to Pay", value: Number(avgDays),                          format: "duration" },
 			];
 			break;
@@ -3403,12 +3577,17 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 				sdb.client.count({ where: { organization_id: orgId } }),
 				sdb.client.count({ where: { organization_id: orgId, ...createdWhere } }),
 				sdb.client.count({ where: { organization_id: orgId, is_active: true } }),
+				// Mirrors aged receivables: only issued, unpaid invoices carry a real balance.
 				sdb.invoice.aggregate({
-					where: { organization_id: orgId, balance_due: { gt: 0 } },
+					where: {
+						organization_id: orgId,
+						status: { notIn: ["Draft", "Paid", "Void"] },
+						balance_due: { gt: 0 },
+					},
 					_sum: { balance_due: true },
 				}),
 				sdb.invoice.aggregate({
-					where: { organization_id: orgId },
+					where: { organization_id: orgId, status: ISSUED_INVOICE_STATUS },
 					_sum: { total: true },
 				}),
 			]);
@@ -3433,11 +3612,17 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			break;
 		}
 		case "inventory": {
-			const items = await sdb.inventory_item.findMany({
-				where: { organization_id: orgId, provisional: false, is_active: true },
-				select: { id: true, quantity: true, low_stock_threshold: true, cost: true },
-				take: REPORT_ROW_CAP,
-			});
+			const itemWhere = { organization_id: orgId, provisional: false, is_active: true };
+			// Total comes from count(): the row list below is capped, so its length
+			// would silently understate a large catalog.
+			const [items, itemCount] = await Promise.all([
+				sdb.inventory_item.findMany({
+					where: itemWhere,
+					select: { id: true, quantity: true, low_stock_threshold: true, cost: true },
+					take: REPORT_ROW_CAP,
+				}),
+				sdb.inventory_item.count({ where: itemWhere }),
+			]);
 			let low = 0;
 			let out = 0;
 			let sufficient = 0;
@@ -3479,7 +3664,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 				breakdownLabel = "By Stock Status";
 			}
 			stats = [
-				{ label: "Total Items",  value: items.length, format: "number" },
+				{ label: "Total Items",  value: itemCount,    format: "number" },
 				{ label: "Low",          value: low,          format: "number" },
 				{ label: "Out of Stock", value: out,          format: "number" },
 				{ label: "Asset Value",  value: assetValue,   format: "currency" },

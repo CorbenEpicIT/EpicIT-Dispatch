@@ -54,7 +54,12 @@ export default function CostPricingCard({
 	// Optional so the card stays usable anywhere there's no tab to switch to.
 	onViewHistory?: () => void;
 }) {
-	const { cost, unit_price: price, quantity } = item;
+	// Coerced ONCE: Decimal columns arrive as strings on some paths, and
+	// `"0" !== 0` let a zero price through to the division below as
+	// "-Infinity% margin". Every figure after this line is arithmetic on numbers.
+	const cost = item.cost != null ? Number(item.cost) : null;
+	const price = item.unit_price != null ? Number(item.unit_price) : null;
+	const quantity = Number(item.quantity);
 	const hasBoth = cost != null && price != null;
 	const unitMargin = hasBoth ? price - cost : null;
 	const marginPct = hasBoth && price !== 0 ? (unitMargin! / price) * 100 : null;

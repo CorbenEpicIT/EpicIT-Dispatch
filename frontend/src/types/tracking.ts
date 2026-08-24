@@ -144,9 +144,17 @@ export interface ReceiveInventoryInput {
 	 * weighted-average paid cost, never treated as 0.
 	 */
 	unit_cost?: number;
+	/** Adopts an existing vendor. */
+	supplier_id?: string;
+	/** Creates the vendor on write, when `supplier_id` wasn't given. */
+	supplier_name?: string;
 	batch?: {
 		batch_number: string;
 		expires_at?: string | null;
+		/**
+		 * @deprecated Legacy free text. Send supplier_id/supplier_name instead —
+		 * the server writes the resolved vendor onto the lot itself.
+		 */
 		supplier?: string;
 		/** Lot-level cost; falls back to the receive-level unit_cost. */
 		unit_cost?: number;

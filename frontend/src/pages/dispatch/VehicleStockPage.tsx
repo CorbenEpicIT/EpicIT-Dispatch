@@ -139,8 +139,9 @@ function StockRow({ item, onUpdateStandard, onUpdateMin, onDelete }: {
 					{item.inventory_item.name}
 				</button>
 				<div className="text-xs text-text-muted">
-					{item.inventory_item.category ?? ""}
-					{` · ${unitLabel(item.inventory_item.unit)}`}
+					{[item.inventory_item.category, unitLabel(item.inventory_item.unit)]
+						.filter(Boolean)
+						.join(" · ")}
 				</div>
 			</div>
 			<div className="flex justify-center">
@@ -406,7 +407,9 @@ function AddStockItemRow({ vehicleId, existingIds, onDone }: {
 								className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-surface-raised transition-colors disabled:opacity-50"
 							>
 								<span className="text-sm text-text-primary">{item.name}</span>
-								<span className="text-xs text-text-muted">{item.category ?? ""}{` · ${unitLabel(item.unit)}`}</span>
+								<span className="text-xs text-text-muted">
+									{[item.category, unitLabel(item.unit)].filter(Boolean).join(" · ")}
+								</span>
 							</button>
 						))}
 					</div>
