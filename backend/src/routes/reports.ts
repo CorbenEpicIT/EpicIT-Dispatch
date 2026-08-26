@@ -774,6 +774,20 @@ router.delete("/favorites/:id", requirePermission("view_reports"), async (req, r
 	}
 });
 
+router.get("/projects", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"projects",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch(err) {
+		next(err);
+	}
+})
+
 // A bound is either a full ISO instant (what the frontend sends) or a bare
 // YYYY-MM-DD, which the controller widens to that UTC day.
 const reportDateParam = z.union([z.iso.datetime({ offset: true }), z.iso.date()]);

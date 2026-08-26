@@ -309,6 +309,9 @@ export const getQuoteFunnelReport = (params: ReportFetchParams = {}): Promise<Pa
 export const getFirstTimeFixReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated("/reports/first-time-fix", params, "Failed to fetch first-time fix report");
 
+export const getProjectsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/projects", params, "Failed to fetch projects report");
+
 export const getTechnicianScorecard = async (
 	startDate?: string,
 	endDate?: string,

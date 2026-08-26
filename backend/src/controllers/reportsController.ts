@@ -1805,6 +1805,137 @@ export const getJobsReportPage = async (
 };
 
 // ============================================================================
+// PROJECTS
+// ============================================================================
+
+const PROJECTS_INCLUDE = {
+	client: { select: { name: true } },
+	_count: { select: { jobs: true } },
+	jobs: { select: { estimated_total: true, actual_total: true }},
+	manager_dispatcher: { select: { name: true }}
+} satisfies Prisma.projectInclude;
+
+const projectsBaseWhere = (
+	organizationId: string,
+	startDate?: string,
+	endDate?: string,
+): Record<string, unknown> => {
+	const dateFilter = buildDateFilter(startDate, endDate);
+	return {
+		organization_id: organizationId,
+		...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+	};
+};
+
+// p = project, c = client, md = manager_dispatcher
+const PROJECTS_SQL_COLUMNS: ColumnMap = {
+	projectNumber: t("p.project_number"),
+	name: t("p.name"),
+	clientName: t("c.name"),
+	status: t("p.status::text"),
+	priority: t("p.priority::text"),
+	managerName: t("md.name"),
+	address: t("p.address"),
+	budget: cur("p.budget"),
+	startsAt: dt("p.starts_at"),
+	targetEndAt: dt("p.target_end_at"),
+	createdAt: dt("p.created_at"),
+	completedAt: dt("p.completed_at"),
+	cancelledAt: dt("p.cancelled_at"),
+	jobCount: n('(SELECT COUNT(*) FROM "job" j WHERE j.project_id = p.id)'),
+	estimatedTotal: cur('(SELECT COALESCE(SUM(j.estimated_total), 0) FROM "job" j WHERE j.project_id = p.id)'),
+	actualTotal: cur('(SELECT COALESCE(SUM(j.actual_total), 0) FROM "job" j WHERE j.project_id = p.id)'),
+	variance: cur(
+		'(SELECT COALESCE(SUM(j.actual_total), 0) - COALESCE(SUM(j.estimated_total), 0) FROM "job" j WHERE j.project_id = p.id)',
+	),
+};
+
+const mapProjectRaw = (project: Prisma.projectGetPayload<{ include: typeof PROJECTS_INCLUDE }>) => {
+	const totals = project.jobs.reduce(
+		(acc, j) => {
+			if (j.estimated_total != null) {
+				acc.hasEstimated = true;
+				acc.estimatedTotal += Number(j.estimated_total);
+			}
+			if (j.actual_total != null) {
+				acc.hasActual = true;
+				acc.actualTotal += Number(j.actual_total);
+			}
+			return acc;
+		},
+		{ estimatedTotal: 0, actualTotal: 0, hasEstimated: false, hasActual: false },
+	);
+	const estimatedTotal = totals.hasEstimated ? totals.estimatedTotal : null;
+	const actualTotal = totals.hasActual ? totals.actualTotal : null;
+	const variance = estimatedTotal != null && actualTotal != null ? actualTotal - estimatedTotal : null;
+
+	return {
+		id: project.id,
+		projectNumber: project.project_number,
+		name: project.name,
+		clientName: project.client.name,
+		status: project.status,
+		priority: project.priority,
+		managerName: project.manager_dispatcher?.name ?? null,
+		address: project.address,
+		startsAt: project.starts_at,
+		targetEndAt: project.target_end_at,
+		completedAt: project.completed_at,
+		cancelledAt: project.cancelled_at,
+		createdAt: project.created_at,
+		budget: project.budget != null ? Number(project.budget) : null,
+		estimatedTotal,
+		actualTotal,
+		variance,
+		jobCount: project._count.jobs,
+	};
+};
+
+export const getProjectsReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const projects = await sdb.project.findMany({
+		where: projectsBaseWhere(organizationId, startDate, endDate),
+		orderBy: { created_at: "desc" },
+		include: PROJECTS_INCLUDE,
+	});
+	
+	return projects.map(mapProjectRaw);
+}
+
+export const getProjectsReportPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+): Promise<PageResult<ReturnType<typeof mapProjectRaw>> | null> => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "p.organization_id = $1";
+	if (df.gte) baseWhere += ` AND p.created_at >= $${baseParams.push(df.gte)}`;
+	if (df.lte) baseWhere += ` AND p.created_at <= $${baseParams.push(df.lte)}`;
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"project" p JOIN "client" c ON c.id = p.client_id LEFT JOIN "dispatcher" md ON md.id = p.manager_dispatcher_id',
+		baseWhere,
+		baseParams,
+		idExpr: "p.id",
+		columns: PROJECTS_SQL_COLUMNS,
+		defaultOrder: { expr: "p.created_at", dir: "desc" },
+		params,
+		hydrate: (ids) => sdb.project.findMany({ where: { id: { in: ids } }, include: PROJECTS_INCLUDE }),
+		rowId: (r) => r.id,
+	});
+	if (!res) return null;
+	return { rows: res.rows.map(mapProjectRaw), total: res.total, page: res.page, pageSize: res.pageSize };
+};
+
+// ============================================================================
 // FIRST-TIME FIX RATE
 // ============================================================================
 

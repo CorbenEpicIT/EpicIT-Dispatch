@@ -24,6 +24,8 @@ import {
 	getRevenueLineItemsReport,
 	getRevenueLineItemsReportPage,
 	reportInstant,
+	getProjectsReport,
+	getProjectsReportPage,
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
@@ -120,6 +122,7 @@ type RecurringRaw = Awaited<ReturnType<typeof getRecurringRevenueReport>>["plans
 type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
 type LineItemTypeRaw = Awaited<ReturnType<typeof getRevenueByLineItemType>>[number];
 type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>["rows"][number];
+type ProjectRaw = Awaited<ReturnType<typeof getProjectsReport>>[number];
 
 const jobRow = (job: JobRaw): ReportRow => ({
 	id: job.id,
@@ -407,6 +410,27 @@ const revenueLineItemRow = (r: RevenueLineItemRaw): ReportRow => ({
 	itemType: r.itemType,
 });
 
+const projectRow = (p: ProjectRaw): ReportRow => ({
+	id: p.id,
+	projectNumber: p.projectNumber,
+	name: p.name,
+	clientName: p.clientName,
+	status: p.status,
+	priority: p.priority,
+	managerName: p.managerName ?? "—",
+	address: p.address || "—",
+	budget: p.budget ?? "—",
+	startsAt: fmtDate(p.startsAt),
+	targetEndAt: fmtDate(p.targetEndAt),
+	createdAt: fmtDate(p.createdAt),
+	completedAt: fmtDate(p.completedAt),
+	cancelledAt: fmtDate(p.cancelledAt),
+	estimatedTotal: p.estimatedTotal ?? "—",
+	actualTotal: p.actualTotal ?? "—",
+	variance: p.variance ?? "—",
+	jobCount: p.jobCount,
+})
+
 const mapPage = <T>(
 	r: { rows: T[]; total: number; page: number; pageSize: number; summary?: Record<string, unknown> } | null,
 	fn: (row: T) => ReportRow,
@@ -663,6 +687,13 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 				revenueLineItemRow,
 			),
 	},
+	projects: {
+		load: async (orgId, q) => ({
+			rows: (await getProjectsReport(q.startDate, q.endDate, orgId)).map(projectRow)
+		}),
+		loadPage: async (orgId, q, params) => 
+			mapPage(await getProjectsReportPage(q.startDate, q.endDate, orgId, params), projectRow),
+	}
 };
 
 export const getReportDefinition = (key: string): ReportDefinition | undefined =>

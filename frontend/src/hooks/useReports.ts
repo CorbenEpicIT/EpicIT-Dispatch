@@ -280,6 +280,15 @@ export const useFirstTimeFixQuery = (
 		placeholderData: keepPreviousData,
 	});
 
+export const useProjectsReportQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "projects", params],
+		queryFn: () => reportsApi.getProjectsReport(params),
+		placeholderData: keepPreviousData,
+	});
+
 export const useTechnicianScorecardQuery = (
 	startDate?: string,
 	endDate?: string,
