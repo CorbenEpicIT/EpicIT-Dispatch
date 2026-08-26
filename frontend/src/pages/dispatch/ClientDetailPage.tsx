@@ -11,6 +11,8 @@ import {
 	MapPin,
 	Calendar,
 	ReceiptText,
+	RefreshCw,
+	CheckCircle2,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import EditClientModal from "../../components/clients/EditClient";
@@ -26,6 +28,12 @@ import {
 import { formatCurrency, formatDate } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
 import ChangeHistory from "../../components/activity/ChangeHistory";
+import {
+	useQBClientSyncMutation,
+	useQBStatusQuery,
+	useQBMappedCustomersQuery,
+} from "../../hooks/useQuickbooks";
+import { useToast } from "../../components/ui/useToast";
 
 type MainTab = "active" | "requests" | "quotes" | "jobs" | "plans" | "invoices";
 const ITEMS_LIMIT = 8;
@@ -53,6 +61,28 @@ export default function ClientDetailsPage() {
 
 	const { data: client, isLoading, error } = useClientByIdQuery(clientId!);
 	const { data: invoices } = useInvoicesByClientIdQuery(clientId!);
+
+	const toast = useToast();
+	const qbClientSync = useQBClientSyncMutation();
+	const { data: qbStatus } = useQBStatusQuery();
+	const { data: qbMappedCustomers } = useQBMappedCustomersQuery();
+
+	// ── QuickBooks sync state (shared by header badge + sync action) ──
+	const qbConnected = !!qbStatus?.connected;
+	const qbMapping = qbMappedCustomers?.find((m) => m.client_id === clientId);
+	const qbSynced = qbConnected && !!qbMapping;
+	const qbShowAction = qbConnected && !qbSynced;
+
+	const handleSync = async () => {
+		if (!clientId) return;
+		try {
+			await qbClientSync.mutateAsync({ client_id: clientId });
+			toast.success("Synced to QuickBooks");
+		} catch (error) {
+			console.error("Error syncing client to QuickBooks:", error);
+			toast.error(error instanceof Error ? error.message : "Failed to sync client to QuickBooks");
+		}
+	};
 
 	//permissions
 	const EDIT_CLIENT = usePermission("edit_clients");
@@ -411,6 +441,31 @@ export default function ClientDetailsPage() {
 						>
 							{client.is_active ? "Active" : "Inactive"}
 						</span>
+							{qbConnected && qbSynced && (
+								<span
+									className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap bg-success-bg text-success-bright-text border-success-border"
+									title={`Synced to QuickBooks customer #${qbMapping?.external_id}`}
+								>
+									<CheckCircle2 size={11} />
+									In QuickBooks
+								</span>
+							)}
+							{qbShowAction && (
+								<button
+									title={!EDIT_CLIENT ? "You don't have permission to perform this action" : "Create this client as a customer in QuickBooks Online"}
+									disabled={!EDIT_CLIENT || qbClientSync.isPending}
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-quickbooks hover:enabled:bg-quickbooks-hover text-white transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+									onClick={() => {
+										if (!EDIT_CLIENT) return;
+										handleSync();
+									}}
+								>
+									<RefreshCw size={12} className={qbClientSync.isPending ? "animate-spin" : undefined} />
+									<span className="hidden sm:inline">
+										{qbClientSync.isPending ? "Syncing…" : "Sync to QuickBooks"}
+									</span>
+								</button>
+							)}
 							<button
 								title={!EDIT_CLIENT ? "You don't have permission to perform this action" : undefined}
 								disabled={!EDIT_CLIENT}

@@ -524,6 +524,7 @@ model client_external_mapping {
   client      client @relation(fields: [client_id], references: [id])
 
   @@unique([provider, account_id, external_id])
+  @@unique([provider, client_id, account_id])
   @@index([client_id])
 }
 

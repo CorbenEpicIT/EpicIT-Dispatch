@@ -1,5 +1,5 @@
 ﻿import { Fragment, useState, useRef, useEffect, type ReactNode } from "react";
-import { SquarePen, Trash2, MoreHorizontal } from "lucide-react";
+import { SquarePen, Trash2, MoreHorizontal, Link2 } from "lucide-react";
 import type { InventoryItem, InventoryTag } from "../../types/inventory";
 import {
 	calculateStockStatus,
@@ -460,8 +460,12 @@ export default function InventoryItemView({
 					</span>
 					{qbConnected &&
 						(isLinkedToQB ? (
-							<span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-success-bg text-success-text">
-								QB Linked
+							<span
+								className="inline-flex items-center p-1 rounded-full text-xs font-medium bg-success-bg text-success-text shrink-0"
+								title="Linked to QuickBooks"
+							>
+								<Link2 size={13} />  <span className="pl-1">QB</span>
+								<span className="sr-only">Linked to QuickBooks</span>
 							</span>
 						) : onLinkQB ? (
 							<button
@@ -469,7 +473,7 @@ export default function InventoryItemView({
 									e.stopPropagation();
 									onLinkQB();
 								}}
-								className="opacity-0 group-hover:opacity-100 transition-opacity rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-primary hover:border-border-strong hover:bg-surface-raised"
+								className="opacity-0 group-hover:opacity-100 transition-opacity rounded-md border border-border bg-surface p-1 text-xs font-medium text-text-primary hover:border-border-strong hover:bg-surface-raised shrink-0"
 							>
 								Link
 							</button>

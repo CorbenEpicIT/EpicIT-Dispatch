@@ -1,3 +1,4 @@
+import { BarChart3, Scale, Waves, ListChecks, BookOpen, type LucideIcon } from "lucide-react";
 import type { InventoryItem } from "./inventory"
 
 export interface QBItemLite {
@@ -14,6 +15,11 @@ export interface QBItemLite {
 
 export interface MappedQBItem {
     inventory_item_id: string;
+    external_id: string;
+}
+
+export interface MappedQBCustomer {
+    client_id: string;
     external_id: string;
 }
 
@@ -173,3 +179,33 @@ interface ReportColData {
   id?: string;
   value: string;
 }
+
+export type QBReportTypeId = "ProfitAndLoss" | "BalanceSheet" | "CashFlow" | "TrialBalance" | "GeneralLedger";
+
+export interface QBReportTypeMeta {
+  id: QBReportTypeId;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  /**
+   * Whether QBO's `customer` report filter actually narrows this report type.
+   * Confirmed empirically against a live sandbox: ProfitAndLoss/GeneralLedger/
+   * CashFlow all changed output when filtered by customer; TrialBalance ignored
+   * the param entirely. BalanceSheet did change but in a way that doesn't map
+   * to a coherent "balance sheet for this customer" (it's a point-in-time
+   * statement, not customer-scoped) — left off to avoid a misleading report.
+   */
+  supportsClientFilter?: boolean;
+};
+
+export const QB_REPORT_TYPES: QBReportTypeMeta[] = [
+  { id: "ProfitAndLoss", label: "Profit & Loss", description: "Income and expenses over a period", icon: BarChart3, supportsClientFilter: true },
+  { id: "BalanceSheet", label: "Balance Sheet", description: "Assets, liabilities, and equity as of a date", icon: Scale },
+  { id: "CashFlow", label: "Cash Flow", description: "Cash in/out across operating, investing, financing", icon: Waves, supportsClientFilter: true },
+  { id: "TrialBalance", label: "Trial Balance", description: "Debit/credit balances by account", icon: ListChecks },
+  { id: "GeneralLedger", label: "General Ledger", description: "Detailed transaction ledger by account", icon: BookOpen, supportsClientFilter: true },
+];
+
+export type QBReportQuery = QBProfitAndLossQuery;
+
+export type QBReportPayload = QBProfitAndLossReport;

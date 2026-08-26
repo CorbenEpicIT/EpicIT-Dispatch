@@ -32,7 +32,8 @@ const CreateClient = ({ isModalOpen, setIsModalOpen, createClient }: CreateClien
 	const { data: customers, isLoading: loadingCustomers } = useQBCustomerQuery(
 		qbStatus?.connected,
 	);
-	const { data: mappedIds } = useQBMappedCustomersQuery(qbStatus?.connected);
+	const { data: mappedCustomers } = useQBMappedCustomersQuery(qbStatus?.connected);
+	const mappedIds = mappedCustomers?.map((m) => m.external_id);
 	const { data: existingClients } = useAllClientsQuery();
 
 	const existingNames = new Set(existingClients?.map((c) => c.name.toLowerCase()) ?? []);

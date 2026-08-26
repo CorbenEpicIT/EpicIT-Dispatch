@@ -9,7 +9,7 @@ import { httpError, ErrorCodes } from "../types/responses.js";
 // (so every QB consumer cleanly hides its UI), and every other QB route — plus the
 // OAuth callback and webhook — short-circuits. To re-enable, flip QB_ENABLED to true.
 // ============================================================================
-export const QB_ENABLED = false;
+export const QB_ENABLED = true;
 
 const QB_ENV = (process.env.QB_ENVIRONMENT ?? "sandbox") as "sandbox" | "production";
 export const QB_BASE =

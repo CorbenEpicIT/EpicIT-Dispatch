@@ -26,11 +26,13 @@ import {
     unlinkQBVendor,
     importQBVendor,
     pushQBVendor,
+    getQBReport,
+    syncClientToQB,
 
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import type { ImportQBItemResult, QBProfitAndLossQuery } from "../types/quickbooks";
+import { useEffect, useState } from "react";
+import type { ImportQBItemResult, QBProfitAndLossQuery, QBReportQuery, QBReportTypeId } from "../types/quickbooks";
 import type { Supplier } from "../types/suppliers";
 import { invalidate, qk } from "../lib/queryKeys";
 
@@ -55,6 +57,23 @@ export const useQBMappedCustomersQuery = (enabled = true) => {
         queryFn: getQBMappedCustomers,
         enabled,
     });
+};
+
+/**
+ * "Synced clients only" toggle for a QB report: when on, resolves to a
+ * comma-joined `customer` filter of every client already linked to a QB
+ * customer (via client_external_mapping), scoped to the connected realm.
+ * `customer` stays undefined while off or with nothing synced yet, so the
+ * report query cleanly falls back to unfiltered.
+ */
+export const useSyncedClientFilter = () => {
+    const [enabled, setEnabled] = useState(false);
+    const { data: mappedCustomers = [] } = useQBMappedCustomersQuery();
+    const customer =
+        enabled && mappedCustomers.length > 0
+            ? mappedCustomers.map((m) => m.external_id).join(",")
+            : undefined;
+    return { enabled, setEnabled, mappedCount: mappedCustomers.length, customer };
 };
 
 export const useQBCustomerQuery = (enabled = true) => {
@@ -203,6 +222,15 @@ export const useQBProfitAndLossReportQuery = (query: QBProfitAndLossQuery, enabl
     return useQuery({
         queryKey: ["qbProfitAndLossReport", query],
         queryFn: () => getQBProfitAndLossReport(query),
+        enabled,
+        retry: false,
+    });
+};
+
+export const useQBReportQuery = (reportType: QBReportTypeId, query: QBReportQuery, enabled = true) => {
+    return useQuery({
+        queryKey: ["qbReport", reportType, query],
+        queryFn: () => getQBReport(reportType, query),
         enabled,
         retry: false,
     });
@@ -360,3 +388,14 @@ export const useImportQBInvoicesMutation = () => {
         },
     });
 };
+
+export const useQBClientSyncMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<{ synced: boolean; qb_customer_id: string }, Error, { client_id: string }>({
+        mutationFn: ({ client_id }) => syncClientToQB(client_id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["qbCustomers"]});
+            queryClient.invalidateQueries({ queryKey: ["qbMappedCustomers"]});
+        }
+    })
+}
