@@ -13,7 +13,7 @@ import {
 	resolveDateRange,
 } from "../../util/dateRangeUtils";
 import { DEFAULT_RESPONSIVE_LAYOUTS, KPI_CATALOG } from "../../lib/KpiConfig";
-import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout } from "../../lib/gridLayoutEngine";
+import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, removeWidget } from "../../lib/gridLayoutEngine";
 import { useAuthStore } from "../../auth/authStore";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
@@ -29,7 +29,7 @@ import {
 	ArrivalPerformanceWidget,
 	MileageSummaryWidget,
 } from "../../components/widgets/reports";
-import { Unlock, LayoutDashboard, LayoutGrid, StretchHorizontal, RotateCcw } from "lucide-react";
+import { Unlock, LayoutDashboard, LayoutGrid, StretchHorizontal, RotateCcw, Trash } from "lucide-react";
 
 const KPI_PRESETS: DateRangeOption[] = [
 	"today",
@@ -326,8 +326,8 @@ export default function KPIPage() {
 									else widgetRefs.current.delete(id);
 								}}
 								className={isEditMode ?
-									"cursor-grab active:cursor-grabbing h-full hover:border hover:border-border-strong hover:border-primary hover:rounded-xl hover:shadow hover:shadow-primary" 
-									: "h-full"}
+									"group relative cursor-grab active:cursor-grabbing h-full hover:border hover:border-border-strong hover:border-primary hover:rounded-xl hover:shadow hover:shadow-primary"
+									: "relative h-full"}
 								onClickCapture={(e) => {
 									if (justDraggedRef.current) {
 										e.preventDefault();
@@ -336,6 +336,16 @@ export default function KPIPage() {
 									}
 								}}
 							>
+								{isEditMode && (
+									<button
+										title="Remove widget"
+										className="absolute top-2 right-2 z-10 w-7 h-7 rounded-md bg-error text-on-primary flex items-center justify-center shadow-md ring-2 ring-base opacity-0 group-hover:opacity-100 hover:bg-error-strong hover:cursor-pointer transition-opacity"
+										onClick={() => handleLayoutSave(removeWidget(id, layouts.lg ?? []))}
+									>
+										<Trash size={14}/>
+									</button>
+								)}
+								
 								{renderKPI(id, startDateStr, endDateStr)}
 							</div>
 						))}
