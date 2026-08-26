@@ -98,6 +98,8 @@ export const insertTechnician = async (
 ) => {
 	try {
 		const parsed = createTechnicianSchema.parse(data);
+		// all emails in db are set to lower case
+        parsed.email = parsed.email.toLowerCase();
 		const sdb = getScopedDb(organizationId);
 
 		const existing = (await db.technician.findFirst({ where: { email: parsed.email } })) ??
@@ -187,6 +189,8 @@ export const updateTechnician = async (
 ) => {
 	try {
 		const parsed = updateTechnicianSchema.parse(data);
+		// all emails in db are set to lower case
+		if (parsed.email) parsed.email = parsed.email.toLowerCase();
 		const sdb = getScopedDb(organizationId);
 
 		const existing = await sdb.technician.findFirst({ where: { id } });

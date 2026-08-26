@@ -17,6 +17,8 @@ import { getAllPermissions } from "../lib/permissionCatalogs.js";
 export const registerOrganization = async (data: unknown) => {
 	try {
 		const parsed = registerOrganizationSchema.parse(data);
+		// all emails in db are set to lower case
+		parsed.admin_email = parsed.admin_email.toLowerCase();
 		// DB since it has to compare with other orgs
 		const existing = await db.dispatcher.findUnique({
 			where: { email: parsed.admin_email },

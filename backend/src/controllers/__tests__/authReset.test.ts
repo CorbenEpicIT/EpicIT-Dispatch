@@ -178,6 +178,19 @@ describe("requestPasswordReset — no live token survives a failed email (review
 	});
 });
 
+describe("requestPasswordReset — email is lowercased before lookup", () => {
+	it("finds a lowercase-stored user when called with a differently-cased email", async () => {
+		fake.dispatcher.findUnique.mockResolvedValue({ id: "disp-1", organization_id: "org-1", email: "d@x.com" });
+		vi.mocked(sendPasswordResetEmail).mockResolvedValue({ success: true } as never);
+
+		const result = await requestPasswordReset("D@X.com", "dispatcher");
+
+		expect(result).toEqual({ err: "" });
+		expect(fake.dispatcher.findUnique).toHaveBeenCalledWith({ where: { email: "d@x.com" } });
+		expect(fake.dispatcher.update.mock.calls[0][0].where).toEqual({ email: "d@x.com" });
+	});
+});
+
 describe("login — opts back into the password hash only for the credential check (review B2)", () => {
 	it("passes omit:{password:false} on the lookup and never returns the hash", async () => {
 		fake.technician.findUnique.mockResolvedValue(null);
