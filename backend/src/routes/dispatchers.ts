@@ -16,7 +16,7 @@ import {
 import { requestPasswordReset } from '../controllers/authenticationController.js';
 import { resetMfa } from '../controllers/mfaController.js';
 import { requirePermission, requirePermissionOrSelf } from '../lib/requirePermissions.js';
-import { getActorHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
+import { getUserHistory, parseHistoryLimit, INVALID_HISTORY_LIMIT } from '../controllers/logsController.js';
 
 const router = Router();
 
@@ -232,7 +232,7 @@ router.get("/:id/changes", requirePermissionOrSelf("view_dispatchers"), async (r
                 .json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
         }
 
-        const results = await getActorHistory(orgId, "dispatcher", id, limit);
+        const results = await getUserHistory(orgId, "dispatcher", id, limit);
 
         if (results.err) {
             return res

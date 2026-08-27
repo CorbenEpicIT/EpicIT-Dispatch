@@ -109,6 +109,7 @@ const ENTITY_LABELS: Record<string, string> = {
 	recurring_plan: "Recurring plan",
 	recurring_occurrence: "Recurring occurrence",
 	organization_role: "Role",
+	organization_role_assignment: "Role assignment",
 	saved_report: "Saved report",
 	mfa: "Two-factor authentication",
 };

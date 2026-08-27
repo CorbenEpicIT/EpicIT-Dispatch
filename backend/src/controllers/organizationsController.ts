@@ -436,7 +436,7 @@ export const assignOrgRole = async (
 				event_type: "organization_role.assigned",
 				action: roleId ? "assigned" : "removed",
 				entity_type: "organization_role_assignment",
-				entity_id: `${userType}-${userId}`,
+				entity_id: userId,
 				organization_id: organizationId,
 				actor_type: context?.techId
 					? "technician"

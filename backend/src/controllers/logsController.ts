@@ -6,7 +6,16 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
 
 export type actor = "technician" | "dispatcher";
-export type entity = "job" | "quote" | "request" | "invoice" | "client" | "project" | "recurring_plan";
+export type entity =
+    | "job"
+    | "quote"
+    | "request"
+    | "invoice"
+    | "client"
+    | "project"
+    | "recurring_plan"
+    | "technician"
+    | "dispatcher";
 
 export const DEFAULT_HISTORY_LIMIT = 20;
 export const MAX_HISTORY_LIMIT = 200;
@@ -215,6 +224,11 @@ const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
                     .then(pluck),
         },
     ],
+    // Matches on entity_id = the target user's own id, so any update logged
+    // against their record (name/status edits, role assignment, etc.) surfaces
+    // here regardless of who the actor was.
+    technician: [{ entity_type: "technician" }, { entity_type: "organization_role_assignment" }],
+    dispatcher: [{ entity_type: "dispatcher" }, { entity_type: "organization_role_assignment" }],
 };
 
 export const getActorHistory = async (orgId: string, type: actor, id: string, limit = DEFAULT_HISTORY_LIMIT) => {
@@ -250,33 +264,48 @@ export const getActorHistory = async (orgId: string, type: actor, id: string, li
     }
 };
 
+// Builds the OR-clause matching every log row for an entity group (the entity's
+// own rows plus its children, including children resolved via parent breadcrumb
+// for rows whose child no longer exists). Shared by getEntityHistory and
+// getUserHistory so the latter can fold entity rows into a single query
+// alongside the actor filter rather than merging two separate paginated sets.
+const buildEntityOr = async (
+    sdb: ScopedDb,
+    type: entity,
+    id: string,
+): Promise<Prisma.logWhereInput[] | null> => {
+    const group = ENTITY_GROUPS[type];
+    if (!group) return null;
+
+    const groups = await Promise.all(
+        group.map(async (member) => ({
+            entity_type: member.entity_type,
+            ids: member.resolve ? await member.resolve(sdb, id) : [id],
+        })),
+    );
+
+    const scopedOr: Prisma.logWhereInput[] = groups
+        .filter((g) => g.ids.length > 0)
+        .map((g) => ({ entity_type: g.entity_type, entity_id: { in: g.ids } }));
+
+    // Children that no longer exist (deleted rows) can't be resolved from
+    // the child tables — match them through the parent breadcrumb instead.
+    for (const member of group) {
+        if (!member.resolve) continue;
+        scopedOr.push({
+            entity_type: member.entity_type,
+            changes: { path: [...PARENT_ID_PATH], equals: id },
+        });
+    }
+
+    return scopedOr;
+};
+
 export const getEntityHistory = async (orgId: string, type: entity, id: string, limit = DEFAULT_HISTORY_LIMIT) => {
     try {
-        const group = ENTITY_GROUPS[type];
-        if (!group) return { err: `Unknown entity type: ${type}`, rows: [] as log_row[], hasMore: false, total: 0 };
-
         const sdb = getScopedDb(orgId);
-
-        const groups = await Promise.all(
-            group.map(async (member) => ({
-                entity_type: member.entity_type,
-                ids: member.resolve ? await member.resolve(sdb, id) : [id],
-            })),
-        );
-
-        const scopedOr: Prisma.logWhereInput[] = groups
-            .filter((g) => g.ids.length > 0)
-            .map((g) => ({ entity_type: g.entity_type, entity_id: { in: g.ids } }));
-
-        // Children that no longer exist (deleted rows) can't be resolved from
-        // the child tables — match them through the parent breadcrumb instead.
-        for (const member of group) {
-            if (!member.resolve) continue;
-            scopedOr.push({
-                entity_type: member.entity_type,
-                changes: { path: [...PARENT_ID_PATH], equals: id },
-            });
-        }
+        const scopedOr = await buildEntityOr(sdb, type, id);
+        if (!scopedOr) return { err: `Unknown entity type: ${type}`, rows: [] as log_row[], hasMore: false, total: 0 };
 
         const scopedWhere = { AND: [{ OR: scopedOr }, RENDERABLE, NOT_SENSITIVE_EVENT] };
 
@@ -298,6 +327,51 @@ export const getEntityHistory = async (orgId: string, type: entity, id: string, 
             return { err: err.message, rows: [] as log_row[], hasMore: false, total: 0 };
         }
         log.error({ err }, "Get entity history error");
+        return { err: "Internal server error", rows: [] as log_row[], hasMore: false, total: 0 };
+    }
+};
+
+/**
+ * Change history for a technician/dispatcher: everything they DID (actor rows)
+ * unioned with everything that happened TO their own user record (entity rows —
+ * profile edits, role assignment, etc.), so an edit made by someone else still
+ * shows up here. A single query rather than merging two separately-paginated
+ * result sets, so hasMore/total stay exact.
+ */
+export const getUserHistory = async (orgId: string, type: actor, id: string, limit = DEFAULT_HISTORY_LIMIT) => {
+    try {
+        const actorTypes = ACTOR_TYPES[type];
+        if (!actorTypes) return { err: `Unknown actor type: ${type}`, rows: [] as log_row[], hasMore: false, total: 0 };
+
+        const sdb = getScopedDb(orgId);
+        const entityOr = (await buildEntityOr(sdb, type, id)) ?? [];
+
+        const scopedWhere = {
+            AND: [
+                { OR: [{ actor_type: { in: actorTypes }, actor_id: id }, ...entityOr] },
+                RENDERABLE,
+                NOT_SENSITIVE_EVENT,
+            ],
+        };
+
+        const [rows, total] = await Promise.all([
+            sdb.log.findMany({
+                where: scopedWhere,
+                orderBy: [{ timestamp: "desc" }, { id: "desc"}],
+                take: limit + 1,
+            }),
+            sdb.log.count({ where: scopedWhere }),
+        ]);
+
+        const hasMore = rows.length > limit;
+        const page = (hasMore ? rows.slice(0, limit) : rows).map(redactSensitiveChanges);
+
+        return { err: "", rows: page, hasMore, total };
+    } catch (err) {
+        if (err instanceof Error) {
+            return { err: err.message, rows: [] as log_row[], hasMore: false, total: 0 };
+        }
+        log.error({ err }, "Get user history error");
         return { err: "Internal server error", rows: [] as log_row[], hasMore: false, total: 0 };
     }
 };
