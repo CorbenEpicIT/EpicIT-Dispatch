@@ -184,8 +184,8 @@ export const insertJobNote = async (
 				actor_id: context?.techId || context?.dispatcherId,
 				changes: {
 					content: { old: null, new: parsed.content },
-					job_id: { old: null, new: jobId },
 					visit_id: { old: null, new: parsed.visit_id || null },
+					...parentBreadcrumb("job", jobId),
 				},
 				ip_address: context?.ipAddress,
 				user_agent: context?.userAgent,
@@ -353,7 +353,7 @@ export const updateJobNote = async (
 							? "dispatcher"
 							: "system",
 					actor_id: context?.techId || context?.dispatcherId,
-					changes,
+					changes: { ...changes, ...parentBreadcrumb("job", jobId) },
 					ip_address: context?.ipAddress,
 					user_agent: context?.userAgent,
 				});

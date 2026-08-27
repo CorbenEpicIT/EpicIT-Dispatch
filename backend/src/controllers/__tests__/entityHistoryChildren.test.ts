@@ -79,4 +79,17 @@ describe("getEntityHistory — deleted children via parent breadcrumb (review P2
 			{ entity_type: "job", changes: { path: ["_parent_id", "new"], equals: "proj-1" } },
 		]);
 	});
+
+	it("recurring_plan group matches deleted notes/occurrences through the breadcrumb", async () => {
+		fake.recurring_plan_note.findMany.mockResolvedValue([]);
+		fake.recurring_occurrence.findMany.mockResolvedValue([]);
+		await getEntityHistory("org-1", "recurring_plan", "plan-1", 20);
+		const where = fake.log.findMany.mock.calls[0][0].where;
+		expect(clausesWith(where, ["entity_type", "changes"])).toEqual(
+			expect.arrayContaining([
+				{ entity_type: "recurring_plan_note", changes: { path: ["_parent_id", "new"], equals: "plan-1" } },
+				{ entity_type: "recurring_occurrence", changes: { path: ["_parent_id", "new"], equals: "plan-1" } },
+			]),
+		);
+	});
 });

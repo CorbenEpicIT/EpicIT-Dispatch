@@ -298,7 +298,7 @@ export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 	};
 };
 
-export type RefType = "client" | "project" | "dispatcher" | "organization_role" | "job";
+export type RefType = "client" | "project" | "dispatcher" | "organization_role" | "job" | "recurring_plan";
 
 export const ID_REF_FIELDS: Record<string, RefType> = {
 	client_id: "client",

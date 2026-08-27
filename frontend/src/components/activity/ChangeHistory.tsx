@@ -14,6 +14,7 @@ import { useDispatcherByIdQuery } from "../../hooks/useDispatchers";
 import { useOrgRoleByIdQuery } from "../../hooks/useOrgRoles";
 import { useJobByIdQuery } from "../../hooks/useJobs";
 import { useAnyPermission, usePermission } from "../../hooks/usePermission";
+import { useRecurringPlanByIdQuery } from "../../hooks/useRecurringPlans";
 
 interface ChangeHistoryProps {
     scope: ChangeScope;
@@ -53,11 +54,17 @@ function JobRefName({ id }: { id: string }) {
     return <>{data?.name ?? id}</>;
 }
 
+function RecurringPlanRefName({id}: {id: string}) {
+    const {data} = useRecurringPlanByIdQuery(id);
+    return <>{data?.name ?? id}</>
+}
+
 function RefValue({ refType, id }: { refType: RefType; id: string }) {
     const canViewClients = usePermission("view_clients");
     const canViewProjects = usePermission("view_projects");
     const canManageRoles = usePermission("manage_roles");
     const canViewJobs = useAnyPermission(["view_jobs", "view_assigned_jobs", "view_all_jobs"]);
+    const canViewRecurringPlans = usePermission("view_recurring_plans");
 
     switch (refType) {
         case "client": return canViewClients ? <ClientRefName id={id} /> : <>{shortId(id)}</>;
@@ -65,6 +72,7 @@ function RefValue({ refType, id }: { refType: RefType; id: string }) {
         case "dispatcher": return <DispatcherRefName id={id} />;
         case "organization_role": return canManageRoles ? <OrgRoleRefName id={id} /> : <>{shortId(id)}</>;
         case "job": return canViewJobs ? <JobRefName id={id} /> : <>{shortId(id)}</>;
+        case "recurring_plan": return canViewRecurringPlans ? <RecurringPlanRefName id={id}/> : <>{shortId(id)}</>;
     }
 }
 

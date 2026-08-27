@@ -6,7 +6,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
 
 export type actor = "technician" | "dispatcher";
-export type entity = "job" | "quote" | "request" | "invoice" | "client" | "project";
+export type entity = "job" | "quote" | "request" | "invoice" | "client" | "project" | "recurring_plan";
 
 export const DEFAULT_HISTORY_LIMIT = 20;
 export const MAX_HISTORY_LIMIT = 200;
@@ -195,6 +195,23 @@ const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
             resolve: (sdb, projectId) =>
                 sdb.job
                     .findMany({ where: { project_id: projectId }, select: { id: true } })
+                    .then(pluck),
+        },
+    ],
+    recurring_plan: [
+        { entity_type: "recurring_plan" },
+        {
+            entity_type: "recurring_plan_note",
+            resolve: (sdb, planId) =>
+                sdb.recurring_plan_note
+                    .findMany({ where: { recurring_plan_id: planId }, select: { id: true } })
+                    .then(pluck),
+        },
+        {
+            entity_type: "recurring_occurrence",
+            resolve: (sdb, planId) =>
+                sdb.recurring_occurrence
+                    .findMany({ where: { recurring_plan_id: planId }, select: { id: true } })
                     .then(pluck),
         },
     ],
