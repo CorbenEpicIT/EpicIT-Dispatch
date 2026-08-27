@@ -26,6 +26,8 @@ import {
 	reportInstant,
 	getProjectsReport,
 	getProjectsReportPage,
+	getCogsByItemReport,
+	getCogsByJobReport
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
@@ -123,6 +125,8 @@ type FtfrRaw = Awaited<ReturnType<typeof getFirstTimeFixReport>>[number];
 type LineItemTypeRaw = Awaited<ReturnType<typeof getRevenueByLineItemType>>[number];
 type RevenueLineItemRaw = Awaited<ReturnType<typeof getRevenueLineItemsReport>>["rows"][number];
 type ProjectRaw = Awaited<ReturnType<typeof getProjectsReport>>[number];
+type CogsByJobRow = Awaited<ReturnType<typeof getCogsByJobReport>>["rows"][number];
+type CogsByItemRow = Awaited<ReturnType<typeof getCogsByItemReport>>["rows"][number];
 
 const jobRow = (job: JobRaw): ReportRow => ({
 	id: job.id,
@@ -431,6 +435,34 @@ const projectRow = (p: ProjectRaw): ReportRow => ({
 	jobCount: p.jobCount,
 })
 
+const cogsByJobRow = (r: CogsByJobRow): ReportRow => ({
+	id: r.id,
+	jobNumber: r.jobNumber,
+	name: r.name,
+	clientName: r.clientName,
+	status: r.status,
+	totalCogs: r.totalCogs ?? "—",
+	costCoverage: r.costCoverage,
+	itemCount: r.itemCount,
+	qtyConsumed: r.qtyConsumed,
+	lastConsumedAt: fmtDate(r.lastConsumedAt),
+});
+
+const cogsByItemRow = (r: CogsByItemRow): ReportRow => ({
+	id: r.id,
+	itemName: r.name,
+	sku: r.sku ?? "—",
+	category: r.category ?? "—",
+	unit: r.unit,
+	quantity: r.quantity,
+	totalCogs: r.totalCogs ?? "—",
+	avgUnitCost: r.avgUnitCost ?? "—",
+	costCoverage: r.costCoverage,
+	qtyConsumed: r.qtyConsumed,
+	jobCount: r.jobCount,
+	lastConsumedAt: fmtDate(r.lastConsumedAt),
+});
+
 const mapPage = <T>(
 	r: { rows: T[]; total: number; page: number; pageSize: number; summary?: Record<string, unknown> } | null,
 	fn: (row: T) => ReportRow,
@@ -693,6 +725,28 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 		}),
 		loadPage: async (orgId, q, params) => 
 			mapPage(await getProjectsReportPage(q.startDate, q.endDate, orgId, params), projectRow),
+	},
+	"cogs-by-job": {
+		load: async (orgId, q) => {
+			const { rows, truncated } = await getCogsByJobReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(cogsByJobRow), summary: { truncated } };
+		},
+		filteredSummary: (rows) => ({
+			totalCogs: round2(rows.reduce((s, r) => s + num(r.totalCogs), 0)),
+			jobCount: rows.length,
+			jobsMissingCostData: rows.filter(r => r.costCoverage !== "Full").length,
+		}),
+	},
+	"cogs-by-item": { 
+		load: async (orgId, q) => {
+			const { rows, truncated } = await getCogsByItemReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(cogsByItemRow), summary: { truncated } };
+		},
+		filteredSummary: (rows) => ({
+			totalCogs: round2(rows.reduce((s, r) => s + num(r.totalCogs), 0)),
+			itemCount: rows.length,
+			itemsMissingCostData: rows.filter(r => r.costCoverage !== "Full").length,
+		}),
 	}
 };
 

@@ -786,6 +786,34 @@ router.get("/projects", requirePermission("view_reports"), async (req, res, next
 	} catch(err) {
 		next(err);
 	}
+});
+
+router.get("/cogs-by-job", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		 const { data, meta } = await handlePaginatedReport(
+			"cogs-by-job",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch(err) {
+		next(err);
+	}
+});
+
+router.get("/cogs-by-item", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		 const { data, meta } = await handlePaginatedReport(
+			"cogs-by-item",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch(err) {
+		next(err);
+	}
 })
 
 // A bound is either a full ISO instant (what the frontend sends) or a bare

@@ -312,6 +312,12 @@ export const getFirstTimeFixReport = (params: ReportFetchParams = {}): Promise<P
 export const getProjectsReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated("/reports/projects", params, "Failed to fetch projects report");
 
+export const getCogsByJobReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/cogs-by-job", params, "Failed to fetch cost of goods sold by job report");
+
+export const getCogsByItemReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/cogs-by-item", params, "Failed to fetch cost of goods sold by item report");
+
 export const getTechnicianScorecard = async (
 	startDate?: string,
 	endDate?: string,

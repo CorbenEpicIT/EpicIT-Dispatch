@@ -91,6 +91,11 @@ const REPORT_CATEGORIES: ReportCategory[] = [
 				to: "/dispatch/reporting/revenue-by-line-item-type",
 			},
 			{
+				title: "Cost of Goods Sold",
+				description: "Inventory cost consumed, by job or by item",
+				to: "/dispatch/reporting/cogs",
+			},
+			{
 				title: "Balance Sheet",
 				description: "Balance Sheet from Quickbooks",
 				to: "/dispatch/reporting/qb/BalanceSheet",

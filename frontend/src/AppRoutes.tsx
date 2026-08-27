@@ -49,6 +49,7 @@ const ProfitAndLossPage = lazy(() => import("./pages/dispatch/ProfitAndLossPage"
 const QBReportPage = lazy(() => import("./pages/dispatch/QBReportPage"));
 const TaxLiabilityPage = lazy(() => import("./pages/dispatch/TaxLiabilityPage"));
 const PaymentsReportPage = lazy(() => import("./pages/dispatch/PaymentsReportPage"));
+const CogsReportPage = lazy(() => import("./pages/dispatch/CogsReportPage"));
 const QuoteFunnelPage = lazy(() => import("./pages/dispatch/QuoteFunnelPage"));
 const RevenueByLineItemTypePage = lazy(() => import("./pages/dispatch/RevenueByLineItemTypePage"));
 const RevenueByLineItemTypeDetailPage = lazy(() => import("./pages/dispatch/RevenueByLineItemTypeDetailPage"));
@@ -178,6 +179,7 @@ export default function AppRoutes() {
 			<Route path="reporting/qb/:reportType" element={<RequirePermission permission="view_reports"><QBReportPage /></RequirePermission>} />
 				<Route path="reporting/tax-liability" element={<RequirePermission permission="view_reports"><TaxLiabilityPage /></RequirePermission>} />
 				<Route path="reporting/payments" element={<RequirePermission permission="view_reports"><PaymentsReportPage /></RequirePermission>} />
+				<Route path="reporting/cogs" element={<RequirePermission permission="view_reports"><CogsReportPage /></RequirePermission>} />
 				<Route path="reporting/quote-funnel" element={<RequirePermission permission="view_reports"><QuoteFunnelPage /></RequirePermission>} />
 				<Route path="reporting/revenue-by-line-item-type" element={<RequirePermission permission="view_reports"><RevenueByLineItemTypePage /></RequirePermission>} />
 				<Route path="reporting/revenue-by-line-item-type/:itemType" element={<RequirePermission permission="view_reports"><RevenueByLineItemTypeDetailPage /></RequirePermission>} />

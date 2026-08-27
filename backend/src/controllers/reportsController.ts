@@ -20,6 +20,7 @@ import { round2 } from "../lib/reports/numbers.js";
 import { getOrgRealmId } from "../services/quickbooksService.js";
 import { log } from "../services/appLogger.js";
 import { createErrorResponse, ErrorCodes, httpError } from "../types/responses.js";
+import { computeConsumptionCosts, ConsumptionCostRow } from "../lib/reports/costing.js";
 
 // Upper bound on rows pulled into memory for the in-JS report aggregations
 const REPORT_ROW_CAP = 10000;
@@ -3162,6 +3163,103 @@ export const getPaymentsReportPage = async (
 		summary,
 	};
 };
+
+// ============================================================================
+// COGs (cost of goods) Report
+// ============================================================================
+
+const summarizeCostSource = (events: ConsumptionCostRow[]) => {
+	const priced = events.filter((e) => e.costSource !== "no_cost_data");
+	const pricedQty = round2(priced.reduce((s, e) => s + e.qtyConsumed, 0));
+	const pricedTotal = round2(priced.reduce((s, e) => s + e.totalCost, 0));
+	const totalCogs = priced.length === 0 ? null : pricedTotal;
+	const hasNoData = events.some(e=> e.costSource === "no_cost_data");
+	const allWac = events.every(e => e.costSource === "wac");
+	const costCoverage = allWac ? "Full"
+		: !hasNoData ? "Estimated"
+		: priced.length > 0 ? "Partial"
+		: "No Cost Data";
+	return { totalCogs, costCoverage, pricedQty, pricedTotal };
+}
+
+export const getCogsByJobReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined, 
+	orgId: string
+) => {
+	const { rows: events, truncated } = await computeConsumptionCosts(orgId, { 
+		startDate: startDate ? new Date(startDate): undefined,
+		endDate: endDate ? new Date (endDate) : undefined
+	});
+	const byJob = new Map<string, ConsumptionCostRow[]>();
+	for (const e of events) {
+		(byJob.get(e.jobId) ?? byJob.set(e.jobId, []).get(e.jobId)!).push(e);
+	}
+
+	const sdb = getScopedDb(orgId);
+	const jobs = await sdb.job.findMany({
+		where: { id: { in: [...byJob.keys()]}},
+		include: { client: { select: { name: true }}},
+	});
+	const rows = jobs.map((job) =>{
+		const evs = byJob.get(job.id)!;
+		const { totalCogs, costCoverage } = summarizeCostSource(evs);
+		return {
+			id: job.id,
+			jobNumber: job.job_number,
+			name: job.name,
+			clientName: job.client.name,
+			status: job.status,
+			totalCogs,
+			costCoverage, 
+			itemCount: new Set(evs.map(e => e.inventoryItemId)).size,
+			qtyConsumed: round2(evs.reduce((s, e) => s + e.qtyConsumed, 0)),
+			lastConsumedAt: evs.reduce((max, e) => (e.consumedAt > max ? e.consumedAt : max), evs[0].consumedAt),
+		};
+	});
+
+	return { rows, truncated }
+}
+
+export const getCogsByItemReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined, 
+	orgId: string
+) => {
+	const { rows: events, truncated } = await computeConsumptionCosts(orgId, { 
+		startDate: startDate ? new Date(startDate): undefined,
+		endDate: endDate ? new Date (endDate) : undefined
+	});
+	const byItem = new Map<string, ConsumptionCostRow[]>();
+	for (const e of events) {
+		(byItem.get(e.inventoryItemId) ?? byItem.set(e.inventoryItemId, []).get(e.inventoryItemId)!).push(e);
+	}
+
+	const sdb = getScopedDb(orgId);
+	const items = await sdb.inventory_item.findMany({
+		where: { id: { in: [...byItem.keys()]}},
+	});
+	const rows = items.map((item) =>{
+		const evs = byItem.get(item.id)!;
+		const { totalCogs, costCoverage, pricedQty, pricedTotal } = summarizeCostSource(evs);
+		return {
+			id: item.id,
+			name: item.name,
+			sku: item.sku,
+			category: item.category,
+			unit: item.unit,
+			quantity: item.quantity,
+			totalCogs,
+			costCoverage,
+			jobCount: new Set(evs.map(e => e.jobId)).size,
+			qtyConsumed: round2(evs.reduce((s, e) => s + e.qtyConsumed, 0)),
+			avgUnitCost: pricedQty > 0 ? round2(pricedTotal / pricedQty) : null,
+			lastConsumedAt: evs.reduce((max, e) => (e.consumedAt > max ? e.consumedAt : max), evs[0].consumedAt),
+		};
+	});
+
+	return { rows, truncated }
+}
 
 // ============================================================================
 // QUOTE CONVERSION
