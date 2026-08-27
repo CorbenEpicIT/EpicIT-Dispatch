@@ -16,7 +16,6 @@ import {
 	ReceiptText,
 	ShieldUser,
 	Truck,
-	UserRoundCog,
 	Plus,
 	Mail,
 	FolderKanban,
@@ -281,12 +280,6 @@ export default function DispatchLayout() {
 								label="Followups"
 							/>
 						)}
-						<SideNavItem
-							expanded={expanded}
-							to="/dispatch/profile"
-							icon={<UserRoundCog size={ICON_SIZE} />}
-							label="My Profile"
-						/>
 						{(user?.role === "admin" || canViewAdmin) && (
 							<SideNavItem
 								expanded={expanded}
