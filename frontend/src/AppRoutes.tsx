@@ -34,7 +34,6 @@ const TechnicianDetailsPage = lazy(() => import("./pages/dispatch/TechnicianDeta
 const MapPage = lazy(() => import("./pages/dispatch/MapPage"));
 const ReportingPage = lazy(() => import("./pages/dispatch/ReportingPage"));
 const ReportBuilderPage = lazy(() => import("./pages/dispatch/ReportBuilderPage"));
-const KPIPage = lazy(() => import("./pages/dispatch/KPIPage"));
 const MileageReportPage = lazy(() => import("./pages/dispatch/MileageReportPage"));
 const TimesheetsReportPage = lazy(() => import("./pages/dispatch/TimesheetsReportPage"));
 const ReorderForecastPage = lazy(() => import("./pages/dispatch/ReorderForecastPage"));
@@ -187,7 +186,6 @@ export default function AppRoutes() {
 				<Route path="reporting/technician-scorecard" element={<RequirePermission permission="view_reports"><TechnicianScorecardPage /></RequirePermission>} />
 				<Route path="reporting/field-added-revenue" element={<RequirePermission permission="view_reports"><FieldAddedRevenuePage /></RequirePermission>} />
 				<Route path="reporting/recurring-revenue" element={<RequirePermission permission="view_reports"><RecurringRevenuePage /></RequirePermission>} />
-				<Route path="kpi" element={<RequirePermission permission="view_reports"><KPIPage /></RequirePermission>} />
 				<Route path="mileage" element={<MileageReportPage />} />
 				<Route path="timesheets" element={<RequirePermission permission="view_reports"><TimesheetsReportPage /></RequirePermission>} />
 				<Route path="inventory/reorder-forecast" element={<RequirePermission permission="view_reports"><ReorderForecastPage /></RequirePermission>} />

@@ -255,21 +255,11 @@ export default function DispatchLayout() {
 						{canViewReports && (
 							<SideNavItem
 								expanded={expanded}
-								to="/dispatch/kpi"
-								icon={
-									<ChartColumnDecreasing
-										size={ICON_SIZE}
-									/>
-								}
-								label="KPIs"
-							/>
-						)}
-						{canViewReports && (
-							<SideNavItem
-								expanded={expanded}
 								to="/dispatch/reporting"
-								icon={<FileText size={ICON_SIZE} />}
-								label="Reporting"
+								icon={<ChartColumnDecreasing
+										size={ICON_SIZE}
+									/>}
+								label="Insights"
 							/>
 						)}
 						{canViewFollowups && (
