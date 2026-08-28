@@ -22,7 +22,8 @@ import {
 import { formatCurrency } from "../../util/util";
 import { parseDateRangeFromParams, resolveDateRange } from "../../util/dateRangeUtils";
 import { useCogsByJobReportQuery, useCogsByItemReportQuery } from "../../hooks/useReports";
-import type { ReportFetchParams } from "../../types/reports";
+import type { CogsTrendPoint, ReportFetchParams } from "../../types/reports";
+import CogsTrendChart from "../../components/reports/CogsTrendChart";
 
 type CogsView = "job" | "item";
 
@@ -67,6 +68,7 @@ interface CogsSummary {
 	jobsMissingCostData?: number;
 	itemCount?: number;
 	itemsMissingCostData?: number;
+	trend?: CogsTrendPoint[];
 }
 
 const currencyOrDash = (v: unknown) => (typeof v === "number" ? formatCurrency(v) : "—");
@@ -242,7 +244,11 @@ export default function CogsReportPage() {
 					);
 				})}
 			</div>
-
+			{!isLoading && !error && (summary.trend?.length ?? 0) > 0 && (
+				<div className="h-80 mb-4">
+						<CogsTrendChart trend={summary.trend ?? []} />
+				</div>
+			)}
 			<PageControls
 				className="mb-4"
 				left={
