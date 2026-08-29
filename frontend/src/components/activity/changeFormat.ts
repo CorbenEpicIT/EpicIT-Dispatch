@@ -102,6 +102,7 @@ const ENTITY_LABELS: Record<string, string> = {
 	client_note: "Client note",
 	contact: "Contact",
 	project: "Project",
+	project_note: "Project note",
 	technician: "Technician",
 	dispatcher: "Dispatcher",
 	vehicle: "Vehicle",

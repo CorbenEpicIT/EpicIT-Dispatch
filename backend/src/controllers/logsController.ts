@@ -206,6 +206,13 @@ const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
                     .findMany({ where: { project_id: projectId }, select: { id: true } })
                     .then(pluck),
         },
+        {
+            entity_type: "project_note",
+            resolve: (sdb, projectId) =>
+                sdb.project_note
+                    .findMany({ where: { project_id: projectId }, select: { id: true } })
+                    .then(pluck),
+        },
     ],
     recurring_plan: [
         { entity_type: "recurring_plan" },
