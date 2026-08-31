@@ -60,6 +60,8 @@ export const insertDispatcher = async (
     try {
         const parsed = createDispatcherSchema.parse(data);
         const passwordProvided = parsed.password ? true : false;
+        // all emails in db are set to lower case
+        parsed.email = parsed.email.toLowerCase();
         const sdb = getScopedDb(organizationId);
         const existing = (await db.technician.findFirst({ where: { email: parsed.email } })) ??
                          (await db.dispatcher.findFirst({ where: { email: parsed.email } }));
@@ -141,6 +143,8 @@ export const updateDispatcher = async (
 ) => {
     try {
         const parsed = updateDispatcherSchema.parse(data);
+        // all emails in db are set to lower case
+        if (parsed.email) parsed.email = parsed.email.toLowerCase();
 
         const sdb = getScopedDb(organizationId);
         const existing = await sdb.dispatcher.findFirst({

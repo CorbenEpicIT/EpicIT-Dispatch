@@ -13,7 +13,7 @@ import {
 	pushInvoice,
 	sendInvoiceEmail,
 } from "../services/qb/qbInvoices.js"
-import { findAllQBCustomers } from "../services/qb/qbCustomers.js"
+import { findAllQBCustomers, pushClient } from "../services/qb/qbCustomers.js"
 import {
 	getQBItems,
 	getMappedQBItems,
@@ -40,10 +40,10 @@ import {
 	importQBVendor,
 	pushVendor,
 } from "../services/qb/qbVendors.js";
-import { linkQBItemSchema, linkQBVendorSchema } from "../lib/validate/quickbooks.js"
+import { linkQBItemSchema, linkQBVendorSchema, qbReportQuerySchema, qbReportTypeSchema } from "../lib/validate/quickbooks.js"
 import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
-import { queryProfitAndLossQBReport } from "../services/qb/qbReports.js";
+import { queryProfitAndLossQBReport, queryQBReport } from "../services/qb/qbReports.js";
 import type { ProfitAndLossQuery } from "../services/qb/qbReports.js";
 
 const router = Router();
@@ -127,7 +127,7 @@ router.post("/invoices/:id/email", async (req, res, next) =>{
 	}
 });
 
-// Returns QB customer IDs already imported into this org
+// Returns every client already mapped to a QB customer in this org
 router.get("/customers/mappings", async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
@@ -139,9 +139,9 @@ router.get("/customers/mappings", async (req, res, next) => {
 				client: { organization_id: orgId },
 				account_id: accountId,
 			},
-			select: { external_id: true },
+			select: { client_id: true, external_id: true },
 		});
-		return res.json(createSuccessResponse(mappings.map((m) => m.external_id)));
+		return res.json(createSuccessResponse(mappings));
 	} catch (e) {
 		next(e);
 	}
@@ -160,6 +160,21 @@ router.get("/customers", async (req, res, next) => {
 		next(e);
 	}
 });
+
+router.post("/customers/:clientId/sync", requirePermission("edit_clients"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const clientId = req.params.clientId as string;
+		const qbCustomerId = await pushClient(orgId, clientId);
+
+		if (!qbCustomerId) {
+			return res.status(500).json(createErrorResponse(ErrorCodes.SERVER_ERROR, "Could not sync client"));
+		}
+		return res.json(createSuccessResponse({ synced: true, qb_customer_id: qbCustomerId }));
+	} catch (e) {
+		next(e);
+	}
+})
 
 router.get("/items", requirePermission("view_inventory"), async (req, res, next) => {
 	try {
@@ -430,5 +445,29 @@ router.get("/reports/profit-and-loss", requirePermission("view_reports"), async 
 		next(err);
 	}
 });
+
+router.get("/reports/:reportType", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const typeParsed = qbReportTypeSchema.safeParse(req.params.reportType);
+		if (!typeParsed.success) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, "Unknown report type"));
+		}
+		const queryParsed = qbReportQuerySchema.safeParse(req.query);
+		if (!queryParsed.success) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, queryParsed.error.issues[0].message));
+		}
+		const search = new URLSearchParams();
+		for (const [key, value] of Object.entries(queryParsed.data)) {
+			if (typeof value === "string" && value !== "") {
+				search.set(key, value);
+			}
+		} 
+		const report = await queryQBReport(orgId, typeParsed.data, search.toString());
+		res.json(createSuccessResponse(report))
+	} catch (err) {
+		next(err);
+	}
+})
 
 export default router;

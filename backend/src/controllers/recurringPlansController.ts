@@ -6,6 +6,7 @@ import {
 } from "../../generated/prisma/client.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { getScopedDb } from "../lib/context.js";
 import {
 	createRecurringPlanSchema,
@@ -1493,6 +1494,7 @@ export const skipOccurrence = async (
 			action: "updated",
 			entity_type: "recurring_occurrence",
 			entity_id: occurrenceId,
+			organization_id: organizationId,
 			actor_type: context?.techId
 				? "technician"
 				: context?.dispatcherId
@@ -1502,6 +1504,7 @@ export const skipOccurrence = async (
 			changes: {
 				status: { old: "planned", new: "skipped" },
 				skip_reason: { old: null, new: parsed.skip_reason },
+				...parentBreadcrumb("recurring_plan", occurrence.recurring_plan_id),
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,
@@ -1608,6 +1611,7 @@ export const rescheduleOccurrence = async (
 			action: "updated",
 			entity_type: "recurring_occurrence",
 			entity_id: occurrenceId,
+			organization_id: organizationId,
 			actor_type: context?.techId
 				? "technician"
 				: context?.dispatcherId
@@ -1623,6 +1627,7 @@ export const rescheduleOccurrence = async (
 					old: occurrence.occurrence_end_at,
 					new: newEndDate,
 				},
+				...parentBreadcrumb("recurring_plan", occurrence.recurring_plan_id),
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,
@@ -1663,7 +1668,12 @@ export const bulkSkipOccurrences = async (
 		const parsed = bulkSkipOccurrencesSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
 
-		const result = await sdb.$transaction(async (tx) => {
+		const { result, representativePlanId } = await sdb.$transaction(async (tx) => {
+			const representative = await tx.recurring_occurrence.findUnique({
+				where: { id: parsed.occurrence_ids[0] },
+				select: { recurring_plan_id: true },
+			});
+
 			const updated = await tx.recurring_occurrence.updateMany({
 				where: {
 					id: { in: parsed.occurrence_ids },
@@ -1676,7 +1686,7 @@ export const bulkSkipOccurrences = async (
 				},
 			});
 
-			return updated;
+			return { result: updated, representativePlanId: representative?.recurring_plan_id ?? null };
 		});
 
 		await logActivity({
@@ -1684,6 +1694,7 @@ export const bulkSkipOccurrences = async (
 			action: "updated",
 			entity_type: "recurring_occurrence",
 			entity_id: parsed.occurrence_ids[0],
+			organization_id: organizationId,
 			actor_type: context?.techId
 				? "technician"
 				: context?.dispatcherId
@@ -1693,6 +1704,7 @@ export const bulkSkipOccurrences = async (
 			changes: {
 				count: { old: null, new: result.count },
 				skip_reason: { old: null, new: parsed.skip_reason },
+				...(representativePlanId ? parentBreadcrumb("recurring_plan", representativePlanId) : {}),
 			},
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,

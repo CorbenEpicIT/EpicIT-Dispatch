@@ -102,6 +102,7 @@ const ENTITY_LABELS: Record<string, string> = {
 	client_note: "Client note",
 	contact: "Contact",
 	project: "Project",
+	project_note: "Project note",
 	technician: "Technician",
 	dispatcher: "Dispatcher",
 	vehicle: "Vehicle",
@@ -109,6 +110,7 @@ const ENTITY_LABELS: Record<string, string> = {
 	recurring_plan: "Recurring plan",
 	recurring_occurrence: "Recurring occurrence",
 	organization_role: "Role",
+	organization_role_assignment: "Role assignment",
 	saved_report: "Saved report",
 	mfa: "Two-factor authentication",
 };
@@ -298,7 +300,7 @@ export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 	};
 };
 
-export type RefType = "client" | "project" | "dispatcher" | "organization_role" | "job";
+export type RefType = "client" | "project" | "dispatcher" | "organization_role" | "job" | "recurring_plan";
 
 export const ID_REF_FIELDS: Record<string, RefType> = {
 	client_id: "client",

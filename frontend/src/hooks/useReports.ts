@@ -280,6 +280,37 @@ export const useFirstTimeFixQuery = (
 		placeholderData: keepPreviousData,
 	});
 
+export const useProjectsReportQuery = (
+	params: ReportFetchParams,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "projects", params],
+		queryFn: () => reportsApi.getProjectsReport(params),
+		placeholderData: keepPreviousData,
+	});
+
+export const useCogsByJobReportQuery = (
+	params: ReportFetchParams,
+	enabled = true
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "cogs-by-job", params],
+		queryFn: () => reportsApi.getCogsByJobReport(params),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+
+export const useCogsByItemReportQuery = (
+	params: ReportFetchParams,
+	enabled = true
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "cogs-by-item", params],
+		queryFn: () => reportsApi.getCogsByItemReport(params),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+
 export const useTechnicianScorecardQuery = (
 	startDate?: string,
 	endDate?: string,

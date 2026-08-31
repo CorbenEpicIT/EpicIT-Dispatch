@@ -64,6 +64,7 @@ import {
 import { PriorityColors } from "../../types/common";
 import { formatCurrency } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -1222,6 +1223,8 @@ export default function RecurringPlanDetailPage() {
 					</div>
 				</div>
 			)}
+
+			<ChangeHistory scope={{kind: "entity", type: "recurring_plan", id: recurringPlanId ?? ""}}/>
 
 			<ConfirmDialog
 				open={pendingConfirm !== null}

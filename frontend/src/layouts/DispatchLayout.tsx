@@ -16,7 +16,6 @@ import {
 	ReceiptText,
 	ShieldUser,
 	Truck,
-	UserRoundCog,
 	Plus,
 	Mail,
 	FolderKanban,
@@ -256,21 +255,11 @@ export default function DispatchLayout() {
 						{canViewReports && (
 							<SideNavItem
 								expanded={expanded}
-								to="/dispatch/kpi"
-								icon={
-									<ChartColumnDecreasing
-										size={ICON_SIZE}
-									/>
-								}
-								label="KPIs"
-							/>
-						)}
-						{canViewReports && (
-							<SideNavItem
-								expanded={expanded}
 								to="/dispatch/reporting"
-								icon={<FileText size={ICON_SIZE} />}
-								label="Reporting"
+								icon={<ChartColumnDecreasing
+										size={ICON_SIZE}
+									/>}
+								label="Insights"
 							/>
 						)}
 						{canViewFollowups && (
@@ -281,12 +270,6 @@ export default function DispatchLayout() {
 								label="Followups"
 							/>
 						)}
-						<SideNavItem
-							expanded={expanded}
-							to="/dispatch/profile"
-							icon={<UserRoundCog size={ICON_SIZE} />}
-							label="My Profile"
-						/>
 						{(user?.role === "admin" || canViewAdmin) && (
 							<SideNavItem
 								expanded={expanded}

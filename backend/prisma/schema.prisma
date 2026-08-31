@@ -373,6 +373,7 @@ model organization {
   job_notes             job_note[]
   recurring_plan_notes  recurring_plan_note[]
   invoice_notes         invoice_note[]
+  project_notes         project_note[]
 
   tax_rates             tax_rate[]
   tax_groups            tax_group[]
@@ -524,6 +525,7 @@ model client_external_mapping {
   client      client @relation(fields: [client_id], references: [id])
 
   @@unique([provider, account_id, external_id])
+  @@unique([provider, client_id, account_id])
   @@index([client_id])
 }
 
@@ -1208,6 +1210,8 @@ model project {
   cancelled_at      DateTime?
   cancellation_reason String?
 
+  project_notes     project_note[] 
+
   jobs              job[]
 
   @@index([client_id])
@@ -1215,6 +1219,45 @@ model project {
   @@index([organization_id, created_at])
   @@index([manager_dispatcher_id])
   @@unique([organization_id, project_number])
+}
+
+model project_note {
+  id     String @id @default(uuid())
+  organization_id String?
+  organization    organization? @relation(fields: [organization_id], references: [id])
+  project_id String
+  project    project    @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  content    String   @db.Text
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  creator_tech_id           String?
+  creator_dispatcher_id     String?
+  last_editor_tech_id       String?
+  last_editor_dispatcher_id String?
+
+  notify_technician Boolean @default(false)
+
+  creator_tech           technician? @relation("ProjectNoteCreator", fields: [creator_tech_id], references: [id])
+  creator_dispatcher     dispatcher? @relation("ProjectNoteCreator", fields: [creator_dispatcher_id], references: [id])
+  last_editor_tech       technician? @relation("ProjectNoteEditor", fields: [last_editor_tech_id], references: [id])
+  last_editor_dispatcher dispatcher? @relation("ProjectNoteEditor", fields: [last_editor_dispatcher_id], references: [id])
+
+  photos project_note_photo[]
+
+  @@index([project_id])
+}
+
+model project_note_photo {
+  id          String   @id @default(uuid())
+  note_id     String
+  note        project_note @relation(fields: [note_id], references: [id], onDelete: Cascade)
+  photo_url   String
+  photo_label String
+  created_at  DateTime @default(now())
+
+  @@index([note_id])
 }
 
 // ============================================================================
@@ -1885,6 +1928,10 @@ model technician {
   created_invoice_notes        invoice_note[]    @relation("InvoiceNoteCreator")
   last_edited_invoice_notes    invoice_note[]    @relation("InvoiceNoteEditor")
 
+  created_project_notes     project_note[] @relation("ProjectNoteCreator")
+  last_edited_project_notes project_note[] @relation("ProjectNoteEditor")
+
+
   shifts       technician_shift[]
   shift_breaks technician_shift_break[]
   provisional_items   inventory_item[] @relation("TechProvisionalItems")
@@ -1934,6 +1981,9 @@ model dispatcher {
 
   created_recurring_plan_notes     recurring_plan_note[] @relation("RecurringPlanNoteCreator")
   last_edited_recurring_plan_notes recurring_plan_note[] @relation("RecurringPlanNoteEditor")
+
+  created_project_notes     project_note[] @relation("ProjectNoteCreator")
+  last_edited_project_notes project_note[] @relation("ProjectNoteEditor")
 
   recorded_invoice_payments    invoice_payment[]
   created_invoice_notes        invoice_note[]    @relation("InvoiceNoteCreator")

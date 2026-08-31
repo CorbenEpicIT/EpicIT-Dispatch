@@ -34,7 +34,6 @@ const TechnicianDetailsPage = lazy(() => import("./pages/dispatch/TechnicianDeta
 const MapPage = lazy(() => import("./pages/dispatch/MapPage"));
 const ReportingPage = lazy(() => import("./pages/dispatch/ReportingPage"));
 const ReportBuilderPage = lazy(() => import("./pages/dispatch/ReportBuilderPage"));
-const KPIPage = lazy(() => import("./pages/dispatch/KPIPage"));
 const MileageReportPage = lazy(() => import("./pages/dispatch/MileageReportPage"));
 const TimesheetsReportPage = lazy(() => import("./pages/dispatch/TimesheetsReportPage"));
 const ReorderForecastPage = lazy(() => import("./pages/dispatch/ReorderForecastPage"));
@@ -46,8 +45,10 @@ const ClientDiscountsPage = lazy(() => import("./pages/dispatch/ClientDiscountsP
 const FieldAddedRevenuePage = lazy(() => import("./pages/dispatch/FieldAddedRevenuePage"));
 const RecurringRevenuePage = lazy(() => import("./pages/dispatch/RecurringRevenuePage"));
 const ProfitAndLossPage = lazy(() => import("./pages/dispatch/ProfitAndLossPage"));
+const QBReportPage = lazy(() => import("./pages/dispatch/QBReportPage"));
 const TaxLiabilityPage = lazy(() => import("./pages/dispatch/TaxLiabilityPage"));
 const PaymentsReportPage = lazy(() => import("./pages/dispatch/PaymentsReportPage"));
+const CogsReportPage = lazy(() => import("./pages/dispatch/CogsReportPage"));
 const QuoteFunnelPage = lazy(() => import("./pages/dispatch/QuoteFunnelPage"));
 const RevenueByLineItemTypePage = lazy(() => import("./pages/dispatch/RevenueByLineItemTypePage"));
 const RevenueByLineItemTypeDetailPage = lazy(() => import("./pages/dispatch/RevenueByLineItemTypeDetailPage"));
@@ -174,8 +175,10 @@ export default function AppRoutes() {
 				<Route path="reporting/client-lifetime-value" element={<RequirePermission permission="view_reports"><ClientLifetimeValuePage /></RequirePermission>} />
 				<Route path="reporting/client-discounts" element={<RequirePermission permission="view_reports"><ClientDiscountsPage /></RequirePermission>} />
 				<Route path="reporting/profit-and-loss" element={<RequirePermission permission="view_reports"><ProfitAndLossPage /></RequirePermission>} />
+			<Route path="reporting/qb/:reportType" element={<RequirePermission permission="view_reports"><QBReportPage /></RequirePermission>} />
 				<Route path="reporting/tax-liability" element={<RequirePermission permission="view_reports"><TaxLiabilityPage /></RequirePermission>} />
 				<Route path="reporting/payments" element={<RequirePermission permission="view_reports"><PaymentsReportPage /></RequirePermission>} />
+				<Route path="reporting/cogs" element={<RequirePermission permission="view_reports"><CogsReportPage /></RequirePermission>} />
 				<Route path="reporting/quote-funnel" element={<RequirePermission permission="view_reports"><QuoteFunnelPage /></RequirePermission>} />
 				<Route path="reporting/revenue-by-line-item-type" element={<RequirePermission permission="view_reports"><RevenueByLineItemTypePage /></RequirePermission>} />
 				<Route path="reporting/revenue-by-line-item-type/:itemType" element={<RequirePermission permission="view_reports"><RevenueByLineItemTypeDetailPage /></RequirePermission>} />
@@ -183,7 +186,6 @@ export default function AppRoutes() {
 				<Route path="reporting/technician-scorecard" element={<RequirePermission permission="view_reports"><TechnicianScorecardPage /></RequirePermission>} />
 				<Route path="reporting/field-added-revenue" element={<RequirePermission permission="view_reports"><FieldAddedRevenuePage /></RequirePermission>} />
 				<Route path="reporting/recurring-revenue" element={<RequirePermission permission="view_reports"><RecurringRevenuePage /></RequirePermission>} />
-				<Route path="kpi" element={<RequirePermission permission="view_reports"><KPIPage /></RequirePermission>} />
 				<Route path="mileage" element={<MileageReportPage />} />
 				<Route path="timesheets" element={<RequirePermission permission="view_reports"><TimesheetsReportPage /></RequirePermission>} />
 				<Route path="inventory/reorder-forecast" element={<RequirePermission permission="view_reports"><ReorderForecastPage /></RequirePermission>} />

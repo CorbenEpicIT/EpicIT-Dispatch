@@ -9,6 +9,7 @@ import {
 	useClientsReportQuery,
 	usePaymentsReportQuery,
 	useQuoteFunnelQuery,
+	useProjectsReportQuery,
 } from "../hooks/useReports";
 
 export type ColumnType = "text" | "number" | "date" | "currency";
@@ -560,6 +561,56 @@ const paymentsSource: ReportSource = {
 	useRows: (params) => toReportRows(usePaymentsReportQuery(params)),
 };
 
+const projectsSource: ReportSource = {
+	id: "projects",
+	label: "Projects",
+	description: "Multi-job projects, their managers, schedule, and rolled-up job totals",
+	category: "operational",
+	serverDateFilter: true,
+	categories: [
+		{
+			id: "project",
+			label: "Project",
+			columns: [
+				{ key: "projectNumber", label: "Project #", type: "text" },
+				{ key: "name", label: "Name", type: "text" },
+				{ key: "clientName", label: "Client", type: "text" },
+				{ key: "status", label: "Status", type: "text" },
+				{ key: "priority", label: "Priority", type: "text" },
+				{ key: "managerName", label: "Manager", type: "text" },
+				{ key: "address", label: "Address", type: "text", defaultVisible: false },
+			],
+		},
+		{
+			id: "dates",
+			label: "Dates",
+			columns: [
+				{ key: "startsAt", label: "Starts", type: "date" },
+				{ key: "targetEndAt", label: "Target End", type: "date" },
+				{ key: "createdAt", label: "Created", type: "date", defaultVisible: false },
+				{ key: "completedAt", label: "Completed", type: "date" },
+				{ key: "cancelledAt", label: "Cancelled", type: "date", defaultVisible: false },
+			],
+		},
+		{
+			id: "financials",
+			label: "Financials",
+			columns: [
+				{ key: "budget", label: "Budget", type: "currency" },
+				{ key: "estimatedTotal", label: "Estimated Total", type: "currency" },
+				{ key: "actualTotal", label: "Actual Total", type: "currency" },
+				{ key: "variance", label: "Variance", type: "currency" },
+			],
+		},
+		{
+			id: "activity",
+			label: "Activity",
+			columns: [{ key: "jobCount", label: "Jobs", type: "number" }],
+		},
+	],
+	useRows: (params) => toReportRows(useProjectsReportQuery(params)),
+}
+
 export const REPORT_SOURCES: ReportSource[] = [
 	inventorySource,
 	jobsSource,
@@ -567,6 +618,7 @@ export const REPORT_SOURCES: ReportSource[] = [
 	clientsSource,
 	quotesSource,
 	paymentsSource,
+	projectsSource,
 ];
 
 export function getReportSource(id: string): ReportSource | undefined {

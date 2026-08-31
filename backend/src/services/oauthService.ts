@@ -51,6 +51,8 @@ const randomToken = () => {
 
 export const authenticateUser = async (email: string, password: string) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+    // all emails in db are set to lower case; login is not case sensitive
+    email = email.toLowerCase();
     // password is omitted globally (db.ts); opt back in for the credential check.
     const user = (await db.dispatcher.findUnique({ where: { email }, omit: { password: false } }))
               ?? (await db.technician.findUnique({ where: { email }, omit: { password: false } }));

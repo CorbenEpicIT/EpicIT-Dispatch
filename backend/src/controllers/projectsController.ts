@@ -8,6 +8,7 @@ import {
 } from "../lib/validate/projects.js";
 import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
+import { parentBreadcrumb } from "./logsController.js";
 import { log } from "../services/appLogger.js";
 import { generateProjectNumber } from "../db.js";
 
@@ -379,8 +380,8 @@ export const attachJob = async (req: Request, context?: UserContext) => {
             await logActivity({
                 event_type: "project.job_attached",
                 action: "attached",
-                entity_type: "project",
-                entity_id: projectId,
+                entity_type: "job",
+                entity_id: jobId,
                 organization_id: orgId,
                 actor_type: context?.techId
                     ? "technician"
@@ -391,6 +392,7 @@ export const attachJob = async (req: Request, context?: UserContext) => {
                 changes: {
                     project_id: { old: job.project_id, new: projectId },
                     _job_number: { old: null, new: job.job_number },
+                    ...parentBreadcrumb("project", projectId),
                 },
                 ip_address: context?.ipAddress,
                 user_agent: context?.userAgent,
@@ -429,8 +431,8 @@ export const detachJob = async (req: Request, context?: UserContext) => {
             await logActivity({
                 event_type: "project.job_detached",
                 action: "detached",
-                entity_type: "project",
-                entity_id: projectId,
+                entity_type: "job",
+                entity_id: jobId,
                 organization_id: orgId,
                 actor_type: context?.techId
                     ? "technician"
@@ -441,6 +443,7 @@ export const detachJob = async (req: Request, context?: UserContext) => {
                 changes: {
                     project_id: { old: job.project_id, new: null },
                     _job_number: { old: null, new: job.job_number },
+                    ...parentBreadcrumb("project", projectId),
                 },
                 ip_address: context?.ipAddress,
                 user_agent: context?.userAgent,

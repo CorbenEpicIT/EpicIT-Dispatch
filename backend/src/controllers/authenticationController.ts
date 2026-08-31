@@ -44,6 +44,10 @@ export const login = async (res: Response, email: string, password: string) => {
 			);
 		}
 
+		// emails are set to lower case when added to db
+		// login is not case sensitive
+		email = email.toLowerCase();
+
 		// ask if last login updates automatically or if I have to add that here
 		// password is omitted globally (db.ts); login is one of the few places
 		// that legitimately needs the hash, so opt back in for this query only.
@@ -331,6 +335,8 @@ export const checkRefreshToken = async (token: string) => {
 
 export const requestPasswordReset = async (email: string, role: string) => {
 	try {
+		// all emails in db are set to lower case
+		email = email.toLowerCase();
 		const user =
 			role === "technician"
 				? await db.technician.findUnique({ where: { email } })

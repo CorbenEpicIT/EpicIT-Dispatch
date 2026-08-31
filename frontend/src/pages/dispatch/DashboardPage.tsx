@@ -14,6 +14,7 @@ import {
 	RotateCcw,
 	StretchHorizontal,
 	Shuffle,
+	Trash,
 	Unlock,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
@@ -31,7 +32,7 @@ import LowStockWidget from "../../components/widgets/LowStockWidget";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import { DEFAULT_RESPONSIVE_LAYOUTS, WIDGET_CATALOG } from "../../lib/DashboardConfig";
-import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, randomizeLayout } from "../../lib/gridLayoutEngine";
+import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, randomizeLayout, removeWidget } from "../../lib/gridLayoutEngine";
 import { QUICKBOOKS_ENABLED } from "../../config/features";
 import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import MapWidget from "../../components/widgets/MapWidget";
@@ -640,8 +641,8 @@ export default function DashboardPage() {
 									else widgetRefs.current.delete(id);
 								}}
 								className={isEditMode ?
-									"cursor-grab active:cursor-grabbing h-full hover:border hover:border-border-strong hover:border-primary hover:rounded-xl hover:shadow hover:shadow-primary" 
-									: "h-full"}
+									"group relative cursor-grab active:cursor-grabbing h-full hover:border hover:border-border-strong hover:border-primary hover:rounded-xl hover:shadow hover:shadow-primary"
+									: "relative h-full"}
 								onClickCapture={(e) => {
 									if (justDraggedRef.current) {
 										e.preventDefault();
@@ -650,6 +651,16 @@ export default function DashboardPage() {
 									}
 								}}
 							>
+								{isEditMode && (
+									<button
+										title="Remove widget"
+										className="absolute top-2 right-2 z-10 w-7 h-7 rounded-md bg-error text-on-primary flex items-center justify-center shadow-md ring-2 ring-base opacity-0 group-hover:opacity-100 hover:bg-error-strong hover:cursor-pointer transition-opacity"
+										onClick={() => handleLayoutSave(removeWidget(id, layouts.lg ?? []))}
+									>
+										<Trash size={12}/>
+									</button>
+								)}
+
 								{renderWidget(id)}
 							</div>
 						))}

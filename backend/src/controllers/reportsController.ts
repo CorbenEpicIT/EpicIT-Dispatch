@@ -20,6 +20,7 @@ import { round2 } from "../lib/reports/numbers.js";
 import { getOrgRealmId } from "../services/quickbooksService.js";
 import { log } from "../services/appLogger.js";
 import { createErrorResponse, ErrorCodes, httpError } from "../types/responses.js";
+import { computeConsumptionCosts, ConsumptionCostRow } from "../lib/reports/costing.js";
 
 // Upper bound on rows pulled into memory for the in-JS report aggregations
 const REPORT_ROW_CAP = 10000;
@@ -1805,6 +1806,137 @@ export const getJobsReportPage = async (
 };
 
 // ============================================================================
+// PROJECTS
+// ============================================================================
+
+const PROJECTS_INCLUDE = {
+	client: { select: { name: true } },
+	_count: { select: { jobs: true } },
+	jobs: { select: { estimated_total: true, actual_total: true }},
+	manager_dispatcher: { select: { name: true }}
+} satisfies Prisma.projectInclude;
+
+const projectsBaseWhere = (
+	organizationId: string,
+	startDate?: string,
+	endDate?: string,
+): Record<string, unknown> => {
+	const dateFilter = buildDateFilter(startDate, endDate);
+	return {
+		organization_id: organizationId,
+		...(Object.keys(dateFilter).length && { created_at: dateFilter }),
+	};
+};
+
+// p = project, c = client, md = manager_dispatcher
+const PROJECTS_SQL_COLUMNS: ColumnMap = {
+	projectNumber: t("p.project_number"),
+	name: t("p.name"),
+	clientName: t("c.name"),
+	status: t("p.status::text"),
+	priority: t("p.priority::text"),
+	managerName: t("md.name"),
+	address: t("p.address"),
+	budget: cur("p.budget"),
+	startsAt: dt("p.starts_at"),
+	targetEndAt: dt("p.target_end_at"),
+	createdAt: dt("p.created_at"),
+	completedAt: dt("p.completed_at"),
+	cancelledAt: dt("p.cancelled_at"),
+	jobCount: n('(SELECT COUNT(*) FROM "job" j WHERE j.project_id = p.id)'),
+	estimatedTotal: cur('(SELECT COALESCE(SUM(j.estimated_total), 0) FROM "job" j WHERE j.project_id = p.id)'),
+	actualTotal: cur('(SELECT COALESCE(SUM(j.actual_total), 0) FROM "job" j WHERE j.project_id = p.id)'),
+	variance: cur(
+		'(SELECT COALESCE(SUM(j.actual_total), 0) - COALESCE(SUM(j.estimated_total), 0) FROM "job" j WHERE j.project_id = p.id)',
+	),
+};
+
+const mapProjectRaw = (project: Prisma.projectGetPayload<{ include: typeof PROJECTS_INCLUDE }>) => {
+	const totals = project.jobs.reduce(
+		(acc, j) => {
+			if (j.estimated_total != null) {
+				acc.hasEstimated = true;
+				acc.estimatedTotal += Number(j.estimated_total);
+			}
+			if (j.actual_total != null) {
+				acc.hasActual = true;
+				acc.actualTotal += Number(j.actual_total);
+			}
+			return acc;
+		},
+		{ estimatedTotal: 0, actualTotal: 0, hasEstimated: false, hasActual: false },
+	);
+	const estimatedTotal = totals.hasEstimated ? totals.estimatedTotal : null;
+	const actualTotal = totals.hasActual ? totals.actualTotal : null;
+	const variance = estimatedTotal != null && actualTotal != null ? actualTotal - estimatedTotal : null;
+
+	return {
+		id: project.id,
+		projectNumber: project.project_number,
+		name: project.name,
+		clientName: project.client.name,
+		status: project.status,
+		priority: project.priority,
+		managerName: project.manager_dispatcher?.name ?? null,
+		address: project.address,
+		startsAt: project.starts_at,
+		targetEndAt: project.target_end_at,
+		completedAt: project.completed_at,
+		cancelledAt: project.cancelled_at,
+		createdAt: project.created_at,
+		budget: project.budget != null ? Number(project.budget) : null,
+		estimatedTotal,
+		actualTotal,
+		variance,
+		jobCount: project._count.jobs,
+	};
+};
+
+export const getProjectsReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+) => {
+	const sdb = getScopedDb(organizationId);
+	const projects = await sdb.project.findMany({
+		where: projectsBaseWhere(organizationId, startDate, endDate),
+		orderBy: { created_at: "desc" },
+		include: PROJECTS_INCLUDE,
+	});
+	
+	return projects.map(mapProjectRaw);
+}
+
+export const getProjectsReportPage = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	organizationId: string,
+	params: PaginateParams,
+): Promise<PageResult<ReturnType<typeof mapProjectRaw>> | null> => {
+	const sdb = getScopedDb(organizationId);
+	const df = buildDateFilter(startDate, endDate);
+	const baseParams: unknown[] = [organizationId];
+	let baseWhere = "p.organization_id = $1";
+	if (df.gte) baseWhere += ` AND p.created_at >= $${baseParams.push(df.gte)}`;
+	if (df.lte) baseWhere += ` AND p.created_at <= $${baseParams.push(df.lte)}`;
+
+	const res = await runIdPrefilter({
+		sdb,
+		from: '"project" p JOIN "client" c ON c.id = p.client_id LEFT JOIN "dispatcher" md ON md.id = p.manager_dispatcher_id',
+		baseWhere,
+		baseParams,
+		idExpr: "p.id",
+		columns: PROJECTS_SQL_COLUMNS,
+		defaultOrder: { expr: "p.created_at", dir: "desc" },
+		params,
+		hydrate: (ids) => sdb.project.findMany({ where: { id: { in: ids } }, include: PROJECTS_INCLUDE }),
+		rowId: (r) => r.id,
+	});
+	if (!res) return null;
+	return { rows: res.rows.map(mapProjectRaw), total: res.total, page: res.page, pageSize: res.pageSize };
+};
+
+// ============================================================================
 // FIRST-TIME FIX RATE
 // ============================================================================
 
@@ -3031,6 +3163,103 @@ export const getPaymentsReportPage = async (
 		summary,
 	};
 };
+
+// ============================================================================
+// COGs (cost of goods) Report
+// ============================================================================
+
+const summarizeCostSource = (events: ConsumptionCostRow[]) => {
+	const priced = events.filter((e) => e.costSource !== "no_cost_data");
+	const pricedQty = round2(priced.reduce((s, e) => s + e.qtyConsumed, 0));
+	const pricedTotal = round2(priced.reduce((s, e) => s + e.totalCost, 0));
+	const totalCogs = priced.length === 0 ? null : pricedTotal;
+	const hasNoData = events.some(e=> e.costSource === "no_cost_data");
+	const allWac = events.every(e => e.costSource === "wac");
+	const costCoverage = allWac ? "Full"
+		: !hasNoData ? "Estimated"
+		: priced.length > 0 ? "Partial"
+		: "No Cost Data";
+	return { totalCogs, costCoverage, pricedQty, pricedTotal };
+}
+
+export const getCogsByJobReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined, 
+	orgId: string
+) => {
+	const { rows: events, truncated } = await computeConsumptionCosts(orgId, { 
+		startDate: startDate ? new Date(startDate): undefined,
+		endDate: endDate ? new Date (endDate) : undefined
+	});
+	const byJob = new Map<string, ConsumptionCostRow[]>();
+	for (const e of events) {
+		(byJob.get(e.jobId) ?? byJob.set(e.jobId, []).get(e.jobId)!).push(e);
+	}
+
+	const sdb = getScopedDb(orgId);
+	const jobs = await sdb.job.findMany({
+		where: { id: { in: [...byJob.keys()]}},
+		include: { client: { select: { name: true }}},
+	});
+	const rows = jobs.map((job) =>{
+		const evs = byJob.get(job.id)!;
+		const { totalCogs, costCoverage } = summarizeCostSource(evs);
+		return {
+			id: job.id,
+			jobNumber: job.job_number,
+			name: job.name,
+			clientName: job.client.name,
+			status: job.status,
+			totalCogs,
+			costCoverage, 
+			itemCount: new Set(evs.map(e => e.inventoryItemId)).size,
+			qtyConsumed: round2(evs.reduce((s, e) => s + e.qtyConsumed, 0)),
+			lastConsumedAt: evs.reduce((max, e) => (e.consumedAt > max ? e.consumedAt : max), evs[0].consumedAt),
+		};
+	});
+
+	return { rows, truncated }
+}
+
+export const getCogsByItemReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined, 
+	orgId: string
+) => {
+	const { rows: events, truncated } = await computeConsumptionCosts(orgId, { 
+		startDate: startDate ? new Date(startDate): undefined,
+		endDate: endDate ? new Date (endDate) : undefined
+	});
+	const byItem = new Map<string, ConsumptionCostRow[]>();
+	for (const e of events) {
+		(byItem.get(e.inventoryItemId) ?? byItem.set(e.inventoryItemId, []).get(e.inventoryItemId)!).push(e);
+	}
+
+	const sdb = getScopedDb(orgId);
+	const items = await sdb.inventory_item.findMany({
+		where: { id: { in: [...byItem.keys()]}},
+	});
+	const rows = items.map((item) =>{
+		const evs = byItem.get(item.id)!;
+		const { totalCogs, costCoverage, pricedQty, pricedTotal } = summarizeCostSource(evs);
+		return {
+			id: item.id,
+			name: item.name,
+			sku: item.sku,
+			category: item.category,
+			unit: item.unit,
+			quantity: item.quantity,
+			totalCogs,
+			costCoverage,
+			jobCount: new Set(evs.map(e => e.jobId)).size,
+			qtyConsumed: round2(evs.reduce((s, e) => s + e.qtyConsumed, 0)),
+			avgUnitCost: pricedQty > 0 ? round2(pricedTotal / pricedQty) : null,
+			lastConsumedAt: evs.reduce((max, e) => (e.consumedAt > max ? e.consumedAt : max), evs[0].consumedAt),
+		};
+	});
+
+	return { rows, truncated }
+}
 
 // ============================================================================
 // QUOTE CONVERSION

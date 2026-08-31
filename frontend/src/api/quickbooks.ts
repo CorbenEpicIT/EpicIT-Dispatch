@@ -12,7 +12,11 @@ import type {
     QBProfitAndLossQuery,
     QBProfitAndLossReport,
     QBVendorLite,
-    MappedQBVendor
+    MappedQBVendor,
+    MappedQBCustomer,
+    QBReportTypeId,
+    QBReportQuery,
+    QBReportPayload
 } from "../types/quickbooks";
 import type { Supplier } from "../types/suppliers";
  
@@ -55,8 +59,14 @@ export const getQBCustomers = async (): Promise<QBCustomerLite[]> => {
     return response.data.data!;
 }
 
-export const getQBMappedCustomers = async (): Promise<string[]> => {
-    const response = await api.get<ApiResponse<string[]>>("integrations/quickbooks/customers/mappings");
+export const syncClientToQB = async (clientId: string): Promise<{ synced: boolean; qb_customer_id: string }> => {
+    const response = await api.post<ApiResponse<{ synced: boolean; qb_customer_id: string }>>(`integrations/quickbooks/customers/${clientId}/sync`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to sync client to QB");
+    return response.data.data!;
+}
+
+export const getQBMappedCustomers = async (): Promise<MappedQBCustomer[]> => {
+    const response = await api.get<ApiResponse<MappedQBCustomer[]>>("integrations/quickbooks/customers/mappings");
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to get mapped QB customers");
     return response.data.data!;
 }
@@ -178,5 +188,12 @@ export const importQBInvoices = async (qbInvoiceIds: string[]): Promise<QBInvoic
 export const getQBProfitAndLossReport = async (query: QBProfitAndLossQuery): Promise<QBProfitAndLossReport> => {
     const response = await api.get<ApiResponse<QBProfitAndLossReport>>("integrations/quickbooks/reports/profit-and-loss", { params: query });
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB profit and loss report");
+    return response.data.data!;
+}
+
+// generalized version of profit and loss report query
+export const getQBReport = async (reportType: QBReportTypeId, query: QBReportQuery): Promise<QBReportPayload> => {
+    const response = await api.get<ApiResponse<QBReportPayload>>(`integrations/quickbooks/reports/${reportType}`, {params: query});
+    if (response.data.error) throw new Error(response.data.error?.message || `Failed to get QB ${reportType} report`);
     return response.data.data!;
 }
