@@ -2549,8 +2549,10 @@ async function main() {
 					},
 				],
 			},
-			jobs: { create: { job_id: job1.id, billed_amount: 525.01 } },
-			visits: { create: { visit_id: visit1.id, billed_amount: 525.01 } },
+			// Matches syncBilledAmounts: visit-sourced lines bill the visit, and the
+			// job row carries only job-level lines — pre-tax, never both.
+			jobs: { create: { job_id: job1.id, billed_amount: 0.0 } },
+			visits: { create: { visit_id: visit1.id, billed_amount: 485.0 } },
 		},
 	});
 
@@ -2618,9 +2620,9 @@ async function main() {
 					},
 				],
 			},
-			jobs: { create: { job_id: job4.id, billed_amount: 578.05 } },
+			jobs: { create: { job_id: job4.id, billed_amount: 0.0 } },
 			visits: {
-				create: { visit_id: recurringVisit1.id, billed_amount: 578.05 },
+				create: { visit_id: recurringVisit1.id, billed_amount: 534.0 },
 			},
 		},
 	});
@@ -2660,7 +2662,7 @@ async function main() {
 					},
 				],
 			},
-			jobs: { create: { job_id: job2.id, billed_amount: 5196.0 } },
+			jobs: { create: { job_id: job2.id, billed_amount: 4800.0 } },
 		},
 	});
 
@@ -2686,6 +2688,7 @@ async function main() {
 			line_items: {
 				create: [
 					{
+						source_visit_id: visit3.id,
 						name: "Annual PM Labor (8 hrs)",
 						quantity: 8,
 						unit_price: 125.0,
@@ -2694,6 +2697,7 @@ async function main() {
 						sort_order: 0,
 					},
 					{
+						source_visit_id: visit3.id,
 						name: "MERV-13 Filter 20x25x2 (3-pack)",
 						quantity: 2,
 						unit_price: 45.0,
@@ -2702,6 +2706,7 @@ async function main() {
 						sort_order: 1,
 					},
 					{
+						source_visit_id: visit3.id,
 						name: "Miscellaneous Parts Allowance",
 						quantity: 1,
 						unit_price: 110.0,
@@ -2711,7 +2716,7 @@ async function main() {
 					},
 				],
 			},
-			jobs: { create: { job_id: job3.id, billed_amount: 1200.0 } },
+			jobs: { create: { job_id: job3.id, billed_amount: 0.0 } },
 			visits: { create: { visit_id: visit3.id, billed_amount: 1200.0 } },
 		},
 	});
