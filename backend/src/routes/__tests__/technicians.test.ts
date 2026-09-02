@@ -48,6 +48,7 @@ import { callRoute, type FakeDb } from "./harness.js";
 const fake = db as unknown as FakeDb;
 
 const SECRET_KEYS = ["password", "password_reset_token", "password_reset_token_expires_at"];
+const WITHHELD_KEYS = [...SECRET_KEYS, "hourly_rate", "cost_rate"];
 
 const technicianRow = {
 	id: "tech-1",
@@ -78,12 +79,12 @@ describe("GET /technicians — no credential columns in the payload (review B2 /
 		});
 		expect(list.status).toBe(200);
 		for (const key of SECRET_KEYS) expect(list.body.data[0]).not.toHaveProperty(key);
+		// Explicit allowlist, not the global omit — any `select` bypasses that omit.
+		// Must name no credential column and no pay column.
 		const listArgs = fake.technician.findMany.mock.calls[0][0];
-		expect(listArgs.select).toBeUndefined();
-		for (const key of SECRET_KEYS) expect(listArgs.omit?.[key]).not.toBe(false);
-		// nested visit_techs → tech is covered by the same global omit; the route
-		// must not select it explicitly with credential columns
-		expect(JSON.stringify(listArgs.include)).not.toMatch(/password/);
+		expect(listArgs.select).toBeDefined();
+		for (const key of WITHHELD_KEYS) expect(listArgs.select).not.toHaveProperty(key);
+		expect(JSON.stringify(listArgs.select)).not.toMatch(/password|hourly_rate|cost_rate/);
 
 		const one = await callRoute(techniciansRouter, "get", "/:id", {
 			user: { uid: "tech-1", role: "technician", permissions: [] },
