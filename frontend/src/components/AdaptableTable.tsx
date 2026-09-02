@@ -4,6 +4,8 @@ import { camelCaseToRegular, formatter } from "../util/util";
 import LoadSvg from "../assets/icons/loading.svg?react";
 import BoxSvg from "../assets/icons/box.svg?react";
 import ErrSvg from "../assets/icons/error.svg?react";
+import type { SortDir } from "../util/sortUtil";
+import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
 
 interface AdaptableTableProps {
 	data: Array<Record<string, unknown>>;
@@ -32,6 +34,11 @@ interface AdaptableTableProps {
 	columnClamp?: Record<string, ColumnClamp>;
 	// Render cells with a component instead of the default text rendering
 	cellRenderers?: Record<string, (row: Record<string, unknown>) => React.ReactNode>;
+	// Adds sorts options directly to the table
+	sortableColumns?: Record<string, boolean>;
+	sortKey?: string;
+	sortDir?: SortDir;
+	onSortChange?: (col: string) => void; 
 }
 
 export interface ColumnClamp {
@@ -78,7 +85,11 @@ const AdaptableTable = ({
 	footerRow,
 	cellClass,
 	columnClamp,
-	cellRenderers
+	cellRenderers,
+	sortableColumns,
+	sortKey,
+	sortDir,
+	onSortChange,
 }: AdaptableTableProps) => {
 	const alignClass = (colId: string) => {
 		if (!columnAlign) return "";
@@ -155,6 +166,8 @@ const AdaptableTable = ({
 		);
 	}
 
+	const sortable = (colId:string) => !!sortableColumns?.[colId];
+
 	return (
 		<>
 			{loadListener ? (
@@ -180,7 +193,8 @@ const AdaptableTable = ({
 											key={
 												header.id
 											}
-											className={`sticky top-0 border-b font-bold text-text-tertiary ${borderColor} ${PADDING} ${alignClass(header.column.id)}`}
+											onClick={() => {if (onSortChange && sortable(header.column.id)) onSortChange(header.column.id)}}
+											className={`${sortable(header.column.id) ? "cursor-pointer select-none" : ""} sticky top-0 border-b font-bold text-text-tertiary ${borderColor} ${PADDING} ${alignClass(header.column.id)}`}
 										>
 											{flexRender(
 												typeof header
@@ -199,6 +213,18 @@ const AdaptableTable = ({
 															.columnDef
 															.header,
 												header.getContext()
+											)}
+											{sortable(header.column.id) && (
+												<span
+														className="ml-1 inline-flex"
+														aria-label="Sort"
+												>
+														{sortKey === header.column.id ? (
+																sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+														) : (
+																<ArrowUpDown size={12} className="text-text-faint" />
+														)}
+												</span>
 											)}
 										</th>
 									)

@@ -19,7 +19,7 @@ import { useMultiSearch } from "../../hooks/useMultiSearch";
 import { usePermission } from "../../hooks/usePermission";
 import PageReportSection from "../../components/reports/PageReportSection";
 import type { SortDir } from "../../util/sortUtil";
-import { withDir, compareByOrder, compareDateNullsLast } from "../../util/sortUtil";
+import { withDir, compareByOrder, compareDateNullsLast, compareString, compareNumber } from "../../util/sortUtil";
 
 const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 	value: s,
@@ -30,6 +30,17 @@ const sortLabels: Record<string, string> = {
 	status: "Status",
 	issued: "Issue Date",
 	date: "Due Date",
+	client: "Client",
+	invoiceNumber: "Invoice #",
+	subject: "Subject",
+	total: "Total",
+	balance: "Balance",
+};
+
+// "dueDate" is the displayed column; the existing "date" sort key already
+// drives it (shared with the SortControl "Due Date" option).
+const COLUMN_SORT_KEY: Record<string, string> = {
+	dueDate: "date",
 };
 
 export default function InvoicesPage() {
@@ -164,6 +175,16 @@ export default function InvoicesPage() {
 				? (a, b) => compareDateNullsLast(dir)(a._issueDate, b._issueDate)
 				: sortParam === "date"
 				? (a, b) => compareDateNullsLast(dir)(a._rawDueDate, b._rawDueDate)
+				: sortParam === "client"
+				? withDir((a, b) => compareString(a.client, b.client), dir)
+				: sortParam === "invoiceNumber"
+				? withDir((a, b) => compareString(a.invoiceNumber, b.invoiceNumber), dir)
+				: sortParam === "subject"
+				? withDir((a, b) => compareString(a.subject, b.subject), dir)
+				: sortParam === "total"
+				? withDir((a, b) => compareNumber(a._rawTotal, b._rawTotal), dir)
+				: sortParam === "balance"
+				? withDir((a, b) => compareNumber(a._rawBalance, b._rawBalance), dir)
 				: (a, b) => {
 					// default: status, then schedule date (nulls last)
 					if (a._isOverdue && !b._isOverdue) return -1;
@@ -218,6 +239,18 @@ export default function InvoicesPage() {
 		next.delete("sort");
 		next.delete("dir");
 		navigate(`/dispatch/invoices${next.toString() ? `?${next.toString()}` : ""}`);
+	};
+
+	const handleSortChange = (col: string) => {
+		const key = COLUMN_SORT_KEY[col] ?? col;
+		const next = new URLSearchParams(location.search);
+		if (next.get("sort") === key) {
+			next.set("dir", next.get("dir") === "asc" ? "desc" : "asc");
+		} else {
+			next.set("sort", key);
+			next.set("dir", "asc");
+		}
+		navigate(`/dispatch/invoices?${next.toString()}`);
 	};
 
 	const totals = useMemo(() => {
@@ -362,8 +395,13 @@ export default function InvoicesPage() {
 								{ value: "status", label: "Status" },
 								{ value: "issued", label: "Issue Date" },
 								{ value: "date", label: "Due Date" },
+								{ value: "client", label: "Client" },
+								{ value: "invoiceNumber", label: "Invoice #" },
+								{ value: "subject", label: "Subject" },
+								{ value: "total", label: "Total" },
+								{ value: "balance", label: "Balance" },
 							]}
-							defaultDirByField={{ status: "asc", issued: "desc", date: "desc" }}
+							defaultDirByField={{ status: "asc", issued: "desc", date: "desc", total: "desc", balance: "desc" }}
 						/>
 					</div>
 				}
@@ -460,6 +498,18 @@ export default function InvoicesPage() {
 								</span>
 							),
 						}}
+						sortableColumns={{
+							status: true,
+							dueDate: true,
+							client: true,
+							invoiceNumber: true,
+							subject: true,
+							total: true,
+							balance: true,
+						}}
+						sortKey={sortParam === "date" ? "dueDate" : (sortParam ?? "")}
+						sortDir={dirParam === "asc" ? "asc" : "desc"}
+						onSortChange={handleSortChange}
 					/>
 				)}
 			</div>

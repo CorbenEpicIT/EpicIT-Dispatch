@@ -104,6 +104,10 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 		() => Object.fromEntries(columns.map((c) => [c.key, c.label])),
 		[columns],
 	);
+	const sortableColumns = useMemo<Record<string, boolean>>(
+		() => Object.fromEntries(columns.map((c) => [c.key, true])),
+		[columns],
+	);
 	const defaultHidden = useMemo(() => sourceDefaultHidden(source), [source]);
 	const storageKey = useMemo(
 		() => (reportId ? `saved:${reportId}` : `builder:${source.id}`),
@@ -257,6 +261,15 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 		setHidden(config.hidden);
 	};
 
+	const handleSortChange = (col: string) => {
+		if (sortKey === col) {
+			setSortDir(sortDir === "asc" ? "desc" : "asc");
+		} else {
+			setSortKey(col);
+			setSortDir("asc");
+		}
+	};
+
 	const activeConditionCount = conditions.filter(isConditionActive).length;
 	const showEmpty = total === 0 && !isLoading && !error;
 
@@ -323,6 +336,10 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 							errListener={error}
 							columnVisibility={columnVisibility}
 							headerLabels={headerLabels}
+							sortableColumns={sortableColumns}
+							sortKey={sortKey}
+							sortDir={sortDir}
+							onSortChange={handleSortChange}
 						/>
 						<ReportPagination
 							page={queryParams.page ?? 0}
