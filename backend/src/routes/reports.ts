@@ -71,7 +71,9 @@ const handlePaginatedReport = async (
 		// Fallback: fetch-all then filter/sort/paginate in memory (computed-column
 		// filters/sorts, or reports without a pushdown path).
 		const { rows, summary } = await def.load(orgId, query);
-		const filtered = filterRows(rows, params);
+		// searchKeys is server-side policy, never client input — inject it here so
+		// it cannot be widened by a query param.
+		const filtered = filterRows(rows, { ...params, searchKeys: def.searchKeys });
 		const page = slicePage(filtered, params);
 		const filteredSummary = def.filteredSummary?.(filtered);
 		const mergedSummary =
@@ -565,6 +567,20 @@ router.get("/revenue-line-items", requirePermission("view_reports"), async (req,
 	}
 });
 
+router.get("/job-profitability", requirePermission("view_reports"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const { data, meta } = await handlePaginatedReport(
+			"job-profitability",
+			orgId,
+			req.query as Record<string, unknown>,
+		);
+		res.json(createSuccessResponse(data, meta));
+	} catch (err) {
+		next(err);
+	}
+});
+
 router.post("/export", requirePermission("view_reports"), async (req, res, next) => {
 	try {
 		const parsed = exportReportSchema.safeParse(req.body);
@@ -627,6 +643,9 @@ router.post("/export/server", requirePermission("view_reports"), async (req, res
 			sortKey: rest.sortKey,
 			sortDir: rest.sortDir,
 			sortType: rest.sortType,
+			// Must match the table path above, or an export search returns a
+			// different row set than the screen the user exported from.
+			searchKeys: def.searchKeys,
 		});
 
 		const mapped = filtered.map((row) =>

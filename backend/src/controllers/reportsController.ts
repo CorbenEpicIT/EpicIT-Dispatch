@@ -3588,6 +3588,107 @@ export const getTechnicianScorecard = async (
 	return rows;
 };
 
+// ===========================================================================================
+// Job Profitability
+// ===========================================================================================
+
+const JOB_BILLING_SELECT = {
+	job_number: true,
+	name: true,
+	client: { select: { name: true } },
+} as const;
+
+
+/* 
+*	 missng labor cost
+*/
+export const getJobProfitabilityReport = async (
+	startDate: string | undefined,
+	endDate: string | undefined,
+	orgId: string,
+) => {
+	const sdb = getScopedDb(orgId);
+	const dateFilter = buildDateFilter(startDate, endDate);
+
+	// COGS is job-lifetime on purpose: the period selects which jobs were billed,
+	// then each is costed over its whole life. Its own truncation flag comes from
+	// the 10k consumption-event cap in costing.ts and must be forwarded — dropping
+	// it understates COGS and therefore OVERSTATES profit.
+	const jobCogs = await getCogsByJobReport(undefined, undefined, orgId);
+	const invoices = await sdb.invoice.findMany({
+		where: {
+			status: { notIn: ["Draft", "Void"] },
+			...(Object.keys(dateFilter).length && {
+				OR: [{ issue_date: dateFilter }, { issue_date: null, created_at: dateFilter }],
+			}),
+		},
+		take: REPORT_ROW_CAP,
+		include: {
+			jobs: {
+				include: {
+					job: { select: JOB_BILLING_SELECT },
+				},
+			},
+			visits: {
+				include: {
+					visit: {
+						select: {
+							job_id: true,
+							job: { select: JOB_BILLING_SELECT },
+						},
+					},
+				},
+			},
+		},
+	});
+
+	// Gross margin 
+	const cogsByJob = new Map(jobCogs.rows.map((r) => [String(r.id), r]));
+
+	type BilledJobMeta = (typeof invoices)[number]["jobs"][number]["job"];
+	const jobRevenue = new Map<string, { revenue: number; job: BilledJobMeta }>();
+	const addRevenue = (jobId: string, amount: unknown, job: BilledJobMeta) => {
+		const prev = jobRevenue.get(jobId);
+		jobRevenue.set(jobId, {
+			revenue: (prev?.revenue ?? 0) + Number(amount ?? 0),
+			job: prev?.job ?? job,
+		});
+	};
+
+	for (const i of invoices) {
+		for (const j of i.jobs) addRevenue(j.job_id, j.billed_amount, j.job);
+		for (const v of i.visits) addRevenue(v.visit.job_id, v.billed_amount, v.visit.job);
+	}
+
+	// Net margin
+	
+
+	const rows = [...jobRevenue.entries()]
+		.map(([jobId, { revenue, job }]) => {
+			const cogs = round2(Number(cogsByJob.get(jobId)?.totalCogs ?? 0));
+			const profit = round2(revenue - cogs);
+			const margin = revenue > 0 ? round2((profit / revenue) * 100) : null;
+			return {
+				jobId,
+				jobNumber: job.job_number,
+				jobName: job.name,
+				clientName: job.client?.name ?? null,
+				revenue: round2(revenue),
+				cogs,
+				profit,
+				margin,
+			};
+		})
+		.sort((a, b) => b.revenue - a.revenue);
+
+	// Three independent caps can each make these figures incomplete, and all three
+	// warrant the same warning: consumption events (understates COGS -> overstates
+	// profit), invoices scanned (understates revenue), and report rows (drops jobs).
+	const rowsTruncated = rows.length > REPORT_ROW_CAP;
+	const truncated = rowsTruncated || jobCogs.truncated || invoices.length >= REPORT_ROW_CAP;
+	return { rows: rowsTruncated ? rows.slice(0, REPORT_ROW_CAP) : rows, truncated };
+}
+
 export const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"] as const;
 export type SummaryPage = (typeof PAGES)[number];
 export const BREAKDOWNS: Record<SummaryPage, string[]> = {

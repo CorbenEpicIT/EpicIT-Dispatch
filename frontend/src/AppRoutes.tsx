@@ -81,6 +81,7 @@ const QBCallbackPage = lazy(() => import("./pages/QBCallbackPage"));
 const SSOCompletePage = lazy(() => import("./pages/SSOCompletePage"));
 const ProjectsPage = lazy(() => import("./pages/dispatch/ProjectsPage"));
 const ProjectDetailPage = lazy(() => import("./pages/dispatch/ProjectDetailPage"));
+const JobProfitabilityPage = lazy(() => import("./pages/dispatch/JobProfitabilityPage"));
 
 function RequireAuth({ children }: { children: JSX.Element }) {
 	const { user, logout } = useAuthStore();
@@ -175,7 +176,8 @@ export default function AppRoutes() {
 				<Route path="reporting/client-lifetime-value" element={<RequirePermission permission="view_reports"><ClientLifetimeValuePage /></RequirePermission>} />
 				<Route path="reporting/client-discounts" element={<RequirePermission permission="view_reports"><ClientDiscountsPage /></RequirePermission>} />
 				<Route path="reporting/profit-and-loss" element={<RequirePermission permission="view_reports"><ProfitAndLossPage /></RequirePermission>} />
-			<Route path="reporting/qb/:reportType" element={<RequirePermission permission="view_reports"><QBReportPage /></RequirePermission>} />
+				<Route path="reporting/job-profitability" element={<RequirePermission permission="view_reports"><JobProfitabilityPage /></RequirePermission>} />
+				<Route path="reporting/qb/:reportType" element={<RequirePermission permission="view_reports"><QBReportPage /></RequirePermission>} />
 				<Route path="reporting/tax-liability" element={<RequirePermission permission="view_reports"><TaxLiabilityPage /></RequirePermission>} />
 				<Route path="reporting/payments" element={<RequirePermission permission="view_reports"><PaymentsReportPage /></RequirePermission>} />
 				<Route path="reporting/cogs" element={<RequirePermission permission="view_reports"><CogsReportPage /></RequirePermission>} />
