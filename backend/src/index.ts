@@ -107,9 +107,44 @@ const errorHandler = (
 	);
 };
 
+const ANSI = {
+	reset: "\x1b[0m",
+	dim: "\x1b[2m",
+	green: "\x1b[32m",
+	cyan: "\x1b[36m",
+	red: "\x1b[31m",
+	brightRed: "\x1b[91m",
+} as const;
+
+// Docker allocates no TTY for these containers, so process.stdout.isTTY is
+// false even though `docker logs` passes ANSI through fine. Gate on an env
+// var instead: set LOG_COLOR=0 when capturing logs to a file.
+const COLOR_LOGS = process.env["LOG_COLOR"] !== "0";
+
+const statusColor = (status: number) => {
+	if (!COLOR_LOGS) return "";
+	if (status >= 500) return ANSI.brightRed;
+	if (status >= 400) return ANSI.red;
+	if (status >= 300) return ANSI.cyan;
+	return ANSI.green;
+};
+
 const requestLogger = (req: Request, res: Response, next: NextFunction) => {
-	const timestamp = new Date().toISOString();
-	console.log(`[${timestamp}] ${req.method} ${req.path}`);
+	const startedAt = process.hrtime.bigint();
+
+	// Log on finish, not on entry (the status code does not exist yet here)
+	res.on("finish", () => {
+		const ms = Number(process.hrtime.bigint() - startedAt) / 1e6;
+		const timestamp = new Date().toISOString();
+		const color = statusColor(res.statusCode);
+		const off = color ? ANSI.reset : "";
+		const dim = COLOR_LOGS ? ANSI.dim : "";
+		// req.path, not originalUrl (the query string carries OAuth codes)
+		console.log(
+			`${dim}[${timestamp}]${off} ${color}${res.statusCode}${off} ${req.method} ${req.path} ${dim}${ms.toFixed(1)}ms${off}`,
+		);
+	});
+
 	next();
 };
 
