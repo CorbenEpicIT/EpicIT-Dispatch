@@ -59,6 +59,7 @@ async function runHook(orgId: string, op: string, model: string, args: any) {
 const ORG_MODEL = "inventory_item"; // organization_id column
 const REL_MODEL = "vehicle_stock_item"; // scoped via vehicle.organization_id
 const VISIT_MODEL = "job_visit"; // scoped via job.organization_id
+const TIME_MODEL = "visit_tech_time_entry"; // scoped via visit.job.organization_id
 const FREE_MODEL = "organization"; // not scoped at all
 
 beforeEach(() => {
@@ -102,6 +103,49 @@ describe("getScopedDb — read scoping", () => {
 	it("leaves unscoped models untouched", async () => {
 		const { query } = await runHook(ORG_A, "findMany", FREE_MODEL, { where: { id: "x" } });
 		expect(query).toHaveBeenCalledWith({ where: { id: "x" } });
+	});
+
+	// groupBy was unhooked until the labor-cost work needed it, so every grouped
+	// aggregate over a scoped model read across tenants. The 20 groupBy calls in
+	// reportsController hand-write organization_id, which is why it went unnoticed.
+	it("hooks groupBy at all — an unhooked aggregate reads across tenants", () => {
+		expect(Object.keys(hooksFor(ORG_A))).toContain("groupBy");
+	});
+
+	it("injects organization_id into groupBy for org-scoped models", async () => {
+		const { query } = await runHook(ORG_A, "groupBy", ORG_MODEL, {
+			by: ["status"],
+			_sum: { qty_on_hand: true },
+		});
+		expect(query).toHaveBeenCalledWith({
+			by: ["status"],
+			_sum: { qty_on_hand: true },
+			where: { AND: [{}, { organization_id: ORG_A }] },
+		});
+	});
+
+	it("injects the two-hop relation filter into groupBy for visit_tech_time_entry", async () => {
+		const { query } = await runHook(ORG_A, "groupBy", TIME_MODEL, {
+			by: ["visit_id"],
+			_sum: { hours_worked: true },
+		});
+		expect(query).toHaveBeenCalledWith({
+			by: ["visit_id"],
+			_sum: { hours_worked: true },
+			where: { AND: [{}, { visit: { job: { organization_id: ORG_A } } }] },
+		});
+	});
+
+	// The registration key is matched by exact string against the lowercase Prisma
+	// model name; it had been written `Visit_tech_time_entry`, which matched nothing
+	// and injected no filter while looking registered.
+	it("scopes visit_tech_time_entry on findMany (lowercase registration key)", async () => {
+		const { query } = await runHook(ORG_A, "findMany", TIME_MODEL, {
+			where: { clocked_out_at: null },
+		});
+		expect(query).toHaveBeenCalledWith({
+			where: { AND: [{ clocked_out_at: null }, { visit: { job: { organization_id: ORG_A } } }] },
+		});
 	});
 });
 
@@ -323,6 +367,7 @@ describe("getScopedDb — same-key relation collision (H2)", () => {
 		"vehicle_stock_batch",
 		"stock_movement_serial",
 		"stock_movement_batch",
+		"visit_tech_time_entry",
 	];
 
 	for (const model of REL_MODELS) {
