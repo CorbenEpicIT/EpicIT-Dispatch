@@ -1844,31 +1844,30 @@ const PROJECTS_SQL_COLUMNS: ColumnMap = {
 	completedAt: dt("p.completed_at"),
 	cancelledAt: dt("p.cancelled_at"),
 	jobCount: n('(SELECT COUNT(*) FROM "job" j WHERE j.project_id = p.id)'),
-	estimatedTotal: cur('(SELECT COALESCE(SUM(j.estimated_total), 0) FROM "job" j WHERE j.project_id = p.id)'),
-	actualTotal: cur('(SELECT COALESCE(SUM(j.actual_total), 0) FROM "job" j WHERE j.project_id = p.id)'),
+	estimatedTotal: cur(
+		'(SELECT CASE WHEN COUNT(j.id) = 0 THEN NULL ELSE COALESCE(SUM(j.estimated_total), 0) END FROM "job" j WHERE j.project_id = p.id)',
+	),
+	actualTotal: cur(
+		'(SELECT CASE WHEN COUNT(j.id) = 0 THEN NULL ELSE COALESCE(SUM(j.actual_total), 0) END FROM "job" j WHERE j.project_id = p.id)',
+	),
 	variance: cur(
-		'(SELECT COALESCE(SUM(j.actual_total), 0) - COALESCE(SUM(j.estimated_total), 0) FROM "job" j WHERE j.project_id = p.id)',
+		'(SELECT CASE WHEN COUNT(j.id) = 0 THEN NULL ELSE COALESCE(SUM(j.actual_total), 0) - COALESCE(SUM(j.estimated_total), 0) END FROM "job" j WHERE j.project_id = p.id)',
 	),
 };
 
 const mapProjectRaw = (project: Prisma.projectGetPayload<{ include: typeof PROJECTS_INCLUDE }>) => {
+	const jobCount = project._count.jobs;
 	const totals = project.jobs.reduce(
 		(acc, j) => {
-			if (j.estimated_total != null) {
-				acc.hasEstimated = true;
-				acc.estimatedTotal += Number(j.estimated_total);
-			}
-			if (j.actual_total != null) {
-				acc.hasActual = true;
-				acc.actualTotal += Number(j.actual_total);
-			}
+			acc.estimatedTotal += Number(j.estimated_total ?? 0);
+			acc.actualTotal += Number(j.actual_total ?? 0);
 			return acc;
 		},
-		{ estimatedTotal: 0, actualTotal: 0, hasEstimated: false, hasActual: false },
+		{ estimatedTotal: 0, actualTotal: 0 },
 	);
-	const estimatedTotal = totals.hasEstimated ? totals.estimatedTotal : null;
-	const actualTotal = totals.hasActual ? totals.actualTotal : null;
-	const variance = estimatedTotal != null && actualTotal != null ? actualTotal - estimatedTotal : null;
+	const estimatedTotal = jobCount > 0 ? totals.estimatedTotal : null;
+	const actualTotal = jobCount > 0 ? totals.actualTotal : null;
+	const variance = jobCount > 0 ? totals.actualTotal - totals.estimatedTotal : null;
 
 	return {
 		id: project.id,
@@ -1888,7 +1887,7 @@ const mapProjectRaw = (project: Prisma.projectGetPayload<{ include: typeof PROJE
 		estimatedTotal,
 		actualTotal,
 		variance,
-		jobCount: project._count.jobs,
+		jobCount,
 	};
 };
 
@@ -3182,6 +3181,23 @@ const summarizeCostSource = (events: ConsumptionCostRow[]) => {
 	return { totalCogs, costCoverage, pricedQty, pricedTotal };
 }
 
+export interface CogsTrendPoint {
+	month: string;
+	totalCogs: number;
+}
+
+const buildCogsTrend = (events: ConsumptionCostRow[]): CogsTrendPoint[] => {
+	const byMonth = new Map<string, number>();
+	for (const e of events) {
+		if (e.costSource === "no_cost_data") continue;
+		const month = monthKey(e.consumedAt);
+		byMonth.set(month, (byMonth.get(month) ?? 0) + e.totalCost);
+	}
+	return [...byMonth.entries()]
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			.map(([month, totalCogs]) => ({ month, totalCogs: round2(totalCogs) }));
+}
+
 export const getCogsByJobReport = async (
 	startDate: string | undefined,
 	endDate: string | undefined, 
@@ -3191,6 +3207,9 @@ export const getCogsByJobReport = async (
 		startDate: startDate ? new Date(startDate): undefined,
 		endDate: endDate ? new Date (endDate) : undefined
 	});
+	
+	const trend = buildCogsTrend(events);
+
 	const byJob = new Map<string, ConsumptionCostRow[]>();
 	for (const e of events) {
 		(byJob.get(e.jobId) ?? byJob.set(e.jobId, []).get(e.jobId)!).push(e);
@@ -3218,7 +3237,7 @@ export const getCogsByJobReport = async (
 		};
 	});
 
-	return { rows, truncated }
+	return { rows, truncated, trend }
 }
 
 export const getCogsByItemReport = async (
@@ -3230,6 +3249,9 @@ export const getCogsByItemReport = async (
 		startDate: startDate ? new Date(startDate): undefined,
 		endDate: endDate ? new Date (endDate) : undefined
 	});
+
+	const trend = buildCogsTrend(events);
+
 	const byItem = new Map<string, ConsumptionCostRow[]>();
 	for (const e of events) {
 		(byItem.get(e.inventoryItemId) ?? byItem.set(e.inventoryItemId, []).get(e.inventoryItemId)!).push(e);
@@ -3258,7 +3280,7 @@ export const getCogsByItemReport = async (
 		};
 	});
 
-	return { rows, truncated }
+	return { rows, truncated, trend }
 }
 
 // ============================================================================
@@ -3587,6 +3609,10 @@ export const getTechnicianScorecard = async (
 
 	return rows;
 };
+
+// =========================================================================================================
+// Page Summary
+// =========================================================================================================
 
 export const PAGES = ["jobs", "quotes", "requests", "invoices", "clients", "inventory", "projects"] as const;
 export type SummaryPage = (typeof PAGES)[number];

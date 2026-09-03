@@ -728,8 +728,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 	},
 	"cogs-by-job": {
 		load: async (orgId, q) => {
-			const { rows, truncated } = await getCogsByJobReport(q.startDate, q.endDate, orgId);
-			return { rows: rows.map(cogsByJobRow), summary: { truncated } };
+			const { rows, truncated, trend } = await getCogsByJobReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(cogsByJobRow), summary: { truncated, trend } };
 		},
 		filteredSummary: (rows) => ({
 			totalCogs: round2(rows.reduce((s, r) => s + num(r.totalCogs), 0)),
@@ -739,8 +739,8 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 	},
 	"cogs-by-item": { 
 		load: async (orgId, q) => {
-			const { rows, truncated } = await getCogsByItemReport(q.startDate, q.endDate, orgId);
-			return { rows: rows.map(cogsByItemRow), summary: { truncated } };
+			const { rows, truncated, trend } = await getCogsByItemReport(q.startDate, q.endDate, orgId);
+			return { rows: rows.map(cogsByItemRow), summary: { truncated, trend } };
 		},
 		filteredSummary: (rows) => ({
 			totalCogs: round2(rows.reduce((s, r) => s + num(r.totalCogs), 0)),
