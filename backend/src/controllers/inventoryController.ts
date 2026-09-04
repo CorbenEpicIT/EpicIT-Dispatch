@@ -2,7 +2,13 @@ import * as XLSX from "xlsx";
 import { z, ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { db } from "../db.js";
-import { Prisma } from "../../generated/prisma/client.js";
+import {
+	Prisma,
+	type field_purchase_status,
+	type inventory_item_origin,
+	type line_item_disposition,
+	type stock_location_type,
+} from "../../generated/prisma/client.js";
 import {
 	updateThresholdSchema,
 	createInventoryItemSchema,
@@ -392,7 +398,13 @@ const conflictMessage = (field: "sku" | "barcode" | "unknown"): string =>
 			? "SKU already in use"
 			: "SKU or barcode already in use";
 
-export const createInventoryItem = async (data: unknown, organizationId: string, context?: UserContext) => {
+export const createInventoryItem = async (
+	data: unknown,
+	organizationId: string,
+	context?: UserContext,
+	/** Spreadsheet import routes through here too, and is not a dispatcher typing a form. */
+	origin: inventory_item_origin = "dispatch_quick_add",
+) => {
 	try {
 		const parsed = createInventoryItemSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
@@ -400,6 +412,7 @@ export const createInventoryItem = async (data: unknown, organizationId: string,
 			const created = await tx.inventory_item.create({
 				data: {
 					organization_id: organizationId,
+					origin,
 					name: parsed.name,
 					description: parsed.description,
 					location: parsed.location,
@@ -1269,24 +1282,80 @@ export const deductInventoryForVisit = async (
 	});
 	if (lineItems.length === 0) return { lowStockItemIds: [] };
 
-	// Billed quantities are consumed exactly as billed — every qty column is
-	// numeric(10,2) and recordMovements rejects anything it cannot store, so
-	// 12.5 ft billed consumes 12.5 ft (not 13). allowNegative: completion must
-	// never block; a truthful negative surfaces the discrepancy instead of hiding
-	// it. allowUntracked: likewise, a serialized/batch-tracked item billed without
-	// scan data goes through with a [TRACKING_GAP] note for reconciliation rather
-	// than failing the whole completion transaction.
-	const movements = (lineItems as { id: string; inventory_item_id: string; quantity: unknown }[])
-		.map((li) => ({
-			inventory_item_id: li.inventory_item_id,
-			qty: Number(li.quantity),
-			from_location_type: "warehouse" as const,
-			to_location_type: "consumed" as const,
-			reason: "direct_consumption" as const,
+	const rows = lineItems as unknown as {
+		id: string;
+		inventory_item_id: string;
+		quantity: unknown;
+		disposition: line_item_disposition | null;
+		disposition_location: stock_location_type | null;
+		disposition_vehicle_id: string | null;
+	}[];
+
+	// NULL reads as `consume` - what every linked line did before the column.
+	const dispositionOf = (r: (typeof rows)[number]) => r.disposition ?? "consume";
+
+	// An intake with no per-unit cost averages in at nothing, and the catalog
+	// cost is the only basis available until field procurement lands.
+	const receiveItemIds = [
+		...new Set(rows.filter((r) => dispositionOf(r) === "receive").map((r) => r.inventory_item_id)),
+	];
+	const receiveCosts = new Map<string, number>();
+	if (receiveItemIds.length > 0) {
+		const costRows = await tx.inventory_item.findMany({
+			where: { id: { in: receiveItemIds }, organization_id: organizationId },
+			select: { id: true, cost: true },
+		});
+		for (const c of costRows) {
+			if (c.cost !== null) receiveCosts.set(c.id, Number(c.cost));
+		}
+	}
+
+	// 12.5 ft billed moves 12.5 ft, not 13. allowNegative: completion must
+	const movements: MovementInput[] = [];
+	let consumed = 0;
+	let received = 0;
+	let nonStock = 0;
+	for (const r of rows) {
+		const qty = Number(r.quantity);
+		const disposition = dispositionOf(r);
+		if (disposition === "non_stock") {
+			// Keeps the catalog link, so price history and margin still see the line,
+			// without debiting the warehouse for stock that was never there.
+			nonStock++;
+			continue;
+		}
+		if (qty <= 0) continue;
+		if (disposition === "receive") {
+			// Vehicle deleted since (FK is SET NULL): the stock did arrive somewhere,
+			// so land it in the warehouse rather than fail the completion.
+			const toVehicleId =
+				r.disposition_location === "vehicle" ? r.disposition_vehicle_id : null;
+			const unitCost = receiveCosts.get(r.inventory_item_id);
+			movements.push({
+				inventory_item_id: r.inventory_item_id,
+				qty,
+				from_location_type: "external",
+				to_location_type: toVehicleId ? "vehicle" : "warehouse",
+				...(toVehicleId ? { to_vehicle_id: toVehicleId } : {}),
+				reason: "receive",
+				...(unitCost !== undefined ? { unit_cost: unitCost } : {}),
+				visit_id: visitId,
+				visit_line_item_id: r.id,
+			});
+			received++;
+			continue;
+		}
+		movements.push({
+			inventory_item_id: r.inventory_item_id,
+			qty,
+			from_location_type: "warehouse",
+			to_location_type: "consumed",
+			reason: "direct_consumption",
 			visit_id: visitId,
-			visit_line_item_id: li.id,
-		}))
-		.filter((m) => m.qty > 0);
+			visit_line_item_id: r.id,
+		});
+		consumed++;
+	}
 
 	const { lowStockItemIds } = await recordMovements(
 		tx,
@@ -1296,8 +1365,10 @@ export const deductInventoryForVisit = async (
 		{ allowNegative: true, allowUntracked: true },
 	);
 
+	// `non_stock` included: "used" means SETTLED, and its settlement is no
+	// movement. Left `planned` it would look like outstanding work forever.
 	await tx.job_visit_line_item.updateMany({
-		where: { id: { in: lineItems.map((li: { id: string }) => li.id) } },
+		where: { id: { in: rows.map((r) => r.id) } },
 		data: { fulfillment_status: "used" },
 	});
 
@@ -1309,8 +1380,10 @@ export const deductInventoryForVisit = async (
 		organization_id: organizationId,
 		...getActorInfo(context),
 		changes: {
-			lines_consumed: { old: null, new: movements.length },
-			reason: { old: null, new: `Inventory consumed at completion of visit ${visitId}` },
+			lines_consumed: { old: null, new: consumed },
+			...(received > 0 ? { lines_received: { old: null, new: received } } : {}),
+			...(nonStock > 0 ? { lines_non_stock: { old: null, new: nonStock } } : {}),
+			reason: { old: null, new: `Inventory settled at completion of visit ${visitId}` },
 		},
 	});
 
@@ -1483,7 +1556,7 @@ export const importInventoryFromFile = async (
 			image_urls: [],
 		};
 
-		const result = await createInventoryItem(data, orgId, context);
+		const result = await createInventoryItem(data, orgId, context, "import");
 		if (result.err) {
 			skipped.push({ row: rowNum, reason: result.err });
 		} else {
@@ -3704,7 +3777,1209 @@ export async function getTrackingReconciliation(organizationId: string) {
 
 // ── Import template ───────────────────────────────────────────────────────────
 
+// ── Line item ↔ catalog linkage audit ─────────────────────────────────────────
+
+/** One of the five tables that can hold a billable line. */
+export type LinkageEntity = "quote" | "job" | "job_visit" | "recurring_plan" | "invoice";
+
+/** How confident a name → catalog guess is: exact beats fold beats code. */
+export type LinkageMatchTier = "exact" | "case_insensitive" | "code";
+
+export interface LinkageEntityCounts {
+	entity: LinkageEntity;
+	linked: number;
+	/** Lines naming a part with no catalog link. */
+	unmapped: number;
+	total: number;
+}
+
+export interface LinkageCandidate {
+	name: string;
+	/** Every table holding this name unmapped — applyLinkageMatch fixes all of them at once. */
+	entities: LinkageEntity[];
+	lines: number;
+	/**
+	 * Summed line value, which the queue ranks on. Count-ranked puts a $4
+	 * grommet billed nine times above a $2,400 compressor billed once.
+	 */
+	value: number;
+	match: {
+		inventory_item_id: string;
+		name: string;
+		sku: string | null;
+		tier: LinkageMatchTier;
+	} | null;
+	/** Populated by the queue, not by the audit — see fieldPurchaseOrigins. */
+	field_purchases?: ReconcilePurchaseOrigin[];
+}
+
+interface LinkageSource {
+	entity: LinkageEntity;
+	from: Prisma.Sql;
+	alive: Prisma.Sql;
+	/**
+	 * Per-source because recurring_plan_line_item is a pricing template with no
+	 * `total` column, and a union branch naming a missing column fails.
+	 */
+	value: Prisma.Sql;
+	/** Where a reader goes to see the line: its own document, plus the parent when the route nests. */
+	doc_id: Prisma.Sql;
+	parent_id: Prisma.Sql;
+	doc_number: Prisma.Sql;
+	doc_title: Prisma.Sql;
+	doc_date: Prisma.Sql;
+}
+
+/**
+ * Every table holding billable lines, with the join reaching its org. Each
+ * reaches organization_id through a different parent, which is why this
+ * isn't a Prisma groupBy.
+ */
+const LINKAGE_SOURCES: LinkageSource[] = [
+	{
+		entity: "quote",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`p.quote_number`,
+		doc_title: Prisma.sql`NULL::text`,
+		doc_date: Prisma.sql`COALESCE(p.issued_at, p.created_at)`,
+		from: Prisma.sql`quote_line_item li JOIN quote p ON p.id = li.quote_id`,
+		alive: Prisma.sql`AND p.status::text NOT IN ('Rejected', 'Expired', 'Cancelled')`,
+		value: Prisma.sql`li.total`,
+	},
+	{
+		entity: "job",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`p.job_number`,
+		doc_title: Prisma.sql`p.name`,
+		doc_date: Prisma.sql`p.created_at`,
+		from: Prisma.sql`job_line_item li JOIN job p ON p.id = li.job_id`,
+		alive: Prisma.sql`AND p.status::text <> 'Cancelled'`,
+		value: Prisma.sql`li.total`,
+	},
+	{
+		entity: "job_visit",
+		doc_id: Prisma.sql`v.id`,
+		// The visit route nests under its job, so the job id travels with the row.
+		parent_id: Prisma.sql`p.id`,
+		doc_number: Prisma.sql`p.job_number`,
+		doc_title: Prisma.sql`v.name`,
+		doc_date: Prisma.sql`v.scheduled_start_at`,
+		from: Prisma.sql`job_visit_line_item li
+			JOIN job_visit v ON v.id = li.visit_id
+			JOIN job p ON p.id = v.job_id`,
+		// Completed visits stay in — that is where consumption happened.
+		alive: Prisma.sql`AND v.status::text <> 'Cancelled' AND p.status::text <> 'Cancelled'`,
+		value: Prisma.sql`li.total`,
+	},
+	{
+		entity: "recurring_plan",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`NULL::text`,
+		doc_title: Prisma.sql`p.name`,
+		doc_date: Prisma.sql`p.created_at`,
+		from: Prisma.sql`recurring_plan_line_item li
+			JOIN recurring_plan p ON p.id = li.recurring_plan_id`,
+		alive: Prisma.sql`AND p.status::text NOT IN ('Completed', 'Cancelled')`,
+		value: Prisma.sql`(li.quantity * li.unit_price)`,
+	},
+	{
+		// No status filter: even a voided invoice describes money that moved.
+		entity: "invoice",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`p.invoice_number`,
+		doc_title: Prisma.sql`NULL::text`,
+		doc_date: Prisma.sql`COALESCE(p.issued_at, p.created_at)`,
+		from: Prisma.sql`invoice_line_item li JOIN invoice p ON p.id = li.invoice_id`,
+		alive: Prisma.empty,
+		value: Prisma.sql`li.total`,
+	},
+];
+
+/**
+ * Labor and `other` are legitimately freetext (permits, trip charges,
+ * disposal, subcontractor pass-through); counting them drowns the signal.
+ */
+const LINKABLE_ITEM_TYPES = ["material", "equipment"] as const;
+
+/** The same set as raw SQL, so the audit query and the backfill can never drift. */
+const LINKABLE_LINE_TYPES = Prisma.sql`li.item_type::text IN (${Prisma.join(
+	LINKABLE_ITEM_TYPES.map((t) => Prisma.sql`${t}`),
+	", ",
+)})`;
+
+/** Review-queue depth. */
+const CANDIDATE_LIMIT = 200;
+
+/** Folds a line name to its unmapped_part_decision key. */
+const FOLDED_LINE_NAME = Prisma.sql`lower(trim(li.name))`;
+
+/**
+ * Applied to counts and coverage too, so a dismissed name stops dragging
+ * coverage down over a gap that is not a gap.
+ */
+function notDismissed(orgId: string): Prisma.Sql {
+	return Prisma.sql`AND NOT EXISTS (
+		SELECT 1 FROM unmapped_part_decision d
+		WHERE d.organization_id = ${orgId}
+			AND d.folded_name = ${FOLDED_LINE_NAME}
+	)`;
+}
+
+/**
+ * One SELECT per table, unioned, so each half of the audit is one round
+ * trip. `select` is a callback because the value expression differs per table.
+ */
+function linkageUnion(
+	orgId: string,
+	select: (source: LinkageSource) => Prisma.Sql,
+	extraWhere: Prisma.Sql = Prisma.empty,
+): Prisma.Sql {
+	return Prisma.join(
+		LINKAGE_SOURCES.map(
+			(source) => Prisma.sql`
+				SELECT ${select(source)}
+				FROM ${source.from}
+				WHERE p.organization_id = ${orgId}
+					AND ${LINKABLE_LINE_TYPES}
+					${source.alive}
+					${extraWhere}
+			`,
+		),
+		" UNION ALL ",
+	);
+}
+
+/** How the unmapped half can be ordered. Named for the question, not the column. */
+export const RECONCILE_SORTS = ["value_desc", "value_asc", "lines_desc", "name_asc"] as const;
+export type ReconcileSort = (typeof RECONCILE_SORTS)[number];
+
+const RECONCILE_ORDER: Record<ReconcileSort, Prisma.Sql> = {
+	value_desc: Prisma.sql`SUM(value) DESC NULLS LAST, COUNT(*) DESC`,
+	value_asc: Prisma.sql`SUM(value) ASC NULLS FIRST, COUNT(*) DESC`,
+	lines_desc: Prisma.sql`COUNT(*) DESC, SUM(value) DESC NULLS LAST`,
+	name_asc: Prisma.sql`lower(name) ASC`,
+};
+
+export interface ReconcileListOpts {
+	search?: string;
+	sort?: ReconcileSort;
+	/** Paging past CANDIDATE_LIMIT. The window totals are computed before it, so they stay whole-backlog. */
+	offset?: number;
+	limit?: number;
+}
+
+/**
+ * How much of the org's material/equipment billing points at the catalog,
+ * and how much of the rest could. The gate policy depends on the answer: if
+ * unmapped lines mostly name-match, the picker can require a link; if the
+ * catalog is thin, requiring one teaches dispatchers to invent junk items.
+ *
+ * Scoped to live documents (LINKAGE_SOURCES.alive) — a rejected quote will
+ * never be billed, so its lines are not a gap anyone can act on.
+ */
+export async function getLinkageAudit(
+	orgId: string,
+	list: ReconcileListOpts = {},
+): Promise<{
+	err?: string;
+	counts?: LinkageEntityCounts[];
+	candidates?: LinkageCandidate[];
+	/** Distinct unmapped names in total — candidates is capped at CANDIDATE_LIMIT. */
+	candidate_total?: number;
+	/** Summed value of EVERY unmapped name, including the ones past the cap. */
+	candidate_value_total?: number;
+}> {
+	try {
+		const search = list.search?.trim() || undefined;
+		// The cap is the server's promise about queue depth; a caller cannot raise it.
+		const limit = Math.min(Math.max(list.limit ?? CANDIDATE_LIMIT, 1), CANDIDATE_LIMIT);
+		const offset = Math.max(list.offset ?? 0, 0);
+
+		const countRows = await db.$queryRaw<
+			{ entity: LinkageEntity; linked: bigint; unmapped: bigint }[]
+		>(
+			linkageUnion(
+				orgId,
+				(s) => Prisma.sql`
+					${s.entity}::text AS entity,
+					COUNT(*) FILTER (WHERE li.inventory_item_id IS NOT NULL) AS linked,
+					COUNT(*) FILTER (WHERE li.inventory_item_id IS NULL) AS unmapped`,
+				// A dismissal is a decision, not a gap; counting it holds coverage below
+				// 100% forever.
+				notDismissed(orgId),
+			),
+		);
+
+		const counts: LinkageEntityCounts[] = countRows.map((r) => ({
+			entity: r.entity,
+			linked: Number(r.linked),
+			unmapped: Number(r.unmapped),
+			total: Number(r.linked) + Number(r.unmapped),
+		}));
+
+		// Grouped by name alone because the backfill is name-scoped; a per-entity
+		// row would promise less than its own button delivers. The window columns
+		// describe the whole backlog, not the capped list the queue displays.
+		const nameRows = await db.$queryRaw<
+			{
+				name: string;
+				lines: bigint;
+				value: Prisma.Decimal | null;
+				entities: LinkageEntity[];
+				name_total: bigint;
+				value_total: Prisma.Decimal | null;
+			}[]
+		>(Prisma.sql`
+			SELECT name,
+				COUNT(*) AS lines,
+				SUM(value) AS value,
+				ARRAY_AGG(DISTINCT entity) AS entities,
+				COUNT(*) OVER () AS name_total,
+				SUM(SUM(value)) OVER () AS value_total
+			FROM (${linkageUnion(
+				orgId,
+				(s) => Prisma.sql`${s.entity}::text AS entity, li.name AS name, ${s.value} AS value`,
+				Prisma.sql`AND li.inventory_item_id IS NULL ${notDismissed(orgId)} ${search
+					? Prisma.sql`AND li.name ILIKE ${"%" + search + "%"}`
+					: Prisma.empty}`,
+			)}) unmapped
+			GROUP BY name
+			ORDER BY ${RECONCILE_ORDER[list.sort ?? "value_desc"]}
+			LIMIT ${limit} OFFSET ${offset}
+		`);
+
+		const catalog = await db.inventory_item.findMany({
+			where: { organization_id: orgId, is_active: true, provisional: false },
+			select: { id: true, name: true, sku: true, alt_ids: true },
+		});
+
+		const byExact = new Map(catalog.map((c) => [c.name, c]));
+		const byFold = new Map(catalog.map((c) => [c.name.trim().toLowerCase(), c]));
+		const byCode = new Map<string, (typeof catalog)[number]>();
+		for (const c of catalog) {
+			if (c.sku) byCode.set(c.sku.trim().toLowerCase(), c);
+			for (const alt of c.alt_ids) byCode.set(alt.trim().toLowerCase(), c);
+		}
+
+		const candidates: LinkageCandidate[] = nameRows.map((row) => {
+			const fold = row.name.trim().toLowerCase();
+			const exact = byExact.get(row.name);
+			const folded = byFold.get(fold);
+			const code = byCode.get(fold);
+			const hit = exact ?? folded ?? code;
+			return {
+				name: row.name,
+				entities: row.entities,
+				lines: Number(row.lines),
+				value: Number(row.value ?? 0),
+				match: hit
+					? {
+							inventory_item_id: hit.id,
+							name: hit.name,
+							sku: hit.sku,
+							tier: exact ? "exact" : folded ? "case_insensitive" : "code",
+						}
+					: null,
+			};
+		});
+
+		return {
+			counts,
+			candidates,
+			candidate_total: Number(nameRows[0]?.name_total ?? 0),
+			candidate_value_total: Number(nameRows[0]?.value_total ?? 0),
+		};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to build inventory linkage audit");
+		return { err: "Failed to build inventory linkage audit" };
+	}
+}
+
+const applyLinkageSchema = z.object({
+	name: z.string().min(1),
+	inventory_item_id: z.string().uuid(),
+});
+
+/**
+ * Point every unmapped material/equipment line with this name at a catalog
+ * item.
+ *
+ * Lines on an already-COMPLETED visit are stamped `used`, not `planned`:
+ * that stock left the warehouse before the link existed and no movement was
+ * written, but deductInventoryForVisit skips only `used`, so a bare backfill
+ * would arm those rows to consume the stock again on re-completion. Every
+ * other status, cancelled included, gets `planned`.
+ *
+ * qty_planned stays null — nobody planned these lines, and a fabricated
+ * quantity shows up as phantom variance.
+ */
+export async function applyLinkageMatch(
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; updated?: Record<LinkageEntity, number> }> {
+	try {
+		const parsed = applyLinkageSchema.parse(data);
+		const item = await db.inventory_item.findFirst({
+			where: { id: parsed.inventory_item_id, organization_id: orgId },
+			select: { id: true },
+		});
+		if (!item) return { err: "Inventory item not found" };
+
+		// `inventory_item_id: null` is load-bearing: an existing link is
+		// somebody's deliberate choice and a backfill never overwrites it.
+		const base = {
+			name: parsed.name,
+			inventory_item_id: null,
+			item_type: { in: [...LINKABLE_ITEM_TYPES] },
+		};
+
+		const updated = await db.$transaction(async (tx) => {
+			const [quote, job, recurringPlan, invoice] = await Promise.all([
+				tx.quote_line_item.updateMany({
+					where: { ...base, quote: { organization_id: orgId } },
+					data: { inventory_item_id: item.id },
+				}),
+				tx.job_line_item.updateMany({
+					where: { ...base, job: { organization_id: orgId } },
+					data: { inventory_item_id: item.id },
+				}),
+				tx.recurring_plan_line_item.updateMany({
+					where: { ...base, recurring_plan: { organization_id: orgId } },
+					data: { inventory_item_id: item.id },
+				}),
+				tx.invoice_line_item.updateMany({
+					where: { ...base, invoice: { organization_id: orgId } },
+					data: { inventory_item_id: item.id },
+				}),
+			]);
+
+			// Visits split by whether the work already happened — see above.
+			const visitBuckets = [
+				{ status: { equals: "Completed" as const }, stamp: "used" as const },
+				{ status: { not: "Completed" as const }, stamp: "planned" as const },
+			];
+			let visitLines = 0;
+			for (const bucket of visitBuckets) {
+				const result = await tx.job_visit_line_item.updateMany({
+					where: {
+						...base,
+						visit: {
+							status: bucket.status,
+							job: { organization_id: orgId },
+						},
+					},
+					data: { inventory_item_id: item.id, fulfillment_status: bucket.stamp },
+				});
+				visitLines += result.count;
+			}
+
+			return {
+				quote: quote.count,
+				job: job.count,
+				job_visit: visitLines,
+				recurring_plan: recurringPlan.count,
+				invoice: invoice.count,
+			} satisfies Record<LinkageEntity, number>;
+		});
+
+		const linesLinked = Object.values(updated).reduce((a, b) => a + b, 0);
+		await logActivity({
+			event_type: "inventory_item.updated",
+			action: "updated",
+			entity_type: "inventory_item",
+			entity_id: item.id,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: {
+				reason: {
+					old: null,
+					new: `Backfilled catalog link for line items named "${parsed.name}"`,
+				},
+				lines_linked: { old: null, new: linesLinked },
+			},
+		});
+
+		// Linking historical lines changes that item's usage, cost and charged-price
+		// reads, and clears the name out of the reconcile queue for everyone.
+		emitInventoryUpdated(orgId, { itemId: parsed.inventory_item_id });
+		return { updated };
+	} catch (e: unknown) {
+		if (e instanceof ZodError) {
+			return { err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}` };
+		}
+		log.error({ err: e }, "Failed to apply linkage match");
+		return { err: "Failed to apply linkage match" };
+	}
+}
+
+// ── Reconcile queue ───────────────────────────────────────────────────────────
+
+/** The origin enum as a runtime list, for query validation and UI filters. */
+export const ITEM_ORIGINS = [
+	"tech_submission",
+	"dispatch_quick_add",
+	"field_purchase",
+	"import",
+] as const satisfies readonly inventory_item_origin[];
+
+const dismissSchema = z.object({
+	name: z.string().trim().min(1).max(200),
+	reason: z.string().trim().max(500).optional(),
+});
+
+/** Same fold the SQL uses, so a TS-side decision and a SQL-side lookup agree. */
+const foldName = (name: string): string => name.trim().toLowerCase();
+
+/**
+ * The queue's terminal state, and the reason it can ever reach empty: a
+ * one-off gasket or a subcontractor's own material does not belong in the
+ * catalog. Idempotent on the folded name.
+ */
+export async function dismissUnmappedName(
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; decision?: object }> {
+	try {
+		const parsed = dismissSchema.parse(data);
+		const folded = foldName(parsed.name);
+		const decision = await db.unmapped_part_decision.upsert({
+			where: { organization_id_folded_name: { organization_id: orgId, folded_name: folded } },
+			create: {
+				organization_id: orgId,
+				folded_name: folded,
+				decided_by_id: context?.dispatcherId ?? null,
+				reason: parsed.reason ?? null,
+			},
+			update: {
+				decided_by_id: context?.dispatcherId ?? null,
+				decided_at: new Date(),
+				reason: parsed.reason ?? null,
+			},
+		});
+
+		await logActivity({
+			event_type: "unmapped_part.dismissed",
+			action: "created",
+			entity_type: "unmapped_part_decision",
+			entity_id: decision.id,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: {
+				folded_name: { old: null, new: folded },
+				reason: { old: null, new: parsed.reason ?? null },
+			},
+		});
+
+		// The reconcile queue moved for everyone, not just the dispatcher who acted.
+		// No itemId: a decision is about a name, so the broad branch is the right one.
+		emitInventoryUpdated(orgId);
+		return { decision };
+	} catch (e: unknown) {
+		if (e instanceof ZodError) return { err: zodMessage(e) };
+		log.error({ err: e }, "Failed to dismiss unmapped part name");
+		return { err: "Failed to dismiss unmapped part name" };
+	}
+}
+
+export async function restoreUnmappedName(
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string }> {
+	try {
+		const parsed = dismissSchema.parse(data);
+		const folded = foldName(parsed.name);
+		const removed = await db.unmapped_part_decision.deleteMany({
+			where: { organization_id: orgId, folded_name: folded },
+		});
+		if (removed.count === 0) return { err: "Decision not found" };
+
+		await logActivity({
+			event_type: "unmapped_part.restored",
+			action: "deleted",
+			entity_type: "unmapped_part_decision",
+			entity_id: folded,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: { folded_name: { old: folded, new: null } },
+		});
+		emitInventoryUpdated(orgId);
+		return {};
+	} catch (e: unknown) {
+		if (e instanceof ZodError) return { err: zodMessage(e) };
+		log.error({ err: e }, "Failed to restore unmapped part name");
+		return { err: "Failed to restore unmapped part name" };
+	}
+}
+
+/** An item row that exists but is under-specified. */
+export interface ReconcileProvisionalRow {
+	item_id: string;
+	name: string;
+	origin: inventory_item_origin;
+	cost: number | null;
+	unit_price: number | null;
+	unit: string;
+	low_stock_threshold: number | null;
+	created_at: Date;
+	submitted_by: { id: string; name: string } | null;
+	vehicle_stocks: { qty_on_hand: number; vehicle: { id: string; name: string } }[];
+	lines: number;
+	value: number;
+	/** Populated by the queue, not by the audit — see fieldPurchaseOrigins. */
+	field_purchases?: ReconcilePurchaseOrigin[];
+}
+
+export interface ReconcileDismissedRow {
+	folded_name: string;
+	decided_at: Date;
+	decided_by: { id: string; name: string } | null;
+	reason: string | null;
+}
+
+/** Enough of a field purchase to name it in a queue row and open the receipt. */
+export interface ReconcilePurchaseOrigin {
+	id: string;
+	status: field_purchase_status;
+	vendor_name: string | null;
+	technician_name: string;
+	purchased_at: Date | null;
+}
+
+/**
+ * Which field purchases put these parts in the queue - settling a part without being
+ * able to read the receipt it came off is guesswork.
+ *
+ * Two lookups, because the halves are keyed differently: the provisional half by the
+ * item the line points at, the unmapped half by the description, which is what
+ * `syncBilling` copies onto the visit line when there is no item.
+ */
+async function fieldPurchaseOrigins(
+	orgId: string,
+	itemIds: string[],
+	names: string[],
+): Promise<{
+	byItem: Map<string, ReconcilePurchaseOrigin[]>;
+	byName: Map<string, ReconcilePurchaseOrigin[]>;
+}> {
+	const byItem = new Map<string, ReconcilePurchaseOrigin[]>();
+	const byName = new Map<string, ReconcilePurchaseOrigin[]>();
+	if (itemIds.length === 0 && names.length === 0) return { byItem, byName };
+
+	const sdb = getScopedDb(orgId);
+	const lines = await sdb.field_purchase_line.findMany({
+		where: {
+			OR: [
+				...(itemIds.length > 0 ? [{ inventory_item_id: { in: itemIds } }] : []),
+				...(names.length > 0
+					? [{ inventory_item_id: null, description: { in: names } }]
+					: []),
+			],
+			// A draft has billed nothing and taken nothing in, so it did not create
+			// this row — naming it would send the dispatcher to an unfinished sheet.
+			field_purchase: { status: { not: "draft" } },
+		},
+		select: {
+			inventory_item_id: true,
+			description: true,
+			field_purchase: {
+				select: {
+					id: true,
+					status: true,
+					vendor_name: true,
+					purchased_at: true,
+					technician: { select: { name: true } },
+				},
+			},
+		},
+		orderBy: { field_purchase: { created_at: "desc" } },
+	});
+
+	// Several lines of one receipt can name the same part; the row wants the
+	// receipt once.
+	const push = (
+		map: Map<string, ReconcilePurchaseOrigin[]>,
+		key: string,
+		o: ReconcilePurchaseOrigin,
+	) => {
+		const list = map.get(key) ?? [];
+		if (!list.some((existing) => existing.id === o.id)) list.push(o);
+		map.set(key, list);
+	};
+
+	for (const line of lines) {
+		const origin: ReconcilePurchaseOrigin = {
+			id: line.field_purchase.id,
+			status: line.field_purchase.status,
+			vendor_name: line.field_purchase.vendor_name,
+			technician_name: line.field_purchase.technician.name,
+			purchased_at: line.field_purchase.purchased_at,
+		};
+		if (line.inventory_item_id) push(byItem, line.inventory_item_id, origin);
+		else push(byName, line.description, origin);
+	}
+	return { byItem, byName };
+}
+
+/**
+ * So both row kinds rank on one scale. Without it a half-defined $2,400
+ * compressor sorts below a $12 unmapped grommet.
+ */
+async function provisionalLineTotals(
+	orgId: string,
+	itemIds: string[],
+): Promise<Map<string, { lines: number; value: number }>> {
+	const totals = new Map<string, { lines: number; value: number }>();
+	if (itemIds.length === 0) return totals;
+
+	const rows = await db.$queryRaw<{ item_id: string; lines: bigint; value: Prisma.Decimal | null }[]>(
+		Prisma.sql`
+			SELECT item_id, COUNT(*) AS lines, SUM(value) AS value
+			FROM (${linkageUnion(
+				orgId,
+				(s) => Prisma.sql`li.inventory_item_id AS item_id, ${s.value} AS value`,
+				Prisma.sql`AND li.inventory_item_id = ANY(${itemIds}::text[])`,
+			)}) linked
+			GROUP BY item_id
+		`,
+	);
+	for (const r of rows) {
+		totals.set(r.item_id, { lines: Number(r.lines), value: Number(r.value ?? 0) });
+	}
+	return totals;
+}
+
+/**
+ * Both kinds of "somebody named a part the catalog doesn't know", ranked
+ * together by money. They fail differently — a provisional row has an item
+ * to complete, an unmapped name has a line to point somewhere — but which
+ * one a problem lands in depends only on whether an item row got created.
+ */
+export async function getReconcileQueue(
+	orgId: string,
+	opts: { includeDismissed?: boolean; origin?: string } & ReconcileListOpts = {},
+): Promise<{
+	err?: string;
+	queue?: {
+		counts: LinkageEntityCounts[];
+		coverage: { linked: number; unmapped: number; total: number; pct: number };
+		unmapped: LinkageCandidate[];
+		unmapped_total: number;
+		unmapped_value: number;
+		provisional: ReconcileProvisionalRow[];
+		/** The whole provisional backlog behind the page, and its summed line value. */
+		provisional_total: number;
+		provisional_value: number;
+		dismissed: ReconcileDismissedRow[];
+	};
+}> {
+	try {
+		if (opts.origin && !(ITEM_ORIGINS as readonly string[]).includes(opts.origin)) {
+			return { err: `Validation failed: unknown origin ${opts.origin}` };
+		}
+		if (opts.sort && !(RECONCILE_SORTS as readonly string[]).includes(opts.sort)) {
+			return { err: `Validation failed: unknown sort ${opts.sort}` };
+		}
+		const search = opts.search?.trim() || undefined;
+
+		const audit = await getLinkageAudit(orgId, {
+			search,
+			sort: opts.sort,
+			offset: opts.offset,
+			limit: opts.limit,
+		});
+		if (audit.err) return { err: audit.err };
+
+		// One filter, used three times: to size the backlog, to rank it, and to
+		// hydrate the page. Duplicating it is how a count and its list drift.
+		const provisionalWhere = {
+			organization_id: orgId,
+			provisional: true,
+			...(opts.origin ? { origin: opts.origin as inventory_item_origin } : {}),
+			...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
+		};
+		// The same clamp getLinkageAudit applies, so one page cannot be 50 rows
+		// deep on one half and 5,000 on the other.
+		const limit = Math.min(Math.max(opts.limit ?? CANDIDATE_LIMIT, 1), CANDIDATE_LIMIT);
+		const offset = Math.max(opts.offset ?? 0, 0);
+
+		// `value` comes from a separate query, so a page taken before the ranking
+		// is the wrong page - and the total is money, which stays whole however
+		// few rows are on screen.
+		const allIds = await db.inventory_item.findMany({
+			where: provisionalWhere,
+			select: { id: true, name: true, created_at: true },
+		});
+
+		const totals = await provisionalLineTotals(
+			orgId,
+			allIds.map((i) => i.id),
+		);
+		const provisionalTotal = allIds.length;
+		const provisionalValue = allIds.reduce((n, i) => n + (totals.get(i.id)?.value ?? 0), 0);
+
+		const sortKey = opts.sort ?? "value_desc";
+		const ranked = [...allIds]
+			// Same ranking as the unmapped half, under whichever order was asked
+			// for; id settles the rest so two otherwise equal rows cannot swap
+			// pages between requests.
+			.sort((a, b) => {
+				const av = totals.get(a.id) ?? { lines: 0, value: 0 };
+				const bv = totals.get(b.id) ?? { lines: 0, value: 0 };
+				switch (sortKey) {
+					case "value_asc":
+						return (
+							av.value - bv.value ||
+							b.created_at.getTime() - a.created_at.getTime() ||
+							a.id.localeCompare(b.id)
+						);
+					case "lines_desc":
+						return (
+							bv.lines - av.lines ||
+							bv.value - av.value ||
+							a.id.localeCompare(b.id)
+						);
+					case "name_asc":
+						return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+					default:
+						return (
+							bv.value - av.value ||
+							b.created_at.getTime() - a.created_at.getTime() ||
+							a.id.localeCompare(b.id)
+						);
+				}
+			})
+			.slice(offset, offset + limit);
+
+		// Carries the whole filter rather than the ids alone: the ids are already
+		// org-scoped, but a row adopted between the two reads must not come back
+		// still wearing the provisional badge.
+		const pageItems = await db.inventory_item.findMany({
+			where: { ...provisionalWhere, id: { in: ranked.map((r) => r.id) } },
+			select: {
+				id: true,
+				name: true,
+				origin: true,
+				cost: true,
+				unit_price: true,
+				unit: true,
+				low_stock_threshold: true,
+				created_at: true,
+				created_by_tech: { select: { id: true, name: true } },
+				vehicle_stocks: {
+					select: { qty_on_hand: true, vehicle: { select: { id: true, name: true } } },
+				},
+			},
+		});
+		const byId = new Map(pageItems.map((i) => [i.id, i]));
+
+		// Walked in ranked order, because an SQL `IN` promises nothing about the
+		// order it answers in; a row that left the queue between the two reads is
+		// simply absent from the second.
+		const provisional: ReconcileProvisionalRow[] = ranked.flatMap((r) => {
+			const i = byId.get(r.id);
+			if (!i) return [];
+			return [
+				{
+					item_id: i.id,
+					name: i.name,
+					origin: i.origin,
+					cost: i.cost === null ? null : Number(i.cost),
+					unit_price: i.unit_price === null ? null : Number(i.unit_price),
+					unit: i.unit,
+					low_stock_threshold:
+						i.low_stock_threshold === null
+							? null
+							: Number(i.low_stock_threshold),
+					created_at: i.created_at,
+					submitted_by: i.created_by_tech,
+					vehicle_stocks: i.vehicle_stocks.map((vs) => ({
+						qty_on_hand: Number(vs.qty_on_hand),
+						vehicle: vs.vehicle,
+					})),
+					...(totals.get(i.id) ?? { lines: 0, value: 0 }),
+				},
+			];
+		});
+
+		const dismissed: ReconcileDismissedRow[] = opts.includeDismissed
+			? (
+					await db.unmapped_part_decision.findMany({
+						where: {
+							organization_id: orgId,
+							...(search
+								? { folded_name: { contains: search.toLowerCase() } }
+								: {}),
+						},
+						select: {
+							folded_name: true,
+							decided_at: true,
+							reason: true,
+							decided_by: { select: { id: true, name: true } },
+						},
+						orderBy: { decided_at: "desc" },
+						take: CANDIDATE_LIMIT,
+					})
+				).map((d) => ({
+					folded_name: d.folded_name,
+					decided_at: d.decided_at,
+					decided_by: d.decided_by,
+					reason: d.reason,
+				}))
+			: [];
+
+		// One round trip for both halves of the page, after both are narrowed and
+		// capped — never per row.
+		const unmapped = audit.candidates ?? [];
+		const origins = await fieldPurchaseOrigins(
+			orgId,
+			provisional.map((p) => p.item_id),
+			unmapped.map((u) => u.name),
+		);
+		for (const row of provisional) row.field_purchases = origins.byItem.get(row.item_id) ?? [];
+		for (const row of unmapped) row.field_purchases = origins.byName.get(row.name) ?? [];
+
+		const counts = audit.counts ?? [];
+		const linked = counts.reduce((n, c) => n + c.linked, 0);
+		const unmappedLines = counts.reduce((n, c) => n + c.unmapped, 0);
+		const total = linked + unmappedLines;
+
+		return {
+			queue: {
+				counts,
+				coverage: {
+					linked,
+					unmapped: unmappedLines,
+					total,
+					pct: total === 0 ? 100 : Math.round((linked / total) * 100),
+				},
+				unmapped,
+				unmapped_total: audit.candidate_total ?? 0,
+				unmapped_value: audit.candidate_value_total ?? 0,
+				provisional,
+				provisional_total: provisionalTotal,
+				provisional_value: provisionalValue,
+				dismissed,
+			},
+		};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to build reconcile queue");
+		return { err: "Failed to build reconcile queue" };
+	}
+}
+
+
+/** One billable line behind a queue row, with enough to open the document it sits on. */
+export interface ReconcileLineRow {
+	entity: LinkageEntity;
+	line_id: string;
+	document_id: string;
+	/** Set only where the route nests — a visit is reached through its job. */
+	parent_id: string | null;
+	document_number: string | null;
+	document_title: string | null;
+	client_name: string | null;
+	occurred_at: Date | null;
+	name: string;
+	quantity: number;
+	unit_price: number;
+	value: number;
+}
+
+const RECONCILE_LINE_LIMIT = 100;
+
+/**
+ * The documents behind one queue row. Ranking says which name to deal with, this
+ * says what the name is: $2,400 on one invoice and forty $6 lines are the same money
+ * and not the same decision. Same live-document scope as the audit
+ * (LINKAGE_SOURCES.alive), so the two counts agree.
+ */
+export async function getReconcileLines(
+	orgId: string,
+	opts: { name?: string; itemId?: string; foldedName?: string },
+): Promise<{ err?: string; lines?: ReconcileLineRow[]; total?: number }> {
+	try {
+		if (!opts.name && !opts.itemId && !opts.foldedName) {
+			return { err: "Validation failed: name, folded_name or item_id is required" };
+		}
+		// Exact for a queue row, because exact is what Map will rewrite. Folded for
+		// a dismissal, which is stored folded and covers every casing of the name.
+		const filter = opts.itemId
+			? Prisma.sql`AND li.inventory_item_id = ${opts.itemId}`
+			: opts.foldedName
+				? Prisma.sql`AND ${FOLDED_LINE_NAME} = ${foldName(opts.foldedName)} AND li.inventory_item_id IS NULL`
+				: Prisma.sql`AND li.name = ${opts.name} AND li.inventory_item_id IS NULL`;
+
+		const rows = await db.$queryRaw<
+			{
+				entity: LinkageEntity;
+				line_id: string;
+				document_id: string;
+				parent_id: string | null;
+				document_number: string | null;
+				document_title: string | null;
+				client_name: string | null;
+				occurred_at: Date | null;
+				name: string;
+				quantity: Prisma.Decimal | null;
+				unit_price: Prisma.Decimal | null;
+				value: Prisma.Decimal | null;
+				row_total: bigint;
+			}[]
+		>(Prisma.sql`
+			SELECT lines.*, COUNT(*) OVER () AS row_total
+			FROM (${Prisma.join(
+				LINKAGE_SOURCES.map(
+					(s) => Prisma.sql`
+						SELECT ${s.entity}::text AS entity,
+							li.id AS line_id,
+							${s.doc_id} AS document_id,
+							${s.parent_id} AS parent_id,
+							${s.doc_number} AS document_number,
+							${s.doc_title} AS document_title,
+							c.name AS client_name,
+							${s.doc_date} AS occurred_at,
+							li.name AS name,
+							li.quantity AS quantity,
+							li.unit_price AS unit_price,
+							${s.value} AS value
+						FROM ${s.from}
+						LEFT JOIN client c ON c.id = p.client_id
+						WHERE p.organization_id = ${orgId}
+							AND ${LINKABLE_LINE_TYPES}
+							${s.alive}
+							${filter}
+					`,
+				),
+				" UNION ALL ",
+			)}) lines
+			ORDER BY value DESC NULLS LAST, occurred_at DESC NULLS LAST
+			LIMIT ${RECONCILE_LINE_LIMIT}
+		`);
+
+		return {
+			lines: rows.map((r) => ({
+				entity: r.entity,
+				line_id: r.line_id,
+				document_id: r.document_id,
+				parent_id: r.parent_id,
+				document_number: r.document_number,
+				document_title: r.document_title,
+				client_name: r.client_name,
+				occurred_at: r.occurred_at,
+				name: r.name,
+				quantity: Number(r.quantity ?? 0),
+				unit_price: Number(r.unit_price ?? 0),
+				value: Number(r.value ?? 0),
+			})),
+			total: Number(rows[0]?.row_total ?? 0),
+		};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to load reconcile lines");
+		return { err: "Failed to load reconcile lines" };
+	}
+}
+
+export interface ReconcileTarget {
+	id: string;
+	name: string;
+	sku: string | null;
+	unit: string;
+	cost: number | null;
+	provisional: boolean;
+}
+
+const TARGET_LIMIT = 25;
+
+/**
+ * Map targets, searched server-side rather than shipping the catalog to the client.
+ *
+ * Provisional rows are included on purpose: a tech-submitted "R410A" is what six
+ * quote lines naming "R-410A refrigerant" should point at, and hiding it forces a
+ * near-duplicate into the catalog. They sort last, so a complete item still wins.
+ */
+export async function getReconcileTargets(
+	orgId: string,
+	opts: { search?: string; excludeId?: string; limit?: number } = {},
+): Promise<{ err?: string; targets?: ReconcileTarget[] }> {
+	try {
+		const search = opts.search?.trim();
+		const items = await db.inventory_item.findMany({
+			where: {
+				organization_id: orgId,
+				is_active: true,
+				...(opts.excludeId ? { id: { not: opts.excludeId } } : {}),
+				...(search
+					? {
+							OR: [
+								{ name: { contains: search, mode: "insensitive" as const } },
+								{ sku: { contains: search, mode: "insensitive" as const } },
+								{ alt_ids: { has: search } },
+							],
+						}
+					: {}),
+			},
+			select: {
+				id: true,
+				name: true,
+				sku: true,
+				unit: true,
+				cost: true,
+				provisional: true,
+			},
+			orderBy: [{ provisional: "asc" }, { name: "asc" }],
+			take: Math.min(Math.max(opts.limit ?? TARGET_LIMIT, 1), 50),
+		});
+
+		return {
+			targets: items.map((i) => ({
+				id: i.id,
+				name: i.name,
+				sku: i.sku,
+				unit: i.unit,
+				cost: i.cost === null ? null : Number(i.cost),
+				provisional: i.provisional,
+			})),
+		};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to load reconcile targets");
+		return { err: "Failed to load reconcile targets" };
+	}
+}
+
+const bulkApplySchema = z.object({
+	pairs: z
+		.array(z.object({ name: z.string().min(1), inventory_item_id: z.string().uuid() }))
+		.min(1)
+		.max(CANDIDATE_LIMIT),
+});
+
+export interface BulkLinkageResult {
+	name: string;
+	lines: number;
+	err?: string;
+}
+
+/**
+ * One decision for a screenful of suggestions the dispatcher already agrees with.
+ *
+ * Each pair goes through applyLinkageMatch rather than one wide UPDATE, because the
+ * completed-visit `used` stamp is why that function is not an updateMany. Serial,
+ * not Promise.all: concurrent transactions on the same line tables deadlock. Partial
+ * success is reported per name - 40 of 41 links landing beats none.
+ */
+export async function applyLinkageMatchBulk(
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; results?: BulkLinkageResult[]; linked?: number }> {
+	try {
+		const parsed = bulkApplySchema.parse(data);
+		const results: BulkLinkageResult[] = [];
+		for (const pair of parsed.pairs) {
+			const one = await applyLinkageMatch(pair, orgId, context);
+			results.push({
+				name: pair.name,
+				lines: one.updated ? Object.values(one.updated).reduce((a, b) => a + b, 0) : 0,
+				...(one.err ? { err: one.err } : {}),
+			});
+		}
+		// A bulk run touches an unknown set of items, so the broad branch applies.
+		emitInventoryUpdated(orgId);
+		return { results, linked: results.reduce((n, r) => n + r.lines, 0) };
+	} catch (e: unknown) {
+		if (e instanceof ZodError) return { err: zodMessage(e) };
+		log.error({ err: e }, "Failed to bulk-apply linkage matches");
+		return { err: "Failed to bulk-apply linkage matches" };
+	}
+}
+
 // ── Provisional items ─────────────────────────────────────────────────────────
+
+const createProvisionalSchema = z.object({
+	name: z.string().trim().min(1).max(200),
+	unit: z.string().trim().max(40).optional(),
+	unit_price: z.number().min(0).optional(),
+	cost: z.number().min(0).optional(),
+});
+
+/**
+ * Quick-add from a line-item form, for a part not in the catalog yet.
+ *
+ * Provisional because a dispatcher pricing a job on the phone knows the
+ * name and the charge, not the cost basis, supplier, unit or reorder
+ * threshold — and blocking the quote until they do is what makes people
+ * invent junk SKUs. Reuses the technician provisional lifecycle rather than
+ * adding a second half-item concept; `created_by_tech_id: null` is what
+ * marks it dispatch-origin.
+ */
+export async function createProvisionalItemForLine(
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; item?: object }> {
+	try {
+		const parsed = createProvisionalSchema.parse(data);
+
+		// Idempotent on the folded name: the picker can't see provisional rows, so
+		// nothing else would stop a duplicate. Only provisional rows match — a
+		// rejected item must stay rejected.
+		const existing = await db.inventory_item.findFirst({
+			where: {
+				organization_id: orgId,
+				provisional: true,
+				name: { equals: parsed.name, mode: "insensitive" },
+			},
+		});
+		if (existing) return { item: existing };
+
+		const item = await db.inventory_item.create({
+			data: {
+				organization_id: orgId,
+				name: parsed.name,
+				description: "",
+				location: "",
+				quantity: 0,
+				unit: normalizeUnitCode(parsed.unit) ?? DEFAULT_UNIT_CODE,
+				unit_price: parsed.unit_price ?? null,
+				cost: parsed.cost ?? null,
+				provisional: true,
+				origin: "dispatch_quick_add",
+				created_by_tech_id: null,
+			},
+		});
+
+		await logActivity({
+			event_type: "inventory_item.created",
+			action: "created",
+			entity_type: "inventory_item",
+			entity_id: item.id,
+			organization_id: orgId,
+			...getActorInfo(context),
+			changes: {
+				name: { old: null, new: item.name },
+				provisional: { old: null, new: true },
+				reason: { old: null, new: "Quick-added from a line item form" },
+			},
+		});
+
+		return { item };
+	} catch (e: unknown) {
+		if (e instanceof ZodError) {
+			return {
+				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
+			};
+		}
+		log.error({ err: e }, "Failed to create provisional item");
+		return { err: "Failed to create provisional item" };
+	}
+}
 
 export async function listProvisionalItems(orgId: string): Promise<{ err?: string; items?: object[] }> {
 	try {
@@ -3726,10 +5001,30 @@ export async function listProvisionalItems(orgId: string): Promise<{ err?: strin
 	}
 }
 
+// Thrown inside the adopt transaction so nothing commits; the outer catch
+// maps it to a 400, as with TrackingStockNotZeroError above.
+class AdoptWithoutCostError extends Error {
+	constructor() {
+		super("Validation failed: cost is required to adopt an item into the catalog");
+	}
+}
+
 const approveProvisionalSchema = z.object({
 	initial_warehouse_qty: z.number().int().min(0).optional(),
+	// Optional because a tech-submitted part usually arrives with a cost; the
+	// transaction refuses the adopt if neither row nor payload has one.
+	cost: z.number().min(0).optional(),
+	unit: z.string().trim().max(40).optional(),
+	low_stock_threshold: z.number().min(0).nullable().optional(),
 });
 
+/**
+ * Adopt a provisional row into the real catalog.
+ *
+ * Cost is mandatory, from the payload or already on the row. Adopted with
+ * no cost basis an item reads as free everywhere: weighted average cost
+ * takes it as a zero-cost receipt and every margin on it shows 100%.
+ */
 export async function approveProvisionalItem(
 	itemId: string,
 	orgId: string,
@@ -3739,9 +5034,29 @@ export async function approveProvisionalItem(
 	try {
 		const parsed = approveProvisionalSchema.parse(data ?? {});
 		const item = await db.$transaction(async (tx) => {
+			const existing = await tx.inventory_item.findFirst({
+				where: { id: itemId, organization_id: orgId, provisional: true },
+				select: { cost: true },
+			});
+			if (!existing) throw new Error("Provisional item not found");
+			if (parsed.cost === undefined && existing.cost === null) {
+				throw new AdoptWithoutCostError();
+			}
+
 			const claimed = await tx.inventory_item.updateMany({
 				where: { id: itemId, organization_id: orgId, provisional: true },
-				data: { provisional: false, approved_at: new Date(), approved_by_id: context?.dispatcherId ?? null },
+				data: {
+					provisional: false,
+					approved_at: new Date(),
+					approved_by_id: context?.dispatcherId ?? null,
+					...(parsed.cost !== undefined ? { cost: parsed.cost } : {}),
+					...(parsed.unit !== undefined
+						? { unit: normalizeUnitCode(parsed.unit) ?? DEFAULT_UNIT_CODE }
+						: {}),
+					...(parsed.low_stock_threshold !== undefined
+						? { low_stock_threshold: parsed.low_stock_threshold }
+						: {}),
+				},
 			});
 			if (claimed.count === 0) throw new Error("Provisional item not found");
 
@@ -3773,11 +5088,17 @@ export async function approveProvisionalItem(
 			...getActorInfo(context),
 			changes: {
 				provisional: { old: true, new: false },
+				...(parsed.cost !== undefined ? { cost: { old: null, new: parsed.cost } } : {}),
+				...(parsed.unit !== undefined ? { unit: { old: null, new: parsed.unit } } : {}),
+				...(parsed.low_stock_threshold !== undefined
+					? { low_stock_threshold: { old: null, new: parsed.low_stock_threshold } }
+					: {}),
 				...(parsed.initial_warehouse_qty ? { initial_warehouse_qty: { old: 0, new: parsed.initial_warehouse_qty } } : {}),
 			},
 		});
 		return { item: item! };
 	} catch (e: unknown) {
+		if (e instanceof AdoptWithoutCostError) return { err: e.message };
 		if (e instanceof Error && e.message === "Provisional item not found") return { err: e.message };
 		if (e instanceof ZodError) return { err: zodMessage(e) };
 		log.error({ err: e }, "Failed to approve provisional item");
@@ -3864,10 +5185,24 @@ export async function mergeProvisionalItem(
 				where: { inventory_item_id: itemId },
 				data: { inventory_item_id: target.id },
 			});
-			await tx.job_visit_line_item.updateMany({
+
+			// Every table pointing at an inventory item must be repointed before the
+			// delete. These FKs are ON DELETE SET NULL, so a missed table does not
+			// error — it silently NULLs the link and drops those lines back into the
+			// backlog this merge exists to clear. One call each because Prisma's
+			// per-model updateMany generics can't be unioned into one callable.
+			const repoint = {
 				where: { inventory_item_id: itemId },
 				data: { inventory_item_id: target.id },
-			});
+			};
+			await Promise.all([
+				tx.job_visit_line_item.updateMany(repoint),
+				tx.quote_line_item.updateMany(repoint),
+				tx.job_line_item.updateMany(repoint),
+				tx.recurring_plan_line_item.updateMany(repoint),
+				tx.invoice_line_item.updateMany(repoint),
+			]);
+
 			await tx.inventory_item.delete({ where: { id: itemId } });
 		});
 		await logActivity({

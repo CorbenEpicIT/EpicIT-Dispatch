@@ -93,6 +93,7 @@ export async function importQBItem(orgId: string, qbItemId: string, actor?: Acto
                 data: {
                     organization_id: orgId,
                     name: qbItem.Name,
+                    origin: "import",
                     description: qbItem.Description ?? "",
                     location: "",
                     quantity: 0, // recordMovements sets the opening qty below

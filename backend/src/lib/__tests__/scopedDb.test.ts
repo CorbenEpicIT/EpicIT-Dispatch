@@ -227,9 +227,9 @@ describe("getScopedDb — findUnique merges org filter as a sibling", () => {
 	// findUnique/findUniqueOrThrow must stay on `query` — the transaction-aware
 	// client Prisma already bound this call to — rather than rerouting to a
 	// separate model/operation on the base `db`, which runs on its own connection
-	// and can't see a still-open transaction's own uncommitted writes (the bug
-	// this scoping previously had: adding a vehicle stock item inside a
-	// $transaction would 404 on its own just-created row).
+	// and can't see a still-open transaction's own uncommitted writes: adding a
+	// vehicle stock item inside a $transaction and then looking it up here must
+	// not 404 on its own just-created row.
 	it("merges organization_id as a sibling of the unique id for org-scoped models", async () => {
 		const hooks = hooksFor(ORG_A);
 		const query = vi.fn().mockResolvedValue({ id: "i1" });

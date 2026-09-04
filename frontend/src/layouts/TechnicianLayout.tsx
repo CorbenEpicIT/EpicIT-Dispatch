@@ -145,7 +145,7 @@ export default function TechnicianLayout() {
 						</button>
 					</div>
 				)}
-				<main className="flex-1 overflow-y-auto bg-canvas">
+				<main className="flex-1 overflow-y-auto overscroll-contain bg-canvas">
 					<div className="p-4 pb-20 md:px-6 md:pt-6 min-h-full">
 						<Outlet />
 					</div>

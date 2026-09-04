@@ -2,7 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import {
 	Briefcase,
-	Phone,
+	Inbox,
 	FileText,
 	ReceiptText,
 	Repeat,
@@ -29,7 +29,7 @@ const FEED_FILTERS = [
 	},
 	{
 		key: "requests",
-		icon: Phone,
+		icon: Inbox,
 		label: "Requests",
 		color: "text-orange-text",
 		bg: "bg-orange-bg",

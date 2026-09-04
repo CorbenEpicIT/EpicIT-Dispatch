@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { findForeignInventoryItemIds, unknownInventoryItemsMessage } from "../lib/inventory.js";
 import { isQBConnected, getOrgRealmId } from "../services/quickbooksService.js";
 import { pushInvoice, voidQBInvoice } from "../services/qb/qbInvoices.js"
 import {
@@ -221,6 +222,19 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 			"discount_type" in changes ||
 			"discount_value" in changes ||
 			"total" in changes;
+
+		// Returned rather than thrown: the catch below collapses every non-Zod
+		// Error into "Internal server error".
+		if (parsed.line_items && parsed.line_items.length > 0) {
+			const foreignItems = await findForeignInventoryItemIds(
+				sdb,
+				organizationId,
+				parsed.line_items.map((li) => li.inventory_item_id),
+			);
+			if (foreignItems.length > 0) {
+				return { err: unknownInventoryItemsMessage(foreignItems) };
+			}
+		}
 
 		const isLocked =
 			existing.tax_snapshot != null &&

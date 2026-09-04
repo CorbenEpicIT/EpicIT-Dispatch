@@ -12,6 +12,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { assertInventoryItemsInOrg } from "../lib/inventory.js";
 import { db, generateQuoteNumber } from "../db.js";
 import {
 	centsToDollars,
@@ -293,6 +294,11 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 				data: quoteData,
 			});
 			if (parsed.line_items && parsed.line_items.length > 0) {
+				await assertInventoryItemsInOrg(
+					tx,
+					organizationId,
+					parsed.line_items.map((i) => i.inventory_item_id),
+				);
 				await tx.quote_line_item.createMany({
 					data: parsed.line_items.map((item, index) => ({
 						quote_id: quote.id,
@@ -305,6 +311,7 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 						sort_order: item.sort_order ?? index,
 						tax_group_id: item.tax_group_id ?? null,
 						taxable: item.taxable !== undefined ? item.taxable : true,
+						inventory_item_id: item.inventory_item_id ?? null,
 					})),
 				});
 
@@ -426,6 +433,11 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 		const updated = await sdb.$transaction(async (tx) => {
 			if (parsed.line_items !== undefined) {
 				const incomingItems = parsed.line_items || [];
+				await assertInventoryItemsInOrg(
+					tx,
+					organizationId,
+					incomingItems.map((i) => i.inventory_item_id),
+				);
 				const existingItemIds = new Set(
 					existing.line_items.map((item) => item.id),
 				);
@@ -540,6 +552,9 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 									...(item.taxable !== undefined && {
 										taxable: item.taxable,
 									}),
+									...(item.inventory_item_id !== undefined && {
+										inventory_item_id: item.inventory_item_id,
+									}),
 								},
 							});
 
@@ -578,6 +593,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 								sort_order: item.sort_order ?? index,
 								tax_group_id: item.tax_group_id ?? null,
 								taxable: item.taxable !== undefined ? item.taxable : true,
+								inventory_item_id: item.inventory_item_id ?? null,
 							},
 						});
 
@@ -880,6 +896,10 @@ export const insertQuoteItem = async (
 		}
 
 		const created = await sdb.$transaction(async (tx) => {
+			await assertInventoryItemsInOrg(tx, organizationId, [
+				parsed.inventory_item_id,
+			]);
+
 			// Calculate total if not provided
 			const total =
 				parsed.total !== undefined
@@ -896,6 +916,7 @@ export const insertQuoteItem = async (
 					total: total,
 					item_type: parsed.item_type || null,
 					sort_order: parsed.sort_order,
+					inventory_item_id: parsed.inventory_item_id ?? null,
 					tax_group_id: parsed.tax_group_id ?? null,
 					taxable: parsed.taxable !== undefined ? parsed.taxable : true,
 				},
@@ -971,6 +992,10 @@ export const updateQuoteItem = async (
 		] as const);
 
 		const updated = await sdb.$transaction(async (tx) => {
+			await assertInventoryItemsInOrg(tx, organizationId, [
+				parsed.inventory_item_id,
+			]);
+
 			// Recalculate total if quantity or unit_price changed
 			let total = parsed.total;
 			if (total === undefined) {
@@ -1004,6 +1029,9 @@ export const updateQuoteItem = async (
 					}),
 					...(parsed.sort_order !== undefined && {
 						sort_order: parsed.sort_order,
+					}),
+					...(parsed.inventory_item_id !== undefined && {
+						inventory_item_id: parsed.inventory_item_id,
 					}),
 					...(parsed.tax_group_id !== undefined && {
 						tax_group_id: parsed.tax_group_id,

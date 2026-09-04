@@ -10,6 +10,7 @@ import DatePicker from "../ui/DatePicker";
 import Dropdown from "../ui/Dropdown";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
 import { UndoButton } from "../ui/forms/UndoButton";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
@@ -90,10 +91,12 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 		undoLineItemField,
 		clearLineItemField,
 		originalLineItems,
+		setLineItemInventoryItem,
 		setLineItemTaxGroup,
 		setAllLineItemsTaxGroup,
 	} = useLineItems({ minItems: 0, mode: "edit" });
 
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
 	const lineItemsForCalc = useMemo(
 		() =>
 			activeLineItems.map((item) => ({
@@ -180,6 +183,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				total: Number(item.total),
 				taxable: item.taxable ?? true,
 				tax_group_id: item.tax_group_id ?? null,
+				inventory_item_id: item.inventory_item_id ?? null,
 				source_job_id: item.source_job_id ?? null,
 				source_visit_id: item.source_visit_id ?? null,
 				isNew: false,
@@ -312,6 +316,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 						| undefined,
 					taxable: item.taxable,
 					tax_group_id: item.tax_group_id ?? undefined,
+					inventory_item_id: item.inventory_item_id ?? undefined,
 					sort_order: index,
 					source_job_id: item.source_job_id ?? undefined,
 					source_visit_id: item.source_visit_id ?? undefined,
@@ -689,6 +694,8 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 				return (
 					<div className="min-w-0 flex flex-col -mt-3 sm:-mt-4">
 						<LineItemsSection
+							inventoryItems={inventoryItems}
+							onLinkInventory={setLineItemInventoryItem}
 							lineItems={activeLineItems}
 							isLoading={isLoading}
 							onAdd={addLineItem}

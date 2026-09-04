@@ -46,6 +46,7 @@ export default function SupplierPicker({
 	const [typed, setTyped] = useState(value.supplier_name ?? "");
 
 	const inputRef = useRef<HTMLInputElement>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
 	const [panelStyle, setPanelStyle] = useState<CSSProperties | null>(null);
 
 	// Portaled to <body>, not rendered inline: every caller of this picker
@@ -71,14 +72,21 @@ export default function SupplierPicker({
 	}, [dropdownOpen]);
 
 	// Closes rather than repositions on scroll/resize — an autocomplete list
-	// this small doesn't need to track the input's rect continuously.
+	// this small doesn't need to track the input's rect continuously. The
+	// suggestion list scrolls on its own past ~5 vendors, and a capture
+	// listener sees that scroll too: unguarded, it closed the list mid-flick.
 	useEffect(() => {
 		if (!dropdownOpen) return;
+		const onScroll = (e: Event) => {
+			const target = e.target;
+			if (target instanceof Node && panelRef.current?.contains(target)) return;
+			setDropdownOpen(false);
+		};
 		const close = () => setDropdownOpen(false);
-		window.addEventListener("scroll", close, true);
+		window.addEventListener("scroll", onScroll, true);
 		window.addEventListener("resize", close);
 		return () => {
-			window.removeEventListener("scroll", close, true);
+			window.removeEventListener("scroll", onScroll, true);
 			window.removeEventListener("resize", close);
 		};
 	}, [dropdownOpen]);
@@ -140,7 +148,11 @@ export default function SupplierPicker({
 				suggestions.length > 0 &&
 				createPortal(
 					<div
+						ref={panelRef}
 						style={panelStyle}
+						// Dragging the panel's scrollbar blurs the input, and the
+						// blur handler closes the list out from under the drag.
+						onMouseDown={(e) => e.preventDefault()}
 						className="z-50 max-h-48 overflow-y-auto rounded border border-border bg-surface shadow-xl"
 					>
 						{suggestions.map((s) => (

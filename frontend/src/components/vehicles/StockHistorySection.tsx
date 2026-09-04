@@ -18,7 +18,10 @@ import SegmentedToggle from "../ui/SegmentedToggle";
 type HistoryTab = "adjustments" | "restock";
 type FilterType = VehicleAdjustmentType | "all";
 
-const TYPE_BADGE: Record<VehicleAdjustmentType, string> = {
+// Keyed by string, not by VehicleAdjustmentType: `supplier_purchase` is no
+// longer an adjustment anyone can make, but rows recorded before it was retired
+// still carry it and would otherwise render unlabelled.
+const TYPE_BADGE: Record<string, string> = {
 	field_loss:         "bg-error/15 text-error-text",
 	transfer:           "bg-primary/15 text-primary",
 	audit:              "bg-surface-raised border border-border text-text-secondary",
@@ -26,7 +29,7 @@ const TYPE_BADGE: Record<VehicleAdjustmentType, string> = {
 	supplier_purchase:  "bg-violet-500/15 text-violet-400",
 };
 
-const TYPE_BADGE_LABEL: Record<VehicleAdjustmentType, string> = {
+const TYPE_BADGE_LABEL: Record<string, string> = {
 	field_loss:         "Loss",
 	transfer:           "Transfer",
 	audit:              "Audit",
@@ -34,7 +37,7 @@ const TYPE_BADGE_LABEL: Record<VehicleAdjustmentType, string> = {
 	supplier_purchase:  "Purchase",
 };
 
-const TYPE_FILTER_LABEL: Record<VehicleAdjustmentType | "all", string> = {
+const TYPE_FILTER_LABEL: Record<string, string> = {
 	all: "All",
 	...TYPE_BADGE_LABEL,
 };

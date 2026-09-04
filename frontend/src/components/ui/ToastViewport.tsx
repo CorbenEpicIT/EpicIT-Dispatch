@@ -32,10 +32,10 @@ const TOAST_CONFIG: Record<
 };
 
 // Fixed-corner toast stack — the single shared notification surface for the
-// whole app. Anything that used to roll its own fixed-position toast/banner
-// (restock-shortfall alerts, the label-queue confirmation) pushes here via
-// useToast()/toastStore instead, so there's one set of position/motion/a11y
-// rules instead of three.
+// whole app. Any fixed-position toast/banner (restock-shortfall alerts, the
+// label-queue confirmation) goes through useToast()/toastStore instead of
+// rolling its own, so there's one set of position/motion/a11y rules, not
+// a separate one per surface.
 //
 // `inset="above-nav"` lifts the stack clear of a fixed bottom nav (TechnicianLayout's
 // is h-16); without it a toast paints over the tab bar on phones. Below `sm` the stack

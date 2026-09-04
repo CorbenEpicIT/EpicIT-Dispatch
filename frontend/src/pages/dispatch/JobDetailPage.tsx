@@ -25,6 +25,7 @@ import {
 } from "../../hooks/useJobs";
 import { useInvoicesByJobIdQuery } from "../../hooks/useInvoices";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
+import JobFieldPurchases from "../../components/fieldPurchases/JobFieldPurchases";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJob from "../../components/jobs/EditJob";
@@ -1227,6 +1228,8 @@ export default function JobDetailPage() {
 					</div>
 				</Card>
 			</div>
+
+			<JobFieldPurchases jobId={jobId!} />
 
 			<JobNoteManager jobId={jobId!} visits={visits} />
 

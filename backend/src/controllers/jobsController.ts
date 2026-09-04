@@ -13,6 +13,7 @@ import { Request } from "express";
 import { logActivity, buildChanges } from "../services/logger.js";
 import { parentBreadcrumb } from "./logsController.js";
 import { LineItemToCreate, ChangeSet } from "../types/common.js";
+import { assertInventoryItemsInOrg } from "../lib/inventory.js";
 import { log } from "../services/appLogger.js";
 import { generateJobNumber } from "../db.js";
 
@@ -344,7 +345,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 						? Number(quote.discount_amount)
 						: undefined;
 
-				// Store line items from quote for later creation
+				// The catalog link rides along, or it dies at conversion.
 				lineItemsToCreate = quote.line_items.map((item) => ({
 					name: item.name,
 					description: item.description,
@@ -353,6 +354,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 					total: Number(item.total),
 					source: "quote" as const,
 					item_type: item.item_type,
+					inventory_item_id: item.inventory_item_id,
 				}));
 
 				await tx.quote.update({
@@ -396,6 +398,11 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 
 			// If line_items provided directly in request, use those
 			if (parsed.line_items && parsed.line_items.length > 0) {
+				await assertInventoryItemsInOrg(
+					tx,
+					organizationId,
+					parsed.line_items.map((i) => i.inventory_item_id),
+				);
 				lineItemsToCreate = parsed.line_items.map((item) => ({
 					name: item.name,
 					description: item.description || null,
@@ -404,6 +411,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 					total: item.total ?? item.quantity * item.unit_price,
 					source: "manual" as const,
 					item_type: item.item_type || null,
+					inventory_item_id: item.inventory_item_id ?? null,
 				}));
 			}
 
@@ -466,6 +474,7 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 						total: item.total ?? item.quantity * item.unit_price,
 						source: item.source ?? "manual",
 						item_type: item.item_type,
+						inventory_item_id: item.inventory_item_id ?? null,
 					})),
 				});
 			}
@@ -680,6 +689,11 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 			// BULK LINE ITEMS UPDATE
 			if (parsed.line_items !== undefined) {
 				const incomingItems = parsed.line_items || [];
+				await assertInventoryItemsInOrg(
+					tx,
+					organizationId,
+					incomingItems.map((i) => i.inventory_item_id),
+				);
 
 				// Track existing and incoming item IDs
 				const existingItemIds = new Set(
@@ -780,6 +794,20 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 									new: item.item_type,
 								};
 							}
+							// On a "same text, now points at the catalog" edit this is the whole
+							// change — without it the write below never fires.
+							const nextInventoryItemId =
+								item.inventory_item_id ?? null;
+							if (
+								item.inventory_item_id !== undefined &&
+								nextInventoryItemId !==
+									existingItem.inventory_item_id
+							) {
+								itemChanges.inventory_item_id = {
+									old: existingItem.inventory_item_id,
+									new: nextInventoryItemId,
+								};
+							}
 
 							// Only update if there are actual changes
 							if (Object.keys(itemChanges).length > 0) {
@@ -792,6 +820,9 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 										unit_price: item.unit_price,
 										total: item.total ?? item.quantity * item.unit_price,
 										item_type: item.item_type || null,
+										...(item.inventory_item_id !== undefined && {
+											inventory_item_id: nextInventoryItemId,
+										}),
 									},
 								});
 
@@ -826,6 +857,7 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 								total: item.total ?? item.quantity * item.unit_price,
 								source: "manual",
 								item_type: item.item_type || null,
+								inventory_item_id: item.inventory_item_id ?? null,
 							},
 						});
 
@@ -1068,6 +1100,10 @@ export const insertJobLineItem = async (
 		}
 
 		const created = await sdb.$transaction(async (tx) => {
+			await assertInventoryItemsInOrg(tx, organizationId, [
+				parsed.inventory_item_id,
+			]);
+
 			// Calculate total if not provided
 			const total =
 				parsed.total !== undefined
@@ -1084,6 +1120,7 @@ export const insertJobLineItem = async (
 					total: total,
 					source: parsed.source || "manual",
 					item_type: parsed.item_type || null,
+					inventory_item_id: parsed.inventory_item_id ?? null,
 				},
 			});
 
@@ -1177,6 +1214,10 @@ export const updateJobLineItem = async (
 		}
 
 		const updated = await sdb.$transaction(async (tx) => {
+			await assertInventoryItemsInOrg(tx, organizationId, [
+				parsed.inventory_item_id,
+			]);
+
 			// Recalculate total if quantity or unit_price changed
 			const total =
 				parsed.total ??
@@ -1202,6 +1243,9 @@ export const updateJobLineItem = async (
 					}),
 					...(parsed.item_type !== undefined && {
 						item_type: parsed.item_type,
+					}),
+					...(parsed.inventory_item_id !== undefined && {
+						inventory_item_id: parsed.inventory_item_id,
 					}),
 				},
 			});

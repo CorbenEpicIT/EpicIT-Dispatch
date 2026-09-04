@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	Briefcase, FolderKanban, Users, ReceiptText, FileText, Phone,
+	Briefcase, FolderKanban, Users, ReceiptText, FileText, Inbox,
 	RefreshCcw, Wrench, ShieldUser, X,
 } from "lucide-react";
 import { usePermission } from "../../hooks/usePermission";
@@ -86,7 +86,7 @@ export default function CreatePanel({ isOpen, onClose }: { isOpen: boolean; onCl
 		{ key: "client" as const,        label: "Client",         desc: "Add a new client",                icon: Users,       visible: canClient },
 		{ key: "invoice" as const,       label: "Invoice",        desc: "Create an invoice",               icon: ReceiptText, visible: canInvoice },
 		{ key: "quote" as const,         label: "Quote",          desc: "Send a quote to a client",        icon: FileText,    visible: canQuote },
-		{ key: "request" as const,       label: "Request",        desc: "Log an incoming service request", icon: Phone,       visible: canRequest },
+		{ key: "request" as const,       label: "Request",        desc: "Log an incoming service request", icon: Inbox,       visible: canRequest },
 		{ key: "recurringPlan" as const, label: "Recurring Plan", desc: "Set up a recurring service",      icon: RefreshCcw,  visible: canRecurring },
 	];
 

@@ -37,8 +37,7 @@ const STATUS_CELL_CLASS: Record<string, string> = {
 // ones so no single column can blow out the table width. Numeric columns are
 // left alone — they can't run long. Name gets the largest share on purpose:
 // it's the field a dispatcher is actually scanning the list for, so it should
-// be the last thing to truncate, not clamped even with the secondary columns
-// like it used to be.
+// be the last thing to truncate, not clamped alongside the secondary columns.
 const COLUMN_CLAMP: Record<string, ColumnClamp> = {
 	name: { maxWidth: "26rem" },
 	accountNumber: { maxWidth: "9rem" },

@@ -5,7 +5,7 @@
 	Activity,
 	MapPin,
 	XCircle,
-	Phone,
+	Inbox,
 	FileText,
 	ReceiptText,
 	Repeat,
@@ -137,7 +137,7 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 			return {
 				message: title ? `${base}: '${title}'` : base,
 				subtitle: clientName && title ? `${clientName} · ${title}` : clientName ?? null,
-				icon: Phone,
+				icon: Inbox,
 				color: "text-orange-400",
 				bg: "bg-orange-500/10",
 			};
@@ -146,9 +146,9 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 			const clientName = changes?.client_name?.new as string | undefined;
 			const title = changes?.title?.new as string | undefined;
 			const subtitle = clientName && title ? `${clientName} · ${title}` : clientName ?? null;
-			if (newStatus === "Reviewing") return { message: "Request under review", subtitle, icon: Phone, color: "text-orange-400", bg: "bg-orange-500/10" };
-			if (newStatus === "Quoted") return { message: "Quote issued for request", subtitle, icon: Phone, color: "text-orange-400", bg: "bg-orange-500/10" };
-			if (newStatus === "ConvertedToJob") return { message: "Request converted to job", subtitle, icon: Phone, color: "text-orange-400", bg: "bg-orange-500/10" };
+			if (newStatus === "Reviewing") return { message: "Request under review", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
+			if (newStatus === "Quoted") return { message: "Quote issued for request", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
+			if (newStatus === "ConvertedToJob") return { message: "Request converted to job", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
 			if (newStatus === "Cancelled") return { message: "Request cancelled", subtitle, icon: XCircle, color: "text-error-text", bg: "bg-error/10" };
 			return null;
 		}

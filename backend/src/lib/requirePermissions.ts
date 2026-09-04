@@ -27,6 +27,9 @@ import { log } from "../services/appLogger.js";
  *     view_technicians    · manage_technicians · view_dispatchers   · manage_dispatchers
  *   Administration
  *     view_admin          · manage_roles        · manage_organization
+ *   Field Purchases
+ *     view_field_purchases · review_field_purchases · manage_field_purchase_grants
+ *     second_sign_off_field_purchases  (must differ from the reviewer and the purchaser)
  *
  * TECHNICIAN
  *   Jobs
@@ -40,11 +43,13 @@ import { log } from "../services/appLogger.js";
  *   Vehicle Stock
  *     stock_own_vehicle   · complete_own_restock
  *     adjust_field_loss   · adjust_transfer      · adjust_audit
- *     adjust_warehouse_exchange · adjust_supplier_purchase
+ *     adjust_warehouse_exchange
  *   Schedule
  *     view_own_schedule   · view_team_schedule
  *   Forms
  *     view_forms          · submit_forms
+ *   Field Purchases
+ *     request_field_purchase
  */
 
 function resolvePerms(req: Request): string[] | null {

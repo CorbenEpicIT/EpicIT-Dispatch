@@ -124,16 +124,6 @@ export interface AddPartsUsedInput {
 	batch_id?: string;
 }
 
-export interface SupplierPartUsedInput {
-	technician_id: string;
-	qty_used: number;
-	inventory_item_id?: string;
-	new_item?: { name: string; cost: number };
-	/** Vendor of the part. Attributed to the purchase leg only, never the consumption. */
-	supplier_id?: string;
-	supplier_name?: string;
-}
-
 export interface RestockRequestInput {
 	qty_requested?: number | null;
 	note?: string | null;
@@ -238,14 +228,16 @@ export interface TomorrowRequirementVisit {
 	items: TomorrowRequirementItem[];
 }
 
-export type VehicleAdjustmentType = "warehouse_exchange" | "field_loss" | "transfer" | "audit" | "supplier_purchase";
+// `supplier_purchase` is gone: buying externally is a field purchase now, which
+// carries a grant, a limit, a receipt and a review. Historical adjustments of
+// that type still exist and are labelled by StockHistorySection's own map.
+export type VehicleAdjustmentType = "warehouse_exchange" | "field_loss" | "transfer" | "audit";
 
 export const ADJUSTMENT_TYPE_LABELS: Record<VehicleAdjustmentType, string> = {
 	warehouse_exchange: "Warehouse Exchange",
 	field_loss:         "Field Loss",
 	transfer:           "Transfer In",
 	audit:              "Audit Correction",
-	supplier_purchase:  "Supplier Purchase",
 };
 
 export interface AdjustStockInput {
@@ -254,21 +246,14 @@ export interface AdjustStockInput {
 	lines: Array<{
 		stock_item_id?: string;
 		inventory_item_id?: string;
-		new_item?: { name: string; cost: number };
 		qty_after: number;
 		// Serial/batch tracking (F-T4) — which of these apply depends on the
-		// resolved item's is_serialized/is_batch_tracked flags and the adjustment
-		// type; see AdjustStockModal's tracking step for how they're populated.
+		// resolved item's is_serialized/is_batch_tracked flags; see
+		// AdjustStockModal's tracking step for how they're populated. Every
+		// remaining type moves stock the org already owns, so these only ever
+		// pick existing units and lots.
 		serial_unit_ids?: string[];
-		new_serials?: string[];
 		batch_picks?: Array<{ batch_id: string; qty: number }>;
-		new_batch?: { batch_number: string; expires_at?: string | null; supplier?: string };
-		/**
-		 * Vendor for a supplier_purchase line. Dropped by the server on every
-		 * other adjustment type — an internal move has no vendor to inherit.
-		 */
-		supplier_id?: string;
-		supplier_name?: string;
 	}>;
 }
 

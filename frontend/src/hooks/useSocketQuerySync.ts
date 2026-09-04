@@ -3,6 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { socket } from "../lib/socket";
 import { qk, invalidate } from "../lib/queryKeys";
 import type {
+	FieldPurchaseEvent,
+	FieldPurchaseGrantRequestedEvent,
+	FieldPurchaseOcrEvent,
 	InventoryUpdatedEvent,
 	JobUpdatedEvent,
 	JobNoteCreatedEvent,
@@ -30,6 +33,11 @@ export function useSocketQuerySync(): void {
 			}
 			invalidate.vehicleStock(qc, event.vehicleId);
 			qc.invalidateQueries({ queryKey: qk.inventory.provisional });
+			// An item-scoped change can add or clear a reconcile row — approving a
+			// provisional item, linking a name, receiving against one. The broad
+			// branch above already covers this through `inventory.all`; the scoped one
+			// left the queue stale for everyone but the dispatcher who acted.
+			qc.invalidateQueries({ queryKey: qk.inventory.reconcile() });
 		};
 		const onJobVisitChanged = (_event: JobVisitUpdatedEvent | VisitStatusEvent) => {
 			qc.invalidateQueries({ queryKey: JOB_VISITS_KEY });
@@ -44,6 +52,27 @@ export function useSocketQuerySync(): void {
 		const onJobNoteCreated = (_event: JobNoteCreatedEvent) => {
 			qc.invalidateQueries({ queryKey: JOB_VISITS_KEY });
 		};
+		/**
+		 * Every field-purchase transition. `fieldPurchases.all` is the prefix for the
+		 * queue, the stage counts and the open detail, so one invalidation covers both
+		 * audiences.
+		 */
+		const onFieldPurchaseChanged = (_event: FieldPurchaseEvent) => {
+			qc.invalidateQueries({ queryKey: qk.fieldPurchases.all });
+		};
+		// Extraction runs off the upload request, so nothing else tells the sheet its
+		// lines arrived. Scoped to the one row: an org-wide refetch per receipt read
+		// is noise on every other screen.
+		const onFieldPurchaseOcr = (event: FieldPurchaseOcrEvent) => {
+			qc.invalidateQueries({ queryKey: qk.fieldPurchases.detail(event.id) });
+			// The reading the purchase did not take. Its own key, so a sheet open on
+			// this purchase picks the extraction up the moment it lands rather than
+			// on the next thing that happens to refetch the detail.
+			qc.invalidateQueries({ queryKey: qk.fieldPurchases.extraction(event.id) });
+		};
+		const onGrantRequested = (_event: FieldPurchaseGrantRequestedEvent) => {
+			qc.invalidateQueries({ queryKey: qk.fieldPurchases.grants });
+		};
 
 		socket.on("inventory:updated", onInventoryUpdated);
 		socket.on("job_visit:status_changed", onJobVisitChanged);
@@ -52,6 +81,12 @@ export function useSocketQuerySync(): void {
 		socket.on("job_visit:created", onJobVisitCreatedOrDeleted);
 		socket.on("job_visit:deleted", onJobVisitCreatedOrDeleted);
 		socket.on("job_note:created", onJobNoteCreated);
+		socket.on("field_purchase:submitted", onFieldPurchaseChanged);
+		socket.on("field_purchase:reviewed", onFieldPurchaseChanged);
+		socket.on("field_purchase:preauth_requested", onFieldPurchaseChanged);
+		socket.on("field_purchase:preauth_decided", onFieldPurchaseChanged);
+		socket.on("field_purchase:ocr", onFieldPurchaseOcr);
+		socket.on("field_purchase:grant_requested", onGrantRequested);
 
 		return () => {
 			socket.off("inventory:updated", onInventoryUpdated);
@@ -61,6 +96,12 @@ export function useSocketQuerySync(): void {
 			socket.off("job_visit:created", onJobVisitCreatedOrDeleted);
 			socket.off("job_visit:deleted", onJobVisitCreatedOrDeleted);
 			socket.off("job_note:created", onJobNoteCreated);
+			socket.off("field_purchase:submitted", onFieldPurchaseChanged);
+			socket.off("field_purchase:reviewed", onFieldPurchaseChanged);
+			socket.off("field_purchase:preauth_requested", onFieldPurchaseChanged);
+			socket.off("field_purchase:preauth_decided", onFieldPurchaseChanged);
+			socket.off("field_purchase:ocr", onFieldPurchaseOcr);
+			socket.off("field_purchase:grant_requested", onGrantRequested);
 		};
 	}, [qc]);
 }

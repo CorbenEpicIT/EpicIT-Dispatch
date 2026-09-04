@@ -21,6 +21,7 @@ import {
 } from "../../hooks/useQuotes";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
 import { useStepWizard } from "../../hooks/forms/useStepWizard";
 import { useLineItems } from "../../hooks/forms/useLineItems";
@@ -92,6 +93,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		setLineItemInventoryItem,
 		setLineItemTaxGroup,
 		setAllLineItemsTaxGroup,
 	} = useLineItems({
@@ -99,6 +101,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 		mode: "edit",
 	});
 
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
 	const lineItemsForCalc = useMemo(
 		() =>
 			activeLineItems.map((item) => ({
@@ -226,6 +229,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					total: Number(item.total),
 					taxable: item.taxable ?? true,
 					tax_group_id: item.tax_group_id ?? null,
+					inventory_item_id: item.inventory_item_id ?? null,
 					isNew: false,
 					isDeleted: false,
 				})) || [];
@@ -329,6 +333,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 							item_type: item.item_type || undefined,
 							taxable: item.taxable,
 							tax_group_id: item.tax_group_id ?? undefined,
+							inventory_item_id: item.inventory_item_id ?? undefined,
 						},
 					});
 				} else if (editableItem.entity_line_item_id) {
@@ -341,6 +346,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 						item_type: item.item_type || undefined,
 						taxable: item.taxable,
 						tax_group_id: item.tax_group_id ?? undefined,
+						inventory_item_id: item.inventory_item_id ?? undefined,
 					};
 
 					await updateLineItem.mutateAsync({
@@ -544,6 +550,8 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
+							inventoryItems={inventoryItems}
+							onLinkInventory={setLineItemInventoryItem}
 							lineItems={activeLineItems}
 							isLoading={isLoading}
 							onAdd={addLineItemToState}

@@ -9,7 +9,6 @@ import type {
 	AddVehicleStockItemInput,
 	UpdateVehicleStockItemInput,
 	AddPartsUsedInput,
-	SupplierPartUsedInput,
 	RestockRequestInput,
 	RestockRequest,
 	BulkRestockInput,
@@ -193,18 +192,6 @@ export const updatePartsUsedQty = async (
 	);
 	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to update part quantity");
 	return response.data.data ?? null;
-};
-
-export const addSupplierPartUsed = async (
-	visitId: string,
-	input: SupplierPartUsedInput,
-): Promise<{ lineItem: VisitLineItem; usage: VehicleStockUsage | null }> => {
-	const response = await api.post<ApiResponse<{ lineItem: VisitLineItem; usage: VehicleStockUsage | null }>>(
-		`/job-visits/${visitId}/parts-used/supplier`,
-		input,
-	);
-	if (!response.data.success) throw new Error(response.data.error?.message || "Failed to add supplier part");
-	return response.data.data!;
 };
 
 export const getTomorrowRequirements = async (vehicleId: string): Promise<TomorrowRequirementVisit[]> => {

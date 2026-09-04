@@ -22,6 +22,8 @@ import AddressForm from "../ui/AddressForm";
 
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
 import LineItemsSection from "../ui/forms/LineItemsSection";
+import { useAllInventoryQuery } from "../../hooks/useInventory";
+import { useVehiclesQuery } from "../../hooks/useVehicles";
 import TimeConstraints, { type TimeConstraintsState } from "../ui/forms/TimeConstraints";
 import {
 	BillingConfiguration,
@@ -130,9 +132,13 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		setLineItems,
 		dirtyLineItemFields,
 		undoLineItemField,
+		setLineItemInventoryItem,
+		setLineItemDisposition,
 		clearLineItemField,
 	} = useLineItems({ minItems: 0, mode: "edit" });
 
+	const { data: inventoryItems = [] } = useAllInventoryQuery();
+	const { data: vehicles = [] } = useVehiclesQuery("active");
 	const validateStep1 = useCallback((): boolean => {
 		return !!(
 			getValue("name").trim() &&
@@ -321,6 +327,9 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 					unit_price: Number(item.unit_price),
 					item_type: (item.item_type || "") as LineItemType | "",
 					total: Number(item.quantity) * Number(item.unit_price),
+					inventory_item_id: item.inventory_item_id ?? null,
+					disposition: item.disposition ?? null,
+					disposition_vehicle_id: item.disposition_vehicle_id ?? null,
 					isNew: false,
 					isDeleted: false,
 				})) || []
@@ -379,6 +388,11 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 					| LineItemType
 					| undefined,
 				sort_order: index,
+				// Update replaces the template wholesale; omitting these NULLs
+				// out what the plan already had.
+				inventory_item_id: item.inventory_item_id ?? null,
+				disposition: item.disposition ?? null,
+				disposition_vehicle_id: item.disposition_vehicle_id ?? null,
 			}));
 
 		const preparedRule = {
@@ -776,6 +790,11 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 					<div className="min-w-0 flex flex-col">
 						<ErrorDisplay path="line_items" />
 						<LineItemsSection
+							inventoryItems={inventoryItems}
+							onLinkInventory={setLineItemInventoryItem}
+							showDisposition
+							vehicles={vehicles}
+							onDispositionChange={setLineItemDisposition}
 							lineItems={activeLineItems}
 							isLoading={isLoading}
 							onAdd={addLineItem}
@@ -833,6 +852,10 @@ const EditRecurringPlan = ({ isModalOpen, setIsModalOpen, plan }: EditRecurringP
 		dirtyLineItemFields,
 		undoLineItemField,
 		clearLineItemField,
+		inventoryItems,
+		setLineItemInventoryItem,
+		vehicles,
+		setLineItemDisposition,
 		ErrorDisplay,
 	]);
 

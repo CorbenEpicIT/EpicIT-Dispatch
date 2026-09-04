@@ -229,8 +229,8 @@ export interface VehicleStockResponse {
 // lock its toggles and explain WHY before the user saves. Mirrors
 // getTrackingEligibility's return shape.
 //
-// `qty_on_vehicles` is the field the form previously had no access to: it read
-// InventoryItem.quantity alone, which is blind to stock sitting on a van.
+// `qty_on_vehicles` gives the form visibility InventoryItem.quantity alone
+// does not have: quantity alone is blind to stock sitting on a van.
 // `history_*` are lifetime row counts — nonzero on an item whose tracking was
 // turned off, which is what drives the archived view on the Tracking tab.
 // ============================================================================

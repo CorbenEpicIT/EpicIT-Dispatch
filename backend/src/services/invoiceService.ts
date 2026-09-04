@@ -1,4 +1,5 @@
 import { getScopedDb } from "../lib/context.js";
+import { assertInventoryItemsInOrg } from "../lib/inventory.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { generateInvoiceNumber } from "../db.js";
 import {
@@ -419,6 +420,13 @@ export async function createInvoiceRecord(
 
 		// Create line items
 		if (payload.line_items && payload.line_items.length > 0) {
+			// Thrown, matching the "Client not found" style above: this function's
+			// callers surface Error.message.
+			await assertInventoryItemsInOrg(
+				tx,
+				organizationId,
+				payload.line_items.map((li) => li.inventory_item_id),
+			);
 			await tx.invoice_line_item.createMany({
 				data: payload.line_items.map((item, idx) => ({
 					invoice_id: invoice.id,

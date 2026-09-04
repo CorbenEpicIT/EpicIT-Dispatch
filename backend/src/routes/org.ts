@@ -38,6 +38,9 @@ const orgSelect = {
 	mfa_required: true,
 	brand_color: true,
 	followups_enabled: true,
+	// null disables the control entirely - see the second sign-off routing in
+	// fieldPurchasesController.
+	field_purchase_second_signoff_threshold: true,
 } as const;
 
 async function withSignedLogo<T extends { logo_url: string | null }>(
@@ -105,6 +108,12 @@ router.patch("/", requirePermission("manage_organization"), async (req, res, nex
 			mfa_required: z.boolean().optional(),
 			brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color like #1e3a5f").nullable().optional(),
 			followups_enabled: z.boolean().optional(),
+			field_purchase_second_signoff_threshold: z
+				.number()
+				.nonnegative()
+				.max(99999999.99)
+				.nullable()
+				.optional(),
 		});
 		const parsed = schema.safeParse(req.body);
 		if (!parsed.success)

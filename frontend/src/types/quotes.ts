@@ -225,6 +225,8 @@ export interface QuoteLineItem {
 	tax_group_id: string | null;
 	tax_amount: number | null;
 	tax_group?: { id: string; name: string; rates?: { tax_rate: { id: string; name: string; rate: number } }[] } | null;
+	/** Catalog link, when the line was picked from inventory rather than typed. */
+	inventory_item_id?: string | null;
 }
 
 export interface CreateQuoteLineItemInput {
@@ -237,6 +239,8 @@ export interface CreateQuoteLineItemInput {
 	sort_order?: number;
 	taxable?: boolean;
 	tax_group_id?: string | null;
+	/** Catalog link. Reference only except on visits, where it plans and deducts stock. */
+	inventory_item_id?: string | null;
 }
 
 export interface UpdateQuoteLineItemInput {
@@ -249,6 +253,8 @@ export interface UpdateQuoteLineItemInput {
 	sort_order?: number;
 	taxable?: boolean;
 	tax_group_id?: string | null;
+	/** Catalog link. Reference only except on visits, where it plans and deducts stock. */
+	inventory_item_id?: string | null;
 }
 
 // ============================================================================

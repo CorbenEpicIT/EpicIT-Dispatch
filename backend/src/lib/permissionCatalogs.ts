@@ -1,3 +1,5 @@
+// Adding a permission here also needs a labelled entry in
+// frontend/src/lib/permissionCatalogs.ts, or the roles editor cannot grant it.
 const DISPATCHER_CATALOG = [
 	{ category: "Jobs", permissions: ["view_jobs", "create_jobs", "edit_jobs", "delete_jobs"] },
 	{ category: "Requests", permissions: ["view_requests", "create_requests", "edit_requests", "delete_requests"] },
@@ -12,6 +14,12 @@ const DISPATCHER_CATALOG = [
 	{ category: "Vehicles", permissions: ["view_vehicles", "manage_vehicles"] },
 	{ category: "Followups", permissions: ["view_followups", "manage_followups"] },
 	{ category: "Projects", permissions: ["view_projects", "create_projects", "edit_projects", "delete_projects"] },
+	// Reviewing is separate from granting authority: the dispatcher who approves a
+	// reimbursement should not also be the one who sets its ceiling.
+	// Reading a technician's captured coordinates is separate from reading the
+	// purchase: it is sensitive personal information, and only a reviewer checking
+	// a position against the vendor has a reason to see it.
+	{ category: "Field Purchases", permissions: ["view_field_purchases", "review_field_purchases", "second_sign_off_field_purchases", "manage_field_purchase_grants", "view_field_purchase_location"] },
 ] as const;
 
 const TECHNICIAN_CATALOG = [
@@ -19,10 +27,13 @@ const TECHNICIAN_CATALOG = [
 	{ category: "Job Visits", permissions: ["view_visits", "check_in", "check_out", "update_visit_status", "add_visit_notes"] },
 	{ category: "Clients", permissions: ["view_clients"] },
 	{ category: "Inventory", permissions: ["view_inventory", "use_inventory"] },
-	{ category: "Vehicle Stock", permissions: ["stock_own_vehicle", "complete_own_restock", "adjust_field_loss", "adjust_transfer", "adjust_audit", "adjust_warehouse_exchange", "adjust_supplier_purchase"] },
+	{ category: "Vehicle Stock", permissions: ["stock_own_vehicle", "complete_own_restock", "adjust_field_loss", "adjust_transfer", "adjust_audit", "adjust_warehouse_exchange"] },
 	{ category: "Schedule", permissions: ["view_own_schedule", "view_team_schedule"] },
 	{ category: "Forms", permissions: ["view_forms", "submit_forms"] },
 	{ category: "Vehicles", permissions: ["view_vehicles", "use_vehicles"] },
+	// Reaching the flow only. The spend ceiling lives on the technician's
+	// field_purchase_grant, which is per-person and revocable.
+	{ category: "Field Purchases", permissions: ["request_field_purchase"] },
 ] as const;
 
 export const PERMISSION_CATALOGS = {

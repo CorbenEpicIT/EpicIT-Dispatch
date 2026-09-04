@@ -10,7 +10,9 @@ export type NotificationType =
 	| "visit_changed"
 	| "visit_cancelled"
 	| "note_added"
-	| "visit_reminder";
+	| "visit_reminder"
+	| "field_purchase_preauth"
+	| "field_purchase_reviewed";
 
 // ── Socket.io injection ───────────────────────────────────────────────────────
 
@@ -28,8 +30,9 @@ interface CreateNotificationInput {
 // ── Internal: create a notification ─────────────────────────────────────────
 
 export const createNotification = async (input: CreateNotificationInput, organizationId?: string) => {
+	let created;
 	try {
-		const created = await db.technician_notification.create({
+		created = await db.technician_notification.create({
 			data: {
 				technician_id: input.technicianId,
 				type:          input.type,
@@ -38,13 +41,28 @@ export const createNotification = async (input: CreateNotificationInput, organiz
 				action_url:    input.actionUrl ?? null,
 			},
 		});
-		_io?.to(`tech:${input.technicianId}`).emit("notification:new", created);
-		return created;
 	} catch (e) {
-		// Notifications are non-critical — log but don't throw
-		log.error({ err: e }, "Failed to create technician notification");
+		// For a field-purchase decision this row is the technician's only channel
+		// for money they are owed or a receipt they have to fix. The durable trail
+		// (`field_purchase_event`) still holds the decision, but nothing tells them.
+		log.error(
+			{ err: e, technicianId: input.technicianId, type: input.type, organizationId },
+			"Technician notification NOT created — the technician has no other channel for this",
+		);
 		return null;
 	}
+
+	// Separate from the write above: the row exists, and a socket that is down must
+	// not make a created notification look to the caller like a failed one.
+	try {
+		_io?.to(`tech:${input.technicianId}`).emit("notification:new", created);
+	} catch (e) {
+		log.error(
+			{ err: e, technicianId: input.technicianId, type: input.type, notificationId: created.id },
+			"Notification created but the real-time push failed — the technician sees it on next poll",
+		);
+	}
+	return created;
 };
 
 // ── API handlers ──────────────────────────────────────────────────────────────

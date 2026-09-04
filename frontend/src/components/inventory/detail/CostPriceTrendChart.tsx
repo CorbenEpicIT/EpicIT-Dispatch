@@ -75,15 +75,15 @@ type SeriesKey = "setCost" | "listPrice" | "wac" | "charged" | "listMargin" | "c
 // `dash` is the single source of truth for each series' stroke pattern —
 // the actual <Line> elements, the end-label column, the legend, and the
 // tooltip swatch all read it from here so a dash can't drift out of sync
-// with what's actually drawn (see the tooltip swatch bug this was pulled
-// out to fix: setCost and wac share a colour and used to render an
-// identical SOLID dot on hover despite one line being dashed).
+// with what's actually drawn: setCost and wac share a colour, so the dash
+// is the only thing telling configured cost from actually-paid cost apart
+// on hover.
 const SERIES = {
 	setCost: { color: "var(--color-chart-warning)", label: "Set cost" },
 	// Same hue as set cost on purpose: both are COST. Solid = configured,
 	// dashed = actually paid. A fourth hue would read as a fourth kind of thing.
-	// "running" front-loads the one non-obvious fact that used to live only
-	// behind the info panel's click: this average is over ALL history, not
+	// "running" front-loads the one non-obvious fact a dispatcher needs without
+	// a click into the info panel: this average is over ALL history, not
 	// windowed to whatever range chip is selected.
 	wac: { color: "var(--color-chart-warning)", label: "Paid cost (running avg)", dash: "2 3" },
 	listPrice: { color: "var(--color-chart-info)", label: "List price" },
@@ -346,8 +346,8 @@ export function TrendTooltip({
 					// The line above plots the average and the band plots the range —
 					// both averages of a kind. This is neither: every sale that landed
 					// in this bucket, exact price and exact client, low to high. A 3+
-					// sale bucket's middle sales used to be invisible; low/high alone
-					// named two clients and implied everyone else averaged out.
+					// sale bucket needs its middle sales named too, or low/high alone
+					// names two clients and implies everyone else averaged out.
 					<div className="mt-0.5 space-y-0.5">
 						{[...d.chargedSaleDetails]
 							.sort((a, b) => a.unitPrice - b.unitPrice)

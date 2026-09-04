@@ -3,7 +3,6 @@ import {
 	Search,
 	Plus,
 	Package,
-	Wrench,
 	Pencil,
 	ChevronDown,
 	ChevronUp,
@@ -11,7 +10,7 @@ import {
 	Check,
 	Trash2,
 } from "lucide-react";
-import { useVehicleStockQuery, useAddPartsUsedMutation, useAddSupplierPartUsedMutation, useUpdatePartsUsedQtyMutation } from "../../hooks/useVehicleStock";
+import { useVehicleStockQuery, useAddPartsUsedMutation, useUpdatePartsUsedQtyMutation } from "../../hooks/useVehicleStock";
 import { useUpdateJobVisitMutation } from "../../hooks/useJobs";
 import { useToast } from "../ui/useToast";
 
@@ -20,14 +19,12 @@ import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
 import ExistingUnitPicker from "../vehicles/ExistingUnitPicker";
 import ExistingBatchPicker from "../vehicles/ExistingBatchPicker";
-import SupplierPicker from "../inventory/SupplierPicker";
-import type { SupplierCapture } from "../../types/suppliers";
-import type { VehicleStockItem, SupplierPartUsedInput, AddPartsUsedInput } from "../../types/vehicles";
+import type { VehicleStockItem, AddPartsUsedInput } from "../../types/vehicles";
 import type { VisitLineItem } from "../../types/jobs";
 import { unitLabel } from "../../lib/units";
 import { isStorableStockQty } from "../inventory/stockQtyPrecision";
 
-type Mode = "edit" | "stock" | "supplier";
+type Mode = "edit" | "stock";
 
 // -- Edit Parts Tab -------------------------------------------------------------
 
@@ -277,7 +274,7 @@ function StockPartPicker({
 									onClick={() =>
 										setTargetCount((c) => Math.max(1, c - 1))
 									}
-									className="flex items-center justify-center w-6 h-6 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors"
+									className="flex items-center justify-center w-11 h-11 rounded-md text-sm font-bold border border-border bg-surface text-text-secondary hover:bg-surface-raised transition-colors"
 									aria-label="Decrease units to use"
 								>
 									-
@@ -288,7 +285,7 @@ function StockPartPicker({
 								<button
 									type="button"
 									onClick={() => setTargetCount((c) => c + 1)}
-									className="flex items-center justify-center w-6 h-6 rounded text-xs font-bold border border-border bg-surface text-text-tertiary hover:bg-surface-raised transition-colors"
+									className="flex items-center justify-center w-11 h-11 rounded-md text-sm font-bold border border-border bg-surface text-text-secondary hover:bg-surface-raised transition-colors"
 									aria-label="Increase units to use"
 								>
 									+
@@ -462,88 +459,6 @@ function StockPartPicker({
 	);
 }
 
-// -- Supplier Part Form --------------------------------------------------------
-
-function SupplierPartForm({
-	visitId,
-	vehicleId,
-	technicianId,
-	onClose,
-}: {
-	visitId: string;
-	vehicleId: string | null;
-	technicianId: string;
-	onClose: () => void;
-}) {
-	const mutation = useAddSupplierPartUsedMutation(visitId, vehicleId);
-	const toast = useToast();
-	const [name, setName] = useState("");
-	const [qty, setQty] = useState("1");
-	const [unitCost, setUnitCost] = useState("");
-	const [supplier, setSupplier] = useState<SupplierCapture>({});
-	const [err, setErr] = useState<string | null>(null);
-
-	const handleSubmit = async () => {
-		const parsedQty = Number(qty);
-		const parsedCost = Number(unitCost);
-		if (!name.trim()) { setErr("Part name required."); return; }
-		if (!parsedQty || parsedQty <= 0) { setErr("Enter a valid quantity."); return; }
-		if (!isStorableStockQty(parsedQty)) { setErr("Quantity must be to two decimal places."); return; }
-		setErr(null);
-		try {
-			await mutation.mutateAsync({
-				technician_id: technicianId,
-				qty_used: parsedQty,
-				new_item: { name: name.trim(), cost: parsedCost || 0 },
-				...supplier,
-			} satisfies SupplierPartUsedInput);
-			toast.success(`Added ${name.trim()}`);
-			onClose();
-		} catch (e: unknown) {
-			const message = e instanceof Error ? e.message : "Failed to add part";
-			setErr(message);
-			toast.error(message);
-		}
-	};
-
-	return (
-		<div className="p-4 space-y-3 bg-surface">
-			<div>
-				<label className="text-xs text-text-tertiary mb-1 block">Part / Material Name</label>
-				<input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus
-					placeholder="e.g. 1/2 inch copper fitting"
-					className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong" />
-			</div>
-			<div className="flex gap-2">
-				<div className="flex-1">
-					<label className="text-xs text-text-tertiary mb-1 block">Qty</label>
-					<input type="number" min="0.01" step="0.01" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)}
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-strong tabular-nums" />
-				</div>
-				<div className="flex-1">
-					<label className="text-xs text-text-tertiary mb-1 block">Unit Cost ($)</label>
-					<input type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)}
-						placeholder="0.00"
-						className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-faint focus:outline-none focus:border-border-strong tabular-nums" />
-				</div>
-			</div>
-			<SupplierPicker
-				value={supplier}
-				onChange={setSupplier}
-				label="Bought from (optional)"
-				placeholder="e.g. Ferguson"
-			/>
-			{err && <p className="text-xs text-error-text">{err}</p>}
-			<div className="pt-1">
-				<button onClick={handleSubmit} disabled={mutation.isPending}
-					className="w-full py-2 text-sm rounded-lg bg-primary-hover hover:bg-primary text-on-primary font-medium disabled:opacity-40">
-					{mutation.isPending ? "Adding…" : "Add Part"}
-				</button>
-			</div>
-		</div>
-	);
-}
-
 // -- Main Component ------------------------------------------------------------
 
 export default function PartsUsedSection({
@@ -702,14 +617,14 @@ export default function PartsUsedSection({
 						</div>
 					) : (
 						<div className="border-b border-border-subtle">
-							{/* Mode toggle — three tabs */}
+							{/* Vehicle Stock appears only when the tech may draw from it */}
 							<div className="flex px-4 pt-3 gap-2 mb-0">
 								<button
 									onClick={() => setMode("edit")}
-									className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+									className={`flex-1 flex min-h-11 items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 										mode === "edit"
 											? "bg-surface-raised text-text-primary"
-											: "text-text-muted hover:text-text-secondary"
+											: "text-text-secondary hover:text-text-primary"
 									}`}
 								>
 									<Pencil size={12} />
@@ -718,30 +633,14 @@ export default function PartsUsedSection({
 								{canUseInventory && (
 									<button
 										onClick={() => setMode("stock")}
-										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+										className={`flex-1 flex min-h-11 items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
 											mode === "stock"
 												? "bg-surface-raised text-text-primary"
-												: "text-text-muted hover:text-text-secondary"
+												: "text-text-secondary hover:text-text-primary"
 										}`}
 									>
 										<Package size={12} />
 										Vehicle Stock
-									</button>
-								)}
-								{canUseInventory && (
-									<button
-										onClick={() => {
-											setMode("supplier");
-											setStockSearch("");
-										}}
-										className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
-											mode === "supplier"
-												? "bg-surface-raised text-text-primary"
-												: "text-text-muted hover:text-text-secondary"
-										}`}
-									>
-										<Wrench size={12} />
-										Supplier part
 									</button>
 								)}
 							</div>
@@ -770,28 +669,14 @@ export default function PartsUsedSection({
 										setStockSearch("");
 									}}
 								/>
-							) : mode === "stock" && !hasStock ? (
+							) : (
 								<div className="px-4 py-4">
 									<p className="text-sm text-text-muted">
-										No vehicle stock available.{" "}
-										<button
-											onClick={() => setMode("supplier")}
-											className="text-primary-text hover:underline"
-										>
-											Use supplier part
-										</button>
+										Nothing on the truck. A part bought at a store or
+										supply house is a field purchase — start one from
+										this visit and photograph the receipt.
 									</p>
 								</div>
-							) : (
-								<SupplierPartForm
-									visitId={visitId}
-									vehicleId={vehicleId}
-									technicianId={user?.userId ?? ""}
-									onClose={() => {
-										setAdding(false);
-										setStockSearch("");
-									}}
-								/>
 							)}
 
 							{/* Done strip — persistent close, always visible */}

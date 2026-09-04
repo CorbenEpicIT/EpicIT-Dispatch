@@ -65,6 +65,9 @@ export const createJobSchema = z
 						.nullable(),
 					tax_group_id: z.string().uuid().nullable().optional(),
 					taxable: z.boolean().optional(),
+					// Reference only — job-level lines are billing containers.
+					// Consumption is visit-scoped (deductInventoryForVisit).
+					inventory_item_id: z.string().uuid().nullable().optional(),
 				}),
 			)
 			.optional(),
@@ -138,6 +141,7 @@ export const updateJobSchema = z
 						.optional(),
 					tax_group_id: z.string().uuid().nullable().optional(),
 					taxable: z.boolean().optional(),
+					inventory_item_id: z.string().uuid().nullable().optional(),
 				}),
 			)
 			.optional(),
@@ -184,6 +188,7 @@ export const createJobLineItemSchema = z
 			.optional(),
 		tax_group_id: z.string().uuid().nullable().optional(),
 		taxable: z.boolean().optional(),
+		inventory_item_id: z.string().uuid().nullable().optional(),
 	})
 	.transform((data) => ({
 		...data,
@@ -214,6 +219,7 @@ export const updateJobLineItemSchema = z
 			.optional(),
 		tax_group_id: z.string().uuid().nullable().optional(),
 		taxable: z.boolean().optional(),
+		inventory_item_id: z.string().uuid().nullable().optional(),
 	})
 	.transform((data) => ({
 		...data,

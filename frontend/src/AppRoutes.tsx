@@ -21,6 +21,10 @@ const TechnicianNotificationsPage = lazy(() => import("./pages/technician/Techni
 const TechnicianVehiclePage = lazy(() => import("./pages/technician/TechnicianVehiclePage"));
 const TechnicianMapPage = lazy(() => import("./pages/technician/TechnicianMapPage"));
 const TechnicianMileagePage = lazy(() => import("./pages/technician/TechnicianMileagePage"));
+const TechnicianPurchasesPage = lazy(() => import("./pages/technician/TechnicianPurchasesPage"));
+const TechnicianPurchaseDetailPage = lazy(
+	() => import("./pages/technician/TechnicianPurchaseDetailPage"),
+);
 const DashboardPage = lazy(() => import("./pages/dispatch/DashboardPage"));
 const JobsPage = lazy(() => import("./pages/dispatch/JobsPage"));
 const JobDetailPage = lazy(() => import("./pages/dispatch/JobDetailPage"));
@@ -62,6 +66,8 @@ const RequestDetailsPage = lazy(() => import("./pages/dispatch/RequestDetailPage
 const InventoryPage = lazy(() => import("./pages/dispatch/InventoryPage"));
 const InventoryItemDetailPage = lazy(() => import("./pages/dispatch/InventoryItemDetailPage"));
 const SuppliersPage = lazy(() => import("./pages/dispatch/SuppliersPage"));
+const InventoryReconcilePage = lazy(() => import("./pages/dispatch/InventoryReconcilePage"));
+const FieldPurchasesPage = lazy(() => import("./pages/dispatch/FieldPurchasesPage"));
 const SupplierDetailPage = lazy(() => import("./pages/dispatch/SupplierDetailPage"));
 const LabelPrintPage = lazy(() => import("./components/inventory/labels/LabelPrintPage"));
 const SerialRedirectPage = lazy(() => import("./pages/dispatch/SerialRedirectPage"));
@@ -195,6 +201,13 @@ export default function AppRoutes() {
 				{/* Reading the vendor list is view_inventory (the capture typeahead needs it
 				    on every intake path); the page gates its own writes on manage_inventory. */}
 				<Route path="inventory/suppliers" element={<RequirePermission permission="view_inventory"><SuppliersPage /></RequirePermission>} />
+				{/* Every verb here rewrites catalog or historical billing rows, so
+				    it is manage_inventory rather than view_inventory. */}
+				<Route path="inventory/reconcile" element={<RequirePermission permission="manage_inventory"><InventoryReconcilePage /></RequirePermission>} />
+				{/* Reviewing is the control on field spend, so reading the queue is its
+				    own permission rather than view_inventory — the page gates the
+				    decisions and the grants tab separately. */}
+				<Route path="field-purchases" element={<RequireAnyPermission permissions={["view_field_purchases", "review_field_purchases"]}><FieldPurchasesPage /></RequireAnyPermission>} />
 				<Route path="inventory/suppliers/:supplierId" element={<RequirePermission permission="view_inventory"><SupplierDetailPage /></RequirePermission>} />
 				<Route path="inventory/items/:itemId" element={<RequirePermission permission="view_inventory"><InventoryItemDetailPage /></RequirePermission>} />
 				<Route path="inventory/labels/print" element={<RequirePermission permission="manage_inventory"><LabelPrintPage /></RequirePermission>} />
@@ -242,6 +255,8 @@ export default function AppRoutes() {
 				<Route path="map" element={<TechnicianMapPage />} />
 				<Route path="profile" element={<MyProfilePage />} />
 				<Route path="mileage" element={<TechnicianMileagePage />} />
+				<Route path="purchases" element={<RequirePermission permission="request_field_purchase"><TechnicianPurchasesPage /></RequirePermission>} />
+				<Route path="purchases/:purchaseId" element={<RequirePermission permission="request_field_purchase"><TechnicianPurchaseDetailPage /></RequirePermission>} />
 			</Route>
 
 				<Route path="*" element={<Navigate to="/login" replace />} />

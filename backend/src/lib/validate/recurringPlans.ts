@@ -1,4 +1,5 @@
 import z from "zod";
+import { dispositionFieldsSchema } from "./shared.js";
 
 // ============================================================================
 // INVOICE SCHEDULE
@@ -141,6 +142,8 @@ export const createRecurringPlanSchema = z
 						.optional()
 						.nullable(),
 					sort_order: z.number().int().min(0).optional(),
+					inventory_item_id: z.string().uuid().nullable().optional(),
+					...dispositionFieldsSchema,
 				}),
 			)
 			.optional(),
@@ -373,6 +376,8 @@ export const updateRecurringPlanSchema = z
 						.optional()
 						.nullable(),
 					sort_order: z.number().int().min(0).optional(),
+					inventory_item_id: z.string().uuid().nullable().optional(),
+					...dispositionFieldsSchema,
 				}),
 			)
 			.optional(),
@@ -541,6 +546,8 @@ export const updateRecurringPlanLineItemsSchema = z.object({
 					.optional()
 					.nullable(),
 				sort_order: z.number().int().min(0).optional(),
+				inventory_item_id: z.string().uuid().nullable().optional(),
+				...dispositionFieldsSchema,
 			}),
 		)
 		.min(1, "At least one line item is required"),
