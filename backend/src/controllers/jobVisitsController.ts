@@ -1434,7 +1434,11 @@ export const applyVisitTransition = async (
 			// ── Auto-close open time entries on pause or complete ─────────────
 			if (action === "pause" || action === "complete") {
 				const openEntries = await tx.visit_tech_time_entry.findMany({
-					where: { visit_id: id, clocked_out_at: null },
+					where: { 
+						visit_id: id, 
+						clocked_out_at: null,
+						visit: { job: { organization_id: organizationId } },
+					},
 					include: { tech: { select: { id: true, name: true, hourly_rate: true } } },
 				});
 
@@ -1461,7 +1465,10 @@ export const applyVisitTransition = async (
 					});
 
 					await tx.visit_tech_time_entry.update({
-						where: { id: entry.id },
+						where: { 
+							id: entry.id,
+							visit: { job: { organization_id: organizationId } },
+						},
 						data: {
 							clocked_out_at: closeTime,
 							hours_worked: hoursWorked,

@@ -45,21 +45,41 @@ function toTechnicianStatus(v: string): technician_status | undefined {
 	return v as technician_status;
 }
 
-export const getAllTechnicians = async (organizationId: string) => {
-	const sdb = getScopedDb(organizationId);
-	const technicians = await sdb.technician.findMany({
+/*
+ * Omit sensitive fields from technician records returned
+ * Deliberately withheld: password, hourly_rate, password_reset_token, password_reset_token_expires_at, cost_rate
+ */
+const TECHNICIAN_SELECT = {
+	id: true,
+	organization_id: true,
+	name: true,
+	email: true,
+	phone: true,
+	title: true,
+	description: true,
+	status: true,
+	hire_date: true,
+	coords: true,
+	last_login: true,
+	theme: true,
+	organization_role_id: true,
+	current_vehicle_id: true,
+	organization_role: { select: { id: true, name: true, permissions: true } },
+	visit_techs: {
 		include: {
-			organization_role: { select: { id: true, name: true, permissions: true } },
-			visit_techs: {
+			visit: {
 				include: {
-					visit: {
-						include: {
-							job: { include: { client: true } },
-						},
-					},
+					job: { include: { client: true } },
 				},
 			},
 		},
+	},
+} as const;
+
+export const getAllTechnicians = async (organizationId: string) => {
+	const sdb = getScopedDb(organizationId);
+	const technicians = await sdb.technician.findMany({
+		select: TECHNICIAN_SELECT,
 	});
 	const mfaEnabledIds = await getMfaEnabledUserIds(technicians.map((t) => t.id));
 	return technicians.map((t) => ({
@@ -73,18 +93,7 @@ export const getTechnicianById = async (id: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
 	const technician = await sdb.technician.findFirst({
 		where: { id },
-		include: {
-			organization_role: { select: { id: true, name: true, permissions: true } },
-			visit_techs: {
-				include: {
-					visit: {
-						include: {
-							job: { include: { client: true } },
-						},
-					},
-				},
-			},
-		},
+		select: TECHNICIAN_SELECT,
 	});
 	if (!technician) return null;
 	const permissions: string[] = (technician.organization_role?.permissions as string[] | null) ?? [];

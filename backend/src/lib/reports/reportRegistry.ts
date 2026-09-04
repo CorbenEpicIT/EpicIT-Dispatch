@@ -27,7 +27,8 @@ import {
 	getProjectsReport,
 	getProjectsReportPage,
 	getCogsByItemReport,
-	getCogsByJobReport
+	getCogsByJobReport,
+	getJobProfitabilityReport
 } from "../../controllers/reportsController.js";
 import type { PaginateParams, ReportRow } from "./filterEngine.js";
 import { num, round2 } from "./numbers.js";
@@ -47,6 +48,17 @@ export interface ReportDefinition {
 		query: ReportQuery,
 	) => Promise<{ rows: ReportRow[]; summary?: Record<string, unknown> }>;
 	filteredSummary?: (rows: ReportRow[]) => Record<string, unknown>;
+	/**
+	 * Row keys free-text search may look at. Server-side only — it must never be
+	 * client-supplied, so it is absent from paginateParamsSchema and
+	 * exportServerSchema. Omitted means `filterRows` falls back to every key
+	 * except "id", which makes UUIDs and currency figures searchable.
+	 *
+	 * ⚠️ Only valid on a definition with NO `loadPage`: a loadPage report pushes
+	 * search into SQL, where searchability is already per-column, so setting both
+	 * makes page-1 search diverge from export search. Enforced below.
+	 */
+	searchKeys?: string[];
 	loadPage?: (
 		orgId: string,
 		query: ReportQuery,
@@ -747,8 +759,33 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			itemCount: rows.length,
 			itemsMissingCostData: rows.filter(r => r.costCoverage !== "Full").length,
 		}),
+	},
+	"job-profitability": {
+		load: async (orgId, q) => {
+			const { rows, truncated } = await getJobProfitabilityReport(q.startDate, q.endDate, orgId);
+			return { rows, summary: { truncated } };
+		},
+		filteredSummary: (rows) => ({
+			totalProfit: round2(rows.reduce((s, r) => s + num(r.profit), 0)),
+			jobCount: rows.length,
+		}),
+		// Rows key on jobId, so the default "every key but id" fallback makes job
+		// UUIDs searchable and a search for "500" match a revenue figure. This is
+		// not new policy — it makes the in-memory path obey the same "only text
+		// columns are searchable" rule the SQL path already has.
+		searchKeys: ["jobNumber", "jobName", "clientName"],
 	}
 };
+
+// A loadPage report resolves search in SQL, so an in-memory searchKeys list would
+// only apply to the fallback path and silently diverge from it. Fail at import
+// rather than serve two different search behaviours for one report.
+for (const [key, def] of Object.entries(REPORT_DEFINITIONS)) {
+	if (def.searchKeys && def.loadPage)
+		throw new Error(
+			`report "${key}" sets both searchKeys and loadPage — searchKeys is only valid on reports without a SQL pushdown path`,
+		);
+}
 
 export const getReportDefinition = (key: string): ReportDefinition | undefined =>
 	REPORT_DEFINITIONS[key];

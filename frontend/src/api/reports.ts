@@ -318,6 +318,9 @@ export const getCogsByJobReport = (params: ReportFetchParams = {}): Promise<Pagi
 export const getCogsByItemReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
 	fetchPaginated("/reports/cogs-by-item", params, "Failed to fetch cost of goods sold by item report");
 
+export const getJobProfitabilityReport = (params: ReportFetchParams = {}): Promise<Paginated> =>
+	fetchPaginated("/reports/job-profitability", params, "Failed to fetch job profitability report");
+
 export const getTechnicianScorecard = async (
 	startDate?: string,
 	endDate?: string,

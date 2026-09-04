@@ -115,6 +115,11 @@ const REPORT_CATEGORIES: ReportCategory[] = [
                 description: "General Ledger from Quickbooks",
                 to: "/dispatch/reporting/qb/GeneralLedger",
             },
+            {
+                title: "Job Profitability",
+                description: "Revenue, cost, and profit by job",
+                to: "/dispatch/reporting/job-profitability",
+            }
         ],
     },
     {

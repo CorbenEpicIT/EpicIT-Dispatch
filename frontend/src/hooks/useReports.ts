@@ -321,6 +321,17 @@ export const useTechnicianScorecardQuery = (
 	});
 };
 
+export const useJobProfitabilityReportQuery = (
+	params: ReportFetchParams,
+	enabled = true,
+): UseQueryResult<Paginated, Error> =>
+	useQuery({
+		queryKey: ["reports", "job-profitability", params],
+		queryFn: () => reportsApi.getJobProfitabilityReport(params),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+
 export const usePageSummaryQuery = (
 	page: string,
 	startDate?: string,
