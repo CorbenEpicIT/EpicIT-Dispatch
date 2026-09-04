@@ -14,5 +14,8 @@ export interface ApiResponse<T> {
 		// Server-side row cap was hit: `data` is a prefix of the real result set,
 		// not the whole thing. Mirrors ResponseMeta.hasMore on the backend.
 		hasMore?: boolean;
+		// Rows matching the query, ignoring the page cap — what "showing 50 of 412"
+		// needs and `count` cannot answer.
+		total?: number;
 	};
 }

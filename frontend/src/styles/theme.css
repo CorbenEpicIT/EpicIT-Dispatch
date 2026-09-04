@@ -73,6 +73,7 @@
 	--color-warning-text:   #92400e;
 	--color-warning-bg:     rgba(217, 119, 6, 0.10);
 	--color-warning-border: rgba(217, 119, 6, 0.22);
+	--color-on-warning:     #ffffff;   /* text on a solid --color-warning fill */
 
 	/* ── Status: info ────────────────────────────────────────────────────── */
 	--color-info:           #0891b2;

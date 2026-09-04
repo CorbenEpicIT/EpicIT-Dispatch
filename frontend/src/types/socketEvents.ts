@@ -30,6 +30,21 @@ export interface JobVisitDeletedEvent {
 	organizationId: string;
 }
 
+export interface FieldPurchaseEvent {
+	id: string;
+	status?: string;
+}
+
+/** Extraction runs off the upload request, so only a socket says it finished. */
+export interface FieldPurchaseOcrEvent {
+	id: string;
+	status: "succeeded" | "failed";
+}
+
+export interface FieldPurchaseGrantRequestedEvent {
+	technicianId: string;
+}
+
 export interface VehicleRestockShortfallEvent {
 	vehicle_name: string;
 	date: string;

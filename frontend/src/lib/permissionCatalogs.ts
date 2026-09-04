@@ -1,3 +1,5 @@
+// Ids here must match backend/src/lib/permissionCatalogs.ts - the backend catalog is what
+// grants and guards read; this file only supplies the labels the roles editor renders.
 export const DISPATCHER_CATALOG = [
 	{
 		category: "Jobs",
@@ -106,6 +108,16 @@ export const DISPATCHER_CATALOG = [
 			{ id: "delete_projects", label: "Delete Projects" },
 		],
 	},
+	{
+		category: "Field Purchases",
+		permissions: [
+			{ id: "view_field_purchases", label: "View Field Purchases" },
+			{ id: "review_field_purchases", label: "Review Field Purchases" },
+			{ id: "second_sign_off_field_purchases", label: "Second Sign-Off Field Purchases" },
+			{ id: "manage_field_purchase_grants", label: "Manage Purchase Grants" },
+			{ id: "view_field_purchase_location", label: "View Capture Location" },
+		],
+	},
 ] as const;
 
 export const TECHNICIAN_CATALOG = [
@@ -150,7 +162,6 @@ export const TECHNICIAN_CATALOG = [
 			{ id: "adjust_transfer", label: "Adjust: Transfer In" },
 			{ id: "adjust_audit", label: "Adjust: Audit Correction" },
 			{ id: "adjust_warehouse_exchange", label: "Adjust: Return to Warehouse" },
-			{ id: "adjust_supplier_purchase", label: "Adjust: Supplier Purchase" },
 		],
 	},
 	{
@@ -172,6 +183,12 @@ export const TECHNICIAN_CATALOG = [
 		permissions: [
 			{ id: "view_vehicles", label: "View Vehicles" },
 			{ id: "use_vehicles", label: "Use Vehicles" },
+		],
+	},
+	{
+		category: "Field Purchases",
+		permissions: [
+			{ id: "request_field_purchase", label: "Request Field Purchase" },
 		],
 	},
 ] as const;

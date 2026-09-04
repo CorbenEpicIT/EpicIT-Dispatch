@@ -29,10 +29,23 @@ export const qk = {
 		// Filters are SERVER-side (dismissed rows and the origin filter are both
 		// query params), so two filter sets are two result sets and must not
 		// share a cache entry. Trailing segments keep prefix invalidation working.
-		reconcile: (opts?: { includeDismissed?: boolean; origin?: string }) =>
+		reconcile: (opts?: {
+			includeDismissed?: boolean;
+			origin?: string;
+			search?: string;
+			sort?: string;
+			offset?: number;
+			limit?: number;
+		}) =>
 			opts
 				? ([...inventoryRoot, "reconcile", opts] as const)
 				: ([...inventoryRoot, "reconcile"] as const),
+		// Under the reconcile prefix so settling one row refetches the drill-in and
+		// the queue together without touching the rest of the inventory tree.
+		reconcileLines: (key: { name?: string; foldedName?: string; itemId?: string }) =>
+			[...inventoryRoot, "reconcile", "lines", key] as const,
+		reconcileTargets: (opts: { q?: string; excludeId?: string }) =>
+			[...inventoryRoot, "reconcile", "targets", opts] as const,
 		// movements/valueHistory take an opts object for the same reason
 		// consumptionTrend does: the History tab's range control is a SERVER-side
 		// filter, so two ranges are two different result sets and must not share
@@ -117,6 +130,35 @@ export const qk = {
 			filter ? (["restock-requests", filter] as const) : (["restock-requests"] as const),
 	},
 	fleetReadiness: (date: string) => ["fleet-readiness", date] as const,
+	fieldPurchases: {
+		all: ["field-purchases"] as const,
+		list: (opts?: {
+			status?: string;
+			technicianId?: string;
+			jobId?: string;
+			flagged?: string;
+			kind?: string;
+			search?: string;
+			dateFrom?: string;
+			dateTo?: string;
+			sort?: string;
+			offset?: number;
+			limit?: number;
+		}) =>
+			opts ? (["field-purchases", "list", opts] as const) : (["field-purchases", "list"] as const),
+		summary: ["field-purchases", "summary"] as const,
+		detail: (id: string) => ["field-purchases", "detail", id] as const,
+		extraction: (id: string) => ["field-purchases", "extraction", id] as const,
+		captureLocation: (id: string) => ["field-purchases", "capture-location", id] as const,
+		grants: ["field-purchases", "grants"] as const,
+		myGrant: ["field-purchases", "my-grant"] as const,
+		limitCheck: (opts: {
+			amount: number;
+			jobs?: { job_id: string; amount: number }[];
+			/** A verdict is about one purchase's spend windows; it never answers for another. */
+			purchaseId?: string;
+		}) => ["field-purchases", "limit-check", opts] as const,
+	},
 };
 
 // ============================================================================

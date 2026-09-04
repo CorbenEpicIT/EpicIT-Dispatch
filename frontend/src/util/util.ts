@@ -219,3 +219,8 @@ export function isDispatcherRole(role: string): boolean {
 export function isAdmin(role: string): boolean {
 	return role === "ADMIN";
 }
+
+/** What a caught mutation error can actually be shown to a user as. */
+export function errorMessage(err: unknown, fallback: string): string {
+	return err instanceof Error ? err.message : fallback;
+}
