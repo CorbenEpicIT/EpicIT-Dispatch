@@ -135,6 +135,45 @@ export const buildVisitStatusPayload = (
 	};
 };
 
+/**
+ * The technician's own current work, as thin as a picker needs. Deliberately not
+ * `getAllJobVisits`, which returns every visit in the org with client, project,
+ * techs, line items, time entries and notes attached: megabytes over a truck's
+ * connection, and it handed a technician every client in the company. Cancelled
+ * visits are dropped - nobody buys parts for work that was called off.
+ */
+export const getMyJobsForPurchase = async (organization_id: string, technicianId: string) => {
+	const sdb = getScopedDb(organization_id);
+	const visits = await sdb.job_visit.findMany({
+		where: {
+			status: { not: "Cancelled" },
+			visit_techs: { some: { tech_id: technicianId } },
+		},
+		select: {
+			id: true,
+			name: true,
+			job_id: true,
+			scheduled_start_at: true,
+			job: { select: { id: true, name: true, job_number: true } },
+		},
+		orderBy: { scheduled_start_at: "desc" },
+	});
+
+	// One row per job, keeping its most recent visit: a purchase attaches to the
+	// job, and the visit is only there to say which one carries the charge.
+	const byJob = new Map<string, (typeof visits)[number]>();
+	for (const v of visits) if (!byJob.has(v.job_id)) byJob.set(v.job_id, v);
+
+	return [...byJob.values()].map((v) => ({
+		job_id: v.job_id,
+		job_name: v.job?.name ?? null,
+		job_number: v.job?.job_number ?? null,
+		visit_id: v.id,
+		visit_name: v.name,
+		scheduled_start_at: v.scheduled_start_at,
+	}));
+};
+
 export const getAllJobVisits = async (organization_id: string, filters?: { clientId?: string; limit?: number; sort?: "asc" | "desc" }) => {
 	const sdb = getScopedDb(organization_id);
 	return await sdb.job_visit.findMany({

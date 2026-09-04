@@ -8,6 +8,7 @@ import { getUserContext } from '../lib/context.js';
 import { requirePermission, requireAnyPermission } from '../lib/requirePermissions.js';
 import {
     getAllJobVisits,
+    getMyJobsForPurchase,
     getJobVisitById,
     getJobVisitsByDateRange,
     insertJobVisit,
@@ -21,7 +22,7 @@ import {
     getRecentStatusEvents,
 } from '../controllers/jobVisitsController.js';
 import { clockInVisit, clockOutVisit } from "../controllers/visitTimeEntriesController.js";
-import { addPartsUsed, addSupplierPartUsed, updatePartsUsedQty } from "../controllers/vehiclesController.js";
+import { addPartsUsed, updatePartsUsedQty } from "../controllers/vehiclesController.js";
 import { db } from "../db.js";
 
 
@@ -32,6 +33,19 @@ router.get("/", requireAnyPermission("view_jobs", "view_visits", "view_assigned_
         const orgId = req.user!.organization_id as string;
         const visits = await getAllJobVisits(orgId);
         res.json(createSuccessResponse(visits, { count: visits.length }));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Above "/:id", or Express reads "mine" as a visit id. The technician is the
+// caller's own token — never a query param, which would make one tech's work
+// readable by asking for it.
+router.get("/mine", requireAnyPermission("view_assigned_jobs", "view_visits", "view_jobs"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const jobs = await getMyJobsForPurchase(orgId, req.user!.uid as string);
+        res.json(createSuccessResponse(jobs, { count: jobs.length }));
     } catch (err) {
         next(err);
     }
@@ -415,31 +429,6 @@ router.patch("/:id/parts-used/:lineItemId", requireAnyPermission("edit_jobs", "u
     } catch (err) {
         next(err);
     }
-});
-
-router.post("/:id/parts-used/supplier", requirePermission("use_inventory"), async (req, res, next) => {
-    try {
-        const visitId = req.params.id as string;
-        const orgId = req.user?.organization_id as string;
-        const context = getUserContext(req);
-        // Resolve the caller's current vehicle
-        const tech = await db.technician.findFirst({
-            where: { id: req.user?.uid as string, organization_id: orgId },
-            select: { current_vehicle_id: true },
-        });
-        if (!tech?.current_vehicle_id) {
-            return res.status(400).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, "No current vehicle"));
-        }
-        const result = await addSupplierPartUsed(tech.current_vehicle_id, visitId, req.body, orgId, context);
-        if (result.err) {
-            if (result.err.includes("not assigned") || result.err.includes("Only technicians")) {
-                return res.status(403).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, result.err));
-            }
-            const status = result.err.includes("not found") ? 404 : 400;
-            return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));
-        }
-        res.status(201).json(createSuccessResponse("item" in result ? result.item : null));
-    } catch (err) { next(err); }
 });
 
 // ── Visit lifecycle routes ────────────────────────────────────────────────────

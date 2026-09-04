@@ -22,6 +22,18 @@ const ORG_TIMEZONE = "America/Chicago";
  * Returns a UTC Date representing h:m on the same calendar day as `base`
  * when interpreted in America/Chicago timezone. Handles DST automatically.
  */
+/**
+ * dateAt clamped to now. Live visits feed elapsed-time UI, so a future "actual"
+ * start makes the technician work timer count up from a negative value.
+ */
+function actualAt(base: Date, h: number, m = 0, fallbackMinutesAgo = 20): Date {
+	const at = dateAt(base, h, m);
+	const now = new Date();
+	return at.getTime() <= now.getTime()
+		? at
+		: new Date(now.getTime() - fallbackMinutesAgo * 60_000);
+}
+
 function dateAt(base: Date, h: number, m = 0): Date {
 	// Get the Chicago calendar date from base (YYYY-MM-DD)
 	const chicagoDateStr = base.toLocaleDateString("en-CA", { timeZone: ORG_TIMEZONE });
@@ -108,6 +120,10 @@ async function main() {
 			email:    "info@epicitautomations.com",
 			website:  "epicitautomations.com",
 			restock_mode: "tech_self_serve",
+			// Over this, one dispatcher approval is not enough to release a field
+			// purchase. Set below John Smith's 750 per-transaction ceiling so a single
+			// purchase can be under his own limit and still need a second signer.
+			field_purchase_second_signoff_threshold: 500.0,
 		},
 	});
 
@@ -2035,7 +2051,7 @@ async function main() {
 			arrival_time: "07:00",
 			scheduled_start_at: dateAt(today, 7),
 			scheduled_end_at: dateAt(today, 17),
-			actual_start_at: dateAt(today, 7, 10),
+			actual_start_at: actualAt(today, 7, 10, 45),
 			status: "OnSite",
 			subtotal: 6800.0,
 			tax_rate: 0.0825,
@@ -2249,7 +2265,7 @@ async function main() {
 			arrival_time: "10:00",
 			scheduled_start_at: dateAt(today, 10),
 			scheduled_end_at: dateAt(today, 11),
-			actual_start_at: dateAt(today, 9, 50),
+			actual_start_at: actualAt(today, 9, 50, 10),
 			status: "Driving",
 			visit_techs: { create: { tech_id: tech3.id } },
 		},
@@ -2266,7 +2282,7 @@ async function main() {
 			finish_constraint: "when_done",
 			scheduled_start_at: dateAt(today, 13),
 			scheduled_end_at: dateAt(today, 15),
-			actual_start_at: dateAt(today, 13, 5),
+			actual_start_at: actualAt(today, 13, 5, 95),
 			status: "Paused",
 			visit_techs: { create: { tech_id: tech1.id } },
 			line_items: {
@@ -4678,6 +4694,1170 @@ async function main() {
 	]);
 
 	// ============================================================================
+	// Unknown Parts Reconcile — provisional catalog items
+	// The reconcile queue has two halves: unmapped line NAMES (below) and
+	// provisional ITEMS somebody created on the fly. These three cover every
+	// origin a dispatcher can filter by except `import`.
+	// ============================================================================
+
+	const [provCondFanMotor, provCurbAdapter, provDuctSealant] = await Promise.all([
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Condenser Fan Motor 1/6 HP (unbranded)",
+				description:
+					"Submitted from the field after a counter purchase — brand and model plate unreadable.",
+				location: "Van 8 — unshelved",
+				quantity: 0,
+				unit_price: 155.0,
+				cost: 78.0,
+				category: "Motors",
+				unit: "each",
+				provisional: true,
+				origin: "tech_submission",
+				created_by_tech_id: tech2.id,
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Custom Roof Curb Adapter — 5 Ton",
+				description: "Quick-added off a quote line. Fabricated per job; may never be stocked.",
+				location: "Fabrication — staged",
+				quantity: 0,
+				unit_price: 620.0,
+				cost: 340.0,
+				category: "Sheet Metal",
+				unit: "each",
+				provisional: true,
+				origin: "dispatch_quick_add",
+			},
+		}),
+		db.inventory_item.create({
+			data: {
+				organization_id: org.id,
+				name: "Duct Sealant Mastic (1 gal)",
+				description: "Created off an approved field purchase receipt line.",
+				location: "Van 12 — bin 3",
+				quantity: 0,
+				unit_price: 44.0,
+				cost: 24.5,
+				low_stock_threshold: 2,
+				category: "Consumables",
+				unit: "each",
+				provisional: true,
+				origin: "field_purchase",
+				created_by_tech_id: tech1.id,
+			},
+		}),
+	]);
+
+	// ============================================================================
+	// Line item ↔ inventory lifecycle — what the linkage backfill leaves behind
+	// ============================================================================
+
+	// `used` is decided by the LEDGER, not by visit status: a line with a
+	// parts_used movement already left the warehouse, and deductInventoryForVisit
+	// skips only `used`, so anything else here would arm those rows to consume the
+	// same stock twice on re-completion.
+	const consumedLineIds = (
+		await db.stock_movement.findMany({
+			where: { organization_id: org.id, reason: "parts_used", visit_line_item_id: { not: null } },
+			select: { visit_line_item_id: true },
+			distinct: ["visit_line_item_id"],
+		})
+	).map((m) => m.visit_line_item_id!);
+
+	await db.job_visit_line_item.updateMany({
+		where: { id: { in: consumedLineIds } },
+		data: { fulfillment_status: "used", disposition: "consume" },
+	});
+	await db.job_visit_line_item.updateMany({
+		where: {
+			visit: { job: { organization_id: org.id } },
+			inventory_item_id: { not: null },
+			fulfillment_status: null,
+		},
+		data: { fulfillment_status: "planned", disposition: "consume" },
+	});
+	// Same rule the migration applied: a linked plan line always deducted stock.
+	await db.recurring_plan_line_item.updateMany({
+		where: { recurring_plan: { organization_id: org.id }, inventory_item_id: { not: null } },
+		data: { disposition: "consume" },
+	});
+
+	// Reconciled with variance: dispatch planned 6 filters, the tech used 4. The
+	// billed quantity is the truth; qty_planned is what the variance reads from.
+	if (rv1FilterLine) {
+		await db.job_visit_line_item.update({
+			where: { id: rv1FilterLine.id },
+			data: {
+				qty_planned: 6,
+				reconciled_at: dateAt(occurrencePastStart, 11, 45),
+				reconciled_by_tech_id: tech1.id,
+			},
+		});
+	}
+	if (v1CapLine) {
+		await db.job_visit_line_item.update({
+			where: { id: v1CapLine.id },
+			data: { qty_planned: 1, reconciled_at: daysFromNow(-2), reconciled_by_tech_id: tech1.id },
+		});
+	}
+
+	// Voided: tech opened the panel and the part was fine. Billing zeroed,
+	// qty_planned kept so the variance report still shows what was carried.
+	await db.job_visit_line_item.create({
+		data: {
+			visit_id: visit8.id,
+			name: "Capacitor 45+5 MFD 440V Round",
+			description: "Carried for the coil call — existing capacitor tested in spec, not replaced.",
+			quantity: 0,
+			unit_price: 22.0,
+			total: 0,
+			source: "field_addition",
+			item_type: "material",
+			inventory_item_id: invCapacitor.id,
+			fulfillment_status: "voided",
+			qty_planned: 2,
+			disposition: "consume",
+			reconciled_at: hrsAgo(1),
+			reconciled_by_tech_id: tech1.id,
+			sort_order: 9,
+		},
+	});
+
+	// Dispositions: all three on one scheduled visit, so the picker's whole
+	// vocabulary is reachable from a single screen.
+	await db.job_visit_line_item.createMany({
+		data: [
+			{
+				visit_id: visit3.id,
+				name: "Air Filter 16x25x1 MERV-8",
+				description: "Pulled from warehouse stock for the PM.",
+				quantity: 6,
+				unit_price: 8.5,
+				total: 51.0,
+				source: "manual",
+				item_type: "material",
+				inventory_item_id: invFilter.id,
+				fulfillment_status: "planned",
+				qty_planned: 6,
+				disposition: "consume",
+				sort_order: 3,
+			},
+			{
+				visit_id: visit3.id,
+				name: "Contactor 2-Pole 40A 24V (counter pickup, 5-pack)",
+				description:
+					"Bought at the counter for this PM and billed to it; the pack lands on Van 12 and is drawn down from there.",
+				quantity: 5,
+				unit_price: 28.0,
+				total: 140.0,
+				source: "manual",
+				item_type: "material",
+				inventory_item_id: invContactor.id,
+				fulfillment_status: "planned",
+				qty_planned: 5,
+				disposition: "receive",
+				disposition_location: "vehicle",
+				disposition_vehicle_id: van12.id,
+				sort_order: 4,
+			},
+			{
+				visit_id: visit3.id,
+				name: "Condensate Pump — vendor drop-ship to site",
+				description: "Shipped straight to the roof by the supplier. Billed, never in our stock.",
+				quantity: 1,
+				unit_price: 95.0,
+				total: 95.0,
+				source: "manual",
+				item_type: "material",
+				inventory_item_id: invCondPump.id,
+				fulfillment_status: "planned",
+				qty_planned: 1,
+				disposition: "non_stock",
+				sort_order: 5,
+			},
+		],
+	});
+
+	// A plan line that must never deduct: the supplier ships it per occurrence.
+	await db.recurring_plan_line_item.create({
+		data: {
+			recurring_plan_id: recurringPlan2.id,
+			name: "Hot Surface Igniter (Universal) — supplier drop-ship",
+			description: "Standing drop-ship on the Anderson contract; never passes through our shelves.",
+			quantity: 1,
+			unit_price: 42.0,
+			item_type: "material",
+			inventory_item_id: invIgniter.id,
+			disposition: "non_stock",
+			sort_order: 8,
+		},
+	});
+
+	// ============================================================================
+	// Reconcile backlog — one unmapped name per match tier the audit can return,
+	// so every branch of the queue's suggestion column has a row to render.
+	// ============================================================================
+
+	await db.quote_line_item.createMany({
+		data: [
+			// tier: exact — name is byte-identical to the catalog item.
+			{
+				quote_id: quote2.id,
+				name: "Air Filter 16x25x1 MERV-8",
+				quantity: 12,
+				unit_price: 8.5,
+				total: 102.0,
+				item_type: "material",
+				sort_order: 6,
+			},
+			// tier: none — fabricated, and it recurs across three entities below.
+			{
+				quote_id: quote2.id,
+				name: "Sheet Metal Transition Duct (fabricated)",
+				quantity: 1,
+				unit_price: 240.0,
+				total: 240.0,
+				item_type: "material",
+				sort_order: 7,
+			},
+		],
+	});
+
+	await db.job_line_item.createMany({
+		data: [
+			// tier: case_insensitive
+			{
+				job_id: job3.id,
+				name: "capacitor 45+5 mfd 440v round",
+				quantity: 3,
+				unit_price: 22.0,
+				total: 66.0,
+				source: "manual",
+				item_type: "material",
+			},
+			{
+				job_id: job2.id,
+				name: "Sheet Metal Transition Duct (fabricated)",
+				quantity: 2,
+				unit_price: 240.0,
+				total: 480.0,
+				source: "manual",
+				item_type: "material",
+			},
+			// tier: none, highest single value — the row the queue opens on.
+			{
+				job_id: job2.id,
+				name: "Rooftop Curb Adapter — 5 Ton",
+				quantity: 1,
+				unit_price: 620.0,
+				total: 620.0,
+				source: "manual",
+				item_type: "equipment",
+			},
+			// Dismissed below: a refundable core deposit is not a catalog part.
+			{
+				job_id: job2.id,
+				name: "Core Charge — Compressor",
+				quantity: 1,
+				unit_price: 85.0,
+				total: 85.0,
+				source: "manual",
+				item_type: "material",
+			},
+		],
+	});
+
+	await db.job_visit_line_item.create({
+		data: {
+			visit_id: visit3.id,
+			name: "Sheet Metal Transition Duct (fabricated)",
+			quantity: 1,
+			unit_price: 240.0,
+			total: 240.0,
+			source: "manual",
+			item_type: "material",
+			sort_order: 6,
+		},
+	});
+
+	// tier: code — matches the capacitor's alt_id rather than its name.
+	await db.recurring_plan_line_item.create({
+		data: {
+			recurring_plan_id: recurringPlan2.id,
+			name: "97F9895",
+			quantity: 2,
+			unit_price: 22.0,
+			item_type: "material",
+			sort_order: 9,
+		},
+	});
+
+	// Billing lines pointing AT the provisional items, so the queue's provisional
+	// half ranks by money the same way its unmapped half does — a provisional item
+	// nothing bills against is a different (and smaller) problem.
+	await Promise.all([
+		db.job_visit_line_item.create({
+			data: {
+				visit_id: visit3.id,
+				name: "Duct Sealant Mastic (1 gal)",
+				quantity: 1,
+				unit_price: 44.0,
+				total: 44.0,
+				source: "manual",
+				item_type: "material",
+				inventory_item_id: provDuctSealant.id,
+				fulfillment_status: "planned",
+				qty_planned: 1,
+				disposition: "consume",
+				sort_order: 7,
+			},
+		}),
+		db.job_line_item.create({
+			data: {
+				job_id: job5.id,
+				name: "Condenser Fan Motor 1/6 HP (unbranded)",
+				quantity: 1,
+				unit_price: 155.0,
+				total: 155.0,
+				source: "field_addition",
+				item_type: "material",
+				inventory_item_id: provCondFanMotor.id,
+			},
+		}),
+		db.quote_line_item.create({
+			data: {
+				quote_id: quote1.id,
+				name: "Custom Roof Curb Adapter — 5 Ton",
+				quantity: 1,
+				unit_price: 620.0,
+				total: 620.0,
+				item_type: "equipment",
+				inventory_item_id: provCurbAdapter.id,
+				sort_order: 8,
+			},
+		}),
+	]);
+
+	// Terminal decision, not a gap: dismissal drops the name out of the queue AND
+	// out of the coverage denominator, which is what keeps coverage reachable.
+	await db.unmapped_part_decision.create({
+		data: {
+			organization_id: org.id,
+			folded_name: "core charge — compressor",
+			decided_by_id: dispatcher.id,
+			decided_at: hrsAgo(30),
+			reason: "Refundable deposit, not a part. Never belongs on the catalog.",
+		},
+	});
+
+	// ============================================================================
+	// Field Purchase Grants — authority is per technician and revocable, so the
+	// seed carries an active senior grant, a tight junior one, and a revoked row.
+	// ============================================================================
+
+	const grantSmith = await db.field_purchase_grant.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			per_transaction_limit: 750.0,
+			daily_limit: 1200.0,
+			weekly_limit: 3000.0,
+			per_job_limit: 1500.0,
+			is_active: true,
+			granted_by_id: dispatcher.id,
+			granted_at: daysFromNow(-45),
+			notes: "Senior tech, on-call rotation. Raised from 400 after the March rooftop season.",
+		},
+	});
+
+	const grantRodriguez = await db.field_purchase_grant.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech2.id,
+			per_transaction_limit: 200.0,
+			daily_limit: 400.0,
+			weekly_limit: 900.0,
+			is_active: true,
+			granted_by_id: dispatcher.id,
+			granted_at: daysFromNow(-30),
+			notes: "Residential routes only. Anything larger goes through dispatch.",
+		},
+	});
+
+	// Revoked, never deleted — a purchase already in flight still has to reconcile.
+	const grantPark = await db.field_purchase_grant.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech3.id,
+			per_transaction_limit: 150.0,
+			daily_limit: 300.0,
+			is_active: false,
+			granted_by_id: dispatcher.id,
+			granted_at: daysFromNow(-60),
+			revoked_by_id: dispatcher.id,
+			revoked_at: daysFromNow(-12),
+			notes: "Revoked pending receipt training — reinstate after the next ride-along.",
+		},
+	});
+
+	await db.field_purchase_event.createMany({
+		data: [
+			{ organization_id: org.id, grant_id: grantSmith.id, type: "grant.granted", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { per_transaction_limit: "400.00" }, at: daysFromNow(-90) },
+			{ organization_id: org.id, grant_id: grantSmith.id, type: "grant.updated", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { per_transaction_limit: { from: "400.00", to: "750.00" } }, at: daysFromNow(-45) },
+			{ organization_id: org.id, grant_id: grantRodriguez.id, type: "grant.granted", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { per_transaction_limit: "200.00" }, at: daysFromNow(-30) },
+			{ organization_id: org.id, grant_id: grantPark.id, type: "grant.granted", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { per_transaction_limit: "150.00" }, at: daysFromNow(-60) },
+			{ organization_id: org.id, grant_id: grantPark.id, type: "grant.revoked", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { reason: "Receipt training outstanding" }, at: daysFromNow(-12) },
+		],
+	});
+
+	// ============================================================================
+	// Field Purchases — one row per status the review queue can show, all on John
+	// Smith except the last, so a dispatcher's queue is not single-technician.
+	// ============================================================================
+
+	// Receipts render through a bare <img src>, and an object-storage URL from a
+	// seeded row points at nothing. An inline SVG is a real image the browser can
+	// draw, so the review panel shows evidence instead of a broken-image icon.
+	// Keep the text ampersand-free: this string is parsed as XML.
+	const receiptImage = (
+		vendor: string,
+		when: string,
+		total: string,
+		lines: [string, string][],
+	): string => {
+		const h = 150 + lines.length * 22;
+		const rule = 86 + lines.length * 22;
+		const body = lines
+			.map(
+				([desc, amt], i) =>
+					`<text x="20" y="${90 + i * 22}" font-family="monospace" font-size="11" fill="#222">${desc}</text>` +
+					`<text x="300" y="${90 + i * 22}" font-family="monospace" font-size="11" text-anchor="end" fill="#222">${amt}</text>`,
+			)
+			.join("");
+		return (
+			"data:image/svg+xml;utf8," +
+			encodeURIComponent(
+				`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="${h}" viewBox="0 0 320 ${h}">` +
+					`<rect width="100%" height="100%" fill="#fdfcf7"/>` +
+					`<text x="160" y="34" font-family="monospace" font-size="16" text-anchor="middle" fill="#111">${vendor}</text>` +
+					`<text x="160" y="54" font-family="monospace" font-size="11" text-anchor="middle" fill="#555">${when}</text>` +
+					`<line x1="20" y1="68" x2="300" y2="68" stroke="#bbb"/>` +
+					body +
+					`<line x1="20" y1="${rule}" x2="300" y2="${rule}" stroke="#bbb"/>` +
+					`<text x="20" y="${rule + 24}" font-family="monospace" font-size="13" fill="#111">TOTAL</text>` +
+					`<text x="300" y="${rule + 24}" font-family="monospace" font-size="13" text-anchor="end" fill="#111">${total}</text>` +
+					`</svg>`,
+			)
+		);
+	};
+
+	const receiptHash = (url: string) => crypto.createHash("sha256").update(url).digest("hex");
+
+	interface SeedPurchaseLine {
+		description: string;
+		quantity: number;
+		unit_price: number;
+		inventory_item_id?: string;
+		disposition?: "receive" | "non_stock";
+		disposition_location?: "warehouse" | "vehicle";
+		disposition_vehicle_id?: string;
+		ocr_confidence?: number;
+		/** Verification is per line and mandatory before submit. */
+		unverified?: boolean;
+	}
+
+	const purchaseLines = (lines: SeedPurchaseLine[], verifiedAt: Date | null) =>
+		lines.map((l, i) => ({
+			description: l.description,
+			quantity: l.quantity,
+			unit_price: l.unit_price,
+			line_total: Number((l.quantity * l.unit_price).toFixed(2)),
+			inventory_item_id: l.inventory_item_id ?? null,
+			disposition: l.disposition ?? null,
+			disposition_location: l.disposition_location ?? null,
+			disposition_vehicle_id: l.disposition_vehicle_id ?? null,
+			ocr_confidence: l.ocr_confidence ?? null,
+			verified_at: l.unverified ? null : verifiedAt,
+			sort_order: i,
+		}));
+
+	// What OCR returned, kept so the tech's corrections stay diffable at submit.
+	const ocrSnapshot = (lines: SeedPurchaseLine[]) =>
+		lines.map((l) => ({
+			description: l.description,
+			quantity: l.quantity,
+			unit_price: l.unit_price,
+			line_total: Number((l.quantity * l.unit_price).toFixed(2)),
+		}));
+
+	const GEO_MISSING = {
+		code: "geo_missing",
+		message: "No capture location recorded (expected on desktop, advisory only)",
+	};
+
+	// 1. draft — started at the counter, nothing captured yet.
+	const fpDraft = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "draft",
+			reason: "Belt shredded on the Anderson rooftop — grabbing a replacement.",
+			estimated_amount: 85.0,
+			created_at: minsAgo(25),
+			allocations: { create: [{ job_id: job3.id, job_visit_id: visit3.id, amount: 85.0 }] },
+		},
+	});
+
+	// 2. pending_preauth — the estimate is over John's 750 per-transaction ceiling,
+	// so the flow routed to dispatch instead of refusing him at the counter.
+	const fpPreauthPending = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "pending_preauth",
+			reason: "Compressor is seized on the Smith Bldg 2 rooftop. Copeland has one on the shelf.",
+			estimated_amount: 980.0,
+			preauth_requested_at: hrsAgo(2),
+			created_at: hrsAgo(2),
+			allocations: { create: [{ job_id: job2.id, job_visit_id: visit2.id, amount: 980.0 }] },
+		},
+	});
+
+	// 3. preauth_approved — cleared to spend, tech still at the counter.
+	const fpPreauthApproved = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "preauth_approved",
+			reason: "Condenser fan motor and matching capacitor for the Williams call.",
+			estimated_amount: 640.0,
+			preauth_requested_at: hrsAgo(5),
+			preauth_decided_at: hrsAgo(4),
+			preauth_by_id: dispatcher.id,
+			preauth_note: "Approved up to 640. Get the itemized receipt, not the card slip.",
+			created_at: hrsAgo(5),
+			allocations: { create: [{ job_id: job4.id, job_visit_id: visit8.id, amount: 640.0 }] },
+		},
+	});
+
+	// 4. preauth_denied — the denial is the control working, and it stays in the
+	// record rather than vanishing from the queue.
+	const fpPreauthDenied = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "preauth_denied",
+			reason: "Retail replacement for the Anderson blower motor.",
+			estimated_amount: 1250.0,
+			preauth_requested_at: daysFromNow(-2),
+			preauth_decided_at: daysFromNow(-2),
+			preauth_by_id: dispatcher.id,
+			preauth_note: "We have two on Truck 4. Swing by the shop — do not buy this at retail.",
+			created_at: daysFromNow(-2),
+			allocations: { create: [{ job_id: job3.id, job_visit_id: visit3.id, amount: 1250.0 }] },
+		},
+	});
+
+	// 5. pending_review — the clean case: OCR ran, every line verified, mapped
+	// lines carry a disposition, no flags. This is what "approve" should feel like.
+	const cleanLines: SeedPurchaseLine[] = [
+		{
+			description: "CONTACTOR 2P 40A 24V",
+			quantity: 2,
+			unit_price: 28.0,
+			inventory_item_id: invContactor.id,
+			disposition: "receive",
+			disposition_location: "warehouse",
+			ocr_confidence: 0.972,
+		},
+		{
+			description: "HSI IGNITER UNIV",
+			quantity: 1,
+			unit_price: 42.4,
+			inventory_item_id: invIgniter.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: van12.id,
+			ocr_confidence: 0.944,
+		},
+		{
+			// A named consumable the shop does not stock: the unmapped +
+			// non_stock fixture, at the confidence that trips the low-read mark.
+			description: "RTV SILICONE HI-TEMP 10.3OZ",
+			quantity: 1,
+			unit_price: 18.75,
+			disposition: "non_stock",
+			ocr_confidence: 0.611,
+		},
+	];
+	const cleanReceipt = receiptImage("FERGUSON 418", "Today 09:12", "126.82", [
+		["CONTACTOR 2P 40A 24V  x2", "56.00"],
+		["HSI IGNITER UNIV      x1", "42.40"],
+		["RTV SILICONE HI-TEMP  x1", "18.75"],
+		["TAX", "9.67"],
+	]);
+	const fpClean = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "pending_review",
+			reason: "Contactor failed on the Johnson follow-up; picked up a spare igniter while there.",
+			vendor_name: "FERGUSON #418",
+			supplier_id: supplierFerguson.id,
+			purchased_at: hrsAgo(6),
+			subtotal: 117.15,
+			tax_amount: 9.67,
+			total: 126.82,
+			receipt_image_url: cleanReceipt,
+			receipt_image_hash: receiptHash(cleanReceipt),
+			captured_at: hrsAgo(6),
+			capture_lat: 43.8124,
+			capture_lng: -91.2568,
+			capture_accuracy_m: 12,
+			submitted_at: hrsAgo(5),
+			ocr_status: "succeeded",
+			ocr_provider: "mindee",
+			ocr_raw: { provider: "mindee", document_type: "receipt", seeded: true },
+			ocr_field_confidence: { vendor_name: 0.98, purchased_at: 0.96, total: 0.99, tax_amount: 0.87 },
+			ocr_lines: ocrSnapshot(cleanLines),
+			ocr_completed_at: hrsAgo(6),
+			ocr_line_count: 3,
+			ocr_corrections: 1,
+			flags: [],
+			created_at: hrsAgo(6),
+			lines: { create: purchaseLines(cleanLines, hrsAgo(5)) },
+			allocations: { create: [{ job_id: job1.id, job_visit_id: visit1.id, amount: 126.82 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 6. pending_review, flagged — the receipt total does not agree with its own
+	// lines, capture had no location, and it is the third Ferguson run today.
+	const flaggedLines: SeedPurchaseLine[] = [
+		{
+			description: "COPPER LINE SET 3/4 X 50FT",
+			quantity: 1,
+			unit_price: 289.0,
+			inventory_item_id: invLineSet.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: van12.id,
+			ocr_confidence: 0.918,
+		},
+		{
+			description: "R-410A 25LB CYL",
+			quantity: 1,
+			unit_price: 62.0,
+			inventory_item_id: invRefrigerant.id,
+			disposition: "receive",
+			disposition_location: "warehouse",
+			ocr_confidence: 0.874,
+		},
+	];
+	const flaggedReceipt = receiptImage("FERGUSON 418", "Today 11:40", "402.00", [
+		["COPPER LINE SET 3/4  x1", "289.00"],
+		["R-410A 25LB CYL      x1", "62.00"],
+		["TAX", "28.96"],
+	]);
+	const fpFlagged = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "pending_review",
+			reason: "Line set damaged during the Bldg 2 install — replaced on the spot.",
+			vendor_name: "FERGUSON #418",
+			supplier_id: supplierFerguson.id,
+			purchased_at: hrsAgo(4),
+			subtotal: 351.0,
+			tax_amount: 28.96,
+			// Deliberately not 379.96: this is the total_mismatch fixture.
+			total: 402.0,
+			receipt_image_url: flaggedReceipt,
+			receipt_image_hash: receiptHash(flaggedReceipt),
+			captured_at: hrsAgo(4),
+			submitted_at: hrsAgo(3),
+			ocr_status: "succeeded",
+			ocr_provider: "mindee",
+			ocr_raw: { provider: "mindee", document_type: "receipt", seeded: true },
+			ocr_field_confidence: { vendor_name: 0.95, purchased_at: 0.62, total: 0.41, tax_amount: 0.55 },
+			ocr_lines: ocrSnapshot(flaggedLines),
+			ocr_completed_at: hrsAgo(4),
+			ocr_line_count: 2,
+			ocr_corrections: 0,
+			flags: [
+				{
+					code: "total_mismatch",
+					message: "Receipt total 402.00 does not match lines plus tax (379.96)",
+				},
+				GEO_MISSING,
+				{ code: "velocity", message: "3 purchases at FERGUSON #418 on the same day" },
+			],
+			created_at: hrsAgo(4),
+			lines: { create: purchaseLines(flaggedLines, hrsAgo(3)) },
+			allocations: { create: [{ job_id: job2.id, job_visit_id: visit2.id, amount: 402.0 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 7. queried — sent back with a note; editable again on the tech's side. Also
+	// the third Ferguson purchase today, which is what makes the velocity flag true.
+	const queriedLines: SeedPurchaseLine[] = [
+		{ description: "1/2 EMT CONDUIT 10FT", quantity: 3, unit_price: 12.68, disposition: "non_stock" },
+	];
+	const queriedReceipt = receiptImage("FERGUSON 418", "Today 13:05", "41.18", [
+		["1/2 EMT CONDUIT 10FT x3", "38.04"],
+		["TAX", "3.14"],
+	]);
+	const fpQueried = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "queried",
+			reason: "Conduit for the disconnect relocate.",
+			vendor_name: "FERGUSON #418",
+			supplier_id: supplierFerguson.id,
+			purchased_at: hrsAgo(3),
+			subtotal: 38.04,
+			tax_amount: 3.14,
+			total: 41.18,
+			receipt_image_url: queriedReceipt,
+			receipt_image_hash: receiptHash(queriedReceipt),
+			captured_at: hrsAgo(3),
+			submitted_at: hrsAgo(2),
+			reviewed_at: hrsAgo(1),
+			reviewed_by_id: dispatcher2.id,
+			review_note: "Which job is the conduit for? Point it at one or split the amount.",
+			ocr_status: "skipped",
+			flags: [GEO_MISSING],
+			created_at: hrsAgo(3),
+			lines: { create: purchaseLines(queriedLines, hrsAgo(2)) },
+			allocations: { create: [{ job_id: job2.id, job_visit_id: visit2.id, amount: 41.18 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 8. pending_second_signoff — under John's 750 ceiling but over the org's 500
+	// threshold, so one approval is not enough to release it.
+	const signoffLines: SeedPurchaseLine[] = [
+		{
+			description: "COMPRESSOR SCROLL 3TON R410A",
+			quantity: 1,
+			unit_price: 565.0,
+			inventory_item_id: invCompressor.id,
+			disposition: "receive",
+			disposition_location: "warehouse",
+			ocr_confidence: 0.933,
+		},
+	];
+	const signoffReceipt = receiptImage("COPELAND DISTRIBUTION", "Yesterday 15:22", "611.61", [
+		["COMPRESSOR SCROLL 3T x1", "565.00"],
+		["TAX", "46.61"],
+	]);
+	const fpSignoff = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "pending_second_signoff",
+			reason: "Emergency compressor swap — tenant space was down.",
+			vendor_name: "Copeland Distribution",
+			supplier_id: supplierCopeland.id,
+			purchased_at: daysFromNow(-1),
+			subtotal: 565.0,
+			tax_amount: 46.61,
+			total: 611.61,
+			receipt_image_url: signoffReceipt,
+			receipt_image_hash: receiptHash(signoffReceipt),
+			captured_at: daysFromNow(-1),
+			capture_lat: 43.8129,
+			capture_lng: -91.2559,
+			capture_accuracy_m: 8,
+			submitted_at: daysFromNow(-1),
+			reviewed_at: hrsAgo(20),
+			reviewed_by_id: dispatcher2.id,
+			review_note: "Looks right to me — over threshold, needs Alex as well.",
+			ocr_status: "succeeded",
+			ocr_provider: "mindee",
+			ocr_raw: { provider: "mindee", document_type: "receipt", seeded: true },
+			ocr_field_confidence: { vendor_name: 0.99, purchased_at: 0.97, total: 0.98, tax_amount: 0.93 },
+			ocr_lines: ocrSnapshot(signoffLines),
+			ocr_completed_at: daysFromNow(-1),
+			ocr_line_count: 1,
+			ocr_corrections: 0,
+			flags: [],
+			created_at: daysFromNow(-1),
+			lines: { create: purchaseLines(signoffLines, daysFromNow(-1)) },
+			allocations: { create: [{ job_id: job2.id, job_visit_id: visit2.id, amount: 611.61 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 9. approved — the only status that moves stock. Vendor is free text with no
+	// supplier FK on purpose: not every counter is one of our two suppliers.
+	const approvedLines: SeedPurchaseLine[] = [
+		{
+			description: "DUCT MASTIC 1GAL",
+			quantity: 2,
+			unit_price: 24.5,
+			inventory_item_id: provDuctSealant.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: van12.id,
+		},
+		{
+			description: "FOIL TAPE 2IN X 60YD",
+			quantity: 2,
+			unit_price: 22.25,
+			disposition: "non_stock",
+		},
+	];
+	const approvedReceipt = receiptImage("MENARDS ONALASKA", "3 days ago", "101.21", [
+		["DUCT MASTIC 1GAL     x2", "49.00"],
+		["FOIL TAPE 2IN X 60YD x2", "44.50"],
+		["TAX", "7.71"],
+	]);
+	const fpApproved = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "approved",
+			reason: "Duct leakage found mid-PM; sealed the return plenum before leaving.",
+			vendor_name: "Menards Onalaska",
+			purchased_at: daysFromNow(-3),
+			subtotal: 93.5,
+			tax_amount: 7.71,
+			total: 101.21,
+			receipt_image_url: approvedReceipt,
+			receipt_image_hash: receiptHash(approvedReceipt),
+			captured_at: daysFromNow(-3),
+			capture_lat: 43.8901,
+			capture_lng: -91.2318,
+			capture_accuracy_m: 22,
+			submitted_at: daysFromNow(-3),
+			reviewed_at: daysFromNow(-2),
+			reviewed_by_id: dispatcher.id,
+			review_note: "Approved. Mastic is on Van 12 — reconcile the provisional item when you can.",
+			ocr_status: "skipped",
+			flags: [],
+			created_at: daysFromNow(-3),
+			lines: { create: purchaseLines(approvedLines, daysFromNow(-3)) },
+			allocations: { create: [{ job_id: job1.id, job_visit_id: visit1.id, amount: 101.21 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 10. rejected — refused with a reason, so the Decided tab is not all yes.
+	const rejectedLines: SeedPurchaseLine[] = [
+		{ description: "18V IMPACT DRIVER KIT", quantity: 1, unit_price: 164.85, disposition: "non_stock" },
+	];
+	const rejectedReceipt = receiptImage("HOME DEPOT 4912", "6 days ago", "178.45", [
+		["18V IMPACT DRIVER KIT", "164.85"],
+		["TAX", "13.60"],
+	]);
+	const fpRejected = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "rejected",
+			reason: "Impact driver died on the roof.",
+			vendor_name: "Home Depot #4912",
+			purchased_at: daysFromNow(-6),
+			subtotal: 164.85,
+			tax_amount: 13.6,
+			total: 178.45,
+			receipt_image_url: rejectedReceipt,
+			receipt_image_hash: receiptHash(rejectedReceipt),
+			captured_at: daysFromNow(-6),
+			submitted_at: daysFromNow(-6),
+			reviewed_at: daysFromNow(-5),
+			reviewed_by_id: dispatcher.id,
+			review_note: "Tools are a shop purchase, not a job cost. File it with the tool allowance.",
+			// The provider answered and found nothing, which is a failure; `skipped`
+			// above is the no-provider-configured success path.
+			ocr_status: "failed",
+			ocr_provider: "mindee",
+			ocr_error: "Provider returned no line items for this document",
+			flags: [GEO_MISSING],
+			created_at: daysFromNow(-6),
+			lines: { create: purchaseLines(rejectedLines, daysFromNow(-6)) },
+			allocations: { create: [{ job_id: job3.id, job_visit_id: visit3.id, amount: 178.45 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 11. refund — same shape as the purchase it reverses, approved but not yet
+	// settled, so the queue still shows money owed back.
+	const refundLines: SeedPurchaseLine[] = [
+		{
+			description: "DUCT MASTIC 1GAL (RETURN)",
+			quantity: 1,
+			unit_price: 24.5,
+			inventory_item_id: provDuctSealant.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: van12.id,
+		},
+	];
+	const refundReceipt = receiptImage("MENARDS ONALASKA", "2 days ago RETURN", "26.52", [
+		["DUCT MASTIC 1GAL     x1", "24.50"],
+		["TAX", "2.02"],
+	]);
+	const fpRefund = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech1.id,
+			status: "approved",
+			kind: "refund",
+			parent_purchase_id: fpApproved.id,
+			reason: "One pail unopened — returned to the counter.",
+			vendor_name: "Menards Onalaska",
+			purchased_at: daysFromNow(-2),
+			subtotal: 24.5,
+			tax_amount: 2.02,
+			total: 26.52,
+			receipt_image_url: refundReceipt,
+			receipt_image_hash: receiptHash(refundReceipt),
+			captured_at: daysFromNow(-2),
+			submitted_at: daysFromNow(-2),
+			reviewed_at: daysFromNow(-2),
+			reviewed_by_id: dispatcher.id,
+			review_note: "Credit slip matches. Watch for it on the statement.",
+			ocr_status: "skipped",
+			// Stamped by review on an approved refund, cleared when the money lands.
+			flags: [{ code: "refund_unsettled", message: "Approved — waiting on the credit to actually land" }],
+			created_at: daysFromNow(-2),
+			lines: { create: purchaseLines(refundLines, daysFromNow(-2)) },
+			allocations: { create: [{ job_id: job1.id, job_visit_id: visit1.id, amount: 26.52 }] },
+		},
+		include: { lines: true },
+	});
+
+	// 12. Maria's pending_review — a second technician in the queue, buying the
+	// motor that became the tech_submission provisional item above.
+	const mariaLines: SeedPurchaseLine[] = [
+		{
+			description: "COND FAN MOTOR 1/6HP",
+			quantity: 1,
+			unit_price: 132.75,
+			inventory_item_id: provCondFanMotor.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: van8.id,
+			ocr_confidence: 0.802,
+		},
+	];
+	const mariaReceipt = receiptImage("COPELAND DISTRIBUTION", "Today 10:31", "143.70", [
+		["COND FAN MOTOR 1/6HP x1", "132.75"],
+		["TAX", "10.95"],
+	]);
+	const fpMaria = await db.field_purchase.create({
+		data: {
+			organization_id: org.id,
+			technician_id: tech2.id,
+			status: "pending_review",
+			reason: "Condenser fan motor locked up at Riverside — unit was down.",
+			vendor_name: "Copeland Distribution",
+			supplier_id: supplierCopeland.id,
+			purchased_at: hrsAgo(7),
+			subtotal: 132.75,
+			tax_amount: 10.95,
+			total: 143.7,
+			receipt_image_url: mariaReceipt,
+			receipt_image_hash: receiptHash(mariaReceipt),
+			captured_at: hrsAgo(7),
+			submitted_at: hrsAgo(6),
+			ocr_status: "succeeded",
+			ocr_provider: "mindee",
+			ocr_raw: { provider: "mindee", document_type: "receipt", seeded: true },
+			ocr_field_confidence: { vendor_name: 0.91, purchased_at: 0.88, total: 0.94, tax_amount: 0.72 },
+			ocr_lines: ocrSnapshot(mariaLines),
+			ocr_completed_at: hrsAgo(7),
+			ocr_line_count: 1,
+			ocr_corrections: 1,
+			flags: [GEO_MISSING],
+			created_at: hrsAgo(7),
+			lines: { create: purchaseLines(mariaLines, hrsAgo(6)) },
+			allocations: { create: [{ job_id: job5.id, job_visit_id: weeklyVisit1.id, amount: 143.7 }] },
+		},
+		include: { lines: true },
+	});
+
+	// Stock effect of the approved pair, written through recordMovements with the
+	// same shape applyApprovalStockEffect / applyRefundReversal produce, so the
+	// ledger reads identically whether the row was seeded or reviewed live.
+	// Chronological: the intake has to land before the return draws it back down.
+	const masticIntakeLine = fpApproved.lines.find(
+		(l) => l.inventory_item_id === provDuctSealant.id,
+	)!;
+	await moveAt(
+		daysFromNow(-2),
+		dispActor,
+		[
+			{
+				inventory_item_id: provDuctSealant.id,
+				qty: 2,
+				from_location_type: "external",
+				to_location_type: "vehicle",
+				to_vehicle_id: van12.id,
+				reason: "supplier_purchase",
+				unit_cost: 24.5,
+				field_purchase_line_id: masticIntakeLine.id,
+				note: "Field purchase approved",
+			},
+		],
+		{ allowUntracked: true },
+	);
+
+	await moveAt(
+		daysFromNow(-2),
+		dispActor,
+		[
+			{
+				inventory_item_id: provDuctSealant.id,
+				qty: 1,
+				from_location_type: "vehicle",
+				from_vehicle_id: van12.id,
+				to_location_type: "external",
+				reason: "reversal",
+				unit_cost: 24.5,
+				field_purchase_line_id: fpRefund.lines[0].id,
+				note: "Field purchase refund approved",
+			},
+		],
+		{ allowUntracked: true },
+	);
+
+	// What submitting put on the customer's bill. A `non_stock` line is the spec's
+	// "Consumed on job", charged at SUBMIT rather than approval - a visit invoiced
+	// before a dispatcher reaches the queue would otherwise never bill the part.
+	// Rejecting is what takes it back off.
+	const billLine = async (
+		purchase: { id: string; lines: { id: string; description: string; quantity: unknown; unit_price: unknown }[] },
+		description: string,
+		visitId: string,
+		at: Date,
+	) => {
+		const line = purchase.lines.find((l) => l.description === description);
+		if (!line) return;
+		const quantity = Number(line.quantity);
+		const unitPrice = Number(line.unit_price);
+		const billed = await db.job_visit_line_item.create({
+			data: {
+				visit_id: visitId,
+				name: line.description,
+				quantity,
+				unit_price: unitPrice,
+				total: Number((quantity * unitPrice).toFixed(2)),
+				source: "field_addition",
+				item_type: "material",
+				// Billed, never in our inventory — so completion settles it without
+				// moving stock it never held.
+				disposition: "non_stock",
+				sort_order: 0,
+				created_at: at,
+			},
+		});
+		await db.field_purchase_line.update({
+			where: { id: line.id },
+			data: { visit_line_item_id: billed.id },
+		});
+		// The seeded visits carry hand-set totals rather than derived ones, so a new
+		// billable line has to move them or the visit reads as costing less than its
+		// own lines. Added to both, which keeps total = subtotal + tax.
+		await db.job_visit.update({
+			where: { id: visitId },
+			data: {
+				subtotal: { increment: billed.total },
+				total: { increment: billed.total },
+			},
+		});
+	};
+
+	await billLine(fpApproved, "FOIL TAPE 2IN X 60YD", visit1.id, hrsAgo(20));
+	await billLine(fpQueried, "1/2 EMT CONDUIT 10FT", visit2.id, hrsAgo(2));
+
+	// A line names the job it served, and every seeded receipt covers exactly one —
+	// so each takes the only job there was. What `settleAllocations` does on any
+	// real save; the seed writes rows straight past it.
+	for (const alloc of await db.field_purchase_job_allocation.findMany({
+		where: { field_purchase: { organization_id: org.id } },
+		select: { id: true, field_purchase_id: true },
+	})) {
+		await db.field_purchase_line.updateMany({
+			where: { field_purchase_id: alloc.field_purchase_id },
+			data: { allocation_id: alloc.id },
+		});
+	}
+
+	// Append-only trail. Grants and purchases share this table so one query
+	// answers "what happened to this technician's authority and spend".
+	await db.field_purchase_event.createMany({
+		data: [
+			{ organization_id: org.id, field_purchase_id: fpDraft.id, type: "purchase.created", actor_type: "technician", actor_id: tech1.id, detail: { estimated_amount: "85.00" }, at: minsAgo(25) },
+
+			{ organization_id: org.id, field_purchase_id: fpPreauthPending.id, type: "purchase.created", actor_type: "technician", actor_id: tech1.id, detail: { estimated_amount: "980.00" }, at: hrsAgo(2) },
+			{ organization_id: org.id, field_purchase_id: fpPreauthPending.id, type: "purchase.preauth_requested", actor_type: "technician", actor_id: tech1.id, detail: { breaches: [{ code: "per_transaction", limit: "750.00", would_be: "980.00" }] }, at: hrsAgo(2) },
+
+			{ organization_id: org.id, field_purchase_id: fpPreauthApproved.id, type: "purchase.preauth_requested", actor_type: "technician", actor_id: tech1.id, detail: {}, at: hrsAgo(5) },
+			{ organization_id: org.id, field_purchase_id: fpPreauthApproved.id, type: "purchase.preauth_approved", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { note: "Approved up to 640." }, at: hrsAgo(4) },
+
+			{ organization_id: org.id, field_purchase_id: fpPreauthDenied.id, type: "purchase.preauth_requested", actor_type: "technician", actor_id: tech1.id, detail: {}, at: daysFromNow(-2) },
+			{ organization_id: org.id, field_purchase_id: fpPreauthDenied.id, type: "purchase.preauth_denied", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { note: "We have two on Truck 4." }, at: daysFromNow(-2) },
+
+			{ organization_id: org.id, field_purchase_id: fpClean.id, type: "purchase.created", actor_type: "technician", actor_id: tech1.id, detail: {}, at: hrsAgo(6) },
+			{ organization_id: org.id, field_purchase_id: fpClean.id, type: "purchase.receipt_captured", actor_type: "technician", actor_id: tech1.id, detail: { ocr_status: "pending" }, at: hrsAgo(6) },
+			{ organization_id: org.id, field_purchase_id: fpClean.id, type: "purchase.ocr_completed", actor_type: "system", detail: { provider: "mindee", line_count: 3 }, at: hrsAgo(6) },
+			{ organization_id: org.id, field_purchase_id: fpClean.id, type: "purchase.lines_replaced", actor_type: "technician", actor_id: tech1.id, detail: { corrections: 1 }, at: hrsAgo(5) },
+			{ organization_id: org.id, field_purchase_id: fpClean.id, type: "purchase.lines_verified", actor_type: "technician", actor_id: tech1.id, detail: { count: 3 }, at: hrsAgo(5) },
+			{ organization_id: org.id, field_purchase_id: fpClean.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "126.82" }, at: hrsAgo(5) },
+
+			{ organization_id: org.id, field_purchase_id: fpFlagged.id, type: "purchase.receipt_captured", actor_type: "technician", actor_id: tech1.id, detail: {}, at: hrsAgo(4) },
+			{ organization_id: org.id, field_purchase_id: fpFlagged.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "402.00", flags: ["total_mismatch", "geo_missing", "velocity"] }, at: hrsAgo(3) },
+
+			{ organization_id: org.id, field_purchase_id: fpQueried.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "41.18" }, at: hrsAgo(2) },
+			{ organization_id: org.id, field_purchase_id: fpQueried.id, type: "purchase.query", actor_type: "dispatcher", actor_id: dispatcher2.id, detail: { note: "Which job is the conduit for?" }, at: hrsAgo(1) },
+
+			{ organization_id: org.id, field_purchase_id: fpSignoff.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "611.61" }, at: daysFromNow(-1) },
+			{ organization_id: org.id, field_purchase_id: fpSignoff.id, type: "purchase.approve", actor_type: "dispatcher", actor_id: dispatcher2.id, detail: { routed_to: "pending_second_signoff", threshold: "500.00" }, at: hrsAgo(20) },
+
+			{ organization_id: org.id, field_purchase_id: fpApproved.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "101.21" }, at: daysFromNow(-3) },
+			{ organization_id: org.id, field_purchase_id: fpApproved.id, type: "purchase.approve", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { intake_lines: 1 }, at: daysFromNow(-2) },
+			{ organization_id: org.id, field_purchase_id: fpApproved.id, type: "purchase.refund_started", actor_type: "technician", actor_id: tech1.id, detail: { refund_id: fpRefund.id }, at: daysFromNow(-2) },
+
+			{ organization_id: org.id, field_purchase_id: fpRejected.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "178.45" }, at: daysFromNow(-6) },
+			{ organization_id: org.id, field_purchase_id: fpRejected.id, type: "purchase.reject", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { note: "Tools are a shop purchase." }, at: daysFromNow(-5) },
+
+			{ organization_id: org.id, field_purchase_id: fpRefund.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech1.id, detail: { total: "26.52" }, at: daysFromNow(-2) },
+			{ organization_id: org.id, field_purchase_id: fpRefund.id, type: "purchase.approve", actor_type: "dispatcher", actor_id: dispatcher.id, detail: { reversed_qty: 1 }, at: daysFromNow(-2) },
+
+			{ organization_id: org.id, field_purchase_id: fpMaria.id, type: "purchase.submitted", actor_type: "technician", actor_id: tech2.id, detail: { total: "143.70" }, at: hrsAgo(6) },
+		],
+	});
+
+	await db.technician_notification.createMany({
+		data: [
+			{ technician_id: tech1.id, type: "field_purchase_preauth", title: "Purchase pre-approved", body: "Go ahead with the purchase up to 640.00.", action_url: `/technician/purchases/${fpPreauthApproved.id}`, created_at: hrsAgo(4) },
+			{ technician_id: tech1.id, type: "field_purchase_reviewed", title: "Purchase needs a change", body: "Which job is the conduit for? Point it at one or split the amount.", action_url: `/technician/purchases/${fpQueried.id}`, created_at: hrsAgo(1) },
+			{ technician_id: tech1.id, type: "field_purchase_reviewed", title: "Purchase rejected", body: "Tools are a shop purchase, not a job cost. File it with the tool allowance.", action_url: `/technician/purchases/${fpRejected.id}`, read_at: daysFromNow(-5), created_at: daysFromNow(-5) },
+			{ technician_id: tech2.id, type: "field_purchase_reviewed", title: "Purchase submitted", body: "Your 143.70 purchase is with dispatch for review.", action_url: `/technician/purchases/${fpMaria.id}`, read_at: hrsAgo(5), created_at: hrsAgo(6) },
+		],
+	});
+
+	await db.log.createMany({
+		data: [
+			{ organization_id: org.id, event_type: "field_purchase_grant.granted", action: "created", entity_type: "field_purchase_grant", entity_id: grantSmith.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { per_transaction_limit: { old: "400.00", new: "750.00" } }, timestamp: daysFromNow(-45) },
+			{ organization_id: org.id, event_type: "field_purchase_grant.revoked", action: "updated", entity_type: "field_purchase_grant", entity_id: grantPark.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { is_active: { old: true, new: false } }, timestamp: daysFromNow(-12) },
+			{ organization_id: org.id, event_type: "field_purchase.submitted", action: "updated", entity_type: "field_purchase", entity_id: fpClean.id, actor_type: "technician", actor_id: tech1.id, actor_name: tech1.name, changes: { total: { old: null, new: 126.82 } }, timestamp: hrsAgo(5) },
+			{ organization_id: org.id, event_type: "field_purchase.submitted", action: "updated", entity_type: "field_purchase", entity_id: fpFlagged.id, actor_type: "technician", actor_id: tech1.id, actor_name: tech1.name, changes: { flags: { old: [], new: ["total_mismatch", "geo_missing", "velocity"] } }, timestamp: hrsAgo(3) },
+			{ organization_id: org.id, event_type: "field_purchase.approved", action: "updated", entity_type: "field_purchase", entity_id: fpApproved.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { status: { old: "pending_review", new: "approved" } }, timestamp: daysFromNow(-2) },
+			{ organization_id: org.id, event_type: "inventory.created", action: "created", entity_type: "inventory_item", entity_id: provDuctSealant.id, actor_type: "technician", actor_id: tech1.id, actor_name: tech1.name, changes: { provisional: { old: null, new: true }, origin: { old: null, new: "field_purchase" } }, timestamp: daysFromNow(-2) },
+		],
+	});
+
+	// ============================================================================
 	// Tax post-pass — wire tax_group_id + taxable onto line items and recompute
 	// tax_amount / totals / tax_snapshot via the centralized tax engine. Exempt
 	// clients (Anderson) get taxable=false and a client_exempt snapshot.
@@ -4889,6 +6069,24 @@ async function main() {
 	console.log(`  Barcodes:          4  items pre-labeled (rest lazily assigned on first scan)`);
 	console.log(
 		`  Activity Logs:     41 entries covering all feed event types`,
+	);
+	console.log(
+		`  Reconcile Queue:   4 unmapped names (exact / case-insensitive / code / none) + 1 dismissed`,
+	);
+	console.log(
+		`  Provisional Items: 3  tech_submission, dispatch_quick_add, field_purchase`,
+	);
+	console.log(
+		`  Dispositions:      consume / receive (Van 12) / non_stock on visit 3 + plan 2; 1 voided line`,
+	);
+	console.log(
+		`  Field Purchases:   12 (draft, pre-auth x3, review x3, 2nd sign-off, approved, rejected,`,
+	);
+	console.log(
+		`                        unsettled refund, + Maria) — John Smith is the primary tech`,
+	);
+	console.log(
+		`  Purchase Grants:   3  Smith 750/1200/3000, Rodriguez 200/400/900, Park REVOKED`,
 	);
 }
 

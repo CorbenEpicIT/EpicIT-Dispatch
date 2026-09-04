@@ -67,6 +67,9 @@ const ORG_SCOPED_MODELS = new Set([
 	"followup_send",
 	"email_template",
 	"project",
+	"field_purchase",
+	"field_purchase_grant",
+	"field_purchase_event",
 ]);
 
 /**
@@ -95,6 +98,8 @@ const RELATION_SCOPED_MODELS: Record<string, (organizationId: string) => Record<
 	stock_movement_serial: (o) => ({ movement: { organization_id: o } }),
 	stock_movement_batch: (o) => ({ movement: { organization_id: o } }),
 	visit_tech_time_entry: (o) => ({ visit: { job: { organization_id: o } } }),
+	field_purchase_line: (o) => ({ field_purchase: { organization_id: o } }),
+	field_purchase_job_allocation: (o) => ({ field_purchase: { organization_id: o } }),
 };
 
 // Returns the where-fragment that pins a row to the caller's org, or null if the

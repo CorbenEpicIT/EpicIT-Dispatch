@@ -338,8 +338,8 @@ describe("revokeReadiness", () => {
 	});
 });
 
-// Two reads answer "needed tomorrow" and used to disagree, so both are pinned
-// to the same predicate.
+// Two reads answer "needed tomorrow"; both must use the same predicate or
+// they can disagree with each other.
 describe("readiness line-item predicate", () => {
 	beforeEach(() => vi.clearAllMocks());
 

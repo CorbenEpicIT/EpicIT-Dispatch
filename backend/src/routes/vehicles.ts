@@ -346,7 +346,6 @@ const ADJUST_TYPE_PERMS: Partial<Record<VehicleAdjustmentType, string>> = {
 	transfer:           "adjust_transfer",
 	audit:              "adjust_audit",
 	warehouse_exchange: "adjust_warehouse_exchange",
-	supplier_purchase:  "adjust_supplier_purchase",
 };
 
 router.post(

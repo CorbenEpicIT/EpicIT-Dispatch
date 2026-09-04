@@ -85,6 +85,8 @@ export interface MovementInput {
 	visit_line_item_id?: string;
 	restock_record_id?: string;
 	adjustment_id?: string;
+	/** Receipt line an approved field purchase brought in, for reversal and audit. */
+	field_purchase_line_id?: string;
 	/** Serial units to move/create (serialized items only). */
 	serial?: SerialMovementInput;
 	/** Explicit batch picks (batch-tracked items); omitted → FIFO auto-allocate on deductions. */
@@ -370,6 +372,7 @@ export async function recordMovements(
 			visit_line_item_id: m.visit_line_item_id ?? null,
 			restock_record_id: m.restock_record_id ?? null,
 			adjustment_id: m.adjustment_id ?? null,
+			field_purchase_line_id: m.field_purchase_line_id ?? null,
 		})),
 	});
 

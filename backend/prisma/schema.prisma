@@ -118,6 +118,37 @@ enum inventory_item_origin {
   import             // spreadsheet import or a QuickBooks item pull
 }
 
+// Under-limit purchases skip pending_preauth entirely: draft -> pending_review.
+enum field_purchase_status {
+  draft
+  pending_preauth
+  preauth_denied
+  preauth_approved
+  pending_review
+  queried // returned to the tech with a note; editable again
+  pending_second_signoff // over the org threshold: approved once, waiting on a second
+  approved
+  rejected
+}
+
+// A refund is the same shape as the purchase it reverses - same receipt, lines,
+// review and trail - so it is a kind of field_purchase rather than a model of
+// its own. Amounts stay positive; this column is what says which way they point.
+enum field_purchase_kind {
+  purchase
+  refund
+}
+
+// `skipped` is a success, not a failure: no provider is configured, so the
+// technician types the receipt in by hand (the spec's required fallback).
+enum field_purchase_ocr_status {
+  not_run
+  skipped
+  pending
+  succeeded
+  failed
+}
+
 enum visit_status {
   Scheduled
   Driving
@@ -346,6 +377,9 @@ model organization {
   // NOT a general locale: currency and number formatting are still en-US/USD
   // throughout the frontend, which is a separate project.
   measurement_system  String       @default("imperial")
+  // Above this, an approved field purchase waits for a second, different
+  // signer before anything moves. Null disables the second sign-off entirely.
+  field_purchase_second_signoff_threshold Decimal? @db.Decimal(10, 2)
   mfa_required        Boolean @default(false) // Require MFA for all users in this org
 
   logo_key String?
@@ -374,6 +408,9 @@ model organization {
   suppliers             supplier[]
   supplier_items        supplier_item[]
   unmapped_part_decisions unmapped_part_decision[]
+  field_purchase_grants   field_purchase_grant[]
+  field_purchases         field_purchase[]
+  field_purchase_events   field_purchase_event[]
 
   requests              request[]
   quotes                quote[]
@@ -804,6 +841,7 @@ model job {
   notes        job_note[]
   line_items   job_line_item[]
   invoice_jobs invoice_job[]
+  field_purchase_allocations field_purchase_job_allocation[]
 
   @@index([client_id])
   @@index([recurring_plan_id])
@@ -897,6 +935,7 @@ model job_visit {
   vehicle_stock_usages   vehicle_stock_usage[]
   stock_movements        stock_movement[]
   consumed_serial_units  serial_unit[]
+  field_purchase_allocations field_purchase_job_allocation[]
 
   @@index([job_id])
   @@index([status])
@@ -947,6 +986,7 @@ model job_visit_line_item {
   time_entry visit_tech_time_entry?
   stock_movements stock_movement[]
   consumed_serial_units serial_unit[]
+  field_purchase_line field_purchase_line?
 
   @@index([visit_id])
   @@index([sort_order])
@@ -1387,6 +1427,7 @@ model inventory_item {
   invoice_line_items invoice_line_item[]
   serial_units     serial_unit[]
   stock_batches    stock_batch[]
+  field_purchase_lines field_purchase_line[]
 
   @@unique([organization_id, sku])
   @@unique([organization_id, barcode])
@@ -1474,6 +1515,7 @@ model vehicle {
   stock_batches       vehicle_stock_batch[]
   visit_line_dispositions job_visit_line_item[]      @relation("VisitLineDispositionVehicle")
   plan_line_dispositions  recurring_plan_line_item[] @relation("PlanLineDispositionVehicle")
+  field_purchase_line_dispositions field_purchase_line[] @relation("FieldPurchaseLineDispositionVehicle")
 
   @@index([organization_id])
   @@index([status])
@@ -1648,6 +1690,7 @@ model supplier {
   batches           stock_batch[]
   external_mappings supplier_external_mapping[]
   items             supplier_item[]
+  field_purchases   field_purchase[]
 
   @@unique([organization_id, name_key])
   @@index([organization_id, is_active])
@@ -1717,6 +1760,272 @@ model supplier_item {
   @@index([inventory_item_id, is_preferred])
 }
 
+  // ============================================================================
+  // FIELD PROCUREMENT (emergency purchases, reimbursement model)
+  // Receipt lines reuse line_item_disposition rather than a second vocabulary.
+  // Approval writes the stock effect for `receive` lines only; QuickBooks posting
+  // is deliberately absent (a later stage owns it).
+  // ============================================================================
+
+model field_purchase_grant {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+  technician_id   String
+  technician      technician   @relation(fields: [technician_id], references: [id], onDelete: Cascade)
+
+  // Authority is per-technician and revocable, NOT a role: the role permission
+  // `request_field_purchase` only gates reaching the flow, these limits are what
+  // bound the money. Senior techs carry higher ceilings on their own row.
+  per_transaction_limit Decimal  @db.Decimal(10, 2)
+  daily_limit           Decimal? @db.Decimal(10, 2)
+  weekly_limit          Decimal? @db.Decimal(10, 2)
+  per_job_limit         Decimal? @db.Decimal(10, 2)
+
+  // Revoked, never deleted: a purchase already in flight when authority is
+  // pulled still has to reconcile.
+  is_active     Boolean     @default(true)
+  granted_by_id String?
+  granted_by    dispatcher? @relation("GrantedFieldPurchaseGrants", fields: [granted_by_id], references: [id], onDelete: SetNull)
+  granted_at    DateTime    @default(now())
+  revoked_by_id String?
+  revoked_by    dispatcher? @relation("RevokedFieldPurchaseGrants", fields: [revoked_by_id], references: [id], onDelete: SetNull)
+  revoked_at    DateTime?
+  notes         String?     @db.Text
+
+  updated_at DateTime @updatedAt
+
+  events field_purchase_event[]
+
+  // One row per tech. Every grant/revoke lands in field_purchase_event, so the
+  // history is append-only there rather than a pile of superseded grant rows.
+  @@unique([organization_id, technician_id])
+  @@index([organization_id, is_active])
+}
+
+model field_purchase {
+  id              String                @id @default(uuid())
+  organization_id String
+  organization    organization          @relation(fields: [organization_id], references: [id])
+  technician_id   String
+  technician      technician            @relation(fields: [technician_id], references: [id])
+  status          field_purchase_status @default(draft)
+  kind            field_purchase_kind   @default(purchase)
+
+  // Set only on a refund. Its own lines mirror the parent's, so an approval can
+  // reverse exactly the stock the parent brought in.
+  parent_purchase_id String?
+  parent_purchase    field_purchase?  @relation("FieldPurchaseRefunds", fields: [parent_purchase_id], references: [id], onDelete: SetNull)
+  refunds            field_purchase[] @relation("FieldPurchaseRefunds")
+  // Stamped when the money actually came back. Until then the parent carries a
+  // flag: a credit promised at the counter is not a credit received.
+  refund_settled_at DateTime?
+
+  // Also copied into the event log; see the note on `preauth_note`.
+  reason String? @db.Text
+  // Pre-authorization is asked against an ESTIMATE, before the counter. The real
+  // total may exceed it; that re-flags at submit rather than voiding the auth.
+  estimated_amount Decimal? @db.Decimal(10, 2)
+
+  // Vendor as it reads on the receipt.
+  vendor_name String?
+  // Resolved from the receipt when the vendor is one we already know. Stays NULL for
+  // a counter nobody has set up as a supplier - normal for an emergency buy. Same
+  // split as the ledger's supplier_id: the raw string is evidence, the FK is the join.
+  supplier_id String?
+  supplier    supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+
+  purchased_at DateTime?
+  subtotal     Decimal   @default(0) @db.Decimal(10, 2)
+  tax_amount   Decimal   @default(0) @db.Decimal(10, 2)
+  total        Decimal   @default(0) @db.Decimal(10, 2)
+
+  receipt_image_url String?
+  // sha256 of the uploaded bytes, unique per ORG rather than globally - two orgs
+  // can legitimately hold the same file. Reimbursement has no independent
+  // upstream record, so receipt reuse is the primary fraud vector.
+  receipt_image_hash String?
+  // Device clock at capture, kept apart from purchased_at (what the receipt
+  // claims) so the two can disagree and be flagged.
+  captured_at DateTime?
+  // Advisory only: GPS-grade on mobile, WiFi/IP-grade or absent on desktop, so a
+  // divergence flags for attention and never blocks a submit.
+  capture_lat        Decimal? @db.Decimal(9, 6)
+  capture_lng        Decimal? @db.Decimal(9, 6)
+  capture_accuracy_m Int?
+
+  submitted_at         DateTime?
+  preauth_requested_at DateTime?
+  preauth_decided_at   DateTime?
+  preauth_by_id        String?
+  preauth_by           dispatcher? @relation("PreauthorizedFieldPurchases", fields: [preauth_by_id], references: [id], onDelete: SetNull)
+  // This note, `review_note`, `second_signoff_note` and `reason` are copied
+  // verbatim into field_purchase_event.detail as they are written, and nothing
+  // updates or deletes an event row by design. Clearing the column therefore does
+  // not remove the text - it lives for the life of the event log. Any retention
+  // policy that claims otherwise is false on its face.
+  preauth_note         String?     @db.Text
+  reviewed_at          DateTime?
+  reviewed_by_id       String?
+  reviewed_by          dispatcher? @relation("ReviewedFieldPurchases", fields: [reviewed_by_id], references: [id], onDelete: SetNull)
+  review_note          String?     @db.Text
+  second_signoff_at    DateTime?
+  second_signoff_by_id String?
+  second_signoff_by    dispatcher? @relation("SecondSignedFieldPurchases", fields: [second_signoff_by_id], references: [id], onDelete: SetNull)
+  second_signoff_note  String?     @db.Text
+
+  ocr_status   field_purchase_ocr_status @default(not_run)
+  ocr_provider String?
+  // The vendor's own number for the ticket, read off the receipt. Nullable forever:
+  // plenty of receipts do not print one, and OCR may miss the ones that do.
+  receipt_number String?
+  // The provider payload exactly as returned. Kept whole because it is evidence:
+  // a disputed line has to be answerable against what the vendor actually sent.
+  // Vendor and purchase PII: never widen a projection to include it, and never
+  // log it. Verified to contain no payment credentials: those are on the
+  // receipt IMAGE, which is served only through signed URLs.
+  ocr_raw Json?
+  // { field: 0..1 } for the header fields. Below OCR_LOW_CONFIDENCE the tech's UI
+  // marks the field for attention - it never relaxes the mandatory verification.
+  ocr_field_confidence Json @default("{}")
+  // Snapshot of the extracted lines. Editing replaces the whole line set, so this
+  // is the only thing left to diff the tech's corrections against at submit.
+  ocr_lines        Json?
+  ocr_completed_at DateTime?
+  ocr_error        String?   @db.Text
+  ocr_line_count   Int?
+  ocr_corrections  Int?
+
+  // Deterministic check results as [{ code, message }], recomputed at submit.
+  // Advisory: a flag routes dispatcher attention, it never rejects a purchase.
+  flags Json @default("[]")
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  lines       field_purchase_line[]
+  allocations field_purchase_job_allocation[]
+  events      field_purchase_event[]
+
+  @@unique([organization_id, receipt_image_hash])
+  @@index([organization_id, status])
+  @@index([organization_id, technician_id, purchased_at])
+  // The duplicate and velocity checks both sweep one vendor's recent purchases.
+  @@index([organization_id, vendor_name, purchased_at])
+  // Reserved for receipt-number lookup. No query uses it yet; the duplicate sweep
+  // compares numbers in application code over a candidate set this does not serve.
+  @@index([organization_id, vendor_name, receipt_number])
+  @@index([parent_purchase_id])
+  @@index([supplier_id])
+}
+
+model field_purchase_line {
+  id                String         @id @default(uuid())
+  field_purchase_id String
+  field_purchase    field_purchase @relation(fields: [field_purchase_id], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Decimal @db.Decimal(10, 2)
+  unit_price  Decimal @db.Decimal(10, 2)
+  line_total  Decimal @db.Decimal(10, 2)
+
+  // Mapping is optional and unmapped is terminal, not an error.
+  inventory_item_id String?
+  inventory_item    inventory_item? @relation(fields: [inventory_item_id], references: [id], onDelete: SetNull)
+  // `receive` (lands in stock at cost) or `non_stock` (job cost, no stock
+  // effect). `consume` is INVALID here and rejected by validation: a
+  // field-bought part was never in our stock to deduct from.
+  disposition            line_item_disposition?
+  disposition_location   stock_location_type?
+  disposition_vehicle_id String?
+  disposition_vehicle    vehicle?               @relation("FieldPurchaseLineDispositionVehicle", fields: [disposition_vehicle_id], references: [id], onDelete: SetNull)
+
+  // Null on any technician-entered line, which after an edit is every line in the
+  // replaced set.
+  ocr_confidence Decimal? @db.Decimal(4, 3)
+
+  // Per-line and mandatory before submit, whether or not the line is mapped.
+  verified_at DateTime?
+
+  // The billable visit row this line produced at submit. Unique so a re-submit
+  // settles the same row instead of billing the customer twice.
+  visit_line_item_id String?              @unique
+  visit_line_item    job_visit_line_item? @relation(fields: [visit_line_item_id], references: [id], onDelete: SetNull)
+
+  // Which job's share this line is. The allocation rather than the job directly:
+  // it already carries the visit billing needs, and a second copy of the job is a
+  // second thing to keep in step.
+  allocation_id String?
+  allocation    field_purchase_job_allocation? @relation(fields: [allocation_id], references: [id], onDelete: SetNull)
+
+  sort_order Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  movements stock_movement[]
+
+  @@index([field_purchase_id])
+  @@index([inventory_item_id])
+  @@index([disposition_vehicle_id])
+  @@index([allocation_id])
+}
+
+model field_purchase_job_allocation {
+  id                String         @id @default(uuid())
+  field_purchase_id String
+  field_purchase    field_purchase @relation(fields: [field_purchase_id], references: [id], onDelete: Cascade)
+  job_id            String
+  job               job            @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  // The visit the technician was standing on when they bought. Billing needs a
+  // visit and the job alone does not name one; null when the purchase was
+  // started from somewhere with no visit in context.
+  job_visit_id String?
+  job_visit    job_visit? @relation(fields: [job_visit_id], references: [id], onDelete: SetNull)
+
+  // Derived, never typed: the sum of the lines assigned to this job plus its
+  // pro-rata share of the tax. An amount somebody types is a second answer to a
+  // question the lines already answer, and the two drift.
+  amount Decimal @db.Decimal(10, 2)
+
+  lines field_purchase_line[]
+
+  created_at DateTime @default(now())
+
+  @@unique([field_purchase_id, job_id])
+  @@index([job_id])
+  @@index([job_visit_id])
+}
+
+// Append-only. Nothing updates or deletes a row here; a correction is another
+// row. Grants and purchases share the table so one query answers "what happened
+// to this technician's authority and spend".
+model field_purchase_event {
+  id                String                @id @default(uuid())
+  organization_id   String
+  organization      organization          @relation(fields: [organization_id], references: [id])
+  field_purchase_id String?
+  field_purchase    field_purchase?       @relation(fields: [field_purchase_id], references: [id], onDelete: Cascade)
+  grant_id          String?
+  grant             field_purchase_grant? @relation(fields: [grant_id], references: [id], onDelete: Cascade)
+
+  type       String
+  actor_type String  // "technician" | "dispatcher" | "system"
+  actor_id   String?
+  // Per-event payload, shaped by the event type - never a uniform diff.
+  // An edit writes `{ fields: [name] }`: which fields changed, not what they
+  // changed from and to. Deliberate, because this log is append-only and never
+  // purged, so a before/after value written here would outlive every retention
+  // window the column it came from is subject to.
+  detail     Json    @default("{}")
+
+  at DateTime @default(now())
+
+  @@index([organization_id, at])
+  @@index([field_purchase_id, at])
+  @@index([grant_id, at])
+}
+
 // ============================================================================
 // STOCK MOVEMENT LEDGER
 // Source of truth for all inventory changes. Cached quantities
@@ -1778,6 +2087,8 @@ model stock_movement {
   restock_record     vehicle_restock_record? @relation(fields: [restock_record_id], references: [id])
   adjustment_id      String?
   adjustment         vehicle_stock_adjustment? @relation(fields: [adjustment_id], references: [id])
+  field_purchase_line_id String?
+  field_purchase_line    field_purchase_line? @relation(fields: [field_purchase_line_id], references: [id])
 
   movement_serials   stock_movement_serial[]
   movement_batches   stock_movement_batch[]
@@ -1792,6 +2103,7 @@ model stock_movement {
   @@index([visit_id])
   @@index([restock_record_id])
   @@index([adjustment_id])
+  @@index([field_purchase_line_id])
 }
 
 // ============================================================================
@@ -1998,6 +2310,8 @@ model technician {
   shifts       technician_shift[]
   shift_breaks technician_shift_break[]
   provisional_items   inventory_item[] @relation("TechProvisionalItems")
+  field_purchase_grants field_purchase_grant[]
+  field_purchases       field_purchase[]
 
   @@index([email])
   @@index([status])
@@ -2060,6 +2374,11 @@ model dispatcher {
 
   managed_projects project[] @relation("ProjectManager")
   unmapped_part_decisions unmapped_part_decision[]
+  granted_field_purchase_grants field_purchase_grant[] @relation("GrantedFieldPurchaseGrants")
+  revoked_field_purchase_grants field_purchase_grant[] @relation("RevokedFieldPurchaseGrants")
+  preauthorized_field_purchases field_purchase[]       @relation("PreauthorizedFieldPurchases")
+  reviewed_field_purchases      field_purchase[]       @relation("ReviewedFieldPurchases")
+  second_signed_field_purchases field_purchase[]       @relation("SecondSignedFieldPurchases")
 
   @@index([email])
   @@index([organization_id])

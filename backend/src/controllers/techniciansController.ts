@@ -64,6 +64,7 @@ const TECHNICIAN_SELECT = {
 	theme: true,
 	organization_role_id: true,
 	current_vehicle_id: true,
+	current_vehicle: { select: { id: true, name: true } },
 	organization_role: { select: { id: true, name: true, permissions: true } },
 	visit_techs: {
 		include: {

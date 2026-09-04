@@ -174,3 +174,85 @@ describe("org routes — measurement_system", () => {
 		);
 	});
 });
+
+describe("org routes — field purchase second sign-off threshold", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("PATCH / stores a threshold and returns it as a Decimal string", async () => {
+		mockDb.organization.update.mockResolvedValue({
+			...baseOrg,
+			field_purchase_second_signoff_threshold: "500",
+		} as never);
+		const handlers = getHandlers("patch", "/");
+		const req = makeReq({ body: { field_purchase_second_signoff_threshold: 500 } });
+		const res = makeRes();
+		await runChain(handlers, req, res);
+
+		expect(mockDb.organization.update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					field_purchase_second_signoff_threshold: 500,
+				}),
+			}),
+		);
+		expect(res.json).toHaveBeenCalledWith(
+			expect.objectContaining({
+				success: true,
+				data: expect.objectContaining({
+					field_purchase_second_signoff_threshold: "500",
+				}),
+			}),
+		);
+	});
+
+	// null is the off switch, so it has to survive the schema rather than be
+	// dropped the way an absent optional is.
+	it("PATCH / clears the threshold with an explicit null", async () => {
+		mockDb.organization.update.mockResolvedValue({
+			...baseOrg,
+			field_purchase_second_signoff_threshold: null,
+		} as never);
+		const handlers = getHandlers("patch", "/");
+		const req = makeReq({
+			body: { field_purchase_second_signoff_threshold: null },
+		});
+		const res = makeRes();
+		await runChain(handlers, req, res);
+
+		expect(mockDb.organization.update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					field_purchase_second_signoff_threshold: null,
+				}),
+			}),
+		);
+	});
+
+	it("PATCH / rejects a negative threshold", async () => {
+		const handlers = getHandlers("patch", "/");
+		const req = makeReq({
+			body: { field_purchase_second_signoff_threshold: -1 },
+		});
+		const res = makeRes();
+		await runChain(handlers, req, res);
+
+		expect(mockDb.organization.update).not.toHaveBeenCalled();
+		expect(res.status).toHaveBeenCalledWith(400);
+	});
+
+	it("PATCH / leaves the threshold untouched when the field is absent", async () => {
+		mockDb.organization.update.mockResolvedValue(baseOrg as never);
+		const handlers = getHandlers("patch", "/");
+		const req = makeReq({ body: { name: "Acme HVAC" } });
+		const res = makeRes();
+		await runChain(handlers, req, res);
+
+		const data = mockDb.organization.update.mock.calls[0][0].data as Record<
+			string,
+			unknown
+		>;
+		expect(data).not.toHaveProperty("field_purchase_second_signoff_threshold");
+	});
+});

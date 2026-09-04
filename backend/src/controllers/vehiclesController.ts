@@ -96,7 +96,7 @@ function formatZodError(e: ZodError): string {
 /**
  * Shared catch-block handling for the tracking errors (InsufficientBatchStockError,
  * TrackingValidationError) that applyFill / completeRestock / adjustStock / addPartsUsed /
- * addSupplierPartUsed all surface the same way. Returns null when `e` isn't one of these,
+ * all surface the same way. Returns null when `e` isn't one of these,
  * so callers fall through to their own remaining checks.
  */
 function trackingErrorResponse(e: unknown): { err: string; available?: Record<string, number> } | null {
@@ -408,7 +408,10 @@ const completeRestockSchema = z.object({
 });
 
 // Single source of truth — prevents silent divergence from the Prisma enum
-export const ADJUSTMENT_TYPES = ["warehouse_exchange", "field_loss", "transfer", "audit", "supplier_purchase"] as const;
+// `supplier_purchase` is deliberately absent: buying externally is a field
+// purchase now, which carries a grant, a limit, a receipt and a review. It stays
+// in the Prisma enum so historical adjustments still read.
+export const ADJUSTMENT_TYPES = ["warehouse_exchange", "field_loss", "transfer", "audit"] as const;
 export type VehicleAdjustmentType = typeof ADJUSTMENT_TYPES[number];
 
 const adjustStockSchema = z
@@ -424,54 +427,24 @@ const adjustStockSchema = z
 					.object({
 						stock_item_id:     z.string().uuid().optional(),
 						inventory_item_id: z.string().uuid().optional(),
-						new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
 						qty_after:         stockQtyField(z.number().min(0)),
 						// Serial/batch tracking (B-T3) — which fields apply depends on the
 						// resolved item's is_serialized/is_batch_tracked flags, which Zod
 						// can't see; the controller validates that once the item is loaded.
 						serial_unit_ids: z.array(z.string().uuid()).optional(),
-						new_serials:     z.array(z.string().trim().min(1).max(100)).optional(),
 						batch_picks:     z
 							.array(z.object({ batch_id: z.string().uuid(), qty: stockQtyField(z.number().positive()) }))
 							.optional(),
-						// Per-unit cost paid — only meaningful on a supplier_purchase
-						// line (a tech buying a part in the field). Recorded on the
-						// movement so it joins warehouse receives in the item's paid-cost
-						// history; ignored by every other adjustment type, which move
-						// stock the org already owns and therefore has no purchase price.
-						unit_cost:       z.number().nonnegative().optional(),
-						// Who sold this line. Read only on a supplier_purchase, for
-						// the same reason as unit_cost above. Per line, not per
-						// adjustment: one field run can hit two supply houses.
-						...supplierCaptureFields,
-						new_batch: z
-							.object({
-								batch_number: z.string().trim().min(1).max(100),
-								expires_at:   expiresAtField,
-								// Legacy free-text vendor, superseded by the line's
-								// supplier_id/supplier_name; still promoted to an
-								// entity by the controller.
-								supplier:     z.string().trim().max(200).optional(),
-								unit_cost:    z.number().nonnegative().optional(),
-							})
-							.optional(),
 					})
 					.refine(
-						(l) => {
-							const identifiers = (l.stock_item_id ? 1 : 0) + (l.inventory_item_id ? 1 : 0) + (l.new_item ? 1 : 0);
-							return identifiers === 1;
-						},
-						{ message: "Each line needs exactly one of stock_item_id, inventory_item_id, or new_item" },
-					)
-					.refine(
-						(l) => !(l.serial_unit_ids?.length && l.new_serials?.length),
-						{ message: "Provide either serial_unit_ids or new_serials, not both" },
+						(l) => (l.stock_item_id ? 1 : 0) + (l.inventory_item_id ? 1 : 0) === 1,
+						{ message: "Each line needs exactly one of stock_item_id or inventory_item_id" },
 					),
 			)
 			.min(1, "At least one line required")
 			.refine(
 				(lines) => {
-					const ids = lines.map((l) => l.stock_item_id ?? l.inventory_item_id ?? l.new_item?.name);
+					const ids = lines.map((l) => l.stock_item_id ?? l.inventory_item_id);
 					return new Set(ids).size === ids.length;
 				},
 				{ message: "Duplicate line entries are not allowed" },
@@ -481,63 +454,16 @@ const adjustStockSchema = z
 		// No whole-number rule for warehouse_exchange: inventory_item.quantity is
 		// numeric(10,2) like every other qty column, so a fractional target is a
 		// perfectly storable warehouse movement (qty_after above bounds it to 2 dp).
-		if (data.type === "supplier_purchase") {
-			// supplier_purchase lines must carry inventory_item_id OR new_item
-			// (not stock_item_id), and must have an integer qty > 0
-			data.lines.forEach((line, i) => {
-				if (line.stock_item_id) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						path: ["lines", i, "stock_item_id"],
-						message: "Validation failed: supplier_purchase lines must use inventory_item_id or new_item, not stock_item_id",
-					});
-				}
-				if (line.new_item && !Number.isInteger(line.qty_after)) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						path: ["lines", i, "qty_after"],
-						message: "Supplier purchase requires whole-number quantities",
-					});
-				}
-			});
-		} else if (data.type !== "warehouse_exchange") {
-			// Adding a new item from the catalog is only meaningful when stock
-			// moves to/from the warehouse — reject it for every other type
+		//
+		// Naming a catalog item rather than an existing stock row only means
+		// something when stock moves to or from the warehouse.
+		if (data.type !== "warehouse_exchange") {
 			data.lines.forEach((line, i) => {
 				if (line.inventory_item_id) {
 					ctx.addIssue({
 						code: z.ZodIssueCode.custom,
 						path: ["lines", i, "inventory_item_id"],
-						message: "Adding a new item is only allowed for warehouse exchange or supplier_purchase",
-					});
-				}
-				if (line.new_item) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						path: ["lines", i, "new_item"],
-						message: "new_item is only allowed for supplier_purchase",
-					});
-				}
-			});
-		}
-
-		// new_serials / new_batch (creating brand-new tracked units/lots) are only
-		// meaningful for supplier_purchase — the one type whose movement direction
-		// is external→vehicle (units/lots entering circulation for the first time).
-		if (data.type !== "supplier_purchase") {
-			data.lines.forEach((line, i) => {
-				if (line.new_serials) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						path: ["lines", i, "new_serials"],
-						message: "new_serials is only allowed for supplier_purchase",
-					});
-				}
-				if (line.new_batch) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						path: ["lines", i, "new_batch"],
-						message: "new_batch is only allowed for supplier_purchase",
+						message: "Adding a new item is only allowed for warehouse exchange",
 					});
 				}
 			});
@@ -1966,7 +1892,11 @@ export async function completeRestock(
 					vehicle_id:           vehicleId,
 					organization_id:      orgId,
 					completed_at:         new Date(),
-					day:                  utcDayRange(new Date(), 1, orgTz).start,
+					// `day` is a DateTime @db.Date column — it keeps only the UTC date
+					// component, so it needs the org-local calendar date as a string, not
+					// the local-midnight instant (which a zone east of UTC would truncate
+					// to the wrong date).
+					day:                  new Date(localDateString(new Date(), orgTz) + "T00:00:00.000Z"),
 					mode:                 parsed.mode ?? "restock",
 					completed_by_id:      context?.dispatcherId ?? null,
 					completed_by_tech_id: context?.dispatcherId ? null : (context?.techId ?? null),
@@ -2254,40 +2184,6 @@ class RequestNotPendingError extends Error {}
 class QuantityRequiredError extends Error {}
 class ValidationError extends Error {}
 
-async function resolveOrCreateSupplierItem(
-	tx: Prisma.TransactionClient,
-	orgId: string,
-	line: { inventory_item_id?: string; new_item?: { name: string; cost: number } },
-	context?: UserContext,
-): Promise<string> {
-	if (line.inventory_item_id) {
-		const inv = await tx.inventory_item.findFirst({
-			where: { id: line.inventory_item_id, organization_id: orgId },
-			select: { id: true },
-		});
-		if (!inv) throw new StockItemNotFoundError("Inventory item not found");
-		return inv.id;
-	}
-	const created = await tx.inventory_item.create({
-		data: {
-			organization_id:    orgId,
-			name:               line.new_item!.name,
-			description:        "",
-			location:           "",
-			quantity:           0,
-			cost:               line.new_item!.cost,
-			unit_price:         line.new_item!.cost,
-			provisional:        true,
-			// A tech naming a part they just bought. Explicit now that origin is
-			// a column: it used to be inferred from created_by_tech_id below.
-			origin:             "tech_submission",
-			created_by_tech_id: context?.techId ?? null,
-		},
-		select: { id: true },
-	});
-	return created.id;
-}
-
 export async function adjustStock(
 	vehicleId: string,
 	data: unknown,
@@ -2365,35 +2261,6 @@ export async function adjustStock(
 						qty_before:        Number(item.qty_on_hand),
 						qty_after:         line.qty_after,
 					});
-				} else if (parsed.type === "supplier_purchase") {
-					// supplier_purchase: resolve existing catalog item or create a
-					// provisional one, then upsert a zero-qty vehicle stock row
-					const invId = await resolveOrCreateSupplierItem(tx as unknown as Prisma.TransactionClient, orgId, line, context);
-					const row = await tx.vehicle_stock_item.upsert({
-						where: {
-							vehicle_id_inventory_item_id: {
-								vehicle_id:        vehicleId,
-								inventory_item_id: invId,
-							},
-						},
-						create: {
-							vehicle_id:        vehicleId,
-							inventory_item_id: invId,
-							qty_on_hand:       0,
-							qty_min:           0,
-						},
-						update: {},
-					});
-					const delta = line.qty_after - Number(row.qty_on_hand);
-					if (delta <= 0) {
-						throw new Error("Supplier purchase must increase quantity");
-					}
-					resolved.push({
-						stock_item_id:     row.id,
-						inventory_item_id: invId,
-						qty_before:        Number(row.qty_on_hand),
-						qty_after:         line.qty_after,
-					});
 				} else {
 					const inv = await tx.inventory_item.findFirst({
 						where: { id: line.inventory_item_id!, organization_id: orgId, provisional: false },
@@ -2462,59 +2329,10 @@ export async function adjustStock(
 					batch_picks?: MovementInput["batch_allocations"];
 				};
 			}[] = [];
-			// Keyed by the ORIGINAL line index, since zero-delta lines are skipped
-			// here but the movement loop below still walks computedLines by index.
-			const supplierIdByLine = new Map<number, string>();
-			// A supplier_purchase adjustment is one supply run naming one vendor, not
-			// one vendor per catalog line — the frontend spreads the same
-			// {supplier_id, supplier_name} onto every line. Cache resolveSupplier's
-			// result per distinct (id, name) pair so an N-line purchase resolves the
-			// vendor once instead of once per line.
-			const supplierResolutionCache = new Map<string, { id: string; name: string } | null>();
 			for (let i = 0; i < computedLines.length; i++) {
 				const line = computedLines[i];
 				if (line.delta === 0) continue;
 				const raw = parsed.lines[i];
-				const itemFlags = flags.get(line.inventory_item_id);
-
-				// Vendor only for a genuine purchase, same reasoning as the lot cost
-				// below: every other adjustment type moves stock the org already
-				// owns, so naming a supplier would invent a purchase that never
-				// happened. The legacy new_batch.supplier is promoted here so an
-				// older client still attributes the movement, not just the lot.
-				let lineSupplier: { id: string; name: string } | null = null;
-				if (parsed.type === "supplier_purchase") {
-					const supplierName = raw.supplier_name ?? raw.new_batch?.supplier;
-					const cacheKey = `${raw.supplier_id ?? ""}::${supplierName ?? ""}`;
-					if (supplierResolutionCache.has(cacheKey)) {
-						lineSupplier = supplierResolutionCache.get(cacheKey)!;
-					} else {
-						lineSupplier = await resolveSupplier(tx as unknown as Prisma.TransactionClient, orgId, {
-							supplier_id: raw.supplier_id,
-							supplier_name: supplierName,
-						});
-						supplierResolutionCache.set(cacheKey, lineSupplier);
-					}
-				}
-				if (lineSupplier) supplierIdByLine.set(i, lineSupplier.id);
-
-				let batchId: string | undefined;
-				if (itemFlags?.is_batch_tracked && raw.new_batch) {
-					const batch = await getOrCreateBatch(tx as unknown as Prisma.TransactionClient, orgId, {
-						inventory_item_id: line.inventory_item_id,
-						batch_number: raw.new_batch.batch_number,
-						expires_at: raw.new_batch.expires_at ? new Date(raw.new_batch.expires_at) : null,
-						supplier: lineSupplier?.name ?? raw.new_batch.supplier ?? null,
-						supplier_id: lineSupplier?.id ?? null,
-						// Lot cost only for a genuine purchase — a transfer or
-						// audit correction of an existing lot paid nothing.
-						unit_cost:
-							parsed.type === "supplier_purchase"
-								? (raw.new_batch.unit_cost ?? raw.unit_cost ?? null)
-								: null,
-					});
-					batchId = batch.id;
-				}
 
 				nonZeroIdx.push(i);
 				nonZeroLines.push({
@@ -2522,8 +2340,6 @@ export async function adjustStock(
 					qty: Math.abs(line.delta),
 					raw: {
 						serial_unit_ids: raw.serial_unit_ids,
-						new_serials: raw.new_serials,
-						batch_id: batchId,
 						batch_picks: raw.batch_picks,
 					},
 				});
@@ -2534,7 +2350,9 @@ export async function adjustStock(
 				orgId,
 				flags,
 				nonZeroLines,
-				{ allowNewSerials: true },
+				// Nothing left here brings a unit into circulation for the first
+				// time — that was supplier_purchase, and it is a field purchase now.
+				{ allowNewSerials: false },
 			);
 
 			const trackingByLine: LineTracking[] = computedLines.map(() => ({}));
@@ -2596,23 +2414,6 @@ export async function adjustStock(
 						adjustment_id:      created.id,
 						...tracking,
 					});
-				} else if (parsed.type === "supplier_purchase") {
-					movements.push({
-						inventory_item_id:  line.inventory_item_id,
-						qty,
-						from_location_type: "external",
-						to_location_type:   "vehicle",
-						to_vehicle_id:      vehicleId,
-						reason:             "supplier_purchase",
-						adjustment_id:      created.id,
-						// Only branch carrying a purchase price: stock enters from
-						// outside the org here, so this is literally what was paid.
-						// new_item.cost is NOT a fallback — that's the standard cost
-						// being configured on a freshly created item, not a receipt.
-						unit_cost:          parsed.lines[i]?.unit_cost,
-						supplier_id:        supplierIdByLine.get(i),
-						...tracking,
-					});
 				} else {
 					const reason =
 						parsed.type === "field_loss"
@@ -2650,7 +2451,7 @@ export async function adjustStock(
 		});
 
 		fireLowStockAlerts(lowStockItemIds, orgId).catch(() => {});
-		if (parsed.type === "warehouse_exchange" || parsed.lines.some((l) => l.new_item)) emitInventoryUpdated(orgId, { vehicleId });
+		if (parsed.type === "warehouse_exchange") emitInventoryUpdated(orgId, { vehicleId });
 
 		await logActivity({
 			event_type: "vehicle_stock.adjusted",
@@ -3335,253 +3136,6 @@ export async function getStockConflicts(orgId: string, scopeVehicleId?: string):
 
 	return scopeVehicleId ? conflicts.filter((c) => c.vehicleId === scopeVehicleId) : conflicts;
 }
-
-// ── Supplier Part Used (shortcut: external → vehicle → consumed) ──────────────
-
-const supplierPartUsedSchema = z
-	.object({
-		technician_id:     z.string().uuid(),
-		qty_used:          stockQtyField(z.number().positive()),
-		inventory_item_id: z.string().uuid().optional(),
-		new_item:          z.object({ name: z.string().min(1).max(200), cost: z.number().min(0) }).optional(),
-		// What the tech paid the supplier per unit for this part. Recorded on the
-		// external → vehicle leg (the purchase); the vehicle → consumed leg is the
-		// same stock being used, not a second purchase, so it carries no cost.
-		unit_cost:         z.number().nonnegative().optional(),
-		...supplierCaptureFields,
-		new_serials:       z.array(z.string().trim().min(1).max(100)).optional(),
-		batch: z
-			.object({
-				batch_number: z.string().trim().min(1).max(100),
-				expires_at:   expiresAtField,
-				// Legacy free-text vendor — superseded by supplier_id/supplier_name
-				// above, still promoted to an entity by the controller.
-				supplier:     z.string().trim().max(200).optional(),
-				unit_cost:    z.number().nonnegative().optional(),
-			})
-			.optional(),
-		batch_id: z.string().uuid().optional(),
-	})
-	.refine(
-		(d) => (d.inventory_item_id ? 1 : 0) + (d.new_item ? 1 : 0) === 1,
-		{ message: "Provide exactly one of inventory_item_id or new_item" },
-	)
-	.refine((d) => !(d.batch && d.batch_id), {
-		message: "provide either batch or batch_id, not both",
-	});
-
-export async function addSupplierPartUsed(
-	vehicleId: string,
-	visitId: string,
-	data: unknown,
-	orgId: string,
-	context?: UserContext,
-) {
-	try {
-		const parsed = supplierPartUsedSchema.parse(data);
-
-		const ownershipErr = await requireTechOnVehicle(vehicleId, orgId, context);
-		if (ownershipErr) return { err: ownershipErr };
-
-		const sdb = getScopedDb(orgId);
-
-		const visit = await sdb.job_visit.findFirst({ where: { id: visitId } });
-		if (!visit) return { err: "Visit not found" };
-
-		const result = await sdb.$transaction(async (tx) => {
-			// Resolve or provision the inventory item
-			const txc = tx as unknown as Prisma.TransactionClient;
-			const inventoryItemId = parsed.inventory_item_id
-				? await resolveOrCreateSupplierItem(txc, orgId, { inventory_item_id: parsed.inventory_item_id }, context)
-				: await resolveOrCreateSupplierItem(txc, orgId, { new_item: parsed.new_item }, context);
-
-			const inv = await tx.inventory_item.findFirstOrThrow({
-				where: { id: inventoryItemId },
-				select: { name: true, unit_price: true, is_serialized: true, is_batch_tracked: true },
-			});
-
-			// Serial/batch tracking (B-T3) — leg 1 (external → vehicle) creates the
-			// new units/lot, leg 2 (vehicle → consumed) resolves-once and reuses
-			// the same units/lot. Only the existing-item branch above can ever be
-			// tracked (provisional items are always untracked), so this simply
-			// no-ops for the new_item path.
-			let leg1Serial: MovementInput["serial"];
-			let leg2Serial: MovementInput["serial"];
-			let batchAllocations: MovementInput["batch_allocations"];
-
-			// Leg 1 is the purchase, so it's the leg that carries the vendor — leg 2
-			// consumes stock the org now owns. batch.supplier is folded in so a
-			// client that only fills the lot's legacy field still attributes the
-			// movement, not just the lot.
-			const supplier = await resolveSupplier(txc, orgId, {
-				supplier_id: parsed.supplier_id,
-				supplier_name: parsed.supplier_name ?? parsed.batch?.supplier,
-			});
-
-			if (inv.is_serialized) {
-				if (!Number.isInteger(parsed.qty_used)) {
-					throw new TrackingValidationError("qty_used must be an integer for a serialized item");
-				}
-				if (!parsed.new_serials || parsed.new_serials.length !== parsed.qty_used) {
-					throw new TrackingValidationError(
-						"new_serials is required and its length must equal qty_used for a serialized item",
-					);
-				}
-				leg1Serial = { create: parsed.new_serials.map((sn) => ({ serial_number: sn })) };
-			} else if (inv.is_batch_tracked) {
-				if (!parsed.batch && !parsed.batch_id) {
-					throw new TrackingValidationError("Provide batch or batch_id for a batch-tracked item");
-				}
-				let resolvedBatch: { id: string };
-				if (parsed.batch) {
-					resolvedBatch = await getOrCreateBatch(txc, orgId, {
-						inventory_item_id: inventoryItemId,
-						batch_number:      parsed.batch.batch_number,
-						expires_at:        parsed.batch.expires_at ? new Date(parsed.batch.expires_at) : null,
-						supplier:          supplier?.name ?? parsed.batch.supplier ?? null,
-						supplier_id:       supplier?.id ?? null,
-						unit_cost:         parsed.batch.unit_cost ?? parsed.unit_cost ?? null,
-					});
-				} else {
-					const batchRow = await tx.stock_batch.findFirst({
-						where: { id: parsed.batch_id!, organization_id: orgId, inventory_item_id: inventoryItemId },
-						select: { id: true },
-					});
-					if (!batchRow) throw new Error("Batch not found");
-					resolvedBatch = batchRow;
-				}
-				batchAllocations = [{ batch_id: resolvedBatch.id, qty: parsed.qty_used }];
-			}
-
-			// 1) Part enters the truck from the supplier
-			await recordMovements(txc, orgId, toActor(context), [
-				{
-					inventory_item_id:  inventoryItemId,
-					qty:                parsed.qty_used,
-					from_location_type: "external",
-					to_location_type:   "vehicle",
-					to_vehicle_id:      vehicleId,
-					reason:             "supplier_purchase",
-					unit_cost:          parsed.unit_cost,
-					supplier_id:        supplier?.id,
-					...(leg1Serial ? { serial: leg1Serial } : {}),
-					...(batchAllocations ? { batch_allocations: batchAllocations } : {}),
-				},
-			]);
-
-			if (inv.is_serialized && parsed.new_serials) {
-				const createdUnits = await tx.serial_unit.findMany({
-					where: {
-						organization_id:   orgId,
-						inventory_item_id: inventoryItemId,
-						serial_number:     { in: parsed.new_serials },
-					},
-					select: { id: true },
-				});
-				leg2Serial = { unit_ids: createdUnits.map((u) => u.id) };
-			}
-
-			// 2) Line item + consumption from the truck
-			const unitPrice = Number(inv.unit_price ?? 0);
-			const lineItem = await tx.job_visit_line_item.create({
-				data: {
-					visit_id:           visitId,
-					name:               inv.name,
-					quantity:           parsed.qty_used,
-					unit_price:         unitPrice,
-					total:              unitPrice * parsed.qty_used,
-					source:             "field_addition",
-					item_type:          "material",
-					sort_order:         0,
-					inventory_item_id:  inventoryItemId,
-					fulfillment_status: "used",
-				},
-			});
-
-			await recordMovements(
-				txc,
-				orgId,
-				{ actor_type: "technician", actor_id: parsed.technician_id },
-				[
-					{
-						inventory_item_id:  inventoryItemId,
-						qty:                parsed.qty_used,
-						from_location_type: "vehicle",
-						from_vehicle_id:    vehicleId,
-						to_location_type:   "consumed",
-						reason:             "parts_used",
-						visit_id:           visitId,
-						visit_line_item_id: lineItem.id,
-						...(leg2Serial ? { serial: leg2Serial } : {}),
-						...(batchAllocations ? { batch_allocations: batchAllocations } : {}),
-					},
-				],
-				{ allowNegative: true },
-			);
-
-			// Ensure a stock row exists for the usage record (upsert zero-qty row if absent)
-			await tx.vehicle_stock_item.upsert({
-				where: {
-					vehicle_id_inventory_item_id: {
-						vehicle_id:        vehicleId,
-						inventory_item_id: inventoryItemId,
-					},
-				},
-				create: {
-					vehicle_id:        vehicleId,
-					inventory_item_id: inventoryItemId,
-					qty_on_hand:       0,
-					qty_min:           0,
-				},
-				update: {},
-			});
-
-			const stockRow = await tx.vehicle_stock_item.findFirstOrThrow({
-				where: { vehicle_id: vehicleId, inventory_item_id: inventoryItemId },
-				select: { id: true },
-			});
-
-			await tx.vehicle_stock_usage.create({
-				data: {
-					stock_item_id:      stockRow.id,
-					visit_id:           visitId,
-					technician_id:      parsed.technician_id,
-					qty_used:           parsed.qty_used,
-					visit_line_item_id: lineItem.id,
-				},
-			});
-
-			await recomputeVisitTotals(visitId, orgId, tx as unknown as Prisma.TransactionClient);
-
-			return { lineItem };
-		});
-
-		if (parsed.new_item) emitInventoryUpdated(orgId, { vehicleId });
-
-		await logActivity({
-			event_type:      "vehicle_stock.supplier_part_used",
-			action:          "updated",
-			entity_type:     "job_visit",
-			entity_id:       visitId,
-			organization_id: orgId,
-			actor_type:      "technician",
-			actor_id:        parsed.technician_id,
-			changes:         { qty_used: { old: null, new: parsed.qty_used } },
-		});
-
-		return { err: "", item: result };
-	} catch (e: unknown) {
-		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
-		if (e instanceof StockItemNotFoundError) return { err: e.message };
-		const t = trackingErrorResponse(e);
-		if (t) return t;
-		if (e instanceof Error && e.message === "Batch not found") return { err: e.message };
-		log.error({ err: e }, "Failed to add supplier part");
-		return { err: "Failed to add supplier part" };
-	}
-}
-
-// ── Movement history ──────────────────────────────────────────────────────────
 
 export const getVehicleMovements = async (
 	vehicleId: string,

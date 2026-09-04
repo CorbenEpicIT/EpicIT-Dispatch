@@ -29,6 +29,9 @@ vi.mock("../../db.js", () => {
 			deleteMany: vi.fn(),
 			findMany: vi.fn().mockResolvedValue([]),
 		},
+		// The queue asks which field purchases put these parts here; no receipt
+		// behind a row is the ordinary case, so the default is empty.
+		field_purchase_line: { findMany: vi.fn().mockResolvedValue([]) },
 		$queryRaw: vi.fn(),
 		$transaction: vi.fn(),
 		$extends,
@@ -37,13 +40,13 @@ vi.mock("../../db.js", () => {
 	return { db: mockDb };
 });
 
-vi.mock("../../lib/context.js", () => ({
-	getScopedDb: vi.fn(() => {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
-		const { db } = require("../../db.js");
-		return db;
-	}),
-}));
+// Async factory, not `require`: this file is ESM under vitest, so a CJS require
+// throws — silently, until something in the module under test actually called
+// getScopedDb and the error came back as a generic "failed to build".
+vi.mock("../../lib/context.js", async () => {
+	const { db } = await import("../../db.js");
+	return { getScopedDb: vi.fn(() => db) };
+});
 
 const mockLogActivity = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../services/logger.js", () => ({
@@ -132,11 +135,22 @@ function setQueue(opts: {
 		.mockResolvedValueOnce(opts.counts ?? [])
 		.mockResolvedValueOnce(opts.names ?? [])
 		.mockResolvedValueOnce(opts.itemTotals ?? []);
-	// First findMany is the audit's catalog read, second is the provisional list.
-	mockDb.inventory_item.findMany
-		.mockResolvedValueOnce([])
+	// Keyed on `where`, not on call order: the provisional half reads
+	// inventory_item twice - once for the ids it ranks, once to hydrate the page -
+	// on top of the audit's catalog read, so an ordered mock hands the later calls
+	// undefined.
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	mockDb.inventory_item.findMany.mockImplementation((async (args: any) => {
+		const where = args?.where ?? {};
+		// Only the audit's catalog read asks for non-provisional rows.
+		if (where.provisional === false) return [];
+		const rows = opts.provisional ?? [];
+		const ids: string[] | undefined = where.id?.in;
+		// Answered in table order rather than in id order, because an SQL `IN`
+		// makes no promise about matching the list it was given.
+		return ids ? rows.filter((r) => ids.includes(r.id)) : rows;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		.mockResolvedValueOnce((opts.provisional ?? []) as any);
+	}) as any);
 }
 
 describe("getReconcileQueue", () => {
@@ -220,6 +234,66 @@ describe("getReconcileQueue", () => {
 		const result = await getReconcileQueue(ORG);
 
 		expect(result.queue!.provisional.map((p) => p.name)).toEqual(["Newer", "Older"]);
+	});
+
+	it("reports the whole provisional backlog, not the page it returned", async () => {
+		setQueue({
+			provisional: [
+				provisionalRow({ id: "a", name: "A" }),
+				provisionalRow({ id: "b", name: "B" }),
+				provisionalRow({ id: "c", name: "C" }),
+			],
+			itemTotals: [
+				{ item_id: "a", lines: 1n, value: 300 },
+				{ item_id: "b", lines: 1n, value: 200 },
+				{ item_id: "c", lines: 1n, value: 100 },
+			],
+		});
+
+		const result = await getReconcileQueue(ORG, { limit: 2 });
+
+		// The count and the money are what the dispatcher acts on; capping them to
+		// the page under-reports off-catalog spend without saying so.
+		expect(result.queue!.provisional).toHaveLength(2);
+		expect(result.queue!.provisional_total).toBe(3);
+		expect(result.queue!.provisional_value).toBe(600);
+	});
+
+	it("ranks the whole backlog before it takes a page, and holds that order through the hydrate", async () => {
+		setQueue({
+			// Neither value order nor the order the hydrate answers in.
+			provisional: [
+				provisionalRow({ id: "c", name: "C" }),
+				provisionalRow({ id: "b", name: "B" }),
+				provisionalRow({ id: "a", name: "A" }),
+			],
+			itemTotals: [
+				{ item_id: "a", lines: 1n, value: 300 },
+				{ item_id: "b", lines: 1n, value: 200 },
+				{ item_id: "c", lines: 1n, value: 100 },
+			],
+		});
+
+		const result = await getReconcileQueue(ORG, { limit: 2, sort: "value_desc" });
+
+		// Slicing first would have kept C and B; trusting the hydrate's own order
+		// would have put B before A.
+		expect(result.queue!.provisional.map((p) => p.item_id)).toEqual(["a", "b"]);
+	});
+
+	it("breaks a dead-even tie on id so the page cannot reshuffle between requests", async () => {
+		setQueue({
+			provisional: [
+				provisionalRow({ id: "z", name: "Same" }),
+				provisionalRow({ id: "a", name: "Same" }),
+			],
+		});
+
+		const result = await getReconcileQueue(ORG);
+
+		// Equal value and equal age: with no last resort the order is whatever the
+		// database felt like returning, and row 50 lands on two different pages.
+		expect(result.queue!.provisional.map((p) => p.item_id)).toEqual(["a", "z"]);
 	});
 
 	it("reports a provisional row with no lines pointing at it as zero, not undefined", async () => {

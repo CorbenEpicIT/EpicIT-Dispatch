@@ -55,8 +55,9 @@ describe("getPageSummary — page validation", () => {
 	});
 });
 
-// Review R1/R2: Total/Issued were counting Draft and Void invoices, and
-// Collected came off invoice.paid_at/amount_paid (only set on full payment).
+// Total and Issued exclude Draft and Void invoices; Collected comes off
+// invoice_payment.amount (partial payments included), not
+// invoice.paid_at/amount_paid, which is only set on full payment.
 describe("getPageSummary — invoices", () => {
 	beforeEach(() => {
 		mockDb.invoice.count.mockResolvedValue(4);
@@ -114,7 +115,8 @@ describe("getPageSummary — invoices", () => {
 	});
 });
 
-// Review R1: Open Balance and Avg Income were summing Draft/Void invoices.
+// Open Balance and Avg Income exclude Draft and Void invoices — only issued,
+// unpaid invoices with a positive balance count as open receivables.
 describe("getPageSummary — clients", () => {
 	beforeEach(() => {
 		mockDb.client.count.mockResolvedValue(10);

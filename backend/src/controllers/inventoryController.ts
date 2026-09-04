@@ -4,6 +4,7 @@ import { getScopedDb, type UserContext } from "../lib/context.js";
 import { db } from "../db.js";
 import {
 	Prisma,
+	type field_purchase_status,
 	type inventory_item_origin,
 	type line_item_disposition,
 	type stock_location_type,
@@ -3808,6 +3809,8 @@ export interface LinkageCandidate {
 		sku: string | null;
 		tier: LinkageMatchTier;
 	} | null;
+	/** Populated by the queue, not by the audit — see fieldPurchaseOrigins. */
+	field_purchases?: ReconcilePurchaseOrigin[];
 }
 
 interface LinkageSource {
@@ -3819,6 +3822,12 @@ interface LinkageSource {
 	 * `total` column, and a union branch naming a missing column fails.
 	 */
 	value: Prisma.Sql;
+	/** Where a reader goes to see the line: its own document, plus the parent when the route nests. */
+	doc_id: Prisma.Sql;
+	parent_id: Prisma.Sql;
+	doc_number: Prisma.Sql;
+	doc_title: Prisma.Sql;
+	doc_date: Prisma.Sql;
 }
 
 /**
@@ -3829,18 +3838,34 @@ interface LinkageSource {
 const LINKAGE_SOURCES: LinkageSource[] = [
 	{
 		entity: "quote",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`p.quote_number`,
+		doc_title: Prisma.sql`NULL::text`,
+		doc_date: Prisma.sql`COALESCE(p.issued_at, p.created_at)`,
 		from: Prisma.sql`quote_line_item li JOIN quote p ON p.id = li.quote_id`,
 		alive: Prisma.sql`AND p.status::text NOT IN ('Rejected', 'Expired', 'Cancelled')`,
 		value: Prisma.sql`li.total`,
 	},
 	{
 		entity: "job",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`p.job_number`,
+		doc_title: Prisma.sql`p.name`,
+		doc_date: Prisma.sql`p.created_at`,
 		from: Prisma.sql`job_line_item li JOIN job p ON p.id = li.job_id`,
 		alive: Prisma.sql`AND p.status::text <> 'Cancelled'`,
 		value: Prisma.sql`li.total`,
 	},
 	{
 		entity: "job_visit",
+		doc_id: Prisma.sql`v.id`,
+		// The visit route nests under its job, so the job id travels with the row.
+		parent_id: Prisma.sql`p.id`,
+		doc_number: Prisma.sql`p.job_number`,
+		doc_title: Prisma.sql`v.name`,
+		doc_date: Prisma.sql`v.scheduled_start_at`,
 		from: Prisma.sql`job_visit_line_item li
 			JOIN job_visit v ON v.id = li.visit_id
 			JOIN job p ON p.id = v.job_id`,
@@ -3850,6 +3875,11 @@ const LINKAGE_SOURCES: LinkageSource[] = [
 	},
 	{
 		entity: "recurring_plan",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`NULL::text`,
+		doc_title: Prisma.sql`p.name`,
+		doc_date: Prisma.sql`p.created_at`,
 		from: Prisma.sql`recurring_plan_line_item li
 			JOIN recurring_plan p ON p.id = li.recurring_plan_id`,
 		alive: Prisma.sql`AND p.status::text NOT IN ('Completed', 'Cancelled')`,
@@ -3858,6 +3888,11 @@ const LINKAGE_SOURCES: LinkageSource[] = [
 	{
 		// No status filter: even a voided invoice describes money that moved.
 		entity: "invoice",
+		doc_id: Prisma.sql`p.id`,
+		parent_id: Prisma.sql`NULL::text`,
+		doc_number: Prisma.sql`p.invoice_number`,
+		doc_title: Prisma.sql`NULL::text`,
+		doc_date: Prisma.sql`COALESCE(p.issued_at, p.created_at)`,
 		from: Prisma.sql`invoice_line_item li JOIN invoice p ON p.id = li.invoice_id`,
 		alive: Prisma.empty,
 		value: Prisma.sql`li.total`,
@@ -3918,6 +3953,25 @@ function linkageUnion(
 	);
 }
 
+/** How the unmapped half can be ordered. Named for the question, not the column. */
+export const RECONCILE_SORTS = ["value_desc", "value_asc", "lines_desc", "name_asc"] as const;
+export type ReconcileSort = (typeof RECONCILE_SORTS)[number];
+
+const RECONCILE_ORDER: Record<ReconcileSort, Prisma.Sql> = {
+	value_desc: Prisma.sql`SUM(value) DESC NULLS LAST, COUNT(*) DESC`,
+	value_asc: Prisma.sql`SUM(value) ASC NULLS FIRST, COUNT(*) DESC`,
+	lines_desc: Prisma.sql`COUNT(*) DESC, SUM(value) DESC NULLS LAST`,
+	name_asc: Prisma.sql`lower(name) ASC`,
+};
+
+export interface ReconcileListOpts {
+	search?: string;
+	sort?: ReconcileSort;
+	/** Paging past CANDIDATE_LIMIT. The window totals are computed before it, so they stay whole-backlog. */
+	offset?: number;
+	limit?: number;
+}
+
 /**
  * How much of the org's material/equipment billing points at the catalog,
  * and how much of the rest could. The gate policy depends on the answer: if
@@ -3927,7 +3981,10 @@ function linkageUnion(
  * Scoped to live documents (LINKAGE_SOURCES.alive) — a rejected quote will
  * never be billed, so its lines are not a gap anyone can act on.
  */
-export async function getLinkageAudit(orgId: string): Promise<{
+export async function getLinkageAudit(
+	orgId: string,
+	list: ReconcileListOpts = {},
+): Promise<{
 	err?: string;
 	counts?: LinkageEntityCounts[];
 	candidates?: LinkageCandidate[];
@@ -3937,6 +3994,11 @@ export async function getLinkageAudit(orgId: string): Promise<{
 	candidate_value_total?: number;
 }> {
 	try {
+		const search = list.search?.trim() || undefined;
+		// The cap is the server's promise about queue depth; a caller cannot raise it.
+		const limit = Math.min(Math.max(list.limit ?? CANDIDATE_LIMIT, 1), CANDIDATE_LIMIT);
+		const offset = Math.max(list.offset ?? 0, 0);
+
 		const countRows = await db.$queryRaw<
 			{ entity: LinkageEntity; linked: bigint; unmapped: bigint }[]
 		>(
@@ -3981,11 +4043,13 @@ export async function getLinkageAudit(orgId: string): Promise<{
 			FROM (${linkageUnion(
 				orgId,
 				(s) => Prisma.sql`${s.entity}::text AS entity, li.name AS name, ${s.value} AS value`,
-				Prisma.sql`AND li.inventory_item_id IS NULL ${notDismissed(orgId)}`,
+				Prisma.sql`AND li.inventory_item_id IS NULL ${notDismissed(orgId)} ${search
+					? Prisma.sql`AND li.name ILIKE ${"%" + search + "%"}`
+					: Prisma.empty}`,
 			)}) unmapped
 			GROUP BY name
-			ORDER BY SUM(value) DESC NULLS LAST, COUNT(*) DESC
-			LIMIT ${CANDIDATE_LIMIT}
+			ORDER BY ${RECONCILE_ORDER[list.sort ?? "value_desc"]}
+			LIMIT ${limit} OFFSET ${offset}
 		`);
 
 		const catalog = await db.inventory_item.findMany({
@@ -4140,6 +4204,9 @@ export async function applyLinkageMatch(
 			},
 		});
 
+		// Linking historical lines changes that item's usage, cost and charged-price
+		// reads, and clears the name out of the reconcile queue for everyone.
+		emitInventoryUpdated(orgId, { itemId: parsed.inventory_item_id });
 		return { updated };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) {
@@ -4209,6 +4276,9 @@ export async function dismissUnmappedName(
 			},
 		});
 
+		// The reconcile queue moved for everyone, not just the dispatcher who acted.
+		// No itemId: a decision is about a name, so the broad branch is the right one.
+		emitInventoryUpdated(orgId);
 		return { decision };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: zodMessage(e) };
@@ -4239,6 +4309,7 @@ export async function restoreUnmappedName(
 			...getActorInfo(context),
 			changes: { folded_name: { old: folded, new: null } },
 		});
+		emitInventoryUpdated(orgId);
 		return {};
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: zodMessage(e) };
@@ -4261,6 +4332,8 @@ export interface ReconcileProvisionalRow {
 	vehicle_stocks: { qty_on_hand: number; vehicle: { id: string; name: string } }[];
 	lines: number;
 	value: number;
+	/** Populated by the queue, not by the audit — see fieldPurchaseOrigins. */
+	field_purchases?: ReconcilePurchaseOrigin[];
 }
 
 export interface ReconcileDismissedRow {
@@ -4268,6 +4341,90 @@ export interface ReconcileDismissedRow {
 	decided_at: Date;
 	decided_by: { id: string; name: string } | null;
 	reason: string | null;
+}
+
+/** Enough of a field purchase to name it in a queue row and open the receipt. */
+export interface ReconcilePurchaseOrigin {
+	id: string;
+	status: field_purchase_status;
+	vendor_name: string | null;
+	technician_name: string;
+	purchased_at: Date | null;
+}
+
+/**
+ * Which field purchases put these parts in the queue - settling a part without being
+ * able to read the receipt it came off is guesswork.
+ *
+ * Two lookups, because the halves are keyed differently: the provisional half by the
+ * item the line points at, the unmapped half by the description, which is what
+ * `syncBilling` copies onto the visit line when there is no item.
+ */
+async function fieldPurchaseOrigins(
+	orgId: string,
+	itemIds: string[],
+	names: string[],
+): Promise<{
+	byItem: Map<string, ReconcilePurchaseOrigin[]>;
+	byName: Map<string, ReconcilePurchaseOrigin[]>;
+}> {
+	const byItem = new Map<string, ReconcilePurchaseOrigin[]>();
+	const byName = new Map<string, ReconcilePurchaseOrigin[]>();
+	if (itemIds.length === 0 && names.length === 0) return { byItem, byName };
+
+	const sdb = getScopedDb(orgId);
+	const lines = await sdb.field_purchase_line.findMany({
+		where: {
+			OR: [
+				...(itemIds.length > 0 ? [{ inventory_item_id: { in: itemIds } }] : []),
+				...(names.length > 0
+					? [{ inventory_item_id: null, description: { in: names } }]
+					: []),
+			],
+			// A draft has billed nothing and taken nothing in, so it did not create
+			// this row — naming it would send the dispatcher to an unfinished sheet.
+			field_purchase: { status: { not: "draft" } },
+		},
+		select: {
+			inventory_item_id: true,
+			description: true,
+			field_purchase: {
+				select: {
+					id: true,
+					status: true,
+					vendor_name: true,
+					purchased_at: true,
+					technician: { select: { name: true } },
+				},
+			},
+		},
+		orderBy: { field_purchase: { created_at: "desc" } },
+	});
+
+	// Several lines of one receipt can name the same part; the row wants the
+	// receipt once.
+	const push = (
+		map: Map<string, ReconcilePurchaseOrigin[]>,
+		key: string,
+		o: ReconcilePurchaseOrigin,
+	) => {
+		const list = map.get(key) ?? [];
+		if (!list.some((existing) => existing.id === o.id)) list.push(o);
+		map.set(key, list);
+	};
+
+	for (const line of lines) {
+		const origin: ReconcilePurchaseOrigin = {
+			id: line.field_purchase.id,
+			status: line.field_purchase.status,
+			vendor_name: line.field_purchase.vendor_name,
+			technician_name: line.field_purchase.technician.name,
+			purchased_at: line.field_purchase.purchased_at,
+		};
+		if (line.inventory_item_id) push(byItem, line.inventory_item_id, origin);
+		else push(byName, line.description, origin);
+	}
+	return { byItem, byName };
 }
 
 /**
@@ -4306,7 +4463,7 @@ async function provisionalLineTotals(
  */
 export async function getReconcileQueue(
 	orgId: string,
-	opts: { includeDismissed?: boolean; origin?: string } = {},
+	opts: { includeDismissed?: boolean; origin?: string } & ReconcileListOpts = {},
 ): Promise<{
 	err?: string;
 	queue?: {
@@ -4316,6 +4473,9 @@ export async function getReconcileQueue(
 		unmapped_total: number;
 		unmapped_value: number;
 		provisional: ReconcileProvisionalRow[];
+		/** The whole provisional backlog behind the page, and its summed line value. */
+		provisional_total: number;
+		provisional_value: number;
 		dismissed: ReconcileDismissedRow[];
 	};
 }> {
@@ -4323,16 +4483,85 @@ export async function getReconcileQueue(
 		if (opts.origin && !(ITEM_ORIGINS as readonly string[]).includes(opts.origin)) {
 			return { err: `Validation failed: unknown origin ${opts.origin}` };
 		}
+		if (opts.sort && !(RECONCILE_SORTS as readonly string[]).includes(opts.sort)) {
+			return { err: `Validation failed: unknown sort ${opts.sort}` };
+		}
+		const search = opts.search?.trim() || undefined;
 
-		const audit = await getLinkageAudit(orgId);
+		const audit = await getLinkageAudit(orgId, {
+			search,
+			sort: opts.sort,
+			offset: opts.offset,
+			limit: opts.limit,
+		});
 		if (audit.err) return { err: audit.err };
 
-		const items = await db.inventory_item.findMany({
-			where: {
-				organization_id: orgId,
-				provisional: true,
-				...(opts.origin ? { origin: opts.origin as inventory_item_origin } : {}),
-			},
+		// One filter, used three times: to size the backlog, to rank it, and to
+		// hydrate the page. Duplicating it is how a count and its list drift.
+		const provisionalWhere = {
+			organization_id: orgId,
+			provisional: true,
+			...(opts.origin ? { origin: opts.origin as inventory_item_origin } : {}),
+			...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
+		};
+		// The same clamp getLinkageAudit applies, so one page cannot be 50 rows
+		// deep on one half and 5,000 on the other.
+		const limit = Math.min(Math.max(opts.limit ?? CANDIDATE_LIMIT, 1), CANDIDATE_LIMIT);
+		const offset = Math.max(opts.offset ?? 0, 0);
+
+		// `value` comes from a separate query, so a page taken before the ranking
+		// is the wrong page - and the total is money, which stays whole however
+		// few rows are on screen.
+		const allIds = await db.inventory_item.findMany({
+			where: provisionalWhere,
+			select: { id: true, name: true, created_at: true },
+		});
+
+		const totals = await provisionalLineTotals(
+			orgId,
+			allIds.map((i) => i.id),
+		);
+		const provisionalTotal = allIds.length;
+		const provisionalValue = allIds.reduce((n, i) => n + (totals.get(i.id)?.value ?? 0), 0);
+
+		const sortKey = opts.sort ?? "value_desc";
+		const ranked = [...allIds]
+			// Same ranking as the unmapped half, under whichever order was asked
+			// for; id settles the rest so two otherwise equal rows cannot swap
+			// pages between requests.
+			.sort((a, b) => {
+				const av = totals.get(a.id) ?? { lines: 0, value: 0 };
+				const bv = totals.get(b.id) ?? { lines: 0, value: 0 };
+				switch (sortKey) {
+					case "value_asc":
+						return (
+							av.value - bv.value ||
+							b.created_at.getTime() - a.created_at.getTime() ||
+							a.id.localeCompare(b.id)
+						);
+					case "lines_desc":
+						return (
+							bv.lines - av.lines ||
+							bv.value - av.value ||
+							a.id.localeCompare(b.id)
+						);
+					case "name_asc":
+						return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+					default:
+						return (
+							bv.value - av.value ||
+							b.created_at.getTime() - a.created_at.getTime() ||
+							a.id.localeCompare(b.id)
+						);
+				}
+			})
+			.slice(offset, offset + limit);
+
+		// Carries the whole filter rather than the ids alone: the ids are already
+		// org-scoped, but a row adopted between the two reads must not come back
+		// still wearing the provisional badge.
+		const pageItems = await db.inventory_item.findMany({
+			where: { ...provisionalWhere, id: { in: ranked.map((r) => r.id) } },
 			select: {
 				id: true,
 				name: true,
@@ -4347,39 +4576,47 @@ export async function getReconcileQueue(
 					select: { qty_on_hand: true, vehicle: { select: { id: true, name: true } } },
 				},
 			},
-			take: CANDIDATE_LIMIT,
 		});
+		const byId = new Map(pageItems.map((i) => [i.id, i]));
 
-		const totals = await provisionalLineTotals(
-			orgId,
-			items.map((i) => i.id),
-		);
-
-		const provisional: ReconcileProvisionalRow[] = items
-			.map((i) => ({
-				item_id: i.id,
-				name: i.name,
-				origin: i.origin,
-				cost: i.cost === null ? null : Number(i.cost),
-				unit_price: i.unit_price === null ? null : Number(i.unit_price),
-				unit: i.unit,
-				low_stock_threshold:
-					i.low_stock_threshold === null ? null : Number(i.low_stock_threshold),
-				created_at: i.created_at,
-				submitted_by: i.created_by_tech,
-				vehicle_stocks: i.vehicle_stocks.map((vs) => ({
-					qty_on_hand: Number(vs.qty_on_hand),
-					vehicle: vs.vehicle,
-				})),
-				...(totals.get(i.id) ?? { lines: 0, value: 0 }),
-			}))
-			// Same ranking as the unmapped half; a value tie falls back to newest.
-			.sort((a, b) => b.value - a.value || b.created_at.getTime() - a.created_at.getTime());
+		// Walked in ranked order, because an SQL `IN` promises nothing about the
+		// order it answers in; a row that left the queue between the two reads is
+		// simply absent from the second.
+		const provisional: ReconcileProvisionalRow[] = ranked.flatMap((r) => {
+			const i = byId.get(r.id);
+			if (!i) return [];
+			return [
+				{
+					item_id: i.id,
+					name: i.name,
+					origin: i.origin,
+					cost: i.cost === null ? null : Number(i.cost),
+					unit_price: i.unit_price === null ? null : Number(i.unit_price),
+					unit: i.unit,
+					low_stock_threshold:
+						i.low_stock_threshold === null
+							? null
+							: Number(i.low_stock_threshold),
+					created_at: i.created_at,
+					submitted_by: i.created_by_tech,
+					vehicle_stocks: i.vehicle_stocks.map((vs) => ({
+						qty_on_hand: Number(vs.qty_on_hand),
+						vehicle: vs.vehicle,
+					})),
+					...(totals.get(i.id) ?? { lines: 0, value: 0 }),
+				},
+			];
+		});
 
 		const dismissed: ReconcileDismissedRow[] = opts.includeDismissed
 			? (
 					await db.unmapped_part_decision.findMany({
-						where: { organization_id: orgId },
+						where: {
+							organization_id: orgId,
+							...(search
+								? { folded_name: { contains: search.toLowerCase() } }
+								: {}),
+						},
 						select: {
 							folded_name: true,
 							decided_at: true,
@@ -4397,6 +4634,17 @@ export async function getReconcileQueue(
 				}))
 			: [];
 
+		// One round trip for both halves of the page, after both are narrowed and
+		// capped — never per row.
+		const unmapped = audit.candidates ?? [];
+		const origins = await fieldPurchaseOrigins(
+			orgId,
+			provisional.map((p) => p.item_id),
+			unmapped.map((u) => u.name),
+		);
+		for (const row of provisional) row.field_purchases = origins.byItem.get(row.item_id) ?? [];
+		for (const row of unmapped) row.field_purchases = origins.byName.get(row.name) ?? [];
+
 		const counts = audit.counts ?? [];
 		const linked = counts.reduce((n, c) => n + c.linked, 0);
 		const unmappedLines = counts.reduce((n, c) => n + c.unmapped, 0);
@@ -4411,16 +4659,244 @@ export async function getReconcileQueue(
 					total,
 					pct: total === 0 ? 100 : Math.round((linked / total) * 100),
 				},
-				unmapped: audit.candidates ?? [],
+				unmapped,
 				unmapped_total: audit.candidate_total ?? 0,
 				unmapped_value: audit.candidate_value_total ?? 0,
 				provisional,
+				provisional_total: provisionalTotal,
+				provisional_value: provisionalValue,
 				dismissed,
 			},
 		};
 	} catch (e: unknown) {
 		log.error({ err: e }, "Failed to build reconcile queue");
 		return { err: "Failed to build reconcile queue" };
+	}
+}
+
+
+/** One billable line behind a queue row, with enough to open the document it sits on. */
+export interface ReconcileLineRow {
+	entity: LinkageEntity;
+	line_id: string;
+	document_id: string;
+	/** Set only where the route nests — a visit is reached through its job. */
+	parent_id: string | null;
+	document_number: string | null;
+	document_title: string | null;
+	client_name: string | null;
+	occurred_at: Date | null;
+	name: string;
+	quantity: number;
+	unit_price: number;
+	value: number;
+}
+
+const RECONCILE_LINE_LIMIT = 100;
+
+/**
+ * The documents behind one queue row. Ranking says which name to deal with, this
+ * says what the name is: $2,400 on one invoice and forty $6 lines are the same money
+ * and not the same decision. Same live-document scope as the audit
+ * (LINKAGE_SOURCES.alive), so the two counts agree.
+ */
+export async function getReconcileLines(
+	orgId: string,
+	opts: { name?: string; itemId?: string; foldedName?: string },
+): Promise<{ err?: string; lines?: ReconcileLineRow[]; total?: number }> {
+	try {
+		if (!opts.name && !opts.itemId && !opts.foldedName) {
+			return { err: "Validation failed: name, folded_name or item_id is required" };
+		}
+		// Exact for a queue row, because exact is what Map will rewrite. Folded for
+		// a dismissal, which is stored folded and covers every casing of the name.
+		const filter = opts.itemId
+			? Prisma.sql`AND li.inventory_item_id = ${opts.itemId}`
+			: opts.foldedName
+				? Prisma.sql`AND ${FOLDED_LINE_NAME} = ${foldName(opts.foldedName)} AND li.inventory_item_id IS NULL`
+				: Prisma.sql`AND li.name = ${opts.name} AND li.inventory_item_id IS NULL`;
+
+		const rows = await db.$queryRaw<
+			{
+				entity: LinkageEntity;
+				line_id: string;
+				document_id: string;
+				parent_id: string | null;
+				document_number: string | null;
+				document_title: string | null;
+				client_name: string | null;
+				occurred_at: Date | null;
+				name: string;
+				quantity: Prisma.Decimal | null;
+				unit_price: Prisma.Decimal | null;
+				value: Prisma.Decimal | null;
+				row_total: bigint;
+			}[]
+		>(Prisma.sql`
+			SELECT lines.*, COUNT(*) OVER () AS row_total
+			FROM (${Prisma.join(
+				LINKAGE_SOURCES.map(
+					(s) => Prisma.sql`
+						SELECT ${s.entity}::text AS entity,
+							li.id AS line_id,
+							${s.doc_id} AS document_id,
+							${s.parent_id} AS parent_id,
+							${s.doc_number} AS document_number,
+							${s.doc_title} AS document_title,
+							c.name AS client_name,
+							${s.doc_date} AS occurred_at,
+							li.name AS name,
+							li.quantity AS quantity,
+							li.unit_price AS unit_price,
+							${s.value} AS value
+						FROM ${s.from}
+						LEFT JOIN client c ON c.id = p.client_id
+						WHERE p.organization_id = ${orgId}
+							AND ${LINKABLE_LINE_TYPES}
+							${s.alive}
+							${filter}
+					`,
+				),
+				" UNION ALL ",
+			)}) lines
+			ORDER BY value DESC NULLS LAST, occurred_at DESC NULLS LAST
+			LIMIT ${RECONCILE_LINE_LIMIT}
+		`);
+
+		return {
+			lines: rows.map((r) => ({
+				entity: r.entity,
+				line_id: r.line_id,
+				document_id: r.document_id,
+				parent_id: r.parent_id,
+				document_number: r.document_number,
+				document_title: r.document_title,
+				client_name: r.client_name,
+				occurred_at: r.occurred_at,
+				name: r.name,
+				quantity: Number(r.quantity ?? 0),
+				unit_price: Number(r.unit_price ?? 0),
+				value: Number(r.value ?? 0),
+			})),
+			total: Number(rows[0]?.row_total ?? 0),
+		};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to load reconcile lines");
+		return { err: "Failed to load reconcile lines" };
+	}
+}
+
+export interface ReconcileTarget {
+	id: string;
+	name: string;
+	sku: string | null;
+	unit: string;
+	cost: number | null;
+	provisional: boolean;
+}
+
+const TARGET_LIMIT = 25;
+
+/**
+ * Map targets, searched server-side rather than shipping the catalog to the client.
+ *
+ * Provisional rows are included on purpose: a tech-submitted "R410A" is what six
+ * quote lines naming "R-410A refrigerant" should point at, and hiding it forces a
+ * near-duplicate into the catalog. They sort last, so a complete item still wins.
+ */
+export async function getReconcileTargets(
+	orgId: string,
+	opts: { search?: string; excludeId?: string; limit?: number } = {},
+): Promise<{ err?: string; targets?: ReconcileTarget[] }> {
+	try {
+		const search = opts.search?.trim();
+		const items = await db.inventory_item.findMany({
+			where: {
+				organization_id: orgId,
+				is_active: true,
+				...(opts.excludeId ? { id: { not: opts.excludeId } } : {}),
+				...(search
+					? {
+							OR: [
+								{ name: { contains: search, mode: "insensitive" as const } },
+								{ sku: { contains: search, mode: "insensitive" as const } },
+								{ alt_ids: { has: search } },
+							],
+						}
+					: {}),
+			},
+			select: {
+				id: true,
+				name: true,
+				sku: true,
+				unit: true,
+				cost: true,
+				provisional: true,
+			},
+			orderBy: [{ provisional: "asc" }, { name: "asc" }],
+			take: Math.min(Math.max(opts.limit ?? TARGET_LIMIT, 1), 50),
+		});
+
+		return {
+			targets: items.map((i) => ({
+				id: i.id,
+				name: i.name,
+				sku: i.sku,
+				unit: i.unit,
+				cost: i.cost === null ? null : Number(i.cost),
+				provisional: i.provisional,
+			})),
+		};
+	} catch (e: unknown) {
+		log.error({ err: e }, "Failed to load reconcile targets");
+		return { err: "Failed to load reconcile targets" };
+	}
+}
+
+const bulkApplySchema = z.object({
+	pairs: z
+		.array(z.object({ name: z.string().min(1), inventory_item_id: z.string().uuid() }))
+		.min(1)
+		.max(CANDIDATE_LIMIT),
+});
+
+export interface BulkLinkageResult {
+	name: string;
+	lines: number;
+	err?: string;
+}
+
+/**
+ * One decision for a screenful of suggestions the dispatcher already agrees with.
+ *
+ * Each pair goes through applyLinkageMatch rather than one wide UPDATE, because the
+ * completed-visit `used` stamp is why that function is not an updateMany. Serial,
+ * not Promise.all: concurrent transactions on the same line tables deadlock. Partial
+ * success is reported per name - 40 of 41 links landing beats none.
+ */
+export async function applyLinkageMatchBulk(
+	data: unknown,
+	orgId: string,
+	context?: UserContext,
+): Promise<{ err?: string; results?: BulkLinkageResult[]; linked?: number }> {
+	try {
+		const parsed = bulkApplySchema.parse(data);
+		const results: BulkLinkageResult[] = [];
+		for (const pair of parsed.pairs) {
+			const one = await applyLinkageMatch(pair, orgId, context);
+			results.push({
+				name: pair.name,
+				lines: one.updated ? Object.values(one.updated).reduce((a, b) => a + b, 0) : 0,
+				...(one.err ? { err: one.err } : {}),
+			});
+		}
+		// A bulk run touches an unknown set of items, so the broad branch applies.
+		emitInventoryUpdated(orgId);
+		return { results, linked: results.reduce((n, r) => n + r.lines, 0) };
+	} catch (e: unknown) {
+		if (e instanceof ZodError) return { err: zodMessage(e) };
+		log.error({ err: e }, "Failed to bulk-apply linkage matches");
+		return { err: "Failed to bulk-apply linkage matches" };
 	}
 }
 

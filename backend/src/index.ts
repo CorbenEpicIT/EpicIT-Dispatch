@@ -53,6 +53,7 @@ import reportsRouter from "./routes/reports.js";
 import requestsRouter from "./routes/requests.js";
 import suppliersRouter from "./routes/suppliers.js";
 import supplierItemsRouter from "./routes/supplierItems.js";
+import fieldPurchasesRouter from "./routes/fieldPurchases.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
 import notificationsRouter from "./routes/notifications.js";
@@ -576,6 +577,7 @@ app.use("/inventory", verifyToken, inventoryRouter);
 // ============================================
 app.use("/suppliers", verifyToken, suppliersRouter);
 app.use("/supplier-items", verifyToken, supplierItemsRouter);
+app.use("/field-purchases", verifyToken, fieldPurchasesRouter);
 
 // ── Org settings ─────────────────────────────────────────────────────────────
 app.use("/org", verifyToken, orgRouter);

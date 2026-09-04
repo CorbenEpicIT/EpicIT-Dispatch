@@ -161,9 +161,10 @@ export const consumptionTrendQuerySchema = z.object({
 export type ConsumptionTrendQueryInput = z.infer<typeof consumptionTrendQuerySchema>;
 
 // GET /inventory/:id/forecast — lookbackDays is the consumption window the
-// reorder forecast averages over. Bounded: an unbounded or non-numeric value
-// used to reach `new Date(now - NaN)` / an absurd window and 500. 10 years is
-// far past any useful average; default matches getItemForecast's own fallback.
+// reorder forecast averages over. Bounded, because an unbounded or
+// non-numeric value reaches `new Date(now - NaN)` — an absurd window and a
+// 500 — if it isn't. 10 years is far past any useful average; default
+// matches getItemForecast's own fallback.
 export const forecastQuerySchema = z.object({
 	lookbackDays: z.coerce.number().int().min(1).max(3650).default(90),
 });

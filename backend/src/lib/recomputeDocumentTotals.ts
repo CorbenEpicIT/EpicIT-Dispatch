@@ -2,9 +2,9 @@
  * recomputeDocumentTotals.ts
  *
  * Shared tax recomputation logic for quotes, invoices, jobs, and job visits.
- * Single source of truth — eliminates the near-identical functions that
- * previously existed in invoiceService.ts (recomputeInvoiceTotals) and
- * quotesController.ts (recomputeQuoteTotals).
+ * Single source of truth: quotes, invoices, jobs, and job visits all call
+ * this instead of each keeping its own near-identical recompute function that
+ * could drift out of sync with the others.
  */
 import { Prisma } from "../../generated/prisma/client.js";
 import { calculateDocumentTax, centsToDollars } from "../services/taxEngine.js";

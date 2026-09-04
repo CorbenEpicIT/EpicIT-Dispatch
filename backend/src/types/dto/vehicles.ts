@@ -1,8 +1,8 @@
 // Plain-JSON response shapes for the vehicle-stock domain (stock items, restock
 // history/requests, adjustments, movements) — converts Prisma Decimal quantity
 // fields to real numbers and Date fields to ISO strings so the wire format
-// matches what the frontend actually consumes (previously it silently gets
-// Decimal-as-string and re-coerces with `Number(...)` at every read site).
+// matches what the frontend actually consumes, rather than leaving every read
+// site to silently receive Decimal-as-string and re-coerce it with `Number(...)`.
 import type {
 	vehicle_stock_item,
 	inventory_item,

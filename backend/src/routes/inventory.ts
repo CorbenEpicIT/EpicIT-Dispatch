@@ -44,6 +44,10 @@ import {
     getLinkageAudit,
     applyLinkageMatch,
     getReconcileQueue,
+    getReconcileLines,
+    getReconcileTargets,
+    applyLinkageMatchBulk,
+    type ReconcileSort,
     dismissUnmappedName,
     restoreUnmappedName,
     createProvisionalItemForLine,
@@ -441,9 +445,15 @@ router.post("/linkage-audit/apply", requirePermission("manage_inventory"), async
 router.get("/reconcile", requirePermission("manage_inventory"), async (req, res, next) => {
 	try {
 		const orgId = req.user!.organization_id as string;
+		const offset = Number(req.query.offset);
+		const limit = Number(req.query.limit);
 		const result = await getReconcileQueue(orgId, {
 			includeDismissed: req.query.include_dismissed === "true",
 			origin: typeof req.query.origin === "string" ? req.query.origin : undefined,
+			search: typeof req.query.search === "string" ? req.query.search : undefined,
+			sort: typeof req.query.sort === "string" ? (req.query.sort as ReconcileSort) : undefined,
+			...(Number.isFinite(offset) ? { offset } : {}),
+			...(Number.isFinite(limit) ? { limit } : {}),
 		});
 		if (result.err) return sendControllerErr(res, result);
 		res.json(createSuccessResponse(result.queue));
@@ -451,6 +461,81 @@ router.get("/reconcile", requirePermission("manage_inventory"), async (req, res,
 		next(err);
 	}
 });
+
+// Read-only drill-in behind one queue row: which documents bill this name.
+router.get("/reconcile/lines", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const result = await getReconcileLines(orgId, {
+			name: typeof req.query.name === "string" ? req.query.name : undefined,
+			itemId: typeof req.query.item_id === "string" ? req.query.item_id : undefined,
+			foldedName:
+				typeof req.query.folded_name === "string" ? req.query.folded_name : undefined,
+		});
+		if (result.err) return sendControllerErr(res, result);
+		res.json(createSuccessResponse({ lines: result.lines, total: result.total }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// The same read, reachable from the field. A technician mapping a receipt line
+// needs to search the catalog and does not hold `manage_inventory`, so this is a
+// second door rather than a widened guard on the reconcile queue's own route.
+// Above "/:id", or Express reads "search" as an item id.
+router.get(
+	"/search",
+	requireAnyPermission("view_inventory", "use_inventory", "request_field_purchase"),
+	async (req, res, next) => {
+		try {
+			const orgId = req.user!.organization_id as string;
+			const limit = Number(req.query.limit);
+			const result = await getReconcileTargets(orgId, {
+				search: typeof req.query.q === "string" ? req.query.q : undefined,
+				...(Number.isFinite(limit) ? { limit } : {}),
+			});
+			if (result.err) return sendControllerErr(res, result);
+			res.json(createSuccessResponse(result.targets));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+// The map-target picker. Read-only, so it stays at the queue's own permission.
+router.get("/reconcile/targets", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const limit = Number(req.query.limit);
+		const result = await getReconcileTargets(orgId, {
+			search: typeof req.query.q === "string" ? req.query.q : undefined,
+			excludeId: typeof req.query.exclude_id === "string" ? req.query.exclude_id : undefined,
+			...(Number.isFinite(limit) ? { limit } : {}),
+		});
+		if (result.err) return sendControllerErr(res, result);
+		res.json(createSuccessResponse(result.targets));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Rewrites historical billing rows in bulk, so it stays at manage_inventory.
+// Partial success is a 200 carrying per-name errors — see applyLinkageMatchBulk.
+router.post(
+	"/reconcile/apply-bulk",
+	requirePermission("manage_inventory"),
+	async (req, res, next) => {
+		try {
+			const context = getUserContext(req);
+			const orgId = req.user!.organization_id as string;
+			const result = await applyLinkageMatchBulk(req.body, orgId, context);
+			if (result.err) return sendControllerErr(res, result);
+			res.json(createSuccessResponse({ results: result.results, linked: result.linked }));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
 
 // Reversible on purpose — dismissal is the lazy way out of the queue.
 router.post("/reconcile/dismiss", requirePermission("manage_inventory"), async (req, res, next) => {
