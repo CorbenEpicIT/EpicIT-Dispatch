@@ -60,6 +60,10 @@ function OrgSettingsSection() {
 	const [saveSuccess, setSaveSuccess] = useState(false);
 	const [nameError, setNameError] = useState<string | null>(null);
 	const [brandColorError, setBrandColorError] = useState<string | null>(null);
+	// Kept as text, not a number: an in-progress "1" or a cleared field are both
+	// valid states the numeric form value cannot hold.
+	const [threshold, setThreshold] = useState("");
+	const [thresholdError, setThresholdError] = useState<string | null>(null);
 
 	const { data: org, isLoading } = useOrgSettings();
 	const uploadMutation = useUploadOrgLogo();
@@ -93,6 +97,7 @@ function OrgSettingsSection() {
 				brand_color: org.brand_color ?? DEFAULT_BRAND_COLOR,
 				followups_enabled: org.followups_enabled,
 			});
+			setThreshold(org.field_purchase_second_signoff_threshold ?? "");
 			setLogoImgError(false);
 		}
 	}, [org]);
@@ -140,6 +145,7 @@ function OrgSettingsSection() {
 		setSaveSuccess(false);
 		setNameError(null);
 		setBrandColorError(null);
+		setThresholdError(null);
 
 		if (!form.name?.trim()) {
 			setNameError("Organization name is required.");
@@ -148,6 +154,17 @@ function OrgSettingsSection() {
 
 		if (form.brand_color && !HEX_COLOR_RE.test(form.brand_color)) {
 			setBrandColorError("Enter a valid 6-digit hex color, e.g. #1e3a5f.");
+			return;
+		}
+
+		const trimmedThreshold = threshold.trim();
+		const parsedThreshold =
+			trimmedThreshold === "" ? null : Number(trimmedThreshold);
+		if (
+			parsedThreshold !== null &&
+			(!Number.isFinite(parsedThreshold) || parsedThreshold < 0)
+		) {
+			setThresholdError("Enter an amount of 0 or more, or leave blank to disable.");
 			return;
 		}
 
@@ -166,6 +183,7 @@ function OrgSettingsSection() {
 				mfa_required: !!form.mfa_required,
 				brand_color: form.brand_color || null,
 				followups_enabled: form.followups_enabled ?? false,
+				field_purchase_second_signoff_threshold: parsedThreshold,
 			});
 			setSaveSuccess(true);
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -609,6 +627,33 @@ function OrgSettingsSection() {
 							</span>
 						</span>
 					</label>
+				</div>
+
+				{/* Field purchase second sign-off */}
+				<div className="mt-5">
+					<span className="mb-1 block text-xs font-medium text-text-tertiary">
+						Second Sign-Off Threshold
+					</span>
+					<p className="mb-2 text-xs text-text-muted">
+						Field purchases at or above this amount need a second approver before
+						they are approved and stock moves. Leave blank to disable.
+					</p>
+					<div className="flex items-center gap-2">
+						<span className="text-xs text-text-muted">$</span>
+						<input
+							type="number"
+							min="0"
+							step="0.01"
+							value={threshold}
+							onChange={(e) => setThreshold(e.target.value)}
+							placeholder="Disabled"
+							aria-label="Second sign-off threshold"
+							className={`${inputBase} max-w-[140px] ${thresholdError ? "!border-error focus:!border-error focus:!ring-error" : ""}`}
+						/>
+					</div>
+					{thresholdError && (
+						<p className="mt-1 text-xs text-error-text">{thresholdError}</p>
+					)}
 				</div>
 
 				<div className="mt-5 flex items-center gap-3">

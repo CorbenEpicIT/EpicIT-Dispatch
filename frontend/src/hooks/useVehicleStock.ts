@@ -16,7 +16,6 @@ import type {
 	AddVehicleStockItemInput,
 	UpdateVehicleStockItemInput,
 	AddPartsUsedInput,
-	SupplierPartUsedInput,
 	RestockRequestInput,
 	VehicleStockUsage,
 } from "../types/vehicles";
@@ -245,24 +244,6 @@ export const useUpdatePartsUsedQtyMutation = () => {
 			queryClient.invalidateQueries({ queryKey: ["jobVisits", visitId] });
 			queryClient.invalidateQueries({ queryKey: ["jobVisits"] });
 			if (vehicleId) invalidate.stockData(queryClient, vehicleId);
-		},
-	});
-};
-
-export const useAddSupplierPartUsedMutation = (visitId: string, vehicleId: string | null) => {
-	const qc = useQueryClient();
-	return useMutation<
-		{ lineItem: VisitLineItem; usage: VehicleStockUsage | null },
-		Error,
-		SupplierPartUsedInput
-	>({
-		mutationFn: (input: SupplierPartUsedInput) => vehicleApi.addSupplierPartUsed(visitId, input),
-		onSuccess: async () => {
-			await Promise.all([
-				qc.invalidateQueries({ queryKey: ["jobVisits", visitId] }),
-				qc.invalidateQueries({ queryKey: ["jobVisits"] }),
-				...(vehicleId ? [invalidate.stockData(qc, vehicleId)] : []),
-			]);
 		},
 	});
 };

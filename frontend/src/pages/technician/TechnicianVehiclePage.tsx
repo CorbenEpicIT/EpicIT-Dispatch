@@ -763,7 +763,6 @@ export default function TechnicianVehiclePage() {
 			"adjust_transfer",
 			"adjust_audit",
 			"adjust_warehouse_exchange",
-			"adjust_supplier_purchase",
 		];
 		return adjustPerms.some((p) => user.permissions.includes(p));
 	}, [user]);
@@ -1978,11 +1977,11 @@ export default function TechnicianVehiclePage() {
 			{restockTarget && (
 				<>
 					<div
-						className="fixed inset-0 z-40 bg-overlay"
+						className="fixed inset-0 z-[55] bg-overlay"
 						onClick={() => setRestockTarget(null)}
 					/>
 					<div
-						className="fixed inset-0 z-50 flex items-center justify-center px-4"
+						className="fixed inset-0 z-[60] flex items-center justify-center px-4"
 						onClick={() => setRestockTarget(null)}
 					>
 						<div
@@ -2080,7 +2079,7 @@ export default function TechnicianVehiclePage() {
 			{/* Fill to Standard modal */}
 			{fillOpen && currentVehicleId && (
 				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-overlay"
+					className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay"
 					onClick={() => setFillOpen(false)}
 				>
 					<div
@@ -2121,11 +2120,11 @@ export default function TechnicianVehiclePage() {
 			{showBatchConfirm && (
 				<>
 					<div
-						className="fixed inset-0 z-40 bg-overlay"
+						className="fixed inset-0 z-[55] bg-overlay"
 						onClick={() => setShowBatchConfirm(false)}
 					/>
 					<div
-						className="fixed inset-0 z-50 flex items-center justify-center px-4"
+						className="fixed inset-0 z-[60] flex items-center justify-center px-4"
 						onClick={() => setShowBatchConfirm(false)}
 					>
 						<div

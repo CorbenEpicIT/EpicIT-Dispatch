@@ -6,10 +6,10 @@ import ReceiveStockModal from "../ReceiveStockModal";
 import type { BatchCaptureFieldsProps } from "../BatchCaptureFields";
 import type { SerialCaptureListProps } from "../SerialCaptureList";
 
-// Review I7: the quantity input was min=1 with no step and snapped anything
-// below 1 up to 1, so a batch-tracked measured item (ft, lb, gal …) could never
-// receive a fractional quantity even though the ledger stores 2 dp. Serialized
-// items stay whole — a serial is one indivisible unit.
+// The quantity input has no min/step clamp: the ledger stores 2 dp, so a
+// batch-tracked measured item (ft, lb, gal …) must be able to receive a
+// fractional quantity. Serialized items stay whole — a serial is one
+// indivisible unit.
 
 const mockReceive = vi.fn();
 vi.mock("../../../../hooks/useTracking", () => ({

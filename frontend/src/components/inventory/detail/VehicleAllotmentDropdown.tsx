@@ -93,14 +93,21 @@ export default function VehicleAllotmentDropdown({
 	}, [open]);
 
 	// Close rather than reposition on scroll/resize — a drill-in this small
-	// doesn't need to track the trigger's rect continuously.
+	// doesn't need to track the trigger's rect continuously. Its own vehicle
+	// list scrolls though, and a capture listener sees that too: unguarded,
+	// scrolling down to the vehicle you wanted closed the panel.
 	useEffect(() => {
 		if (!open) return;
+		const onScroll = (e: Event) => {
+			const target = e.target;
+			if (target instanceof Node && panelRef.current?.contains(target)) return;
+			setOpen(false);
+		};
 		const close = () => setOpen(false);
-		window.addEventListener("scroll", close, true);
+		window.addEventListener("scroll", onScroll, true);
 		window.addEventListener("resize", close);
 		return () => {
-			window.removeEventListener("scroll", close, true);
+			window.removeEventListener("scroll", onScroll, true);
 			window.removeEventListener("resize", close);
 		};
 	}, [open]);

@@ -210,6 +210,16 @@ const ROUTES: RouteCase[] = [
 	{ path: "inventory/items/:itemId/tracking", url: "/dispatch/inventory/items/i1/tracking", page: "InventoryItemDetailPage", perm: "view_inventory" },
 	{ path: "inventory/serials/:serialId", url: "/dispatch/inventory/serials/s1", page: "SerialRedirectPage", perm: "view_inventory" },
 	{ path: "inventory/batches/:batchId", url: "/dispatch/inventory/batches/b1", page: "BatchDetailPage", perm: "view_inventory" },
+	{ path: "inventory/suppliers", url: "/dispatch/inventory/suppliers", page: "SuppliersPage", perm: "view_inventory" },
+	{ path: "inventory/suppliers/:supplierId", url: "/dispatch/inventory/suppliers/s1", page: "SupplierDetailPage", perm: "view_inventory" },
+	{
+		// Reviewing a reimbursement is the control on field spend, so the queue
+		// carries its own permission rather than riding on view_inventory.
+		path: "field-purchases",
+		url: "/dispatch/field-purchases",
+		page: "FieldPurchasesPage",
+		perm: ["view_field_purchases", "review_field_purchases"],
+	},
 	{ path: "quotes", url: "/dispatch/quotes", page: "QuotesPage", perm: "view_quotes" },
 	{ path: "quotes/:quoteId", url: "/dispatch/quotes/q1", page: "QuoteDetailPage", perm: "view_quotes" },
 	{ path: "requests", url: "/dispatch/requests", page: "RequestsPage", perm: "view_requests" },
@@ -238,6 +248,18 @@ const ROUTES: RouteCase[] = [
 	{ path: "map", url: "/technician/map", page: "TechnicianMapPage" },
 	{ path: "profile", url: "/technician/profile", page: "MyProfilePage" },
 	{ path: "mileage", url: "/technician/mileage", page: "TechnicianMileagePage" },
+	{
+		path: "purchases",
+		url: "/technician/purchases",
+		page: "TechnicianPurchasesPage",
+		perm: "request_field_purchase",
+	},
+	{
+		path: "purchases/:purchaseId",
+		url: "/technician/purchases/fp1",
+		page: "TechnicianPurchaseDetailPage",
+		perm: "request_field_purchase",
+	},
 	// catch-all
 	{ path: "*", url: "/definitely/not/a/route", page: "LoginPage" },
 ];
@@ -390,7 +412,7 @@ describe("AppRoutes — role and auth redirects", () => {
 	it.each(ROUTES.filter((r) => r.url.startsWith("/technician")))(
 		"technician: $url renders $page",
 		async ({ url, page }) => {
-			signIn("technician", ["view_visits", "view_vehicles"]);
+			signIn("technician", ["view_visits", "view_vehicles", "request_field_purchase"]);
 			renderAt(url);
 			await expectPage(page);
 		},

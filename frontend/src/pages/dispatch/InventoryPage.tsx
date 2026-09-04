@@ -23,6 +23,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import ViewToggle from "../../components/ui/ViewToggle";
 import PageControls from "../../components/ui/PageControls";
 import StatusFilter from "../../components/ui/StatusFilter";
+import { moneyRound } from "../../components/reconcile/reconcileFormat";
 import PageHeader from "../../components/ui/PageHeader";
 import { usePermission } from "../../hooks/usePermission";
 import PageReportSection from "../../components/reports/PageReportSection";
@@ -73,10 +74,8 @@ export default function InventoryPage() {
 	// The reconcile page reads this same cached query, so arriving costs no
 	// extra round trip. Value not count: this chip has to earn a click.
 	const { data: reconcile } = useReconcileQueueQuery(undefined, MANAGE_INVENTORY);
-	const reconcileCount = (reconcile?.provisional.length ?? 0) + (reconcile?.unmapped_total ?? 0);
-	const reconcileValue =
-		(reconcile?.unmapped_value ?? 0) +
-		(reconcile?.provisional ?? []).reduce((n, p) => n + p.value, 0);
+	const reconcileCount = (reconcile?.provisional_total ?? 0) + (reconcile?.unmapped_total ?? 0);
+	const reconcileValue = (reconcile?.unmapped_value ?? 0) + (reconcile?.provisional_value ?? 0);
 
 	const { data: mappedItems = [] } = useQBMappedItemsQuery(qbConnected);
 
@@ -257,12 +256,7 @@ export default function InventoryPage() {
 								Reconcile {reconcileCount}
 								{reconcileValue > 0 && (
 									<span className="tabular-nums opacity-80">
-										·{" "}
-										{reconcileValue.toLocaleString("en-US", {
-											style: "currency",
-											currency: "USD",
-											maximumFractionDigits: 0,
-										})}
+										· {moneyRound(reconcileValue)}
 									</span>
 								)}
 							</button>

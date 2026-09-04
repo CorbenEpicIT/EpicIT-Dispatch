@@ -11,6 +11,16 @@
 	--anim-surface-flash: rgba(0, 0, 0, 0.08);
 }
 
+/* Root scroll surfaces. The app shell is h-screen with its own inner scroller,
+   so the document never scrolls — but an inner overscroll still chains to it and
+   rubber-bands, exposing the UA white behind the app. Kill the chaining and paint
+   the canvas token here so any bounce that slips through stays on-theme. */
+html,
+body {
+	background-color: var(--color-canvas);
+	overscroll-behavior: none;
+}
+
 /* Scrollbar */
 * {
 	font-family: "Inter";

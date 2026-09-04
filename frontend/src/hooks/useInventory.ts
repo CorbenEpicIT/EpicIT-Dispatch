@@ -26,7 +26,7 @@ import type {
 } from "../types/inventory";
 
 import * as inventoryApi from "../api/inventory";
-import type { ItemOrigin } from "../api/inventory";
+import type { ItemOrigin, ReconcileSort } from "../api/inventory";
 import * as orgApi from "../api/org";
 import { qk, invalidate } from "../lib/queryKeys";
 import { useScanDispatcher } from "./useScanDispatcher";
@@ -365,8 +365,12 @@ export const useApplyLinkageMatchMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: inventoryApi.applyLinkageMatch,
-		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+		onSuccess: async (_data, variables) => {
+			await qc.invalidateQueries({ queryKey: qk.inventory.reconcile() });
+			await qc.invalidateQueries({ queryKey: qk.inventory.list() });
+			await qc.invalidateQueries({
+				queryKey: qk.inventory.detail(variables.inventory_item_id),
+			});
 		},
 	});
 };
@@ -383,29 +387,103 @@ export const useCreateProvisionalItemMutation = () => {
 	});
 };
 
+export interface ReconcileQueueOpts {
+	includeDismissed?: boolean;
+	origin?: ItemOrigin;
+	search?: string;
+	sort?: ReconcileSort;
+	offset?: number;
+	limit?: number;
+}
+
 /** Filters live in the key because the server applies them. */
-export const useReconcileQueueQuery = (
-	opts?: { includeDismissed?: boolean; origin?: ItemOrigin },
-	enabled = true,
-) =>
+export const useReconcileQueueQuery = (opts?: ReconcileQueueOpts, enabled = true) =>
 	useQuery({
 		queryKey: qk.inventory.reconcile(opts),
 		queryFn: () =>
 			inventoryApi.getReconcileQueue({
 				include_dismissed: opts?.includeDismissed,
 				origin: opts?.origin,
+				search: opts?.search,
+				sort: opts?.sort,
+				offset: opts?.offset,
+				limit: opts?.limit,
 			}),
 		staleTime: 60_000,
+		// Every control on the page is a server filter, so without this the whole
+		// surface — strip, toolbar, selection — unmounts on each keystroke.
+		placeholderData: keepPreviousData,
 		enabled,
 	});
 
-/** Both change what coverage counts, so they invalidate the inventory root. */
+/** The documents behind one row. Only fetched once a row is actually selected. */
+export const useReconcileLinesQuery = (key: {
+	name?: string;
+	foldedName?: string;
+	itemId?: string;
+}) =>
+	useQuery({
+		queryKey: qk.inventory.reconcileLines(key),
+		queryFn: () =>
+			inventoryApi.getReconcileLines({
+				name: key.name,
+				folded_name: key.foldedName,
+				item_id: key.itemId,
+			}),
+		staleTime: 60_000,
+		enabled: Boolean(key.name || key.foldedName || key.itemId),
+	});
+
+/** Search runs on the server, so the catalog never has to reach the client whole. */
+export const useReconcileTargetsQuery = (
+	opts: { q?: string; excludeId?: string },
+	enabled = true
+) =>
+	useQuery({
+		queryKey: qk.inventory.reconcileTargets(opts),
+		queryFn: () => inventoryApi.getReconcileTargets({ q: opts.q, exclude_id: opts.excludeId }),
+		enabled,
+		staleTime: 30_000,
+		placeholderData: keepPreviousData,
+	});
+
+/**
+ * The same search from the field. A separate hook rather than a widened guard: the
+ * reconcile queue's route stays at `manage_inventory`, which a technician lacks.
+ */
+export const useCatalogSearchQuery = (opts: { q?: string }, enabled = true) =>
+	useQuery({
+		queryKey: ["inventory", "search", opts.q ?? ""],
+		queryFn: () => inventoryApi.searchCatalog({ q: opts.q }),
+		enabled,
+		staleTime: 30_000,
+		placeholderData: keepPreviousData,
+		// A technician without inventory access gets a 403 every time; retrying it
+		// three times per keystroke helps nobody.
+		retry: false,
+	});
+
+/**
+ * Accepting a screenful of suggestions at once. Invalidates the whole tree
+ * rather than a list of ids: a bulk run touches many items' usage and cost reads.
+ */
+export const useApplyLinkageMatchBulkMutation = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: inventoryApi.applyLinkageMatchBulk,
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+		},
+	});
+};
+
+/** Both change what coverage counts, and nothing outside the queue. */
 export const useDismissUnmappedMutation = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: inventoryApi.dismissUnmappedName,
 		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+			await qc.invalidateQueries({ queryKey: qk.inventory.reconcile() });
 		},
 	});
 };
@@ -415,7 +493,7 @@ export const useRestoreUnmappedMutation = () => {
 	return useMutation({
 		mutationFn: inventoryApi.restoreUnmappedName,
 		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: qk.inventory.all });
+			await qc.invalidateQueries({ queryKey: qk.inventory.reconcile() });
 		},
 	});
 };

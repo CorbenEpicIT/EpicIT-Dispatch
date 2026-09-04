@@ -1,6 +1,6 @@
 ﻿import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	House,
 	Calendar,
@@ -11,8 +11,9 @@ import {
 	Package,
 	Map,
 	ArrowLeft,
-	Phone,
+	Inbox,
 	Briefcase,
+	Receipt,
 	ReceiptText,
 	ShieldUser,
 	Truck,
@@ -39,6 +40,8 @@ export default function DispatchLayout() {
 	const { data: orgSettings } = useOrgSettings();
 	const [expanded, setExpanded] = useState(false);
 	const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
+	const [navOverflows, setNavOverflows] = useState(false);
+	const navRef = useRef<HTMLElement>(null);
 	const { user } = useAuthStore();
 
 	const canViewRequests = usePermission("view_requests");
@@ -48,6 +51,10 @@ export default function DispatchLayout() {
 	const canViewClients = usePermission("view_clients");
 	const canViewInventory = usePermission("view_inventory");
 	const canViewVehicles = useAnyPermission(["view_vehicles", "manage_vehicles"]);
+	const canViewFieldPurchases = useAnyPermission([
+		"view_field_purchases",
+		"review_field_purchases",
+	]);
 	const canViewTechnicians = usePermission("view_technicians");
 	const canViewReports = usePermission("view_reports");
 	const canViewAdmin = useAnyPermission([
@@ -90,6 +97,28 @@ export default function DispatchLayout() {
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
+
+	// The nav's scrollbar is hidden by design (.sidebar-nav), so overflow past the
+	// fold needs its own cue. Two observers: the nav's own box changes with the
+	// viewport, while its row count changes later as permission checks resolve.
+	useEffect(() => {
+		const el = navRef.current;
+		if (!el) return;
+		const update = () =>
+			setNavOverflows(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+		update();
+		el.addEventListener("scroll", update, { passive: true });
+		const resize = new ResizeObserver(update);
+		resize.observe(el);
+		const mutation = new MutationObserver(update);
+		mutation.observe(el, { childList: true });
+		return () => {
+			el.removeEventListener("scroll", update);
+			resize.disconnect();
+			mutation.disconnect();
+		};
+	}, []);
+
 	const handleBack = () => {
 		const path = location.pathname;
 		const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -123,7 +152,10 @@ export default function DispatchLayout() {
 				<div
 					className={`absolute inset-y-0 left-0 flex flex-col bg-base border-r border-border overflow-hidden transition-[width] duration-200 ease-in-out ${expanded ? "w-40 lg:w-44" : "w-16"}`}
 				>
-					<nav className="flex-1 py-2 space-y-1 overflow-y-auto overflow-x-hidden sidebar-nav">
+					<nav
+						ref={navRef}
+						className="flex-1 py-2 space-y-1 overflow-y-auto overflow-x-hidden sidebar-nav"
+					>
 						<button
 							onClick={() => {
 								setIsCreatePanelOpen((o) => !o);
@@ -139,7 +171,7 @@ export default function DispatchLayout() {
 								<Plus size={ICON_SIZE} />
 							</div>
 							<div
-								className={`absolute left-12 w-24 flex items-center h-full overflow-hidden transition-[opacity,transform] duration-200 ease-in-out ${
+								className={`flex-1 min-w-0 flex items-center overflow-hidden transition-[opacity,transform] duration-200 ease-in-out ${
 									expanded
 										? "opacity-100 translate-x-0"
 										: "opacity-0 -translate-x-2 pointer-events-none"
@@ -166,7 +198,7 @@ export default function DispatchLayout() {
 							<SideNavItem
 								expanded={expanded}
 								to="/dispatch/requests"
-								icon={<Phone size={ICON_SIZE} />}
+								icon={<Inbox size={ICON_SIZE} />}
 								label="Requests"
 							/>
 						)}
@@ -230,6 +262,14 @@ export default function DispatchLayout() {
 								label="Inventory"
 							/>
 						)}
+						{canViewFieldPurchases && (
+							<SideNavItem
+								expanded={expanded}
+								to="/dispatch/field-purchases"
+								icon={<Receipt size={ICON_SIZE} />}
+								label="Purchases"
+							/>
+						)}
 						{canViewVehicles && (
 							<SideNavItem
 								expanded={expanded}
@@ -283,6 +323,12 @@ export default function DispatchLayout() {
 							/>
 						)}
 					</nav>
+					<div
+						aria-hidden="true"
+						className={`pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-base to-transparent transition-opacity duration-200 ${
+							navOverflows ? "opacity-100" : "opacity-0"
+						}`}
+					/>
 				</div>
 			</aside>
 

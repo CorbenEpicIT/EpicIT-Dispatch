@@ -20,6 +20,7 @@ import type {
 	ClockOutResult,
 } from "../types/jobs";
 import * as jobApi from "../api/jobs";
+import type { MyJobOption } from "../api/jobs";
 
 // ============================================
 // JOB QUERIES
@@ -138,6 +139,19 @@ export const useAllJobVisitsQuery = (): UseQueryResult<JobVisit[], Error> => {
 	return useQuery({
 		queryKey: ["jobVisits"],
 		queryFn: jobApi.getAllJobVisits,
+	});
+};
+
+/**
+ * The caller's own jobs, for pickers. Separate from `useAllJobVisitsQuery`, which
+ * pulls the whole organization's visit history and is far too heavy for a phone.
+ */
+export const useMyJobsQuery = (enabled = true): UseQueryResult<MyJobOption[], Error> => {
+	return useQuery({
+		queryKey: ["jobVisits", "mine"],
+		queryFn: jobApi.getMyJobs,
+		enabled,
+		staleTime: 60_000,
 	});
 };
 

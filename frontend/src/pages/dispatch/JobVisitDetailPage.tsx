@@ -31,6 +31,7 @@ import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditJobVisit from "../../components/jobs/EditJobVisit";
 import JobNoteManager from "../../components/jobs/JobNoteManager";
+import JobFieldPurchases from "../../components/fieldPurchases/JobFieldPurchases";
 import CreateInvoice from "../../components/invoices/CreateInvoice";
 import { VisitStatusColors, type VisitStatus, type VisitLineItem } from "../../types/jobs";
 import { formatCurrency, formatDate, formatDateTime, FALLBACK_TIMEZONE } from "../../util/util";
@@ -816,6 +817,8 @@ export default function JobVisitDetailPage() {
 				</Card>
 				</div>
 			</div>
+
+			<JobFieldPurchases jobId={jobId!} visitId={visitId!} />
 
 			<JobNoteManager jobId={jobId!} visits={[visit]} visitId={visitId!} />
 

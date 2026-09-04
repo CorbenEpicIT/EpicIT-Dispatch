@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { queryClient } from "../../main";
-import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check, UserRoundPlus, Users, Loader2 } from "lucide-react";
+import { LogOut, UserRound, Sun, Moon, Monitor, Palette, ChevronDown, Check, UserRoundPlus, Users, Loader2, Receipt } from "lucide-react";
 import { useOrgSettings } from "../../hooks/useOrg";
 import { useThemeStore } from "../../stores/themeStore";
 import { useUpdateTechnicianMutation } from "../../hooks/useTechnicians";
 import { useRememberedAccountsStore } from "../../stores/rememberedAccountsStore";
 import { logoutBeacon } from "../../api/authenticate";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function TechnicianUserMenu() {
     const { user, logout } = useAuthStore();
     const [menuOpen, setMenuOpen] = useState(false);
+    const canRequestPurchase = usePermission("request_field_purchase");
     const [themeOpen, setThemeOpen] = useState(false);
     const [switchUserOpen, setSwitchUserOpen] = useState(false);
     const {accounts, patchAccount, removeAccount} = useRememberedAccountsStore();
@@ -101,6 +103,15 @@ export default function TechnicianUserMenu() {
                             <UserRound size={16} />
                             My Profile
                         </button>
+                        {canRequestPurchase && (
+                            <button
+                                className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
+                                onClick={() => { navigate("/technician/purchases"); setMenuOpen(false); }}
+                            >
+                                <Receipt size={16} />
+                                Field Purchases
+                            </button>
+                        )}
                         <button
                             className="w-full flex items-center gap-1 px-3 py-2 text-sm text-text-primary rounded-md hover:bg-surface transition-colors"
                             onClick={() => setThemeOpen((o) => !o)}

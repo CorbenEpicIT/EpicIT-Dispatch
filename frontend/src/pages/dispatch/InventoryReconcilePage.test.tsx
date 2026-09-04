@@ -1,17 +1,18 @@
 /**
- * Mutation hooks are mocked with real React state, as in LineItemCard.test,
- * so a rejected call re-renders the component's own error UI instead of
- * asserting against a value baked in at mock time.
+ * Mutation hooks are mocked with real React state, as in LineItemCard.test, so a
+ * rejected call re-renders the component's own error UI instead of asserting
+ * against a value baked in at mock time.
  */
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import type { ReconcileQueue } from "../../api/inventory";
+import type { ReconcileQueue, ReconcileTarget } from "../../api/inventory";
 import InventoryReconcilePage from "./InventoryReconcilePage";
 
 const mockApply = vi.fn();
+const mockBulk = vi.fn();
 const mockCreateProvisional = vi.fn();
 const mockDismiss = vi.fn();
 const mockRestore = vi.fn();
@@ -19,9 +20,24 @@ const mockAdopt = vi.fn();
 const mockMerge = vi.fn();
 const mockReject = vi.fn();
 
-/** Last options the page passed to the queue query — the server-side filters. */
+/** Last options the page passed to the queue query — every filter is server-side. */
 let lastQueryOpts: unknown;
+/** Last key the drill-in asked for, which is how a row proves it can be settled. */
+let lastLinesKey: unknown;
 let queueData: ReconcileQueue | undefined;
+let queueError = false;
+
+const TARGETS: ReconcileTarget[] = [
+	{
+		id: "cat-1",
+		name: "Compressor 2T",
+		sku: "CMP-2T",
+		unit: "each",
+		cost: 180,
+		provisional: false,
+	},
+	{ id: "cat-2", name: "Contactor", sku: null, unit: "each", cost: null, provisional: false },
+];
 
 /**
  * Mutation contract with live state, so pending/error UI actually re-renders.
@@ -51,15 +67,22 @@ function useStubMutation(fn: (input: never) => Promise<unknown>) {
 vi.mock("../../hooks/useInventory", () => ({
 	useReconcileQueueQuery: (opts: unknown) => {
 		lastQueryOpts = opts;
-		return { data: queueData, isLoading: false };
+		return {
+			data: queueError ? undefined : queueData,
+			isLoading: false,
+			isError: queueError,
+		};
 	},
-	useAllInventoryQuery: () => ({
-		data: [
-			{ id: "cat-1", name: "Compressor 2T", is_active: true },
-			{ id: "cat-2", name: "Contactor", is_active: true },
-		],
-	}),
+	useReconcileLinesQuery: (key: unknown) => {
+		lastLinesKey = key;
+		return { data: { lines: [], total: 0 }, isLoading: false, isError: false };
+	},
+	useReconcileTargetsQuery: () => ({ data: TARGETS, isFetching: false }),
+	// The picker declares both hooks and enables one by scope — hooks cannot be
+	// conditional. This page is always the reconcile scope, so this stays empty.
+	useCatalogSearchQuery: () => ({ data: [], isFetching: false }),
 	useApplyLinkageMatchMutation: () => useStubMutation(mockApply),
+	useApplyLinkageMatchBulkMutation: () => useStubMutation(mockBulk),
 	useCreateProvisionalItemMutation: () => useStubMutation(mockCreateProvisional),
 	useDismissUnmappedMutation: () => useStubMutation(mockDismiss),
 	useRestoreUnmappedMutation: () => useStubMutation(mockRestore),
@@ -68,6 +91,10 @@ vi.mock("../../hooks/useInventory", () => ({
 	useRejectItemMutation: () => useStubMutation(mockReject),
 }));
 
+// UnitSelect reads org settings only to order the groups, and catalog order is
+// its own documented fallback, so an undefined org is a valid state here.
+vi.mock("../../hooks/useOrg", () => ({ useOrgSettings: () => ({ data: undefined }) }));
+
 const emptyQueue: ReconcileQueue = {
 	counts: [],
 	coverage: { linked: 0, unmapped: 0, total: 0, pct: 100 },
@@ -75,6 +102,8 @@ const emptyQueue: ReconcileQueue = {
 	unmapped_total: 0,
 	unmapped_value: 0,
 	provisional: [],
+	provisional_total: 0,
+	provisional_value: 0,
 	dismissed: [],
 };
 
@@ -84,7 +113,7 @@ const makeQueue = (overrides: Partial<ReconcileQueue> = {}): ReconcileQueue => (
 });
 
 const provisionalRow = (
-	overrides: Partial<ReconcileQueue["provisional"][number]> = {},
+	overrides: Partial<ReconcileQueue["provisional"][number]> = {}
 ): ReconcileQueue["provisional"][number] => ({
 	item_id: "item-1",
 	name: "Field Compressor",
@@ -102,7 +131,7 @@ const provisionalRow = (
 });
 
 const unmappedRow = (
-	overrides: Partial<ReconcileQueue["unmapped"][number]> = {},
+	overrides: Partial<ReconcileQueue["unmapped"][number]> = {}
 ): ReconcileQueue["unmapped"][number] => ({
 	name: "Mystery Coil",
 	entities: ["quote"],
@@ -112,51 +141,76 @@ const unmappedRow = (
 	...overrides,
 });
 
-function renderPage() {
+function renderPage(search = "") {
 	return render(
-		<MemoryRouter>
+		<MemoryRouter initialEntries={[`/dispatch/inventory/reconcile${search}`]}>
 			<InventoryReconcilePage />
-		</MemoryRouter>,
+		</MemoryRouter>
 	);
+}
+
+/** The confirm inside a dialog, not the trigger that opened it — same words. */
+function dialogButton(title: string | RegExp, label: string) {
+	return within(screen.getByRole("dialog", { name: title })).getByRole("button", {
+		name: label,
+	});
+}
+
+/** Opening a row is what the surface is for; every verb lives behind it. */
+async function openRow(label: RegExp | string) {
+	await userEvent.click(screen.getByRole("button", { name: label }));
+}
+
+async function pickFromCombobox(ariaLabel: string, optionName: string | RegExp) {
+	await userEvent.click(screen.getByRole("combobox", { name: ariaLabel }));
+	await userEvent.click(screen.getByRole("option", { name: optionName }));
 }
 
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockApply.mockResolvedValue({ quote: 2, job: 1 });
-	mockCreateProvisional.mockResolvedValue({ id: "new-item" });
+	mockBulk.mockResolvedValue({ results: [{ name: "a", lines: 3 }], linked: 3 });
+	mockCreateProvisional.mockResolvedValue({ id: "new-item", name: "Mystery Coil" });
 	mockDismiss.mockResolvedValue(undefined);
 	mockRestore.mockResolvedValue(undefined);
 	mockAdopt.mockResolvedValue(undefined);
 	mockMerge.mockResolvedValue(undefined);
 	mockReject.mockResolvedValue(undefined);
 	queueData = makeQueue();
+	queueError = false;
 	lastQueryOpts = undefined;
+	lastLinesKey = undefined;
 });
 
 describe("InventoryReconcilePage — provisional verbs", () => {
-	test("adopt is blocked until a cost exists, then sends it", async () => {
+	test("adopt is blocked until a cost exists, then sends it with the unit", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow({ cost: null })] });
-		renderPage();
-
-		await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
 
 		const confirm = screen.getByRole("button", { name: "Adopt into catalog" });
-		// A cost basis is the one thing that cannot be skipped: without it the
-		// item reads as free to weighted average cost.
+		// A cost basis is the one thing that cannot be skipped: without it the item
+		// reads as free to weighted average cost.
 		expect(confirm).toBeDisabled();
 		expect(confirm).toHaveAttribute("title", "A cost is required to adopt an item");
 
 		await userEvent.type(screen.getByLabelText("Cost per unit"), "42.5");
 		await userEvent.click(screen.getByRole("button", { name: "Adopt into catalog" }));
 
-		expect(mockAdopt).toHaveBeenCalledWith({ itemId: "item-1", cost: 42.5 });
+		// Unit travels with the adopt: it is the last chance to fix a tech-submitted
+		// default before the row leaves this surface for good.
+		expect(mockAdopt).toHaveBeenCalledWith({
+			itemId: "item-1",
+			cost: 42.5,
+			unit: "each",
+		});
 	});
 
 	test("adopt sends the threshold and opening quantity when they are filled in", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow({ cost: 12 })] });
-		renderPage();
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
 
-		await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
 		await userEvent.type(screen.getByLabelText("Low-stock at"), "4");
 		await userEvent.clear(screen.getByLabelText("Warehouse qty now"));
 		await userEvent.type(screen.getByLabelText("Warehouse qty now"), "6");
@@ -165,6 +219,7 @@ describe("InventoryReconcilePage — provisional verbs", () => {
 		expect(mockAdopt).toHaveBeenCalledWith({
 			itemId: "item-1",
 			cost: 12,
+			unit: "each",
 			low_stock_threshold: 4,
 			initial_warehouse_qty: 6,
 		});
@@ -173,55 +228,73 @@ describe("InventoryReconcilePage — provisional verbs", () => {
 	// A zero opening quantity is the common case and must not write a movement.
 	test("adopt omits the opening quantity when it is left at zero", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow({ cost: 12 })] });
-		renderPage();
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
 
-		await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
 		await userEvent.click(screen.getByRole("button", { name: "Adopt into catalog" }));
 
-		expect(mockAdopt).toHaveBeenCalledWith({ itemId: "item-1", cost: 12 });
+		expect(mockAdopt).toHaveBeenCalledWith({
+			itemId: "item-1",
+			cost: 12,
+			unit: "each",
+		});
 	});
 
-	test("merge sends the chosen catalog target", async () => {
+	test("merge asks before folding the row away, then sends the chosen target", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow()] });
-		renderPage();
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
 
+		await pickFromCombobox("Merge Field Compressor into", /Compressor 2T/);
 		await userEvent.click(screen.getByRole("button", { name: "Merge" }));
-		await userEvent.selectOptions(screen.getByLabelText("Merge into"), "cat-1");
-		await userEvent.click(screen.getAllByRole("button", { name: "Merge" })[1]!);
 
+		// Choosing a target must not write anything on its own.
+		expect(mockMerge).not.toHaveBeenCalled();
+		await userEvent.click(dialogButton("Merge this part away?", "Merge"));
 		expect(mockMerge).toHaveBeenCalledWith({ itemId: "item-1", targetId: "cat-1" });
 	});
 
-	test("reject needs no confirmation payload beyond the item", async () => {
+	// Reject needs a confirmation before it fires: the click destroys the row,
+	// with nothing to catch a misclick in between.
+	test("reject asks first, then needs no payload beyond the item", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow()] });
-		renderPage();
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
 
-		await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+		await userEvent.click(screen.getByRole("button", { name: "Reject this part" }));
+		expect(mockReject).not.toHaveBeenCalled();
 
+		await userEvent.click(dialogButton("Reject this part?", "Reject"));
 		expect(mockReject).toHaveBeenCalledWith("item-1");
 	});
 
 	test("surfaces the server's refusal instead of failing silently", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow({ cost: 5 })] });
 		mockAdopt.mockRejectedValueOnce(
-			new Error("Validation failed: cost is required to adopt an item into the catalog"),
+			new Error(
+				"Validation failed: cost is required to adopt an item into the catalog"
+			)
 		);
-		renderPage();
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
 
-		await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
 		await userEvent.click(screen.getByRole("button", { name: "Adopt into catalog" }));
 
 		expect(
 			await screen.findByText(
-				"Validation failed: cost is required to adopt an item into the catalog",
-			),
+				"Validation failed: cost is required to adopt an item into the catalog"
+			)
 		).toBeInTheDocument();
 	});
 
 	test("shows where the row came from, rather than guessing at a submitter", () => {
 		queueData = makeQueue({
 			provisional: [
-				provisionalRow({ item_id: "a", name: "Tech Part", origin: "tech_submission" }),
+				provisionalRow({
+					item_id: "a",
+					name: "Tech Part",
+					origin: "tech_submission",
+				}),
 				provisionalRow({
 					item_id: "b",
 					name: "Desk Part",
@@ -230,22 +303,36 @@ describe("InventoryReconcilePage — provisional verbs", () => {
 				}),
 			],
 		});
-		renderPage();
+		renderPage("?tab=detail");
 
-		// Scoped to the row badge — the origin FILTER above carries the same words.
-		expect(screen.getByText("Tech submission", { selector: "span" })).toBeInTheDocument();
+		expect(screen.getByText("Tech submission")).toBeInTheDocument();
 		// Used to read "Submitted by unknown" for every dispatch quick-add.
-		expect(screen.getByText("Dispatch quick-add", { selector: "span" })).toBeInTheDocument();
-		expect(screen.getByText(/From dispatch/)).toBeInTheDocument();
+		expect(screen.getByText("Dispatch quick-add")).toBeInTheDocument();
 	});
 
-	test("filters by origin through the query, not in the browser", async () => {
+	test("names the gaps that keep the row off the catalog", async () => {
+		queueData = makeQueue({
+			provisional: [provisionalRow({ cost: null, low_stock_threshold: null })],
+		});
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
+
+		expect(
+			screen.getByText(/every margin on this part reads 100%/)
+		).toBeInTheDocument();
+		expect(screen.getByText(/never reaches the forecast/)).toBeInTheDocument();
+	});
+
+	test("every filter is a query param, so the browser never filters rows itself", () => {
 		queueData = makeQueue({ provisional: [provisionalRow()] });
-		renderPage();
+		renderPage("?tab=detail&origin=tech_submission&sort=lines_desc&q=comp");
 
-		await userEvent.click(screen.getByRole("button", { name: "Tech submission" }));
-
-		expect(lastQueryOpts).toEqual({ includeDismissed: false, origin: "tech_submission" });
+		expect(lastQueryOpts).toMatchObject({
+			includeDismissed: false,
+			origin: "tech_submission",
+			search: "comp",
+			sort: "lines_desc",
+		});
 	});
 });
 
@@ -253,22 +340,18 @@ describe("InventoryReconcilePage — unmapped verbs", () => {
 	test("map points every line with that name at the chosen item", async () => {
 		queueData = makeQueue({ unmapped: [unmappedRow()], unmapped_total: 1 });
 		renderPage();
+		await openRow(/Mystery Coil/);
 
-		await userEvent.selectOptions(
-			screen.getByLabelText("Catalog item for Mystery Coil"),
-			"cat-2",
-		);
-		await userEvent.click(screen.getByRole("button", { name: "Map" }));
+		await pickFromCombobox("Catalog item for Mystery Coil", /Contactor/);
+		await userEvent.click(screen.getByRole("button", { name: /^Map 3$/ }));
 
 		expect(mockApply).toHaveBeenCalledWith({
 			name: "Mystery Coil",
 			inventory_item_id: "cat-2",
 		});
-		// Confirmed with the count the server actually rewrote (2 + 1).
-		expect(await screen.findByText("3 mapped")).toBeInTheDocument();
 	});
 
-	test("pre-selects the server's suggestion so the common case is one click", async () => {
+	test("the suggestion is shown as an item, not pre-loaded into the picker", async () => {
 		queueData = makeQueue({
 			unmapped: [
 				unmappedRow({
@@ -283,11 +366,15 @@ describe("InventoryReconcilePage — unmapped verbs", () => {
 			unmapped_total: 1,
 		});
 		renderPage();
+		await openRow(/Mystery Coil/);
 
-		expect(screen.getByLabelText("Catalog item for Mystery Coil")).toHaveValue("cat-1");
-		expect(screen.getByText(/suggested by name match/)).toBeInTheDocument();
+		// Accepting a machine guess must look different from making a choice: the
+		// match reason ("Name match") stays visible so accepting isn't mistaken
+		// for a decision the dispatcher made themselves.
+		expect(screen.getByText("CMP-2T")).toBeInTheDocument();
+		expect(screen.getAllByText("Name match").length).toBeGreaterThan(0);
 
-		await userEvent.click(screen.getByRole("button", { name: "Map" }));
+		await userEvent.click(screen.getByRole("button", { name: /Accept & map 3/ }));
 
 		expect(mockApply).toHaveBeenCalledWith({
 			name: "Mystery Coil",
@@ -296,11 +383,12 @@ describe("InventoryReconcilePage — unmapped verbs", () => {
 	});
 
 	// Otherwise the row is a dead end: leave, create the item, come back, find it.
-	test("create & map makes the item and maps in one click", async () => {
+	test("create & map makes the item and maps in one action", async () => {
 		queueData = makeQueue({ unmapped: [unmappedRow()], unmapped_total: 1 });
 		renderPage();
+		await openRow(/Mystery Coil/);
 
-		await userEvent.click(screen.getByRole("button", { name: "Create & map" }));
+		await userEvent.click(screen.getByRole("button", { name: /Create as a new part/ }));
 
 		expect(mockCreateProvisional).toHaveBeenCalledWith({ name: "Mystery Coil" });
 		expect(mockApply).toHaveBeenCalledWith({
@@ -309,13 +397,23 @@ describe("InventoryReconcilePage — unmapped verbs", () => {
 		});
 	});
 
-	test("marking a name intentional is a verb of its own, not a postponement", async () => {
+	test("marking a name intentional is a verb of its own, and records the reason", async () => {
 		queueData = makeQueue({ unmapped: [unmappedRow()], unmapped_total: 1 });
 		renderPage();
+		await openRow(/Mystery Coil/);
 
-		await userEvent.click(screen.getByRole("button", { name: "Intentional" }));
+		await userEvent.click(screen.getByRole("button", { name: /Mark intentional/ }));
+		// The column existed and was always empty: nothing ever collected a reason.
+		await userEvent.type(
+			screen.getByLabelText("Reason this part is never stocked"),
+			"Sub's own material"
+		);
+		await userEvent.click(screen.getByRole("button", { name: "Mark intentional" }));
 
-		expect(mockDismiss).toHaveBeenCalledWith({ name: "Mystery Coil" });
+		expect(mockDismiss).toHaveBeenCalledWith({
+			name: "Mystery Coil",
+			reason: "Sub's own material",
+		});
 	});
 
 	test("shows each name's value, which is what the ranking is on", () => {
@@ -342,27 +440,105 @@ describe("InventoryReconcilePage — unmapped verbs", () => {
 		});
 		renderPage();
 
-		expect(screen.getByText(/Showing the 1 highest-value names of/)).toBeInTheDocument();
+		expect(screen.getByText("Showing 1 of 87")).toBeInTheDocument();
+	});
+
+	test("says how deep the provisional backlog is, and asks the server for more", async () => {
+		queueData = makeQueue({
+			provisional: [provisionalRow()],
+			provisional_total: 87,
+			provisional_value: 9000,
+		});
+		renderPage("?tab=detail");
+
+		expect(screen.getByText("Showing 1 of 87")).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+		// The server honours limit on this half now, so a deeper page is a
+		// deeper answer rather than the same 50 rows again.
+		expect(lastQueryOpts).toMatchObject({ limit: 100 });
 	});
 
 	test("stays quiet about truncation when nothing is truncated", () => {
 		queueData = makeQueue({ unmapped: [unmappedRow()], unmapped_total: 1 });
 		renderPage();
 
-		expect(screen.queryByText(/highest-value names of/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/Showing 1 of/)).not.toBeInTheDocument();
+		expect(screen.getByText("1 total")).toBeInTheDocument();
+	});
+
+	test("opening a row asks for the documents billing it", async () => {
+		queueData = makeQueue({ unmapped: [unmappedRow()], unmapped_total: 1 });
+		renderPage();
+		await openRow(/Mystery Coil/);
+
+		expect(lastLinesKey).toEqual({
+			name: "Mystery Coil",
+			foldedName: undefined,
+			itemId: undefined,
+		});
+	});
+});
+
+describe("InventoryReconcilePage — bulk accept", () => {
+	const exact = (name: string, value: number) =>
+		unmappedRow({
+			name,
+			value,
+			match: { inventory_item_id: `id-${name}`, name, sku: null, tier: "exact" },
+		});
+
+	test("offers only the exact matches, and asks before rewriting them", async () => {
+		queueData = makeQueue({
+			unmapped: [
+				exact("Compressor 2T", 2400),
+				exact("Contactor", 100),
+				// A folded-name hit is a guess somebody should read, not bulk-accept.
+				unmappedRow({
+					name: "coil",
+					match: {
+						inventory_item_id: "cat-9",
+						name: "Coil",
+						sku: null,
+						tier: "case_insensitive",
+					},
+				}),
+			],
+			unmapped_total: 3,
+		});
+		renderPage();
+
+		await userEvent.click(screen.getByRole("button", { name: "Accept all 2" }));
+		expect(mockBulk).not.toHaveBeenCalled();
+
+		await userEvent.click(dialogButton(/Accept 2 exact matches/, "Accept all 2"));
+
+		expect(mockBulk).toHaveBeenCalledWith({
+			pairs: [
+				{ name: "Compressor 2T", inventory_item_id: "id-Compressor 2T" },
+				{ name: "Contactor", inventory_item_id: "id-Contactor" },
+			],
+		});
+	});
+
+	test("stays hidden when nothing matches exactly", () => {
+		queueData = makeQueue({ unmapped: [unmappedRow()], unmapped_total: 1 });
+		renderPage();
+
+		expect(
+			screen.queryByRole("button", { name: /Accept all/ })
+		).not.toBeInTheDocument();
 	});
 });
 
 describe("InventoryReconcilePage — dismissed names", () => {
-	test("asks the server for them only when the operator opens the list", async () => {
-		queueData = makeQueue();
+	test("asks the server for them only on the tab that shows them", async () => {
 		renderPage();
+		expect(lastQueryOpts).toMatchObject({ includeDismissed: false });
 
-		expect(lastQueryOpts).toEqual({ includeDismissed: false, origin: undefined });
+		await userEvent.click(screen.getByRole("button", { name: /Marked intentional/ }));
 
-		await userEvent.click(screen.getByRole("button", { name: /Show names marked intentional/ }));
-
-		expect(lastQueryOpts).toEqual({ includeDismissed: true, origin: undefined });
+		expect(lastQueryOpts).toMatchObject({ includeDismissed: true });
 	});
 
 	test("names who decided and when, and offers a way back", async () => {
@@ -376,13 +552,18 @@ describe("InventoryReconcilePage — dismissed names", () => {
 				},
 			],
 		});
-		renderPage();
+		renderPage("?tab=intentional");
+		await openRow(/trip charge/);
 
-		await userEvent.click(screen.getByRole("button", { name: /Show names marked intentional/ }));
-
-		expect(screen.getByText("trip charge")).toBeInTheDocument();
-		expect(screen.getByText(/Dana/)).toBeInTheDocument();
-		expect(screen.getByText(/Never stocked/)).toBeInTheDocument();
+		// Both the row and the pane attribute the decision.
+		expect(screen.getAllByText(/Dana/)).toHaveLength(2);
+		expect(screen.getByText("Never stocked")).toBeInTheDocument();
+		// Folded, so one decision covers every casing the lines were written in.
+		expect(lastLinesKey).toEqual({
+			name: undefined,
+			foldedName: "trip charge",
+			itemId: undefined,
+		});
 
 		await userEvent.click(screen.getByRole("button", { name: "Reopen" }));
 
@@ -390,21 +571,34 @@ describe("InventoryReconcilePage — dismissed names", () => {
 	});
 });
 
-describe("InventoryReconcilePage — coverage", () => {
+describe("InventoryReconcilePage — the strip", () => {
 	test("leads with coverage and the money behind the backlog", () => {
 		queueData = makeQueue({
 			coverage: { linked: 80, unmapped: 20, total: 100, pct: 80 },
 			unmapped: [unmappedRow()],
 			unmapped_total: 1,
 			unmapped_value: 480,
-			provisional: [provisionalRow({ value: 2400 })],
+			// The row on screen carries 100 while the backlog behind it carries
+			// 2400, so a strip that sums what it renders reads 580 and fails.
+			provisional: [provisionalRow({ value: 100 })],
+			provisional_total: 1,
+			provisional_value: 2400,
 		});
 		renderPage();
 
 		expect(screen.getByText("80%")).toBeInTheDocument();
-		expect(screen.getByText(/of 100 material lines mapped/)).toBeInTheDocument();
-		// Both row kinds contribute: 480 unmapped + 2400 sitting on a half-item.
+		expect(screen.getByText("of 100 material lines")).toBeInTheDocument();
+		// Both row kinds contribute: 480 unmapped + 2400 sitting on half-items.
 		expect(screen.getByText("$2,880")).toBeInTheDocument();
+	});
+
+	// "100% of 0 lines mapped" reported an org with no material billing as a pass.
+	test("declines to call an empty org fully covered", () => {
+		queueData = makeQueue();
+		renderPage();
+
+		expect(screen.getByText("No material lines yet")).toBeInTheDocument();
+		expect(screen.queryByText("100%")).not.toBeInTheDocument();
 	});
 
 	test("reads an empty queue as done rather than as broken", () => {
@@ -412,8 +606,31 @@ describe("InventoryReconcilePage — coverage", () => {
 		renderPage();
 
 		expect(
-			screen.getByText("Every material line points at a catalog item."),
+			screen.getByText("Every material line points at a catalog item")
 		).toBeInTheDocument();
-		expect(screen.getByText("No parts are waiting for detail.")).toBeInTheDocument();
+	});
+
+	// The old surface rendered 0% coverage and "every line points at an item" when
+	// the request failed, which is a lie rather than a loading state.
+	test("says the queue failed instead of reporting it as clean", () => {
+		queueError = true;
+		renderPage();
+
+		expect(screen.getByText("Could not load the queue")).toBeInTheDocument();
+		expect(
+			screen.queryByText("Every material line points at a catalog item")
+		).not.toBeInTheDocument();
+	});
+});
+
+describe("InventoryReconcilePage — filtered vs empty", () => {
+	test("a search that hides everything does not read as a clean catalog", () => {
+		queueData = makeQueue();
+		renderPage("?q=compressor");
+
+		expect(screen.getByText("Nothing matches these filters")).toBeInTheDocument();
+		expect(
+			screen.queryByText("Every material line points at a catalog item")
+		).not.toBeInTheDocument();
 	});
 });

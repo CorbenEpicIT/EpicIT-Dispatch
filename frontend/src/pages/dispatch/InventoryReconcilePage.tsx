@@ -1,642 +1,399 @@
-import { useState } from "react";
-import { AlertTriangle, Check, Link2, Plus, RotateCcw, X } from "lucide-react";
-import {
-	useReconcileQueueQuery,
-	useApplyLinkageMatchMutation,
-	useDismissUnmappedMutation,
-	useRestoreUnmappedMutation,
-	useAllInventoryQuery,
-	useCreateProvisionalItemMutation,
-	useApproveItemMutation,
-	useMergeItemMutation,
-	useRejectItemMutation,
-} from "../../hooks/useInventory";
-import {
-	ITEM_ORIGIN_LABELS,
-	type ItemOrigin,
-	type LinkageCandidate,
-	type LinkageEntity,
-	type LinkageMatchTier,
-	type ReconcileDismissedRow,
-	type ReconcileProvisionalRow,
-} from "../../api/inventory";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { MousePointerClick } from "lucide-react";
 import PageHeader from "../../components/ui/PageHeader";
-import LoadSvg from "../../assets/icons/loading.svg?react";
-import { formatQty } from "../../lib/units";
+import StatCard from "../../components/ui/StatCard";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import ReconcileToolbar from "../../components/reconcile/ReconcileToolbar";
+import ReconcileList from "../../components/reconcile/ReconcileList";
+import UnmappedDetail from "../../components/reconcile/UnmappedDetail";
+import ProvisionalDetail from "../../components/reconcile/ProvisionalDetail";
+import DismissedDetail from "../../components/reconcile/DismissedDetail";
+import { EntityBreakdown } from "../../components/reconcile/reconcileUi";
+import {
+	isAutoAcceptable,
+	lineCountLabel,
+	moneyRound,
+} from "../../components/reconcile/reconcileFormat";
+import {
+	EMPTY_COPY,
+	activeRefinementCount,
+	readReconcileFilters,
+	type ReconcileTab,
+} from "../../components/reconcile/reconcileFilters";
+import { useApplyLinkageMatchBulkMutation, useReconcileQueueQuery } from "../../hooks/useInventory";
+import { useToast } from "../../components/ui/useToast";
+import { isTypingKeystroke } from "../../util/keyboard";
 
-const ENTITY_LABELS: Record<LinkageEntity, string> = {
-	quote: "Quotes",
-	job: "Jobs",
-	job_visit: "Visits",
-	recurring_plan: "Plans",
-	invoice: "Invoices",
-};
-
-const TIER_LABELS: Record<LinkageMatchTier, string> = {
-	exact: "exact name",
-	case_insensitive: "name match",
-	code: "SKU match",
-};
-
-const money = (n: number) =>
-	n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-
-const ORIGIN_FILTERS: (ItemOrigin | "all")[] = [
-	"all",
-	"tech_submission",
-	"dispatch_quick_add",
-	"field_purchase",
-	"import",
-];
+const PAGE_SIZE = 50;
+/** Mirrors CANDIDATE_LIMIT on the server; asking for more returns the same 200. */
+const MAX_ROWS = 200;
 
 /**
- * One surface for both an under-specified item row and a billable line
- * pointing at nothing. These were two queues on the inventory page, which
- * made the seam look like a difference in kind: which one a problem lands in
- * depends only on whether an item row got created, and dispatch quick-add
- * resolved one by creating the other.
+ * One surface for both halves of "somebody named a part the catalog doesn't know".
+ * They fail differently, but which half a problem lands in depends only on whether
+ * an item row happened to get created, and quick-add resolves one by creating the
+ * other.
  *
- * Ranked by summed line value — a $4 grommet billed nine times does not
- * belong above a $2,400 compressor billed once.
+ * Ranked by summed line value: a $4 grommet billed nine times does not belong above
+ * a $2,400 compressor billed once. Shaped as triage because every row costs a
+ * decision - the money, the machine's confidence, and the documents billing it,
+ * without leaving the page to look any of it up.
  */
 export default function InventoryReconcilePage() {
-	const [origin, setOrigin] = useState<ItemOrigin | "all">("all");
-	const [showDismissed, setShowDismissed] = useState(false);
+	const [searchParams, setSearchParams] = useSearchParams();
+	const toast = useToast();
 
-	const { data: queue, isLoading } = useReconcileQueueQuery({
-		includeDismissed: showDismissed,
-		origin: origin === "all" ? undefined : origin,
+	const filters = readReconcileFilters(searchParams);
+
+	// The open row lives in the URL, not in component state: an approved field
+	// purchase has to be able to name the part it left behind, and a tab on its
+	// own cannot — it opens a list with nothing selected in it. One param for all
+	// three tabs, because each tab's row key is already a single string.
+	const selectedKey = searchParams.get("row");
+	const setSelectedKey = useCallback(
+		(key: string | null) => {
+			setSearchParams(
+				(prev) => {
+					const next = new URLSearchParams(prev);
+					if (key) next.set("row", key);
+					else next.delete("row");
+					return next;
+				},
+				{ replace: true }
+			);
+		},
+		[setSearchParams]
+	);
+	const [limit, setLimit] = useState(PAGE_SIZE);
+	const [confirmBulk, setConfirmBulk] = useState(false);
+
+	const {
+		data: queue,
+		isLoading,
+		isError,
+	} = useReconcileQueueQuery({
+		// Only fetched where it is the thing being read — it is a second query on
+		// the server, and the other two tabs never show it.
+		includeDismissed: filters.tab === "intentional",
+		origin: filters.origin ?? undefined,
+		search: filters.search || undefined,
+		sort: filters.sort,
+		limit,
 	});
+	const bulk = useApplyLinkageMatchBulkMutation();
 
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center h-full">
-				<LoadSvg className="w-8 h-8 animate-spin text-primary" />
-			</div>
-		);
+	const unmapped = useMemo(() => queue?.unmapped ?? [], [queue]);
+	const provisional = useMemo(() => queue?.provisional ?? [], [queue]);
+	const dismissed = useMemo(() => queue?.dismissed ?? [], [queue]);
+
+	const rowKeys = useMemo(() => {
+		if (filters.tab === "unmapped") return unmapped.map((r) => r.name);
+		if (filters.tab === "detail") return provisional.map((r) => r.item_id);
+		return dismissed.map((r) => r.folded_name);
+	}, [filters.tab, unmapped, provisional, dismissed]);
+
+	// Any change to what the list is showing invalidates both the page depth and
+	// the row that was open in the detail pane.
+	const filterKey = `${filters.tab}|${filters.search}|${filters.origin ?? ""}|${filters.sort}`;
+	const lastFilterKey = useRef(filterKey);
+	useEffect(() => {
+		if (lastFilterKey.current === filterKey) return;
+		lastFilterKey.current = filterKey;
+		setLimit(PAGE_SIZE);
+		setSelectedKey(null);
+	}, [filterKey, setSelectedKey]);
+
+	// A settled row leaves the list, which would strand the selection on a key
+	// that no longer exists and leave the pane rendering nothing.
+	useEffect(() => {
+		if (selectedKey && rowKeys.length > 0 && !rowKeys.includes(selectedKey)) {
+			setSelectedKey(null);
+		}
+	}, [rowKeys, selectedKey, setSelectedKey]);
+
+	/** The row a decision settled is no longer the work; move to the next one. */
+	function advance() {
+		const i = rowKeys.indexOf(selectedKey ?? "");
+		if (i === -1) return setSelectedKey(null);
+		setSelectedKey(rowKeys[i + 1] ?? rowKeys[i - 1] ?? null);
 	}
 
-	const coverage = queue?.coverage ?? { linked: 0, unmapped: 0, total: 0, pct: 100 };
-	const provisional = queue?.provisional ?? [];
-	const unmapped = queue?.unmapped ?? [];
-	const dismissed = queue?.dismissed ?? [];
-	const openValue = (queue?.unmapped_value ?? 0) + provisional.reduce((n, p) => n + p.value, 0);
+	// j/k walk the list. Guarded on the focused element so the same letters stay
+	// ordinary typing inside the search box or a reason field.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (isTypingKeystroke(e)) return;
+			if (e.key !== "j" && e.key !== "k") return;
+			e.preventDefault();
+			const i = rowKeys.indexOf(selectedKey ?? "");
+			const next = i === -1 ? rowKeys[0] : rowKeys[e.key === "j" ? i + 1 : i - 1];
+			if (next) setSelectedKey(next);
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [rowKeys, selectedKey, setSelectedKey]);
+
+	const coverage = queue?.coverage;
+	// Both halves whole-backlog: this is the only figure on the page that is money.
+	const openValue = (queue?.unmapped_value ?? 0) + (queue?.provisional_value ?? 0);
+
+	// Exact tier only: a folded-name or SKU hit is a guess somebody should read,
+	// and accepting a screenful of guesses is how a catalog fills with
+	// confidently wrong links.
+	const exactRows = useMemo(
+		() => unmapped.filter((r) => r.match && isAutoAcceptable(r.match.tier)),
+		[unmapped]
+	);
+	const exactValue = exactRows.reduce((n, r) => n + r.value, 0);
+
+	async function acceptExact() {
+		try {
+			const result = await bulk.mutateAsync({
+				pairs: exactRows.map((r) => ({
+					name: r.name,
+					inventory_item_id: r.match!.inventory_item_id,
+				})),
+			});
+			const failed = result.results.filter((r) => r.err);
+			setConfirmBulk(false);
+			setSelectedKey(null);
+			if (failed.length > 0) {
+				// Partial success is the server's contract here, so it gets said out
+				// loud rather than reported as a flat win.
+				toast.warning(
+					`Linked ${lineCountLabel(result.linked)}. ${failed.length} of ${result.results.length} names could not be linked.`
+				);
+			} else {
+				toast.success(
+					`Linked ${lineCountLabel(result.linked)} across ${result.results.length} parts.`
+				);
+			}
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Could not link these parts."
+			);
+		}
+	}
+
+	const counts: Record<ReconcileTab, number | undefined> = {
+		detail: queue?.provisional_total,
+		unmapped: queue?.unmapped_total,
+		intentional: undefined,
+	};
+
+	// An empty tab and a tab filtered down to nothing are different facts, and
+	// telling a dispatcher the catalog is clean while a search hides forty names
+	// is simply false.
+	const narrowed = activeRefinementCount(filters) > 0;
+	const empty = narrowed
+		? {
+				title: "Nothing matches these filters",
+				description: "Take a filter off above to widen the search.",
+			}
+		: EMPTY_COPY[filters.tab];
+
+	const selectedUnmapped =
+		filters.tab === "unmapped"
+			? unmapped.find((r) => r.name === selectedKey)
+			: undefined;
+	const selectedProvisional =
+		filters.tab === "detail"
+			? provisional.find((r) => r.item_id === selectedKey)
+			: undefined;
+	const selectedDismissed =
+		filters.tab === "intentional"
+			? dismissed.find((r) => r.folded_name === selectedKey)
+			: undefined;
 
 	return (
-		<div className="flex-1 overflow-y-auto p-4">
+		<div className="flex flex-col gap-3 pb-4">
 			<PageHeader title="Reconcile Parts" />
 
-			{/* Coverage first: it is the number that decides whether the catalog
-			    is trustworthy enough for the picker to require a link. */}
-			<div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-xl border border-border bg-base px-4 py-3">
-				<div className="flex items-baseline gap-2">
-					<span className="text-2xl font-semibold text-text-primary tabular-nums">
-						{coverage.pct}%
-					</span>
-					<span className="text-xs text-text-muted">
-						of {coverage.total} material lines mapped
-					</span>
-				</div>
-				<div className="text-xs text-text-muted">
-					<span className="font-medium text-text-primary tabular-nums">
-						{money(openValue)}
-					</span>{" "}
-					billed through parts the catalog doesn&apos;t know
-				</div>
-				<div className="text-xs text-text-muted">
-					{provisional.length} needing detail · {queue?.unmapped_total ?? 0} unmapped names
-				</div>
+			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+				<StatCard
+					dense
+					label="Catalog coverage"
+					// 100% of nothing is not coverage; it is an org with no material
+					// billing yet, and the old strip reported that as a pass.
+					value={
+						!coverage || coverage.total === 0
+							? "—"
+							: `${coverage.pct}%`
+					}
+					hint={
+						coverage && coverage.total > 0
+							? `of ${coverage.total.toLocaleString()} material lines`
+							: "No material lines yet"
+					}
+					tone={
+						!coverage || coverage.total === 0
+							? undefined
+							: coverage.pct < 75
+								? "error"
+								: coverage.pct < 90
+									? "warning"
+									: undefined
+					}
+				/>
+				<StatCard
+					dense
+					label="Billed off-catalog"
+					value={queue ? moneyRound(openValue) : "—"}
+					hint="Through parts the catalog can't deduct"
+					tone={openValue > 0 ? "warning" : undefined}
+				/>
+				<StatCard
+					dense
+					label="Unmapped names"
+					value={queue ? String(queue.unmapped_total) : "—"}
+					hint="Lines pointing at no catalog item"
+				/>
+				<StatCard
+					dense
+					label="Needs detail"
+					value={queue ? String(queue.provisional_total) : "—"}
+					hint="Items with no cost basis or unit"
+				/>
 			</div>
 
-			<section className="mb-6">
-				<SectionHeading
-					title="Needs detail"
-					count={provisional.length}
-					blurb="The item exists but isn't specified enough to stock, cost or reorder."
+			{/* DispatchLayout scrolls the page, not this panel, so both panes take
+			    their height from here. 14rem is the measured chrome above it. */}
+			<div className="flex min-h-[24rem] flex-col overflow-hidden rounded-lg border border-border bg-base lg:h-[calc(100vh-14rem)]">
+				<ReconcileToolbar
+					filters={filters}
+					counts={counts}
+					// A bare unmapped name has no origin, and neither does a dismissal.
+					showOrigin={filters.tab === "detail"}
+					bulk={
+						filters.tab === "unmapped"
+							? {
+									count: exactRows.length,
+									value: exactValue,
+									isPending: bulk.isPending,
+									onAccept: () =>
+										setConfirmBulk(
+											true
+										),
+								}
+							: undefined
+					}
 				/>
 
-				{/* Origin was inferred from a null tech id until 2026-08-20, which
-				    is why every dispatch quick-add used to read "Submitted by
-				    unknown". Filtering on it is only honest now that it is stored. */}
-				<div className="mb-2 flex flex-wrap items-center gap-1">
-					{ORIGIN_FILTERS.map((o) => (
-						<button
-							key={o}
-							type="button"
-							onClick={() => setOrigin(o)}
-							className={`h-7 px-2.5 rounded-full border text-xs font-medium transition-colors ${
-								origin === o
-									? "border-primary bg-primary/15 text-primary-text"
-									: "border-border text-text-muted hover:bg-surface"
-							}`}
-						>
-							{o === "all" ? "All origins" : ITEM_ORIGIN_LABELS[o]}
-						</button>
-					))}
-				</div>
+				{/* Counts the whole org, not the search, so a narrowed list would invite
+				    reading the two numbers as one. */}
+				{filters.tab === "unmapped" && queue && !narrowed && (
+					<EntityBreakdown counts={queue.counts} />
+				)}
 
-				{provisional.length === 0 ? (
-					<EmptyRow>
-						{origin === "all"
-							? "No parts are waiting for detail."
-							: "No parts from this origin are waiting for detail."}
-					</EmptyRow>
-				) : (
-					<div className="flex flex-col gap-2">
-						{provisional.map((row) => (
-							<ProvisionalCard key={row.item_id} row={row} />
-						))}
+				<div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+					{/* One ground for both panes; the 2px rule carries the split. */}
+					<div className="flex max-h-[45vh] min-h-0 flex-col border-b-2 border-border-strong bg-base lg:max-h-none lg:w-[24rem] lg:flex-shrink-0 lg:border-b-0 lg:border-r-2">
+						<ReconcileList
+							tab={filters.tab}
+							unmapped={unmapped}
+							provisional={provisional}
+							dismissed={dismissed}
+							unmappedTotal={queue?.unmapped_total ?? 0}
+							provisionalTotal={queue?.provisional_total ?? 0}
+							isLoading={isLoading}
+							isError={isError}
+							selectedKey={selectedKey}
+							onSelect={setSelectedKey}
+							onLoadMore={() =>
+								setLimit((n) =>
+									Math.min(
+										MAX_ROWS,
+										n + PAGE_SIZE
+									)
+								)
+							}
+							canLoadMore={limit < MAX_ROWS}
+							emptyTitle={empty.title}
+							emptyDescription={empty.description}
+						/>
 					</div>
-				)}
-			</section>
 
-			<section className="mb-6">
-				<SectionHeading
-					title="Unmapped names"
-					count={queue?.unmapped_total ?? 0}
-					blurb="A line bills this part but points at no catalog item, so nothing deducts it from stock."
-				/>
-
-				{unmapped.length === 0 ? (
-					<EmptyRow>Every material line points at a catalog item.</EmptyRow>
-				) : (
-					<>
-						<div className="border border-border rounded overflow-hidden">
-							{unmapped.map((row) => (
-								<UnmappedRow key={row.name} row={row} />
-							))}
-						</div>
-						{/* The list is capped server-side. Saying so beats letting a
-						    200-row page read as the whole backlog. */}
-						{(queue?.unmapped_total ?? 0) > unmapped.length && (
-							<p className="mt-1 px-1 text-[10px] text-text-muted">
-								Showing the {unmapped.length} highest-value names of{" "}
-								{queue?.unmapped_total}. Clearing these shortens the rest.
-							</p>
-						)}
-					</>
-				)}
-			</section>
-
-			<section>
-				<button
-					type="button"
-					onClick={() => setShowDismissed((s) => !s)}
-					className="text-xs font-medium text-text-muted hover:text-text-primary transition-colors"
-				>
-					{showDismissed ? "Hide" : "Show"} names marked intentional
-					{dismissed.length > 0 ? ` (${dismissed.length})` : ""}
-				</button>
-
-				{showDismissed && (
-					<div className="mt-2">
-						{dismissed.length === 0 ? (
-							<EmptyRow>Nothing has been marked intentional yet.</EmptyRow>
+					<div className="flex min-h-0 flex-1 flex-col">
+						{/* Keyed on the row so a half-typed reason or a chosen target never
+						    survives onto the next part. */}
+						{selectedUnmapped ? (
+							<UnmappedDetail
+								key={selectedUnmapped.name}
+								row={selectedUnmapped}
+								onSettled={advance}
+							/>
+						) : selectedProvisional ? (
+							<ProvisionalDetail
+								key={selectedProvisional.item_id}
+								row={selectedProvisional}
+								onSettled={advance}
+							/>
+						) : selectedDismissed ? (
+							<DismissedDetail
+								key={selectedDismissed.folded_name}
+								row={selectedDismissed}
+								onSettled={advance}
+							/>
 						) : (
-							<div className="border border-border rounded overflow-hidden">
-								{dismissed.map((d) => (
-									<DismissedRow key={d.folded_name} row={d} />
-								))}
+							<div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+								<MousePointerClick
+									size={26}
+									className="text-text-faint"
+								/>
+								<p className="text-sm font-medium text-text-secondary">
+									Pick a part to settle it
+								</p>
+								<p className="max-w-xs text-xs text-text-muted">
+									You will see every document
+									billing it, and every way to
+									resolve it, without leaving
+									this page.
+								</p>
+								<p className="text-[11px] text-text-faint">
+									<kbd className="rounded border border-border px-1">
+										j
+									</kbd>{" "}
+									and{" "}
+									<kbd className="rounded border border-border px-1">
+										k
+									</kbd>{" "}
+									walk the list.
+								</p>
 							</div>
 						)}
 					</div>
-				)}
-			</section>
-		</div>
-	);
-}
-
-function SectionHeading({ title, count, blurb }: { title: string; count: number; blurb: string }) {
-	return (
-		<div className="mb-2 flex items-baseline gap-2">
-			<h2 className="text-sm font-semibold text-text-primary">{title}</h2>
-			<span className="text-xs text-text-muted tabular-nums">{count}</span>
-			<span className="text-xs text-text-muted">· {blurb}</span>
-		</div>
-	);
-}
-
-function EmptyRow({ children }: { children: React.ReactNode }) {
-	return (
-		<div className="rounded-xl border border-border-subtle bg-surface px-4 py-6 text-center text-sm text-text-muted">
-			{children}
-		</div>
-	);
-}
-
-function ActionError({ error }: { error: unknown }) {
-	if (!(error instanceof Error)) return null;
-	return (
-		<div className="mt-2 flex items-center gap-1.5 text-xs text-error-text">
-			<AlertTriangle size={12} className="flex-shrink-0" />
-			{error.message}
-		</div>
-	);
-}
-
-/** adopt = complete it, merge = duplicate of something else, reject = bin it. */
-function ProvisionalCard({ row }: { row: ReconcileProvisionalRow }) {
-	const adopt = useApproveItemMutation();
-	const merge = useMergeItemMutation();
-	const reject = useRejectItemMutation();
-	const [open, setOpen] = useState<"adopt" | "merge" | null>(null);
-
-	const busy = adopt.isPending || merge.isPending || reject.isPending;
-
-	return (
-		<div className="rounded-xl border border-border-subtle bg-surface p-4">
-			<div className="flex items-start justify-between gap-4">
-				<div className="min-w-0">
-					<div className="flex items-center gap-2 min-w-0">
-						<span className="truncate text-sm font-medium text-text-primary">
-							{row.name}
-						</span>
-						<span className="flex-shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-[10px] text-text-muted">
-							{ITEM_ORIGIN_LABELS[row.origin]}
-						</span>
-					</div>
-					<div className="mt-0.5 text-xs text-text-muted">
-						{row.submitted_by ? `From ${row.submitted_by.name}` : "From dispatch"}
-						{row.cost != null ? ` · Cost $${row.cost.toFixed(2)}` : " · No cost yet"}
-						{row.lines > 0 &&
-							` · ${row.lines} line${row.lines === 1 ? "" : "s"} worth ${money(row.value)}`}
-					</div>
-					{row.vehicle_stocks.length > 0 && (
-						<div className="text-xs text-text-muted">
-							On:{" "}
-							{row.vehicle_stocks
-								.map(
-									(vs) =>
-										`${vs.vehicle.name} (${formatQty(vs.qty_on_hand, row.unit)})`,
-								)
-								.join(", ")}
-						</div>
-					)}
-				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					<button
-						onClick={() => setOpen(open === "adopt" ? null : "adopt")}
-						className="rounded bg-primary/15 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25"
-					>
-						Adopt
-					</button>
-					<button
-						onClick={() => setOpen(open === "merge" ? null : "merge")}
-						className="rounded bg-surface-hover px-2.5 py-1.5 text-xs font-semibold text-text-secondary hover:bg-border-subtle"
-					>
-						Merge
-					</button>
-					<button
-						onClick={() => reject.mutate(row.item_id)}
-						disabled={busy}
-						className="rounded bg-red-500/10 px-2.5 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-50"
-					>
-						Reject
-					</button>
 				</div>
 			</div>
 
-			{open === "adopt" && (
-				<AdoptForm
-					row={row}
-					isPending={adopt.isPending}
-					onCancel={() => setOpen(null)}
-					onConfirm={async (body) => {
-						try {
-							await adopt.mutateAsync({ itemId: row.item_id, ...body });
-							setOpen(null);
-						} catch {
-							// Surfaced through adopt.error; caught only to avoid an unhandled rejection.
-						}
-					}}
-				/>
-			)}
-
-			{open === "merge" && (
-				<MergeForm
-					itemId={row.item_id}
-					isPending={merge.isPending}
-					onCancel={() => setOpen(null)}
-					onConfirm={async (targetId) => {
-						try {
-							await merge.mutateAsync({ itemId: row.item_id, targetId });
-							setOpen(null);
-						} catch {
-							// See above.
-						}
-					}}
-				/>
-			)}
-
-			<ActionError error={adopt.error ?? merge.error ?? reject.error} />
-		</div>
-	);
-}
-
-/**
- * Cost cannot be skipped: with no cost basis an item reads as free to
- * weighted average cost and shows 100% margin on every line billing it. The
- * server refuses it too; disabling here only saves the round trip.
- */
-function AdoptForm({
-	row,
-	onConfirm,
-	onCancel,
-	isPending,
-}: {
-	row: ReconcileProvisionalRow;
-	onConfirm: (body: {
-		cost?: number;
-		low_stock_threshold?: number | null;
-		initial_warehouse_qty?: number;
-	}) => void;
-	onCancel: () => void;
-	isPending: boolean;
-}) {
-	const [cost, setCost] = useState(row.cost != null ? String(row.cost) : "");
-	const [threshold, setThreshold] = useState(
-		row.low_stock_threshold != null ? String(row.low_stock_threshold) : "",
-	);
-	const [qty, setQty] = useState("0");
-
-	const costValue = cost.trim() === "" ? null : Number(cost);
-	const costOk = costValue !== null && Number.isFinite(costValue) && costValue >= 0;
-
-	return (
-		<div className="mt-3 flex flex-wrap items-end gap-3 border-t border-border-subtle pt-3">
-			<Field label="Cost per unit" hint={row.cost == null ? "Required" : undefined}>
-				<input
-					type="number"
-					min={0}
-					step="0.01"
-					value={cost}
-					onChange={(e) => setCost(e.target.value)}
-					aria-label="Cost per unit"
-					className="w-24 rounded border border-border-input bg-base px-2 py-1.5 text-sm text-text-primary outline-none focus:border-primary"
-				/>
-			</Field>
-			<Field label="Low-stock at">
-				<input
-					type="number"
-					min={0}
-					step="0.01"
-					value={threshold}
-					onChange={(e) => setThreshold(e.target.value)}
-					aria-label="Low-stock at"
-					className="w-24 rounded border border-border-input bg-base px-2 py-1.5 text-sm text-text-primary outline-none focus:border-primary"
-				/>
-			</Field>
-			<Field label="Warehouse qty now">
-				<input
-					type="number"
-					min={0}
-					value={qty}
-					onChange={(e) => setQty(e.target.value)}
-					aria-label="Warehouse qty now"
-					className="w-24 rounded border border-border-input bg-base px-2 py-1.5 text-sm text-text-primary outline-none focus:border-primary"
-				/>
-			</Field>
-			<div className="flex items-center gap-2">
-				<button
-					onClick={() =>
-						onConfirm({
-							...(costOk ? { cost: costValue! } : {}),
-							...(threshold.trim() === ""
-								? {}
-								: { low_stock_threshold: Number(threshold) }),
-							...(Number(qty) > 0 ? { initial_warehouse_qty: Number(qty) } : {}),
-						})
-					}
-					disabled={isPending || !costOk}
-					title={!costOk ? "A cost is required to adopt an item" : undefined}
-					className="rounded bg-primary px-2.5 py-1.5 text-xs font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
-				>
-					Adopt into catalog
-				</button>
-				<button onClick={onCancel} className="text-xs text-text-muted">
-					Cancel
-				</button>
-			</div>
-		</div>
-	);
-}
-
-function Field({
-	label,
-	hint,
-	children,
-}: {
-	label: string;
-	hint?: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<label className="flex flex-col gap-1">
-			<span className="text-[10px] uppercase tracking-wide text-text-muted">
-				{label}
-				{hint && <span className="ml-1 normal-case text-warning-text">{hint}</span>}
-			</span>
-			{children}
-		</label>
-	);
-}
-
-function MergeForm({
-	itemId,
-	onConfirm,
-	onCancel,
-	isPending,
-}: {
-	itemId: string;
-	onConfirm: (targetId: string) => void;
-	onCancel: () => void;
-	isPending: boolean;
-}) {
-	const { data: catalog = [] } = useAllInventoryQuery();
-	const [target, setTarget] = useState("");
-	// The catalog list already excludes provisional rows; only this item itself
-	// needs filtering out.
-	const options = catalog.filter((c) => c.id !== itemId);
-
-	return (
-		<div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3">
-			<span className="text-xs text-text-muted">Merge into:</span>
-			<select
-				value={target}
-				onChange={(e) => setTarget(e.target.value)}
-				aria-label="Merge into"
-				className="rounded border border-border-input bg-base px-2 py-1.5 text-sm text-text-primary"
-			>
-				<option value="">— choose —</option>
-				{options.map((c) => (
-					<option key={c.id} value={c.id}>
-						{c.name}
-					</option>
-				))}
-			</select>
-			<button
-				onClick={() => onConfirm(target)}
-				disabled={!target || isPending}
-				className="rounded bg-primary px-2.5 py-1.5 text-xs font-semibold text-on-primary disabled:opacity-50"
-			>
-				Merge
-			</button>
-			<button onClick={onCancel} className="text-xs text-text-muted">
-				Cancel
-			</button>
-		</div>
-	);
-}
-
-/**
- * Marking a name intentional is a real answer, not a postponement: a one-off
- * gasket or a subcontractor's own material will never be stocked, and forcing
- * an item row for each would fill the catalog with things nobody reorders.
- */
-function UnmappedRow({ row }: { row: LinkageCandidate }) {
-	const apply = useApplyLinkageMatchMutation();
-	const createItem = useCreateProvisionalItemMutation();
-	const dismiss = useDismissUnmappedMutation();
-	const { data: catalog = [] } = useAllInventoryQuery();
-	const [pick, setPick] = useState(row.match?.inventory_item_id ?? "");
-	const [mapped, setMapped] = useState<number | null>(null);
-
-	const busy = apply.isPending || createItem.isPending || dismiss.isPending;
-
-	const handleMap = async (itemId: string) => {
-		try {
-			const updated = await apply.mutateAsync({ name: row.name, inventory_item_id: itemId });
-			setMapped(Object.values(updated).reduce((a, b) => a + b, 0));
-		} catch {
-			// Surfaced through apply.error.
-		}
-	};
-
-	/**
-		 * Create-and-map in one click, or the row is a dead end and the dispatcher
-		 * has to leave, create the item, and come back to find it.
-		 */
-	const handleCreateAndMap = async () => {
-		try {
-			const created = await createItem.mutateAsync({ name: row.name });
-			await handleMap(created.id);
-		} catch {
-			// Both mutations surface their own error. The item survives a failed
-			// map — it is in the queue above — so a retry maps rather than
-			// duplicating (the server folds by name).
-		}
-	};
-
-	return (
-		<div className="border-b border-border-subtle px-3 py-2 last:border-0">
-			<div className="flex items-center gap-2">
-				<div className="min-w-0 flex-1">
-					<div className="flex min-w-0 items-center gap-1.5">
-						{!row.match && mapped === null && (
-							<AlertTriangle size={11} className="flex-shrink-0 text-warning-text" />
-						)}
-						<span className="truncate text-sm text-text-primary" title={row.name}>
-							{row.name}
-						</span>
-						<span className="flex-shrink-0 text-xs tabular-nums text-text-muted">
-							{money(row.value)}
-						</span>
-					</div>
-					<div className="text-[10px] text-text-muted">
-						{row.lines} line{row.lines === 1 ? "" : "s"} ·{" "}
-						{row.entities.map((e) => ENTITY_LABELS[e]).join(", ")}
-						{row.match && ` · suggested by ${TIER_LABELS[row.match.tier]}`}
-					</div>
-				</div>
-
-				{mapped !== null ? (
-					<span className="flex flex-shrink-0 items-center gap-1 text-xs text-success-text">
-						<Check size={12} />
-						{mapped} mapped
-					</span>
-				) : (
+			{/* Rewrites historical billing rows across every line table at once —
+			    exact-name only, but still not a thing to do on a stray click. */}
+			<ConfirmDialog
+				open={confirmBulk}
+				title={`Accept ${exactRows.length} exact matches?`}
+				body={
 					<>
-						<select
-							value={pick}
-							onChange={(e) => setPick(e.target.value)}
-							aria-label={`Catalog item for ${row.name}`}
-							className="h-[28px] max-w-[180px] rounded border border-border bg-base px-2 text-xs text-text-muted focus:border-primary focus:outline-none [&>option]:bg-base [&>option]:text-text-primary"
-						>
-							<option value="">Choose item…</option>
-							{catalog.map((i) => (
-								<option key={i.id} value={i.id}>
-									{i.name}
-								</option>
-							))}
-						</select>
-						{pick ? (
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => void handleMap(pick)}
-								className="flex h-[28px] flex-shrink-0 items-center gap-1 rounded bg-primary px-2 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:opacity-40"
-							>
-								<Link2 size={11} />
-								Map
-							</button>
-						) : (
-							<button
-								type="button"
-								title={`Create "${row.name}" as an item awaiting detail, then map these lines to it`}
-								disabled={busy}
-								onClick={() => void handleCreateAndMap()}
-								className="flex h-[28px] flex-shrink-0 items-center gap-1 rounded border border-border px-2 text-xs font-medium text-text-primary transition-colors hover:bg-surface disabled:opacity-40"
-							>
-								<Plus size={11} />
-								Create &amp; map
-							</button>
+						Every line naming one of these {exactRows.length}{" "}
+						parts will point at the catalog item with the same
+						name
+						{exactValue > 0 && (
+							<>
+								{" — "}
+								<strong>
+									{moneyRound(exactValue)}
+								</strong>{" "}
+								of billing
+							</>
 						)}
-						<button
-							type="button"
-							title="This part is never stocked — keep the line billable and stop asking"
-							disabled={busy}
-							onClick={() => dismiss.mutate({ name: row.name })}
-							className="flex h-[28px] flex-shrink-0 items-center gap-1 rounded border border-border px-2 text-xs font-medium text-text-muted transition-colors hover:bg-surface disabled:opacity-40"
-						>
-							<X size={11} />
-							Intentional
-						</button>
+						. Lines on completed visits are marked already used,
+						so the stock is not deducted twice.
 					</>
-				)}
-			</div>
-
-			<ActionError error={apply.error ?? createItem.error ?? dismiss.error} />
-		</div>
-	);
-}
-
-/** Attributed and reversible: dismissal is the lazy way out, so it stays visible. */
-function DismissedRow({ row }: { row: ReconcileDismissedRow }) {
-	const restore = useRestoreUnmappedMutation();
-
-	return (
-		<div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-0">
-			<div className="min-w-0 flex-1">
-				<span className="truncate text-sm text-text-primary">{row.folded_name}</span>
-				<div className="text-[10px] text-text-muted">
-					{row.decided_by ? row.decided_by.name : "Unknown"} ·{" "}
-					{new Date(row.decided_at).toLocaleDateString("en-US", {
-						month: "short",
-						day: "numeric",
-						year: "numeric",
-					})}
-					{row.reason && ` · ${row.reason}`}
-				</div>
-			</div>
-			<button
-				type="button"
-				disabled={restore.isPending}
-				onClick={() => restore.mutate({ name: row.folded_name })}
-				className="flex h-[28px] flex-shrink-0 items-center gap-1 rounded border border-border px-2 text-xs font-medium text-text-muted transition-colors hover:bg-surface disabled:opacity-40"
-			>
-				<RotateCcw size={11} />
-				Reopen
-			</button>
+				}
+				confirmLabel={`Accept all ${exactRows.length}`}
+				pending={bulk.isPending}
+				onConfirm={() => void acceptExact()}
+				onCancel={() => setConfirmBulk(false)}
+			/>
 		</div>
 	);
 }

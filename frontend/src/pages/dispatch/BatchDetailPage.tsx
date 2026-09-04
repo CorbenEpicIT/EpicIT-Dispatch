@@ -1081,7 +1081,7 @@ export default function BatchDetailPage() {
 			/>
 
 			{/* Feedback for adds made here (Print Label, ReceiveStockModal's
-			    per-serial queueing) — previously silent on this page. */}
+			    per-serial queueing), so they don't happen silently on this page. */}
 			<LabelQueueToast />
 
 			{/* Driven by ?serial=, so it can already be open on first paint. */}

@@ -22,6 +22,8 @@ export interface OrgSettings {
 	mfa_required: boolean;
 	brand_color: string | null;
 	followups_enabled: boolean;
+	/** Decimal over the wire, like tax_rate. Null means second sign-off is off. */
+	field_purchase_second_signoff_threshold: string | null;
 }
 
 export interface OrgSettingsUpdate {
@@ -36,6 +38,7 @@ export interface OrgSettingsUpdate {
 	mfa_required?: boolean;
 	brand_color?: string | null;
 	followups_enabled?: boolean;
+	field_purchase_second_signoff_threshold?: number | null;
 }
 
 export const getOrgSettings = async (): Promise<OrgSettings> => {

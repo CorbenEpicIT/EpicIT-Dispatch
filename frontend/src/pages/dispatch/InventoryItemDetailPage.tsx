@@ -442,11 +442,11 @@ export default function InventoryItemDetailPage() {
 	);
 
 	// Full width, below both the main stack and the rail, in either layout. Its
-	// row count doesn't track with Details or Cost, so it used to be the one
-	// unbounded block in the rail — a long supplier list made the rail column
-	// end somewhere the main column never could. Full width, it's the tab's
-	// closing element instead: whichever column ran taller above it, the page
-	// always finishes on the same wide edge.
+	// row count doesn't track with Details or Cost: an unbounded block in the
+	// rail would let a long supplier list end the rail column somewhere the
+	// main column never could. Full width, it's the tab's closing element
+	// instead: whichever column ran taller above it, the page always finishes
+	// on the same wide edge.
 	const suppliersBand = <ItemSuppliersCard itemId={item.id} unit={item.unit} />;
 
 	return (
