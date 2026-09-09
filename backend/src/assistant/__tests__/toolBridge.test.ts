@@ -107,6 +107,46 @@ describe("summariseToolResult", () => {
 		expect(summariseToolResult(tool, input, data)).toContain(expected);
 	});
 
+	// A write returns ids and a status — too thin a shape to recognise, and the
+	// one card in the thread reporting something that actually changed. Left to
+	// the shape checks these all read "Ran <tool_name>".
+	it.each([
+		[
+			"schedule_visit",
+			{ name: "Follow-up AC check" },
+			{ scheduled_start_at: "2026-09-11T15:00:00.000Z", assigned: 1 },
+			"Scheduled “Follow-up AC check” for 2026-09-11 15:00 — 1 technician",
+		],
+		["schedule_visit", { name: "Site survey" }, { assigned: 0 }, "Scheduled “Site survey” — nobody assigned yet"],
+		["reschedule_visit", {}, { scheduled_start_at: "2026-09-13T15:00:00.000Z" }, "Moved the visit to 2026-09-13 15:00"],
+		["reschedule_visit", {}, { name: "Renamed only" }, "Changed the visit's timing"],
+		// Handlers return what Prisma gave them, which is a Date, not a string.
+		[
+			"reschedule_visit",
+			{},
+			{ scheduled_start_at: new Date("2026-09-13T15:00:00.000Z") },
+			"Moved the visit to 2026-09-13 15:00",
+		],
+		[
+			"schedule_visit",
+			{ name: "Follow-up AC check" },
+			{ scheduled_start_at: new Date("2026-09-11T15:00:00.000Z"), assigned: 2 },
+			"Scheduled “Follow-up AC check” for 2026-09-11 15:00 — 2 technicians",
+		],
+		["assign_technician", {}, { assigned: 2 }, "Assigned 2 technicians to the visit"],
+		["assign_technician", {}, { assigned: 0 }, "Cleared every technician from the visit"],
+		["update_job_status", {}, { job_number: "J-0013", status: "InProgress" }, "Set job J-0013 to InProgress"],
+		["add_job_note", { content: "Gate code is 4821." }, { id: "n1" }, "Added a note — “Gate code is 4821.”"],
+	])("summarises the %s write by what it changed", (tool, input, data, expected) => {
+		expect(summariseToolResult(tool, input, data)).toBe(expected);
+	});
+
+	it("truncates a long note rather than spilling it into the card", () => {
+		const content = "The tenant asked us to call ahead because the loading dock is shared with the bakery next door";
+		const summary = summariseToolResult("add_job_note", { content }, { id: "n1" });
+		expect(summary).toBe("Added a note — “The tenant asked us to call ahead because the loading dock i…”");
+	});
+
 	it("says a draft still needs review, so nobody reads it as created", () => {
 		expect(
 			summariseToolResult("propose_draft", {}, { status: "saved_as_draft", form_type: "quote", label: "X" }),

@@ -56,6 +56,22 @@ export function parseToolArguments(raw: string): { ok: true; value: unknown } | 
 }
 
 /**
+ * Shared by both one-liners below, so a time reads the same before and after a call.
+ *
+ * Accepts a Date as well as a string: the arguments a model sent have been
+ * through JSON and arrive as strings, but a tool handler returns whatever Prisma
+ * gave it, which is a Date. Taking only strings would silently drop the time
+ * from every write summary while the approval prompt above still showed one.
+ */
+function when(value: unknown): string | null {
+	if (!(typeof value === "string" || value instanceof Date)) return null;
+	const parsed = value instanceof Date ? value : new Date(value);
+	return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().replace("T", " ").slice(0, 16);
+}
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
  * A one-line account of what a call is ABOUT to do, for the approval prompt.
  *
  * This is the sentence a dispatcher decides on, so it has to say what will
@@ -65,17 +81,12 @@ export function parseToolArguments(raw: string): { ok: true; value: unknown } | 
  */
 export function describeToolCall(toolName: string, input: unknown): string {
 	const args = (input ?? {}) as Record<string, unknown>;
-	const when = (value: unknown): string | null => {
-		if (typeof value !== "string") return null;
-		const parsed = new Date(value);
-		return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().replace("T", " ").slice(0, 16);
-	};
 
 	switch (toolName) {
 		case "schedule_visit": {
 			const start = when(args.scheduled_start_at);
 			const techs = Array.isArray(args.tech_ids) ? args.tech_ids.length : 0;
-			const who = techs === 0 ? "no technician assigned" : `${techs} technician${techs === 1 ? "" : "s"}`;
+			const who = techs === 0 ? "no technician assigned" : plural(techs, "technician");
 			return `Schedule “${String(args.name ?? "a visit")}”${start ? ` for ${start}` : ""} — ${who}`;
 		}
 		case "reschedule_visit": {
@@ -86,7 +97,7 @@ export function describeToolCall(toolName: string, input: unknown): string {
 			const techs = Array.isArray(args.tech_ids) ? args.tech_ids.length : 0;
 			return techs === 0
 				? "Remove every technician from this visit"
-				: `Set this visit's technicians — ${techs} assigned, replacing whoever is on it now`;
+				: `Set this visit's technicians — ${plural(techs, "technician")} assigned, replacing whoever is on it now`;
 		}
 		case "update_job_status": {
 			const status = String(args.status ?? "");
@@ -106,6 +117,39 @@ export function describeToolCall(toolName: string, input: unknown): string {
 export function summariseToolResult(toolName: string, input: unknown, data: unknown): string {
 	const record = (data ?? {}) as Record<string, unknown>;
 	const args = (input ?? {}) as Record<string, unknown>;
+
+	// The writes are matched on name rather than on the shape of what they
+	// returned. A write returns ids and a status — a shape too thin to recognise,
+	// and the one a dispatcher most needs stated back to them, because it is the
+	// only card in the thread that reports something that actually changed.
+	switch (toolName) {
+		case "schedule_visit": {
+			const start = when(record.scheduled_start_at);
+			const techs = typeof record.assigned === "number" ? record.assigned : 0;
+			const who = techs === 0 ? "nobody assigned yet" : plural(techs, "technician");
+			return `Scheduled “${String(args.name ?? "a visit")}”${start ? ` for ${start}` : ""} — ${who}`;
+		}
+		case "reschedule_visit": {
+			const start = when(record.scheduled_start_at);
+			return start ? `Moved the visit to ${start}` : "Changed the visit's timing";
+		}
+		case "assign_technician": {
+			const techs = typeof record.assigned === "number" ? record.assigned : 0;
+			return techs === 0
+				? "Cleared every technician from the visit"
+				: `Assigned ${plural(techs, "technician")} to the visit`;
+		}
+		case "update_job_status": {
+			const job = record.job_number ? ` ${String(record.job_number)}` : "";
+			return `Set job${job} to ${String(record.status ?? args.status ?? "a new status")}`;
+		}
+		case "add_job_note": {
+			// The note's own words identify it far better than its id does.
+			const content = typeof args.content === "string" ? args.content.trim() : "";
+			const excerpt = content.length > 60 ? `${content.slice(0, 60).trimEnd()}…` : content;
+			return excerpt ? `Added a note — “${excerpt}”` : "Added a note to the job";
+		}
+	}
 
 	if (Array.isArray(record.hits)) {
 		return `Searched for “${String(args.query ?? "")}” — ${record.hits.length} match${record.hits.length === 1 ? "" : "es"}`;
