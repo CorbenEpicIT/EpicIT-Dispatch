@@ -163,6 +163,7 @@ export interface QuotePipelineResponse {
 	draft: QuotePipelineBucket;
 	sent: QuotePipelineBucket;
 	viewed: QuotePipelineBucket;
+	disputed: QuotePipelineBucket;
 }
 
 // ============================================================================
@@ -333,6 +334,11 @@ export interface AgedReceivablesBucket {
 export interface AgedReceivablesResponse {
 	data: AgedReceivablesBucket[];
 	totalOutstanding: number;
+	// Disputed invoices are still owed, so they stay in totalOutstanding, but
+	// are excluded from the ageing buckets above and reported here instead.
+	disputedTotal: number;
+	// Their invoice count, likewise excluded from every bucket's `count`.
+	disputedCount: number;
 }
 
 export interface AgedReceivablesClientRow {
@@ -342,6 +348,9 @@ export interface AgedReceivablesClientRow {
 	bucket31_60: number;
 	bucket61_90: number;
 	bucket90plus: number;
+	// Disputed balance for this client — already included in `total`, but
+	// broken out on its own since it's excluded from the ageing buckets.
+	disputed: number;
 	total: number;
 	count: number;
 }

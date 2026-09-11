@@ -1,6 +1,7 @@
 import type { Layout, ResponsiveLayouts } from "react-grid-layout";
 import { QUICKBOOKS_ENABLED } from "../config/features";
 import type { ResponsiveConstraints, WidgetCatalog } from "./gridLayoutEngine";
+import { DISPUTE_VIEW_PERMISSIONS } from "./permissionGates";
 
 export const DEFAULT_LAYOUT: Layout = [
     { i: "week-strip",    x: 0, y: 0,  w: 12, h: 5  },
@@ -8,6 +9,7 @@ export const DEFAULT_LAYOUT: Layout = [
     { i: "low-stock",     x: 0, y: 11, w: 3,  h: 2  },
     { i: "activity-feed", x: 3, y: 5,  w: 5,  h: 12 },
     { i: "technicians",   x: 8, y: 5,  w: 4,  h: 3  },
+    { i: "open-disputes", x: 8, y: 8,  w: 4,  h: 6  },
 ];
 
 
@@ -16,17 +18,19 @@ const DEFAULT_MD_LAYOUT: Layout = [
     { i: "week-strip",    x: 0, y: 0,  w: 8, h: 5  },
     { i: "pipeline",      x: 0, y: 5,  w: 4, h: 6  },
     { i: "technicians",   x: 4, y: 5,  w: 4, h: 3  },
-    { i: "low-stock",     x: 4, y: 8,  w: 4, h: 2  },
-    { i: "activity-feed", x: 0, y: 11, w: 8, h: 12 },
+    { i: "open-disputes", x: 4, y: 8,  w: 4, h: 6  },
+    { i: "low-stock",     x: 0, y: 11, w: 4, h: 2  },
+    { i: "activity-feed", x: 0, y: 14, w: 8, h: 12 },
 ];
 
 // 4-col single-column stacked layout
 const DEFAULT_SM_LAYOUT: Layout = [
     { i: "week-strip",    x: 0, y: 0,  w: 4, h: 4  },
     { i: "pipeline",      x: 0, y: 4,  w: 4, h: 6  },
-    { i: "activity-feed", x: 0, y: 10, w: 4, h: 12 },
-    { i: "technicians",   x: 0, y: 22, w: 4, h: 3  },
-    { i: "low-stock",     x: 0, y: 25, w: 4, h: 2  },
+    { i: "open-disputes", x: 0, y: 10, w: 4, h: 6  },
+    { i: "activity-feed", x: 0, y: 16, w: 4, h: 12 },
+    { i: "technicians",   x: 0, y: 28, w: 4, h: 3  },
+    { i: "low-stock",     x: 0, y: 31, w: 4, h: 2  },
 ];
 
 export const DEFAULT_RESPONSIVE_LAYOUTS: ResponsiveLayouts = {
@@ -46,6 +50,7 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
     maxH?: number;
     responsiveConstraints?: ResponsiveConstraints;
     requiredPermission?: string;
+    requiredAnyPermission?: readonly string[];
 }> = {
     "week-strip":           {   label: "Week Schedule",
                                 defaultW: 12, defaultH: 5,  minW: 6, minH: 4, maxH: 8, maxW: 12,
@@ -75,6 +80,13 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
                                 defaultW: 3,  defaultH: 4,  minW: 2, minH: 2, maxH: 2, maxW: 6,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 2, maxW: 12, maxH: 6 },
+                                ]
+                            },
+    "open-disputes":        {   label: "Open Disputes",
+                                defaultW: 4,  defaultH: 6,  minW: 3, minH: 4, maxH: 10, maxW: 6,
+                                requiredAnyPermission: DISPUTE_VIEW_PERMISSIONS,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
                                 ]
                             },
     "quickbooks":           {   label: "QuickBooks",

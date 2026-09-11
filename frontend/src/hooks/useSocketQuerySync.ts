@@ -17,6 +17,7 @@ import type {
 
 const JOB_VISITS_KEY = ["jobVisits"] as const;
 const TECHNICIANS_KEY = ["technicians"] as const;
+const DISPUTE_ACTIVITY = /^(quote|invoice)\.dispute_(opened|resolved)$/;
 
 // Single canonical event→invalidation map — mounted once in DispatchLayout and
 // TechnicianLayout so every socket-driven cache update lives in one place.
@@ -73,6 +74,14 @@ export function useSocketQuerySync(): void {
 		const onGrantRequested = (_event: FieldPurchaseGrantRequestedEvent) => {
 			qc.invalidateQueries({ queryKey: qk.fieldPurchases.grants });
 		};
+		// Disputes have no socket event of their own: they ride the activity
+		// feed's broadcast, and this hook is mounted on every page while the feed
+		// may not be.
+		const onActivity = (event: { event_type?: string }) => {
+			if (DISPUTE_ACTIVITY.test(event.event_type ?? "")) {
+				qc.invalidateQueries({ queryKey: qk.disputes.open });
+			}
+		};
 
 		socket.on("inventory:updated", onInventoryUpdated);
 		socket.on("job_visit:status_changed", onJobVisitChanged);
@@ -87,6 +96,7 @@ export function useSocketQuerySync(): void {
 		socket.on("field_purchase:preauth_decided", onFieldPurchaseChanged);
 		socket.on("field_purchase:ocr", onFieldPurchaseOcr);
 		socket.on("field_purchase:grant_requested", onGrantRequested);
+		socket.on("activity-event", onActivity);
 
 		return () => {
 			socket.off("inventory:updated", onInventoryUpdated);
@@ -102,6 +112,7 @@ export function useSocketQuerySync(): void {
 			socket.off("field_purchase:preauth_decided", onFieldPurchaseChanged);
 			socket.off("field_purchase:ocr", onFieldPurchaseOcr);
 			socket.off("field_purchase:grant_requested", onGrantRequested);
+			socket.off("activity-event", onActivity);
 		};
 	}, [qc]);
 }

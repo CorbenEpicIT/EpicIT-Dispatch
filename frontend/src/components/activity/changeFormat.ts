@@ -153,6 +153,11 @@ const FIELD_LABELS: Record<string, string> = {
 	tax_rate: "Tax rate",
 	unit_price: "Unit price",
 	internal_notes: "Internal notes",
+	dispute_resolution: "Dispute outcome",
+	// Not in ID_REF_FIELDS: a replacement is a quote on a quote's log and an
+	// invoice on an invoice's, and RefType is keyed by field name alone with no
+	// way to vary by the log row's entity. A labelled UUID still beats a bare one.
+	replacement: "Replacement document",
 };
 
 const labelFor = (key: string): string => FIELD_LABELS[key] ?? humanize(key);

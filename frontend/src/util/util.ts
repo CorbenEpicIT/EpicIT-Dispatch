@@ -1,4 +1,5 @@
 ﻿import type { StockStatus } from "../types/inventory";
+import { isAxiosError } from "axios";
 
 export const camelCaseToRegular = (str: string) => {
 	return str
@@ -54,6 +55,20 @@ export const formatDate = (date: Date | string, tz = FALLBACK_TIMEZONE) => {
 		timeZone: tz,
 	});
 };
+
+/**
+ * Whole days from now to `date` — negative once it is in the past. Compared on
+ * the calendar-day boundary rather than the millisecond, so a document expiring
+ * later today reads as 0 days rather than "tomorrow".
+ */
+export function daysUntil(date: Date | string): number {
+	const DAY_MS = 24 * 60 * 60 * 1000;
+	const then = new Date(date);
+	const target = Date.UTC(then.getFullYear(), then.getMonth(), then.getDate());
+	const now = new Date();
+	const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+	return Math.round((target - today) / DAY_MS);
+}
 
 export const formatDateOnly = (date: Date | string) => {
 	return new Date(date).toLocaleDateString("en-US", {
@@ -220,7 +235,18 @@ export function isAdmin(role: string): boolean {
 	return role === "ADMIN";
 }
 
-/** What a caught mutation error can actually be shown to a user as. */
+/**
+ * What a caught mutation error can actually be shown to a user as. On an
+ * axios error it reads the API's { error: { message } } envelope, which is
+ * what carries a worded 422/403 refusal — AxiosError.message is only
+ * "Request failed with status code 422". Falls back to a plain Error's
+ * message, then to `fallback`.
+ */
 export function errorMessage(err: unknown, fallback: string): string {
-	return err instanceof Error ? err.message : fallback;
+	if (isAxiosError(err)) {
+		const data = err.response?.data as { error?: { message?: unknown } } | undefined;
+		const enveloped = data?.error?.message;
+		return typeof enveloped === "string" && enveloped ? enveloped : fallback;
+	}
+	return err instanceof Error && err.message ? err.message : fallback;
 }

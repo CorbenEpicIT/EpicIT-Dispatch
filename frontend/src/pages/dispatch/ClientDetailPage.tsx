@@ -18,6 +18,7 @@ import Card from "../../components/ui/Card";
 import EditClientModal from "../../components/clients/EditClient";
 import ContactManager from "../../components/clients/ContactManager";
 import NoteManager from "../../components/clients/NoteManager";
+import ClientDisputesCard from "../../components/clients/ClientDisputesCard";
 import { useClientByIdQuery } from "../../hooks/useClients";
 import { useInvoicesByClientIdQuery } from "../../hooks/useInvoices";
 import {
@@ -25,6 +26,7 @@ import {
 	InvoiceStatusLabels,
 	type InvoiceStatus,
 } from "../../types/invoices";
+import { QuoteStatusColors, type QuoteStatus } from "../../types/quotes";
 import { formatCurrency, formatDate } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
 import ChangeHistory from "../../components/activity/ChangeHistory";
@@ -197,6 +199,10 @@ export default function ClientDetailsPage() {
 	const getStatusColor = (item: WorkflowItem) => {
 		if (item.type === "invoice") {
 			return InvoiceStatusColors[item.status as InvoiceStatus]
+				?? "bg-neutral/20 text-text-tertiary border-border-strong/30";
+		}
+		if (item.type === "quote") {
+			return QuoteStatusColors[item.status as QuoteStatus]
 				?? "bg-neutral/20 text-text-tertiary border-border-strong/30";
 		}
 		const colors: Record<string, string> = {
@@ -613,6 +619,7 @@ export default function ClientDetailsPage() {
 
 					{/* RIGHT COLUMN */}
 					<div className="flex flex-col gap-4 lg:gap-5 min-w-0 xl:w-full order-1 xl:order-2">
+						<ClientDisputesCard clientId={client.id} />
 						<Card title="Client Information" className="!p-4">
 							<div className="space-y-3">
 								<div>

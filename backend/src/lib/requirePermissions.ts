@@ -15,6 +15,11 @@ import { log } from "../services/appLogger.js";
  *     view_quotes         · create_quotes      · edit_quotes        · delete_quotes
  *   Invoices
  *     view_invoices       · create_invoices    · edit_invoices      · delete_invoices
+ *     refund_invoices     (refunds and invoice voids — cash out)
+ *   Disputes
+ *     open_disputes       · resolve_disputes
+ *     concede_disputes    (required with resolve_disputes for IssueAdjustment / Repeal)
+ *     resolve_own_disputes (override for the opener != resolver rule)
  *   Clients
  *     view_clients        · create_clients     · edit_clients       · delete_clients
  *   Inventory
@@ -65,6 +70,19 @@ export const requirePermission = (permission: string) => (req: Request, res: Res
     }
     next();
 };
+
+/**
+ * Gate that engages only for the requests whose body asks for the privileged
+ * variant of an operation. Voiding an invoice is a PATCH on the same route
+ * that renames its memo, so the cash-out permission cannot sit on the route
+ * itself — it has to read what the body is actually asking for.
+ */
+export const requirePermissionForBody =
+	(permission: string, applies: (body: unknown) => boolean) =>
+	(req: Request, res: Response, next: NextFunction) => {
+		if (!applies(req.body)) return next();
+		return requirePermission(permission)(req, res, next);
+	};
 
 export const requireAnyPermission = (...permissions: string[]) => (req: Request, res: Response, next: NextFunction) => {
     const perms = resolvePerms(req);

@@ -32,10 +32,18 @@ const COLS: ColumnOption[] = [
 	{ key: "bucket31_60", label: "31-60 days" },
 	{ key: "bucket61_90", label: "61-90 days" },
 	{ key: "bucket90plus", label: "90+ days" },
+	{ key: "disputed", label: "In Dispute" },
 	{ key: "total", label: "Total" },
 ];
 
-const AMOUNT_KEYS = ["bucket0_30", "bucket31_60", "bucket61_90", "bucket90plus", "total"] as const;
+const AMOUNT_KEYS = [
+	"bucket0_30",
+	"bucket31_60",
+	"bucket61_90",
+	"bucket90plus",
+	"disputed",
+	"total",
+] as const;
 
 const HEADER_LABELS = buildHeaderLabels(COLS);
 const COLUMN_ALIGN = buildColumnAlign(COLS, AMOUNT_KEYS);
@@ -86,6 +94,7 @@ export default function AgedReceivablesPage() {
 				bucket31_60: formatCurrency(Number(r.bucket31_60)),
 				bucket61_90: formatCurrency(Number(r.bucket61_90)),
 				bucket90plus: formatCurrency(Number(r.bucket90plus)),
+				disputed: formatCurrency(Number(r.disputed)),
 				total: formatCurrency(Number(r.total)),
 			})),
 		[rows],

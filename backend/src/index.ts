@@ -38,6 +38,7 @@ import { refreshAccessToken, verifyToken as verifyAccessToken } from "./services
 // ============================================
 import clientsContactsRouter from "./routes/clientsContacts.js";
 import dispatchersRouter from "./routes/dispatchers.js";
+import disputesRouter from "./routes/disputes.js";
 import draftsRouter from "./routes/drafts.js";
 import emailRouter from "./routes/email.js";
 import inventoryRouter from "./routes/inventory.js";
@@ -99,11 +100,15 @@ const errorHandler = (
 		"Unhandled request error",
 	);
 
-	const statusCode = err.statusCode || 500;
+	// httpError carries statusCode; InvalidTransitionError and
+	// DocumentRuleError carry status. Reading only one turned a deliberate
+	// refusal that reached this handler into a 500.
+	const statusCode = err.statusCode || err.status || 500;
 
 	res.status(statusCode).json(
 		createErrorResponse(
-			err.code || ErrorCodes.SERVER_ERROR,
+			err.code ||
+				(statusCode < 500 ? ErrorCodes.VALIDATION_ERROR : ErrorCodes.SERVER_ERROR),
 			err.message || "An unexpected error occurred",
 			process.env.NODE_ENV === "development" ? err.stack : undefined,
 		),
@@ -552,6 +557,7 @@ app.use("/occurrences", verifyToken, occurrencesRouter);
 // INVOICE ROUTES
 // ============================================
 app.use("/invoices", verifyToken, invoicesRouter);
+app.use("/disputes", verifyToken, disputesRouter);
 
 // ============================================
 // TECHNICIANS

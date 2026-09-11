@@ -78,6 +78,9 @@ export const useCreateJobMutation = (): UseMutationResult<Job, Error, CreateJobI
 				await queryClient.invalidateQueries({
 					queryKey: ["quotes"],
 				});
+				// Selling one quote closes Revise & Resend on its siblings, and
+				// those outcomes arrive with each sibling's disputes.
+				await queryClient.invalidateQueries({ queryKey: ["disputes"] });
 			}
 
 			queryClient.setQueryData(["jobs", newJob.id], newJob);

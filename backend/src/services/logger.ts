@@ -1,23 +1,7 @@
 import { db } from "../db.js";
 import { getSocket } from "./socketService.js";
 import { redactFeedRow } from "../controllers/logsController.js";
-
-const FEED_EVENTS = new Set([
-	"job.created",
-	"job_visit.created",
-	"job_visit.updated",
-	"job_visit.technicians_assigned",
-	"request.created",
-	"request.updated",
-	"quote.created",
-	"quote.updated",
-	"invoice.created",
-	"invoice.updated",
-	"invoice_payment.created",
-	"recurring_plan.created",
-	"recurring_occurrence.generated",
-	"technician.updated",
-]);
+import { FEED_EVENT_SET } from "../lib/activityFeedEvents.js";
 
 // ============================================================================
 // UNIFIED ACTIVITY LOGGING
@@ -101,7 +85,7 @@ export const logActivity = async (params: LogActivityParams) => {
 			},
 		});
 
-		if (FEED_EVENTS.has(params.event_type) && created.organization_id) {
+		if (FEED_EVENT_SET.has(params.event_type) && created.organization_id) {
 			try {
 				// Same PII redaction as GET /logs/recent — the socket room is org-wide.
 				getSocket().to(`org:${created.organization_id}`).emit("activity-event", redactFeedRow(created));

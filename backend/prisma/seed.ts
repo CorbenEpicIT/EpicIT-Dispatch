@@ -5858,6 +5858,974 @@ async function main() {
 	});
 
 	// ============================================================================
+	// Document Disputes — quote and invoice contest / resolution fixtures
+	// ============================================================================
+	//
+	// Placed BEFORE the tax post-pass on purpose: every document below is taxed
+	// by the real engine from its line items, so the credit adjustments exercise
+	// negative-amount tax rather than carrying a hand-computed figure that could
+	// drift from what the engine actually does.
+	//
+	// Organised by what a reviewer needs to see:
+	//   open, awaiting resolution ....... Q-0003, Q-0007, INV-0006/7/8
+	//   resolved, Revise & Resend ....... Q-0004 → Q-0005, INV-0011 → INV-0012
+	//   resolved, Repeal ................ Q-0006
+	//   resolved, Issue Adjustment ...... INV-0009 + INV-0010 (credit) + INV-0013 (charge)
+	//   lifecycle completion ............ Q-0008 (rejected), Q-0009 (lapsed), INV-0014 (refund)
+	//   migration fixture ............... INV-0015
+
+	// ── Q-0003: open dispute, 2 of 3 lines contested ────────────────────────────
+	// The everyday case: a Sent quote the client is arguing with. Both outcomes
+	// are available, and Cancel Quote is refused while the dispute is open —
+	// cancelling would strand the dispute Open forever with no way to close it.
+	const quoteDisputed = await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0003",
+			client_id: client3.id,
+			title: "Ductwork Reseal — Upper Floor",
+			description:
+				"Reseal supply trunk and six branch runs; replace two crushed elbows.",
+			status: "Disputed",
+			address: client3.address,
+			priority: "Medium",
+			// Recomputed by the tax post-pass below from the line items; seeded
+			// here because subtotal and total are required columns.
+			subtotal: 2326.0,
+			tax_rate: 0.0825,
+			tax_amount: 191.9,
+			total: 2517.9,
+			issued_at: daysFromNow(-9),
+			sent_at: daysFromNow(-9),
+			valid_until: daysFromNow(21),
+			expires_at: daysFromNow(21),
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Duct Sealing Labor (12 hrs)",
+						quantity: 12,
+						unit_price: 145.0,
+						total: 1740.0,
+						item_type: "labor",
+						sort_order: 0,
+					},
+					{
+						name: "Sheet Metal Elbow 8in (2)",
+						quantity: 2,
+						unit_price: 68.0,
+						total: 136.0,
+						item_type: "material",
+						sort_order: 1,
+					},
+					{
+						name: "After-hours Access Surcharge",
+						quantity: 1,
+						unit_price: 450.0,
+						total: 450.0,
+						item_type: "other",
+						sort_order: 2,
+					},
+				],
+			},
+		},
+		include: { line_items: { orderBy: { sort_order: "asc" } } },
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "quote",
+			quote_id: quoteDisputed.id,
+			status: "Open",
+			reason: "Client says the after-hours surcharge was never discussed, and disputes 12 hours of labour for a job we quoted verbally at 8.",
+			// Two of the three lines — drives the banner's "2 of 3 lines
+			// contested" count and pre-seeds the resolve modal's line picker.
+			contested_line_item_ids: [
+				quoteDisputed.line_items[0]!.id,
+				quoteDisputed.line_items[2]!.id,
+			],
+			status_at_open: "Sent",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-2),
+		},
+	});
+
+	// ── Q-0004 → Q-0005: resolved via Revise & Resend ───────────────────────────
+	// The original is Revised and immutable; the replacement carries version 2,
+	// previous_quote_id, and a validity window measured from its OWN issue date
+	// so a revision is never born already expired.
+	const quoteSuperseded = await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0004",
+			client_id: client5.id,
+			title: "Boiler Circulator Pump Replacement",
+			description:
+				"Replace failed circulator pump on the north boiler loop.",
+			status: "Revised",
+			address: client5.address,
+			priority: "High",
+			subtotal: 865.0,
+			tax_rate: 0.0825,
+			tax_amount: 71.36,
+			total: 936.36,
+			version: 1,
+			issued_at: daysFromNow(-20),
+			sent_at: daysFromNow(-20),
+			valid_until: daysFromNow(10),
+			expires_at: daysFromNow(10),
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Circulator Pump — Taco 007-F5",
+						quantity: 1,
+						unit_price: 385.0,
+						total: 385.0,
+						item_type: "equipment",
+						sort_order: 0,
+					},
+					{
+						name: "Install Labor (3 hrs)",
+						quantity: 3,
+						unit_price: 160.0,
+						total: 480.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+				],
+			},
+		},
+	});
+
+	const quoteReplacement = await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0005",
+			client_id: client5.id,
+			title: "Boiler Circulator Pump Replacement",
+			description:
+				"Revised after dispute: labour re-scoped to 2 hours, isolation valves added.",
+			status: "Issued",
+			address: client5.address,
+			priority: "High",
+			subtotal: 779.0,
+			tax_rate: 0.0825,
+			tax_amount: 64.27,
+			total: 843.27,
+			version: 2,
+			previous_quote_id: quoteSuperseded.id,
+			issued_at: daysFromNow(-6),
+			valid_until: daysFromNow(24),
+			expires_at: daysFromNow(24),
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Circulator Pump — Taco 007-F5",
+						quantity: 1,
+						unit_price: 385.0,
+						total: 385.0,
+						item_type: "equipment",
+						sort_order: 0,
+					},
+					{
+						name: "Install Labor (2 hrs)",
+						quantity: 2,
+						unit_price: 160.0,
+						total: 320.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+					{
+						name: "Isolation Valve Pair",
+						quantity: 1,
+						unit_price: 74.0,
+						total: 74.0,
+						item_type: "material",
+						sort_order: 2,
+					},
+				],
+			},
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "quote",
+			quote_id: quoteSuperseded.id,
+			status: "Resolved",
+			reason: "Client disputed 3 hours of labour — says the pump is in an open mechanical room and the job is a 2-hour swap.",
+			status_at_open: "Sent",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-8),
+			resolution: "ReviseAndResend",
+			resolution_note:
+				"Agreed. Re-scoped labour to 2 hours and added the isolation valves the client asked for.",
+			resolved_by_dispatcher_id: dispatcher.id,
+			resolved_at: daysFromNow(-6),
+			replacement_quote_id: quoteReplacement.id,
+		},
+	});
+
+	// ── Q-0006: resolved via Repeal ─────────────────────────────────────────────
+	// Terminal. rejection_reason carries the resolution note, and updateQuote
+	// refuses every later edit — repealed stays repealed.
+	const quoteRepealed = await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0006",
+			client_id: client1.id,
+			title: "Whole-Home Humidifier Install",
+			description:
+				"Install bypass humidifier on the main supply plenum with humidistat.",
+			status: "Cancelled",
+			address: client1.address,
+			priority: "Low",
+			subtotal: 620.0,
+			tax_rate: 0.0825,
+			tax_amount: 51.15,
+			total: 671.15,
+			issued_at: daysFromNow(-30),
+			sent_at: daysFromNow(-30),
+			rejection_reason:
+				"Withdrawn after dispute — client's water hardness makes this the wrong product. Recommending a different approach.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Bypass Humidifier — Aprilaire 700",
+						quantity: 1,
+						unit_price: 620.0,
+						total: 620.0,
+						item_type: "equipment",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "quote",
+			quote_id: quoteRepealed.id,
+			status: "Resolved",
+			reason: "Client disputes the humidifier recommendation — says the last one scaled up within a year.",
+			status_at_open: "Sent",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-11),
+			resolution: "Repeal",
+			resolution_note:
+				"Withdrawn after dispute — client's water hardness makes this the wrong product. Recommending a different approach.",
+			resolved_by_dispatcher_id: dispatcher.id,
+			resolved_at: daysFromNow(-10),
+		},
+	});
+
+	// ── Q-0007: open dispute where the work is already sold ─────────────────────
+	// req1 is ConvertedToJob, so Revise & Resend is disabled with the
+	// sibling-sold reason and Repeal is the only outcome offered. That is D9:
+	// once a job exists the quote is no longer the live document.
+	const quoteSoldDisputed = await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0007",
+			client_id: client1.id,
+			request_id: req1.id,
+			title: "AC Condenser Coil Replacement",
+			description:
+				"Replace corroded condenser coil; recover and recharge R-410A.",
+			status: "Disputed",
+			address: client1.address,
+			priority: "High",
+			subtotal: 1580.0,
+			tax_rate: 0.0825,
+			tax_amount: 130.35,
+			total: 1710.35,
+			issued_at: daysFromNow(-16),
+			sent_at: daysFromNow(-16),
+			viewed_at: daysFromNow(-15),
+			approved_at: daysFromNow(-14),
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Condenser Coil — 3 Ton",
+						quantity: 1,
+						unit_price: 940.0,
+						total: 940.0,
+						item_type: "equipment",
+						sort_order: 0,
+					},
+					{
+						name: "Recovery & Recharge Labor (4 hrs)",
+						quantity: 4,
+						unit_price: 160.0,
+						total: 640.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+				],
+			},
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "quote",
+			quote_id: quoteSoldDisputed.id,
+			status: "Open",
+			reason: "Client approved, then called back disputing the coil price against a competitor's written quote.",
+			status_at_open: "Approved",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-1),
+		},
+	});
+
+	// ── Q-0008: rejected with a reason (D14) ────────────────────────────────────
+	// "The client said no" — reachable from the UI now, and it fills the funnel's
+	// lost bucket, which could never fill before.
+	await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0008",
+			client_id: client3.id,
+			title: "Attic Insulation Top-Up",
+			description:
+				"Blow cellulose to R-49 across the main attic; baffle the soffit vents.",
+			status: "Rejected",
+			address: client3.address,
+			priority: "Low",
+			subtotal: 1890.0,
+			tax_rate: 0.0825,
+			tax_amount: 155.93,
+			total: 2045.93,
+			issued_at: daysFromNow(-25),
+			sent_at: daysFromNow(-25),
+			viewed_at: daysFromNow(-24),
+			rejected_at: daysFromNow(-22),
+			rejection_reason:
+				"Client is deferring to next budget year — going ahead with the furnace work only.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Blown Cellulose R-49 (1,400 sq ft)",
+						quantity: 1400,
+						unit_price: 1.35,
+						total: 1890.0,
+						item_type: "material",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	// ── Q-0009: Sent but already past expires_at ────────────────────────────────
+	// The sweep runs every 5 minutes, so the stored status lags reality between
+	// runs. The detail page derives an "Expired" badge from expires_at rather
+	// than trusting the status alone; this is the fixture that shows it. Running
+	// the sweep once flips this row to Expired.
+	await db.quote.create({
+		data: {
+			organization_id: org.id,
+			quote_number: "Q-0009",
+			client_id: client2.id,
+			title: "Makeup Air Unit Filter Contract",
+			description:
+				"Quarterly filter changes on both makeup air units for twelve months.",
+			status: "Sent",
+			address: client2.address,
+			priority: "Low",
+			subtotal: 840.0,
+			tax_rate: 0.0825,
+			tax_amount: 69.3,
+			total: 909.3,
+			issued_at: daysFromNow(-45),
+			sent_at: daysFromNow(-45),
+			valid_until: daysFromNow(-15),
+			expires_at: daysFromNow(-15),
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Quarterly Filter Service (annual)",
+						quantity: 4,
+						unit_price: 210.0,
+						total: 840.0,
+						item_type: "other",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	// ── INV-0006: open dispute, nothing paid ────────────────────────────────────
+	// All three outcomes available: no money is applied, so both void-based paths
+	// are still legal.
+	const invDisputedUnpaid = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0006",
+			client_id: client3.id,
+			status: "Disputed",
+			issue_date: daysFromNow(-18),
+			due_date: daysFromNow(12),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-18),
+			sent_at: daysFromNow(-18),
+			amount_paid: 0.0,
+			memo: "Emergency after-hours call — Williams managed properties.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "After-hours Emergency Call",
+						quantity: 1,
+						unit_price: 275.0,
+						total: 275.0,
+						item_type: "other",
+						sort_order: 0,
+					},
+					{
+						name: "Diagnostic Labor (1.5 hrs)",
+						quantity: 1.5,
+						unit_price: 210.0,
+						total: 315.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+				],
+			},
+		},
+		include: { line_items: { orderBy: { sort_order: "asc" } } },
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "invoice",
+			invoice_id: invDisputedUnpaid.id,
+			status: "Open",
+			reason: "Client says the call was placed at 4:40pm, inside business hours, so the after-hours rate should not apply.",
+			contested_line_item_ids: [invDisputedUnpaid.line_items[0]!.id],
+			status_at_open: "Sent",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-3),
+		},
+	});
+
+	// ── INV-0007: open dispute holding a partial payment ────────────────────────
+	// amount_paid > 0, so Revise & Resend and Repeal are both disabled with the
+	// money reason — voiding would strand the payment on a dead record (D8).
+	// Issue Adjustment is the only way through.
+	const invDisputedPartial = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0007",
+			client_id: client5.id,
+			status: "Disputed",
+			issue_date: daysFromNow(-26),
+			due_date: daysFromNow(4),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-26),
+			sent_at: daysFromNow(-26),
+			amount_paid: 500.0,
+			memo: "Common-area RTU repair — Riverside Apartments.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Compressor Contactor 40A",
+						quantity: 2,
+						unit_price: 96.0,
+						total: 192.0,
+						item_type: "material",
+						inventory_item_id: invContactor.id,
+						sort_order: 0,
+					},
+					{
+						name: "Repair Labor (6 hrs)",
+						quantity: 6,
+						unit_price: 160.0,
+						total: 960.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+				],
+			},
+		},
+	});
+
+	await db.invoice_payment.create({
+		data: {
+			invoice_id: invDisputedPartial.id,
+			amount: 500.0,
+			paid_at: daysFromNow(-19),
+			method: "check",
+			note: "Partial payment while the labour hours are being disputed.",
+			recorded_by_dispatcher_id: dispatcher.id,
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "invoice",
+			invoice_id: invDisputedPartial.id,
+			status: "Open",
+			reason: "Property manager disputes 6 hours of labour — their on-site log shows the technician there for 3.5.",
+			status_at_open: "PartiallyPaid",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-5),
+		},
+	});
+
+	// ── INV-0008: a PAID invoice under dispute (D13) ────────────────────────────
+	// Paid used to be terminal. It is disputable now because a client contesting
+	// something they already paid for is the most common real dispute — and it is
+	// safe precisely because Issue Adjustment is the only outcome money allows.
+	const invDisputedPaid = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0008",
+			client_id: client1.id,
+			status: "Disputed",
+			issue_date: daysFromNow(-40),
+			due_date: daysFromNow(-10),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-40),
+			sent_at: daysFromNow(-40),
+			paid_at: daysFromNow(-33),
+			amount_paid: 1298.0,
+			memo: "Furnace heat exchanger replacement.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Heat Exchanger Assembly",
+						quantity: 1,
+						unit_price: 740.0,
+						total: 740.0,
+						item_type: "equipment",
+						sort_order: 0,
+					},
+					{
+						name: "Install Labor (3.5 hrs)",
+						quantity: 3.5,
+						unit_price: 160.0,
+						total: 560.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+				],
+			},
+		},
+	});
+
+	await db.invoice_payment.create({
+		data: {
+			invoice_id: invDisputedPaid.id,
+			amount: 1298.0,
+			paid_at: daysFromNow(-33),
+			method: "card",
+			note: "Paid in full on receipt.",
+			recorded_by_dispatcher_id: dispatcher.id,
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "invoice",
+			invoice_id: invDisputedPaid.id,
+			status: "Open",
+			reason: "Client paid, then found the same exchanger listed cheaper elsewhere and is asking for the difference back.",
+			status_at_open: "Paid",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: hrsAgo(20),
+		},
+	});
+
+	// ── INV-0009 + INV-0010 + INV-0013: an adjusted chain ───────────────────────
+	// The original is NEVER edited. Its total, number and tax snapshot stand, and
+	// its status was restored to status_at_open once the dispute closed. The
+	// corrections hang off it as separate linked documents: one credit and one
+	// additional charge, which together prove the chain is summed rather than
+	// replaced — syncBilledAmounts walks the whole chain for job profitability.
+	//
+	// The credit is the fixture that makes the receivables fix visible: its
+	// balance_due is NEGATIVE, so it nets against what the client owes instead
+	// of being floored to zero and vanishing from every AR figure.
+	const invAdjusted = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0009",
+			client_id: client2.id,
+			status: "Sent",
+			issue_date: daysFromNow(-34),
+			due_date: daysFromNow(-4),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-34),
+			sent_at: daysFromNow(-34),
+			amount_paid: 0.0,
+			memo: "Rooftop unit service — Smith Commercial Bldg 2.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						source_job_id: job2.id,
+						name: "RTU Belt & Bearing Service",
+						quantity: 1,
+						unit_price: 1450.0,
+						total: 1450.0,
+						item_type: "labor",
+						sort_order: 0,
+					},
+					{
+						source_job_id: job2.id,
+						name: "Service Labor (5 hrs)",
+						quantity: 5,
+						unit_price: 190.0,
+						total: 950.0,
+						item_type: "labor",
+						sort_order: 1,
+					},
+				],
+			},
+			jobs: { create: { job_id: job2.id, billed_amount: 2400.0 } },
+		},
+		include: { line_items: { orderBy: { sort_order: "asc" } } },
+	});
+
+	// The credit. A negative quantity carries the delta, exactly as
+	// ServiceTitan's adjustment invoice works, and the line total agrees with
+	// quantity x unit price — a document printing "1 x $400" over a different
+	// total reconciles against nothing.
+	const invCreditNote = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0010",
+			client_id: client2.id,
+			status: "Issued",
+			issue_date: daysFromNow(-12),
+			due_date: daysFromNow(18),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-12),
+			amount_paid: 0.0,
+			memo: "Adjusts INV-0009",
+			adjusts_invoice_id: invAdjusted.id,
+			// Never auto-pushed: exporting a net-negative document as a
+			// QuickBooks credit memo is deliberately out of scope for now.
+			qb_sync_status: "not_synced",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						source_job_id: job2.id,
+						name: "Credit: Service Labor overbilled (1.5 hrs)",
+						quantity: -1.5,
+						unit_price: 190.0,
+						total: -285.0,
+						item_type: "labor",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	// The additional charge, against the SAME original — an adjustment chain is
+	// not limited to credits, and the net across the chain is what the
+	// over-crediting ceiling measures.
+	const invExtraCharge = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0013",
+			client_id: client2.id,
+			status: "Issued",
+			issue_date: daysFromNow(-11),
+			due_date: daysFromNow(19),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-11),
+			amount_paid: 0.0,
+			memo: "Adjusts INV-0009",
+			adjusts_invoice_id: invAdjusted.id,
+			qb_sync_status: "not_synced",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						source_job_id: job2.id,
+						name: "Replacement bearing found seized on teardown",
+						quantity: 1,
+						unit_price: 128.0,
+						total: 128.0,
+						item_type: "material",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "invoice",
+			invoice_id: invAdjusted.id,
+			status: "Resolved",
+			reason: "Client's site log shows 3.5 hours on site, not the 5 billed. They are not disputing the service itself.",
+			contested_line_item_ids: [invAdjusted.line_items[1]!.id],
+			// The original was Sent when contested, so it was restored to Sent —
+			// not re-Issued, which would have relocked its tax snapshot at
+			// today's date and erased that the client had already received it.
+			status_at_open: "Sent",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-14),
+			resolution: "IssueAdjustment",
+			resolution_note:
+				"Site log confirmed. Credited 1.5 hours of labour and separately billed the seized bearing found on teardown.",
+			resolved_by_dispatcher_id: dispatcher.id,
+			resolved_at: daysFromNow(-12),
+			adjustment_invoice_id: invCreditNote.id,
+		},
+	});
+
+	await db.invoice_note.create({
+		data: {
+			organization_id: org.id,
+			invoice_id: invAdjusted.id,
+			content:
+				"Adjusted rather than reissued — the client already had this invoice and the tax snapshot has to stay at the service date.",
+			creator_dispatcher_id: dispatcher.id,
+		},
+	});
+
+	// ── INV-0011 → INV-0012: resolved via Revise & Resend ───────────────────────
+	// Nothing was paid, so replacement was legal. The original is Void with an
+	// auto-filled reason naming its successor; the replacement carries version 2,
+	// previous_invoice_id, and the job link — attribution moves wholesale, or the
+	// job reads as billed zero.
+	const invVoidedOriginal = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0011",
+			client_id: client5.id,
+			status: "Void",
+			issue_date: daysFromNow(-22),
+			due_date: daysFromNow(8),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-22),
+			sent_at: daysFromNow(-22),
+			voided_at: daysFromNow(-17),
+			void_reason: "Replaced by INV-0012 — dispute resolution",
+			amount_paid: 0.0,
+			qb_sync_status: "not_synced",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Rooftop Access Hatch Repair",
+						quantity: 1,
+						unit_price: 480.0,
+						total: 480.0,
+						item_type: "labor",
+						sort_order: 0,
+					},
+					{
+						name: "Wrong Site Trip Charge",
+						quantity: 1,
+						unit_price: 95.0,
+						total: 95.0,
+						item_type: "other",
+						sort_order: 1,
+					},
+				],
+			},
+		},
+	});
+
+	const invReplacement = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0012",
+			client_id: client5.id,
+			status: "Issued",
+			issue_date: daysFromNow(-17),
+			due_date: daysFromNow(13),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-17),
+			version: 2,
+			previous_invoice_id: invVoidedOriginal.id,
+			amount_paid: 0.0,
+			memo: "Replaces INV-0011 — trip charge removed.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Rooftop Access Hatch Repair",
+						quantity: 1,
+						unit_price: 480.0,
+						total: 480.0,
+						item_type: "labor",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	await db.document_dispute.create({
+		data: {
+			organization_id: org.id,
+			document_kind: "invoice",
+			invoice_id: invVoidedOriginal.id,
+			status: "Resolved",
+			reason: "Client refuses the trip charge — the wrong-site visit was our dispatch error, not theirs.",
+			status_at_open: "Sent",
+			opened_by_dispatcher_id: dispatcher.id,
+			opened_at: daysFromNow(-19),
+			resolution: "ReviseAndResend",
+			resolution_note: "Our error. Voided and reissued without the trip charge.",
+			resolved_by_dispatcher_id: dispatcher.id,
+			resolved_at: daysFromNow(-17),
+			replacement_invoice_id: invReplacement.id,
+		},
+	});
+
+	// ── INV-0014: a refund against a paid invoice (D16) ─────────────────────────
+	// Recorded as a NEGATIVE invoice_payment row — same table, same arithmetic,
+	// no new model. amount_paid is the signed sum, so the invoice falls back out
+	// of Paid on its own. Recording a refund does not move money: the card or
+	// bank action happens with the payment provider.
+	const invRefunded = await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0014",
+			client_id: client1.id,
+			status: "PartiallyPaid",
+			issue_date: daysFromNow(-28),
+			due_date: daysFromNow(2),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-28),
+			sent_at: daysFromNow(-28),
+			amount_paid: 240.0,
+			memo: "Duct cleaning — two returns quoted, one performed.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Duct Cleaning — Return Trunk",
+						quantity: 2,
+						unit_price: 220.0,
+						total: 440.0,
+						item_type: "labor",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	await db.invoice_payment.create({
+		data: {
+			invoice_id: invRefunded.id,
+			amount: 440.0,
+			paid_at: daysFromNow(-27),
+			method: "card",
+			note: "Paid in full at time of service.",
+			recorded_by_dispatcher_id: dispatcher.id,
+		},
+	});
+
+	await db.invoice_payment.create({
+		data: {
+			// Negative: the API takes the size of the refund and the server
+			// applies the sign, so a dispatcher never types a minus.
+			invoice_id: invRefunded.id,
+			amount: -200.0,
+			paid_at: daysFromNow(-9),
+			method: "card",
+			note: "Refunded one of the two return trunks — only one was cleaned. Card refund processed outside the system.",
+			recorded_by_dispatcher_id: dispatcher.id,
+		},
+	});
+
+	// ── INV-0015: a legacy Disputed invoice with NO dispute row ─────────────────
+	// Deliberately stranded, and the only fixture here that is not a happy path.
+	//
+	// Before this work an invoice reached Disputed through a bare status flag
+	// that recorded no reason, no actor and no outcome. This row reproduces that
+	// state: the banner cannot render without a document_dispute row, and Open
+	// Dispute is gated off because Disputed is not a disputable status — so the
+	// invoice has no resolve path at all.
+	//
+	// 20260906120000_backfill_legacy_disputed_invoices exists to fix exactly
+	// this, and it has never run against real data — it applied to a database
+	// that had no Disputed invoices, so it inserted nothing. Re-running that
+	// migration's INSERT against a seeded database is what finally exercises it:
+	// this row should gain one Open dispute, and running it twice should still
+	// leave exactly one.
+	await db.invoice.create({
+		data: {
+			organization_id: org.id,
+			invoice_number: "INV-0015",
+			client_id: client3.id,
+			status: "Disputed",
+			issue_date: daysFromNow(-60),
+			due_date: daysFromNow(-30),
+			payment_terms_days: 30,
+			issued_at: daysFromNow(-60),
+			sent_at: daysFromNow(-60),
+			amount_paid: 0.0,
+			memo: "Flagged Disputed by the old status button — no reason or actor was ever recorded.",
+			created_by_dispatcher_id: dispatcher.id,
+			line_items: {
+				create: [
+					{
+						name: "Condensate Pump Replacement",
+						quantity: 1,
+						unit_price: 310.0,
+						total: 310.0,
+						item_type: "equipment",
+						sort_order: 0,
+					},
+				],
+			},
+		},
+	});
+
+	// ── Audit trail ─────────────────────────────────────────────────────────────
+	// ChangeHistory is already mounted on both detail pages, so dispute history
+	// renders with no new UI — but only if these rows exist. The event_type
+	// values must stay in step with disputeService's logActivity calls.
+	await db.log.createMany({
+		data: [
+			{ organization_id: org.id, event_type: "quote.dispute_opened", action: "updated", entity_type: "quote", entity_id: quoteDisputed.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Client says the after-hours surcharge was never discussed.", changes: { status: { old: "Sent", new: "Disputed" } }, timestamp: daysFromNow(-2) },
+			{ organization_id: org.id, event_type: "quote.dispute_opened", action: "updated", entity_type: "quote", entity_id: quoteSuperseded.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { status: { old: "Sent", new: "Disputed" } }, timestamp: daysFromNow(-8) },
+			{ organization_id: org.id, event_type: "quote.dispute_resolved", action: "updated", entity_type: "quote", entity_id: quoteSuperseded.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Re-scoped labour to 2 hours.", changes: { dispute_resolution: { old: null, new: "ReviseAndResend" }, replacement: { old: null, new: "Q-0005" } }, timestamp: daysFromNow(-6) },
+			{ organization_id: org.id, event_type: "quote.dispute_resolved", action: "updated", entity_type: "quote", entity_id: quoteRepealed.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Wrong product for the client's water hardness.", changes: { dispute_resolution: { old: null, new: "Repeal" }, status: { old: "Disputed", new: "Cancelled" } }, timestamp: daysFromNow(-10) },
+			{ organization_id: org.id, event_type: "quote.dispute_opened", action: "updated", entity_type: "quote", entity_id: quoteSoldDisputed.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { status: { old: "Approved", new: "Disputed" } }, timestamp: daysFromNow(-1) },
+			{ organization_id: org.id, event_type: "invoice.dispute_opened", action: "updated", entity_type: "invoice", entity_id: invDisputedUnpaid.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Call was placed inside business hours.", changes: { status: { old: "Sent", new: "Disputed" } }, timestamp: daysFromNow(-3) },
+			{ organization_id: org.id, event_type: "invoice.dispute_opened", action: "updated", entity_type: "invoice", entity_id: invDisputedPartial.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { status: { old: "PartiallyPaid", new: "Disputed" } }, timestamp: daysFromNow(-5) },
+			{ organization_id: org.id, event_type: "invoice.dispute_opened", action: "updated", entity_type: "invoice", entity_id: invDisputedPaid.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { status: { old: "Paid", new: "Disputed" } }, timestamp: hrsAgo(20) },
+			{ organization_id: org.id, event_type: "invoice.dispute_resolved", action: "updated", entity_type: "invoice", entity_id: invAdjusted.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Site log confirmed 3.5 hours.", changes: { dispute_resolution: { old: null, new: "IssueAdjustment" }, adjustment: { old: null, new: "INV-0010" } }, timestamp: daysFromNow(-12) },
+			{ organization_id: org.id, event_type: "invoice.adjustment_created", action: "created", entity_type: "invoice", entity_id: invCreditNote.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { adjusts: { old: null, new: "INV-0009" }, total: { old: null, new: -308.51 } }, timestamp: daysFromNow(-12) },
+			{ organization_id: org.id, event_type: "invoice.adjustment_created", action: "created", entity_type: "invoice", entity_id: invExtraCharge.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, changes: { adjusts: { old: null, new: "INV-0009" }, total: { old: null, new: 138.56 } }, timestamp: daysFromNow(-11) },
+			{ organization_id: org.id, event_type: "invoice.dispute_resolved", action: "updated", entity_type: "invoice", entity_id: invVoidedOriginal.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Wrong-site trip charge was our dispatch error.", changes: { dispute_resolution: { old: null, new: "ReviseAndResend" }, replacement: { old: null, new: "INV-0012" } }, timestamp: daysFromNow(-17) },
+			{ organization_id: org.id, event_type: "invoice_payment.refunded", action: "created", entity_type: "invoice", entity_id: invRefunded.id, actor_type: "dispatcher", actor_id: dispatcher.id, actor_name: dispatcher.name, reason: "Only one of the two return trunks was cleaned.", changes: { amount_paid: { old: 440.0, new: 240.0 }, _invoice_number: { old: null, new: "INV-0014" } }, timestamp: daysFromNow(-9) },
+		],
+	});
+
+	// ============================================================================
 	// Tax post-pass — wire tax_group_id + taxable onto line items and recompute
 	// tax_amount / totals / tax_snapshot via the centralized tax engine. Exempt
 	// clients (Anderson) get taxable=false and a client_exempt snapshot.
@@ -5980,7 +6948,13 @@ async function main() {
 			});
 		}
 		const total = centsToDollars(out.total_cents);
-		const amountPaid = Math.min(Number(inv.amount_paid), total);
+		// The clamp keeps Paid/PartiallyPaid states valid when a recomputed
+		// total lands below what was seeded as paid. It must not apply to a
+		// credit adjustment: Math.min(0, -308.51) would record a payment of
+		// -308.51 on a document nobody paid, and the balance would then compute
+		// to zero — erasing exactly the negative balance receivables needs.
+		const amountPaid =
+			total >= 0 ? Math.min(Number(inv.amount_paid), total) : Number(inv.amount_paid);
 		await db.invoice.update({
 			where: { id: inv.id },
 			data: {
@@ -6021,7 +6995,13 @@ async function main() {
 		`  Requests:          5  ConvertedToJob, Quoted, New, Reviewing, Cancelled`,
 	);
 	console.log(
-		`  Quotes:            2  Q-0001 Approved, Q-0002 Draft (with discount)`,
+		`  Quotes:            9  Q-0001 Approved, Q-0002 Draft (discount), Q-0003 Disputed (2/3 lines),`,
+	);
+	console.log(
+		`                        Q-0004→Q-0005 revised chain, Q-0006 repealed, Q-0007 Disputed (work sold),`,
+	);
+	console.log(
+		`                        Q-0008 Rejected w/ reason, Q-0009 Sent but past expires_at`,
 	);
 	console.log(
 		`  Recurring Plans:   2  monthly (Williams) + weekly (Anderson, with weekday rule)`,
@@ -6042,9 +7022,33 @@ async function main() {
 		`  Occurrences:       5  skipped, completed×2, planned, generated`,
 	);
 	console.log(
-		`  Invoices:          5  Paid, Draft, Sent, PartiallyPaid, Void`,
+		`  Invoices:         15  Paid, Draft, Sent, PartiallyPaid, Void + the dispute set:`,
 	);
-	console.log(`  Payments:          2  full (check) + partial (ACH)`);
+	console.log(
+		`                        INV-0006/7/8 Disputed (unpaid / part-paid / PAID),`,
+	);
+	console.log(
+		`                        INV-0009 adjusted ← INV-0010 credit + INV-0013 charge,`,
+	);
+	console.log(
+		`                        INV-0011→INV-0012 replaced, INV-0014 refunded, INV-0015 legacy-stranded`,
+	);
+	console.log(`  Payments:          6  full (check) + partial (ACH) + 3 dispute-set + 1 REFUND (negative)`);
+	console.log(
+		`  Disputes:          9  5 Open (INV-0006/7/8, Q-0003, Q-0007) + 4 Resolved`,
+	);
+	console.log(
+		`                        outcomes: ReviseAndResend ×2, IssueAdjustment, Repeal`,
+	);
+	console.log(
+		`  ⚠ INV-0015 has status Disputed with NO dispute row — the pre-feature stranded state.`,
+	);
+	console.log(
+		`    Re-run 20260906120000_backfill_legacy_disputed_invoices' INSERT to exercise the backfill`,
+	);
+	console.log(
+		`    (it has never run against real data); twice should still leave exactly one Open dispute.`,
+	);
 	console.log(`  Form Drafts:       3  quote, job_visit, invoice`);
 	console.log(`  Tax:               2 rates → 1 group "WI Standard" (org default)`);
 	console.log(`  Inventory:         10 items w/ alt_ids (refrigerant + contactor below threshold)`);

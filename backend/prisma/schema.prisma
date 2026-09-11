@@ -170,12 +170,29 @@ enum request_status {
   Cancelled
 }
 
+enum document_kind {
+  quote
+  invoice
+}
+
+enum dispute_status {
+  Open
+  Resolved
+}
+
+enum dispute_resolution {
+  ReviseAndResend
+  IssueAdjustment
+  Repeal
+}
+
 enum quote_status {
   Draft
   Issued
   Sent
   Viewed
   Approved
+  Disputed
   Rejected
   Revised
   Expired
@@ -441,6 +458,7 @@ model organization {
   email_templates      email_template[]
 
   assistant_conversations assistant_conversation[]
+  document_disputes document_dispute[]
 }
 
 model saved_report {
@@ -731,6 +749,9 @@ model quote {
   line_items quote_line_item[]
   notes      quote_note[]
   job        job?
+  disputes   document_dispute[] @relation("QuoteDisputes")
+  // Disputes that named this quote as their Revise & Resend replacement.
+  replaced_for_disputes document_dispute[] @relation("QuoteDisputeReplacement")
 
   @@index([client_id])
   @@index([request_id])
@@ -742,6 +763,60 @@ model quote {
   @@index([request_id, is_active])
   @@index([organization_id, created_at])
   @@unique([organization_id, quote_number])
+}
+
+// The real enforcement disputesController.ts calls out isn't visible here:
+// the partial unique indexes `dispute_one_open_per_quote` /
+// `dispute_one_open_per_invoice` (one Open dispute per document) and two
+// CHECK constraints live only in migration SQL
+// (20260904210133_document_dispute), not in this model. See U1.
+model document_dispute {
+  id              String        @id @default(uuid())
+  organization_id String?
+  organization    organization? @relation(fields: [organization_id], references: [id])
+
+  document_kind document_kind
+  quote_id      String?
+  quote         quote?   @relation("QuoteDisputes", fields: [quote_id], references: [id], onDelete: Cascade)
+  invoice_id    String?
+  invoice       invoice? @relation("InvoiceDisputes", fields: [invoice_id], references: [id], onDelete: Cascade)
+
+  status                  dispute_status @default(Open)
+  reason                  String         @db.Text
+  contested_line_item_ids Json?
+  status_at_open          String
+
+  opened_by_dispatcher_id String?
+  opened_by_dispatcher    dispatcher? @relation("DisputeOpener", fields: [opened_by_dispatcher_id], references: [id], onDelete: SetNull)
+  opened_at               DateTime    @default(now())
+
+  resolution                dispute_resolution?
+  resolution_note           String?             @db.Text
+  resolved_by_dispatcher_id String?
+  resolved_by_dispatcher    dispatcher?         @relation("DisputeResolver", fields: [resolved_by_dispatcher_id], references: [id], onDelete: SetNull)
+  resolved_at               DateTime?
+
+  // Real relations, not bare ids: without a constraint these silently become
+  // dangling pointers the moment the document they name is deleted. Restrict
+  // rather than SetNull because the document a resolution produced is part of
+  // the audit trail — nulling the link would erase what the resolution did.
+  replacement_quote_id   String?
+  replacement_quote      quote?   @relation("QuoteDisputeReplacement", fields: [replacement_quote_id], references: [id], onDelete: Restrict)
+  replacement_invoice_id String?
+  replacement_invoice    invoice? @relation("InvoiceDisputeReplacement", fields: [replacement_invoice_id], references: [id], onDelete: Restrict)
+  adjustment_invoice_id  String?
+  adjustment_invoice     invoice? @relation("InvoiceDisputeAdjustment", fields: [adjustment_invoice_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id, status])
+  @@index([quote_id])
+  @@index([invoice_id])
+  @@index([replacement_quote_id])
+  @@index([replacement_invoice_id])
+  @@index([adjustment_invoice_id])
+  // Both carry SetNull FKs, so deleting a dispatcher had to seq-scan this
+  // table to null them out.
+  @@index([opened_by_dispatcher_id])
+  @@index([resolved_by_dispatcher_id])
 }
 
 model quote_line_item {
@@ -2382,6 +2457,9 @@ model dispatcher {
   reviewed_field_purchases      field_purchase[]       @relation("ReviewedFieldPurchases")
   second_signed_field_purchases field_purchase[]       @relation("SecondSignedFieldPurchases")
 
+  opened_disputes   document_dispute[] @relation("DisputeOpener")
+  resolved_disputes document_dispute[] @relation("DisputeResolver")
+
   @@index([email])
   @@index([organization_id])
 }
@@ -2566,11 +2644,26 @@ model invoice {
   qb_sync_status           qb_sync_status @default(not_synced)
   account_id               String         @default("")
 
+  version             Int      @default(1)
+  previous_invoice_id String?  @unique
+  previous_invoice    invoice? @relation("InvoiceRevisions", fields: [previous_invoice_id], references: [id])
+  revised_invoice     invoice? @relation("InvoiceRevisions")
+
+  // Non-null marks this row as an adjustment document. Deliberately NOT unique:
+  // an invoice can accumulate several adjustments over its life.
+  adjusts_invoice_id String?
+  adjusts_invoice    invoice?  @relation("InvoiceAdjustments", fields: [adjusts_invoice_id], references: [id])
+  adjustments        invoice[] @relation("InvoiceAdjustments")
+
   line_items invoice_line_item[]
   jobs       invoice_job[]
   visits     invoice_visit[]
   payments   invoice_payment[]
   notes      invoice_note[]
+  disputes   document_dispute[] @relation("InvoiceDisputes")
+  // Disputes that named this invoice as their replacement or their adjustment.
+  replaced_for_disputes   document_dispute[] @relation("InvoiceDisputeReplacement")
+  adjustment_for_disputes document_dispute[] @relation("InvoiceDisputeAdjustment")
 
   @@index([client_id])
   @@index([organization_id])
@@ -2582,6 +2675,7 @@ model invoice {
   @@index([client_id, status])
   @@index([organization_id, created_at])
   @@index([organization_id, issue_date])
+  @@index([adjusts_invoice_id])
   @@unique([organization_id, invoice_number])
   @@unique([account_id, qb_invoice_id])
 }

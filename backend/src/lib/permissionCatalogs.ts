@@ -4,7 +4,10 @@ const DISPATCHER_CATALOG = [
 	{ category: "Jobs", permissions: ["view_jobs", "create_jobs", "edit_jobs", "delete_jobs"] },
 	{ category: "Requests", permissions: ["view_requests", "create_requests", "edit_requests", "delete_requests"] },
 	{ category: "Quotes", permissions: ["view_quotes", "create_quotes", "edit_quotes", "delete_quotes"] },
-	{ category: "Invoices", permissions: ["view_invoices", "create_invoices", "edit_invoices", "delete_invoices"] },
+	// refund_invoices covers cash leaving the business — a refund row, and the
+	// void of an invoice. Separate from edit_invoices, which also covers fixing a
+	// due date.
+	{ category: "Invoices", permissions: ["view_invoices", "create_invoices", "edit_invoices", "delete_invoices", "refund_invoices"] },
 	{ category: "Clients", permissions: ["view_clients", "create_clients", "edit_clients", "delete_clients"] },
 	{ category: "Inventory", permissions: ["view_inventory", "manage_inventory"] },
 	{ category: "Reports", permissions: ["view_reports", "export_reports"] },
@@ -19,6 +22,13 @@ const DISPATCHER_CATALOG = [
 	// Reading a technician's captured coordinates is separate from reading the
 	// purchase: it is sensitive personal information, and only a reviewer checking
 	// a position against the vendor has a reason to see it.
+	// Opening a dispute is not a document edit: whoever takes the client's call
+	// has to be able to record the disagreement without edit rights. Resolving is
+	// the money decision, and the two concessions — an adjustment or an outright
+	// repeal — need concede_disputes on top of it.
+	// resolve_own_disputes exists for owner-operator orgs, where the person who
+	// logged the dispute is the only person who could ever close it.
+	{ category: "Disputes", permissions: ["open_disputes", "resolve_disputes", "concede_disputes", "resolve_own_disputes"] },
 	{ category: "Field Purchases", permissions: ["view_field_purchases", "review_field_purchases", "second_sign_off_field_purchases", "manage_field_purchase_grants", "view_field_purchase_location"] },
 ] as const;
 

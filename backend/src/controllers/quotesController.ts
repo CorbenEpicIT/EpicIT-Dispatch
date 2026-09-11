@@ -13,6 +13,10 @@ import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { assertInventoryItemsInOrg } from "../lib/inventory.js";
+import { resolveDocumentLineage } from "../lib/documentLineage.js";
+import { SOLD_BY_QUOTE_JOBS } from "../services/disputeAdapters.js";
+import { quoteDetailInclude } from "../services/quoteService.js";
+import { openDisputeStatusChangeRefusal } from "../services/disputeService.js";
 import { db, generateQuoteNumber } from "../db.js";
 import {
 	centsToDollars,
@@ -20,6 +24,7 @@ import {
 import {
 	recomputeDocumentTotals,
 	lockDocumentTaxSnapshot,
+	type RecomputeResult,
 } from "../lib/recomputeDocumentTotals.js";
 
 // ============================================================================
@@ -32,7 +37,7 @@ async function recomputeQuoteTotals(
 	organizationId: string,
 	tx: Prisma.TransactionClient,
 	lockedAt?: Date,
-): Promise<boolean> {
+): Promise<RecomputeResult> {
 	return recomputeDocumentTotals("quote", quoteId, organizationId, tx, lockedAt);
 }
 
@@ -79,79 +84,34 @@ export const getAllQuotes = async (organizationId: string) => {
 	});
 };
 
+/**
+ * The quote without its revision-chain walk. The PDF renderer, the email
+ * sender and the pre-send transition guard all call this and none read
+ * `lineage`, so resolving the two recursive CTEs here made every send pay for
+ * a value nobody uses. getQuoteDetail adds it.
+ */
 export const getQuoteById = async (quoteId: string, organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
 	return await sdb.quote.findFirst({
 		where: { id: quoteId },
-		include: {
-			client: {
-				select: {
-					id: true,
-					name: true,
-					address: true,
-					coords: true,
-					is_active: true,
-					is_tax_exempt: true,
-					tax_group_id: true,
-					contacts: {
-						where: { is_primary: true },
-						include: {
-							contact: {
-								select: {
-									id: true,
-									name: true,
-									email: true,
-									phone: true,
-								},
-							},
-						},
-						take: 1,
-					},
-				},
-			},
-			request: {
-				select: {
-					id: true,
-					title: true,
-					status: true,
-					created_at: true,
-				},
-			},
-			job: {
-				select: {
-					id: true,
-					job_number: true,
-					name: true,
-					status: true,
-					created_at: true,
-					estimated_total: true,
-				},
-			},
-			line_items: {
-				orderBy: { sort_order: "asc" },
-				include: {
-					tax_group: { select: { name: true } },
-				},
-			},
-			notes: {
-				include: {
-					creator_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					creator_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_tech: {
-						select: { id: true, name: true, email: true },
-					},
-					last_editor_dispatcher: {
-						select: { id: true, name: true, email: true },
-					},
-				},
-				orderBy: { created_at: "desc" },
-			},
-		},
+		include: quoteDetailInclude,
 	});
+};
+
+/** getQuoteById plus the resolved revision lineage — for the detail GET. */
+export const getQuoteDetail = async (
+	quoteId: string,
+	organizationId: string,
+) => {
+	const quote = await getQuoteById(quoteId, organizationId);
+	if (!quote) return null;
+	// A walk, not a join — kept out of the include so it is paid for only here.
+	const lineage = await resolveDocumentLineage(
+		"quote",
+		quoteId,
+		organizationId,
+	);
+	return { ...quote, lineage };
 };
 
 export const getQuotesByClientId = async (clientId: string, organizationId: string) => {
@@ -349,12 +309,7 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 
 			return tx.quote.findUnique({
 				where: { id: quote.id },
-				include: {
-					client: true,
-					request: true,
-					job: true,
-					line_items: true,
-				},
+				include: quoteDetailInclude,
 			});
 				});
 				break;
@@ -401,6 +356,27 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 
 		if (!existing) {
 			return { err: "Quote not found" };
+		}
+
+		// Terminal quotes are immutable, matching how Void invoices behave.
+		// A repealed quote must stay repealed.
+		const QUOTE_TERMINAL_STATUSES = ["Cancelled", "Rejected", "Revised"];
+		if (QUOTE_TERMINAL_STATUSES.includes(existing.status)) {
+			return { err: `${existing.status} quotes cannot be modified` };
+		}
+
+		// Mirrors updateInvoice: moving a quote out of Disputed from here
+		// strands the dispute. resolveDispute requires the quote to still be
+		// Disputed, and both exits from Disputed (Cancelled, Revised) are
+		// themselves terminal, so the open row could never be closed — and it
+		// holds the one-open-dispute index forever. Resolution is the only exit.
+		if (parsed.status && parsed.status !== existing.status) {
+			const openRefusal = await openDisputeStatusChangeRefusal(
+				sdb as unknown as Prisma.TransactionClient,
+				"quote",
+				quoteId,
+			);
+			if (openRefusal) return { err: openRefusal };
 		}
 
 		if (existing.job) {
@@ -722,12 +698,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 					...(isFirstApproved && { approved_at: new Date() }),
 					...(isFirstRejected && { rejected_at: new Date() }),
 				},
-				include: {
-					client: true,
-					request: true,
-					job: true,
-					line_items: true,
-				},
+				include: quoteDetailInclude,
 			});
 
 			// Lock tax snapshot when transitioning to Issued
@@ -810,6 +781,28 @@ export const deleteQuote = async (id: string, organizationId: string, context?: 
 		if (existing.job) {
 			return {
 				err: "Cannot delete quote that has been converted to a job",
+			};
+		}
+
+		// document_dispute.quote_id cascades on delete, so deleting the quote
+		// would destroy the dispute's reason, contested lines, resolution and
+		// actors. The quote.deleted log row carries none of that, and spec §12
+		// makes the audit trail the only mitigation for single-actor repeal.
+		// A quote a resolution produced belongs to that dispute's audit trail
+		// too. replacement_quote_id is ON DELETE RESTRICT; this sentence is what
+		// the dispatcher reads instead of the constraint violation.
+		const dispute = await sdb.document_dispute.findFirst({
+			where: { OR: [{ quote_id: id }, { replacement_quote_id: id }] },
+			select: { id: true, replacement_quote_id: true },
+		});
+		if (dispute?.replacement_quote_id === id) {
+			return {
+				err: "This quote was produced by a dispute resolution and is part of its audit trail. Cancel it instead.",
+			};
+		}
+		if (dispute) {
+			return {
+				err: "Cannot delete a quote with dispute history. Its dispute record is part of the audit trail.",
 			};
 		}
 

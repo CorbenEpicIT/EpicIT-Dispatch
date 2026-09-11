@@ -337,6 +337,7 @@ const receivableRow = (r: ReceivableRaw): ReportRow => ({
 	bucket31_60: r.bucket31_60,
 	bucket61_90: r.bucket61_90,
 	bucket90plus: r.bucket90plus,
+	disputed: r.disputed,
 	total: r.total,
 });
 
@@ -648,6 +649,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
 			bucket31_60: round2(rows.reduce((s, r) => s + num(r.bucket31_60), 0)),
 			bucket61_90: round2(rows.reduce((s, r) => s + num(r.bucket61_90), 0)),
 			bucket90plus: round2(rows.reduce((s, r) => s + num(r.bucket90plus), 0)),
+			disputed: round2(rows.reduce((s, r) => s + num(r.disputed), 0)),
 			total: round2(rows.reduce((s, r) => s + num(r.total), 0)),
 		}),
 	},

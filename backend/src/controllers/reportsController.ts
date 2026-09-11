@@ -710,18 +710,22 @@ export const getArrivalPerformance = async (
 // QUOTE PIPELINE
 // ============================================================================
 
+// A quote still awaiting a decision — not yet Approved, Revised, or one of
+// LOST_QUOTE_STATUSES. Was declared locally in two places with the same
+// literal (DW-71); one source of truth so the pipeline stat and the page
+// summary's quote widget can't drift apart on what "open" means.
+const QUOTE_OPEN_STATUSES = ["Draft", "Sent", "Viewed", "Disputed"] as const;
+
 export const getQuotePipeline = async (startDate: string, endDate: string, organizationId: string) => {
 	const start = parseReportDate(startDate, "start");
 	const end = parseReportDate(endDate, "end");
-
-	const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
 
 	const sdb = getScopedDb(organizationId);
 	const grouped = await sdb.quote.groupBy({
 		by: ["status"],
 		where: {
 			organization_id: organizationId,
-			status: { in: [...OPEN_STATUSES] },
+			status: { in: [...QUOTE_OPEN_STATUSES] },
 			created_at: { gte: start, lte: end },
 		},
 		_sum: { total: true },
@@ -732,6 +736,7 @@ export const getQuotePipeline = async (startDate: string, endDate: string, organ
 		Draft: { revenue: 0, count: 0 },
 		Sent: { revenue: 0, count: 0 },
 		Viewed: { revenue: 0, count: 0 },
+		Disputed: { revenue: 0, count: 0 },
 	};
 
 	let totalRevenue = 0;
@@ -756,6 +761,7 @@ export const getQuotePipeline = async (startDate: string, endDate: string, organ
 		draft: buckets.Draft,
 		sent: buckets.Sent,
 		viewed: buckets.Viewed,
+		disputed: buckets.Disputed,
 	};
 };
 
@@ -1442,6 +1448,29 @@ export const getInventoryReportPage = async (
 // ============================================================================
 
 // Outstanding invoice balances bucketed by how far past due
+//
+// Disputed invoices are still owed, so they stay in the receivables total,
+// but ageing them alongside uncontested debt misstates collection risk.
+// They are reported separately instead.
+// The invoice statuses aged receivables leaves out — Draft (not issued yet),
+// Paid (settled), Void (cancelled) and Disputed (owed, but reported apart). One
+// list feeds the two raw AR queries below and the Prisma-path
+// AGING_INVOICE_STATUS, so a new status can't land in one and miss the others.
+const AR_EXCLUDED_STATUSES = ["Draft", "Paid", "Void", "Disputed"] as const;
+const AR_EXCLUDED_STATUS_SQL = Prisma.raw(
+	AR_EXCLUDED_STATUSES.map((s) => `'${s}'`).join(", "),
+);
+
+// An invoice row that belongs on aged receivables: a positive balance past its
+// terms, or any credit (a negative balance nets now and never ages). `alias` is
+// "" for the un-aliased queries and "i." for the joined ones — the only thing
+// that differed between the four hand-written copies.
+const arCollectableSql = (alias: "" | "i." = "") =>
+	Prisma.sql`(
+		(${Prisma.raw(`${alias}balance_due`)} > 0 AND COALESCE(${Prisma.raw(`${alias}due_date`)}, ${Prisma.raw(`${alias}created_at`)}) <= NOW())
+		OR ${Prisma.raw(`${alias}balance_due`)} < 0
+	)`;
+
 export const getAgedReceivables = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
 
@@ -1450,6 +1479,10 @@ export const getAgedReceivables = async (organizationId: string) => {
 	>`
 		SELECT
 			CASE
+				-- A credit reduces what is owed NOW, so it never ages: ageing it
+				-- would read as the organisation being slow to repay itself,
+				-- which is not a collection-risk fact about the client.
+				WHEN balance_due < 0 THEN '0-30'
 				WHEN COALESCE(due_date, created_at) > NOW() - INTERVAL '31 days' THEN '0-30'
 				WHEN COALESCE(due_date, created_at) > NOW() - INTERVAL '61 days' THEN '31-60'
 				WHEN COALESCE(due_date, created_at) > NOW() - INTERVAL '91 days' THEN '61-90'
@@ -1459,10 +1492,26 @@ export const getAgedReceivables = async (organizationId: string) => {
 			SUM(balance_due)::float AS amount
 		FROM invoice
 		WHERE organization_id = ${organizationId}
-			AND status NOT IN ('Draft', 'Paid', 'Void')
-			AND balance_due > 0
-			AND COALESCE(due_date, created_at) <= NOW()
+			AND status NOT IN (${AR_EXCLUDED_STATUS_SQL})
+			-- <> 0, not > 0: a net-negative adjustment is a credit the client
+			-- can spend against this balance, so excluding it overstates
+			-- receivables by the whole credit until someone applies it.
+			-- Credits skip the due-date gate for the same reason they skip
+			-- ageing — terms govern when a charge becomes collectable, not
+			-- when a credit becomes real.
+			AND ${arCollectableSql()}
 		GROUP BY bucket
+	`;
+
+	const disputedRows = await sdb.$queryRaw<
+		{ amount: number | null; count: number }[]
+	>`
+		SELECT SUM(balance_due)::float AS amount,
+			COUNT(*)::int          AS count
+		FROM invoice
+		WHERE organization_id = ${organizationId}
+			AND status = 'Disputed'
+			AND ${arCollectableSql()}
 	`;
 
 	const BUCKETS = ["0-30", "31-60", "61-90", "90+"] as const;
@@ -1477,13 +1526,23 @@ export const getAgedReceivables = async (organizationId: string) => {
 		};
 	});
 
+	const disputedTotal = round2(disputedRows[0]?.amount);
+
 	return {
 		data,
-		totalOutstanding: data.reduce((sum, d) => sum + d.amount, 0),
+		disputedTotal,
+		// Reported alongside disputedTotal so a caller can reconcile the header
+		// count with totalOutstanding, which includes the disputed money.
+		disputedCount: disputedRows[0]?.count ?? 0,
+		totalOutstanding: data.reduce((sum, d) => sum + d.amount, 0) + disputedTotal,
 	};
 };
 
 // Outstanding invoice balances bucketed by age and grouped per client
+//
+// Disputed invoices are still owed, so they stay in the receivables total,
+// but ageing them alongside uncontested debt misstates collection risk.
+// They are reported separately instead.
 export const getAgedReceivablesByClient = async (organizationId: string) => {
 	const sdb = getScopedDb(organizationId);
 
@@ -1502,38 +1561,99 @@ export const getAgedReceivablesByClient = async (organizationId: string) => {
 		SELECT
 			c.id   AS "clientId",
 			c.name AS "clientName",
-			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) > NOW() - INTERVAL '31 days'
+			-- Credits never age (see getAgedReceivables): they land in the
+			-- current bucket so they net against what is owed now.
+			SUM(CASE WHEN i.balance_due < 0
+					  OR COALESCE(i.due_date, i.created_at) > NOW() - INTERVAL '31 days'
 				THEN i.balance_due ELSE 0 END)::float AS "bucket0_30",
-			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '31 days'
+			SUM(CASE WHEN i.balance_due > 0
+					  AND COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '31 days'
 					  AND COALESCE(i.due_date, i.created_at) >  NOW() - INTERVAL '61 days'
 				THEN i.balance_due ELSE 0 END)::float AS "bucket31_60",
-			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '61 days'
+			SUM(CASE WHEN i.balance_due > 0
+					  AND COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '61 days'
 					  AND COALESCE(i.due_date, i.created_at) >  NOW() - INTERVAL '91 days'
 				THEN i.balance_due ELSE 0 END)::float AS "bucket61_90",
-			SUM(CASE WHEN COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '91 days'
+			SUM(CASE WHEN i.balance_due > 0
+					  AND COALESCE(i.due_date, i.created_at) <= NOW() - INTERVAL '91 days'
 				THEN i.balance_due ELSE 0 END)::float AS "bucket90plus",
 			SUM(i.balance_due)::float AS "total",
 			COUNT(*)::int             AS "count"
 		FROM invoice i
 		JOIN client c ON c.id = i.client_id
 		WHERE i.organization_id = ${organizationId}
-			AND i.status NOT IN ('Draft', 'Paid', 'Void')
-			AND i.balance_due > 0
-			AND COALESCE(i.due_date, i.created_at) <= NOW()
+			AND i.status NOT IN (${AR_EXCLUDED_STATUS_SQL})
+			AND ${arCollectableSql("i.")}
 		GROUP BY c.id, c.name
-		ORDER BY "total" DESC
 	`;
 
-	return rows.map((r) => ({
-		clientId: r.clientId,
-		clientName: r.clientName,
-		bucket0_30: round2(r.bucket0_30),
-		bucket31_60: round2(r.bucket31_60),
-		bucket61_90: round2(r.bucket61_90),
-		bucket90plus: round2(r.bucket90plus),
-		total: round2(r.total),
-		count: r.count,
-	}));
+	const disputedRows = await sdb.$queryRaw<
+		{ clientId: string; clientName: string; disputed: number | null; count: number }[]
+	>`
+		SELECT
+			c.id   AS "clientId",
+			c.name AS "clientName",
+			SUM(i.balance_due)::float AS "disputed",
+			COUNT(*)::int             AS "count"
+		FROM invoice i
+		JOIN client c ON c.id = i.client_id
+		WHERE i.organization_id = ${organizationId}
+			AND i.status = 'Disputed'
+			AND ${arCollectableSql("i.")}
+		GROUP BY c.id, c.name
+	`;
+
+	const byClient = new Map<
+		string,
+		{
+			clientId: string;
+			clientName: string;
+			bucket0_30: number | null;
+			bucket31_60: number | null;
+			bucket61_90: number | null;
+			bucket90plus: number | null;
+			total: number | null;
+			disputed: number | null;
+			count: number;
+		}
+	>();
+
+	for (const r of rows) byClient.set(r.clientId, { ...r, disputed: 0 });
+	for (const d of disputedRows) {
+		const existing = byClient.get(d.clientId);
+		if (existing) {
+			existing.disputed = d.disputed;
+			existing.count += d.count;
+		} else {
+			byClient.set(d.clientId, {
+				clientId: d.clientId,
+				clientName: d.clientName,
+				bucket0_30: 0,
+				bucket31_60: 0,
+				bucket61_90: 0,
+				bucket90plus: 0,
+				total: 0,
+				disputed: d.disputed,
+				count: d.count,
+			});
+		}
+	}
+
+	return [...byClient.values()]
+		.map((r) => ({
+			clientId: r.clientId,
+			clientName: r.clientName,
+			bucket0_30: round2(r.bucket0_30),
+			bucket31_60: round2(r.bucket31_60),
+			bucket61_90: round2(r.bucket61_90),
+			bucket90plus: round2(r.bucket90plus),
+			disputed: round2(r.disputed),
+			// Rounded once, over the sum: round2(a) + round2(b) can land a cent
+			// away from the buckets this total is meant to reconcile with.
+			total: round2(Number(r.total ?? 0) + Number(r.disputed ?? 0)),
+			count: r.count,
+		}))
+		.sort((a, b) => b.total - a.total);
 };
 
 export interface TaxLiabilityRow {
@@ -3265,7 +3385,14 @@ export const getCogsByItemReport = async (
 // QUOTE CONVERSION
 // ============================================================================
 
+// The won/lost definitions the quote funnel and the paged Quotes page share.
+// Both the JS aggregation and the SQL FILTER clauses below read these, so the
+// two win rates can't drift for one date range (DW-24). Compile-time literals,
+// safe to interpolate into the query text.
+const WON_QUOTE_STATUS = "Approved" as const;
 const LOST_QUOTE_STATUSES = ["Rejected", "Expired", "Cancelled"] as const;
+const WON_STATUS_SQL = `'${WON_QUOTE_STATUS}'`;
+const LOST_STATUS_SQL = LOST_QUOTE_STATUSES.map((s) => `'${s}'`).join(", ");
 
 const QUOTE_INCLUDE = {
 	client: { select: { name: true } },
@@ -3321,6 +3448,7 @@ export const getQuoteFunnelReport = async (
 	const funnel = { created: quotes.length, issued: 0, sent: 0, viewed: 0, approved: 0 };
 	let valueWon = 0;
 	let valueLost = 0;
+	let wonCount = 0;
 	let lostCount = 0;
 	const approveDays: number[] = [];
 	const bySourceMap = new Map<string, { quotes: number; approved: number }>();
@@ -3336,7 +3464,10 @@ export const getQuoteFunnelReport = async (
 		if (approved) funnel.approved++;
 
 		const total = Number(q.total);
-		if (q.status === "Approved") valueWon += total;
+		if (q.status === WON_QUOTE_STATUS) {
+			valueWon += total;
+			wonCount++;
+		}
 		if ((LOST_QUOTE_STATUSES as readonly string[]).includes(q.status)) {
 			valueLost += total;
 			lostCount++;
@@ -3354,11 +3485,15 @@ export const getQuoteFunnelReport = async (
 		return row;
 	});
 
-	const decided = funnel.approved + lostCount;
+	// Win rate is decided by CURRENT status so that it, valueWon and valueLost
+	// all describe one population. funnel.approved is timestamp-driven and would
+	// count a quote that was approved and then disputed into Cancelled on both
+	// sides of the ratio; it stays timestamp-driven as a funnel STAGE count.
+	const decided = wonCount + lostCount;
 
 	return {
 		funnel,
-		winRate: decided > 0 ? Math.round((funnel.approved / decided) * 100) : null,
+		winRate: decided > 0 ? Math.round((wonCount / decided) * 100) : null,
 		avgDaysToApprove: approveDays.length
 			? round2(approveDays.reduce((a, b) => a + b, 0) / approveDays.length)
 			: null,
@@ -3426,6 +3561,7 @@ interface FunnelScalarRow {
 	sent: number;
 	viewed: number;
 	approved: number;
+	wonCount: number;
 	valueWon: number;
 	valueLost: number;
 	lostCount: number;
@@ -3465,9 +3601,10 @@ export const getQuoteFunnelSummary = async (
 			COUNT(*) FILTER (WHERE q.sent_at IS NOT NULL OR q.viewed_at IS NOT NULL OR q.approved_at IS NOT NULL)::int AS sent,
 			COUNT(*) FILTER (WHERE q.viewed_at IS NOT NULL OR q.approved_at IS NOT NULL)::int AS viewed,
 			COUNT(*) FILTER (WHERE q.approved_at IS NOT NULL)::int AS approved,
-			COALESCE(SUM(q.total) FILTER (WHERE q.status = 'Approved'), 0)::float AS "valueWon",
-			COALESCE(SUM(q.total) FILTER (WHERE q.status IN ('Rejected','Expired','Cancelled')), 0)::float AS "valueLost",
-			COUNT(*) FILTER (WHERE q.status IN ('Rejected','Expired','Cancelled'))::int AS "lostCount",
+			COUNT(*) FILTER (WHERE q.status = ${WON_STATUS_SQL})::int AS "wonCount",
+			COALESCE(SUM(q.total) FILTER (WHERE q.status = ${WON_STATUS_SQL}), 0)::float AS "valueWon",
+			COALESCE(SUM(q.total) FILTER (WHERE q.status IN (${LOST_STATUS_SQL})), 0)::float AS "valueLost",
+			COUNT(*) FILTER (WHERE q.status IN (${LOST_STATUS_SQL}))::int AS "lostCount",
 			AVG(ROUND((EXTRACT(EPOCH FROM (q.approved_at - COALESCE(q.sent_at, q.issued_at, q.created_at))) / 86400.0)::numeric, 1)) FILTER (WHERE q.approved_at IS NOT NULL)::float AS "avgDays"
 		FROM quote q
 		WHERE ${whereSql}`,
@@ -3493,12 +3630,14 @@ export const getQuoteFunnelSummary = async (
 		viewed: scalar?.viewed ?? 0,
 		approved: scalar?.approved ?? 0,
 	};
+	// Same current-status population as getQuoteFunnelReport above.
+	const wonCount = scalar?.wonCount ?? 0;
 	const lostCount = scalar?.lostCount ?? 0;
-	const decided = funnel.approved + lostCount;
+	const decided = wonCount + lostCount;
 
 	return {
 		funnel,
-		winRate: decided > 0 ? Math.round((funnel.approved / decided) * 100) : null,
+		winRate: decided > 0 ? Math.round((wonCount / decided) * 100) : null,
 		avgDaysToApprove: scalar?.avgDays != null ? round2(scalar.avgDays) : null,
 		valueWon: round2(scalar?.valueWon ?? 0),
 		valueLost: round2(scalar?.valueLost ?? 0),
@@ -3714,6 +3853,14 @@ interface PageSummaryResponse {
 // both out, matching the invoices, revenue and aged-receivables reports.
 const ISSUED_INVOICE_STATUS = { notIn: ["Draft", "Void"] } satisfies Prisma.invoiceWhereInput["status"];
 
+// Disputed invoices are still owed, so they stay in the receivables total,
+// but ageing them alongside uncontested debt misstates collection risk.
+// They are reported separately instead.
+const AGING_INVOICE_STATUS = {
+	notIn: [...AR_EXCLUDED_STATUSES],
+} satisfies Prisma.invoiceWhereInput["status"];
+const DISPUTED_INVOICE_STATUS = { equals: "Disputed" } satisfies Prisma.invoiceWhereInput["status"];
+
 export const isSummaryPage = (page: string): page is SummaryPage =>
 	(PAGES as readonly string[]).includes(page);
 
@@ -3775,15 +3922,14 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			break;
 		}
 		case "quotes": {
-			const OPEN_STATUSES = ["Draft", "Sent", "Viewed"] as const;
 			const createdRangeSql = Prisma.sql`
 				${dated?.gte ? Prisma.sql`AND created_at >= ${dated.gte}` : Prisma.empty}
 				${dated?.lte ? Prisma.sql`AND created_at <= ${dated.lte}` : Prisma.empty}`;
 			const [total, open, pipeline, approved, rows] = await Promise.all([
 				sdb.quote.count({ where: { organization_id: orgId, ...createdWhere }}),
-				sdb.quote.count({ where: { organization_id: orgId, status: { in: [...OPEN_STATUSES]}, ...createdWhere }}),
+				sdb.quote.count({ where: { organization_id: orgId, status: { in: [...QUOTE_OPEN_STATUSES]}, ...createdWhere }}),
 				sdb.quote.aggregate({
-					where: { organization_id: orgId, status: { in: [...OPEN_STATUSES]}, ...createdWhere },
+					where: { organization_id: orgId, status: { in: [...QUOTE_OPEN_STATUSES]}, ...createdWhere },
 					_sum: { total: true }
 				}),
 				sdb.quote.aggregate({ 
@@ -3903,7 +4049,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			break;
 		}
 		case "clients": {
-			const [total, added, active, openBalance, income] = await Promise.all([
+			const [total, added, active, agingBalance, disputedBalance, income] = await Promise.all([
 				sdb.client.count({ where: { organization_id: orgId } }),
 				sdb.client.count({ where: { organization_id: orgId, ...createdWhere } }),
 				sdb.client.count({ where: { organization_id: orgId, is_active: true } }),
@@ -3911,8 +4057,22 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 				sdb.invoice.aggregate({
 					where: {
 						organization_id: orgId,
-						status: { notIn: ["Draft", "Paid", "Void"] },
-						balance_due: { gt: 0 },
+						status: AGING_INVOICE_STATUS,
+						// not: 0, so an unapplied credit nets against the
+						// client's open balance instead of being invisible.
+						balance_due: { not: 0 },
+					},
+					_sum: { balance_due: true },
+				}),
+				// Disputed invoices are still owed, so they stay in the receivables
+				// total (see AGING_INVOICE_STATUS above) — added back in below.
+				sdb.invoice.aggregate({
+					where: {
+						organization_id: orgId,
+						status: DISPUTED_INVOICE_STATUS,
+						// not: 0, so an unapplied credit nets against the
+						// client's open balance instead of being invisible.
+						balance_due: { not: 0 },
 					},
 					_sum: { balance_due: true },
 				}),
@@ -3921,6 +4081,8 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 					_sum: { total: true },
 				}),
 			]);
+			const openBalance =
+				Number(agingBalance._sum.balance_due ?? 0) + Number(disputedBalance._sum.balance_due ?? 0);
 			// Avg income per client = total billed spread over the whole client book
 			const avgIncome = total > 0 ? Number(income._sum.total ?? 0) / total : 0;
 			if (grouping === "tax_exempt") {
@@ -3936,7 +4098,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 				{ label: "Total",        value: total,                                     format: "number" },
 				{ label: "New",          value: added,                                     format: "number" },
 				{ label: "Active",       value: active,                                    format: "number" },
-				{ label: "Open Balance", value: Number(openBalance._sum.balance_due ?? 0), format: "currency" },
+				{ label: "Open Balance", value: openBalance,                                     format: "currency" },
 				{ label: "Avg. Income",   value: avgIncome,                                 format: "currency" },
 			];
 			break;

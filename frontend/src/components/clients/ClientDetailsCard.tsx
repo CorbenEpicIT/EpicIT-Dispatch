@@ -38,8 +38,13 @@ export default function ClientDetailsCard({ client_id, client, showDispatchLink 
 			title="Client Details"
 			headerAction={
 				client?.is_active !== undefined ? (
+					/* py-0.5, not the py-1 these pills use in card bodies:
+					   a Card header is only as tall as its tallest child, so a
+					   26px pill made this header 2px taller than the
+					   title-only Information card sitting inline with it. At
+					   0.5 the pill is 22px and the h3's 24px line box governs. */
 					<span
-						className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+						className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
 							client.is_active
 								? "bg-success/20 text-success-text border-success/30"
 								: "bg-error/20 text-error-text border-error/30"

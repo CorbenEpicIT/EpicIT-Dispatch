@@ -71,6 +71,7 @@ const ORG_SCOPED_MODELS = new Set([
 	"field_purchase_grant",
 	"field_purchase_event",
 	"assistant_conversation",
+	"document_dispute",
 ]);
 
 /**

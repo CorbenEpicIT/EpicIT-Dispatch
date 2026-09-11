@@ -159,6 +159,12 @@ export const qk = {
 			purchaseId?: string;
 		}) => ["field-purchases", "limit-check", opts] as const,
 	},
+	disputes: {
+		// The prefix: the dashboard list and every client banner live under it,
+		// so one invalidation refreshes them all.
+		open: ["disputes", "open"] as const,
+		openList: (clientId?: string) => ["disputes", "open", clientId ?? "all"] as const,
+	},
 };
 
 // ============================================================================

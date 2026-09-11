@@ -4,6 +4,7 @@ import { getScopedDb } from "../lib/context.js";
 import { log } from "../services/appLogger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { createErrorResponse, createSuccessResponse, ErrorCodes } from "../types/responses.js";
+import { FEED_EVENT_TYPES } from "../lib/activityFeedEvents.js";
 
 export type actor = "technician" | "dispatcher";
 export type entity =
@@ -391,36 +392,32 @@ export const getUserHistory = async (orgId: string, type: actor, id: string, lim
 // ACTIVITY FEED (GET /logs/recent)
 // ============================================================
 
-const FEED_EVENTS = [
-    "job.created",
-    "job_visit.created",
-    "job_visit.updated",
-    "job_visit.technicians_assigned",
-    "request.created",
-    "request.updated",
-    "quote.created",
-    "quote.updated",
-    "invoice.created",
-    "invoice.updated",
-    "invoice_payment.created",
-    "recurring_plan.created",
-    "recurring_occurrence.generated",
-    "technician.updated",
-];
-
 // technician.updated carries contact details and GPS coords — keep the event in
 // the feed (status changes are useful) but never ship the PII diffs.
 const FEED_PII_KEYS: Record<string, ReadonlySet<string>> = {
     "technician.updated": new Set(["email", "phone", "coords", "hire_date", "last_login"]),
 };
 
-export const redactFeedRow = <T extends { event_type: string; changes: unknown }>(row: T): T => {
-    const denied = FEED_PII_KEYS[row.event_type];
-    const changes = row.changes;
-    if (!denied || !changes || typeof changes !== "object" || Array.isArray(changes)) return row;
+// Dispute reasons and resolution notes are free text written from a client's
+// complaint, and the org socket room also reaches technician sockets
+// (OPEN-QUESTIONS B1). The detail page still shows them behind view_*.
+const FEED_REASON_REDACTED: ReadonlySet<string> = new Set([
+    "quote.dispute_opened",
+    "quote.dispute_resolved",
+    "invoice.dispute_opened",
+    "invoice.dispute_resolved",
+]);
+
+export const redactFeedRow = <T extends { event_type: string; changes: unknown; reason?: string | null }>(
+    row: T,
+): T => {
+    const base = FEED_REASON_REDACTED.has(row.event_type) && row.reason != null ? { ...row, reason: null } : row;
+    const denied = FEED_PII_KEYS[base.event_type];
+    const changes = base.changes;
+    if (!denied || !changes || typeof changes !== "object" || Array.isArray(changes)) return base;
     const entries = Object.entries(changes as Record<string, unknown>);
-    if (!entries.some(([key]) => denied.has(key))) return row;
-    return { ...row, changes: Object.fromEntries(entries.filter(([key]) => !denied.has(key))) };
+    if (!entries.some(([key]) => denied.has(key))) return base;
+    return { ...base, changes: Object.fromEntries(entries.filter(([key]) => !denied.has(key))) };
 };
 
 const FEED_DEFAULT_LIMIT = 25;
@@ -458,7 +455,7 @@ export const getRecentActivity = async (req: Request, res: Response, next: NextF
         const sdb = getScopedDb(orgId);
         const logs = await sdb.log.findMany({
             where: {
-                event_type: { in: FEED_EVENTS },
+                event_type: { in: [...FEED_EVENT_TYPES] },
                 ...(cursor ? { timestamp: { lt: new Date(cursor) } } : {}),
                 ...(userId ? { OR: [{ actor_id: userId }, { entity_id: userId }] } : {}),
             },
