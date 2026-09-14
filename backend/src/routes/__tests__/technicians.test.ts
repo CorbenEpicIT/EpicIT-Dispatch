@@ -129,7 +129,10 @@ describe("GET /technicians/:id/changes — limit validation + denylist (review P
 		expect(r.status).toBe(200);
 		expect(r.body.data[0].changes).toEqual({ status: { old: "Offline", new: "Available" } });
 		const where = JSON.stringify(fake.log.findMany.mock.calls[0][0].where);
-		expect(where).toContain('"actor_type":{"in":["technician"]}');
+		// Widened to include "agent" so a technician's change history also shows
+		// what an assistant did on their behalf; actor_id still pins it to them.
+		expect(where).toContain('"actor_type":{"in":["technician","agent"]}');
+		expect(where).toContain('"actor_id":"tech-1"');
 		expect(where).toContain('"contains":".password."');
 		expect(fake.log.findMany.mock.calls[0][0].take).toBe(6);
 	});

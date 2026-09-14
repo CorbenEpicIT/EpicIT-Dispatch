@@ -29,6 +29,8 @@ import { useAllRecurringPlansQuery } from "../../hooks/useRecurringPlans";
 import type { JobVisit } from "../../types/jobs";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
 import LowStockWidget from "../../components/widgets/LowStockWidget";
+import OpenDisputesWidget from "../../components/widgets/OpenDisputesWidget";
+import { canSeeWidget } from "../../lib/permissionGates";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
 import { DEFAULT_RESPONSIVE_LAYOUTS, WIDGET_CATALOG } from "../../lib/DashboardConfig";
@@ -270,7 +272,8 @@ export default function DashboardPage() {
 	const constrainedLayouts = useMemo(() => {
 		const w = settledWidth || displayWidth;
 		const cols = activeCols.lg;
-		const display = (displayLayouts.lg ?? []).map(item => {
+		// The grid must never be handed a layout entry it has no child for.
+		const display = (displayLayouts.lg ?? []).filter(item => canSeeWidget(user, WIDGET_CATALOG[item.i])).map(item => {
 			const c = resolveConstraints(WIDGET_CATALOG, item.i, w);
 			
 			const minW = Math.min(c.minW ?? 1, cols);
@@ -289,7 +292,7 @@ export default function DashboardPage() {
 			};
 		});
 		return { lg: display, md: display, sm: display };
-	}, [displayLayouts.lg, settledWidth, displayWidth, activeCols.lg, autoExtra]);
+	}, [displayLayouts.lg, settledWidth, displayWidth, activeCols.lg, autoExtra, user]);
 
 	useEffect(() => { setAutoExtra({}); }, [layouts.lg, settledWidth, isEditMode]);
 
@@ -463,6 +466,7 @@ export default function DashboardPage() {
 							)}
 						</Card>;
 			case "low-stock": 			   return <LowStockWidget className="h-full" />;
+			case "open-disputes":          return <OpenDisputesWidget />;
 			case "map":  				   return <MapWidget />;
 			case "quickbooks": 			   return QUICKBOOKS_ENABLED ? <QBWidget /> : null;
 			case "report-overview":        return <OverviewWidget />;
@@ -634,7 +638,7 @@ export default function DashboardPage() {
 						}}
 
 					>
-						{Object.keys(WIDGET_CATALOG).filter(id => layouts.lg?.some(l => l.i === id)).map((id) => (
+						{Object.keys(WIDGET_CATALOG).filter(id => layouts.lg?.some(l => l.i === id) && canSeeWidget(user, WIDGET_CATALOG[id])).map((id) => (
 							<div key={id}
 								ref={(el) => {
 									if (el) widgetRefs.current.set(id, el);

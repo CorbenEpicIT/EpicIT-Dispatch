@@ -79,11 +79,20 @@ describe("getActorHistory — read-side denylist (review B3 / L1)", () => {
 		expect(fake.log.findMany.mock.calls[0][0].take).toBe(3);
 	});
 
-	it("accepts both dispatcher and admin actor types for dispatchers", async () => {
+	it("accepts dispatcher, admin and agent actor types for dispatchers", async () => {
+		// "agent" rows record the HUMAN in actor_id, so pairing the widened type
+		// list with the actor_id filter keeps results scoped to this one person —
+		// it surfaces what their assistant did for them, not anyone else's.
 		await getActorHistory("org-1", "dispatcher", "disp-1", 5);
 		expect(leaves(fake.log.findMany.mock.calls[0][0].where)).toEqual(
-			expect.arrayContaining([{ actor_type: { in: ["dispatcher", "admin"] } }]),
+			expect.arrayContaining([{ actor_type: { in: ["dispatcher", "admin", "agent"] } }]),
 		);
+	});
+
+	it("scopes agent rows to the actor they were run for", async () => {
+		await getActorHistory("org-1", "dispatcher", "disp-1", 5);
+		const where = JSON.stringify(fake.log.findMany.mock.calls[0][0].where);
+		expect(where).toContain('"actor_id":"disp-1"');
 	});
 });
 

@@ -193,7 +193,7 @@ export default function NoteManager({ quoteId }: NoteManagerProps) {
 							<div key={note.id}>
 								<div className="p-3 bg-surface rounded-lg border border-border group hover:border-border-strong transition-colors">
 									<div className="flex justify-between items-start mb-2">
-										<p className="text-text-primary text-sm flex-1">
+										<p className="text-text-primary text-sm flex-1 break-words min-w-0">
 											{
 												note.content
 											}
@@ -325,8 +325,18 @@ export default function NoteManager({ quoteId }: NoteManagerProps) {
 							</div>
 						))
 					) : (
-						<p className="text-text-tertiary text-sm">
-							No notes available
+						/* Same treatment as InvoiceNoteManager's: both
+						   cards fill the same rail slot on their detail
+						   pages, and these two empty states had already
+						   drifted apart once (one centred and padded, one
+						   not).
+
+						   role="status" so deleting the last note announces
+						   that the list is now empty, rather than the card
+						   silently changing under a screen reader. */
+						<p role="status" className="text-text-tertiary text-sm py-2">
+							No notes yet. Add one to leave context for
+							whoever picks this up next.
 						</p>
 					)}
 				</div>

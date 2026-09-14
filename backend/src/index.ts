@@ -38,6 +38,7 @@ import { refreshAccessToken, verifyToken as verifyAccessToken } from "./services
 // ============================================
 import clientsContactsRouter from "./routes/clientsContacts.js";
 import dispatchersRouter from "./routes/dispatchers.js";
+import disputesRouter from "./routes/disputes.js";
 import draftsRouter from "./routes/drafts.js";
 import emailRouter from "./routes/email.js";
 import inventoryRouter from "./routes/inventory.js";
@@ -66,6 +67,8 @@ import mfaRouter from "./routes/mfa.js";
 import ssoRouter from "./routes/sso.js"
 import followupsRouter from "./routes/followups.js";
 import projectsRouter from "./routes/projects.js";
+import searchRouter from "./routes/search.js";
+import assistantRouter from "./routes/assistant.js";
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 15;
 
@@ -98,11 +101,15 @@ const errorHandler = (
 		"Unhandled request error",
 	);
 
-	const statusCode = err.statusCode || 500;
+	// httpError carries statusCode; InvalidTransitionError and
+	// DocumentRuleError carry status. Reading only one turned a deliberate
+	// refusal that reached this handler into a 500.
+	const statusCode = err.statusCode || err.status || 500;
 
 	res.status(statusCode).json(
 		createErrorResponse(
-			err.code || ErrorCodes.SERVER_ERROR,
+			err.code ||
+				(statusCode < 500 ? ErrorCodes.VALIDATION_ERROR : ErrorCodes.SERVER_ERROR),
 			err.message || "An unexpected error occurred",
 			process.env.NODE_ENV === "development" ? err.stack : undefined,
 		),
@@ -551,6 +558,7 @@ app.use("/occurrences", verifyToken, occurrencesRouter);
 // INVOICE ROUTES
 // ============================================
 app.use("/invoices", verifyToken, invoicesRouter);
+app.use("/disputes", verifyToken, disputesRouter);
 
 // ============================================
 // TECHNICIANS
@@ -613,6 +621,18 @@ app.use("/followups", verifyToken, followupsRouter);
 // PROJECTS
 // ============================================
 app.use("/projects", verifyToken, projectsRouter);
+
+// ============================================
+// AI ASSISTANT
+// ============================================
+app.use("/assistant", verifyToken, assistantRouter);
+
+// ============================================
+// CROSS-ENTITY SEARCH
+// ============================================
+// Must stay above the clientsContacts mount below: that router is mounted at
+// "/" and would otherwise swallow this path.
+app.use("/search", verifyToken, searchRouter);
 
 // ============================================
 // CLIENTS + CONTACTS

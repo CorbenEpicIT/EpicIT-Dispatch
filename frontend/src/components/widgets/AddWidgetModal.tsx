@@ -3,6 +3,7 @@ import { X, Search, Plus, Minus } from "lucide-react";
 import FullPopup from "../ui/FullPopup";
 import { addWidget, removeWidget, type WidgetCatalog } from "../../lib/gridLayoutEngine";
 import { useAuthStore } from "../../auth/authStore";
+import { canSeeWidget } from "../../lib/permissionGates";
 import { useResolvedTheme } from "../../hooks/useApplyTheme";
 import type { Layout, LayoutItem } from "react-grid-layout";
 
@@ -11,7 +12,7 @@ interface AddWidgetModalProps {
 	onClose: () => void;
 	currentLayout: Layout;
 	onLayoutChange: (newLayout: Layout) => void;
-	catalog: WidgetCatalog & Record<string, { label: string; requiredPermission?: string }>;
+	catalog: WidgetCatalog & Record<string, { label: string; requiredPermission?: string; requiredAnyPermission?: readonly string[] }>;
 }
 
 const widgetHue = (id: string) => {
@@ -96,9 +97,6 @@ const AddWidgetModal = ({ isOpen, onClose, currentLayout, onLayoutChange, catalo
 	const [hoveredId, setHoveredId] = useState<string | null>(null);
 	const { user } = useAuthStore();
 
-	const canSee = (perm?: string) =>
-		!perm || user?.role === "admin" || (user?.permissions ?? []).includes(perm);
-
 	const activeIds = useMemo(
 		() => new Set(currentLayout.map((l) => l.i)),
 		[currentLayout]
@@ -114,7 +112,7 @@ const AddWidgetModal = ({ isOpen, onClose, currentLayout, onLayoutChange, catalo
 	const filtered = useMemo(() => {
 		const q = search.toLowerCase();
 		return Object.entries(catalog).filter(([, w]) =>
-			canSee(w.requiredPermission) && w.label.toLowerCase().includes(q)
+			canSeeWidget(user, w) && w.label.toLowerCase().includes(q)
 		);
 	}, [search, user, catalog]);
 

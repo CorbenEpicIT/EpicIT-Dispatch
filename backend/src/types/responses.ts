@@ -39,6 +39,10 @@ export const ErrorCodes = {
 	INVALID_TOKEN: 'INVALID_TOKEN',
 	TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
 	FORBIDDEN: 'FORBIDDEN',
+	// Its own code because the UI answers it differently from any other 403:
+	// the action is not closed to this person, it is closed to them ON THIS
+	// dispute, and the fix is to hand it to a colleague.
+	SELF_RESOLUTION_FORBIDDEN: 'SELF_RESOLUTION_FORBIDDEN',
 	BAD_REQUEST: 'BAD_REQUEST',
 } as const;
 

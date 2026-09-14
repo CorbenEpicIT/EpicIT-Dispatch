@@ -99,3 +99,43 @@ describe("GET /logs/recent access + redaction (review P1-3 / S4)", () => {
 		expect(leaves(args.where)).toEqual(expect.arrayContaining([{ timestamp: { lt: new Date("2026-08-01T00:00:00.000Z") } }]));
 	});
 });
+
+describe("dispute feed events (dispute attention surfaces §6.2)", () => {
+	const DISPUTE_EVENTS = [
+		"quote.dispute_opened",
+		"quote.dispute_resolved",
+		"invoice.dispute_opened",
+		"invoice.dispute_resolved",
+	];
+
+	it("strips reason from all four dispute events", () => {
+		for (const event_type of DISPUTE_EVENTS) {
+			const r = row({ event_type, reason: "Billed 2 hours, tech was there 1" });
+			expect(redactFeedRow(r).reason).toBeNull();
+		}
+	});
+
+	it("leaves reason (and row identity) alone on every other event", () => {
+		const other = row({ event_type: "quote.updated", reason: "kept" });
+		expect(redactFeedRow(other)).toBe(other);
+	});
+
+	it("technician PII redaction is unchanged", () => {
+		const tech = row({
+			event_type: "technician.updated",
+			changes: { status: { old: "Offline", new: "Available" }, email: { old: "a", new: "b" } },
+		});
+		expect(redactFeedRow(tech).changes).toEqual({ status: { old: "Offline", new: "Available" } });
+	});
+
+	it("GET /logs/recent asks for the dispute events", async () => {
+		await callHandlers(recentActivityRoute, {
+			user: { uid: "disp-1", role: "dispatcher", permissions: [] },
+		});
+		const where = fake.log.findMany.mock.calls[0][0].where;
+		const eventLeaf = leaves(where).find((l) => "event_type" in l) as
+			| { event_type: { in: string[] } }
+			| undefined;
+		expect(eventLeaf?.event_type.in).toEqual(expect.arrayContaining(DISPUTE_EVENTS));
+	});
+});

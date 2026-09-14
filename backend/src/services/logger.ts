@@ -1,23 +1,7 @@
 import { db } from "../db.js";
 import { getSocket } from "./socketService.js";
 import { redactFeedRow } from "../controllers/logsController.js";
-
-const FEED_EVENTS = new Set([
-	"job.created",
-	"job_visit.created",
-	"job_visit.updated",
-	"job_visit.technicians_assigned",
-	"request.created",
-	"request.updated",
-	"quote.created",
-	"quote.updated",
-	"invoice.created",
-	"invoice.updated",
-	"invoice_payment.created",
-	"recurring_plan.created",
-	"recurring_occurrence.generated",
-	"technician.updated",
-]);
+import { FEED_EVENT_SET } from "../lib/activityFeedEvents.js";
 
 // ============================================================================
 // UNIFIED ACTIVITY LOGGING
@@ -32,8 +16,15 @@ interface LogActivityParams {
 
 	organization_id?: string | null;
 
-	actor_type: string; // "technician", "dispatcher", "system"
+	actor_type: string; // "technician", "dispatcher", "system", "agent"
 	actor_id?: string | null; // UUID (null for system events)
+	/**
+	 * Display name override. Supplied when the caller already knows the name and
+	 * the actor_type has no table to look it up in — an "agent" row carries the
+	 * human it acted for in actor_id, but its name is "Assistant · <human>",
+	 * which no lookup below can produce.
+	 */
+	actor_name?: string | null;
 
 	changes?: ChangeSet; // For audit trail: { field: { old, new } }
 	reason?: string;
@@ -48,9 +39,9 @@ interface LogActivityParams {
 export const logActivity = async (params: LogActivityParams) => {
 	try {
 		// Auto-populate actor_name from database
-		let actorName: string | null = null;
+		let actorName: string | null = params.actor_name ?? null;
 
-		if (params.actor_id) {
+		if (!actorName && params.actor_id) {
 			if (params.actor_type === "technician") {
 				const tech = await db.technician.findUnique({
 					where: { id: params.actor_id },
@@ -94,7 +85,7 @@ export const logActivity = async (params: LogActivityParams) => {
 			},
 		});
 
-		if (FEED_EVENTS.has(params.event_type) && created.organization_id) {
+		if (FEED_EVENT_SET.has(params.event_type) && created.organization_id) {
 			try {
 				// Same PII redaction as GET /logs/recent — the socket room is org-wide.
 				getSocket().to(`org:${created.organization_id}`).emit("activity-event", redactFeedRow(created));

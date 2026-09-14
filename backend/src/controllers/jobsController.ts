@@ -16,6 +16,13 @@ import { LineItemToCreate, ChangeSet } from "../types/common.js";
 import { assertInventoryItemsInOrg } from "../lib/inventory.js";
 import { log } from "../services/appLogger.js";
 import { generateJobNumber } from "../db.js";
+import { DocumentRuleError } from "../lib/statusTransitions.js";
+import {
+	SOLD_BY_QUOTE_JOBS,
+	soldJobReason,
+	type DocumentShape,
+} from "../services/disputeAdapters.js";
+import { hasOpenDispute } from "../services/disputeService.js";
 
 // ============================================================================
 // JOB CRUD
@@ -248,6 +255,38 @@ export const getJobsByClientId = async (clientId: string, organizationId: string
 	});
 };
 
+/** Mirrors QUOTE_TERMINAL in frontend/src/components/lifecycle/quoteActions.ts. */
+const QUOTE_NOT_CONVERTIBLE: readonly string[] = ["Rejected", "Revised", "Expired", "Cancelled"];
+
+/**
+ * Why this quote can't become a job, or null. Conversion writes the quote to
+ * Approved with no transition guard, so this is the whole server-side gate;
+ * the page gates the same states, but a stale tab or a direct API call does not
+ * go through the page.
+ *
+ * Under an open dispute the write is a deadlock rather than a status change:
+ * resolveDispute needs the quote still Disputed, updateQuote refuses to move it
+ * while the dispute is open, and the one-open-dispute index then blocks any new
+ * dispute. Sold work converted again bills the client twice.
+ *
+ * Not assertValidQuoteTransition: that table has no Draft → Approved edge, yet
+ * a Draft quote converts today, so the page's terminal list is mirrored instead.
+ */
+function quoteConversionRefusal(quote: DocumentShape, hasOpenDispute: boolean): string | null {
+	if (hasOpenDispute || quote.status === "Disputed") {
+		return "This quote is under dispute — resolve the dispute before converting it to a job.";
+	}
+	if (quote.job) return "A job was already created from this quote.";
+	const sold = soldJobReason(quote);
+	if (sold) return sold;
+	if (QUOTE_NOT_CONVERTIBLE.includes(quote.status)) {
+		const status = quote.status.toLowerCase();
+		const article = /^[aeiou]/.test(status) ? "An" : "A";
+		return `${article} ${status} quote can't be converted to a job.`;
+	}
+	return null;
+}
+
 export const insertJob = async (req: Request, context?: UserContext) => {
 	try {
 		const parsed = createJobSchema.parse(req.body);
@@ -305,12 +344,24 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 						line_items: {
 							orderBy: { sort_order: "asc" },
 						},
+						job: { select: { id: true } },
+						request: { include: { jobs: SOLD_BY_QUOTE_JOBS } },
 					},
 				});
 
 				if (!quote) {
 					throw new Error("Quote not found");
 				}
+
+				const refusal = quoteConversionRefusal(
+					quote as unknown as DocumentShape,
+					await hasOpenDispute(
+						tx as unknown as Prisma.TransactionClient,
+						"quote",
+						quote.id,
+					),
+				);
+				if (refusal) throw new DocumentRuleError(refusal);
 
 				if (!name) name = quote.title;
 				if (!description) description = quote.description;

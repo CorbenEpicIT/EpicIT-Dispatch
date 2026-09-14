@@ -35,6 +35,16 @@ export const DISPATCHER_CATALOG = [
 			{ id: "create_invoices", label: "Create Invoices" },
 			{ id: "edit_invoices", label: "Edit Invoices" },
 			{ id: "delete_invoices", label: "Delete Invoices" },
+			{ id: "refund_invoices", label: "Refund & Void Invoices" },
+		],
+	},
+	{
+		category: "Disputes",
+		permissions: [
+			{ id: "open_disputes", label: "Open Disputes" },
+			{ id: "resolve_disputes", label: "Resolve Disputes" },
+			{ id: "concede_disputes", label: "Adjust & Repeal Disputes" },
+			{ id: "resolve_own_disputes", label: "Resolve Own Disputes" },
 		],
 	},
 	{

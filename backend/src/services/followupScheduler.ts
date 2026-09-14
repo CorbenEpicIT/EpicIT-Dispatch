@@ -15,6 +15,7 @@ import {
 } from "./followupEngine.js";
 import { logActivity } from "./logger.js";
 import { log } from "./appLogger.js";
+import { expireStaleQuotes } from "./quoteExpiry.js";
 
 // Max enrollments processed per sweep — keeps a single tick bounded.
 const BATCH_LIMIT = 200;
@@ -364,8 +365,13 @@ export async function runDueFollowups(): Promise<void> {
 /** Start the followup scheduler: a startup catch-up run, then a sweep every 5 minutes. */
 export function startFollowupSchedulerInterval(): void {
 	runDueFollowups().catch((err) => log.error({ err }, "Followup scheduler startup run failed"));
+	// Piggybacks on the same tick — an unrelated sweep, but there's no other
+	// scheduler in the process to hang it off, and a failure here must never
+	// stop followups from running.
+	expireStaleQuotes().catch((err) => log.error({ err }, "Quote expiry sweep failed"));
 
 	setInterval(() => {
 		runDueFollowups().catch((err) => log.error({ err }, "Followup scheduler interval run failed"));
+		expireStaleQuotes().catch((err) => log.error({ err }, "Quote expiry sweep failed"));
 	}, INTERVAL_MS);
 }

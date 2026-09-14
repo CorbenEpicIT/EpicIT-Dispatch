@@ -90,6 +90,15 @@ export interface RequestReference {
 	title: string;
 	status: string;
 	created_at: Date | string;
+	/** The request's quote-derived jobs only — the evidence a sibling quote was
+	 *  sold. The server produces that refusal now (disputeList.sold_refusal). */
+	jobs?: RequestJobReference[];
+}
+
+/** A job hanging off a request, carrying the quote it came from (if any). */
+export interface RequestJobReference {
+	id: string;
+	quote_id: string | null;
 }
 
 export interface RequestSummary extends RequestReference {

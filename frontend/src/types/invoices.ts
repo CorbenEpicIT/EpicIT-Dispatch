@@ -1,5 +1,6 @@
 ﻿import type { ClientDetailsProps } from "../components/clients/ClientDetailsCard";
 import type { BaseNote, PricingBreakdown } from "./common";
+import type { DocumentLineage } from "./lineage";
 
 // ============================================================================
 // INVOICE STATUS
@@ -71,6 +72,12 @@ export interface InvoiceReference {
 	total: number;
 	balance_due: number;
 	issue_date: Date | string | null;
+}
+
+/** Minimal shape of a neighbouring invoice in the revision/adjustment chain. */
+export interface InvoiceChainRef {
+	id: string;
+	invoice_number: string;
 }
 
 export interface JobReference {
@@ -164,6 +171,17 @@ export interface CreateInvoicePaymentInput {
 	note?: string | null;
 }
 
+/**
+ * A refund is stored as a negative invoice_payment row, but the API is
+ * positive — a dispatcher never types a minus sign to give money back.
+ * The reason is required; the backend caps `amount` at what was actually paid.
+ */
+export interface RecordRefundInput {
+	amount: number;
+	reason: string;
+	method?: PaymentMethod | null;
+}
+
 // ============================================================================
 // NOTE
 // ============================================================================
@@ -223,6 +241,19 @@ export interface Invoice extends PricingBreakdown {
 	// Payment totals (cached, backend-managed)
 	amount_paid: number;
 	balance_due: number;
+
+	// Revision / adjustment chain (spec sections 7.4-7.5). Both directions are
+	// carried because a cross-reference has to name the neighbouring document,
+	// and "adjusted by" has no scalar to derive it from.
+	version?: number;
+	previous_invoice_id?: string | null;
+	previous_invoice?: InvoiceChainRef | null;
+	revised_invoice?: InvoiceChainRef | null;
+	adjusts_invoice_id?: string | null;
+	adjusts_invoice?: InvoiceChainRef | null;
+	adjustments?: InvoiceChainRef[];
+	/** Resolved chain, attached by getInvoiceById. Absent on list payloads. */
+	lineage?: DocumentLineage | null;
 
 	// Content
 	memo?: string | null;
