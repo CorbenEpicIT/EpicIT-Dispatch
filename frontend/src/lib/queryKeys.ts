@@ -130,6 +130,22 @@ export const qk = {
 			filter ? (["restock-requests", filter] as const) : (["restock-requests"] as const),
 	},
 	fleetReadiness: (date: string) => ["fleet-readiness", date] as const,
+	purchases: {
+		all: ["purchases"] as const,
+		list: (opts?: {
+			status?: string;
+			kind?: string;
+			supplierId?: string;
+			jobId?: string;
+			search?: string;
+			sort?: string;
+			offset?: number;
+			limit?: number;
+			dateFrom?: string;
+			dateTo?: string;
+		}) => (opts ? (["purchases", "list", opts] as const) : (["purchases", "list"] as const)),
+		detail: (id: string) => ["purchases", "detail", id] as const,
+	},
 	fieldPurchases: {
 		all: ["field-purchases"] as const,
 		list: (opts?: {

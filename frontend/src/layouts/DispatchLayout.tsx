@@ -51,9 +51,10 @@ export default function DispatchLayout() {
 	const canViewClients = usePermission("view_clients");
 	const canViewInventory = usePermission("view_inventory");
 	const canViewVehicles = useAnyPermission(["view_vehicles", "manage_vehicles"]);
-	const canViewFieldPurchases = useAnyPermission([
+	const canViewPurchases = useAnyPermission([
 		"view_field_purchases",
 		"review_field_purchases",
+		"view_purchases"
 	]);
 	const canViewTechnicians = usePermission("view_technicians");
 	const canViewReports = usePermission("view_reports");
@@ -262,10 +263,10 @@ export default function DispatchLayout() {
 								label="Inventory"
 							/>
 						)}
-						{canViewFieldPurchases && (
+						{canViewPurchases && (
 							<SideNavItem
 								expanded={expanded}
-								to="/dispatch/field-purchases"
+								to="/dispatch/purchases"
 								icon={<Receipt size={ICON_SIZE} />}
 								label="Purchases"
 							/>

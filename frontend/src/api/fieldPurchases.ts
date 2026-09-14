@@ -307,6 +307,16 @@ export const assignLineJob = async (
 	);
 };
 
+/** Links a supplier onto a purchase of any status — unlike editing the sheet, not locked once decided. */
+export const linkSupplier = async (id: string, supplierId: string): Promise<FieldPurchase> => {
+	return call(
+		api.patch<ApiResponse<FieldPurchase>>(`/field-purchases/${id}/supplier`, {
+			supplier_id: supplierId,
+		}),
+		"Failed to link that supplier"
+	);
+};
+
 export const uploadReceipt = async (
 	id: string,
 	capture: ReceiptCapture

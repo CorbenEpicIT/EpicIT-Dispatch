@@ -192,6 +192,10 @@ export const assignLineJobSchema = z.object({
 	job_id: z.string().uuid(),
 });
 
+export const linkSupplierSchema = z.object({
+	supplier_id: z.string().uuid(),
+});
+
 export const captureMetaSchema = z.object({
 	// Device clock at capture. Distinct from purchased_at, which is what the
 	// receipt claims, so the two can disagree and be flagged.

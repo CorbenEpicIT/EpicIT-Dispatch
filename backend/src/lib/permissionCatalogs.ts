@@ -20,6 +20,7 @@ const DISPATCHER_CATALOG = [
 	// purchase: it is sensitive personal information, and only a reviewer checking
 	// a position against the vendor has a reason to see it.
 	{ category: "Field Purchases", permissions: ["view_field_purchases", "review_field_purchases", "second_sign_off_field_purchases", "manage_field_purchase_grants", "view_field_purchase_location"] },
+	{ category: "Purchases", permissions: ["view_purchases", "manage_purchases"] },
 ] as const;
 
 const TECHNICIAN_CATALOG = [

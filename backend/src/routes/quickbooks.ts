@@ -45,6 +45,7 @@ import { db } from "../db.js";
 import { getScopedDb } from "../lib/context.js";
 import { queryProfitAndLossQBReport, queryQBReport } from "../services/qb/qbReports.js";
 import type { ProfitAndLossQuery } from "../services/qb/qbReports.js";
+import { pushPurchase, queryQBPurchaseOrders, getQBPurchaseOrderAsPDF, pushFieldPurchase } from "../services/qb/qbPurchases.js";
 
 const router = Router();
 
@@ -336,6 +337,53 @@ router.post("/vendors/:id/push", requirePermission("manage_inventory"), async (r
 	} catch (err) {
 		next(err);
 	}
+});
+
+router.get("/purchase-orders", requirePermission("manage_inventory"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const qbPurchaseOrders = await queryQBPurchaseOrders(orgId);
+		res.json(createSuccessResponse(qbPurchaseOrders));
+	} catch (err) {
+		next(err);
+	}
+})
+
+router.post("/purchases/:id/push", requirePermission("manage_purchases"), async (req, res, next) => {
+    const purchaseId = req.params.id as string;
+    const orgId = req.user!.organization_id as string;
+    try {
+        const qbPurchaseOrderId = await pushPurchase(purchaseId, orgId);
+        res.json(createSuccessResponse({ pushed: true, qb_purchase_order_id: qbPurchaseOrderId }));
+    } catch (err) {
+        await getScopedDb(orgId).purchase.update({ where: { id: purchaseId }, data: { qb_sync_status: "failed" } }).catch(() => {});
+        next(err);
+    }
+});
+
+router.post("/field-purchases/:id/push", requirePermission("review_field_purchases"), async (req, res, next) => {
+	const purchaseId = req.params.id as string;
+    const orgId = req.user!.organization_id as string;
+    try {
+        const qbPurchaseOrderId = await pushFieldPurchase(purchaseId, orgId);
+        res.json(createSuccessResponse({ pushed: true, qb_purchase_order_id: qbPurchaseOrderId }));
+    } catch (err) {
+        await getScopedDb(orgId).purchase.update({ where: { id: purchaseId }, data: { qb_sync_status: "failed" } }).catch(() => {});
+        next(err);
+    }
+})
+
+router.get("/purchases/:id/pdf", requirePermission("view_purchases"), async (req, res, next) => {
+    try {
+        const orgId = req.user!.organization_id as string;
+        const purchaseId = req.params.id as string;
+        const buffer = await getQBPurchaseOrderAsPDF(orgId, purchaseId);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="purchase-order-${purchaseId}.pdf"`);
+        res.send(buffer);
+    } catch (err) {
+        next(err);
+    }
 });
 
 router.get("/tax-codes", requirePermission("manage_taxes"), async (req, res, next) => {

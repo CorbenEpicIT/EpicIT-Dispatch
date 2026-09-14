@@ -118,6 +118,13 @@ export const DISPATCHER_CATALOG = [
 			{ id: "view_field_purchase_location", label: "View Capture Location" },
 		],
 	},
+	{
+		category: "Purchases",
+		permissions: [
+			{ id: "view_purchases", label: "View Purchases" },
+			{ id: "manage_purchases", label: "Manage Purchases" },
+		],
+	},
 ] as const;
 
 export const TECHNICIAN_CATALOG = [

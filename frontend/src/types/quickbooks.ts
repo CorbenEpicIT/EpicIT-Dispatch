@@ -209,3 +209,95 @@ export const QB_REPORT_TYPES: QBReportTypeMeta[] = [
 export type QBReportQuery = QBProfitAndLossQuery;
 
 export type QBReportPayload = QBProfitAndLossReport;
+
+// Mirrors backend/src/services/qb/qbPurchases.ts.
+
+/** QuickBooks reference object, e.g. VendorRef / APAccountRef. */
+export interface QBRef {
+    value: string;
+    name?: string;
+}
+
+export interface QBMetaData {
+    CreateTime: string;
+    LastUpdatedTime: string;
+}
+
+/** A QBO postal address (ShipAddr / VendorAddr). Line1-5 are free-form, printable lines. */
+export interface QBAddress {
+    Id?: string;
+    Line1?: string;
+    Line2?: string;
+    Line3?: string;
+    Line4?: string;
+    Line5?: string;
+    City?: string;
+    Country?: string;
+    CountrySubDivisionCode?: string;
+    PostalCode?: string;
+    Lat?: string;
+    Long?: string;
+}
+
+export interface QBEmailAddress {
+    Address: string;
+}
+
+export interface QBCustomField {
+    DefinitionId: string;
+    Name: string;
+    Type: string; // "StringType", etc.
+    StringValue?: string;
+}
+
+export interface QBItemBasedExpenseLineDetail {
+    ItemRef: QBRef;
+    CustomerRef?: QBRef;
+    ClassRef?: QBRef;
+    TaxCodeRef?: QBRef;
+    PriceLevelRef?: QBRef;
+    MarkupInfo?: { Percent?: number; PriceLevelRef?: QBRef };
+    Qty?: number;
+    UnitPrice?: number;
+    BillableStatus?: "Billable" | "NotBillable" | "HasBeenBilled";
+}
+
+export interface QBAccountBasedExpenseLineDetail {
+    AccountRef: QBRef;
+    CustomerRef?: QBRef;
+    ClassRef?: QBRef;
+    TaxCodeRef?: QBRef;
+    BillableStatus?: "Billable" | "NotBillable" | "HasBeenBilled";
+}
+
+export interface QBPurchaseOrderLine {
+    Id?: string;
+    LineNum?: number;
+    Description?: string;
+    Amount: number;
+    DetailType: "ItemBasedExpenseLineDetail" | "AccountBasedExpenseLineDetail";
+    ProjectRef?: QBRef;
+    ItemBasedExpenseLineDetail?: QBItemBasedExpenseLineDetail;
+    AccountBasedExpenseLineDetail?: QBAccountBasedExpenseLineDetail;
+}
+
+export interface QBPurchaseOrder {
+    Id: string;
+    SyncToken: string;
+    domain: string;
+    sparse: boolean;
+    DocNumber?: string;
+    TxnDate: string;
+    TotalAmt: number;
+    POStatus?: "Open" | "Closed";
+    EmailStatus?: "NotSet" | "NeedToSend" | "EmailSent";
+    POEmail?: QBEmailAddress;
+    APAccountRef: QBRef;
+    CurrencyRef?: QBRef;
+    VendorRef: QBRef;
+    ShipAddr?: QBAddress;
+    VendorAddr?: QBAddress;
+    Line: QBPurchaseOrderLine[];
+    CustomField?: QBCustomField[];
+    MetaData: QBMetaData;
+}

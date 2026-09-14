@@ -30,6 +30,8 @@ import { log } from "../services/appLogger.js";
  *   Field Purchases
  *     view_field_purchases · review_field_purchases · manage_field_purchase_grants
  *     second_sign_off_field_purchases  (must differ from the reviewer and the purchaser)
+ *   Purchases
+ *     view_purchases      · manage_purchases
  *
  * TECHNICIAN
  *   Jobs

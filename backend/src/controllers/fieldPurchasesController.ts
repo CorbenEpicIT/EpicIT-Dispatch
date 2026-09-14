@@ -69,6 +69,7 @@ import {
 	revokeGrantSchema,
 	updatePurchaseSchema,
 	upsertGrantSchema,
+	linkSupplierSchema,
 } from "../lib/validate/fieldPurchases.js";
 
 /**
@@ -168,6 +169,8 @@ const PURCHASE_SELECT = {
 	ocr_corrections: true,
 	created_at: true,
 	updated_at: true,
+	qb_purchase_id: true,
+	qb_sync_status: true,
 	technician: { select: { id: true, name: true } },
 	supplier: { select: { id: true, name: true } },
 	preauth_by: { select: { id: true, name: true } },
@@ -1457,6 +1460,74 @@ export async function assignLineJob(
 		for (const visitId of billedVisitIds(existing.allocations)) {
 			emitToOrg(orgId, "job_visit:updated", { visitId, organizationId: orgId });
 		}
+
+		return { purchase: await shapePurchase(purchase) };
+	} catch (err) {
+		return toErr(err);
+	}
+}
+
+/** Links/corrects the supplier on a purchase of any status. not gated by isTechEditable */
+export async function linkSupplier(
+	orgId: string,
+	purchaseId: string,
+	data: unknown,
+	context?: UserContext,
+): Promise<Result<{ purchase: unknown }>> {
+	try {
+		const parsed = linkSupplierSchema.parse(data);
+		if (!context?.dispatcherId) {
+			return { err: "Only a dispatcher can link a supplier" };
+		}
+		const sdb = getScopedDb(orgId);
+		const existing = await sdb.field_purchase.findFirst({
+			where: { id: purchaseId },
+			select: { id: true, supplier_id: true, qb_sync_status: true },
+		});
+		if (!existing) return { err: "Field purchase not found" };
+
+		const supplier = await db.supplier.findFirst({
+			where: { id: parsed.supplier_id, organization_id: orgId },
+			select: { id: true },
+		});
+		if (!supplier) return { err: "Validation failed: unknown supplier" };
+
+		// The QB PurchaseOrder already pushed still names the old vendor - flag it
+		// stale so the push button re-enables instead of silently no-op'ing.
+		const supplierChanged = existing.supplier_id !== parsed.supplier_id;
+
+		const purchase = await sdb.$transaction(async (tx) => {
+			await tx.field_purchase.update({
+				where: { id: purchaseId },
+				data: {
+					supplier_id: parsed.supplier_id,
+					...(supplierChanged && existing.qb_sync_status === "synced"
+						? { qb_sync_status: "not_synced" }
+						: {}),
+				},
+			});
+			await appendEvent(
+				tx,
+				orgId,
+				"purchase.supplier_linked",
+				context,
+				{ field_purchase_id: purchaseId },
+				{ supplier_id: parsed.supplier_id },
+			);
+			return tx.field_purchase.findUniqueOrThrow({
+				where: { id: purchaseId },
+				select: PURCHASE_SELECT,
+			});
+		});
+
+		await logPurchaseActivity(
+			orgId,
+			"field_purchase",
+			purchaseId,
+			"supplier_linked",
+			"updated",
+			context,
+		);
 
 		return { purchase: await shapePurchase(purchase) };
 	} catch (err) {

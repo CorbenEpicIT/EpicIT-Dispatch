@@ -70,7 +70,7 @@ export const STAGE_OF: Record<Exclude<FieldPurchaseStatus, "draft">, QueueStage>
  */
 export function purchaseHref(id: string, status: FieldPurchaseStatus): string {
 	const stage = status === "draft" ? null : STAGE_OF[status];
-	return `/dispatch/field-purchases?${stage ? `stage=${stage}&` : ""}purchase=${id}`;
+	return `/dispatch/purchases?tab=field_purchases&${stage ? `stage=${stage}&` : ""}purchase=${id}`;
 }
 
 /** Named the way a dispatcher asks for them, not as a field plus a direction. */

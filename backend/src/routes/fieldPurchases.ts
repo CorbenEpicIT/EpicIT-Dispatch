@@ -23,6 +23,7 @@ import {
 	submitPurchase,
 	reviewPurchase,
 	assignLineJob,
+	linkSupplier,
 	secondSignoff,
 	createRefund,
 	settleRefund,
@@ -310,6 +311,15 @@ router.patch(
 				req.body,
 				getUserContext(req),
 			),
+		one((r) => r.purchase),
+	),
+);
+
+router.patch(
+	"/:id/supplier",
+	requirePermission("review_field_purchases"),
+	route(
+		(req) => linkSupplier(orgOf(req), idOf(req), req.body, getUserContext(req)),
 		one((r) => r.purchase),
 	),
 );

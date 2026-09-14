@@ -58,12 +58,15 @@ export default function SupplierFormModal({
 	onClose,
 	editing,
 	onSaved,
+	initialName,
 }: {
 	isOpen: boolean;
 	onClose: () => void;
 	/** null = creating a new vendor; a Supplier = editing that one. */
 	editing: Supplier | null;
 	onSaved?: (supplier: Supplier) => void;
+	/** Seeds the name field on a fresh create — e.g. text a caller's own picker already typed. Ignored while editing. */
+	initialName?: string;
 }) {
 	const toast = useToast();
 	const createMutation = useCreateSupplier();
@@ -77,9 +80,9 @@ export default function SupplierFormModal({
 	// the next open.
 	useEffect(() => {
 		if (!isOpen) return;
-		setForm(editing ? toForm(editing) : EMPTY_FORM);
+		setForm(editing ? toForm(editing) : { ...EMPTY_FORM, name: initialName ?? "" });
 		setFormError(null);
-	}, [isOpen, editing]);
+	}, [isOpen, editing, initialName]);
 
 	const isSaving = createMutation.isPending || updateMutation.isPending;
 

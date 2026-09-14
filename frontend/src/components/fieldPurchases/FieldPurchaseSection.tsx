@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
-import PageHeader from "../../components/ui/PageHeader";
-import StatCard from "../../components/ui/StatCard";
-import FieldPurchaseGrantsPanel from "../../components/inventory/FieldPurchaseGrantsPanel";
-import QueueHeader from "../../components/fieldPurchases/QueueHeader";
-import PurchaseQueue from "../../components/fieldPurchases/PurchaseQueue";
-import PurchaseReviewPanel from "../../components/fieldPurchases/PurchaseReviewPanel";
+import PageHeader from "../ui/PageHeader";
+import StatCard from "../ui/StatCard";
+import FieldPurchaseGrantsPanel from "../inventory/FieldPurchaseGrantsPanel";
+import QueueHeader from "../fieldPurchases/QueueHeader";
+import PurchaseQueue from "../fieldPurchases/PurchaseQueue";
+import PurchaseReviewPanel from "../fieldPurchases/PurchaseReviewPanel";
 import {
 	ageLabel,
 	hoursWaiting,
 	isTypingKeystroke,
 	money,
-} from "../../components/fieldPurchases/fieldPurchaseFormat";
+} from "../fieldPurchases/fieldPurchaseFormat";
 import {
 	EMPTY_COPY,
 	QUEUE_STAGES,
 	readQueueFilters,
-} from "../../components/fieldPurchases/queueFilters";
+} from "../fieldPurchases/queueFilters";
 import { useFieldPurchaseQueue, useFieldPurchaseSummary } from "../../hooks/useFieldPurchases";
 import { usePermission } from "../../hooks/usePermission";
 import { parseDateRangeFromParams, resolveDateRange } from "../../util/dateRangeUtils";
@@ -37,7 +37,7 @@ const MAX_ROWS = 200;
  * this queue IS the control, and the summary above it is how a dispatcher knows,
  * before opening anything, whether today is under control.
  */
-export default function FieldPurchasesPage() {
+export default function FieldPurchasesSection() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [view, setView] = useState<View>("queue");
 	const [limit, setLimit] = useState(PAGE_SIZE);

@@ -67,7 +67,6 @@ const InventoryPage = lazy(() => import("./pages/dispatch/InventoryPage"));
 const InventoryItemDetailPage = lazy(() => import("./pages/dispatch/InventoryItemDetailPage"));
 const SuppliersPage = lazy(() => import("./pages/dispatch/SuppliersPage"));
 const InventoryReconcilePage = lazy(() => import("./pages/dispatch/InventoryReconcilePage"));
-const FieldPurchasesPage = lazy(() => import("./pages/dispatch/FieldPurchasesPage"));
 const SupplierDetailPage = lazy(() => import("./pages/dispatch/SupplierDetailPage"));
 const LabelPrintPage = lazy(() => import("./components/inventory/labels/LabelPrintPage"));
 const SerialRedirectPage = lazy(() => import("./pages/dispatch/SerialRedirectPage"));
@@ -88,6 +87,8 @@ const SSOCompletePage = lazy(() => import("./pages/SSOCompletePage"));
 const ProjectsPage = lazy(() => import("./pages/dispatch/ProjectsPage"));
 const ProjectDetailPage = lazy(() => import("./pages/dispatch/ProjectDetailPage"));
 const JobProfitabilityPage = lazy(() => import("./pages/dispatch/JobProfitabilityPage"));
+const PurchasePage = lazy(() => import("./pages/dispatch/PurchasePage"));
+const PurchaseDetailsPage = lazy(() => import("./pages/dispatch/PurchaseDetailsPage"));
 
 function RequireAuth({ children }: { children: JSX.Element }) {
 	const { user, logout } = useAuthStore();
@@ -207,7 +208,8 @@ export default function AppRoutes() {
 				{/* Reviewing is the control on field spend, so reading the queue is its
 				    own permission rather than view_inventory — the page gates the
 				    decisions and the grants tab separately. */}
-				<Route path="field-purchases" element={<RequireAnyPermission permissions={["view_field_purchases", "review_field_purchases"]}><FieldPurchasesPage /></RequireAnyPermission>} />
+				<Route path="purchases" element={<RequireAnyPermission permissions={["view_field_purchases", "review_field_purchases", "view_purchases"]}><PurchasePage /></RequireAnyPermission>} />
+				<Route path="purchases/:purchaseId" element={<RequirePermission permission="view_purchases" ><PurchaseDetailsPage /></RequirePermission>} />
 				<Route path="inventory/suppliers/:supplierId" element={<RequirePermission permission="view_inventory"><SupplierDetailPage /></RequirePermission>} />
 				<Route path="inventory/items/:itemId" element={<RequirePermission permission="view_inventory"><InventoryItemDetailPage /></RequirePermission>} />
 				<Route path="inventory/labels/print" element={<RequirePermission permission="manage_inventory"><LabelPrintPage /></RequirePermission>} />

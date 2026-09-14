@@ -110,6 +110,25 @@ type ProjectNumberTx = {
 	};
 }
 
+type PurchaseNumberTx = {
+	$executeRaw: (
+		template: TemplateStringsArray,
+		...values: unknown[]
+	) => Promise<number>;
+	purchase: {
+		findFirst: (args: {
+			where: {
+				organization_id: string;
+				purchase_number: { startsWith: string };
+			};
+			orderBy: {
+				purchase_number?: "asc" | "desc";
+				created_at?: "asc" | "desc";
+			};
+		}) => Promise<{ purchase_number: string } | null>; 
+	}
+}
+
 export async function generateQuoteNumber(
 	tx: QuoteNumberTx,
 	organizationId: string,
@@ -199,6 +218,31 @@ export async function generateProjectNumber(
 	let nextNumber = 1;
 	if (lastProject) {
 		const match = lastProject.project_number.match(/P-(\d+)/);
+		if (match) {
+			nextNumber = parseInt(match[1]) + 1;
+		}
+	}
+
+	return `P-${nextNumber.toString().padStart(4, "0")}`;
+}
+
+export async function generatePurchaseNumber(
+	tx: PurchaseNumberTx,
+	organizationId: string,
+): Promise<string> {
+	await tx.$executeRaw`SELECT pg_advisory_xact_lock(5, hashtext(${organizationId}))`;
+
+	const lastPurchase = await tx.purchase.findFirst({
+		where: {
+			organization_id: organizationId,
+			purchase_number: { startsWith: "P-" },
+		},
+		orderBy: { created_at: "desc" },
+	});
+
+	let nextNumber = 1;
+	if (lastPurchase) {
+		const match = lastPurchase.purchase_number.match(/P-(\d+)/);
 		if (match) {
 			nextNumber = parseInt(match[1]) + 1;
 		}

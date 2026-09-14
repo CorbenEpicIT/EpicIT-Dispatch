@@ -263,6 +263,22 @@ export const useAssignLineJob = (): UseMutationResult<
 	});
 };
 
+/** A dispatcher linking (or correcting) the supplier on a purchase, at any status. */
+export const useLinkSupplier = (): UseMutationResult<
+	FieldPurchase,
+	Error,
+	{ id: string; supplierId: string }
+> => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, supplierId }) => api.linkSupplier(id, supplierId),
+		onSuccess: (_p, { id }) => {
+			qc.invalidateQueries({ queryKey: qk.fieldPurchases.detail(id) });
+			qc.invalidateQueries({ queryKey: qk.fieldPurchases.all });
+		},
+	});
+};
+
 // ── Purchases ────────────────────────────────────────────────────────────────
 
 const listKey = (params: ListPurchasesParams) =>

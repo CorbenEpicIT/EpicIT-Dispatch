@@ -212,14 +212,8 @@ const ROUTES: RouteCase[] = [
 	{ path: "inventory/batches/:batchId", url: "/dispatch/inventory/batches/b1", page: "BatchDetailPage", perm: "view_inventory" },
 	{ path: "inventory/suppliers", url: "/dispatch/inventory/suppliers", page: "SuppliersPage", perm: "view_inventory" },
 	{ path: "inventory/suppliers/:supplierId", url: "/dispatch/inventory/suppliers/s1", page: "SupplierDetailPage", perm: "view_inventory" },
-	{
-		// Reviewing a reimbursement is the control on field spend, so the queue
-		// carries its own permission rather than riding on view_inventory.
-		path: "field-purchases",
-		url: "/dispatch/field-purchases",
-		page: "FieldPurchasesPage",
-		perm: ["view_field_purchases", "review_field_purchases"],
-	},
+	{ path: "purchases", url: "/dispatch/purchases", page: "PurchasePage", perm: ["view_field_purchases", "review_field_purchases", "view_purchases"] },
+	{ path: "purchases/:purchaseId", url: "/dispatch/purchases/p1", page: "PurchaseDetailsPage", perm: "view_purchases" },
 	{ path: "quotes", url: "/dispatch/quotes", page: "QuotesPage", perm: "view_quotes" },
 	{ path: "quotes/:quoteId", url: "/dispatch/quotes/q1", page: "QuoteDetailPage", perm: "view_quotes" },
 	{ path: "requests", url: "/dispatch/requests", page: "RequestsPage", perm: "view_requests" },

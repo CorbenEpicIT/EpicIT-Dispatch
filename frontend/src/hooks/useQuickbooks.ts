@@ -28,7 +28,9 @@ import {
     pushQBVendor,
     getQBReport,
     syncClientToQB,
-
+    getQBPurchaseOrders,
+    pushPurchaseToQB,
+    pushFieldPurchaseToQB,
 } from "../api/quickbooks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -181,6 +183,37 @@ export const usePushQBVendorMutation = () => {
         onSuccess: () => invalidateVendors(queryClient),
     });
 };
+
+export const usePushPurchaseToQBMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<{ pushed: boolean; qb_purchase_order_id: string }, Error, string>({
+        mutationFn: (purchaseId) => pushPurchaseToQB(purchaseId),
+        onSuccess: (_result, purchaseId) => {
+            queryClient.invalidateQueries({ queryKey: qk.purchases.detail(purchaseId) });
+            queryClient.invalidateQueries({ queryKey: ["qbPurchaseOrders"] });
+        },
+    });
+};
+
+export const usePushFieldPurchaseToQBMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation<{ pushed: boolean; qb_purchase_order_id: string }, Error, string>({
+        mutationFn: (purchaseId) => pushFieldPurchaseToQB(purchaseId),
+        onSuccess: (_result, purchaseId) => {
+            queryClient.invalidateQueries({ queryKey: qk.fieldPurchases.detail(purchaseId) });
+            queryClient.invalidateQueries({ queryKey: ["qbPurchaseOrders"] });
+        },
+    });
+};
+
+export const useQBPurchaseOrderQuery = (enabled = true) =>{
+    return useQuery({
+        queryKey: ["qbPurchaseOrders"],
+        queryFn: getQBPurchaseOrders,
+        enabled,
+        retry: false
+    })
+}
 
 export const useQBTaxCodesQuery = (enabled = true) => {
     return useQuery({
@@ -398,4 +431,4 @@ export const useQBClientSyncMutation = () => {
             queryClient.invalidateQueries({ queryKey: ["qbMappedCustomers"]});
         }
     })
-}
+};

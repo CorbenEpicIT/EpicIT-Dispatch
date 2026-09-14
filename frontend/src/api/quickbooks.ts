@@ -16,7 +16,8 @@ import type {
     MappedQBCustomer,
     QBReportTypeId,
     QBReportQuery,
-    QBReportPayload
+    QBReportPayload,
+    QBPurchaseOrder
 } from "../types/quickbooks";
 import type { Supplier } from "../types/suppliers";
  
@@ -142,6 +143,30 @@ export const pushQBVendor = async (supplierId: string) => {
     if (response.data.error) throw new Error(response.data.error?.message || "Failed to push supplier to QB");
     return response.data.data!;
 }
+
+export const getQBPurchaseOrders = async (): Promise<QBPurchaseOrder[]> => {
+    const response = await api.get<ApiResponse<QBPurchaseOrder[]>>("integrations/quickbooks/purchase-orders");
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to get QB purcase orders");
+    return response.data.data!;
+}
+
+export const pushPurchaseToQB = async (purchaseId: string) => {
+    const response = await api.post<ApiResponse<{ pushed: boolean; qb_purchase_order_id: string }>>(`integrations/quickbooks/purchases/${purchaseId}/push`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to push purchase to QB");
+    return response.data.data!;
+}
+
+export const pushFieldPurchaseToQB = async (purchaseId: string) => {
+    const response = await api.post<ApiResponse<{ pushed: boolean; qb_purchase_order_id: string }>>(`integrations/quickbooks/field-purchases/${purchaseId}/push`);
+    if (response.data.error) throw new Error(response.data.error?.message || "Failed to push purchase to QB");
+    return response.data.data!;
+}
+
+export const viewQBPurchaseOrderPdf = async (purchaseId: string): Promise<void> => {
+    const response = await api.get(`integrations/quickbooks/purchases/${purchaseId}/pdf`, { responseType: "blob" });
+    const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+    window.open(url, "_blank");
+};
 
 export const getQBTaxCodes = async (): Promise<QBTaxCodeLite[]> => {
     const response = await api.get<ApiResponse<QBTaxCodeLite[]>>("integrations/quickbooks/tax-codes");

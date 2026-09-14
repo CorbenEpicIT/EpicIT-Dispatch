@@ -178,6 +178,8 @@ export interface FieldPurchase {
 	ocr_corrections: number | null;
 	created_at: string;
 	updated_at: string;
+	qb_purchase_id: string | null;
+	qb_sync_status: "not_synced" | "synced" | "failed";
 	technician: { id: string; name: string };
 	supplier: { id: string; name: string } | null;
 	preauth_by: { id: string; name: string } | null;

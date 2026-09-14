@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import FieldPurchasesPage from "./FieldPurchasesPage";
+import FieldPurchasesSection from "./FieldPurchaseSection";
 import type { FieldPurchase, FieldPurchaseDetail } from "../../types/fieldPurchases";
 
 const mockReview = vi.fn();
@@ -43,10 +43,23 @@ vi.mock("../../hooks/useFieldPurchases", () => ({
 	useFieldPurchaseGrants: () => ({ data: [], isLoading: false }),
 	useUpsertFieldPurchaseGrant: () => ({ isPending: false, mutateAsync: vi.fn() }),
 	useRevokeFieldPurchaseGrant: () => ({ isPending: false, mutateAsync: vi.fn() }),
+	useAssignLineJob: () => ({ isPending: false, mutateAsync: vi.fn() }),
+	useLinkSupplier: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 
 vi.mock("../../hooks/useTechnicians", () => ({
 	useAllTechniciansQuery: () => ({ data: [] }),
+}));
+
+vi.mock("../../hooks/useQuickbooks", () => ({
+	useQBStatusQuery: () => ({ data: { connected: false } }),
+	usePushFieldPurchaseToQBMutation: () => ({ isPending: false, mutate: vi.fn() }),
+}));
+
+vi.mock("../../hooks/useSuppliers", () => ({
+	useSuppliers: () => ({ data: [] }),
+	useCreateSupplier: () => ({ isPending: false, mutateAsync: vi.fn() }),
+	useUpdateSupplier: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
 
 vi.mock("../../hooks/usePermission", () => ({
@@ -102,6 +115,8 @@ function purchase(over: Partial<FieldPurchase> = {}): FieldPurchase {
 		ocr_corrections: null,
 		created_at: "2026-08-21T14:55:00.000Z",
 		updated_at: "2026-08-21T15:05:00.000Z",
+		qb_purchase_id: null,
+		qb_sync_status: "not_synced",
 		technician: { id: "tech-1", name: "Dana Reyes" },
 		supplier: null,
 		preauth_by: null,
@@ -167,7 +182,7 @@ function purchase(over: Partial<FieldPurchase> = {}): FieldPurchase {
 function renderPage() {
 	return render(
 		<MemoryRouter>
-			<FieldPurchasesPage />
+			<FieldPurchasesSection />
 		</MemoryRouter>
 	);
 }

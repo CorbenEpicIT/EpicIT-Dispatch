@@ -153,7 +153,7 @@ export default function SupplierPicker({
 						// Dragging the panel's scrollbar blurs the input, and the
 						// blur handler closes the list out from under the drag.
 						onMouseDown={(e) => e.preventDefault()}
-						className="z-50 max-h-48 overflow-y-auto rounded border border-border bg-surface shadow-xl"
+						className="z-[6000] max-h-48 overflow-y-auto rounded border border-border bg-surface shadow-xl"
 					>
 						{suggestions.map((s) => (
 							<button

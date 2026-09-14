@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
 	AlertTriangle,
@@ -25,6 +25,7 @@ import {
 	useSecondSignoff,
 	useSettleRefund,
 } from "../../hooks/useFieldPurchases";
+import { useQBStatusQuery, usePushFieldPurchaseToQBMutation } from "../../hooks/useQuickbooks";
 import { useToast } from "../ui/useToast";
 import { errorMessage } from "../../util/util";
 import ReceiptViewer from "./ReceiptViewer";
@@ -33,7 +34,11 @@ import { ActionButton, AgeChip, Chip, MetaCell, SectionBar } from "./fieldPurcha
 import { COL_LABEL, FOCUS_RING, isTypingKeystroke, money, RECORD_LINK } from "./fieldPurchaseFormat";
 import { reconcileHref } from "../reconcile/reconcileFilters";
 import { usePermission } from "../../hooks/usePermission";
-import { useAssignLineJob, useCaptureLocation } from "../../hooks/useFieldPurchases";
+import { useAssignLineJob, useCaptureLocation, useLinkSupplier } from "../../hooks/useFieldPurchases";
+import { useSuppliers } from "../../hooks/useSuppliers";
+import { normalizeSupplierName } from "../../lib/suppliers";
+import FilterableSelect, { type FilterableOption } from "../ui/forms/FilterableSelect";
+import SupplierFormModal from "../suppliers/SupplierFormModal";
 import {
 	DISPOSITION_LABELS,
 	FIELD_PURCHASE_STATUS_LABELS,
@@ -207,6 +212,13 @@ export default function PurchaseReviewPanel({
 	const decide = useDecidePreauth();
 	const sign = useSecondSignoff();
 	const settle = useSettleRefund();
+	const qbConnected = !!useQBStatusQuery().data?.connected;
+	const pushToQB = usePushFieldPurchaseToQBMutation();
+	const linkSupplier = useLinkSupplier();
+	const { data: suppliersData } = useSuppliers();
+	const [supplierQuery, setSupplierQuery] = useState("");
+	const [isLinkingSupplier, setIsLinkingSupplier] = useState(false);
+	const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
 	const toast = useToast();
 	const [note, setNote] = useState("");
 	// Collapsed by default so the receipt keeps the height, but it opens in place
@@ -256,6 +268,8 @@ export default function PurchaseReviewPanel({
 		setNote("");
 		setNoteOpen(false);
 		setArmedApprove(false);
+		setSupplierQuery("");
+		setIsLinkingSupplier(false);
 	}, [purchaseId]);
 
 	// Armed is a held gesture, not a mode: a dispatcher who pressed `a` and then
@@ -296,6 +310,29 @@ export default function PurchaseReviewPanel({
 	useEffect(() => {
 		movesStockRef.current = movesStock;
 	}, [movesStock]);
+
+	const supplierExactMatch = useMemo(() => {
+		const key = normalizeSupplierName(supplierQuery);
+		if (!key) return undefined;
+		return suppliersData?.find((s) => normalizeSupplierName(s.name) === key);
+	}, [suppliersData, supplierQuery]);
+	const supplierOptions = useMemo<FilterableOption[]>(() => {
+		const q = supplierQuery.trim().toLowerCase();
+		const base = (suppliersData ?? [])
+			.filter((s) => !q || s.name.toLowerCase().includes(q))
+			.map((s) => ({ id: s.id, label: s.name, sublabel: s.account_number ?? undefined }));
+		if (supplierQuery.trim() && !supplierExactMatch) {
+			return [{ id: "__create_supplier__", label: `+ Create supplier "${supplierQuery.trim()}"` }, ...base];
+		}
+		return base;
+	}, [suppliersData, supplierQuery, supplierExactMatch]);
+
+	function linkSupplierById(purchaseId: string, supplierId: string) {
+		linkSupplier.mutate(
+			{ id: purchaseId, supplierId },
+			{ onError: (err) => toast.error(errorMessage(err, "Failed to link that supplier")) },
+		);
+	}
 
 	/**
 	 * Every decision here is the same shape: mutate, clear the note it consumed,
@@ -780,6 +817,73 @@ export default function PurchaseReviewPanel({
 				</div>
 			)}
 
+			{decide && p.status === "approved" && p.kind !== "refund" && qbConnected && (
+				<div className="flex items-center justify-between gap-2 border-t border-border bg-surface px-4 py-2.5">
+					{p.qb_sync_status === "synced" ? (
+						<span className="inline-flex items-center gap-1.5 text-xs font-medium text-success-text">
+							<Check aria-hidden size={13} /> Pushed to QuickBooks
+						</span>
+					) : p.supplier ? (
+						<>
+							<p className="text-xs text-text-secondary">Not yet pushed to QuickBooks.</p>
+							<ActionButton
+								variant="secondary"
+								icon={<ShoppingCart aria-hidden size={13} />}
+								disabled={pushToQB.isPending}
+								className="border-none bg-quickbooks text-white hover:enabled:bg-quickbooks-hover"
+								onClick={() =>
+									pushToQB.mutate(p.id, {
+										onError: (error) =>
+										toast.error(errorMessage(error, "Failed to push to QuickBooks")),
+									})
+								}
+							>
+								{pushToQB.isPending ? "Pushing…" : "Push to QuickBooks"}
+							</ActionButton>
+						</>
+					) : isLinkingSupplier ? (
+						<div className="flex w-full items-center gap-2">
+							<div className="w-56">
+								<FilterableSelect
+									placeholder={p.vendor_name ?? "Search suppliers…"}
+									ariaLabel="Link supplier"
+									value={supplierQuery}
+									onChange={setSupplierQuery}
+									options={supplierOptions}
+									disabled={linkSupplier.isPending}
+									onSelect={(opt) => {
+										if (opt.id === "__create_supplier__") {
+											setIsSupplierModalOpen(true);
+											return;
+										}
+										setSupplierQuery("");
+										setIsLinkingSupplier(false);
+										linkSupplierById(p.id, opt.id);
+									}}
+								/>
+							</div>
+							<button
+								type="button"
+								onClick={() => {
+									setIsLinkingSupplier(false);
+									setSupplierQuery("");
+								}}
+								className="shrink-0 text-xs text-text-muted hover:text-text-secondary"
+							>
+								Cancel
+							</button>
+						</div>
+					) : (
+						<>
+							<p className="text-xs text-text-secondary">Link a supplier to push this to QuickBooks.</p>
+							<ActionButton variant="ghost" onClick={() => setIsLinkingSupplier(true)}>
+								Link supplier
+							</ActionButton>
+						</>
+					)}
+				</div>
+			)}
+
 			{awaitingSignoff && (
 				<div className="space-y-2 border-t border-border bg-surface px-4 py-3">
 					<p className="text-xs text-text-secondary">
@@ -909,6 +1013,18 @@ export default function PurchaseReviewPanel({
 					</p>
 				</div>
 			)}
+			<SupplierFormModal
+				isOpen={isSupplierModalOpen}
+				onClose={() => setIsSupplierModalOpen(false)}
+				editing={null}
+				initialName={supplierQuery}
+				onSaved={(saved) => {
+					setSupplierQuery("");
+					setIsSupplierModalOpen(false);
+					setIsLinkingSupplier(false);
+					linkSupplierById(p.id, saved.id);
+				}}
+			/>
 		</>
 	);
 }

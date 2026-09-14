@@ -60,10 +60,14 @@ interface CreateInventoryItemProps {
 	onClose: () => void;
 	existingItem?: InventoryItem | null;
 	prefillBarcode?: string;
+	/** Seeds the Name field on a fresh create (e.g. from an unmatched search). */
+	initialName?: string;
 	/** Distinct categories already in use, for the Category datalist. Passed in
 	 *  by callers that already hold the item list, so the modal doesn't fire a
 	 *  second full-inventory request just to suggest strings. */
 	categorySuggestions?: string[];
+	/** Fired on a successful create (not edit), with the new item. */
+	onCreated?: (item: InventoryItem) => void;
 }
 
 const BASE_STEPS: { id: Step; label: string }[] = [
@@ -211,6 +215,8 @@ export default function CreateInventoryItem({
 	existingItem,
 	prefillBarcode,
 	categorySuggestions = [],
+	onCreated,
+	initialName,
 }: CreateInventoryItemProps) {
 	const isEdit = !!existingItem;
 
@@ -486,6 +492,12 @@ export default function CreateInventoryItem({
 			setBarcode(prefillBarcode);
 		}
 	}, [isOpen, existingItem, prefillBarcode]);
+
+	useEffect(() => {
+		if (isOpen && !existingItem && initialName) {
+			setName(initialName);
+		}
+	}, [isOpen, existingItem, initialName]);
 
 	const resetForm = useCallback(() => {
 		resetWizard();
@@ -917,6 +929,7 @@ export default function CreateInventoryItem({
 				if (selectedTagIds.length > 0) {
 					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
 				}
+				onCreated?.(created);
 			} else {
 				// The opening quantity is a receipt, so it carries a vendor; the
 				// server drops the field when quantity is 0 and nothing moves.
@@ -932,6 +945,7 @@ export default function CreateInventoryItem({
 					await setTagsMutation.mutateAsync({ itemId: created.id, tagIds: selectedTagIds });
 				}
 				await queueNewItemLabel(created);
+				onCreated?.(created);
 			}
 			onClose();
 		} catch (e) {
@@ -1023,6 +1037,7 @@ export default function CreateInventoryItem({
 				// no-op
 			}
 
+			onCreated?.({ ...created, quantity });
 			onClose();
 		} catch (e) {
 			// Create may have succeeded while receive failed — the item then

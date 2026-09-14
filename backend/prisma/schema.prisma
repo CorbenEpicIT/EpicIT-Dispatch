@@ -411,6 +411,8 @@ model organization {
   field_purchase_grants   field_purchase_grant[]
   field_purchases         field_purchase[]
   field_purchase_events   field_purchase_event[]
+  purchases               purchase[]
+  purchase_events         purchase_event[]
 
   requests              request[]
   quotes                quote[]
@@ -842,6 +844,7 @@ model job {
   line_items   job_line_item[]
   invoice_jobs invoice_job[]
   field_purchase_allocations field_purchase_job_allocation[]
+  purchase_allocations purchase_job_allocation[]
 
   @@index([client_id])
   @@index([recurring_plan_id])
@@ -936,6 +939,7 @@ model job_visit {
   stock_movements        stock_movement[]
   consumed_serial_units  serial_unit[]
   field_purchase_allocations field_purchase_job_allocation[]
+  purchase_allocations purchase_job_allocation[]
 
   @@index([job_id])
   @@index([status])
@@ -987,6 +991,7 @@ model job_visit_line_item {
   stock_movements stock_movement[]
   consumed_serial_units serial_unit[]
   field_purchase_line field_purchase_line?
+  purchase_line purchase_line?
 
   @@index([visit_id])
   @@index([sort_order])
@@ -1428,6 +1433,7 @@ model inventory_item {
   serial_units     serial_unit[]
   stock_batches    stock_batch[]
   field_purchase_lines field_purchase_line[]
+  purchase_lines purchase_line[]
 
   @@unique([organization_id, sku])
   @@unique([organization_id, barcode])
@@ -1516,6 +1522,7 @@ model vehicle {
   visit_line_dispositions job_visit_line_item[]      @relation("VisitLineDispositionVehicle")
   plan_line_dispositions  recurring_plan_line_item[] @relation("PlanLineDispositionVehicle")
   field_purchase_line_dispositions field_purchase_line[] @relation("FieldPurchaseLineDispositionVehicle")
+  purchase_line_dispositions purchase_line[] @relation("PurchaseLineDispositionVehicle")
 
   @@index([organization_id])
   @@index([status])
@@ -1691,6 +1698,7 @@ model supplier {
   external_mappings supplier_external_mapping[]
   items             supplier_item[]
   field_purchases   field_purchase[]
+  purchases         purchase[]
 
   @@unique([organization_id, name_key])
   @@index([organization_id, is_active])
@@ -1758,6 +1766,158 @@ model supplier_item {
   @@unique([supplier_id, inventory_item_id])
   @@index([organization_id, inventory_item_id])
   @@index([inventory_item_id, is_preferred])
+}
+
+// Standalone lifecycle for a planned vendor purchase - distinct from
+// field_purchase_status, which is built around tech-spend authority
+// (preauth/second-signoff) that doesn't apply to a dispatcher-ordered PO.
+enum purchase_status {
+  draft
+  ordered
+  partially_received
+  received
+  cancelled
+}
+
+// Standalone from field_purchase_kind so the two features can evolve independently,
+// even though both currently just distinguish a purchase from its refund.
+enum purchase_kind {
+  purchase
+  refund
+}
+
+model purchase {
+  id              String          @id @default(uuid())
+  organization_id String
+  organization    organization    @relation(fields: [organization_id], references: [id])
+  status          purchase_status @default(draft)
+  kind            purchase_kind   @default(purchase)
+  purchase_number String
+
+  vendor_name String?
+  supplier_id String?
+  supplier    supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+
+  purchased_at DateTime?
+  subtotal     Decimal   @default(0) @db.Decimal(10, 2)
+  tax_group_id String?
+  tax_group    tax_group? @relation(fields: [tax_group_id], references: [id], onDelete: SetNull)
+  tax_amount   Decimal   @default(0) @db.Decimal(10, 2)
+  total        Decimal   @default(0) @db.Decimal(10, 2)
+
+  submitted_at         DateTime?
+  cancelled_at         DateTime?
+  cancellation_reason  String?
+
+  flags Json @default("[]")
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  qb_purchase_id String?
+  qb_sync_status qb_sync_status @default(not_synced)
+  account_id     String         @default("")
+
+  lines       purchase_line[]
+  allocations purchase_job_allocation[]
+  events      purchase_event[]
+
+  @@index([organization_id, status])
+  // The duplicate and velocity checks both sweep one vendor's recent purchases.
+  @@index([organization_id, vendor_name, purchased_at])
+  @@index([supplier_id])
+  @@unique([account_id, qb_purchase_id])
+}
+
+model purchase_line {
+  id                String         @id @default(uuid())
+  purchase_id String
+  purchase    purchase @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Decimal @db.Decimal(10, 2)
+  unit_price  Decimal @db.Decimal(10, 2)
+  line_total  Decimal @db.Decimal(10, 2)
+
+  inventory_item_id String?
+  inventory_item    inventory_item? @relation(fields: [inventory_item_id], references: [id], onDelete: SetNull)
+  disposition            line_item_disposition?
+  disposition_location   stock_location_type?
+  disposition_vehicle_id String?
+  disposition_vehicle    vehicle?               @relation("PurchaseLineDispositionVehicle", fields: [disposition_vehicle_id], references: [id], onDelete: SetNull)
+
+  quantity_recieved      Decimal @default(0) @db.Decimal(10, 2)
+  received_at            DateTime?
+
+  ocr_confidence Decimal? @db.Decimal(4, 3)
+
+  verified_at DateTime?
+
+  visit_line_item_id String?              @unique
+  visit_line_item    job_visit_line_item? @relation(fields: [visit_line_item_id], references: [id], onDelete: SetNull)
+
+  // Only valid on a non_stock line - a receive line lands in general stock and
+  // gets job-costed later, when it's actually consumed, not at purchase time.
+  // enforced the same way disposition's `consume` ban is: application validation.
+  allocation_id String?
+  allocation    purchase_job_allocation? @relation(fields: [allocation_id], references: [id], onDelete: SetNull)
+
+  sort_order Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  movements stock_movement[]
+
+  @@index([purchase_id])
+  @@index([inventory_item_id])
+  @@index([disposition_vehicle_id])
+  @@index([allocation_id])
+}
+
+model purchase_job_allocation {
+  id                String         @id @default(uuid())
+  purchase_id String
+  purchase    purchase @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+  job_id            String
+  job               job            @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  // The visit the technician was standing on when they bought. Billing needs a
+  // visit and the job alone does not name one; null when the purchase was
+  // started from somewhere with no visit in context.
+  job_visit_id String?
+  job_visit    job_visit? @relation(fields: [job_visit_id], references: [id], onDelete: SetNull)
+
+  // Derived, never typed: the sum of the lines assigned to this job plus its
+  // pro-rata share of the tax. An amount somebody types is a second answer to a
+  // question the lines already answer, and the two drift.
+  amount Decimal @db.Decimal(10, 2)
+
+  lines purchase_line[]
+
+  created_at DateTime @default(now())
+
+  @@unique([purchase_id, job_id])
+  @@index([job_id])
+  @@index([job_visit_id])
+}
+
+// Append-only, mirrors field_purchase_event's shape for the regular-purchase side.
+model purchase_event {
+  id              String        @id @default(uuid())
+  organization_id String
+  organization    organization  @relation(fields: [organization_id], references: [id])
+  purchase_id     String?
+  purchase        purchase?     @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+
+  type       String
+  actor_type String // "dispatcher" | "system"
+  actor_id   String?
+  detail     Json    @default("{}")
+
+  at DateTime @default(now())
+
+  @@index([organization_id, at])
+  @@index([purchase_id, at])
 }
 
   // ============================================================================
@@ -1903,6 +2063,10 @@ model field_purchase {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  qb_purchase_id String?
+  qb_sync_status qb_sync_status @default(not_synced)
+  account_id     String         @default("")
+
   lines       field_purchase_line[]
   allocations field_purchase_job_allocation[]
   events      field_purchase_event[]
@@ -1917,6 +2081,7 @@ model field_purchase {
   @@index([organization_id, vendor_name, receipt_number])
   @@index([parent_purchase_id])
   @@index([supplier_id])
+  @@unique([account_id, qb_purchase_id])
 }
 
 model field_purchase_line {
@@ -2089,6 +2254,8 @@ model stock_movement {
   adjustment         vehicle_stock_adjustment? @relation(fields: [adjustment_id], references: [id])
   field_purchase_line_id String?
   field_purchase_line    field_purchase_line? @relation(fields: [field_purchase_line_id], references: [id])
+  purchase_line_id String?
+  purchase_line    purchase_line? @relation(fields: [purchase_line_id], references: [id])
 
   movement_serials   stock_movement_serial[]
   movement_batches   stock_movement_batch[]
@@ -2104,6 +2271,7 @@ model stock_movement {
   @@index([restock_record_id])
   @@index([adjustment_id])
   @@index([field_purchase_line_id])
+  @@index([purchase_line_id])
 }
 
 // ============================================================================
@@ -2909,6 +3077,7 @@ model tax_group {
 	job_visit_line_items      job_visit_line_item[]
 	recurring_plan_line_items recurring_plan_line_item[]
 	clients                   client[]
+	purchases                 purchase[]
 
 	@@unique([organization_id, name])
 	@@index([organization_id])

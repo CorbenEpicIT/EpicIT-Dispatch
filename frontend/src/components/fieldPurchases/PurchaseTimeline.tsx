@@ -67,6 +67,7 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: Tone }
 	},
 	"purchase.refund_started": { label: "Refund raised", icon: Undo2, tone: "neutral" },
 	"purchase.refund_settled": { label: "Refund settled", icon: Wallet, tone: "success" },
+	"purchase.supplier_linked": { label: "Supplier linked", icon: PenLine, tone: "neutral"}
 };
 
 const TONE_CLASS: Record<Tone, string> = {

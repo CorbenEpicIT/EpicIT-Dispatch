@@ -204,6 +204,27 @@ export async function qbFetch(
 	return res.json();
 }
 
+/** For binary responses (e.g. .../pdf) — qbFetch always parses via res.json(). */
+export async function qbFetchBinary(orgId: string, path: string): Promise<Buffer> {
+	const { accessToken, realmId } = await getValidToken(orgId);
+	const sep = path.includes("?") ? "&" : "?";
+	const url = `${QB_BASE}/v3/company/${realmId}${path}${sep}minorversion=75`;
+
+	const res = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			Accept: "application/pdf",
+		},
+	});
+
+	if (!res.ok) {
+		const text = await res.text();
+		throw new Error(`QB GET ${path} → ${res.status}: ${text}`);
+	}
+
+	return Buffer.from(await res.arrayBuffer());
+}
+
 export async function isQBConnected(orgId: string): Promise<boolean> {
 	const sdb = getScopedDb(orgId);
 	const org = await sdb.organization.findUnique({
