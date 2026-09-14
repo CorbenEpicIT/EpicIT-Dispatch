@@ -37,6 +37,7 @@ const TechniciansPage = lazy(() => import("./pages/dispatch/TechniciansPage"));
 const TechnicianDetailsPage = lazy(() => import("./pages/dispatch/TechnicianDetailPage"));
 const MapPage = lazy(() => import("./pages/dispatch/MapPage"));
 const ReportingPage = lazy(() => import("./pages/dispatch/ReportingPage"));
+const KpiPage = lazy(() => import("./pages/dispatch/KpiPage"));
 const ReportBuilderPage = lazy(() => import("./pages/dispatch/ReportBuilderPage"));
 const MileageReportPage = lazy(() => import("./pages/dispatch/MileageReportPage"));
 const TimesheetsReportPage = lazy(() => import("./pages/dispatch/TimesheetsReportPage"));
@@ -175,6 +176,7 @@ export default function AppRoutes() {
 					element={<RequirePermission permission="manage_technicians"><AssignTechnicianPage /></RequirePermission>}
 				/>
 				<Route path="map" element={<MapPage />} />
+				<Route path="kpi" element={<RequirePermission permission="view_reports"><KpiPage /></RequirePermission>} />
 				<Route path="reporting" element={<RequirePermission permission="view_reports"><ReportingPage /></RequirePermission>} />
 				<Route path="reporting/builder" element={<RequirePermission permission="view_reports"><ReportBuilderPage /></RequirePermission>} />
 				<Route path="reporting/aged-receivables" element={<RequirePermission permission="view_reports"><AgedReceivablesPage /></RequirePermission>} />

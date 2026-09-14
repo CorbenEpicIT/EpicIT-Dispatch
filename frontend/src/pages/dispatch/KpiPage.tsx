@@ -4,19 +4,19 @@ import { ResponsiveGridLayout, useContainerWidth } from "react-grid-layout";
 import type { Layout, ResponsiveLayouts } from "react-grid-layout";
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import '../../ui/GridLayout.css';
-import PageHeader from "../../ui/PageHeader";
-import DateRangeFilter from "../../ui/DateRangeFilter";
+import '../../components/ui/GridLayout.css';
+import PageHeader from "../../components/ui/PageHeader";
+import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import {
     type DateRangeValue,
     type DateRangeOption,
     resolveDateRange,
-} from "../../../util/dateRangeUtils";
-import { DEFAULT_RESPONSIVE_LAYOUTS, KPI_CATALOG } from "../../../lib/KpiConfig";
-import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, removeWidget } from "../../../lib/gridLayoutEngine";
-import { useAuthStore } from "../../../auth/authStore";
-import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../../hooks/useDispatchers";
-import AddWidgetModal from "../../widgets/AddWidgetModal";
+} from "../../util/dateRangeUtils";
+import { DEFAULT_RESPONSIVE_LAYOUTS, KPI_CATALOG } from "../../lib/KpiConfig";
+import { BREAKPOINTS, resolveConstraints, getActiveCols, fitLayout, removeWidget } from "../../lib/gridLayoutEngine";
+import { useAuthStore } from "../../auth/authStore";
+import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
+import AddWidgetModal from "../../components/widgets/AddWidgetModal";
 import {
     AgedReceivablesColumnWidget,
     JobBacklogWidget,
@@ -28,7 +28,7 @@ import {
     QuotePipelineWidget,
     ArrivalPerformanceWidget,
     MileageSummaryWidget,
-} from "../../widgets/reports";
+} from "../../components/widgets/reports";
 import { Unlock, LayoutDashboard, LayoutGrid, StretchHorizontal, RotateCcw, Trash } from "lucide-react";
 
 const KPI_PRESETS: DateRangeOption[] = [
@@ -58,7 +58,7 @@ function renderKPI(id: string, startDate: string, endDate: string) {
     }
 }
 
-export default function KPISection() {
+export default function KpiPage() {
     const { user } = useAuthStore();
     const { data: dispatcher } = useDispatcherByIdQuery(user?.userId);
     
