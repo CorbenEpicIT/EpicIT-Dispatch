@@ -13,7 +13,7 @@ const TABS: { id: QBTab; label: string }[] = [
     { id: "clients", label: "Clients" },
     { id: "items", label: "Items" },
     { id: "tax-codes", label: "Tax Codes" },
-    { id: "purchase-orders", label: "Purchase Orders testing" },
+    { id: "purchase-orders", label: "Purchase Orders" },
 ];
 
 export default function QuickBooksSection() {
