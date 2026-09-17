@@ -22,6 +22,8 @@ import AddressForm from "../ui/AddressForm";
 import DatePicker from "../ui/DatePicker";
 import { type BaseLineItem, type Priority, PriorityValues } from "../../types/common";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import { FormErrorBanner } from "../ui/forms/FormErrorBanner";
+import { errorMessage } from "../../util/util";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
@@ -571,7 +573,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 			navigate(`/dispatch/quotes/${quoteId}`);
 		} catch (error) {
 			console.error("Failed to create quote:", error);
-			setSubmitError(error instanceof Error ? error.message : "Failed to create quote. Please try again.");
+			setSubmitError(errorMessage(error, "Failed to create quote. Please try again."));
 		} finally {
 			setIsLoading(false);
 		}
@@ -919,11 +921,7 @@ const CreateQuote = ({ isModalOpen, setIsModalOpen, createQuote }: CreateQuotePr
 			}
 		>
 			<>
-				{submitError && (
-					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
-						{submitError}
-					</div>
-				)}
+				<FormErrorBanner message={submitError} className="mb-2" />
 				{stepContent}
 			</>
 		</FormWizardContainer>

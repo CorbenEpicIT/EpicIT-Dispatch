@@ -1,5 +1,5 @@
 import z from "zod";
-import { dispositionFieldsSchema } from "./shared.js";
+import { coordsSchema, dispositionFieldsSchema } from "./shared.js";
 
 // ============================================================================
 // INVOICE SCHEDULE
@@ -57,10 +57,7 @@ export const createRecurringPlanSchema = z
 		name: z.string().min(1, "Plan name is required"),
 		description: z.string().min(1, "Description is required"),
 		address: z.string().min(1, "Address is required"),
-		coords: z.object({
-			lat: z.number(),
-			lon: z.number(),
-		}),
+		coords: coordsSchema,
 		priority: z
 			.enum(["Low", "Medium", "High", "Urgent", "Emergency"])
 			.optional()
@@ -293,12 +290,7 @@ export const updateRecurringPlanSchema = z
 		name: z.string().min(1, "Plan name is required").optional(),
 		description: z.string().min(1, "Description is required").optional(),
 		address: z.string().min(1, "Address is required").optional(),
-		coords: z
-			.object({
-				lat: z.number(),
-				lon: z.number(),
-			})
-			.optional(),
+		coords: coordsSchema.optional(),
 		priority: z
 			.enum(["Low", "Medium", "High", "Urgent", "Emergency"])
 			.optional(),

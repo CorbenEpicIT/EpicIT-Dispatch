@@ -10,6 +10,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { formatZodError } from "../lib/validate/shared.js";
 import { assertValidRequestTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { onRequestCreated } from "../services/followupTriggers.js";
 
@@ -226,11 +227,7 @@ export const insertRequest = async (req: Request, organizationId: string, contex
 		return { err: "", item: created ?? undefined };
 	} catch (e) {
 		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
+			return { err: formatZodError(e) };
 		}
 		if (e instanceof Error) {
 			return { err: e.message };
@@ -357,11 +354,7 @@ export const updateRequest = async (req: Request, organizationId: string, contex
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
+			return { err: formatZodError(e) };
 		}
 		log.error({ err: e }, "Update request error");
 		return { err: "Internal server error" };
@@ -554,11 +547,7 @@ export const insertRequestNote = async (
 		return { err: "", item: created };
 	} catch (e) {
 		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
+			return { err: formatZodError(e) };
 		}
 		log.error({ err: e }, "Insert request note error");
 		return { err: "Internal server error" };
@@ -654,11 +643,7 @@ export const updateRequestNote = async (
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {
-			return {
-				err: `Validation failed: ${e.issues
-					.map((err) => err.message)
-					.join(", ")}`,
-			};
+			return { err: formatZodError(e) };
 		}
 		log.error({ err: e }, "Update request note error");
 		return { err: "Internal server error" };

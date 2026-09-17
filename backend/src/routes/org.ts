@@ -15,6 +15,7 @@ import {
 	signImageUrl,
 } from "../services/wasabiService.js";
 import { z } from "zod";
+import { coordsSchema as orgCoordsSchema } from "../lib/validate/shared.js";
 import { Prisma } from "../../generated/prisma/client.js";
 
 const router = Router();
@@ -92,10 +93,7 @@ router.patch("/", requirePermission("manage_organization"), async (req, res, nex
 						"Organization not found",
 					),
 				);
-		const coordsSchema = z
-			.object({ lat: z.number(), lon: z.number() })
-			.nullable()
-			.optional();
+		const coordsSchema = orgCoordsSchema.nullable().optional();
 		const schema = z.object({
 			name: z.string().min(1).max(100).optional(),
 			phone: z.string().max(30).nullable().optional(),

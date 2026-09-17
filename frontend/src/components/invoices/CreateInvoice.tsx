@@ -10,6 +10,8 @@ import type { OverlapWarning } from "../../types/invoices";
 import Dropdown from "../ui/Dropdown";
 import DatePicker from "../ui/DatePicker";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import { FormErrorBanner } from "../ui/forms/FormErrorBanner";
+import { errorMessage } from "../../util/util";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
@@ -720,7 +722,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 			setIsModalOpen(false);
 			resetForm();
 		} catch (error) {
-			setSubmitError(error instanceof Error ? error.message : "Failed to create invoice. Please try again.");
+			setSubmitError(errorMessage(error, "Failed to create invoice. Please try again."));
 		} finally {
 			setIsLoading(false);
 		}
@@ -1481,11 +1483,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 
 				return (
 					<div className="space-y-3 lg:space-y-5 xl:space-y-6 min-w-0">
-						{submitError && (
-							<div className="rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
-								{submitError}
-							</div>
-						)}
+						<FormErrorBanner message={submitError} />
 						<div className="p-3 bg-surface/50 rounded-lg border border-border/50 text-sm space-y-1.5">
 							<div className="flex justify-between items-center">
 								<span className="text-text-tertiary text-xs uppercase tracking-wide font-semibold">

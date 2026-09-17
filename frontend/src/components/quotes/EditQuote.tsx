@@ -20,6 +20,8 @@ import {
 	useDeleteLineItemMutation,
 } from "../../hooks/useQuotes";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import { FormErrorBanner } from "../ui/forms/FormErrorBanner";
+import { errorMessage } from "../../util/util";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
@@ -361,7 +363,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to update quote:", error);
-			setSubmitError(error instanceof Error ? error.message : "Failed to update quote. Please try again.");
+			setSubmitError(errorMessage(error, "Failed to update quote. Please try again."));
 			setIsLoading(false);
 		}
 	};
@@ -696,11 +698,7 @@ const EditQuote = ({ isModalOpen, setIsModalOpen, quote }: EditQuoteProps) => {
 			isEditMode={true}
 		>
 			<>
-				{submitError && (
-					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
-						{submitError}
-					</div>
-				)}
+				<FormErrorBanner message={submitError} className="mb-2" />
 				{stepContent}
 			</>
 		</FormWizardContainer>
