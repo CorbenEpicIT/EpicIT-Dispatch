@@ -6,9 +6,12 @@ interface CardProps {
 	children: ReactNode;
 	className?: string;
 	scrollable?: boolean;
+	/* Opt-in: hold the scrollbar thumb transparent until the card is hovered.
+	   Off by default so the existing cards keep the scrollbar they have today. */
+	quietScroll?: boolean;
 }
 
-export default function Card({ title, headerAction, children, className = "", scrollable = false }: CardProps) {
+export default function Card({ title, headerAction, children, className = "", scrollable = false, quietScroll = false }: CardProps) {
 	return (
 		<div
 			className={`bg-base border border-border-subtle rounded-xl overflow-hidden flex flex-col ${className}`}
@@ -25,7 +28,7 @@ export default function Card({ title, headerAction, children, className = "", sc
 					{headerAction && <div>{headerAction}</div>}
 				</div>
 			)}
-			<div className={`p-4 flex-1 flex flex-col min-h-0${scrollable ? " widget-scroll" : ""}`}>{children}</div>
+			<div className={`p-4 flex-1 flex flex-col min-h-0${scrollable ? " widget-scroll" : ""}${scrollable && quietScroll ? " scrollbar-on-hover" : ""}`}>{children}</div>
 		</div>
 	);
 }
