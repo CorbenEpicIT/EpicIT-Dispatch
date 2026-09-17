@@ -239,8 +239,8 @@ export default function LinkedInvoicesCard({
 									invoice.status as InvoiceStatus
 								] ?? invoice.status;
 							const issued = invoice.issue_date
-								? `issued ${formatDate(invoice.issue_date, tz)}`
-								: "not yet issued";
+								? `created ${formatDate(invoice.issue_date, tz)}`
+								: "not yet created";
 							const amountPhrase = isBilled
 								? `${formatCurrency(amount)} billed ${scopeWord}`
 								: `${formatCurrency(amount)} invoice total`;

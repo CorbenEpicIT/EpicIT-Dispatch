@@ -143,7 +143,7 @@ describe("quoteActions", () => {
 	it("closes issue once the quote has left Draft", () => {
 		const action = byId(quoteActions(ctx({ status: "Issued" })), "issue");
 		expect(action?.disabled).toBe(true);
-		expect(action?.disabledReason).toMatch(/already been issued/i);
+		expect(action?.disabledReason).toMatch(/already been created/i);
 		expect(byId(quoteActions(ctx({ status: "Draft" })), "issue")?.disabled).toBe(
 			false
 		);
@@ -190,7 +190,7 @@ describe("quoteActions", () => {
 	 */
 	it("shows the server's open_refusal verbatim on Open Dispute", () => {
 		const refusal =
-			"A Draft quote can't be disputed. Disputes may be opened from: Issued, Sent, Viewed, Approved.";
+			"A Draft quote can't be disputed. Disputes may be opened from: Created, Sent, Viewed, Approved.";
 		const actions = quoteActions(ctx({ status: "Draft", openRefusal: refusal }));
 		expect(byId(actions, "dispute")?.disabled).toBe(true);
 		expect(byId(actions, "dispute")?.disabledReason).toBe(refusal);

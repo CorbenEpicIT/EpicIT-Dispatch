@@ -676,7 +676,7 @@ export default function InvoiceDetailPage() {
 			label: "Age",
 			icon: <Clock size={13} />,
 			value: `${ageDays} ${ageDays === 1 ? "day" : "days"}`,
-			hint: invoice.issue_date != null ? "since issued" : "since created",
+			hint: "since created",
 		},
 	];
 
@@ -701,7 +701,7 @@ export default function InvoiceDetailPage() {
 				{invoice.status !== "Draft" && invoice.issue_date != null && (
 					<div className="min-w-0">
 						<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
-							Issue Date
+							Marked Created
 						</p>
 						<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
 							<Calendar
@@ -1031,9 +1031,7 @@ export default function InvoiceDetailPage() {
 					meta={
 						<>
 							<span>
-								{invoice.status === "Draft"
-									? `Created ${formatDate(invoice.created_at)}`
-									: `Issued ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
+								{`Created ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
 								{invoice.due_date &&
 									` · Due ${formatDate(invoice.due_date)}`}
 							</span>

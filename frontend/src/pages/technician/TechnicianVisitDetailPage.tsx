@@ -19,7 +19,7 @@ import PartsUsedSection from "../../components/technicianComponents/PartsUsedSec
 import CustomerHistorySection from "../../components/technicianComponents/CustomerHistorySection";
 import InvoicePreview from "../../components/technicianComponents/InvoicePreview";
 import { VisitStatusColors, VisitStatusLabels, type VisitStatus } from "../../types/jobs";
-import { QuoteStatusColors } from "../../types/quotes";
+import { QuoteStatusColors, QuoteStatusLabels } from "../../types/quotes";
 import { formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { formatElapsed, resolveWorkTimerStart } from "../../util/elapsedUtil";
 import { useAuthStore } from "../../auth/authStore";
@@ -254,7 +254,10 @@ function JobContextSection({
 										"bg-neutral/20 text-text-secondary border-border-strong/30"
 									}`}
 								>
-									{job.quote.status}
+									{QuoteStatusLabels[
+										job.quote
+											.status as keyof typeof QuoteStatusLabels
+									] ?? job.quote.status}
 								</span>
 								<ChevronRight
 									size={14}

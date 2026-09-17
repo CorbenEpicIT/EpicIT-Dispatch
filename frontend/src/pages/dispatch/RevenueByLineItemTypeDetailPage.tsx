@@ -28,7 +28,7 @@ import type { RevenueLineItemRow, ReportFetchParams } from "../../types/reports"
 const COLS: ColumnOption[] = [
 	{ key: "invoiceNumber", label: "Invoice #" },
 	{ key: "clientName", label: "Client" },
-	{ key: "issueDate", label: "Issue Date" },
+	{ key: "issueDate", label: "Created Date" },
 	{ key: "name", label: "Item" },
 	{ key: "description", label: "Description" },
 	{ key: "quantity", label: "Qty" },

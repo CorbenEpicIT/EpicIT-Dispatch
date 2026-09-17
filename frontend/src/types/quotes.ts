@@ -33,9 +33,11 @@ export const QuoteStatusValues = [
 
 export type QuoteStatus = (typeof QuoteStatusValues)[number];
 
+// Enum values are DB-frozen; these are the display strings. Issued reads
+// "Created", matching the invoice badge of the same name.
 export const QuoteStatusLabels: Record<QuoteStatus, string> = {
 	Draft: "Draft",
-	Issued: "Issued",
+	Issued: "Created",
 	Sent: "Sent",
 	Viewed: "Viewed",
 	Approved: "Approved",

@@ -143,7 +143,7 @@ describe("openDispute on a quote", () => {
 
 		expect(result).toHaveProperty(
 			"err",
-			"A Draft quote can't be disputed. Disputes may be opened from: Issued, Sent, Viewed, Approved.",
+			"A Draft quote can't be disputed. Disputes may be opened from: Created, Sent, Viewed, Approved.",
 		);
 	});
 

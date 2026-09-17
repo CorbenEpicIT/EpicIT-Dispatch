@@ -19,13 +19,15 @@ export const InvoiceStatusValues = [
 
 export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
 
+// Enum values are DB-frozen; these are the display strings. Issued reads
+// "Created" and Paid reads "Fully Paid" (pairing with "Partially Paid").
 export const InvoiceStatusLabels: Record<InvoiceStatus, string> = {
 	Draft: "Draft",
-	Issued: "Issued",
+	Issued: "Created",
 	Sent: "Sent",
 	Viewed: "Viewed",
 	PartiallyPaid: "Partially Paid",
-	Paid: "Paid",
+	Paid: "Fully Paid",
 	Disputed: "Disputed",
 	Void: "Void",
 };

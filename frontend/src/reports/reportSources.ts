@@ -389,7 +389,7 @@ const invoicesSource: ReportSource = {
 			id: "dates",
 			label: "Dates",
 			columns: [
-				{ key: "issueDate", label: "Issued", type: "date" },
+				{ key: "issueDate", label: "Created", type: "date" },
 				{ key: "dueDate", label: "Due", type: "date" },
 				{ key: "paidAt", label: "Paid", type: "date", defaultVisible: false },
 				{ key: "sentAt", label: "Sent", type: "date", defaultVisible: false },
@@ -502,7 +502,7 @@ const quotesSource: ReportSource = {
 			label: "Dates",
 			columns: [
 				{ key: "createdAt", label: "Created", type: "date" },
-				{ key: "issuedAt", label: "Issued", type: "date", defaultVisible: false },
+				{ key: "issuedAt", label: "Marked Created", type: "date", defaultVisible: false },
 				{ key: "sentAt", label: "Sent", type: "date" },
 				{ key: "viewedAt", label: "Viewed", type: "date", defaultVisible: false },
 				{ key: "approvedAt", label: "Approved", type: "date" },

@@ -3,6 +3,7 @@ import Card from "../ui/Card";
 import { OUTCOME_LABELS } from "../disputes/outcomes";
 import type { Dispute } from "../../types/disputes";
 import { formatDate } from "../../util/util";
+import { documentStatusLabel } from "./documentStatusLabel";
 import type { LifecycleKind } from "./types";
 
 interface LifecycleRecordProps {
@@ -91,8 +92,12 @@ export default function LifecycleRecord({ disputes }: LifecycleRecordProps) {
 								{dispute.opened_by_dispatcher
 									?.name ?? "someone"}{" "}
 								on {formatDate(dispute.opened_at)} ·
-								was {dispute.status_at_open} when
-								opened
+								was{" "}
+								{documentStatusLabel(
+									dispute.document_kind,
+									dispute.status_at_open
+								)}{" "}
+								when opened
 							</p>
 
 							{dispute.resolved_at && (

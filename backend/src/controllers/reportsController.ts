@@ -4068,7 +4068,7 @@ export const getPageSummary = async (orgId: string, page:string, startDate?: str
 			}
 			stats = [
 				{ label: "Total",           value: total,                                    format: "number" },
-				{ label: "Issued",          value: Number(issued._sum.total ?? 0),           format: "currency" },
+				{ label: "Created",         value: Number(issued._sum.total ?? 0),           format: "currency" },
 				{ label: "Collected",       value: Number(collected._sum.amount ?? 0),       format: "currency" },
 				{ label: "Avg. Days to Pay", value: Number(avgDays),                          format: "duration" },
 			];

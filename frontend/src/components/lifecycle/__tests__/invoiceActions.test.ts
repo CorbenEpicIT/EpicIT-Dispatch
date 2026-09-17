@@ -57,14 +57,14 @@ describe("invoiceActions", () => {
 	it("closes issue once the invoice has left Draft", () => {
 		const action = byId(invoiceActions(ctx({ status: "Issued" })), "issue");
 		expect(action?.disabled).toBe(true);
-		expect(action?.disabledReason).toMatch(/already been issued/i);
+		expect(action?.disabledReason).toMatch(/already been created/i);
 	});
 
 	// The labels are the only thing telling a dispatcher who delivers.
 	it("names the doors by who delivers", () => {
 		const actions = invoiceActions(ctx({ status: "Draft" }));
 		expect(byId(actions, "send")?.label).toBe("Email to Client");
-		expect(byId(actions, "issue")?.label).toBe("Issue Without Sending");
+		expect(byId(actions, "issue")?.label).toBe("Create Without Sending");
 	});
 
 	it("offers a void on an unpaid sent invoice", () => {
@@ -147,7 +147,7 @@ describe("invoiceActions", () => {
 	 */
 	it("shows the server's open_refusal verbatim on Open Dispute", () => {
 		const refusal =
-			"A Draft invoice can't be disputed. Disputes may be opened from: Issued, Sent, Viewed, PartiallyPaid, Paid.";
+			"A Draft invoice can't be disputed. Disputes may be opened from: Created, Sent, Viewed, Partially Paid, Fully Paid.";
 		const actions = invoiceActions(ctx({ status: "Draft", openRefusal: refusal }));
 		expect(byId(actions, "dispute")?.disabled).toBe(true);
 		expect(byId(actions, "dispute")?.disabledReason).toBe(refusal);

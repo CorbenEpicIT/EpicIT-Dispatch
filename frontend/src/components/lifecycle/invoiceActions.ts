@@ -83,14 +83,14 @@ export function invoiceActions(ctx: InvoiceActionContext): LifecycleAction[] {
 		),
 		build(
 			"issue",
-			"Issue Without Sending",
+			"Create Without Sending",
 			"neutral",
 			!ctx.canEdit
 				? NO_PERMISSION
 				: dead
-					? notApplicable("A void invoice can't be issued.")
+					? notApplicable("A void invoice can't be marked Created.")
 					: ctx.status !== "Draft"
-						? notApplicable("This invoice has already been issued.")
+						? notApplicable("This invoice has already been created.")
 						: null,
 			ctx.handlers.issue
 		),

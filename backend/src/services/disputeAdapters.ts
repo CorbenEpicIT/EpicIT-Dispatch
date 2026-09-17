@@ -102,6 +102,13 @@ export interface DocumentAdapter {
 	 * system emailed it, and a client can contest either.
 	 */
 	disputableStatuses: readonly string[];
+	/**
+	 * Display strings for this document's statuses, where the stored enum value
+	 * and the badge differ. Refusals name the status as the UI shows it, so any
+	 * adapter whose labels diverge from its enum must supply them here. Omitted
+	 * means the value and the label are the same.
+	 */
+	statusLabels?: Readonly<Record<string, string>>;
 	/** The dispute record column holding this document's id. */
 	foreignKey: "quote_id" | "invoice_id";
 	load(
@@ -158,6 +165,18 @@ export function soldJobReason(doc: DocumentShape): string | null {
 export const quoteAdapter: DocumentAdapter = {
 	kind: "quote",
 	disputableStatuses: ["Issued", "Sent", "Viewed", "Approved"],
+	statusLabels: {
+		Draft: "Draft",
+		Issued: "Created",
+		Sent: "Sent",
+		Viewed: "Viewed",
+		Approved: "Approved",
+		Disputed: "Disputed",
+		Rejected: "Rejected",
+		Revised: "Revised",
+		Expired: "Expired",
+		Cancelled: "Cancelled",
+	},
 	foreignKey: "quote_id",
 
 	async load(tx, id, organizationId) {
@@ -216,6 +235,16 @@ const hasAdjustments = (doc: DocumentShape): boolean =>
 export const invoiceAdapter: DocumentAdapter = {
 	kind: "invoice",
 	disputableStatuses: ["Issued", "Sent", "Viewed", "PartiallyPaid", "Paid"],
+	statusLabels: {
+		Draft: "Draft",
+		Issued: "Created",
+		Sent: "Sent",
+		Viewed: "Viewed",
+		PartiallyPaid: "Partially Paid",
+		Paid: "Fully Paid",
+		Disputed: "Disputed",
+		Void: "Void",
+	},
 	foreignKey: "invoice_id",
 
 	async load(tx, id, organizationId) {

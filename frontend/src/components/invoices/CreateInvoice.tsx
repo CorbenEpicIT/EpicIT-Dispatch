@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { type CreateInvoiceInput, type CreateInvoiceLineItemInput } from "../../types/invoices";
+import { InvoiceStatusLabels, type InvoiceStatus, type CreateInvoiceInput, type CreateInvoiceLineItemInput } from "../../types/invoices";
 import { type LineItemType, type BaseLineItem } from "../../types/common";
 import { useAllClientsQuery } from "../../hooks/useClients";
 import { useAllJobsQuery } from "../../hooks/useJobs";
@@ -1679,7 +1679,7 @@ const CreateInvoice = ({ isModalOpen, setIsModalOpen, defaultClientId, initialVi
 									{w.existing_invoices.map((inv) => (
 										<li key={inv.invoice_id}>
 											{inv.invoice_number} —{" "}
-											<span className="text-text-secondary">{inv.status}</span>
+											<span className="text-text-secondary">{InvoiceStatusLabels[inv.status as InvoiceStatus] ?? inv.status}</span>
 											{inv.billed_amount != null && (
 												<span className="ml-1 text-text-tertiary">(${inv.billed_amount.toFixed(2)} billed)</span>
 											)}

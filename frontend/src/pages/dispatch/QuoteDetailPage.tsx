@@ -183,7 +183,7 @@ export default function QuoteDetailPage() {
 		} catch (error) {
 			// These doors hit real refusals (an open-dispute lock, a terminal
 			// quote's immutability), and a swallowed one reads as a dead button.
-			setActionError(errorMessage(error, "Couldn't mark this quote as issued."));
+			setActionError(errorMessage(error, "Couldn't mark this quote as created."));
 		}
 	};
 
@@ -328,7 +328,7 @@ export default function QuoteDetailPage() {
 		: quote.job
 			? "A job was created from this quote — it can no longer be edited. Correct the job instead."
 			: !isQuoteEditable(quote.status)
-				? `A ${quote.status.toLowerCase()} quote can't be edited. Create a revision instead.`
+				? `A ${(QuoteStatusLabels[quote.status] ?? quote.status).toLowerCase()} quote can't be edited. Create a revision instead.`
 				: undefined;
 
 	// One button, two labeled groups: lifecycle above, utility below. The
@@ -590,7 +590,7 @@ export default function QuoteDetailPage() {
 						<span
 							title={
 								isEffectivelyExpired
-									? `Stored as ${quote.status} until the expiry sweep next runs.`
+									? `Stored as ${QuoteStatusLabels[quote.status] ?? quote.status} until the expiry sweep next runs.`
 									: undefined
 							}
 							className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(lifecycleStatus)}`}

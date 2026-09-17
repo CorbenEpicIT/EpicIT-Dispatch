@@ -1,11 +1,11 @@
 ﻿import AdaptableTable from "../../components/AdaptableTable";
 import { useAllInvoicesQuery } from "../../hooks/useInvoices";
 import { useClientByIdQuery } from "../../hooks/useClients";
-import { InvoiceStatusValues, InvoiceStatusColors, type InvoiceStatus, isOverdue } from "../../types/invoices";
+import { InvoiceStatusValues, InvoiceStatusColors, InvoiceStatusLabels, type InvoiceStatus, isOverdue } from "../../types/invoices";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, MoreVertical, FileText, Upload } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { addSpacesToCamelCase, formatDate, formatCurrency } from "../../util/util";
+import { formatDate, formatCurrency } from "../../util/util";
 import CreateInvoice from "../../components/invoices/CreateInvoice";
 import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
@@ -23,12 +23,12 @@ import { withDir, compareByOrder, compareDateNullsLast, compareString, compareNu
 
 const invoiceStatusOptions = InvoiceStatusValues.map((s) => ({
 	value: s,
-	label: addSpacesToCamelCase(s),
+	label: InvoiceStatusLabels[s],
 }));
 
 const sortLabels: Record<string, string> = {
 	status: "Status",
-	issued: "Issue Date",
+	issued: "Created Date",
 	date: "Due Date",
 	client: "Client",
 	invoiceNumber: "Invoice #",
@@ -133,7 +133,7 @@ export default function InvoicesPage() {
 					invoiceNumber: inv.invoice_number,
 					dueDate: dueDateDisplay,
 					subject,
-					status: addSpacesToCamelCase(inv.status),
+					status: InvoiceStatusLabels[inv.status as InvoiceStatus] ?? inv.status,
 					total: formatCurrency(total),
 					balance: balanceDue > 0 ? formatCurrency(balanceDue) : "—",
 					_rawStatus: inv.status,
@@ -393,7 +393,7 @@ export default function InvoicesPage() {
 						<SortControl
 							options={[
 								{ value: "status", label: "Status" },
-								{ value: "issued", label: "Issue Date" },
+								{ value: "issued", label: "Created Date" },
 								{ value: "date", label: "Due Date" },
 								{ value: "client", label: "Client" },
 								{ value: "invoiceNumber", label: "Invoice #" },
@@ -415,7 +415,7 @@ export default function InvoicesPage() {
 						? { label: `Client: ${filterClient.name}`, color: "blue" as const, onRemove: removeClientFilter }
 						: null,
 					...statusFilter.map((s) => ({
-						label: `Status: ${addSpacesToCamelCase(s)}`,
+						label: `Status: ${InvoiceStatusLabels[s as InvoiceStatus] ?? s}`,
 						color: "green" as const,
 						classes: InvoiceStatusColors[s as InvoiceStatus],
 						onRemove: () => removeStatus(s),

@@ -365,10 +365,10 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 		const updated = await sdb.$transaction(async (tx) => {
 			// ── Line item replacement ──────────────────────────────────────
 			if (parsed.line_items !== undefined) {
-				// Guard: cannot modify line items on an issued (snapshot-locked) invoice
+				// Guard: cannot modify line items on a finalized (snapshot-locked) invoice
 				if (isLocked) {
 					throw new DocumentRuleError(
-						"This invoice is issued — its line items are locked. Issue an adjustment instead.",
+						"This invoice is no longer a draft — its line items are locked. Issue an adjustment instead.",
 					);
 				}
 
@@ -752,7 +752,7 @@ export const insertInvoicePayment = async (
 			// The UI has always refused this; the server now agrees.
 			if (invoice.status === "Draft") {
 				return {
-					err: "Issue or send the invoice before recording a payment.",
+					err: "Create or send the invoice before recording a payment.",
 				};
 			}
 

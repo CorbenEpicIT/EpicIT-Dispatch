@@ -176,14 +176,14 @@ export function quoteActions(ctx: QuoteActionContext): LifecycleAction[] {
 		// legal transition, so neither comes before the other.
 		build(
 			"issue",
-			"Issue Without Sending",
+			"Create Without Sending",
 			"neutral",
 			// Not transition("Issued"): a self-transition is legal, and
 			// issuing twice re-dates the document. Only Draft may issue.
 			!ctx.canEdit
 				? NO_PERMISSION
 				: ctx.status !== "Draft"
-					? notApplicable("This quote has already been issued.")
+					? notApplicable("This quote has already been created.")
 					: transition("Issued"),
 			ctx.handlers.issue
 		),

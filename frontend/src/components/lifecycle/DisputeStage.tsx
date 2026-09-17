@@ -9,6 +9,7 @@ import type {
 	DisputeResolution,
 } from "../../types/disputes";
 import { formatDate } from "../../util/util";
+import { documentStatusLabel } from "./documentStatusLabel";
 import type { LifecycleAction } from "./types";
 
 const REASON_CLAMP = 160;
@@ -76,7 +77,7 @@ export default function DisputeStage({ dispute, lineItems }: DisputeStageProps) 
 			<p className="mt-1 text-xs text-text-tertiary">
 				Opened by {dispute.opened_by_dispatcher?.name ?? "someone"} on{" "}
 				{formatDate(dispute.opened_at)}
-				{` · was ${dispute.status_at_open} when opened`}
+				{` · was ${documentStatusLabel(dispute.document_kind, dispute.status_at_open)} when opened`}
 				{contestedCount > 0 &&
 					` · ${contestedCount} of ${lineItems.length} lines contested`}
 			</p>

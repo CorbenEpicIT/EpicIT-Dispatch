@@ -167,7 +167,7 @@ export default function TaxLiabilityPage() {
 						<p className="text-text-muted text-sm">
 							{hasActiveFilters
 								? "Try adjusting your filters"
-								: "Tax collected on issued invoices appears here"}
+								: "Tax collected on created invoices appears here"}
 						</p>
 					</div>
 				) : (
