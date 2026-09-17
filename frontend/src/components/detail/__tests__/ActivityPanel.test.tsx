@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import DocumentActivityPanel from "../DocumentActivityPanel";
+import ActivityPanel from "../ActivityPanel";
 
-const panel = (over: Partial<Parameters<typeof DocumentActivityPanel>[0]> = {}) =>
+const panel = (over: Partial<Parameters<typeof ActivityPanel>[0]> = {}) =>
 	render(
-		<DocumentActivityPanel
+		<ActivityPanel
 			notes={<div>note surface</div>}
 			lifecycle={<div>dispute record</div>}
 			history={<div>change log</div>}
@@ -12,11 +12,9 @@ const panel = (over: Partial<Parameters<typeof DocumentActivityPanel>[0]> = {}) 
 		/>
 	);
 
-// The lg: assertions below check the className string, not rendered layout —
-// jsdom has no viewport, so nothing here proves the two-column split actually
-// appears at that breakpoint. They catch the class being typo'd or dropped;
-// the responsive layout itself needs a browser pass.
-describe("DocumentActivityPanel", () => {
+// The lg: assertions check the className string, not rendered layout: jsdom has
+// no viewport, so they catch a dropped class, not a broken breakpoint.
+describe("ActivityPanel", () => {
 	it("wires the panel to its tab", () => {
 		panel();
 		const region = screen.getByRole("tabpanel");
@@ -66,9 +64,8 @@ describe("DocumentActivityPanel", () => {
 	});
 
 	it("still fills the main column when there is nothing to record", () => {
-		// LifecycleRecord returns null on a document with no disputes and no
-		// chain refs. ChangeHistory always renders its own card, so the main
-		// column keeps its weight and needs no second layout.
+		// LifecycleRecord returns null with no disputes and no chain refs, but
+		// ChangeHistory always renders, so the main column keeps its weight.
 		panel({ lifecycle: null });
 		const main = screen.getByText("change log").parentElement!;
 		expect(main.className).toContain("lg:col-span-2");

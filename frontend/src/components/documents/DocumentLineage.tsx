@@ -13,11 +13,8 @@ const routeFor = (kind: LifecycleKind, id: string) =>
 	kind === "quote" ? `/dispatch/quotes/${id}` : `/dispatch/invoices/${id}`;
 
 /**
- * The header pill: the status pill's own geometry, exported so the Overdue and
- * QuickBooks badges opposite it can hold the same line. One header row carrying
- * three pill heights reads as an accident rather than a hierarchy, and these
- * pills — unlike those badges — are targets you click, so the small end of the
- * range was the wrong side to settle on.
+ * The header pill's geometry, shared with the status pill and exported so the
+ * Overdue and QuickBooks badges opposite hold the same line.
  */
 export const HEADER_PILL =
 	"inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-150 ease-out";
@@ -75,25 +72,15 @@ function NodeLink({ kind, node }: { kind: LifecycleKind; node: LineageNode }) {
 
 /**
  * Where this document sits in its revision chain, and one click to the document
- * that actually counts.
+ * that counts.
  *
- * Rendered into DocumentDetailHeader's `badges` slot, not as a band of its own:
- * as a full-width section it spent four stacked rows on four short phrases and
- * floated at the same weight as the lifecycle bar under it. Version is a
- * property of the document number, so it now sits beside the number and costs
- * no vertical space at all — depth moved behind the pill rather than being cut.
+ * Rendered into DetailHeader's `badges` slot rather than a band of its own:
+ * version is a property of the document number, so it sits beside the number
+ * and costs no vertical space. Two pills whatever the depth — only the chain
+ * list inside the panel grows.
  *
- * The link count stays fixed at two pills regardless of depth, so a
- * twelve-version chain renders like a two-version one; the chain list inside the
- * panel is the only thing that grows.
- *
- * Shared by quote and invoice deliberately, the same way DocumentDetailHeader
- * and LifecycleBar are: lineage is one behaviour, and the two pages have
- * already drifted once on this exact surface.
- *
- * It never prints the VIEWED document's status — DocumentDetailHeader's
- * statusPill is the only place that word appears. Every status rendered here
- * belongs to another document and sits beside that document's number.
+ * It never prints the viewed document's status; every status here belongs to
+ * another document and sits beside that document's number.
  */
 export default function DocumentLineage({ kind, lineage }: DocumentLineageProps) {
 	const [open, setOpen] = useState(false);
@@ -163,9 +150,9 @@ export default function DocumentLineage({ kind, lineage }: DocumentLineageProps)
 				{open && (
 					<div
 						id={panelId}
-						/* role, because a bare div is generic and an aria-label on a
-						   generic element is not reliably exposed — the panel would
-						   reach a screen reader as an unnamed run of links. */
+						/* role, because an aria-label on a generic div isn't
+						   reliably exposed: the panel would reach a screen
+						   reader as an unnamed run of links. */
 						role="group"
 						aria-label="Version history"
 						className="absolute left-0 z-50 mt-2 w-72 rounded-lg border border-border-subtle bg-base p-1.5 text-sm shadow-xl"
@@ -183,11 +170,9 @@ export default function DocumentLineage({ kind, lineage }: DocumentLineageProps)
 						)}
 
 						{hasChain && (
-							/* Every version, newest first: the neighbours this
-							   used to label "Replaces" and "Replaced by" are
-							   just the rows above and below this version, so
-							   the list carries both without two more rows of
-							   chrome. */
+							/* Every version, newest first — the rows either
+							   side of this one are its "replaces" and
+							   "replaced by". */
 							<ol>
 								{[...chain].reverse().map((n) => (
 									<li key={n.id}>
@@ -260,9 +245,8 @@ export default function DocumentLineage({ kind, lineage }: DocumentLineageProps)
 			</div>
 
 			{superseded && (
-				/* The one hop that matters, spent on a pill rather than a row:
-				   standing on v2 of a four-version chain, the dispatcher's next
-				   move is almost always the document that counts. */
+				/* A pill rather than a row: from an old version the next move
+				   is almost always the document that counts. */
 				<Link
 					to={routeFor(kind, final.id)}
 					className={`${HEADER_PILL} border-border bg-surface text-primary-text hover:border-border-strong`}

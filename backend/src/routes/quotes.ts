@@ -24,6 +24,8 @@ import {
 } from "../controllers/quotesController.js";
 import { generateQuotePdf } from "../lib/pdf/pdfService.js";
 import { sendQuoteEmail } from "../services/emailService.js";
+import { isSendFailure } from "../services/emailErrors.js";
+import { logActivity } from "../services/logger.js";
 import { onQuoteSent } from "../services/followupTriggers.js";
 import { getUserContext } from "../lib/context.js";
 import * as quoteNotesController from "../controllers/quoteNotesController.js";
@@ -108,7 +110,7 @@ router.get(
 
 router.post(
 	"/:id/send",
-	requirePermission("edit_quotes"),
+	requirePermission("send_quotes"),
 	async (req, res, next) => {
 		try {
 			const id = req.params.id as string;
@@ -157,8 +159,50 @@ router.post(
 				throw e;
 			}
 
-			await sendQuoteEmail(id, recipientEmail, orgId);
 			const context = getUserContext(req);
+			try {
+				await sendQuoteEmail(id, recipientEmail, orgId);
+			} catch (e: unknown) {
+				// A missing document is not a delivery failure. Let the outer
+				// handler answer it as a 404 rather than restating it as an
+				// email problem.
+				if (!isSendFailure(e) && (e as { status?: number })?.status === 404)
+					throw e;
+				// Only a translated failure carries a message written for the
+				// caller. A PDF render throw or a Prisma error reaches here with
+				// text that was never meant to leave the server, so it is
+				// recorded and answered generically.
+				const failure = isSendFailure(e) ? e : null;
+				// logActivity swallows its own errors, so this await cannot
+				// displace the response below.
+				// The status stays where it was. A quote the client never
+				// received must not sit on the board as Sent, and the followup
+				// enrollment below must not start chasing a reply to an email
+				// that does not exist.
+				await logActivity({
+					event_type: "quote.send_failed",
+					action: "sent",
+					entity_type: "quote",
+					entity_id: id,
+					organization_id: orgId,
+					actor_type: "dispatcher",
+					actor_id: context.dispatcherId ?? null,
+					reason:
+						failure?.providerMessage ??
+						(e instanceof Error ? e.message : undefined),
+					changes: { recipient_email: { old: null, new: recipientEmail } },
+					ip_address: context.ipAddress,
+					user_agent: context.userAgent,
+				});
+				return res
+					.status(failure?.status ?? 502)
+					.json(
+						createErrorResponse(
+							failure?.code ?? ErrorCodes.EMAIL_SEND_FAILED,
+							failure?.message ?? "Email could not be sent.",
+						),
+					);
+			}
 			const result = await updateQuote(
 				{ params: { id }, body: { status: "Sent" } } as any,
 				orgId,

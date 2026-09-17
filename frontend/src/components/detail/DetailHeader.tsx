@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { MoreVertical } from "lucide-react";
 
-export interface DocumentMenuItem {
+export interface DetailMenuItem {
 	id: string;
 	label: string;
 	icon?: ReactNode;
@@ -9,11 +9,9 @@ export interface DocumentMenuItem {
 	intent?: "neutral" | "warning" | "destructive";
 	disabled?: boolean;
 	/**
-	 * Why it is closed. Rendered as visible text under the label, not only as a
-	 * `title`: these items are `aria-disabled` rather than natively disabled
-	 * precisely so the reason reaches a keyboard or touch user, who never gets
-	 * a hover tooltip. Unavailable actions are shown with their reason, never
-	 * omitted (spec 3.1).
+	 * Why it is closed, rendered as visible text under the label rather than a
+	 * `title`: the items are `aria-disabled` rather than natively disabled so
+	 * the reason reaches keyboard and touch users, who get no hover tooltip.
 	 */
 	disabledReason?: string;
 	onSelect: () => void;
@@ -24,14 +22,14 @@ export interface DocumentMenuItem {
 	keepOpen?: boolean;
 }
 
-export interface DocumentMenuGroup {
+export interface DetailMenuGroup {
 	id: string;
 	/** The group's heading, which is what keeps the two kinds of action distinct. */
 	label: string;
-	items: DocumentMenuItem[];
+	items: DetailMenuItem[];
 }
 
-interface DocumentDetailHeaderProps {
+interface DetailHeaderProps {
 	/** The document number. */
 	title: string;
 	/** Version / superseded / overdue / QuickBooks pills, beside the title. */
@@ -42,35 +40,28 @@ interface DocumentDetailHeaderProps {
 	statusPill?: ReactNode;
 	/** Buttons that earn a permanent slot beside the pill (invoice's QuickBooks sync). */
 	inlineActions?: ReactNode;
-	menuGroups: DocumentMenuGroup[];
+	menuGroups: DetailMenuGroup[];
 	/** e.g. "Quote actions" — a bare "More options" gives a screen reader nothing. */
 	menuLabel: string;
 	/** Fired when the menu closes, so a page can disarm a two-step confirm. */
 	onMenuClose?: () => void;
 }
 
-const INTENT_TEXT: Record<NonNullable<DocumentMenuItem["intent"]>, string> = {
+const INTENT_TEXT: Record<NonNullable<DetailMenuItem["intent"]>, string> = {
 	neutral: "text-text-secondary",
 	warning: "text-warning-text",
 	destructive: "text-error-text",
 };
 
 /**
- * Identity, status and — critically — the page's ONE options button.
+ * Identity, status, and the page's one options button.
  *
- * Both detail pages used to render a kebab here AND let LifecycleBar render a
- * second overflow menu an inch below it, with different contents and no label
- * on either. Spec 3.4's split survives as two labeled groups inside this single
- * menu: lifecycle actions (the bar's overflow, destructive included) above
- * utility actions. The bar keeps the *legible* lifecycle actions as buttons, so
- * acceptance criterion 1 — position and legal next actions visible without
- * opening a menu — is unaffected by the merge.
- *
- * Shared by quote and invoice so criterion 9's "same component, vocabulary and
- * layout" is structural rather than maintained by hand; the two pages had
- * already drifted on banner placement and kebab semantics.
+ * That single menu carries two labeled groups — lifecycle actions (the bar's
+ * overflow, destructive included) above utility actions — so no second kebab
+ * exists to disagree with it. The bar still renders the legible lifecycle
+ * actions as buttons, so the legal next moves are visible without opening it.
  */
-export default function DocumentDetailHeader({
+export default function DetailHeader({
 	title,
 	badges,
 	meta,
@@ -79,11 +70,10 @@ export default function DocumentDetailHeader({
 	menuGroups,
 	menuLabel,
 	onMenuClose,
-}: DocumentDetailHeaderProps) {
+}: DetailHeaderProps) {
 	const [open, setOpen] = useState(false);
-	// Which item owns the single tab stop. Real roving tabindex: keying it off a
-	// fixed index instead only appeared to work because the menu resets focus to
-	// the first item on open and closes on Tab.
+	// Which item owns the single tab stop. A fixed index only appeared to work
+	// because the menu resets focus to the first item on open and closes on Tab.
 	const [focusedIndex, setFocusedIndex] = useState(0);
 	const menuId = useId();
 	const wrapRef = useRef<HTMLDivElement>(null);
@@ -95,10 +85,9 @@ export default function DocumentDetailHeader({
 	// group.
 	const flat = groups.flatMap((g) => g.items);
 
-	// Read through a ref so `close` is stable. Both pages pass an inline arrow
-	// for onMenuClose, which as a dependency made `close` — and therefore the
-	// document-level mousedown listener below — tear down and re-subscribe on
-	// every unrelated re-render while the menu was open.
+	// Read through a ref so `close` is stable: pages pass an inline arrow for
+	// onMenuClose, which as a dependency re-subscribed the document-level
+	// mousedown listener below on every unrelated re-render.
 	const onMenuCloseRef = useRef(onMenuClose);
 	useEffect(() => {
 		onMenuCloseRef.current = onMenuClose;
@@ -121,8 +110,7 @@ export default function DocumentDetailHeader({
 		return () => document.removeEventListener("mousedown", onMouseDown);
 	}, [open, close]);
 
-	// Opening a menu moves focus into it, or the keyboard user is left on the
-	// trigger with no way to know the list appeared.
+	// Focus moves into the menu, or a keyboard user never learns it opened.
 	useEffect(() => {
 		if (!open) return;
 		setFocusedIndex(0);
@@ -146,8 +134,11 @@ export default function DocumentDetailHeader({
 	let flatIndex = -1;
 
 	return (
-		<div className="flex items-start justify-between gap-4">
-			<div className="min-w-0 flex-1">
+		// Wraps: with lifecycle buttons in inlineActions the cluster is wide
+		// enough to crush the title to zero width on one unshrinkable row. The
+		// title keeps a 20rem claim and the cluster drops below it.
+		<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+			<div className="min-w-0 flex-[1_1_20rem]">
 				<div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
 					<h1
 						className="min-w-0 break-words text-3xl font-bold text-text-primary"
@@ -160,7 +151,7 @@ export default function DocumentDetailHeader({
 				{meta && <div className="min-w-0 text-sm text-text-tertiary">{meta}</div>}
 			</div>
 
-			<div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-3">
+			<div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-3">
 				{statusPill}
 				{inlineActions}
 
@@ -270,7 +261,7 @@ function MenuItemButton({
 	onActivate,
 	onMove,
 }: {
-	item: DocumentMenuItem;
+	item: DetailMenuItem;
 	index: number;
 	focused: boolean;
 	idPrefix: string;
@@ -291,15 +282,11 @@ function MenuItemButton({
 			role="menuitem"
 			tabIndex={focused ? 0 : -1}
 			aria-disabled={item.disabled || undefined}
-			// The reason is a DESCRIPTION, not part of the name. The reason node
-			// lives inside the button (so it is visible under the label), which
-			// means name computation would otherwise fold it in and a screen
-			// reader would read "Edit Quote A job was created from this quote…"
-			// as one run-on label. aria-label pins the name to the label alone —
-			// and it matches the visible label text, so Label in Name (2.5.3)
-			// still holds — while aria-describedby carries the explanation.
-			// `title` is gone with them: it repeated the same string a second
-			// time, and hover was never the point.
+			// The reason is a description, not part of the name. It renders
+			// inside the button to stay visible, so without aria-label name
+			// computation folds it in and reads "Edit Quote A job was created
+			// from this quote…" as one label. aria-label matches the visible
+			// label (2.5.3 holds); aria-describedby carries the reason.
 			aria-label={showReason ? item.label : undefined}
 			aria-describedby={showReason ? reasonId : undefined}
 			onFocus={() => onFocused(index)}

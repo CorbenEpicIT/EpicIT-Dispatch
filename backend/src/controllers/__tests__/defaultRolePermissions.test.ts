@@ -69,3 +69,50 @@ describe("Default Dispatcher template follows the dispute-role migration", () =>
 		expect(grantPredicate("resolve_own_disputes")).toBeNull();
 	});
 });
+
+const sendMigrationSql = readFileSync(
+	resolve(
+		here,
+		"../../../prisma/migrations/20260915120000_send_document_permissions/migration.sql",
+	),
+	"utf8",
+);
+
+/** The WHERE predicate of the send-migration UPDATE granting `permission`. */
+function sendGrantPredicate(permission: string): string | null {
+	const statements = sendMigrationSql
+		.replace(/--[^\n]*/g, "")
+		.split(";")
+		.map((s) => s.trim());
+	const grant = statements.find((s) =>
+		s.includes(`"permissions" || ARRAY['${permission}']`),
+	);
+	return grant ? grant.slice(grant.indexOf("WHERE")) : null;
+}
+
+/**
+ * Same rule as refund_invoices: send_* re-gates an act that already lived behind
+ * edit_*, so granting it only to administrators would silently take sending away
+ * from every role that has it today. It follows edit_* on deploy day; narrowing
+ * from there is the owner's visible choice in the roles editor.
+ */
+describe("Default Dispatcher template follows the send-permission migration", () => {
+	const template = defaultDispatcherPermissions();
+
+	it("grants send_quotes and send_invoices to a new org's default role", () => {
+		expect(template).toContain("send_quotes");
+		expect(template).toContain("send_invoices");
+	});
+
+	it("matches the migration: send follows the matching edit permission", () => {
+		expect(sendGrantPredicate("send_quotes")).toContain("'edit_quotes'");
+		expect(sendGrantPredicate("send_invoices")).toContain("'edit_invoices'");
+	});
+
+	// Sending is a dispatcher-tier act. A technician catalog that picked these
+	// up would put client-facing email behind a field permission.
+	it("stays off the technician tier", () => {
+		const migration = sendMigrationSql.replace(/--[^\n]*/g, "");
+		expect(migration).not.toContain("'technician'");
+	});
+});

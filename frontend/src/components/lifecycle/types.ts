@@ -1,11 +1,6 @@
 /**
- * One offered lifecycle action.
- *
- * Deliberately the same shape as OutcomeOption in
- * components/disputes/outcomes.ts: unavailable actions are returned disabled
- * with their reason rather than omitted, so a dispatcher who cannot do
- * something learns why. Ruling P11 established that for dispute outcomes; this
- * is the same contract for every action on the page.
+ * One offered lifecycle action. Unavailable actions are returned disabled with
+ * a reason rather than omitted, so a dispatcher learns why.
  */
 export interface LifecycleAction {
 	id: string;
@@ -14,6 +9,13 @@ export interface LifecycleAction {
 	intent: "primary" | "neutral" | "warning" | "destructive";
 	disabled: boolean;
 	disabledReason?: string;
+	/**
+	 * The action can never apply from the current state. Implies disabled, and
+	 * splitActions drops it from both the bar and the menu. Reasons the
+	 * dispatcher can change (permission, prerequisite, pending write) stay
+	 * visible and disabled instead.
+	 */
+	hidden?: boolean;
 	onSelect: () => void;
 }
 

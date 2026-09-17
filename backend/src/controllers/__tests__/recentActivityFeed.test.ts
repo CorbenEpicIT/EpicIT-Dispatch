@@ -34,6 +34,28 @@ describe("redactFeedRow (review P1-3 / S4)", () => {
 		const other = row({ event_type: "job.updated", changes: { email: { old: "a", new: "b" } } });
 		expect(redactFeedRow(other)).toBe(other);
 	});
+
+	// The reason on a failed send is the email provider's own rejection text. It
+	// names the sending domain, the recipient's domain and whether the account is
+	// approved, and logActivity pushes every feed event to org:<id> — a room the
+	// technician sockets are in. Same treatment as a dispute reason.
+	it("drops the provider message from a failed send", () => {
+		for (const event_type of ["quote.send_failed", "invoice.send_failed"]) {
+			const failed = row({
+				event_type,
+				entity_type: event_type.split(".")[0],
+				reason: "While your account is pending approval, all recipient addresses must share the same domain as the 'From' address.",
+			});
+			expect(redactFeedRow(failed).reason).toBeNull();
+		}
+	});
+
+	// Redaction is for the broadcast, not the record: the row itself keeps the
+	// provider text so the detail page can still show it behind view_*.
+	it("leaves a send that did not fail alone", () => {
+		const sent = row({ event_type: "quote.updated", reason: "status change" });
+		expect(redactFeedRow(sent)).toBe(sent);
+	});
 });
 
 describe("GET /logs/recent access + redaction (review P1-3 / S4)", () => {

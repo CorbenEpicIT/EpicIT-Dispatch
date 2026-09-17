@@ -406,6 +406,12 @@ const FEED_REASON_REDACTED: ReadonlySet<string> = new Set([
     "quote.dispute_resolved",
     "invoice.dispute_opened",
     "invoice.dispute_resolved",
+    // A failed send carries the email provider's own rejection text, which names
+    // the sending domain, the recipient's domain and the account's approval
+    // state. Same rule as a dispute reason: useful on the detail page behind
+    // view_*, not something to broadcast to every socket in the org.
+    "quote.send_failed",
+    "invoice.send_failed",
 ]);
 
 export const redactFeedRow = <T extends { event_type: string; changes: unknown; reason?: string | null }>(

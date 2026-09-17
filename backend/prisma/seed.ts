@@ -919,6 +919,25 @@ async function main() {
 		}),
 	]);
 
+	// QuoteRejected — the request behind Q-0008. Written directly because the
+	// server refuses Reviewing → QuoteRejected and the one Quoted request is
+	// already spoken for.
+	const reqQuoteRejected = await db.request.create({
+		data: {
+			organization_id: org.id,
+			client_id: client3.id,
+			title: "Attic Insulation Top-Up",
+			description: "Client asked for a price to bring the main attic up to R-49.",
+			priority: "Low",
+			address: client3.address,
+			coords: { lat: 43.7889, lng: -91.2297 },
+			status: "QuoteRejected",
+			source: "phone",
+			requires_quote: true,
+			created_by_dispatcher_id: dispatcher.id,
+		},
+	});
+
 	await Promise.all([
 		db.request_note.create({
 			data: {
@@ -2310,6 +2329,23 @@ async function main() {
 		},
 	});
 
+	// Visit 9: Delayed — the other visit off-ramp. Its window opened this
+	// morning and nobody has started it.
+	await db.job_visit.create({
+		data: {
+			job_id: job3.id,
+			name: "Rooftop Unit Access Check",
+			description: "Confirm roof hatch access before the annual PM crew arrives.",
+			arrival_constraint: "at",
+			finish_constraint: "when_done",
+			arrival_time: "08:00",
+			scheduled_start_at: dateAt(today, 8),
+			scheduled_end_at: dateAt(today, 9),
+			status: "Delayed",
+			visit_techs: { create: { tech_id: tech2.id } },
+		},
+	});
+
 	await db.job_note.create({
 		data: {
 			organization_id: org.id,
@@ -2766,41 +2802,6 @@ async function main() {
 			content:
 				"Anderson agreed to split into two $600 installments. Second payment due by end of month.",
 			creator_dispatcher_id: dispatcher.id,
-		},
-	});
-
-	// INV-0005: Void — emergency inspection that was cancelled (Riverside)
-	await db.invoice.create({
-		data: {
-			organization_id: org.id,
-			invoice_number: "INV-0005",
-			client_id: client5.id,
-			status: "Void",
-			issue_date: daysFromNow(-5),
-			due_date: daysFromNow(25),
-			payment_terms_days: 30,
-			voided_at: daysFromNow(-5),
-			void_reason:
-				"Job cancelled — gas company handled inspection. No billable work performed.",
-			subtotal: 150.0,
-			tax_rate: 0.0825,
-			tax_amount: 12.38,
-			total: 162.38,
-			amount_paid: 0.0,
-			balance_due: 0.0,
-			created_by_dispatcher_id: dispatcher.id,
-			line_items: {
-				create: [
-					{
-						name: "Emergency Dispatch Fee",
-						quantity: 1,
-						unit_price: 150.0,
-						total: 150.0,
-						item_type: "other",
-						sort_order: 0,
-					},
-				],
-			},
 		},
 	});
 
@@ -3948,6 +3949,9 @@ async function main() {
 	const round2 = (n: number) => Math.round(n * 100) / 100;
 
 	const compressorVisits: { visitId: string; lineId: string }[] = [];
+	// Keyed by job number so the invoice fixtures further down can attribute
+	// themselves to this historical work.
+	const compressorWork = new Map<string, { jobId: string; visitId: string }>();
 	for (const spec of compressorJobSpecs) {
 		const day = daysFromNow(-spec.daysAgo);
 		const startHour = spec.startHour;
@@ -4023,6 +4027,7 @@ async function main() {
 			select: { id: true },
 		});
 		compressorVisits.push({ visitId: histVisit.id, lineId: histLine.id });
+		compressorWork.set(spec.jobNumber, { jobId: histJob.id, visitId: histVisit.id });
 	}
 	const [cmpVisitA, cmpVisitB, cmpVisitC, cmpVisitD, cmpVisitE] = compressorVisits;
 
@@ -6128,8 +6133,8 @@ async function main() {
 
 	// ── Q-0007: open dispute where the work is already sold ─────────────────────
 	// req1 is ConvertedToJob, so Revise & Resend is disabled with the
-	// sibling-sold reason and Repeal is the only outcome offered. That is D9:
-	// once a job exists the quote is no longer the live document.
+	// sibling-sold reason and Repeal is the only outcome offered: once a job
+	// exists the quote is no longer the live document.
 	const quoteSoldDisputed = await db.quote.create({
 		data: {
 			organization_id: org.id,
@@ -6195,6 +6200,7 @@ async function main() {
 			organization_id: org.id,
 			quote_number: "Q-0008",
 			client_id: client3.id,
+			request_id: reqQuoteRejected.id,
 			title: "Attic Insulation Top-Up",
 			description:
 				"Blow cellulose to R-49 across the main attic; baffle the soffit vents.",
@@ -6324,8 +6330,8 @@ async function main() {
 
 	// ── INV-0007: open dispute holding a partial payment ────────────────────────
 	// amount_paid > 0, so Revise & Resend and Repeal are both disabled with the
-	// money reason — voiding would strand the payment on a dead record (D8).
-	// Issue Adjustment is the only way through.
+	// money reason — voiding would strand the payment on a dead record. Issue
+	// Adjustment is the only way through.
 	const invDisputedPartial = await db.invoice.create({
 		data: {
 			organization_id: org.id,
@@ -6388,10 +6394,9 @@ async function main() {
 		},
 	});
 
-	// ── INV-0008: a PAID invoice under dispute (D13) ────────────────────────────
-	// Paid used to be terminal. It is disputable now because a client contesting
-	// something they already paid for is the most common real dispute — and it is
-	// safe precisely because Issue Adjustment is the only outcome money allows.
+	// ── INV-0008: a PAID invoice under dispute ──────────────────────────────────
+	// A client contesting something they already paid for is the most common
+	// real dispute, and money leaves Issue Adjustment as the only outcome.
 	const invDisputedPaid = await db.invoice.create({
 		data: {
 			organization_id: org.id,
@@ -6774,7 +6779,7 @@ async function main() {
 	// migration's INSERT against a seeded database is what finally exercises it:
 	// this row should gain one Open dispute, and running it twice should still
 	// leave exactly one.
-	await db.invoice.create({
+	const invLegacyDisputed = await db.invoice.create({
 		data: {
 			organization_id: org.id,
 			invoice_number: "INV-0015",
@@ -6800,6 +6805,111 @@ async function main() {
 					},
 				],
 			},
+		},
+	});
+
+	// ── Origin attribution ──────────────────────────────────────────────────────
+	// Every invoice above bills real work and needs the `invoice_job` /
+	// `invoice_visit` rows that say so, or the detail page renders no origin and
+	// its lines name jobs no join row backs. Written in one place so a new
+	// fixture can't skip it.
+	const attributeInvoice = async (
+		invoiceId: string,
+		target: { jobId: string; visitId?: string; traceOnly?: boolean },
+		sortOrders?: number[],
+	) => {
+		await db.invoice_line_item.updateMany({
+			where: {
+				invoice_id: invoiceId,
+				...(sortOrders ? { sort_order: { in: sortOrders } } : {}),
+			},
+			data: {
+				source_job_id: target.jobId,
+				source_visit_id: target.visitId ?? null,
+			},
+		});
+
+		// Summed from the lines, never hand-typed: a typed billed_amount can
+		// claim a number the line items contradict.
+		const lines = await db.invoice_line_item.findMany({
+			where: {
+				invoice_id: invoiceId,
+				source_job_id: target.jobId,
+				source_visit_id: target.visitId ?? null,
+			},
+			select: { total: true },
+		});
+		const billed = lines.reduce((sum, l) => sum + Number(l.total), 0);
+
+		if (target.visitId) {
+			await db.invoice_visit.create({
+				data: {
+					invoice_id: invoiceId,
+					visit_id: target.visitId,
+					billed_amount: billed,
+				},
+			});
+			// The parent job rides along for traceability with no amount:
+			// job-direct billing counts only lines with a null source_visit_id.
+			await db.invoice_job.create({
+				data: {
+					invoice_id: invoiceId,
+					job_id: target.jobId,
+					billed_amount: null,
+				},
+			});
+			return;
+		}
+
+		await db.invoice_job.create({
+			data: {
+				invoice_id: invoiceId,
+				job_id: target.jobId,
+				// A void document bills nothing. Null says "linked, not
+				// billed"; zero would say the work was worth nothing.
+				billed_amount: target.traceOnly ? null : billed,
+			},
+		});
+	};
+
+	const williamsCompressor = compressorWork.get("J-0018")!;
+	const riversideCompressor = compressorWork.get("J-0014")!;
+	const williamsOlderCompressor = compressorWork.get("J-0015")!;
+	const andersonCompressor = compressorWork.get("J-0016")!;
+
+	// The dispute set. Each bills the work its lines describe.
+	await attributeInvoice(invDisputedUnpaid.id, williamsCompressor);
+	await attributeInvoice(invDisputedPartial.id, riversideCompressor);
+	await attributeInvoice(invDisputedPaid.id, { jobId: job1.id });
+	await attributeInvoice(invLegacyDisputed.id, { jobId: williamsOlderCompressor.jobId });
+	await attributeInvoice(invRefunded.id, { jobId: job1.id });
+
+	// The adjustment chain — all three against their root's job, so the chain
+	// sums to one job's revenue.
+	await attributeInvoice(invCreditNote.id, { jobId: job2.id });
+	await attributeInvoice(invExtraCharge.id, { jobId: job2.id });
+
+	// Revise & Resend: attribution moves wholesale to the replacement, and the
+	// void original keeps a traceability link so the job page can still show
+	// what happened to it.
+	await attributeInvoice(invVoidedOriginal.id, {
+		jobId: riversideCompressor.jobId,
+		traceOnly: true,
+	});
+	await attributeInvoice(invReplacement.id, { jobId: riversideCompressor.jobId });
+
+	// INV-0004 is the one invoice billing two jobs: its parts allowance moves to
+	// a second job, leaving labour and filters on the visit. The only fixture
+	// with grouped line items.
+	await attributeInvoice(invoice4.id, { jobId: andersonCompressor.jobId }, [2]);
+	const visit3Lines = await db.invoice_line_item.findMany({
+		where: { invoice_id: invoice4.id, source_visit_id: visit3.id },
+		select: { total: true },
+	});
+	await db.invoice_visit.update({
+		where: { invoice_id_visit_id: { invoice_id: invoice4.id, visit_id: visit3.id } },
+		data: {
+			billed_amount: visit3Lines.reduce((sum, l) => sum + Number(l.total), 0),
 		},
 	});
 
@@ -7022,7 +7132,7 @@ async function main() {
 		`  Occurrences:       5  skipped, completed×2, planned, generated`,
 	);
 	console.log(
-		`  Invoices:         15  Paid, Draft, Sent, PartiallyPaid, Void + the dispute set:`,
+		`  Invoices:         14  Paid, Draft, Sent, PartiallyPaid, Void + the dispute set:`,
 	);
 	console.log(
 		`                        INV-0006/7/8 Disputed (unpaid / part-paid / PAID),`,

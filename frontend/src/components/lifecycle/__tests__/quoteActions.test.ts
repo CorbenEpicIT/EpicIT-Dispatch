@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { quoteActions } from "../quoteActions";
+import { quoteActions, QUOTE_STEPS, isQuoteOffRamp } from "../quoteActions";
 import type { QuoteStatus } from "../../../types/quotes";
 
 const noop = () => {};
@@ -24,6 +24,7 @@ const ctx = (over: Record<string, unknown> = {}) => ({
 	openRefusal: null as string | null,
 	soldRefusal: null as string | null,
 	canEdit: true,
+	canSend: true,
 	canCreateJob: true,
 	canOpenDispute: true,
 	handlers,
@@ -42,9 +43,8 @@ describe("quoteActions", () => {
 	});
 
 	/**
-	 * The defect this closes: a rejected quote could be neither revised,
-	 * disputed nor cancelled, so "the client said no" was a dead end and the
-	 * dispatcher had to hand-build a new quote with no lineage.
+	 * A rejected quote must keep its exits: otherwise "the client said no" is a
+	 * dead end and the next quote is hand-built with no lineage.
 	 */
 	it("offers a revision on a rejected quote", () => {
 		expect(byId(quoteActions(ctx({ status: "Rejected" })), "revise")?.disabled).toBe(
@@ -85,10 +85,8 @@ describe("quoteActions", () => {
 	});
 
 	/**
-	 * DW-04: the sold-work sentence is the server's `sold_refusal`. The builder
-	 * threads it verbatim onto Convert (and onto Reject / Withdraw) — it never
-	 * re-derives it, which is how the page's third copy came to omit the sibling
-	 * case and bill sold work twice.
+	 * The sold-work sentence is the server's `sold_refusal`, threaded verbatim
+	 * onto Convert, Reject and Withdraw and never re-derived.
 	 */
 	it("carries the server's sold_refusal onto conversion", () => {
 		const sold =
@@ -111,9 +109,8 @@ describe("quoteActions", () => {
 	});
 
 	/**
-	 * The rule that stranded Q-0007: its request was converted straight to a
-	 * job with no quote in the path, so nothing this quote offers was sold and
-	 * both exits must stay open.
+	 * A request converted straight to a job leaves no quote in the path, so
+	 * nothing this quote offers was sold and both exits stay open.
 	 */
 	it("leaves conversion and revision open when nothing was sold", () => {
 		const actions = quoteActions(ctx({ status: "Approved", soldRefusal: null }));
@@ -141,9 +138,8 @@ describe("quoteActions", () => {
 		).toMatch(/permission/i);
 	});
 
-	// canTransitionQuote calls a self-transition legal, which left Issue live as
-	// a no-op write on a quote that was already issued. Issued is reachable only
-	// from Draft, and issuing twice would re-date the document.
+	// canTransitionQuote calls a self-transition legal, so without its own gate
+	// Issue stays live as a no-op that re-dates an already-issued quote.
 	it("closes issue once the quote has left Draft", () => {
 		const action = byId(quoteActions(ctx({ status: "Issued" })), "issue");
 		expect(action?.disabled).toBe(true);
@@ -151,6 +147,23 @@ describe("quoteActions", () => {
 		expect(byId(quoteActions(ctx({ status: "Draft" })), "issue")?.disabled).toBe(
 			false
 		);
+	});
+
+	// Same self-transition hole as Issue: a Rejected quote would offer a live
+	// Reject beside its rejection reason. Send is excluded — re-emailing a sent
+	// quote is a real act, not a status write.
+	it.each([
+		["Approved", "approve"],
+		["Rejected", "reject"],
+		["Cancelled", "withdraw"],
+	] as const)("hides the move a %s quote has already made", (status, id) => {
+		const action = byId(quoteActions(ctx({ status })), id);
+		expect(action?.disabled).toBe(true);
+		expect(action?.hidden).toBe(true);
+	});
+
+	it("keeps Email to Client live on a sent quote, as a re-send", () => {
+		expect(byId(quoteActions(ctx({ status: "Sent" })), "send")?.disabled).toBe(false);
 	});
 
 	it("marks intents so the bar can place them", () => {
@@ -172,9 +185,8 @@ describe("quoteActions", () => {
 	});
 
 	/**
-	 * DW-17: the "can't be disputed" sentence is the open door's own
-	 * (disputeList.open_refusal), so the button and the 422 body can no longer
-	 * drift ("cannot" vs "can't"). The builder shows it verbatim.
+	 * The "can't be disputed" sentence is the open door's own
+	 * (disputeList.open_refusal), shown verbatim so it can't drift from the 422.
 	 */
 	it("shows the server's open_refusal verbatim on Open Dispute", () => {
 		const refusal =
@@ -199,10 +211,45 @@ describe("quoteActions permission gates", () => {
 	});
 
 	// The other actions keep reading edit_quotes: they are document edits.
+	// send is absent — it moved to send_quotes, covered below.
 	it("leaves the non-dispute actions on edit_quotes", () => {
 		const actions = quoteActions(ctx({ canEdit: false }));
-		for (const id of ["send", "approve", "reject", "withdraw"]) {
+		for (const id of ["approve", "reject", "withdraw"]) {
 			expect(byId(actions, id)?.disabled).toBe(true);
 		}
+	});
+
+	// Mailing a finished quote is not a change to what it says. A clerk holds
+	// send_quotes without edit_quotes; an estimator holds edit_quotes and never
+	// contacts the client. Both were impossible while send rode on canEdit.
+	it("offers Email to Client to a caller with send_quotes but no edit rights", () => {
+		const actions = quoteActions(ctx({ canEdit: false, status: "Issued" }));
+		expect(byId(actions, "send")?.disabled).toBe(false);
+	});
+
+	it("closes Email to Client without send_quotes, even with edit rights", () => {
+		const actions = quoteActions(ctx({ canSend: false, status: "Issued" }));
+		expect(byId(actions, "send")?.disabled).toBe(true);
+		expect(byId(actions, "send")?.disabledReason).toMatch(/permission/i);
+	});
+
+	// send_quotes authorises the door, not the document's state: a quote the
+	// transition table refuses must stay shut for a sender who holds it.
+	it("still refuses a send the transition table does not allow", () => {
+		const actions = quoteActions(ctx({ canSend: true, hasOpenDispute: true }));
+		expect(byId(actions, "send")?.disabled).toBe(true);
+		expect(byId(actions, "send")?.disabledReason).not.toMatch(/permission/i);
+	});
+});
+
+describe("quote path", () => {
+	it("keeps the four happy-path steps in order", () => {
+		expect(QUOTE_STEPS).toEqual(["Draft", "Issued", "Sent", "Approved"]);
+	});
+
+	it("treats every non-path status as an off-ramp", () => {
+		expect(isQuoteOffRamp("Rejected")).toBe(true);
+		expect(isQuoteOffRamp("Expired")).toBe(true);
+		expect(isQuoteOffRamp("Sent")).toBe(false);
 	});
 });

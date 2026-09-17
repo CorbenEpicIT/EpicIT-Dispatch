@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import DocumentDetailHeader, { type DocumentMenuGroup } from "../DocumentDetailHeader";
+import DetailHeader, { type DetailMenuGroup } from "../DetailHeader";
 
-const groups = (over: Partial<DocumentMenuGroup>[] = []): DocumentMenuGroup[] => [
+const groups = (over: Partial<DetailMenuGroup>[] = []): DetailMenuGroup[] => [
 	{
 		id: "lifecycle",
 		label: "Lifecycle",
@@ -34,14 +34,11 @@ const groups = (over: Partial<DocumentMenuGroup>[] = []): DocumentMenuGroup[] =>
 	},
 ];
 
-describe("DocumentDetailHeader", () => {
-	/**
-	 * The whole point of the merge: one options button, not the two unlabeled
-	 * kebabs an inch apart that the pages used to render.
-	 */
+describe("DetailHeader", () => {
+	/** One options button for the page, not one per surface. */
 	it("exposes exactly one options button, named", () => {
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -52,11 +49,29 @@ describe("DocumentDetailHeader", () => {
 		expect(screen.getByRole("button", { name: "Quote actions" })).toBeTruthy();
 	});
 
-	// Merging the two menus into one undifferentiated list would be a
-	// regression: spec 3.4's lifecycle/utility split survives as the grouping.
+	// With lifecycle buttons in inlineActions, a non-wrapping row squeezes the
+	// title to zero width at 640px, so the cluster must drop below it.
+	it("lets the action cluster wrap below the title rather than crush it", () => {
+		const { container } = render(
+			<DetailHeader
+				title="Weekly Filter Checks — Anderson Office Complex"
+				inlineActions={<button type="button">Generate Next Occurrence</button>}
+				menuGroups={groups()}
+				menuLabel="Plan actions"
+			/>
+		);
+
+		const row = container.firstElementChild as HTMLElement;
+		const [identity, cluster] = Array.from(row.children) as HTMLElement[];
+		expect(row.className).toContain("flex-wrap");
+		expect(identity.className).toMatch(/basis-|flex-\[/);
+		expect(cluster.className).not.toContain("flex-shrink-0");
+	});
+
+	// One menu, but the lifecycle/utility split survives as the grouping.
 	it("keeps lifecycle and utility actions in separate labeled groups", async () => {
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -78,7 +93,7 @@ describe("DocumentDetailHeader", () => {
 	 */
 	it("renders an unavailable action disabled, with its reason visible", async () => {
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -92,13 +107,12 @@ describe("DocumentDetailHeader", () => {
 	});
 
 	/**
-	 * The reason is a description, not part of the name. Left inside the
-	 * button's content it was concatenated into the accessible name, so the
-	 * item read as one run-on label; `title` then repeated the same string.
+	 * The reason is a description, not part of the name: inside the button's
+	 * content it is otherwise folded into the accessible name as a run-on label.
 	 */
 	it("exposes the reason as a description, not as part of the name", async () => {
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -119,7 +133,7 @@ describe("DocumentDetailHeader", () => {
 	// the first item forever.
 	it("moves the single tab stop with focus", async () => {
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -152,7 +166,7 @@ describe("DocumentDetailHeader", () => {
 		]);
 
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={menuGroups}
 				menuLabel="Quote actions"
@@ -167,7 +181,7 @@ describe("DocumentDetailHeader", () => {
 	it("closes on Escape and reports it, so a page can disarm a confirm", async () => {
 		const onMenuClose = vi.fn();
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -183,7 +197,7 @@ describe("DocumentDetailHeader", () => {
 
 	it("moves focus across groups with the arrow keys", async () => {
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={groups()}
 				menuLabel="Quote actions"
@@ -220,7 +234,7 @@ describe("DocumentDetailHeader", () => {
 		]);
 
 		render(
-			<DocumentDetailHeader
+			<DetailHeader
 				title="Q-0008"
 				menuGroups={menuGroups}
 				menuLabel="Quote actions"

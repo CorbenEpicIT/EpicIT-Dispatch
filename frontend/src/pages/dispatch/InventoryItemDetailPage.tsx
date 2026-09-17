@@ -118,8 +118,10 @@ export default function InventoryItemDetailPage() {
 		const next = new URLSearchParams(searchParams);
 		if (tab === "overview") next.delete("tab");
 		else next.set("tab", tab);
-		// push, not replace — the back button should return to the previous tab
-		setSearchParams(next);
+		// replace, not push — same reasoning as `?serial=` and `?range=`: tabs are
+		// a lens on one page, and pushing buried the page the dispatcher came from
+		// behind every tab they had read through.
+		setSearchParams(next, { replace: true });
 	};
 
 	// Serial drill-in is a drawer over this page, not a route away from it —

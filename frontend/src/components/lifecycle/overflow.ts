@@ -10,47 +10,52 @@ export interface SplitActions {
 	overflow: LifecycleAction[];
 }
 
+export interface SplitActionsOptions {
+	/**
+	 * The entity is off the happy path even though its stage is "normal" — a
+	 * Paused/Delayed visit, a QuoteRejected request. See Rule 2 below.
+	 */
+	offRamp?: boolean;
+}
+
 /**
- * Where each lifecycle action goes. Pure, and the ONLY place the two placement
- * rules live — the bar and the header kebab both call it with the same
- * arguments, so neither can develop its own idea of what it owns. It used to
- * live inside LifecycleBar's body, which is why the bar carried an overflow
- * menu of its own an inch below the header's.
+ * Where each lifecycle action goes. Pure, and the only place the two placement
+ * rules live, so the bar and the header kebab cannot disagree about what each
+ * one owns.
  *
- * Rule 1, stage-aware. On the normal stage a destructive action is ALWAYS in
- * the overflow, so a document-killing button is never one stray click from the
- * pointer (spec 3.1). On a terminal or dispute stage it isn't held back:
- * there the destructive action is either already disabled (nothing to
- * mis-click) or it IS the stage's exit — a disputed quote's only live action
- * is Repeal, and Rule 1 taken literally left it as two dead inline buttons
- * beside an unlabelled kebab (DW-12).
+ * Rule 1, stage-aware: on the normal stage a destructive action always
+ * overflows, so a document-killing button is never one stray click from the
+ * pointer. On a terminal or dispute stage it isn't held back — there it is
+ * either already disabled or it IS the stage's exit, as Repeal is for a
+ * disputed quote.
  *
- * Rule 2, stage-aware. On the normal stage a disabled action keeps its slot
- * rather than yielding it to a lower-priority one: a button must not move as a
- * document progresses, or the dispatcher's muscle memory works against them.
- *
- * On a terminal or dispute stage that rule inverts. The document has stopped
- * progressing, so there is no muscle memory left to protect — and taken
- * literally it buried the one thing those stages exist to offer. A rejected
- * quote showed Issue / Email / Approve, all three dead, with Create Revision
- * hidden behind the menu, which is exactly the "workflow lives in the overflow"
- * defect this bar was built to end. Live actions take the visible slots; the
- * fixed order still decides within each group.
+ * Rule 2, stage-aware: on the normal happy path a disabled action keeps its
+ * slot, so buttons don't move under the dispatcher as a document progresses.
+ * Off the happy path — terminal, dispute, or `offRamp` — that inverts and live
+ * actions take the visible slots, otherwise the one legal move (a paused
+ * visit's Resume, a rejected quote's Create Revision) ends up behind the menu.
+ * Rule 1 ignores offRamp, so a paused visit's Cancel Visit still overflows.
  */
-export function splitActions(stage: LifecycleStage, actions: LifecycleAction[]): SplitActions {
+export function splitActions(
+	stage: LifecycleStage,
+	actions: LifecycleAction[],
+	options: SplitActionsOptions = {}
+): SplitActions {
+	const { offRamp = false } = options;
+	// Hidden actions reach neither the bar nor the menu.
+	const visible = actions.filter((a) => !a.hidden);
 	const candidates =
 		stage === "normal"
-			? actions.filter((a) => a.intent !== "destructive")
-			: actions;
+			? visible.filter((a) => a.intent !== "destructive")
+			: visible;
 	const ordered =
-		stage === "normal"
+		stage === "normal" && !offRamp
 			? candidates
 			: [
 					...candidates.filter((a) => !a.disabled),
 					...candidates.filter((a) => a.disabled),
 				];
 	const inline = ordered.slice(0, PRIMARY_SLOTS);
-	// Identity comparison, not id: inline holds the very objects filter/slice
-	// took out of actions, so this is the exact complement.
-	return { inline, overflow: actions.filter((a) => !inline.includes(a)) };
+	// Identity, not id: inline holds the very objects sliced out of visible.
+	return { inline, overflow: visible.filter((a) => !inline.includes(a)) };
 }

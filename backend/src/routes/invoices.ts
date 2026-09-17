@@ -12,6 +12,7 @@ import * as invoicesController from '../controllers/invoicesController.js';
 import { createInvoiceRecord } from '../services/invoiceService.js';
 import { generateInvoicePdf } from '../lib/pdf/pdfService.js';
 import { sendInvoiceEmail } from '../services/emailService.js';
+import { isSendFailure } from '../services/emailErrors.js';
 import { onInvoiceSent } from '../services/followupTriggers.js';
 import { buildVisitInvoicePayload, buildRecurringPlanInvoicePayload } from '../services/invoiceGenerator.js';
 import { overlapCheckSchema, generateInvoiceSchema, createRefundSchema } from '../lib/validate/invoices.js';
@@ -81,7 +82,7 @@ router.get("/:id/pdf", requirePermission("view_invoices"), async (req, res, next
 
 
 
-router.post("/:id/send", requirePermission("edit_invoices"), async (req, res, next) => {
+router.post("/:id/send", requirePermission("send_invoices"), async (req, res, next) => {
     try {
         const id = req.params.id as string;
         const recipientEmail: string | undefined = req.body?.recipient_email;
@@ -115,8 +116,48 @@ router.post("/:id/send", requirePermission("edit_invoices"), async (req, res, ne
             throw e;
         }
 
-        await sendInvoiceEmail(id, recipientEmail, orgId);
         const context = getUserContext(req);
+        try {
+            await sendInvoiceEmail(id, recipientEmail, orgId);
+        } catch (e: unknown) {
+            // A missing document is not a delivery failure. Let the outer
+            // handler answer it as a 404 rather than restating it as an email
+            // problem.
+            if (!isSendFailure(e) && (e as { status?: number })?.status === 404) throw e;
+            // Only a translated failure carries a message written for the
+            // caller. A PDF render throw or a Prisma error reaches here with
+            // text that was never meant to leave the server, so it is recorded
+            // and answered generically.
+            const failure = isSendFailure(e) ? e : null;
+            // logActivity swallows its own errors, so this await cannot
+            // displace the response below.
+            // An invoice the client never received must not age on the
+            // receivables board as Sent, and onInvoiceSent below must not start
+            // dunning against a delivery that did not happen.
+            await logActivity({
+                event_type: "invoice.send_failed",
+                action: "sent",
+                entity_type: "invoice",
+                entity_id: id,
+                organization_id: orgId,
+                actor_type: "dispatcher",
+                actor_id: context.dispatcherId ?? null,
+                reason:
+                    failure?.providerMessage ??
+                    (e instanceof Error ? e.message : undefined),
+                changes: { recipient_email: { old: null, new: recipientEmail } },
+                ip_address: context.ipAddress,
+                user_agent: context.userAgent,
+            });
+            return res
+                .status(failure?.status ?? 502)
+                .json(
+                    createErrorResponse(
+                        failure?.code ?? ErrorCodes.EMAIL_SEND_FAILED,
+                        failure?.message ?? "Email could not be sent.",
+                    ),
+                );
+        }
         const result = await invoicesController.updateInvoice(
             { params: { id }, body: { status: "Sent" } } as any,
             orgId,

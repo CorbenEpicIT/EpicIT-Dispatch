@@ -147,7 +147,7 @@ describe("DocumentLineage", () => {
 		expect(document.activeElement).toBe(chip);
 	});
 
-	// DocumentDetailHeader's statusPill is the page's only status word.
+	// DetailHeader's statusPill is the page's only status word.
 	it("never prints the viewed document's own status", () => {
 		renderChips(
 			lineage({

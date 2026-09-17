@@ -3,9 +3,19 @@ import type { LifecycleAction } from "./types";
 import {
 	buildAction as build,
 	NO_PERMISSION,
+	notApplicable,
 	openDisputeReason,
 	unknownDisputeReason,
 } from "./actionBuilder";
+import type { ActionGate } from "./actionBuilder";
+
+export const INVOICE_STEPS = ["Draft", "Issued", "Sent", "PartiallyPaid", "Paid"] as const;
+
+export const INVOICE_OFF_RAMPS: readonly InvoiceStatus[] = ["Viewed", "Disputed", "Void"];
+
+export function isInvoiceOffRamp(status: string): boolean {
+	return (INVOICE_OFF_RAMPS as readonly string[]).includes(status);
+}
 
 export interface InvoiceActionContext {
 	status: InvoiceStatus;
@@ -13,16 +23,17 @@ export interface InvoiceActionContext {
 	hasOpenDispute: boolean;
 	disputeStateUnknown: boolean;
 	/** disputeList.open_refusal — why Open Dispute is shut, or null. Produced by
-	 *  the open door itself (DW-17), so the button and the 422 body match. */
+	 *  the open door itself, so the button and the 422 body match. */
 	openRefusal: string | null;
-	/** disputeList.void_refusal — why the kebab's Void is shut (a payment is
-	 *  applied, or a live adjustment names this invoice), or null. Produced by
-	 *  the same functions updateInvoice refuses the kebab Void with, so this
-	 *  also carries the D1 adjustment rule the frontend never knew. */
+	/** disputeList.void_refusal — why Void is shut (a payment is applied, or a
+	 *  live adjustment names this invoice), or null. Produced by the same
+	 *  functions updateInvoice refuses the void with. */
 	voidRefusal: string | null;
 	canEdit: boolean;
-	/** Holds open_disputes. Not the same grant as canEdit: recording that a
-	 *  client disagrees is not a document edit. */
+	/** Holds send_invoices. Not canEdit: mailing an invoice accounting has
+	 *  already approved is not a restatement of what it bills. */
+	canSend: boolean;
+	/** Holds open_disputes. Not canEdit: recording a disagreement isn't an edit. */
 	canOpenDispute: boolean;
 	/** Holds refund_invoices — cash out, which covers both the refund and
 	 *  the void. */
@@ -33,11 +44,11 @@ export interface InvoiceActionContext {
 	>;
 }
 
-function voidReason(ctx: InvoiceActionContext): string | null {
+function voidReason(ctx: InvoiceActionContext): ActionGate {
 	// Voiding needs both grants: the server gates the route on edit_invoices
 	// and the void itself on refund_invoices.
 	if (!ctx.canEdit || !ctx.canRefund) return NO_PERMISSION;
-	if (ctx.status === "Void") return "This invoice is already void.";
+	if (ctx.status === "Void") return notApplicable("This invoice is already void.");
 	if (ctx.disputeStateUnknown) return unknownDisputeReason("invoice");
 	// The server refuses any status change under an open dispute, and voiding
 	// would leave the dispute with no exit. Repeal closes both at once.
@@ -52,19 +63,21 @@ export function invoiceActions(ctx: InvoiceActionContext): LifecycleAction[] {
 	const dead = ctx.status === "Void";
 
 	return [
-		// The two delivery doors, side by side. A business either has the system
-		// email the invoice, or issues it and delivers the PDF itself — so both
-		// are offered from Draft rather than one being a step before the other.
+		// Two delivery doors, not two steps: the system emails the invoice, or
+		// the business issues it and delivers the PDF itself. Both open from Draft.
 		build(
 			"send",
 			"Email to Client",
 			"primary",
-			!ctx.canEdit
+			// canSend, not canEdit: the server gates this route on send_invoices,
+			// which a billing clerk can hold without the rights to restate the
+			// amount on the way out.
+			!ctx.canSend
 				? NO_PERMISSION
 				: dead
-					? "A void invoice can't be sent."
+					? notApplicable("A void invoice can't be sent.")
 					: !["Draft", "Issued"].includes(ctx.status)
-						? "This invoice has already been sent."
+						? notApplicable("This invoice has already been sent.")
 						: null,
 			ctx.handlers.send
 		),
@@ -75,9 +88,9 @@ export function invoiceActions(ctx: InvoiceActionContext): LifecycleAction[] {
 			!ctx.canEdit
 				? NO_PERMISSION
 				: dead
-					? "A void invoice can't be issued."
+					? notApplicable("A void invoice can't be issued.")
 					: ctx.status !== "Draft"
-						? "This invoice has already been issued."
+						? notApplicable("This invoice has already been issued.")
 						: null,
 			ctx.handlers.issue
 		),
@@ -88,9 +101,9 @@ export function invoiceActions(ctx: InvoiceActionContext): LifecycleAction[] {
 			!ctx.canEdit
 				? NO_PERMISSION
 				: dead
-					? "A void invoice can't take a payment."
+					? notApplicable("A void invoice can't take a payment.")
 					: ctx.status === "Paid"
-						? "This invoice is paid in full."
+						? notApplicable("This invoice is paid in full.")
 						: !["Sent", "Viewed", "PartiallyPaid", "Disputed"].includes(
 									ctx.status
 							  )
@@ -119,7 +132,7 @@ export function invoiceActions(ctx: InvoiceActionContext): LifecycleAction[] {
 			!ctx.canRefund
 				? NO_PERMISSION
 				: dead
-					? "A void invoice can't be refunded."
+					? notApplicable("A void invoice can't be refunded.")
 					: ctx.disputeStateUnknown
 						? unknownDisputeReason("invoice")
 						: !(ctx.amountPaid > 0)

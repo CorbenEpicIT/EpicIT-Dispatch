@@ -22,6 +22,7 @@ const ctx = (over: Record<string, unknown> = {}) => ({
 	openRefusal: null as string | null,
 	voidRefusal: null as string | null,
 	canEdit: true,
+	canSend: true,
 	canOpenDispute: true,
 	canRefund: true,
 	handlers,
@@ -71,9 +72,8 @@ describe("invoiceActions", () => {
 	});
 
 	/**
-	 * The kebab Void's own refusal, carried on the payload as `void_refusal`:
-	 * the builder shows it verbatim rather than rebuilding the money sentence
-	 * from `amountPaid` — one producer, one string.
+	 * The void's own refusal, carried as `void_refusal` and shown verbatim
+	 * rather than rebuilt from `amountPaid`.
 	 */
 	it("closes the void with the server's void_refusal, verbatim", () => {
 		const action = byId(
@@ -86,10 +86,7 @@ describe("invoiceActions", () => {
 		expect(action?.disabledReason).toBe(PAYMENT_BLOCK);
 	});
 
-	/**
-	 * DW-01 / D1: a live adjustment blocks the void, and the frontend Void
-	 * action never knew that rule before — it does now, through `void_refusal`.
-	 */
+	/** A live adjustment blocks the void, carried by `void_refusal`. */
 	it("closes the void while a live adjustment names this invoice", () => {
 		const adj = "INV-1001 adjusts this invoice. Void INV-1001 first, then void this one.";
 		const action = byId(invoiceActions(ctx({ voidRefusal: adj })), "void");
@@ -98,9 +95,8 @@ describe("invoiceActions", () => {
 	});
 
 	/**
-	 * Today the kebab offers Void here, the server refuses it, and handleVoid
-	 * swallows the error — so the dispatcher types a reason and watches
-	 * nothing happen.
+	 * Without this gate the kebab offers Void, the server refuses it, and the
+	 * dispatcher types a reason and watches nothing happen.
 	 */
 	it("closes the void while a dispute is open, pointing at Repeal", () => {
 		const action = byId(
@@ -146,9 +142,8 @@ describe("invoiceActions", () => {
 	});
 
 	/**
-	 * DW-17: the "can't be disputed" sentence is the open door's own
-	 * (disputeList.open_refusal); the builder shows it verbatim so the button
-	 * and the 422 body cannot drift.
+	 * The "can't be disputed" sentence is the open door's own
+	 * (disputeList.open_refusal), shown verbatim so it can't drift from the 422.
 	 */
 	it("shows the server's open_refusal verbatim on Open Dispute", () => {
 		const refusal =
@@ -160,11 +155,30 @@ describe("invoiceActions", () => {
 });
 
 describe("invoiceActions permission gates", () => {
-	// Opening a dispute is no longer an edit: the person who takes the call
-	// records the disagreement, and may hold no edit rights at all.
+	// Opening a dispute is not an edit: whoever takes the call records the
+	// disagreement, and may hold no edit rights at all.
 	it("offers Open Dispute to a caller with open_disputes but no edit rights", () => {
 		const actions = invoiceActions(ctx({ canEdit: false }));
 		expect(byId(actions, "dispute")?.disabled).toBe(false);
+	});
+
+	// A billing clerk mails what accounting approved, and must not be able to
+	// restate the amount on the way out. Sending is its own grant.
+	it("offers Email to Client to a caller with send_invoices but no edit rights", () => {
+		const actions = invoiceActions(ctx({ canEdit: false, status: "Issued" }));
+		expect(byId(actions, "send")?.disabled).toBe(false);
+	});
+
+	it("closes Email to Client without send_invoices, even with edit rights", () => {
+		const actions = invoiceActions(ctx({ canSend: false, status: "Issued" }));
+		expect(byId(actions, "send")?.disabled).toBe(true);
+		expect(byId(actions, "send")?.disabledReason).toMatch(/permission/i);
+	});
+
+	it("closes Email to Client on a void invoice even with send_invoices", () => {
+		const actions = invoiceActions(ctx({ canSend: true, status: "Void" }));
+		expect(byId(actions, "send")?.disabled).toBe(true);
+		expect(byId(actions, "send")?.disabledReason).not.toMatch(/permission/i);
 	});
 
 	it("closes Open Dispute without open_disputes, even with edit rights", () => {

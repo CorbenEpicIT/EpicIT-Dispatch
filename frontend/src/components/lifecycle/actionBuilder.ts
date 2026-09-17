@@ -3,43 +3,43 @@ import type { LifecycleAction } from "./types";
 /** Shown wherever a grant the action needs is missing. */
 export const NO_PERMISSION = "You don't have permission to perform this action";
 
+/** A reason the action is shut that also hides it. See LifecycleAction.hidden. */
+export interface NotApplicable {
+	reason: string;
+	hidden: true;
+}
+
+export type ActionGate = string | NotApplicable | null;
+
+/** Marks a reason as state-based: the action is hidden, not just disabled. */
+export function notApplicable(reason: string): NotApplicable {
+	return { reason, hidden: true };
+}
+
 /**
- * The disabled-`LifecycleAction` factory shared by quoteActions and
- * invoiceActions, which each carried a byte-identical copy of it. A null
- * `reason` means the action is live.
+ * The `LifecycleAction` factory shared by every catalog. A null gate means the
+ * action is live; a string disables it; notApplicable() disables and hides it.
  */
 export function buildAction(
 	id: string,
 	label: string,
 	intent: LifecycleAction["intent"],
-	reason: string | null,
+	gate: ActionGate,
 	onSelect: () => void
 ): LifecycleAction {
-	return {
-		id,
-		label,
-		intent,
-		disabled: reason != null,
-		disabledReason: reason ?? undefined,
-		onSelect,
-	};
+	if (gate == null) return { id, label, intent, disabled: false, onSelect };
+	if (typeof gate === "string") {
+		return { id, label, intent, disabled: true, disabledReason: gate, onSelect };
+	}
+	return { id, label, intent, disabled: true, disabledReason: gate.reason, hidden: true, onSelect };
 }
 
-/**
- * "…couldn't be loaded" — the same sentence on both detail pages, the noun
- * aside. Shown when the dispute list failed to load, so the page cannot know
- * whether an action is safe.
- */
+/** Shown when the dispute list failed to load, so no action can be judged safe. */
 export function unknownDisputeReason(kind: "quote" | "invoice"): string {
 	return `This ${kind}'s dispute status couldn't be loaded. Reload the page and try again.`;
 }
 
-/**
- * Why "Open Dispute" is shut for this document, or null. Both lifecycle
- * builders ran the same ladder: permission, then (invoice only) a dead
- * document, then an unloaded dispute state, then a dispute already open, then
- * the server's own open-door refusal (DW-17's `open_refusal`).
- */
+/** Why "Open Dispute" is shut for this document, or null. */
 export function openDisputeReason(ctx: {
 	kind: "quote" | "invoice";
 	canOpenDispute: boolean;
@@ -48,10 +48,10 @@ export function openDisputeReason(ctx: {
 	disputeStateUnknown: boolean;
 	hasOpenDispute: boolean;
 	openRefusal: string | null;
-}): string | null {
+}): ActionGate {
 	if (!ctx.canOpenDispute) return NO_PERMISSION;
-	if (ctx.isDead) return `A void ${ctx.kind} can't be disputed.`;
+	if (ctx.isDead) return notApplicable(`A void ${ctx.kind} can't be disputed.`);
 	if (ctx.disputeStateUnknown) return unknownDisputeReason(ctx.kind);
-	if (ctx.hasOpenDispute) return `This ${ctx.kind} already has an open dispute.`;
+	if (ctx.hasOpenDispute) return notApplicable(`This ${ctx.kind} already has an open dispute.`);
 	return ctx.openRefusal;
 }

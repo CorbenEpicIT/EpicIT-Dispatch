@@ -13,8 +13,10 @@ import { log } from "../services/appLogger.js";
  *     view_requests       · create_requests    · edit_requests      · delete_requests
  *   Quotes
  *     view_quotes         · create_quotes      · edit_quotes        · delete_quotes
+ *     send_quotes         (emailing the client — independent of edit_quotes)
  *   Invoices
  *     view_invoices       · create_invoices    · edit_invoices      · delete_invoices
+ *     send_invoices       (emailing the client — independent of edit_invoices)
  *     refund_invoices     (refunds and invoice voids — cash out)
  *   Disputes
  *     open_disputes       · resolve_disputes

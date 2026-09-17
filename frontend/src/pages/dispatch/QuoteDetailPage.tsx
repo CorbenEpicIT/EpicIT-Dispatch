@@ -6,7 +6,6 @@ import {
 	Edit2,
 	Briefcase,
 	Trash2,
-	Link2Off,
 	Download,
 	Loader2,
 	AlertTriangle,
@@ -21,21 +20,23 @@ import {
 } from "../../hooks/useQuotes";
 import { useCreateJobMutation } from "../../hooks/useJobs";
 import { useDisputesQuery } from "../../hooks/useDisputes";
-import { QuoteStatusColors, isQuoteEditable } from "../../types/quotes";
+import { QuoteStatusColors, QuoteStatusLabels, isQuoteEditable } from "../../types/quotes";
 import type { QuoteStatus } from "../../types/quotes";
-import LifecycleBar from "../../components/lifecycle/LifecycleBar";
+import LifecycleBar, {
+	LifecycleActions,
+	LifecycleRule,
+} from "../../components/lifecycle/LifecycleBar";
 import TerminalDetail from "../../components/lifecycle/TerminalDetail";
-import { quoteActions } from "../../components/lifecycle/quoteActions";
-import { splitActions } from "../../components/lifecycle/overflow";
-import { isOffRamp } from "../../components/lifecycle/lifecycleSteps";
+import { quoteActions, QUOTE_STEPS, isQuoteOffRamp } from "../../components/lifecycle/quoteActions";
+import { placeActions } from "../../components/lifecycle/placement";
 import type { LifecycleStage } from "../../components/lifecycle/types";
-import DocumentDetailHeader, {
-	type DocumentMenuGroup,
-} from "../../components/documents/DocumentDetailHeader";
-import DocumentTabs, { type DocumentTabDef } from "../../components/documents/DocumentTabs";
-import DocumentStatRow from "../../components/documents/DocumentStatRow";
+import BalancedOverviewGrid from "../../components/detail/BalancedOverviewGrid";
+import RelationCard from "../../components/detail/RelationCard";
+import DetailHeader, { type DetailMenuGroup } from "../../components/detail/DetailHeader";
+import DetailTabs, { type DetailTabDef } from "../../components/detail/DetailTabs";
+import DetailStatRow from "../../components/detail/DetailStatRow";
 import DocumentLineage from "../../components/documents/DocumentLineage";
-import { useDocumentTab } from "../../components/documents/useDocumentTab";
+import { useDetailTab } from "../../components/detail/useDetailTab";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import EditQuote from "../../components/quotes/EditQuote";
@@ -53,23 +54,20 @@ import SendDocumentModal from "../../components/ui/SendDocumentModal";
 import { usePermission } from "../../hooks/usePermission";
 import ChangeHistory from "../../components/activity/ChangeHistory";
 import LifecycleRecord from "../../components/lifecycle/LifecycleRecord";
-import DocumentActivityPanel from "../../components/documents/DocumentActivityPanel";
+import ActivityPanel from "../../components/detail/ActivityPanel";
 
 
 // Two tabs: line items are what a dispatcher opens a quote to read, so they
-// stay in Overview. Activity absorbs the three stacked bands (notes, dispute
-// record, change history) that used to sit three scrolls below the money. The
-// invoice page carries this same pair — its payments live in the Overview
-// rail, not in a tab of their own.
-const QUOTE_TABS: readonly DocumentTabDef<"overview" | "activity">[] = [
+// stay in Overview, and Activity takes the notes, dispute record and change
+// history. The invoice page carries the same pair.
+const QUOTE_TABS: readonly DetailTabDef<"overview" | "activity">[] = [
 	{ id: "overview", label: "Overview" },
 	{ id: "activity", label: "Activity" },
 ];
 
-// What the terminal stage says when no reason was recorded. Copy lives here
-// rather than in TerminalDetail because only the page knows which end state it
-// is explaining, and "no reason recorded" would be a lie for the two that have
-// an implicit one.
+// What the terminal stage says when no reason was recorded. Here rather than in
+// TerminalDetail because only the page knows which end state it is explaining,
+// and two of them have an implicit reason.
 const NO_REASON_COPY: Record<string, string> = {
 	Expired: "Passed its valid-until date with no decision recorded.",
 	Revised: "Superseded by a newer version of this quote.",
@@ -88,7 +86,7 @@ export default function QuoteDetailPage() {
 		useReviseQuoteMutation();
 	const deleteQuote = useDeleteQuoteMutation();
 
-	const [activeTab, setActiveTab] = useDocumentTab(QUOTE_TABS);
+	const [activeTab, setActiveTab] = useDetailTab(QUOTE_TABS);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [isConvertToJobModalOpen, setIsConvertToJobModalOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -111,20 +109,19 @@ export default function QuoteDetailPage() {
 	const DELETE_QUOTE = usePermission("delete_quotes");
 	const CREATE_JOB = usePermission("create_jobs");
 	const OPEN_DISPUTE = usePermission("open_disputes");
-	//const SEND_QUOTE = usePermission(""); No dedicated send quote permission, will consider how to handle this later
+	const SEND_QUOTE = usePermission("send_quotes");
 
 	const { data: disputeList, isError: disputeStateUnknown } = useDisputesQuery(
 		"quote",
 		quoteId ?? "",
 	);
 	const disputes = disputeList?.disputes ?? NO_DISPUTES;
-	// A failed fetch defaults `disputes` to [], which is indistinguishable from
-	// "no dispute" — and every gate below keys off openDispute. Unknown is not
-	// the same as absent, so the irreversible paths close until we know.
+	// A failed fetch defaults `disputes` to [], indistinguishable from "no
+	// dispute", and every gate below keys off openDispute. Unknown is not absent,
+	// so the irreversible paths close until we know.
 	const openDispute = disputes.find((d) => d.status === "Open") ?? null;
-	// Every dispute, not just the open one: a resolved record is still the
-	// explanation for what happened to these lines. Built once as a Set rather
-	// than an includes() per row over a per-dispute array.
+	// Every dispute, not just the open one: a resolved record still explains what
+	// happened to these lines. A Set, not an includes() per row.
 	const contestedIds = useMemo(
 		() =>
 			new Set(
@@ -162,10 +159,9 @@ export default function QuoteDetailPage() {
 		new Date(quote.expires_at).getTime() < Date.now() &&
 		(quote.status === "Issued" || quote.status === "Sent" || quote.status === "Viewed");
 
-	// One derived status feeds the whole bar — stage, stepper and gating alike.
-	// Splitting them would put an effectively-expired quote on the normal stage
-	// while its step name is Expired, and QUOTE_STEPS has no Expired node, so
-	// the stepper would render with nothing lit at all.
+	// One derived status feeds stage, stepper and gating alike: split, an
+	// effectively-expired quote sits on the normal stage under the step name
+	// Expired, which QUOTE_STEPS has no node for, and nothing lights.
 	const lifecycleStatus: QuoteStatus = isEffectivelyExpired ? "Expired" : quote.status;
 
 	const handleEdit = () => {
@@ -185,9 +181,8 @@ export default function QuoteDetailPage() {
 		try {
 			await updateQuote({ id: quote.id, data: { status: "Issued" } });
 		} catch (error) {
-			// These doors now hit real refusals (an open-dispute lock, a
-			// terminal-quote immutability). A swallowed refusal reads as a dead
-			// button; the server's sentence is what the dispatcher needs.
+			// These doors hit real refusals (an open-dispute lock, a terminal
+			// quote's immutability), and a swallowed one reads as a dead button.
 			setActionError(errorMessage(error, "Couldn't mark this quote as issued."));
 		}
 	};
@@ -202,11 +197,9 @@ export default function QuoteDetailPage() {
 		}
 	};
 	// Both entry points (the lifecycle bar and the Related-Job card) gate on the
-	// one `convert` action built by quoteActions — jobsController writes the
-	// quote to Approved with no transition guard, so the sold-work / disputed /
-	// dead-quote rules in that action are the whole client-side defence, and a
-	// second hand-written copy here is exactly what let the card bill sold work
-	// twice (DW-04).
+	// one `convert` action from quoteActions. jobsController writes the quote to
+	// Approved with no transition guard, so that action's sold-work, disputed and
+	// dead-quote rules are the whole client-side defence.
 	const handleConvertToJob = () => {
 		setIsConvertToJobModalOpen(true);
 	};
@@ -228,8 +221,7 @@ export default function QuoteDetailPage() {
 			navigate(`/dispatch/quotes/${replacement.id}`);
 		} catch (error) {
 			// Surfaced, not swallowed: the server owns which statuses may be
-			// revised and its message (on the response envelope, not
-			// AxiosError.message) names them.
+			// revised, and names them on the response envelope.
 			setActionError(errorMessage(error, "Failed to create a revision."));
 		}
 	};
@@ -255,15 +247,14 @@ export default function QuoteDetailPage() {
 			await deleteQuote.mutateAsync({ id: quote.id, hardDelete: false });
 			navigate("/dispatch/quotes");
 		} catch (error) {
-			// Surfaces the D6 refusal: a quote produced by a dispute resolution
-			// is audit trail and can only be cancelled, not deleted.
+			// A quote produced by a dispute resolution is audit trail: the server
+			// allows cancelling it, never deleting it.
 			setActionError(errorMessage(error, "Couldn't delete this quote."));
 		}
 	};
 
-	// While a dispute is open its three exits ARE the lifecycle bar's actions —
-	// the normal quote actions are all gated off anyway, and the exits used to be
-	// invisible until the resolve modal was already open.
+	// While a dispute is open its three exits are the bar's actions; the normal
+	// quote actions are all gated off anyway.
 	const disputeBarActions = openDispute
 		? disputeActions(
 				"quote",
@@ -275,21 +266,18 @@ export default function QuoteDetailPage() {
 			)
 		: null;
 
-	// The dispute list failed to load while the document is still Disputed:
-	// neither "terminal" (isOffRamp counts Disputed as an off-ramp, so the bar
-	// renders "No reason recorded.") nor "normal" (the stepper lights nothing)
-	// tells the truth. Both pages take the same branch (DW-45).
+	// Dispute list failed to load while the document is still Disputed: neither
+	// "terminal" (the bar would claim "No reason recorded.") nor "normal" (the
+	// stepper lights nothing) is true, so the page says so.
 	const disputeUnknownWhileDisputed =
 		disputeStateUnknown && lifecycleStatus === "Disputed";
 
-	// One stage value for the whole page: the bar renders it, splitActions keys
-	// the slot rule off it, and the kebab's Lifecycle group is the other half of
-	// that same split. Three call sites each deriving their own is how the bar
-	// and the header menu drifted apart to begin with.
+	// One stage value for the whole page: the bar renders it, and placeActions
+	// keys both the slot rule and header-vs-bar off it.
 	const lifecycleStage: LifecycleStage =
 		openDispute || disputeUnknownWhileDisputed
 			? "dispute"
-			: isOffRamp("quote", lifecycleStatus) && lifecycleStatus !== "Viewed"
+			: isQuoteOffRamp(lifecycleStatus) && lifecycleStatus !== "Viewed"
 				? "terminal"
 				: "normal";
 
@@ -303,6 +291,7 @@ export default function QuoteDetailPage() {
 			openRefusal: disputeList?.open_refusal ?? null,
 			soldRefusal: disputeList?.sold_refusal ?? null,
 			canEdit: EDIT_QUOTE,
+			canSend: SEND_QUOTE,
 			canCreateJob: CREATE_JOB,
 			canOpenDispute: OPEN_DISPUTE,
 			revisePending,
@@ -318,12 +307,17 @@ export default function QuoteDetailPage() {
 			},
 		});
 
-	// The bar renders the inline share; this is the remainder, and it is the
-	// only reason the kebab carries a Lifecycle group at all.
-	const { overflow: lifecycleOverflow } = splitActions(lifecycleStage, lifecycleActionList);
+	// The header or the bar renders the inline share, depending on stage; this is
+	// the remainder, and the only reason the kebab has a Lifecycle group.
+	const {
+		headerActions,
+		barActions,
+		overflow: lifecycleOverflow,
+		showBar,
+	} = placeActions(lifecycleStage, lifecycleActionList);
 
-	// The Related-Job card's Convert button is the same action the bar offers —
-	// derived, never re-judged here (DW-04).
+	// The Related-Job card's Convert button is the same action the bar offers,
+	// derived rather than re-judged here.
 	const convertAction = lifecycleActionList.find((a) => a.id === "convert");
 
 	// Three separate server refusals, each with its own message: the permission
@@ -337,10 +331,9 @@ export default function QuoteDetailPage() {
 				? `A ${quote.status.toLowerCase()} quote can't be edited. Create a revision instead.`
 				: undefined;
 
-	// One button, two labeled groups: lifecycle above, utility below. Spec 3.4's
-	// distinction is now carried by the grouping rather than by a second kebab
-	// an inch from the first, which is what made it unknowable which held what.
-	const menuGroups: DocumentMenuGroup[] = [
+	// One button, two labeled groups: lifecycle above, utility below. The
+	// grouping carries the distinction, so there is no second kebab.
+	const menuGroups: DetailMenuGroup[] = [
 		{
 			id: "lifecycle",
 			label: "Lifecycle",
@@ -401,10 +394,8 @@ export default function QuoteDetailPage() {
 		},
 	];
 
-	// Derived readings, not recorded fields. The Details card keeps the record —
-	// the same division the reference page draws between ItemStatRow's computed
-	// tiles and its Details grid, and the reason the total is no longer printed
-	// twice at the same type size two cards apart.
+	// Derived readings, not recorded fields; the Details card keeps the record.
+	// The total is printed here and nowhere else on the page.
 	const validUntil = quote.valid_until ?? quote.expires_at;
 	const daysLeft = validUntil != null ? daysUntil(validUntil) : null;
 	const lineItemCount = quote.line_items?.length ?? 0;
@@ -432,21 +423,19 @@ export default function QuoteDetailPage() {
 			label: "Age",
 			icon: <Calendar size={13} />,
 			value: `${ageDays} ${ageDays === 1 ? "day" : "days"}`,
-			hint: "since created",
 		},
 	];
 
-	// Overview's blocks, built once and only PLACED by `overviewLayout` below, so
-	// neither layout branch gets its own copy of a card to drift out of sync.
 	const infoCard = (
-		<Card title="Quote Information">
-			{/* Field labels are <p>, not <h3>. Card renders its own title as an
-			    h3, so h3 labels inside it were siblings of their own container —
-			    a flat outline reading "Quote Information, Description, Address,
-			    Created" where the last three are one-line labels, not navigable
-			    sections. The invoice's Details card already used <p>; this is
-			    the two pages agreeing. */}
-			<div className="space-y-4">
+		<Card className="flex-1" title="Quote Information">
+			{/* Field labels are <p>, not <h3>: Card renders its title as an h3,
+			    so h3 labels inside it flatten the outline with one-line labels
+			    that aren't navigable sections. */}
+			{/* Two zones, not three stacked: the description holds the top and
+			    the short fields hold the base, so a stretched grid cell turns its
+			    slack into the gutter between them. DetailFieldGrid's `fill` does
+			    this for the pages that use it; this card is hand-rolled. */}
+			<div className="flex flex-1 flex-col justify-between gap-4">
 				<div>
 					<p className="text-text-tertiary text-sm mb-1">Description</p>
 					<p className="text-text-primary break-words whitespace-pre-wrap">
@@ -454,178 +443,98 @@ export default function QuoteDetailPage() {
 					</p>
 				</div>
 
-				{quote.address && (
+				<div className="space-y-4">
+					{quote.address && (
+						<div>
+							<p className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
+								<MapPin size={14} /> Address
+							</p>
+							<p className="text-text-primary break-words">
+								{quote.address}
+							</p>
+						</div>
+					)}
+
 					<div>
 						<p className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
-							<MapPin size={14} /> Address
+							<Calendar size={14} /> Created
 						</p>
-						<p className="text-text-primary break-words">
-							{quote.address}
-						</p>
+						<p className="text-text-primary">{formatDate(quote.created_at)}</p>
 					</div>
-				)}
-
-				<div>
-					<p className="text-text-tertiary text-sm mb-1 flex items-center gap-2">
-						<Calendar size={14} /> Created
-					</p>
-					<p className="text-text-primary">{formatDate(quote.created_at)}</p>
 				</div>
 			</div>
 		</Card>
 	);
 
-	const clientCard = <ClientDetailsCard client_id={quote.client_id} client={quote.client} />;
+	const clientCard = <ClientDetailsCard fill client_id={quote.client_id} client={quote.client} />;
 
 	const relationCards = (
 		<>
-			{/* Related Request */}
-			{quote.request ? (
-				<button
-					onClick={() =>
-						navigate(
-							`/dispatch/requests/${quote.request?.id}`
-						)
-					}
-					className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
-				>
-					<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
-						Related Request
-					</p>
-					<div className="flex items-start justify-between gap-3">
-						<div className="flex-1 min-w-0">
-							<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
-								{quote.request.title}
-							</h4>
-							<div className="flex items-center gap-2 text-xs text-text-muted mt-2">
-								<Calendar size={12} />
-								<span>
-									{new Date(
-										quote
-											.request
-											.created_at
-									).toLocaleDateString(
-										"en-US",
-										{
-											month: "short",
-											day: "numeric",
-											year: "numeric",
-										}
-									)}
-								</span>
-							</div>
-						</div>
+			<RelationCard
+				eyebrow="Related Request"
+				to={quote.request ? `/dispatch/requests/${quote.request.id}` : undefined}
+				emptyLabel="No request linked"
+				title={quote.request?.title}
+				meta={
+					quote.request && (
+						<>
+							<Calendar size={12} />
+							<span>{formatDate(quote.request.created_at)}</span>
+						</>
+					)
+				}
+				trailing={
+					quote.request && (
 						<span
-							className={`flex-shrink-0 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(quote.request.status)}`}
+							className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${getStatusColor(quote.request.status)}`}
 						>
 							{quote.request.status}
 						</span>
-					</div>
-				</button>
-			) : (
-				<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
-					<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
-						Related Request
-					</p>
-					<div className="flex items-center gap-2 text-text-faint text-sm">
-						<Link2Off size={14} />
-						<span>No request linked</span>
-					</div>
-				</div>
-			)}
+					)
+				}
+			/>
 
-			{/* Related Job */}
-			{quote.job ? (
-				<button
-					onClick={() =>
-						navigate(`/dispatch/jobs/${quote.job!.id}`)
-					}
-					className="w-full p-4 bg-base hover:bg-surface rounded-lg border border-border hover:border-border-strong transition-all cursor-pointer text-left group"
-				>
-					<p className="text-text-muted text-xs uppercase tracking-wide font-semibold mb-2">
-						Related Job
-					</p>
-					<div className="flex items-start justify-between gap-3">
-						<div className="flex-1 min-w-0">
-							<h4 className="text-text-primary font-medium text-sm mb-1 group-hover:text-primary-text transition-colors">
-								{quote.job.job_number}
-							</h4>
-							<p className="text-text-tertiary text-xs mb-2">
-								{quote.job.name}
-							</p>
-							<div className="flex items-center gap-2 text-xs text-text-muted">
-								<Calendar size={12} />
-								<span>
-									{new Date(
-										quote.job
-											.created_at
-									).toLocaleDateString(
-										"en-US",
-										{
-											month: "short",
-											day: "numeric",
-											year: "numeric",
-										}
-									)}
-								</span>
-							</div>
-						</div>
-						<div className="flex flex-col items-end gap-2 flex-shrink-0">
-							{quote.job.estimated_total !=
-								null && (
-								<span className="text-success-text font-semibold text-sm whitespace-nowrap">
-									{formatCurrency(
-										Number(
-											quote
-												.job
-												.estimated_total
-										)
-									)}
+			<RelationCard
+				eyebrow="Related Job"
+				to={quote.job ? `/dispatch/jobs/${quote.job.id}` : undefined}
+				emptyLabel="No job created yet"
+				title={quote.job?.job_number}
+				subtitle={quote.job?.name}
+				meta={
+					quote.job && (
+						<>
+							<Calendar size={12} />
+							<span>{formatDate(quote.job.created_at)}</span>
+						</>
+					)
+				}
+				trailing={
+					quote.job && (
+						<>
+							{quote.job.estimated_total != null && (
+								<span className="whitespace-nowrap text-sm font-semibold tabular-nums text-success-text">
+									{formatCurrency(Number(quote.job.estimated_total))}
 								</span>
 							)}
 							<span
-								className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(quote.job.status)}`}
+								className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${getStatusColor(quote.job.status)}`}
 							>
 								{quote.job.status}
 							</span>
-						</div>
-					</div>
-				</button>
-			) : (
-				<div className="p-4 bg-base/40 rounded-lg border border-dashed border-border-subtle">
-					<div className="grid grid-cols-3 gap-4">
-						<div className="col-span-2 flex flex-col gap-2">
-							<p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
-								Related Job
-							</p>
-							<div className="flex items-center gap-2 text-text-faint text-sm">
-								<Link2Off
-									size={14}
-									className="flex-shrink-0"
-								/>
-								<span>
-									No job created yet
-								</span>
-							</div>
-						</div>
-						<div className="col-span-1 flex items-center justify-end">
-								<button
-									title={convertAction?.disabledReason}
-									disabled={convertAction?.disabled ?? true}
-									onClick={(e) => {
-										if (convertAction?.disabled ?? true) return;
-										e.stopPropagation();
-										convertAction?.onSelect();
-									}}
-									className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-primary-active rounded-md text-xs font-medium text-on-primary transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									<Briefcase size={12} />{" "}
-									Convert to Job
-								</button>
-						</div>
-					</div>
-				</div>
-			)}
+						</>
+					)
+				}
+				emptyAction={
+					<button
+						title={convertAction?.disabledReason}
+						disabled={convertAction?.disabled ?? true}
+						onClick={() => convertAction?.onSelect()}
+						className="flex items-center gap-2 px-3 py-1.5 bg-primary-hover hover:bg-primary-active rounded-md text-xs font-medium text-on-primary transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+					>
+						<Briefcase size={12} /> Convert to Job
+					</button>
+				}
+			/>
 		</>
 	);
 
@@ -659,24 +568,13 @@ export default function QuoteDetailPage() {
 		/>
 	);
 
-	// Two layouts, chosen by whether the info card has long-form content to
-	// hold. With no description and no address it collapses to a lone Created
-	// field, and a one-field card beside the client card leaves a dead third —
-	// the underfilled-rail failure the reference page's `overviewLayout` exists
-	// to avoid. So in that case the card is dropped (it would say nothing the
-	// stat row and the client card do not) and the client card joins the request
-	// and job cards as an equal third of one row, which always fills: both
-	// relation cards render either their document or a dashed empty state.
-	const overviewLayout: "rail" | "split" =
-		quote.description || quote.address ? "rail" : "split";
-
 	return (
 		<div className="text-text-primary pb-4 md:pb-6">
 			{/* Header, lifecycle and the tab strip are one unit: a tight stack
 			    closed by the strip's bottom border, rather than cards floating
 			    at the same weight as the body below them. */}
 			<div className="space-y-4">
-				<DocumentDetailHeader
+				<DetailHeader
 					title={quote.quote_number}
 					badges={<DocumentLineage kind="quote" lineage={quote.lineage} />}
 					meta={quote.title}
@@ -700,44 +598,49 @@ export default function QuoteDetailPage() {
 							{lifecycleStatus}
 						</span>
 					}
+					inlineActions={<LifecycleActions actions={headerActions} />}
 					menuGroups={menuGroups}
 					menuLabel="Quote actions"
 					onMenuClose={() => setDeleteConfirm(false)}
 				/>
 
-				<LifecycleBar
-					kind="quote"
-					stage={lifecycleStage}
-					currentStatus={lifecycleStatus}
-					actions={lifecycleActionList}
-					detail={
-						openDispute ? (
-							<DisputeStage
-								kind="quote"
-								dispute={openDispute}
-								lineItems={quote.line_items ?? []}
-							/>
-						) : disputeUnknownWhileDisputed ? (
-							<p className="text-sm text-warning-text">
-								This quote's dispute couldn't be loaded, so its
-								status and exits aren't shown. Reload the page.
-							</p>
-						) : (
-							<TerminalDetail
-								reason={quote.rejection_reason}
-								at={
-									lifecycleStatus === "Rejected"
-										? quote.rejected_at
-										: null
-								}
-								noReasonLabel={
-									NO_REASON_COPY[lifecycleStatus] ??
-									"No reason recorded."
-								}
-							/>
-						)
-					}
-				/>
+				{showBar && (
+					<LifecycleBar
+						steps={QUOTE_STEPS}
+						stepLabels={QuoteStatusLabels}
+						stage={lifecycleStage}
+						currentStatus={lifecycleStatus}
+						track={false}
+						actions={barActions}
+						detail={
+							openDispute ? (
+								<DisputeStage
+									kind="quote"
+									dispute={openDispute}
+									lineItems={quote.line_items ?? []}
+								/>
+							) : disputeUnknownWhileDisputed ? (
+								<p className="text-sm text-warning-text">
+									This quote's dispute couldn't be loaded, so its
+									status and exits aren't shown. Reload the page.
+								</p>
+							) : (
+								<TerminalDetail
+									reason={quote.rejection_reason}
+									at={
+										lifecycleStatus === "Rejected"
+											? quote.rejected_at
+											: null
+									}
+									noReasonLabel={
+										NO_REASON_COPY[lifecycleStatus] ??
+										"No reason recorded."
+									}
+								/>
+							)
+						}
+					/>
+				)}
 
 				{actionError && (
 					<p className="text-sm text-error-text" role="alert">
@@ -745,9 +648,7 @@ export default function QuoteDetailPage() {
 					</p>
 				)}
 
-				{/* Directly under the bar on BOTH pages. The invoice put this
-				    above its bar and the quote below it, the kind of drift
-				    criterion 9 exists to stop. */}
+				{/* Directly under the bar, as on the invoice page. */}
 				{disputeStateUnknown && (
 					<div className="flex items-center gap-2 rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text">
 						<AlertTriangle size={16} className="flex-shrink-0" />
@@ -759,11 +660,24 @@ export default function QuoteDetailPage() {
 					</div>
 				)}
 
-				<DocumentTabs
+				<DetailTabs
 					tabs={QUOTE_TABS}
 					activeTab={activeTab}
 					onSelect={setActiveTab}
 					label="Quote sections"
+					progress={
+						<LifecycleRule
+							steps={QUOTE_STEPS}
+							stepLabels={QuoteStatusLabels}
+							currentStatus={lifecycleStatus}
+							haltedAt={openDispute?.status_at_open ?? null}
+							tone={
+								lifecycleStage === "dispute"
+									? "warning"
+									: "default"
+							}
+						/>
+					}
 				/>
 			</div>
 
@@ -775,73 +689,20 @@ export default function QuoteDetailPage() {
 					className="mt-6 space-y-4"
 				>
 					<h2 className="sr-only">Overview</h2>
-					<DocumentStatRow tiles={statTiles} />
+					<DetailStatRow tiles={statTiles} />
 
-					{overviewLayout === "rail" ? (
-						<>
-							{/* The relation cards ride in the main
-							    column, not below the row, and they
-							    ABSORB the leftover height rather than
-							    sitting at their content height: Quote
-							    Information (~263px) plus a 60px strip
-							    left the column ending ~18px above the
-							    client card (~370px), and a 60px strip
-							    under a 263px card read as a footnote
-							    rather than a section.
-
-							    The row therefore stretches (no
-							    `items-start`) so the main column takes
-							    the full row height, the relations grid
-							    takes `flex-1` of what Quote Information
-							    leaves, and its cards stretch into it —
-							    the two columns finish on the same line.
-							    The rail pins itself with `self-start` so
-							    the reverse case (a long description
-							    making the main column the taller one)
-							    still ends the client card at its own
-							    height instead of stretching it into a
-							    half-empty card. */}
-							<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-								<div className="lg:col-span-2 flex flex-col gap-4">
-									{infoCard}
-									<div className="grid flex-1 grid-cols-1 sm:grid-cols-2 gap-4">
-										{relationCards}
-									</div>
-								</div>
-								<div className="lg:col-span-1 self-start">
-									{clientCard}
-								</div>
-							</div>
-							{financialBlock}
-						</>
-					) : (
-						<>
-							{/* No info card to anchor a main column, so
-							    the client card pairs against the two
-							    relation cards stacked, rather than a
-							    third of the row holding one short card.
-							    `grid-rows-2` rather than a flex stack:
-							    it splits the client card's height into
-							    two equal stretched rows, which grows the
-							    cards without reaching into their own
-							    markup for a `flex-1`. There are always
-							    exactly two — request and job each render
-							    either their document or an empty
-							    state. */}
-							<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-								{clientCard}
-								<div className="grid grid-rows-2 gap-4">
-									{relationCards}
-								</div>
-							</div>
-							{financialBlock}
-						</>
-					)}
+					<BalancedOverviewGrid
+						recordId={quote.id}
+						infoCard={infoCard}
+						block={relationCards}
+						railCard={clientCard}
+					/>
+					{financialBlock}
 				</div>
 			)}
 
 			{activeTab === "activity" && (
-				<DocumentActivityPanel
+				<ActivityPanel
 					notes={<NoteManager quoteId={quoteId!} />}
 					lifecycle={<LifecycleRecord disputes={disputes} />}
 					history={
