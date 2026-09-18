@@ -653,13 +653,13 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 							height: HEADER_H,
 							position: "sticky",
 							top: 0,
-							borderBottom: "1px solid var(--color-border)",
+							borderBottom: "1px solid var(--color-grid-line-strong)",
 							backgroundColor: "var(--color-canvas)",
 							zIndex: 30,
 						}}
 					>
 						{/* Gutter header cell */}
-						<div style={{ borderRight: "1px solid var(--color-border)" }} />
+						<div style={{ borderRight: "1px solid var(--color-grid-line-strong)" }} />
 						{weekDays.map((dateStr) => {
 							const { weekday, day } = formatDayHeader(dateStr);
 							const isToday = dateStr === todayStr;
@@ -667,7 +667,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 								<div
 									key={dateStr}
 									style={{
-										borderLeft: "1px solid var(--color-border)",
+										borderLeft: "1px solid var(--color-grid-line-strong)",
 										display: "flex",
 										alignItems: "center",
 										paddingLeft: 10,
@@ -708,7 +708,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 								gridTemplateColumns,
 								position: "sticky",
 								top: HEADER_H,
-								borderBottom: "1px solid var(--color-border)",
+								borderBottom: "1px solid var(--color-grid-line-strong)",
 								backgroundColor: "var(--color-canvas)",
 								zIndex: 20,
 							}}
@@ -716,7 +716,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 							{/* Anytime toggle cell */}
 							<div
 								style={{
-									borderRight: "1px solid var(--color-border)",
+									borderRight: "1px solid var(--color-grid-line-strong)",
 									display: "flex",
 									alignItems: "flex-start",
 									justifyContent: "flex-end",
@@ -766,7 +766,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 										onDragLeave={handleAnytimeCellDragLeave}
 										onDrop={(e) => handleAnytimeCellDrop(e, dateStr)}
 										style={{
-											borderLeft: "1px solid var(--color-border)",
+											borderLeft: "1px solid var(--color-grid-line-strong)",
 											padding: "4px 5px",
 											minHeight: anytimeOpen ? undefined : 28,
 											outline: dragOverAnytimeDay === dateStr ? "2px solid var(--color-primary)" : undefined,
@@ -1023,7 +1023,7 @@ export default function ScheduleBoard({ jobs, technicians }: ScheduleBoardProps)
 									left: 0,
 									zIndex: 10,
 									backgroundColor: "var(--color-canvas)",
-									borderRight: "1px solid var(--color-border)",
+									borderRight: "1px solid var(--color-grid-line-strong)",
 									height: totalSlots * SLOT_H,
 								}}
 							>
