@@ -845,7 +845,9 @@ export default function AdjustStockModal({
 			<div
 				{...dialogA11y}
 				aria-label={STEP_TITLES[modalStep]}
-				className="bg-canvas border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
+				// overflow-hidden, not just rounded-xl: the step footers are sticky with an
+				// opaque bg-base, so without clipping they paint square over the bottom corners.
+				className="bg-canvas border border-border rounded-xl overflow-hidden shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
 			>
 				{/* Header */}
 				<div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">

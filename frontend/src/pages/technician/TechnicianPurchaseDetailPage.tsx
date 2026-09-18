@@ -35,6 +35,7 @@ import {
 import { useToast } from "../../components/ui/useToast";
 import { money } from "../../components/fieldPurchases/fieldPurchaseFormat";
 import { errorMessage } from "../../util/util";
+import TechPage from "../../components/technician/TechPage";
 import {
 	FIELD_PURCHASE_STATUS_LABELS,
 	isTechEditable,
@@ -84,14 +85,18 @@ export default function TechnicianPurchaseDetailPage() {
 	const { data, isLoading, isError, isFetching, refetch } = useFieldPurchase(purchaseId);
 
 	if (isLoading) {
-		return <p className="p-4 text-sm text-text-muted">Loading…</p>;
+		return (
+			<TechPage>
+				<p className="text-sm text-text-muted">Loading…</p>
+			</TechPage>
+		);
 	}
 
 	// A failed request must not render the loading line forever, which at a supply
 	// counter would read as a phone that has hung rather than one that needs a retry.
 	if (isError || !data) {
 		return (
-			<div className="flex items-start gap-3 rounded-xl border border-border bg-base p-4">
+			<TechPage className="flex items-start gap-3 rounded-xl border border-border bg-base p-4">
 				<WifiOff
 					size={18}
 					aria-hidden
@@ -131,7 +136,7 @@ export default function TechnicianPurchaseDetailPage() {
 						</Link>
 					</div>
 				</div>
-			</div>
+			</TechPage>
 		);
 	}
 	return <PurchaseSheet purchase={data.purchase} />;
@@ -492,7 +497,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 		// No page padding: the technician layout already supplies it, including its
 		// own pb-20. `pb` adds what the fixed action bar needs on top of the equally
 		// fixed bottom nav — 65px + 64px against the layout's 80, plus slack.
-		<div className="space-y-4 pb-16">
+		<TechPage className="space-y-4 pb-16">
 			{/* Status and total stay put: the line list is long enough that a
 			    technician scrolling it loses both, and both decide what to do next.
 			    Discard rides up here rather than under the submit — it is
@@ -997,7 +1002,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 					)}
 				</div>
 			)}
-		</div>
+		</TechPage>
 	);
 }
 

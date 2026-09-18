@@ -173,9 +173,12 @@ function ApprovalSheet({
 		<div
 			{...dialogProps}
 			aria-label="Request approval before buying"
-			className="fixed inset-0 z-[60] flex items-end bg-overlay"
+			className="fixed inset-0 z-[60] flex items-end justify-center bg-overlay lg:items-center"
 		>
-			<div className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl border-t border-border bg-canvas p-4">
+			{/* Sheet on phones, centered panel on desktop: full width past lg stretched
+			    this form edge to edge. lg:max-w-lg is TechPage's "narrow" tier, which is
+			    what a single-column form reads as. */}
+			<div className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl border-t border-border bg-canvas p-4 lg:max-w-lg lg:rounded-2xl lg:border">
 				<h2 className="text-sm font-semibold text-text-primary">
 					Request approval before buying
 				</h2>

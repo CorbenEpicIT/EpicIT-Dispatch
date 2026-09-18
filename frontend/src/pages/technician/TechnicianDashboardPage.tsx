@@ -10,6 +10,7 @@ import type { NotePhoto } from "../../components/technicianComponents/AddNotePho
 import type { JobVisit, VisitStatus } from "../../types/jobs";
 import { formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
+import TechPage from "../../components/technician/TechPage";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ export default function TechnicianDashboardPage() {
 
 	if (isLoading) {
 		return (
-			<div className="px-4 sm:px-6 pt-5 pb-8 max-w-lg w-full space-y-4 lg:max-w-4xl lg:px-8">
+			<TechPage width="wide" className="space-y-4">
 				<div className="h-7 w-36 bg-surface rounded animate-pulse" />
 				<div className="h-4 w-28 bg-surface rounded animate-pulse" />
 				<div className="h-28 bg-surface rounded-xl animate-pulse mt-2" />
@@ -237,19 +238,19 @@ export default function TechnicianDashboardPage() {
 						className="h-[52px] bg-surface rounded-lg animate-pulse"
 					/>
 				))}
-			</div>
+			</TechPage>
 		);
 	}
 
 	if (error) {
 		return (
-			<div className="px-4 sm:px-6 pt-5 max-w-lg w-full">
+			<TechPage>
 				<div className="p-4 bg-error/10 border border-error/20 rounded-lg">
 					<p className="text-sm text-error-text">
 						Failed to load schedule.
 					</p>
 				</div>
-			</div>
+			</TechPage>
 		);
 	}
 
@@ -258,7 +259,7 @@ export default function TechnicianDashboardPage() {
 	// Offline → Start Shift gate
 	if (techProfile?.status === "Offline") {
 		return (
-			<div className="px-4 sm:px-6 pt-5 max-w-lg w-full flex flex-col items-center justify-center min-h-[60vh] gap-6">
+			<TechPage className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
 				<div className="text-center">
 					<h1 className="text-2xl font-bold text-text-primary mb-1">
 						Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"},{" "}
@@ -274,12 +275,12 @@ export default function TechnicianDashboardPage() {
 					<LogIn size={18} />
 					{goAvailableMutation.isPending ? "Starting…" : "Start Shift"}
 				</button>
-			</div>
+			</TechPage>
 		);
 	}
 
 	return (
-		<div className="px-4 sm:px-6 pt-5 pb-10 max-w-lg w-full lg:max-w-4xl lg:px-8">
+		<TechPage width="wide" className="pb-10">
 			{/* Vehicle warning banner */}
 			{noVehicle && !vehicleBannerDismissed && (
 				<div className="flex items-center justify-between gap-2 mb-4 px-3 py-2.5 rounded-lg bg-warning/10 border border-warning/20 text-warning-text">
@@ -733,7 +734,7 @@ export default function TechnicianDashboardPage() {
 					onSubmit={handleAddNotePhoto}
 				/>
 			)}
-		</div>
+		</TechPage>
 	);
 }
 
