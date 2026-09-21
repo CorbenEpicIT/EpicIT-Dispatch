@@ -86,7 +86,7 @@ const lineSchema = z
 
 export const createPurchaseSchema = z.object({
 	vendor_name: z.string().trim().min(1, "Vendor name is required").max(VENDOR_NAME_MAX),
-	supplier_id: z.string({ error: "Supplier is required" }).uuid(),
+	supplier_id: z.string().uuid("Supplier is required"),
 	purchased_at: z.coerce.date().optional(),
 	tax_group_id: z.string().uuid().nullable().optional(),
 	tax_amount: money("Tax amount").optional(),
@@ -96,7 +96,7 @@ export const createPurchaseSchema = z.object({
 
 export const updatePurchaseSchema = z.object({
 	vendor_name: z.string().trim().min(1, "Vendor name is required").max(VENDOR_NAME_MAX),
-	supplier_id: z.string({ error: "Supplier is required" }).uuid(),
+	supplier_id: z.string().uuid("Supplier is required"),
 	purchased_at: z.coerce.date().optional(),
 	tax_group_id: z.string().uuid().nullable().optional(),
 	tax_amount: money("Tax amount").optional(),

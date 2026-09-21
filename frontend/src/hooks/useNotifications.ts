@@ -22,7 +22,11 @@ export const useNotificationsQuery = (
 		if (!technicianId) return;
 
 		const handler = (notif: TechnicianNotification) => {
-			queryClient.setQueryData<TechnicianNotification[]>(queryKey, (prev = []) => [notif, ...prev]);
+			// Layout badge + notifications page each mount their own handler
+			// for the same event — dedupe by id.
+			queryClient.setQueryData<TechnicianNotification[]>(queryKey, (prev = []) =>
+				prev.some((n) => n.id === notif.id) ? prev : [notif, ...prev],
+			);
 			onNewRef.current?.(notif);
 		};
 
