@@ -58,6 +58,26 @@ export interface CreateInvoicePayload {
 // SHARED INCLUDE — exported so controller and other read paths can reuse
 // ============================================================================
 
+/**
+ * How far up the chain an invoice can be backtracked: the job's own quote and
+ * request. Spread into both join paths, which don't overlap — an invoice built
+ * from visits alone has no `invoice_job` row, so its only route to a quote is
+ * through each visit's parent job.
+ */
+const JOB_UPSTREAM_SELECT = {
+	quote: {
+		select: {
+			id: true,
+			quote_number: true,
+			title: true,
+			status: true,
+			total: true,
+			created_at: true,
+		},
+	},
+	request: { select: { id: true, title: true, status: true, created_at: true } },
+} as const;
+
 export const invoiceInclude = {
 	client: {
 		select: {
@@ -100,6 +120,7 @@ export const invoiceInclude = {
 					job_number: true,
 					name: true,
 					status: true,
+					...JOB_UPSTREAM_SELECT,
 				},
 			},
 		},
@@ -112,7 +133,17 @@ export const invoiceInclude = {
 					scheduled_start_at: true,
 					scheduled_end_at: true,
 					status: true,
-					job: { select: { id: true, job_number: true, name: true } },
+					job: {
+						select: {
+							id: true,
+							job_number: true,
+							name: true,
+							// status, because VisitReference types this
+							// job as a full JobReference.
+							status: true,
+							...JOB_UPSTREAM_SELECT,
+						},
+					},
 				},
 			},
 		},

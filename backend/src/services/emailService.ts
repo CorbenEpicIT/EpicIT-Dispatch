@@ -7,6 +7,7 @@ import {
 	ErrorCodes,
 } from "../types/responses.js";
 import { log } from "../services/appLogger.js";
+import { translateSendError } from "./emailErrors.js";
 import { generateQuotePdf, generateInvoicePdf } from "../lib/pdf/pdfService.js";
 import { getQuoteById } from "../controllers/quotesController.js";
 import { getInvoiceById } from "../controllers/invoicesController.js";
@@ -406,9 +407,7 @@ export const sendQuoteEmail = async (
 			},
 			"Postmark failed to send quote email",
 		);
-		throw new Error(
-			`Email delivery failed: ${err.message ?? "unknown Postmark error"}`,
-		);
+		throw translateSendError(err);
 	}
 
 	log.info({ quoteId, recipientEmail }, "Quote email sent");
@@ -477,9 +476,7 @@ export const sendInvoiceEmail = async (
 			},
 			"Postmark failed to send invoice email",
 		);
-		throw new Error(
-			`Email delivery failed: ${err.message ?? "unknown Postmark error"}`,
-		);
+		throw translateSendError(err);
 	}
 
 	log.info({ invoiceId, recipientEmail }, "Invoice email sent");

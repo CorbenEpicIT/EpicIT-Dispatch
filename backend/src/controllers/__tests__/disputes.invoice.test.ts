@@ -267,7 +267,7 @@ describe("invoice dispute eligibility", () => {
 
 		expect(result).toHaveProperty(
 			"err",
-			"A Draft invoice can't be disputed. Disputes may be opened from: Issued, Sent, Viewed, PartiallyPaid, Paid.",
+			"A Draft invoice can't be disputed. Disputes may be opened from: Created, Sent, Viewed, Partially Paid, Fully Paid.",
 		);
 	});
 });

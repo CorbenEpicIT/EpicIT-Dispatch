@@ -3,11 +3,14 @@
 const DISPATCHER_CATALOG = [
 	{ category: "Jobs", permissions: ["view_jobs", "create_jobs", "edit_jobs", "delete_jobs"] },
 	{ category: "Requests", permissions: ["view_requests", "create_requests", "edit_requests", "delete_requests"] },
-	{ category: "Quotes", permissions: ["view_quotes", "create_quotes", "edit_quotes", "delete_quotes"] },
+	// send_quotes is separate from edit_quotes on purpose: a clerk who mails
+	// finished quotes has no business changing the prices on them, and an
+	// estimator who drafts them has no business contacting the client.
+	{ category: "Quotes", permissions: ["view_quotes", "create_quotes", "edit_quotes", "send_quotes", "delete_quotes"] },
 	// refund_invoices covers cash leaving the business — a refund row, and the
 	// void of an invoice. Separate from edit_invoices, which also covers fixing a
 	// due date.
-	{ category: "Invoices", permissions: ["view_invoices", "create_invoices", "edit_invoices", "delete_invoices", "refund_invoices"] },
+	{ category: "Invoices", permissions: ["view_invoices", "create_invoices", "edit_invoices", "send_invoices", "delete_invoices", "refund_invoices"] },
 	{ category: "Clients", permissions: ["view_clients", "create_clients", "edit_clients", "delete_clients"] },
 	{ category: "Inventory", permissions: ["view_inventory", "manage_inventory"] },
 	{ category: "Reports", permissions: ["view_reports", "export_reports"] },

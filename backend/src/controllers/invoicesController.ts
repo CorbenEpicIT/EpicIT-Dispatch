@@ -68,12 +68,66 @@ export const getInvoiceById = async (id: string, organizationId: string) => {
 	});
 };
 
+/**
+ * The job and visit rows a line names that the join tables do not.
+ *
+ * `source_job_id` / `source_visit_id` are bare scalars with no FK, so no include
+ * reaches them, and an adjustment inherits its root's line attribution without
+ * the root's `invoice_job` rows. Kept out of `jobs` / `visits`: these are not
+ * billing links, carry no `billed_amount`, and must never be summed as one.
+ */
+const resolveUnlinkedLineSources = async (
+	invoice: {
+		line_items: { source_job_id: string | null; source_visit_id: string | null }[];
+		jobs: { job_id: string }[];
+		visits: { visit_id: string }[];
+	},
+	organizationId: string,
+) => {
+	const linkedJobIds = new Set(invoice.jobs.map((j) => j.job_id));
+	const linkedVisitIds = new Set(invoice.visits.map((v) => v.visit_id));
+
+	const jobIds = new Set<string>();
+	const visitIds = new Set<string>();
+	for (const line of invoice.line_items) {
+		if (line.source_job_id && !linkedJobIds.has(line.source_job_id)) {
+			jobIds.add(line.source_job_id);
+		}
+		if (line.source_visit_id && !linkedVisitIds.has(line.source_visit_id)) {
+			visitIds.add(line.source_visit_id);
+		}
+	}
+	if (jobIds.size === 0 && visitIds.size === 0) return { jobs: [], visits: [] };
+
+	// Scoped: an id copied down an adjustment chain is still an id, and cross-org
+	// attribution must resolve to nothing, not to another org's job number.
+	const sdb = getScopedDb(organizationId);
+	const [jobs, visits] = await Promise.all([
+		jobIds.size > 0
+			? sdb.job.findMany({
+					where: { id: { in: [...jobIds] } },
+					select: invoiceInclude.jobs.include.job.select,
+				})
+			: [],
+		visitIds.size > 0
+			? sdb.job_visit.findMany({
+					where: { id: { in: [...visitIds] } },
+					select: invoiceInclude.visits.include.visit.select,
+				})
+			: [],
+	]);
+	return { jobs, visits };
+};
+
 /** getInvoiceById plus the resolved revision lineage — for the detail GET. */
 export const getInvoiceDetail = async (id: string, organizationId: string) => {
 	const invoice = await getInvoiceById(id, organizationId);
 	if (!invoice) return null;
-	const lineage = await resolveDocumentLineage("invoice", id, organizationId);
-	return { ...invoice, lineage };
+	const [lineage, unlinked_sources] = await Promise.all([
+		resolveDocumentLineage("invoice", id, organizationId),
+		resolveUnlinkedLineSources(invoice, organizationId),
+	]);
+	return { ...invoice, lineage, unlinked_sources };
 };
 
 export const getInvoicesByClientId = async (clientId: string, organizationId: string) => {
@@ -236,7 +290,7 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 				Number(existing.amount_paid ?? 0),
 			);
 			if (blocked) return { err: blocked };
-			// The rule Repeal enforces too (D1): an adjustment is its own live
+			// The rule Repeal enforces too: an adjustment is its own live
 			// document, so voiding the invoice it adjusts would leave the credit
 			// standing in receivables against a dead parent.
 			const liveAdjustments = await sdb.invoice.findMany({
@@ -311,10 +365,10 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 		const updated = await sdb.$transaction(async (tx) => {
 			// ── Line item replacement ──────────────────────────────────────
 			if (parsed.line_items !== undefined) {
-				// Guard: cannot modify line items on an issued (snapshot-locked) invoice
+				// Guard: cannot modify line items on a finalized (snapshot-locked) invoice
 				if (isLocked) {
 					throw new DocumentRuleError(
-						"This invoice is issued — its line items are locked. Issue an adjustment instead.",
+						"This invoice is no longer a draft — its line items are locked. Issue an adjustment instead.",
 					);
 				}
 
@@ -587,9 +641,8 @@ export const updateInvoice = async (req: Request, organizationId: string, contex
 				err: `Validation failed: ${e.issues.map((i) => i.message).join(", ")}`,
 			};
 		}
-		// A rule refusing the write is the caller's answer, not a fault — it
-		// must not be flattened into "Internal server error" the way this
-		// controller's own line-item lock used to be.
+		// A rule refusing the write is the caller's answer, not a fault, so it
+		// must not flatten into "Internal server error".
 		if (e instanceof DocumentRuleError) {
 			return { err: e.message };
 		}
@@ -669,7 +722,7 @@ export const insertInvoicePayment = async (
 
 		const sdb = getScopedDb(organizationId);
 		// Every check below reads under the invoice row lock. Payments stay
-		// allowed while a dispute is open (D7), so a payment racing a Repeal on
+		// allowed while a dispute is open, so a payment racing a Repeal on
 		// the same invoice is ordinary use: resolveDispute takes the same lock,
 		// and whichever commits second reads the other's write instead of both
 		// passing a money check made against stale rows. organization_id is in
@@ -699,7 +752,7 @@ export const insertInvoicePayment = async (
 			// The UI has always refused this; the server now agrees.
 			if (invoice.status === "Draft") {
 				return {
-					err: "Issue or send the invoice before recording a payment.",
+					err: "Create or send the invoice before recording a payment.",
 				};
 			}
 

@@ -59,6 +59,7 @@ import { MAINTENANCE_CATEGORY_LABELS } from "../../types/vehicles";
 import type { InventoryItem } from "../../types/inventory";
 import { unitLabel } from "../../lib/units";
 import CreateMaintenanceReminderModal from "../../components/vehicles/maintenance/CreateMaintenanceReminderModal";
+import TechPage from "../../components/technician/TechPage";
 
 // ── Vehicle Status ────────────────────────────────────────────────────────────
 
@@ -1183,7 +1184,7 @@ export default function TechnicianVehiclePage() {
 	if (switchPendingId) {
 		const pending = vehicles.find((v) => v.id === switchPendingId);
 		return (
-			<div className="max-w-lg mx-auto space-y-4">
+			<TechPage className="space-y-4">
 				<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 					<div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
 						<Truck size={15} className="text-text-muted" />
@@ -1225,12 +1226,12 @@ export default function TechnicianVehiclePage() {
 						</div>
 					</div>
 				</div>
-			</div>
+			</TechPage>
 		);
 	}
 
 	return (
-		<div className="max-w-lg mx-auto space-y-4">
+		<TechPage className="space-y-4">
 			{/* ── Vehicle card ──────────────────────────────────────────────────── */}
 			<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 				<div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">

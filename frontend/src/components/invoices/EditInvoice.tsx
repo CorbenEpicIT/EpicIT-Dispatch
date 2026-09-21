@@ -9,6 +9,8 @@ import { useUpdateInvoiceMutation } from "../../hooks/useInvoices";
 import DatePicker from "../ui/DatePicker";
 import Dropdown from "../ui/Dropdown";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import { FormErrorBanner } from "../ui/forms/FormErrorBanner";
+import { errorMessage } from "../../util/util";
 import LineItemsSection from "../ui/forms/LineItemsSection";
 import { useAllInventoryQuery } from "../../hooks/useInventory";
 import FinancialSummary from "../ui/forms/FinancialSummary";
@@ -350,7 +352,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 			setIsModalOpen(false);
 		} catch (error) {
 			console.error("Failed to update invoice:", error);
-			setSubmitError(error instanceof Error ? error.message : "Failed to update invoice. Please try again.");
+			setSubmitError(errorMessage(error, "Failed to update invoice. Please try again."));
 		} finally {
 			setIsLoading(false);
 		}
@@ -880,11 +882,7 @@ const EditInvoice = ({ isModalOpen, setIsModalOpen, invoice }: EditInvoiceProps)
 			isEditMode={true}
 		>
 			<>
-				{submitError && (
-					<div className="mb-2 rounded border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
-						{submitError}
-					</div>
-				)}
+				<FormErrorBanner message={submitError} className="mb-2" />
 				{stepContent}
 			</>
 		</FormWizardContainer>

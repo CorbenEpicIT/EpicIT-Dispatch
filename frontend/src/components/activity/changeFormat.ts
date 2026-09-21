@@ -133,7 +133,7 @@ const FIELD_LABELS: Record<string, string> = {
 	target_end_at: "Target end",
 	starts_at: "Start date",
 	completed_at: "Completed",
-	issue_date: "Issue date",
+	issue_date: "Created date",
 	due_date: "Due date",
 	client_id: "Client",
 	project_id: "Project",

@@ -110,7 +110,11 @@ router.post("/invoices/:id/sync", requirePermission("edit_invoices"), async (req
 	}
 });
 
-router.post("/invoices/:id/email", async (req, res, next) =>{
+// Gated on send_invoices, not edit_invoices: mailing the invoice through
+// QuickBooks is the same business act as mailing it through Postmark, so it
+// cannot be the one door that skips the permission. This route carried no gate
+// at all before — the router is mounted with verifyToken alone.
+router.post("/invoices/:id/email", requirePermission("send_invoices"), async (req, res, next) =>{
 	try {
 		const invoiceId = req.params.id as string;
 		const orgId = req.user!.organization_id as string;

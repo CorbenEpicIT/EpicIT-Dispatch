@@ -1,37 +1,40 @@
-export interface DocumentTabDef<T extends string> {
+import type { ReactNode } from "react";
+
+export interface DetailTabDef<T extends string> {
 	id: T;
 	label: string;
 }
 
-interface DocumentTabsProps<T extends string> {
-	tabs: readonly DocumentTabDef<T>[];
+interface DetailTabsProps<T extends string> {
+	tabs: readonly DetailTabDef<T>[];
 	activeTab: T;
 	onSelect: (tab: T) => void;
 	/** Names the strip for a screen reader, e.g. "Quote sections". */
 	label: string;
+	/**
+	 * Optional lifecycle read-out fused to the top of the strip — "where in the
+	 * run" and "which view" are one question. Omitted renders the bare strip.
+	 */
+	progress?: ReactNode;
 }
 
 /**
- * The bordered strip that sits flush beneath the header, so the header and
- * everything under it read as one unit rather than two floating cards.
+ * The bordered strip that sits flush beneath the header, so the two read as one
+ * unit rather than two floating cards.
  *
- * Roving tabindex: only the selected tab is in the tab order, and
- * Left/Right/Home/End move between them — the WAI-ARIA tabs pattern. Without it
- * a strip announces itself as a tablist and then behaves like unrelated
- * buttons. Lifted from InventoryItemDetailPage rather than re-derived, and
- * shared so quote and invoice cannot each grow their own copy to rot.
- *
- * Panels stay with the caller: each page's `role="tabpanel"` /
- * `aria-labelledby="tab-<id>"` wrapper pairs with the `tab-<id>` ids minted
- * here.
+ * Roving tabindex per the WAI-ARIA tabs pattern: only the selected tab is in
+ * the tab order, Left/Right/Home/End move between them. Panels stay with the
+ * caller — each page's `aria-labelledby="tab-<id>"` wrapper pairs with the
+ * `tab-<id>` ids minted here.
  */
-export default function DocumentTabs<T extends string>({
+export default function DetailTabs<T extends string>({
 	tabs,
 	activeTab,
 	onSelect,
 	label,
-}: DocumentTabsProps<T>) {
-	return (
+	progress,
+}: DetailTabsProps<T>) {
+	const strip = (
 		<div role="tablist" aria-label={label} className="flex border-b border-border">
 			{tabs.map((tab, i) => (
 				<button
@@ -60,14 +63,10 @@ export default function DocumentTabs<T extends string>({
 						// has to actually receive it.
 						document.getElementById(`tab-${next.id}`)?.focus();
 					}}
-					// The label takes `text-primary-text`, not `text-primary`.
-					// `--color-primary` (#3b82f6) is not theme-swapped and
-					// lands at ~3.7:1 on the light theme's white base — a 1.4.3
-					// failure at 14px. `--color-primary-text` is the tuned pair
-					// (#1d4ed8 / #93c5fd) and clears AA in both. The 2px
-					// underline keeps `border-primary`: a UI-component border
-					// only owes 3:1, and selection is carried by aria-selected
-					// and weight as well as colour.
+					// `text-primary-text`, not `text-primary`: the latter
+					// isn't theme-swapped and lands at ~3.7:1 on the light
+					// base. The underline keeps `border-primary` — a
+					// UI-component border only owes 3:1.
 					className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors duration-150 ease-out ${
 						activeTab === tab.id
 							? "border-primary text-primary-text"
@@ -77,6 +76,15 @@ export default function DocumentTabs<T extends string>({
 					{tab.label}
 				</button>
 			))}
+		</div>
+	);
+
+	if (!progress) return strip;
+
+	return (
+		<div className="flex flex-col gap-2">
+			{progress}
+			{strip}
 		</div>
 	);
 }

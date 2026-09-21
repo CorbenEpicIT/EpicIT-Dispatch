@@ -693,9 +693,9 @@ export default function ScheduleBoardDayColumn({
 				style={{
 					position: "relative",
 					height: columnHeight,
-					backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent",
-					borderLeft: "1px solid var(--color-border)",
-					borderBottom: "1px solid var(--color-border)",
+					backgroundColor: isToday ? "var(--color-grid-today-tint)" : "transparent",
+					borderLeft: "1px solid var(--color-grid-line-strong)",
+					borderBottom: "1px solid var(--color-grid-line-strong)",
 					overflow: "visible",
 				}}
 				onDragOver={handleDragOver}
@@ -712,7 +712,7 @@ export default function ScheduleBoardDayColumn({
 							left: 0,
 							right: 0,
 							height: 1,
-							backgroundColor: "var(--color-border)",
+							backgroundColor: "var(--color-grid-line-strong)",
 						}}
 					/>
 				))}
@@ -727,7 +727,7 @@ export default function ScheduleBoardDayColumn({
 							left: 0,
 							right: 0,
 							height: 1,
-							backgroundColor: "var(--color-surface)",
+							backgroundColor: "var(--color-grid-line-minor)",
 						}}
 					/>
 				))}
@@ -1024,8 +1024,8 @@ export default function ScheduleBoardDayColumn({
 							gap: 3,
 							height: 20,
 							padding: "0 7px",
-							background: "var(--color-canvas)",
-							border: "1px solid var(--color-border)",
+							background: "var(--color-grid-float-bg)",
+							border: "1px solid var(--color-grid-line-strong)",
 							borderRadius: 999,
 							fontSize: 10,
 							fontWeight: 600,
@@ -1056,8 +1056,8 @@ export default function ScheduleBoardDayColumn({
 							gap: 3,
 							height: 20,
 							padding: "0 7px",
-							background: "var(--color-canvas)",
-							border: "1px solid var(--color-border)",
+							background: "var(--color-grid-float-bg)",
+							border: "1px solid var(--color-grid-line-strong)",
 							borderRadius: 999,
 							fontSize: 10,
 							fontWeight: 600,

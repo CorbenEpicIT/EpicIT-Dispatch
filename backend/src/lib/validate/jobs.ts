@@ -1,4 +1,5 @@
 import z from "zod";
+import { coordsSchema } from "./shared.js";
 import { isOwnBucketUrl } from "../../services/wasabiService.js";
 
 // Note photos must live in our own storage bucket: the URL is signed blindly on
@@ -19,12 +20,7 @@ export const createJobSchema = z
 		client_id: z.string().uuid("Invalid client ID"),
 		tech_ids: z.array(z.string().uuid("Invalid technician ID")).optional(),
 		address: z.string().min(1, "Address is required").optional(),
-		coords: z
-			.object({
-				lat: z.number(),
-				lon: z.number(),
-			})
-			.optional(),
+		coords: coordsSchema.optional(),
 		status: z
 			.enum([
 				"Unscheduled",
@@ -101,12 +97,7 @@ export const updateJobSchema = z
 			.enum(["Low", "Medium", "High", "Urgent", "Emergency"])
 			.optional(),
 		address: z.string().optional(),
-		coords: z
-			.object({
-				lat: z.number(),
-				lon: z.number(),
-			})
-			.optional(),
+		coords: coordsSchema.optional(),
 		status: z
 			.enum([
 				"Unscheduled",

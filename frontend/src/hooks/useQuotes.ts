@@ -146,7 +146,7 @@ export const useUpdateQuoteMutation = () => {
 			}
 
 			queryClient.setQueryData(["quotes", updatedQuote.id], updatedQuote);
-			// Status changes (e.g. "Issue Without Sending" Draft -> Issued) can
+			// Status changes (e.g. "Create Without Sending" Draft -> Issued) can
 			// flip whether a dispute is openable; the disabled reason on "Open
 			// Dispute" is read from this cache, same as useUpdateInvoiceMutation.
 			queryClient.invalidateQueries({ queryKey: ["disputes", "quote", updatedQuote.id] });

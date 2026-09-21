@@ -4,18 +4,14 @@ import {
 	Edit2,
 	Calendar,
 	DollarSign,
-	FileText,
 	Trash2,
 	Send,
 	CheckCircle,
 	CheckCircle2,
 	AlertTriangle,
 	AlertCircle,
-	ChevronRight,
 	Plus,
 	Clock,
-	Repeat,
-	Briefcase,
 	Download,
 	Loader2,
 	Mail,
@@ -40,21 +36,24 @@ import { downloadInvoicePdf, sendInvoice } from "../../api/invoices";
 import SendDocumentModal from "../../components/ui/SendDocumentModal";
 import FullPopup from "../../components/ui/FullPopup";
 import ReasonField from "../../components/ui/ReasonField";
-import LifecycleBar from "../../components/lifecycle/LifecycleBar";
+import LifecycleBar, {
+	LifecycleActions,
+	LifecycleRule,
+} from "../../components/lifecycle/LifecycleBar";
 import TerminalDetail from "../../components/lifecycle/TerminalDetail";
-import { invoiceActions } from "../../components/lifecycle/invoiceActions";
-import { splitActions } from "../../components/lifecycle/overflow";
+import { invoiceActions, INVOICE_STEPS } from "../../components/lifecycle/invoiceActions";
+import { placeActions } from "../../components/lifecycle/placement";
 import type { LifecycleStage } from "../../components/lifecycle/types";
-import DocumentDetailHeader, {
-	type DocumentMenuGroup,
-} from "../../components/documents/DocumentDetailHeader";
-import DocumentTabs, { type DocumentTabDef } from "../../components/documents/DocumentTabs";
-import DocumentStatRow from "../../components/documents/DocumentStatRow";
+import DetailHeader, { type DetailMenuGroup } from "../../components/detail/DetailHeader";
+import DetailTabs, { type DetailTabDef } from "../../components/detail/DetailTabs";
+import DetailStatRow from "../../components/detail/DetailStatRow";
 import DocumentLineage, { HEADER_PILL } from "../../components/documents/DocumentLineage";
-import { useDocumentTab } from "../../components/documents/useDocumentTab";
+import { useDetailTab } from "../../components/detail/useDetailTab";
 import Card from "../../components/ui/Card";
 import ClientDetailsCard from "../../components/clients/ClientDetailsCard";
 import InvoiceNoteManager from "../../components/invoices/InvoiceNoteManager";
+import InvoiceOriginCard from "../../components/invoices/InvoiceOriginCard";
+import InvoiceLineItems from "../../components/invoices/InvoiceLineItems";
 import EditInvoice from "../../components/invoices/EditInvoice";
 import {
 	InvoiceStatusColors,
@@ -62,8 +61,6 @@ import {
 	PaymentMethodLabels,
 	type InvoiceStatus,
 	type PaymentMethod,
-	type Invoice,
-	type InvoiceLineItem,
 	isOverdue,
 	isEditable,
 	isDeletable,
@@ -73,32 +70,26 @@ import {
 } from "../../types/invoices";
 import { daysUntil, errorMessage, formatCurrency, formatDate } from "../../util/util";
 import { usePermission } from "../../hooks/usePermission";
-import { formatRatePercentLabel } from "../../lib/formatTax";
-import type { TaxSnapshotRate } from "../../types/tax";
-import { 
-	useQBStatusQuery, 
-	useQBInvoiceSyncMutation, 
-	useQBInvoiceEmailMutation
+import {
+	useQBStatusQuery,
+	useQBInvoiceSyncMutation,
+	useQBInvoiceEmailMutation,
 } from "../../hooks/useQuickbooks";
 import ChangeHistory from "../../components/activity/ChangeHistory";
 import LifecycleRecord from "../../components/lifecycle/LifecycleRecord";
-import DocumentActivityPanel from "../../components/documents/DocumentActivityPanel";
+import ActivityPanel from "../../components/detail/ActivityPanel";
 
-// The same two tabs as QUOTE_TABS, in the same order. Payments briefly had a
-// third of its own and could not fill it — one ~190px card alone on the page —
-// so it went back to the Overview rail, where its weight is what balances the
-// rail against the Details + Line Items column.
-// Line items stay in Overview: they are what a dispatcher opens the document to
-// read. Activity absorbs the notes, dispute record and change history that used
-// to sit three scrolls below the money.
-const INVOICE_TABS: readonly DocumentTabDef<"overview" | "activity">[] = [
+// The same two tabs as QUOTE_TABS, in the same order. Line items stay in
+// Overview because they are what a dispatcher opens the document to read;
+// Payments rides the Overview rail, where its weight balances that column.
+const INVOICE_TABS: readonly DetailTabDef<"overview" | "activity">[] = [
 	{ id: "overview", label: "Overview" },
 	{ id: "activity", label: "Activity" },
 ];
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
-const formatDateTime =(val: string | Date | null | undefined): string => {
+const formatDateTime = (val: string | Date | null | undefined): string => {
 	if (!val) return "─";
 	return new Date(val).toLocaleString("en-US", {
 		month: "short",
@@ -108,77 +99,6 @@ const formatDateTime =(val: string | Date | null | undefined): string => {
 		minute: "2-digit",
 	});
 };
-
-/** Line items on an invoice may carry source attribution fields. */
-interface InvoiceLineItemWithSource extends InvoiceLineItem {
-	source_job_id?: string | null;
-	source_visit_id?: string | null;
-}
-
-/** Collapsed per-rate tax entry used in the totals section. */
-interface CollapsedRate {
-	id: string;
-	name: string;
-	rate: number;
-	amountCents: number;
-}
-
-/** Strongly-typed shape for a job group used when rendering the linked section. */
-interface LinkedJobGroup {
-	jobId: string;
-	jobNumber: string;
-	jobName: string;
-	/** Present when the job is directly linked (invoice.jobs). Absent when only referenced via a visit. */
-	billedAmount: number | null;
-	isDirectlyLinked: boolean;
-	visits: Array<{
-		visitId: string;
-		scheduledStartAt: string | Date;
-		billedAmount: number;
-		jobId: string;
-	}>;
-}
-
-/** Build the grouped job+visit structure from an invoice. No any, no casts. */
-function buildLinkedJobGroups(invoice: Invoice): LinkedJobGroup[] {
-	const groupMap = new Map<string, LinkedJobGroup>();
-
-	for (const ij of invoice.jobs ?? []) {
-		if (!groupMap.has(ij.job_id)) {
-			groupMap.set(ij.job_id, {
-				jobId: ij.job_id,
-				jobNumber: ij.job.job_number,
-				jobName: ij.job.name,
-				billedAmount:
-					ij.billed_amount != null ? Number(ij.billed_amount) : null,
-				isDirectlyLinked: true,
-				visits: [],
-			});
-		}
-	}
-
-	for (const iv of invoice.visits ?? []) {
-		const parentId = iv.visit.job.id;
-		if (!groupMap.has(parentId)) {
-			groupMap.set(parentId, {
-				jobId: parentId,
-				jobNumber: iv.visit.job.job_number,
-				jobName: iv.visit.job.name,
-				billedAmount: null,
-				isDirectlyLinked: false,
-				visits: [],
-			});
-		}
-		groupMap.get(parentId)!.visits.push({
-			visitId: iv.visit_id,
-			scheduledStartAt: iv.visit.scheduled_start_at,
-			billedAmount: Number(iv.billed_amount ?? 0),
-			jobId: parentId,
-		});
-	}
-
-	return Array.from(groupMap.values());
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -202,37 +122,35 @@ export default function InvoiceDetailPage() {
 	const { mutateAsync: recordRefund, isPending: isRecordingRefund } =
 		useRecordRefundMutation();
 
-	// isError matters here: a failed fetch defaults `disputes` to [], which is
-	// indistinguishable from "no dispute" — and the dispute banner, the Open
-	// Dispute entry and the refund affordance all key off openDispute. Unknown
-	// is not the same as absent, so the money actions close until we know.
+	// A failed fetch defaults `disputes` to [], indistinguishable from "no
+	// dispute", and the banner, the Open Dispute entry and the refund
+	// affordance all key off openDispute. Unknown is not absent, so the money
+	// actions close until we know.
 	const { data: disputeList, isError: disputeStateUnknown } = useDisputesQuery(
 		"invoice",
-		invoiceId ?? "",
+		invoiceId ?? ""
 	);
 	const disputes = disputeList?.disputes ?? NO_DISPUTES;
 	const openDispute = disputes.find((d) => d.status === "Open") ?? null;
-	// Every dispute, not just the open one: a resolved record is still the
-	// explanation for what happened to these lines. Built once as a Set rather
-	// than an includes() per row over a per-dispute array.
+	// Every dispute, not just the open one: a resolved record still explains what
+	// happened to these lines. A Set, not an includes() per row.
 	const contestedIds = useMemo(
 		() =>
 			new Set(
 				(disputes ?? []).flatMap(
-					(d) => d.contested_line_item_ids?.map((c) => c.id) ?? [],
-				),
+					(d) => d.contested_line_item_ids?.map((c) => c.id) ?? []
+				)
 			),
-		[disputes],
+		[disputes]
 	);
 
-	const [activeTab, setActiveTab] = useDocumentTab(INVOICE_TABS);
+	const [activeTab, setActiveTab] = useDetailTab(INVOICE_TABS);
 	const [deleteConfirm, setDeleteConfirm] = useState(false);
-	// Refused status/delete/payment-delete writes used to end in console.error
-	// and read as dead buttons; this is the quote page's `actionError`, rendered
-	// under the lifecycle bar (DW-29).
+	// Refused status/delete/payment-delete writes, rendered under the lifecycle
+	// bar instead of reading as dead buttons.
 	const [actionError, setActionError] = useState<string | null>(null);
-	// The record-payment modal's own refusal line, the shape handleVoid uses:
-	// the modal stays open so the dispatcher can read it and retry (DW-14).
+	// The record-payment modal's own refusal line: the modal stays open so the
+	// dispatcher can read it and retry.
 	const [paymentError, setPaymentError] = useState<string | null>(null);
 	const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -243,13 +161,11 @@ export default function InvoiceDetailPage() {
 		method: undefined,
 		note: "",
 	});
-	const [disputeModalMode, setDisputeModalMode] = useState<"open" | "resolve" | null>(
-		null,
-	);
+	const [disputeModalMode, setDisputeModalMode] = useState<"open" | "resolve" | null>(null);
 	// The outcome picked in the lifecycle bar, handed to the resolve modal so it
 	// opens on that choice instead of asking again.
 	const [resolveOutcome, setResolveOutcome] = useState<DisputeResolution | undefined>(
-		undefined,
+		undefined
 	);
 	const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
 	const [refundForm, setRefundForm] = useState<RecordRefundInput>({
@@ -264,6 +180,7 @@ export default function InvoiceDetailPage() {
 
 	//permissions
 	const EDIT_INVOICE = usePermission("edit_invoices");
+	const SEND_INVOICE = usePermission("send_invoices");
 	const DELETE_INVOICE = usePermission("delete_invoices");
 	const REFUND_INVOICE = usePermission("refund_invoices");
 	const OPEN_DISPUTE = usePermission("open_disputes");
@@ -272,11 +189,10 @@ export default function InvoiceDetailPage() {
 	const { mutate: syncToQB, isPending: isSyncingQB } = useQBInvoiceSyncMutation();
 
 	const sendEmailMutation = useQBInvoiceEmailMutation();
-	const primaryEmail = invoice?.client?.contacts?.find(c => c.is_primary)?.contact?.email;
+	const primaryEmail = invoice?.client?.contacts?.find((c) => c.is_primary)?.contact?.email;
 
-	// The click-outside listener and the menu-open state moved into
-	// DocumentDetailHeader, which owns the page's one kebab. Disarming the
-	// two-step delete on close arrives back here through onMenuClose.
+	// DetailHeader owns the page's one kebab, its click-outside listener and its
+	// open state; disarming the two-step delete arrives back through onMenuClose.
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -303,8 +219,8 @@ export default function InvoiceDetailPage() {
 		try {
 			await updateInvoice({ id: invoiceId, updates: { status: newStatus } });
 		} catch (error) {
-			// New refusals reach here now — the open-dispute lock, the pre-email
-			// transition guard. The server's sentence is the point.
+			// Real refusals land here (the open-dispute lock, the pre-email
+			// transition guard), so the server's sentence is shown.
 			setActionError(errorMessage(error, "Couldn't update this invoice."));
 		}
 	};
@@ -336,9 +252,9 @@ export default function InvoiceDetailPage() {
 			});
 			closeVoidModal();
 		} catch (error) {
-			// The server owns the money rule — a partially-paid or adjusted
-			// invoice is refused here — so its sentence (on the response
-			// envelope, not AxiosError.message) is what the dispatcher reads.
+			// The server owns the money rule (a partially-paid or adjusted
+			// invoice is refused), so its sentence — on the response envelope,
+			// not AxiosError.message — is what the dispatcher reads.
 			setVoidError(errorMessage(error, "Failed to void this invoice."));
 		}
 	};
@@ -367,18 +283,15 @@ export default function InvoiceDetailPage() {
 			await recordPayment({ invoiceId, data: paymentForm });
 			closePaymentModal();
 		} catch (error) {
-			// Kept open on failure: the server owns the ceiling and the
-			// status rule, and a swallowed 4xx here left the day's cash short
-			// with nothing on screen (DW-14).
+			// Kept open on failure: the server owns the ceiling and the status
+			// rule, and a swallowed 4xx leaves the day's cash short silently.
 			setPaymentError(errorMessage(error, "Couldn't record this payment."));
 		}
 	};
 
 	const openRefundModal = () => {
-		// A refund is cash out — refund_invoices, the same grant the bar's
-		// Refund action and the /refund route gate on. It used to check
-		// edit_invoices, so the bar could offer a refund the modal then
-		// swallowed (DW-13).
+		// A refund is cash out: refund_invoices, the same grant the bar's Refund
+		// action and the /refund route gate on.
 		if (!REFUND_INVOICE) return;
 		setRefundForm({ amount: 0, reason: "", method: undefined });
 		setRefundError(null);
@@ -419,8 +332,8 @@ export default function InvoiceDetailPage() {
 		try {
 			await deletePayment({ invoiceId, paymentId });
 		} catch (error) {
-			// Deleting a payment now needs refund_invoices; a 403 here read as
-			// a dead button.
+			// Deleting a payment needs refund_invoices; surface the 403 rather
+			// than leaving a dead button.
 			setActionError(errorMessage(error, "Couldn't remove this payment."));
 		}
 	};
@@ -439,62 +352,6 @@ export default function InvoiceDetailPage() {
 			setIsPdfLoading(false);
 		}
 	};
-
-	// Map group name -> individual rates array for line item tax badge + totals section
-	// Must be above early returns ─ useMemo must not be called conditionally
-	const groupRatesMap = useMemo(() => {
-		const map = new Map<string, TaxSnapshotRate[]>();
-		for (const group of invoice?.tax_snapshot?.groups ?? []) {
-			if ((group.rates ?? []).length > 0) map.set(group.name, group.rates);
-		}
-		return map;
-	}, [invoice?.tax_snapshot]);
-
-	// Per-rate totals from snapshot; deduplicate by rate ID, sum amounts, drop group names.
-	const collapsedTaxRates = useMemo((): CollapsedRate[] => {
-		if (!invoice?.tax_snapshot) return [];
-		const rateMap = new Map<string, CollapsedRate>();
-		for (const group of invoice.tax_snapshot.groups ?? []) {
-			for (const rate of group.rates ?? []) {
-				const cents = Math.round(rate.rate * (group.taxable_amount_cents ?? 0));
-				const entry = rateMap.get(rate.id);
-				if (entry) {
-					entry.amountCents += cents;
-				} else {
-					rateMap.set(rate.id, { id: rate.id, name: rate.name, rate: rate.rate, amountCents: cents });
-				}
-			}
-		}
-		return [...rateMap.values()];
-	}, [invoice?.tax_snapshot]);
-
-	// Fallback: derive per-rate totals from line items when no snapshot exists.
-	const lineItemCollapsedRates = useMemo((): CollapsedRate[] => {
-		if (collapsedTaxRates.length > 0) return [];
-		const rateMap = new Map<string, CollapsedRate>();
-		for (const item of (invoice?.line_items ?? []) as InvoiceLineItemWithSource[]) {
-			if (!item.taxable || item.tax_amount == null || !item.tax_group?.rates?.length) continue;
-			const itemTaxCents = Math.round(Number(item.tax_amount) * 100);
-			if (itemTaxCents === 0) continue;
-			const combinedRate = item.tax_group.rates.reduce((s, r) => s + r.tax_rate.rate, 0);
-			if (combinedRate === 0) continue;
-			for (const r of item.tax_group.rates) {
-				const share = Math.round(itemTaxCents * (r.tax_rate.rate / combinedRate));
-				const existing = rateMap.get(r.tax_rate.id);
-				if (existing) {
-					existing.amountCents += share;
-				} else {
-					rateMap.set(r.tax_rate.id, {
-						id: r.tax_rate.id,
-						name: r.tax_rate.name,
-						rate: r.tax_rate.rate,
-						amountCents: share,
-					});
-				}
-			}
-		}
-		return [...rateMap.values()];
-	}, [collapsedTaxRates, invoice?.line_items]);
 
 	// ── Guards ────────────────────────────────────────────────────────────────
 
@@ -521,17 +378,16 @@ export default function InvoiceDetailPage() {
 	const deletable = isDeletable(invoice.status);
 	const paymentProgress = getPaymentProgress(invoice);
 
-	const lineItems = (invoice.line_items ?? []) as InvoiceLineItemWithSource[];
+	const lineItems = invoice.line_items ?? [];
 	const payments = invoice.payments ?? [];
 	const total = Number(invoice.total ?? 0);
 	const amountPaid = Number(invoice.amount_paid ?? 0);
 	const balanceDue = Number(invoice.balance_due ?? 0);
 
-	const linkedJobGroups = buildLinkedJobGroups(invoice);
 
 	// The jobs and visits this invoice bills — where an Issue Adjustment credit
-	// can land. The resolve modal shows a picker over these when there is more
-	// than one; the server attributes silently for one, refuses for none (D4).
+	// can land. The resolve modal picks between them when there is more than one;
+	// the server attributes silently for one and refuses for none.
 	const adjustmentTargets: AttributionTarget[] = [
 		...(invoice.jobs ?? []).map((ij) => ({
 			kind: "job" as const,
@@ -548,8 +404,7 @@ export default function InvoiceDetailPage() {
 
 	// A refund is bounded by what was actually paid; the exact ceiling is
 	// re-checked server-side under a row lock.
-	const refundAmountValid =
-		refundForm.amount > 0 && refundForm.amount <= amountPaid;
+	const refundAmountValid = refundForm.amount > 0 && refundForm.amount <= amountPaid;
 
 	// ── QuickBooks sync state (shared by header badge + toolbar action + menu) ──
 	const qbConnected = !!qbStatus?.connected;
@@ -567,9 +422,9 @@ export default function InvoiceDetailPage() {
 	const qbActionTitle = qbHasRemote
 		? `Sync your latest changes to QuickBooks invoice #${invoice.qb_invoice_id}`
 		: "Create this invoice in QuickBooks Online (one-way sync — nothing is pulled back)";
-	// Not on a Void invoice: a dispute void deliberately leaves qb_sync_status
-	// "not_synced", and pushInvoice now refuses a Void — so a live Sync button
-	// next to the Void badge could only push a dead document (DW-09).
+	// Not on a Void invoice: a dispute void leaves qb_sync_status "not_synced"
+	// and pushInvoice refuses a Void, so the button could only push a dead
+	// document.
 	const qbShowAction = qbConnected && !qbSynced && invoice.status !== "Void";
 	const qbCanSendVia = qbConnected && (qbSynced || qbHasRemote);
 
@@ -602,10 +457,9 @@ export default function InvoiceDetailPage() {
 					};
 	const QbBadgeIcon = qbBadge.Icon;
 
-	// Built once. The lifecycle bar swaps in the dispute outcomes while a
-	// dispute is open, but the Payments card reads its Record / Refund buttons
-	// off this list in every state, so the card and the bar can no longer
-	// disagree about the same money act (DW-13, DW-14).
+	// Built once: the bar swaps in dispute outcomes while a dispute is open, but
+	// the Payments card reads its Record / Refund buttons off this list in every
+	// state, so the two can't disagree about the same money act.
 	const invoiceBarActions = invoiceActions({
 		status: invoice.status,
 		amountPaid,
@@ -614,6 +468,7 @@ export default function InvoiceDetailPage() {
 		openRefusal: disputeList?.open_refusal ?? null,
 		voidRefusal: disputeList?.void_refusal ?? null,
 		canEdit: EDIT_INVOICE,
+		canSend: SEND_INVOICE,
 		canOpenDispute: OPEN_DISPUTE,
 		canRefund: REFUND_INVOICE,
 		handlers: {
@@ -628,11 +483,9 @@ export default function InvoiceDetailPage() {
 	const recordPaymentAction = invoiceBarActions.find((a) => a.id === "recordPayment");
 	const refundAction = invoiceBarActions.find((a) => a.id === "refund");
 
-	// While a dispute is open its exits ARE the lifecycle bar's actions — the
-	// normal invoice actions are all gated off anyway, and the exits used to be
-	// invisible until the resolve modal was already open. Record Payment rides
-	// along: a payment against the undisputed portion is an endorsed path (D7),
-	// and it lands in the overflow.
+	// While a dispute is open its exits are the bar's actions; the normal invoice
+	// actions are all gated off anyway. Record Payment rides along in the
+	// overflow — a payment against the undisputed portion is allowed.
 	const disputeBarActions = openDispute
 		? [
 				...disputeActions(
@@ -641,22 +494,19 @@ export default function InvoiceDetailPage() {
 					(outcome) => {
 						setResolveOutcome(outcome);
 						setDisputeModalMode("resolve");
-					},
+					}
 				),
 				...(recordPaymentAction ? [recordPaymentAction] : []),
 			]
 		: null;
 
-	// The dispute list failed to load while the invoice is still Disputed:
-	// "normal" lights nothing in the stepper (indexOf("Disputed") === -1) and
-	// "terminal" would claim a live dispute is finished. Same branch the quote
-	// page takes (DW-45).
-	const disputeUnknownWhileDisputed =
-		disputeStateUnknown && invoice.status === "Disputed";
+	// Dispute list failed to load while the invoice is still Disputed: "normal"
+	// lights nothing in the stepper and "terminal" would claim a live dispute is
+	// finished, so the page says so instead.
+	const disputeUnknownWhileDisputed = disputeStateUnknown && invoice.status === "Disputed";
 
-	// One stage value for the whole page: the bar renders it, splitActions keys
-	// the slot rule off it, and the kebab's Lifecycle group is the other half of
-	// that same split.
+	// One stage value for the whole page: the bar renders it, and placeActions
+	// keys both the slot rule and header-vs-bar off it.
 	const lifecycleStage: LifecycleStage =
 		openDispute || disputeUnknownWhileDisputed
 			? "dispute"
@@ -666,13 +516,17 @@ export default function InvoiceDetailPage() {
 
 	const lifecycleActionList = disputeBarActions ?? invoiceBarActions;
 
-	// The bar renders the inline share; this is the remainder, and it is the
-	// only reason the kebab carries a Lifecycle group at all.
-	const { overflow: lifecycleOverflow } = splitActions(lifecycleStage, lifecycleActionList);
+	// The header or the bar renders the inline share, depending on stage; this is
+	// the remainder, and the only reason the kebab has a Lifecycle group.
+	const {
+		headerActions,
+		barActions,
+		overflow: lifecycleOverflow,
+		showBar,
+	} = placeActions(lifecycleStage, lifecycleActionList);
 
 	// isEditable and isDeletable are both "Draft only", so the copy says that
-	// rather than naming the current status — and the delete reason stops
-	// telling an already-void invoice to void itself.
+	// rather than naming the current status.
 	const editBlockedReason = !EDIT_INVOICE
 		? "You don't have permission to perform this action"
 		: !editable
@@ -684,10 +538,9 @@ export default function InvoiceDetailPage() {
 			? "Only a draft invoice can be deleted."
 			: "Only a draft invoice can be deleted. Void this one instead to cancel it.";
 
-	// One button, two labeled groups: lifecycle above, utility below. Spec 3.4's
-	// distinction is now carried by the grouping rather than by a second kebab
-	// an inch from the first, which is what made it unknowable which held what.
-	const menuGroups: DocumentMenuGroup[] = [
+	// One button, two labeled groups: lifecycle above, utility below. The
+	// grouping carries the distinction, so there is no second kebab.
+	const menuGroups: DetailMenuGroup[] = [
 		{
 			id: "lifecycle",
 			label: "Lifecycle",
@@ -710,9 +563,8 @@ export default function InvoiceDetailPage() {
 					id: "edit",
 					label: "Edit Invoice",
 					icon: <Edit2 size={16} />,
-					// Disabled with its reason rather than omitted: a
-					// dispatcher who sees why an action is closed learns the
-					// rule, one who sees a shorter menu learns nothing.
+					// Disabled with its reason rather than omitted, so the
+					// rule is legible from the menu.
 					disabled: editBlockedReason != null,
 					disabledReason: editBlockedReason,
 					onSelect: () => setIsEditModalOpen(true),
@@ -728,9 +580,8 @@ export default function InvoiceDetailPage() {
 					disabled: isPdfLoading,
 					onSelect: handleDownloadPdf,
 				},
-				// Absent, not disabled: without a QuickBooks connection this
-				// is not a closed door on this invoice, it is a door the org
-				// has not installed.
+				// Absent, not disabled: with no QuickBooks connection this is
+				// not a closed door, it is one the org never installed.
 				...(qbCanSendVia
 					? [
 							{
@@ -753,7 +604,9 @@ export default function InvoiceDetailPage() {
 								onSelect: () =>
 									sendEmailMutation.mutate({
 										invoiceId: invoice.id,
-										sendTo: primaryEmail ?? "",
+										sendTo:
+											primaryEmail ??
+											"",
 									}),
 							},
 						]
@@ -782,10 +635,8 @@ export default function InvoiceDetailPage() {
 		},
 	];
 
-	// Derived readings, not recorded fields — the Details card keeps the record.
-	// This strip is also where the standalone Payment Progress band went: a bar
-	// restating paid-of-total was the same three numbers the Line Items totals
-	// already carry, given a whole row of the page to say them again.
+	// Derived readings, not recorded fields; the Details card keeps the record,
+	// and paid-of-total is stated here rather than in a band of its own.
 	const lineItemCount = lineItems.length;
 	const ageDays = -daysUntil(invoice.issue_date ?? invoice.created_at);
 	const paidPct = Math.round(Math.min(1, paymentProgress) * 100);
@@ -825,7 +676,7 @@ export default function InvoiceDetailPage() {
 			label: "Age",
 			icon: <Clock size={13} />,
 			value: `${ageDays} ${ageDays === 1 ? "day" : "days"}`,
-			hint: invoice.issue_date != null ? "since issued" : "since created",
+			hint: "since created",
 		},
 	];
 
@@ -844,30 +695,23 @@ export default function InvoiceDetailPage() {
 							size={13}
 							className="text-text-muted flex-shrink-0"
 						/>
-						{formatDate(
-							invoice.created_at
-						)}
+						{formatDate(invoice.created_at)}
 					</p>
 				</div>
-				{invoice.status !== "Draft" &&
-					invoice.issue_date != null && (
-						<div className="min-w-0">
-							<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
-								Issue Date
-							</p>
-							<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
-								<Calendar
-									size={
-										13
-									}
-									className="text-text-muted flex-shrink-0"
-								/>
-								{formatDate(
-									invoice.issue_date
-								)}
-							</p>
-						</div>
-					)}
+				{invoice.status !== "Draft" && invoice.issue_date != null && (
+					<div className="min-w-0">
+						<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
+							Marked Created
+						</p>
+						<p className="text-text-primary text-sm flex items-center gap-1.5 whitespace-nowrap">
+							<Calendar
+								size={13}
+								className="text-text-muted flex-shrink-0"
+							/>
+							{formatDate(invoice.issue_date)}
+						</p>
+					</div>
+				)}
 				{invoice.due_date != null && (
 					<div className="min-w-0">
 						<p className="text-text-tertiary text-xs uppercase tracking-wide font-semibold mb-1">
@@ -888,9 +732,7 @@ export default function InvoiceDetailPage() {
 										: "text-text-muted flex-shrink-0"
 								}
 							/>
-							{formatDate(
-								invoice.due_date
-							)}
+							{formatDate(invoice.due_date)}
 							{overdue && (
 								<span className="text-error-text font-medium ml-1">
 									Overdue
@@ -905,8 +747,7 @@ export default function InvoiceDetailPage() {
 							Payment Terms
 						</p>
 						<p className="text-text-primary text-sm whitespace-nowrap">
-							{invoice.payment_terms_days ===
-							0
+							{invoice.payment_terms_days === 0
 								? "Due on Receipt"
 								: `Net ${invoice.payment_terms_days}`}
 						</p>
@@ -922,9 +763,7 @@ export default function InvoiceDetailPage() {
 								size={13}
 								className="text-text-muted flex-shrink-0"
 							/>
-							{formatDateTime(
-								invoice.sent_at
-							)}
+							{formatDateTime(invoice.sent_at)}
 						</p>
 					</div>
 				)}
@@ -938,9 +777,7 @@ export default function InvoiceDetailPage() {
 								size={13}
 								className="text-success flex-shrink-0"
 							/>
-							{formatDateTime(
-								invoice.paid_at
-							)}
+							{formatDateTime(invoice.paid_at)}
 						</p>
 					</div>
 				)}
@@ -950,9 +787,7 @@ export default function InvoiceDetailPage() {
 							Void Reason
 						</p>
 						<p className="text-text-secondary text-sm italic break-words">
-							{
-								invoice.void_reason
-							}
+							{invoice.void_reason}
 						</p>
 					</div>
 				)}
@@ -971,341 +806,15 @@ export default function InvoiceDetailPage() {
 		</Card>
 	);
 
-	const lineItemsCard = (
-		<Card title="Line Items">
-			{lineItems.length === 0 ? (
-				<div className="text-center py-8">
-					<FileText
-						size={40}
-						className="mx-auto text-text-faint mb-3"
-					/>
-					<p className="text-text-tertiary text-sm">
-						No line items
-					</p>
-				</div>
-			) : (
-				<div>
-					{/* Header row */}
-					<div className="grid grid-cols-12 gap-2 pb-2 border-b border-border text-xs uppercase tracking-wide font-semibold text-text-tertiary">
-						<div className="col-span-5 min-w-0">
-							Item / Description
-						</div>
-						<div className="col-span-2 min-w-0 text-center">
-							Type
-						</div>
-						<div className="col-span-1 min-w-0 text-right">
-							Qty
-						</div>
-						<div className="col-span-2 min-w-0 text-right">
-							Unit Price
-						</div>
-						<div className="col-span-2 min-w-0 text-right">
-							Amount
-						</div>
-					</div>
-					{/* Data rows ─ items-start keeps numeric cols top-aligned when description wraps */}
-					{lineItems.map((item, index) => {
-						const sourceVisitId =
-							item.source_visit_id;
-						const sourceJobId =
-							item.source_job_id;
-						let sourceLabel:
-							| string
-							| null = null;
-						let isVisitSource = false;
-
-						if (sourceVisitId != null) {
-							const iv = (
-								invoice.visits ??
-								[]
-							).find(
-								(v) =>
-									v.visit_id ===
-									sourceVisitId
-							);
-							if (iv != null) {
-								sourceLabel = `${iv.visit.job.job_number} · Visit ${formatDate(iv.visit.scheduled_start_at)}`;
-								isVisitSource = true;
-							}
-						} else if (
-							sourceJobId != null
-						) {
-							const ij = (
-								invoice.jobs ??
-								[]
-							).find(
-								(j) =>
-									j.job_id ===
-									sourceJobId
-							);
-							if (ij != null) {
-								sourceLabel = `${ij.job.job_number} · ${ij.job.name}`;
-							}
-						}
-
-						const isContested =
-							item.id != null &&
-							contestedIds.has(
-								item.id
-							);
-
-						return (
-							<div
-								key={
-									item.id ??
-									index
-								}
-								className={`border-b border-border-subtle hover:bg-surface/30 transition-colors${isContested ? " border-l-2 border-l-warning-border" : ""}`}
-							>
-								{/* Primary row ─ name + all numeric columns */}
-								<div className="grid grid-cols-12 gap-2 pt-3 pb-1 items-center">
-									<div className="col-span-5 min-w-0 text-sm">
-										<p className="text-text-primary font-medium break-words">
-											{
-												item.name
-											}
-										</p>
-										{isContested && (
-											<span className="mt-0.5 inline-block text-xs font-medium text-warning-text">
-												Contested
-											</span>
-										)}
-									</div>
-									<div className="col-span-2 min-w-0 flex justify-center">
-										{item.item_type !=
-											null && (
-											<span className="inline-block max-w-full truncate px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-strong">
-												{
-													item.item_type
-												}
-											</span>
-										)}
-									</div>
-									<div className="col-span-1 min-w-0 text-right text-sm text-text-primary tabular-nums" title={String(item.quantity)}>
-										{Number(
-											item.quantity
-										).toLocaleString(
-											"en-US",
-											{
-												minimumFractionDigits: 0,
-												maximumFractionDigits: 2,
-											}
-										)}
-									</div>
-									<div className="col-span-2 min-w-0 text-right text-sm text-text-primary tabular-nums">
-										{formatCurrency(
-											Number(
-												item.unit_price
-											)
-										)}
-									</div>
-									<div className="col-span-2 min-w-0 text-right text-sm text-text-primary font-semibold tabular-nums">
-										{formatCurrency(
-											Number(
-												item.total
-											)
-										)}
-									</div>
-								</div>
-								{/* Sub-row ─ only renders when secondary content exists */}
-								{((item.description != null && item.description !== "") ||
-									sourceLabel != null ||
-									item.tax_group?.name ||
-									item.taxable === false) && (
-									<div className="space-y-1 pb-2.5 min-w-0">
-										{item.description != null && item.description !== "" && (
-											<p className="text-xs text-text-tertiary leading-relaxed break-words">
-												{item.description}
-											</p>
-										)}
-										{(sourceLabel != null || item.tax_group?.name || item.taxable === false) && (
-											<div className="flex flex-wrap items-center gap-1.5">
-												{sourceLabel != null && (
-													<span
-														className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap leading-none ${
-															isVisitSource
-																? "bg-primary/10 text-primary-text border-primary/20"
-																: "bg-surface-raised/60 text-text-tertiary border-border-strong/50"
-														}`}
-													>
-														{isVisitSource ? (
-															<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-																<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-																<circle cx="12" cy="10" r="3" />
-															</svg>
-														) : (
-															<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-																<rect x="2" y="7" width="20" height="14" rx="2" />
-																<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-															</svg>
-														)}
-														<span className="truncate">{sourceLabel}</span>
-													</span>
-												)}
-												{item.tax_group?.name ? (
-													<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-raised/60 border border-border-strong/50 text-[10px] font-medium text-text-muted whitespace-nowrap leading-none">
-														{item.tax_group.name}
-														{groupRatesMap.has(item.tax_group.name)
-															? ` · ${groupRatesMap.get(item.tax_group.name)!
-																.map(r => `${r.name} ${formatRatePercentLabel(r.rate)}`)
-																.join(" + ")}`
-															: ""}
-													</span>
-												) : (
-													<span className="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-raised/40 border border-border-strong/30 text-[10px] text-text-faint whitespace-nowrap leading-none">
-														No Tax
-													</span>
-												)}
-											</div>
-										)}
-									</div>
-								)}
-							</div>
-						);
-					})}
-
-					{/* Totals */}
-					<div className="mt-4 space-y-2 pt-2">
-						{invoice.subtotal !=
-							null && (
-							<div className="flex justify-between text-sm">
-								<span className="text-text-tertiary">
-									Subtotal
-								</span>
-								<span className="text-text-primary tabular-nums">
-									{formatCurrency(
-										Number(
-											invoice.subtotal
-										)
-									)}
-								</span>
-							</div>
-						)}
-						{(() => {
-							const rates = collapsedTaxRates.length > 0 ? collapsedTaxRates : lineItemCollapsedRates;
-							const totalTaxCents = rates.reduce((s, r) => s + r.amountCents, 0);
-							if (rates.length > 0) {
-								return (
-									<>
-										{rates.map((rate) => (
-											<div key={rate.id} className="flex justify-between text-sm">
-												<span className="text-text-tertiary">
-													{rate.name} ({formatRatePercentLabel(rate.rate)})
-												</span>
-												<span className="text-text-primary tabular-nums">
-													{formatCurrency(rate.amountCents / 100)}
-												</span>
-											</div>
-										))}
-										{rates.length > 1 && (
-											<div className="flex justify-between text-sm">
-												<span className="text-text-tertiary font-medium">
-													Total Tax
-												</span>
-												<span className="text-text-primary tabular-nums font-medium">
-													{formatCurrency(totalTaxCents / 100)}
-												</span>
-											</div>
-										)}
-									</>
-								);
-							}
-							if (invoice.tax_rate != null && Number(invoice.tax_rate) > 0) {
-								return (
-									<div className="flex justify-between text-sm">
-										<span className="text-text-tertiary">
-											Tax ({formatRatePercentLabel(Number(invoice.tax_rate))})
-										</span>
-										<span className="text-text-primary tabular-nums">
-											{formatCurrency(Number(invoice.tax_amount ?? 0))}
-										</span>
-									</div>
-								);
-							}
-							return null;
-						})()}
-						{invoice.discount_amount !=
-							null &&
-							Number(
-								invoice.discount_amount
-							) > 0 && (
-								<div className="flex justify-between text-sm">
-									<span className="text-text-tertiary">
-										Discount
-									</span>
-									<span className="text-success-text tabular-nums">
-										{"-"}{" "}
-										{formatCurrency(
-											Number(
-												invoice.discount_amount
-											)
-										)}
-									</span>
-								</div>
-							)}
-						<div className="flex justify-between pt-2 border-t border-border">
-							<span className="text-text-primary font-semibold">
-								Total
-							</span>
-							<span className="text-text-primary font-bold text-lg tabular-nums">
-								{formatCurrency(
-									total
-								)}
-							</span>
-						</div>
-						{amountPaid > 0 && (
-							<>
-								<div className="flex justify-between text-sm">
-									<span className="text-text-tertiary">
-										Amount
-										Paid
-									</span>
-									<span className="text-success-text tabular-nums">
-										{"-"}{" "}
-										{formatCurrency(
-											amountPaid
-										)}
-									</span>
-								</div>
-								<div className="flex justify-between pt-2 border-t border-border">
-									<span className="text-text-primary font-semibold">
-										Balance
-										Due
-									</span>
-									<span
-										className={`font-bold text-lg tabular-nums ${
-											balanceDue >
-											0
-												? overdue
-													? "text-error-text"
-													: "text-warning-text"
-												: "text-success-text"
-										}`}
-									>
-										{formatCurrency(
-											balanceDue
-										)}
-									</span>
-								</div>
-							</>
-						)}
-					</div>
-				</div>
-			)}
-		</Card>
-	);
+	const lineItemsCard = <InvoiceLineItems invoice={invoice} contestedIds={contestedIds} />;
 
 	const clientCard = (
-		<ClientDetailsCard
-			client_id={invoice.client_id}
-			client={invoice.client}
-		/>
+		<ClientDetailsCard client_id={invoice.client_id} client={invoice.client} />
 	);
 
-	// Record and Refund stay on this card's header, where spec §8 put them
-	// deliberately. Both read the lifecycle bar's own action object now — the
-	// same `disabled`/`disabledReason` the bar shows — so the card can't offer
-	// a money act the bar refuses, or refuse one the bar offers (DW-13, DW-14).
+	// Record and Refund read the lifecycle bar's own action objects — the same
+	// `disabled`/`disabledReason` — so this card can't offer a money act the bar
+	// refuses, or refuse one it offers.
 	const paymentsCard = (
 		<Card
 			title="Payments"
@@ -1314,9 +823,15 @@ export default function InvoiceDetailPage() {
 					<div className="flex items-center gap-2">
 						{recordPaymentAction && (
 							<button
-								title={recordPaymentAction.disabledReason}
-								disabled={recordPaymentAction.disabled}
-								onClick={recordPaymentAction.onSelect}
+								title={
+									recordPaymentAction.disabledReason
+								}
+								disabled={
+									recordPaymentAction.disabled
+								}
+								onClick={
+									recordPaymentAction.onSelect
+								}
 								className="flex items-center gap-1.5 px-3 py-1.5 bg-payment hover:bg-payment-hover text-white rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 							>
 								<Plus size={13} />
@@ -1375,15 +890,13 @@ export default function InvoiceDetailPage() {
 											)
 										)}
 									</span>
-									{Number(
-										payment.amount
-									) < 0 && (
+									{Number(payment.amount) <
+										0 && (
 										<span className="text-xs px-1.5 py-0.5 bg-error/15 text-error-text rounded border border-error/30">
 											Refund
 										</span>
 									)}
-									{payment.method !=
-										null && (
+									{payment.method != null && (
 										<span className="text-xs px-1.5 py-0.5 bg-surface-raised text-text-secondary rounded border border-border-strong">
 											{PaymentMethodLabels[
 												payment
@@ -1423,10 +936,8 @@ export default function InvoiceDetailPage() {
 										</>
 									)}
 								</p>
-								{payment.note !=
-									null &&
-									payment.note !==
-										"" && (
+								{payment.note != null &&
+									payment.note !== "" && (
 										<p className="text-text-tertiary text-xs mt-1 italic break-words">
 											{
 												payment.note
@@ -1443,11 +954,7 @@ export default function InvoiceDetailPage() {
 								className="opacity-0 group-hover:opacity-100 p-1 text-text-muted hover:text-error-text transition-all"
 								title="Remove payment"
 							>
-								<Trash2
-									size={
-										13
-									}
-								/>
+								<Trash2 size={13} />
 							</button>
 						</div>
 					))}
@@ -1456,180 +963,14 @@ export default function InvoiceDetailPage() {
 		</Card>
 	);
 
-	const recurringPlanLink = (
-		<>
-			{invoice.recurring_plan != null && (
-				<button
-					onClick={() =>
-						navigate(
-							`/dispatch/recurring-plans/${invoice.recurring_plan!.id}`
-						)
-					}
-					className="w-full p-3 bg-base hover:bg-surface rounded-lg border border-border/60 hover:border-primary/40 transition-all text-left group flex items-center gap-2"
-				>
-					<div className="flex-1 min-w-0">
-						<p className="text-text-muted text-[10px] uppercase tracking-wide font-semibold mb-1.5">
-							Recurring Plan
-						</p>
-						<div className="flex items-center gap-2 min-w-0">
-							<Repeat
-								size={13}
-								className="text-primary-text flex-shrink-0"
-							/>
-							<span className="text-text-primary text-sm font-medium group-hover:text-primary-text transition-colors truncate">
-								{
-									invoice
-										.recurring_plan
-										.name
-								}
-							</span>
-						</div>
-					</div>
-					<ChevronRight
-						size={13}
-						className="text-text-muted group-hover:text-primary-text transition-colors flex-shrink-0"
-					/>
-				</button>
-			)}
-		</>
-	);
-
-	const linkedJobsBand = (
-		<>
-			{linkedJobGroups.length > 0 && (
-				<Card title="Linked Jobs &amp; Visits">
-					<div className="flex flex-col gap-3">
-						{linkedJobGroups.map((group) => (
-							<div
-								key={group.jobId}
-								className="flex flex-wrap items-start gap-2"
-							>
-								{/* Job chip */}
-								{group.isDirectlyLinked ? (
-									<button
-										onClick={() =>
-											navigate(
-												`/dispatch/jobs/${group.jobId}`
-											)
-										}
-										className="inline-flex items-center gap-2 px-3 py-2 bg-surface/60 hover:bg-surface border border-border-strong/50 hover:border-text-tertiary rounded-lg transition-all text-left group flex-shrink-0"
-									>
-										<Briefcase
-											size={13}
-											className="text-text-tertiary flex-shrink-0 group-hover:text-primary-text transition-colors"
-										/>
-										<div className="flex flex-col justify-center min-h-[38px]">
-											<p className="text-text-primary text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
-												{
-													group.jobNumber
-												}{" "}
-												·{" "}
-												{
-													group.jobName
-												}
-											</p>
-											{group.billedAmount !=
-												null &&
-												group.billedAmount >
-													0 && (
-													<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
-														Billed{" "}
-														{formatCurrency(
-															group.billedAmount
-														)}
-													</p>
-												)}
-										</div>
-										<ChevronRight
-											size={13}
-											className="text-text-muted group-hover:text-primary-text transition-colors flex-shrink-0"
-										/>
-									</button>
-								) : (
-									<span className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[54px] bg-surface/30 border border-border/40 rounded-lg text-text-tertiary text-sm flex-shrink-0">
-										<Briefcase
-											size={13}
-											className="text-text-faint flex-shrink-0"
-										/>
-										{group.jobNumber} ·{" "}
-										{group.jobName}
-									</span>
-								)}
-
-								{/* Visit chips */}
-								{group.visits.map((v) => (
-									<button
-										key={v.visitId}
-										onClick={() =>
-											navigate(
-												`/dispatch/jobs/${v.jobId}/visits/${v.visitId}`
-											)
-										}
-										className="inline-flex items-center gap-2 px-3 py-2 bg-primary/5 hover:bg-primary/10 border border-primary/20 hover:border-primary/40 rounded-lg transition-all text-left group flex-shrink-0"
-									>
-										<svg
-											width="12"
-											height="12"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2"
-											className="text-primary/60 flex-shrink-0 group-hover:text-primary-text transition-colors"
-										>
-											<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-											<circle
-												cx="12"
-												cy="10"
-												r="3"
-											/>
-										</svg>
-										<div className="flex flex-col justify-center min-h-[38px]">
-											<p className="text-text-primary text-sm font-medium group-hover:text-primary-text transition-colors leading-tight whitespace-nowrap">
-												Visit{" "}
-												{formatDate(
-													v.scheduledStartAt
-												)}
-											</p>
-											{v.billedAmount >
-												0 && (
-												<p className="text-text-muted text-xs leading-tight mt-0.5 whitespace-nowrap">
-													Billed{" "}
-													{formatCurrency(
-														v.billedAmount
-													)}
-												</p>
-											)}
-										</div>
-										<ChevronRight
-											size={13}
-											className="text-primary/40 group-hover:text-primary-text transition-colors flex-shrink-0"
-										/>
-									</button>
-								))}
-							</div>
-						))}
-					</div>
-				</Card>
-			)}
-		</>
-	);
+	// Where this invoice came from and what work it bills, from the same source
+	// derivation the line items group by, so the two always agree.
+	const originCard = <InvoiceOriginCard invoice={invoice} />;
 
 	// Two layouts, chosen by whether the main column has enough to stand beside
-	// the client card — the same judgement the reference page's `overviewLayout`
-	// makes, and for the same reason: an underfilled column is not fixed by
-	// making it wider.
-	//
-	// The Details card is one wrap of recorded fields, ~150px, and on a fresh
-	// draft it can come down to a single Created. Line Items is what carries the
-	// main column past the client card, so when there are none the row has no
-	// main column worth having: Details takes the full width its wrap can fill,
-	// and the rail pairs against the line-items/linked-jobs stack below.
-	//
-	// The threshold survived Payments moving back into the rail. It was written
-	// against a ~407px rail (client card alone) beside a 652px main column, and
-	// the payments card closes most of that 245px gap rather than overrunning
-	// it — so what tips this to "split" is still an empty main column, not a
-	// heavy rail.
+	// the client card. Line Items is what carries it: with none, Details alone
+	// (~150px, and on a fresh draft a single Created field) is not a column, so
+	// it takes the full width and the rail pairs against the stack below.
 	const detailFieldCount = [
 		invoice.created_at,
 		invoice.status !== "Draft" ? invoice.issue_date : null,
@@ -1643,6 +984,10 @@ export default function InvoiceDetailPage() {
 	const overviewLayout: "rail" | "split" =
 		lineItems.length === 0 && detailFieldCount <= 3 ? "split" : "rail";
 
+	// Origin is always in the main column, under Details and above the money it
+	// explains: its job and visit chips carry `whitespace-nowrap` numbers that
+	// shred in the ~285px rail, so there is no column choice to make.
+
 	// ── Render ────────────────────────────────────────────────────────────────
 
 	return (
@@ -1651,7 +996,7 @@ export default function InvoiceDetailPage() {
 			    closed by the strip's bottom border, rather than cards floating
 			    at the same weight as the body below them. */}
 			<div className="space-y-4">
-				<DocumentDetailHeader
+				<DetailHeader
 					title={invoice.invoice_number}
 					badges={
 						<>
@@ -1686,9 +1031,7 @@ export default function InvoiceDetailPage() {
 					meta={
 						<>
 							<span>
-								{invoice.status === "Draft"
-									? `Created ${formatDate(invoice.created_at)}`
-									: `Issued ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
+								{`Created ${formatDate(invoice.issue_date ?? invoice.created_at)}`}
 								{invoice.due_date &&
 									` · Due ${formatDate(invoice.due_date)}`}
 							</span>
@@ -1706,9 +1049,9 @@ export default function InvoiceDetailPage() {
 						</>
 					}
 					statusPill={
-						/* The page's single status word. The bar no longer
-						   repeats it, and the terminal stage carries the void
-						   reason instead of the word "Void". */
+						/* The page's single status word: the bar never repeats
+						   it, and its terminal stage carries the void reason
+						   instead. */
 						<span
 							className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${
 								InvoiceStatusColors[invoice.status]
@@ -1718,59 +1061,79 @@ export default function InvoiceDetailPage() {
 						</span>
 					}
 					inlineActions={
-						/* Earns a permanent slot rather than a menu row: it is
-						   the one action whose *state* the header already
-						   reports, in the badge beside it. */
-						qbShowAction ? (
-							<button
-								onClick={() => syncToQB(invoiceId!)}
-								disabled={isSyncingQB}
-								title={qbActionTitle}
-								className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-quickbooks hover:enabled:bg-quickbooks-hover text-white transition-colors duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed"
-							>
-								<RefreshCw
-									size={14}
-									className={
-										isSyncingQB
-											? "animate-spin"
-											: undefined
+						<>
+							<LifecycleActions actions={headerActions} />
+							{qbShowAction && (
+								/* Permanent slot, not a menu row:
+								   its state is already reported by
+								   the badge beside it. Utility, so
+								   it sits after the lifecycle
+								   buttons behind a divider. */
+								<button
+									onClick={() =>
+										syncToQB(invoiceId!)
 									}
-								/>
-								{isSyncingQB ? "Syncing…" : qbActionLabel}
-							</button>
-						) : undefined
+									disabled={isSyncingQB}
+									title={qbActionTitle}
+									className="ml-1 flex items-center gap-2 border-l border-border py-1.5 pl-3 pr-3 rounded-md text-sm font-medium bg-quickbooks hover:enabled:bg-quickbooks-hover text-white transition-colors duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									<RefreshCw
+										size={14}
+										className={
+											isSyncingQB
+												? "animate-spin"
+												: undefined
+										}
+									/>
+									{isSyncingQB
+										? "Syncing…"
+										: qbActionLabel}
+								</button>
+							)}
+						</>
 					}
 					menuGroups={menuGroups}
 					menuLabel="Invoice actions"
 					onMenuClose={() => setDeleteConfirm(false)}
 				/>
 
-				<LifecycleBar
-					kind="invoice"
-					stage={lifecycleStage}
-					currentStatus={invoice.status}
-					actions={lifecycleActionList}
-					detail={
-						openDispute ? (
-							<DisputeStage
-								kind="invoice"
-								dispute={openDispute}
-								lineItems={lineItems}
-							/>
-						) : disputeUnknownWhileDisputed ? (
-							<p className="text-sm text-warning-text">
-								This invoice's dispute couldn't be loaded, so its
-								status and exits aren't shown. Reload the page.
-							</p>
-						) : (
-							<TerminalDetail
-								reason={invoice.void_reason}
-								at={invoice.voided_at}
-								noReasonLabel="No reason recorded."
-							/>
-						)
-					}
-				/>
+				{showBar && (
+					<LifecycleBar
+						steps={INVOICE_STEPS}
+						stepLabels={InvoiceStatusLabels}
+						tone={
+							invoice.status === "Void"
+								? "error"
+								: undefined
+						}
+						stage={lifecycleStage}
+						currentStatus={invoice.status}
+						track={false}
+						actions={barActions}
+						detail={
+							openDispute ? (
+								<DisputeStage
+									kind="invoice"
+									dispute={openDispute}
+									lineItems={lineItems}
+								/>
+							) : disputeUnknownWhileDisputed ? (
+								<p className="text-sm text-warning-text">
+									This invoice's dispute
+									couldn't be loaded, so its
+									status and exits aren't
+									shown. Reload the page.
+								</p>
+							) : (
+								<TerminalDetail
+									reason={invoice.void_reason}
+									at={invoice.voided_at}
+									noReasonLabel="No reason recorded."
+								/>
+							)
+						}
+					/>
+				)}
 
 				{actionError && (
 					<p className="text-sm text-error-text" role="alert">
@@ -1778,25 +1141,41 @@ export default function InvoiceDetailPage() {
 					</p>
 				)}
 
-				{/* Directly under the bar on BOTH pages. This used to sit
-				    above the bar here and below it on the quote page, the kind
-				    of drift criterion 9 exists to stop. */}
+				{/* Directly under the bar, as on the quote page. */}
 				{disputeStateUnknown && (
 					<div className="flex items-center gap-2 rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text">
-						<AlertTriangle size={16} className="flex-shrink-0" />
+						<AlertTriangle
+							size={16}
+							className="flex-shrink-0"
+						/>
 						<span>
-							This invoice's dispute status couldn't be loaded,
-							so dispute and refund actions are unavailable.
-							Reload the page to try again.
+							This invoice's dispute status couldn't be
+							loaded, so dispute and refund actions are
+							unavailable. Reload the page to try again.
 						</span>
 					</div>
 				)}
 
-				<DocumentTabs
+				<DetailTabs
 					tabs={INVOICE_TABS}
 					activeTab={activeTab}
 					onSelect={setActiveTab}
 					label="Invoice sections"
+					progress={
+						<LifecycleRule
+							steps={INVOICE_STEPS}
+							stepLabels={InvoiceStatusLabels}
+							currentStatus={invoice.status}
+							haltedAt={
+								openDispute?.status_at_open ?? null
+							}
+							tone={
+								lifecycleStage === "dispute"
+									? "warning"
+									: "default"
+							}
+						/>
+					}
 				/>
 			</div>
 
@@ -1808,7 +1187,7 @@ export default function InvoiceDetailPage() {
 					className="mt-6 space-y-4"
 				>
 					<h2 className="sr-only">Overview</h2>
-					<DocumentStatRow tiles={statTiles} />
+					<DetailStatRow tiles={statTiles} />
 
 					{overviewLayout === "rail" ? (
 						<>
@@ -1816,37 +1195,35 @@ export default function InvoiceDetailPage() {
 							    column. Details is a single wrap of
 							    fields — ~150px against a ~380px client
 							    card — so on its own it left a dead
-							    quarter of the page; the line items
-							    under it carry the column past the
+							    quarter of the page; Origin and the line
+							    items under it carry the column past the
 							    rail. */}
 							<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 								<div className="lg:col-span-2 space-y-4">
 									{detailsCard}
+									{originCard}
 									{lineItemsCard}
 								</div>
 								<div className="lg:col-span-1 space-y-4">
 									{clientCard}
-									{recurringPlanLink}
 									{paymentsCard}
 								</div>
 							</div>
-							{linkedJobsBand}
 						</>
 					) : (
 						<>
 							{/* Nothing substantial for a main column to
 							    hold, so Details takes the full width its
 							    wrap can fill and the client card pairs
-							    against the linked-jobs band. */}
+							    against the Origin / line-items stack. */}
 							{detailsCard}
 							<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 								<div className="lg:col-span-2 space-y-4">
+									{originCard}
 									{lineItemsCard}
-									{linkedJobsBand}
 								</div>
 								<div className="lg:col-span-1 space-y-4">
 									{clientCard}
-									{recurringPlanLink}
 									{paymentsCard}
 								</div>
 							</div>
@@ -1856,12 +1233,16 @@ export default function InvoiceDetailPage() {
 			)}
 
 			{activeTab === "activity" && (
-				<DocumentActivityPanel
+				<ActivityPanel
 					notes={<InvoiceNoteManager invoiceId={invoiceId!} />}
 					lifecycle={<LifecycleRecord disputes={disputes} />}
 					history={
 						<ChangeHistory
-							scope={{ kind: "entity", type: "invoice", id: invoiceId ?? "" }}
+							scope={{
+								kind: "entity",
+								type: "invoice",
+								id: invoiceId ?? "",
+							}}
 						/>
 					}
 				/>
@@ -2301,9 +1682,9 @@ export default function InvoiceDetailPage() {
 									Void this invoice
 								</h3>
 								<span className="text-xs text-text-muted mt-0.5">
-									{invoice.invoice_number} stays on
-									record, marked void with this
-									reason.
+									{invoice.invoice_number}{" "}
+									stays on record, marked void
+									with this reason.
 								</span>
 							</div>
 							<button
@@ -2409,4 +1790,3 @@ export default function InvoiceDetailPage() {
 		</div>
 	);
 }
-

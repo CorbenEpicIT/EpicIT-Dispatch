@@ -19,13 +19,15 @@ export const InvoiceStatusValues = [
 
 export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
 
+// Enum values are DB-frozen; these are the display strings. Issued reads
+// "Created" and Paid reads "Fully Paid" (pairing with "Partially Paid").
 export const InvoiceStatusLabels: Record<InvoiceStatus, string> = {
 	Draft: "Draft",
-	Issued: "Issued",
+	Issued: "Created",
 	Sent: "Sent",
 	Viewed: "Viewed",
 	PartiallyPaid: "Partially Paid",
-	Paid: "Paid",
+	Paid: "Fully Paid",
 	Disputed: "Disputed",
 	Void: "Void",
 };
@@ -80,11 +82,31 @@ export interface InvoiceChainRef {
 	invoice_number: string;
 }
 
+/** The documents a job came from — how an invoice is backtracked past the work. */
+export interface JobQuoteReference {
+	id: string;
+	quote_number: string;
+	title: string;
+	status: string;
+	total: number;
+	created_at: Date | string;
+}
+
+export interface JobRequestReference {
+	id: string;
+	title: string;
+	status: string;
+	created_at: Date | string;
+}
+
 export interface JobReference {
 	id: string;
 	job_number: string;
 	name: string;
 	status: string;
+	/** Resolved on the invoice detail GET; list endpoints leave these absent. */
+	quote?: JobQuoteReference | null;
+	request?: JobRequestReference | null;
 }
 
 export interface VisitReference {
@@ -242,9 +264,9 @@ export interface Invoice extends PricingBreakdown {
 	amount_paid: number;
 	balance_due: number;
 
-	// Revision / adjustment chain (spec sections 7.4-7.5). Both directions are
-	// carried because a cross-reference has to name the neighbouring document,
-	// and "adjusted by" has no scalar to derive it from.
+	// Revision / adjustment chain. Both directions are carried: a cross-reference
+	// has to name the neighbouring document, and "adjusted by" has no scalar to
+	// derive it from.
 	version?: number;
 	previous_invoice_id?: string | null;
 	previous_invoice?: InvoiceChainRef | null;
@@ -279,6 +301,15 @@ export interface Invoice extends PricingBreakdown {
 	visits?: InvoiceVisit[];
 	payments?: InvoicePayment[];
 	notes?: InvoiceNote[];
+	/**
+	 * Jobs and visits a line names that `jobs` / `visits` do not — an adjustment
+	 * carries its root's attribution without the root's billing links. Detail
+	 * GET only, and kept separate because these bill nothing.
+	 */
+	unlinked_sources?: {
+		jobs: JobReference[];
+		visits: VisitReference[];
+	} | null;
 }
 
 // ============================================================================

@@ -189,7 +189,7 @@ export default function ClientDiscountsPage() {
 						<p className="text-text-muted text-sm">
 							{hasActiveFilters
 								? "Try adjusting your filters"
-								: "Discounts applied to issued invoices appear here"}
+								: "Discounts applied to created invoices appear here"}
 						</p>
 					</div>
 				) : (

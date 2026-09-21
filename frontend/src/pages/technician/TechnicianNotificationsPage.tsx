@@ -4,6 +4,7 @@ import { Bell, Calendar, Clock, XCircle, FileText, AlarmClock, CheckCheck } from
 import { useAuthStore } from "../../auth/authStore";
 import { useNotificationsQuery, useMarkNotificationReadMutation, useMarkAllNotificationsReadMutation } from "../../hooks/useNotifications";
 import type { TechnicianNotification, NotificationType } from "../../types/notifications";
+import TechPage from "../../components/technician/TechPage";
 
 function formatRelativeTime(dateStr: string): string {
 	const diff = Date.now() - new Date(dateStr).getTime();
@@ -108,7 +109,7 @@ export default function TechnicianNotificationsPage() {
 	}, [notifications]);
 
 	return (
-		<div className="max-w-lg mx-auto">
+		<TechPage>
 			{/* Header */}
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
@@ -168,6 +169,6 @@ export default function TechnicianNotificationsPage() {
 					})}
 				</div>
 			)}
-		</div>
+		</TechPage>
 	);
 }

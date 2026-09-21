@@ -13,10 +13,14 @@ export const FEED_EVENT_TYPES = [
 	"request.updated",
 	"quote.created",
 	"quote.updated",
+	// A send that never reached the client is the one thing about a quote a
+	// dispatcher has to learn without going looking for it.
+	"quote.send_failed",
 	"quote.dispute_opened",
 	"quote.dispute_resolved",
 	"invoice.created",
 	"invoice.updated",
+	"invoice.send_failed",
 	"invoice.dispute_opened",
 	"invoice.dispute_resolved",
 	"invoice_payment.created",

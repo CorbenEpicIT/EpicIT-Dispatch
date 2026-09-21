@@ -44,6 +44,16 @@ export const ErrorCodes = {
 	// dispute, and the fix is to hand it to a colleague.
 	SELF_RESOLUTION_FORBIDDEN: 'SELF_RESOLUTION_FORBIDDEN',
 	BAD_REQUEST: 'BAD_REQUEST',
+	// Delivery failed for a reason the sender cannot fix — the email account is
+	// unapproved, its sending domain unverified, the provider unreachable. Its
+	// own code because the UI answers it differently from a validation error:
+	// nothing about the document is wrong, and retrying changes nothing until
+	// an administrator acts.
+	EMAIL_SEND_FAILED: 'EMAIL_SEND_FAILED',
+	// Delivery failed on the address itself, which IS the sender's to fix.
+	// Separate from EMAIL_SEND_FAILED so a typo does not send them to an
+	// administrator.
+	EMAIL_RECIPIENT_REJECTED: 'EMAIL_RECIPIENT_REJECTED',
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];

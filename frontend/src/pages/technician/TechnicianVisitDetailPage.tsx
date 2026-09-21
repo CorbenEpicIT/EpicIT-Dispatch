@@ -19,13 +19,14 @@ import PartsUsedSection from "../../components/technicianComponents/PartsUsedSec
 import CustomerHistorySection from "../../components/technicianComponents/CustomerHistorySection";
 import InvoicePreview from "../../components/technicianComponents/InvoicePreview";
 import { VisitStatusColors, VisitStatusLabels, type VisitStatus } from "../../types/jobs";
-import { QuoteStatusColors } from "../../types/quotes";
+import { QuoteStatusColors, QuoteStatusLabels } from "../../types/quotes";
 import { formatDateTime, formatTime, FALLBACK_TIMEZONE } from "../../util/util";
 import { formatElapsed, resolveWorkTimerStart } from "../../util/elapsedUtil";
 import { useAuthStore } from "../../auth/authStore";
 import { ProjectStatusColors, ProjectStatusLabels } from "../../types/project";
 import StartPurchaseButton from "../../components/technician/procurement/StartPurchaseButton";
 import RequestApprovalButton from "../../components/technician/procurement/RequestApprovalButton";
+import TechPage from "../../components/technician/TechPage";
 
 // ── Field purchases ───────────────────────────────────────────────────────────
 
@@ -254,7 +255,10 @@ function JobContextSection({
 										"bg-neutral/20 text-text-secondary border-border-strong/30"
 									}`}
 								>
-									{job.quote.status}
+									{QuoteStatusLabels[
+										job.quote
+											.status as keyof typeof QuoteStatusLabels
+									] ?? job.quote.status}
 								</span>
 								<ChevronRight
 									size={14}
@@ -484,12 +488,12 @@ export default function TechnicianVisitDetailPage() {
 
 	if (isLoading) {
 		return (
-			<div className="max-w-lg mx-auto space-y-4 animate-pulse">
+			<TechPage className="space-y-4 animate-pulse">
 				<div className="h-7 w-48 bg-surface rounded" />
 				<div className="h-4 w-32 bg-surface rounded" />
 				<div className="h-24 bg-surface rounded-xl" />
 				<div className="h-32 bg-surface rounded-xl" />
-			</div>
+			</TechPage>
 		);
 	}
 
@@ -731,7 +735,7 @@ export default function TechnicianVisitDetailPage() {
 			: undefined;
 
 	return (
-		<div className="max-w-lg mx-auto pb-28">
+		<TechPage className="pb-28">
 			{/* Header */}
 			<div className="mb-5">
 				<h1 className="text-xl font-bold text-text-primary leading-snug">
@@ -766,7 +770,7 @@ export default function TechnicianVisitDetailPage() {
 {/* Sticky footer CTA */}
 			{status !== "Completed" && status !== "Cancelled" && (
 				<div className="fixed bottom-16 left-0 right-0 z-40 px-4 pb-3 bg-gradient-to-t from-canvas via-canvas/95 to-transparent pt-6">
-					<div className="max-w-lg mx-auto flex gap-2">
+					<TechPage className="flex gap-2">
 						<div className="flex-1">
 							<VisitActionButtons
 								visit={visit}
@@ -783,9 +787,9 @@ export default function TechnicianVisitDetailPage() {
 								<Phone size={18} />
 							</a>
 						)}
-					</div>
+					</TechPage>
 				</div>
 			)}
-		</div>
+		</TechPage>
 	);
 }

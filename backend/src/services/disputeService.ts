@@ -148,9 +148,13 @@ export async function openDisputeStatusChangeRefusal(
  *  cannot word it differently. */
 function disputableRefusal(adapter: DocumentAdapter, doc: DocumentShape): string | null {
 	if (adapter.disputableStatuses.includes(doc.status)) return null;
-	// "An Issued", "A Sent" — the status is named as the badge shows it.
-	const article = "AEIOU".includes(doc.status[0]) ? "An" : "A";
-	return `${article} ${doc.status} ${adapter.kind} can't be disputed. Disputes may be opened from: ${adapter.disputableStatuses.join(", ")}.`;
+	// "An Approved", "A Fully Paid" — the status is named as the badge shows it,
+	// which for invoices is not the stored enum value.
+	const label = (status: string) => adapter.statusLabels?.[status] ?? status;
+	const shown = label(doc.status);
+	const article = "AEIOU".includes(shown[0]) ? "An" : "A";
+	const sources = adapter.disputableStatuses.map(label).join(", ");
+	return `${article} ${shown} ${adapter.kind} can't be disputed. Disputes may be opened from: ${sources}.`;
 }
 
 /**

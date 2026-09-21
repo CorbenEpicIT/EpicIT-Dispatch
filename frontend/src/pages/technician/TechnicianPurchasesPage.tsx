@@ -7,6 +7,7 @@ import AuthorityStrip from "../../components/technician/procurement/AuthorityStr
 import RequestApprovalButton from "../../components/technician/procurement/RequestApprovalButton";
 import StartPurchaseButton from "../../components/technician/procurement/StartPurchaseButton";
 import { money } from "../../components/fieldPurchases/fieldPurchaseFormat";
+import TechPage from "../../components/technician/TechPage";
 import {
 	FIELD_PURCHASE_STATUS_LABELS,
 	isPrePurchase,
@@ -86,7 +87,7 @@ export default function TechnicianPurchasesPage() {
 	// authority when the network dropped sends them to dispatch over nothing.
 	if (authorityFailed) {
 		return (
-			<div className="flex items-start gap-3 rounded-xl border border-border bg-base p-4">
+			<TechPage className="flex items-start gap-3 rounded-xl border border-border bg-base p-4">
 				<WifiOff aria-hidden size={18} className="mt-0.5 flex-shrink-0 text-warning-text" />
 				<div>
 					<h1 className="text-sm font-semibold text-text-primary">
@@ -96,7 +97,7 @@ export default function TechnicianPurchasesPage() {
 						Check your signal and reload. Your authority has not changed.
 					</p>
 				</div>
-			</div>
+			</TechPage>
 		);
 	}
 
@@ -104,7 +105,7 @@ export default function TechnicianPurchasesPage() {
 		// No limits shown: a revoked grant still carries its old numbers, and
 		// printing a ceiling that no longer applies is worse than printing none.
 		return (
-			<div className="flex items-start gap-3 rounded-xl border border-border bg-base p-4">
+			<TechPage className="flex items-start gap-3 rounded-xl border border-border bg-base p-4">
 				<ShieldOff aria-hidden size={18} className="mt-0.5 flex-shrink-0 text-text-muted" />
 				<div>
 					<h1 className="text-sm font-semibold text-text-primary">
@@ -117,12 +118,12 @@ export default function TechnicianPurchasesPage() {
 						<AskForAccessButton />
 					</div>
 				</div>
-			</div>
+			</TechPage>
 		);
 	}
 
 	return (
-		<div className="space-y-4">
+		<TechPage className="space-y-4">
 			<header>
 				<h1 className="text-base font-semibold text-text-primary">Field purchases</h1>
 				<p className="mt-1 text-xs text-text-muted">
@@ -184,7 +185,7 @@ export default function TechnicianPurchasesPage() {
 					</button>
 				)}
 			</section>
-		</div>
+		</TechPage>
 	);
 }
 

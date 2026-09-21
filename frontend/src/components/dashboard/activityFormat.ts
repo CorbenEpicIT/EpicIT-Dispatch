@@ -158,7 +158,7 @@ export const formatActivity = (log: ActivityLog, tz: string): FeedEntry | null =
 			const title = changes?.title?.new as string | undefined;
 			const subtitle = clientName && title ? `${clientName} · ${title}` : clientName ?? null;
 			if (newStatus === "Reviewing") return { message: "Request under review", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
-			if (newStatus === "Quoted") return { message: "Quote issued for request", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
+			if (newStatus === "Quoted") return { message: "Quote created for request", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
 			if (newStatus === "ConvertedToJob") return { message: "Request converted to job", subtitle, icon: Inbox, color: "text-orange-400", bg: "bg-orange-500/10" };
 			if (newStatus === "Cancelled") return { message: "Request cancelled", subtitle, icon: XCircle, color: "text-error-text", bg: "bg-error/10" };
 			return null;

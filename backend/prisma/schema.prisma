@@ -292,6 +292,12 @@ enum form_draft_type {
   invoice
 }
 
+// Stored values are frozen; the UI labels two of them differently. Issued
+// displays as "Created" and Paid as "Fully Paid" (pairing with "Partially
+// Paid"). The display strings live in frontend/src/types/invoices.ts
+// (InvoiceStatusLabels) and are mirrored by the invoice PDF template and the
+// dispute adapter. Quote statuses are unaffected: a quote's Issued still
+// reads "Issued".
 enum invoice_status {
   Draft
   Issued

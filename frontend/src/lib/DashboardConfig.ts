@@ -48,6 +48,11 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
     minH?: number;
     maxW?: number;
     maxH?: number;
+    /* Row ceiling for the auto-grow pass, which ignores `maxH` — that bounds
+       dragging only. Needed on widgets whose content scales with the org, or a
+       big roster grows the card until it pushes the widgets below it off-screen.
+       Omit for no ceiling. Inert today: auto-grow is dormant, see DashboardPage. */
+    autoGrowMaxH?: number;
     responsiveConstraints?: ResponsiveConstraints;
     requiredPermission?: string;
     requiredAnyPermission?: readonly string[];
@@ -71,7 +76,11 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
                                 ]
                             },
     "technicians":          {   label: "Technicians",
-                                defaultW: 4,  defaultH: 4,  minW: 3, minH: 3, maxH: 6, maxW: 6,
+                                /* defaultH was 4 while every preset layout ships h:3, so adding
+                                   this widget from the picker gave a taller card than a fresh
+                                   dashboard did. */
+                                defaultW: 4,  defaultH: 3,  minW: 3, minH: 3, maxH: 6, maxW: 6,
+                                autoGrowMaxH: 6,
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]

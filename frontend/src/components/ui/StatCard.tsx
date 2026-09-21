@@ -3,9 +3,8 @@ import type { ReactNode } from "react";
 export interface StatCardProps {
 	label: string;
 	/**
-	 * ReactNode rather than string: the document stat rows style the number and
-	 * its unit separately, and the invoice's Paid tile carries a progress meter
-	 * in its hint. Every existing caller passes a string, which still fits.
+	 * ReactNode, not string: the detail stat rows style the number and its unit
+	 * separately, and the invoice's Paid tile puts a meter in its hint.
 	 */
 	value: ReactNode;
 	hint?: ReactNode;
@@ -16,21 +15,15 @@ export interface StatCardProps {
 	className?: string;
 	/**
 	 * `lg` for a tile that stands on its own; `xl` where the strip shares its
-	 * column edges with Card-bodied sections directly below it, so the two
-	 * corners on that edge match. Not expressible through `className` — two
-	 * `rounded-*` utilities in one class list are settled by stylesheet order,
-	 * not by which was appended last.
+	 * column edges with Card-bodied sections below, so the corners match. Not a
+	 * `className` job — two `rounded-*` utilities are settled by stylesheet
+	 * order, not by which was appended last.
 	 */
 	radius?: "lg" | "xl";
-	/**
-	 * Half the height, same facts: the hint moves onto the value's line instead of
-	 * claiming a third row. Every row the strip takes is a row the work below loses.
-	 */
+	/** Half the height, same facts: the hint joins the value's line. */
 	dense?: boolean;
 }
 
-// Extracted from BatchDetailPage's local StatCard — same markup/tokens,
-// reusable by any page that needs a compact metric tile.
 export default function StatCard({
 	label,
 	value,

@@ -1,29 +1,33 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useSearchParams } from "react-router-dom";
-import DocumentTabs, { type DocumentTabDef } from "../DocumentTabs";
-import { useDocumentTab } from "../useDocumentTab";
+import { MemoryRouter, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import DetailTabs, { type DetailTabDef } from "../DetailTabs";
+import { useDetailTab } from "../useDetailTab";
 
-const TABS: readonly DocumentTabDef<"overview" | "payments" | "activity">[] = [
+const TABS: readonly DetailTabDef<"overview" | "payments" | "activity">[] = [
 	{ id: "overview", label: "Overview" },
 	{ id: "payments", label: "Payments" },
 	{ id: "activity", label: "Activity" },
 ];
 
 function Harness() {
-	const [activeTab, setActiveTab] = useDocumentTab(TABS);
+	const [activeTab, setActiveTab] = useDetailTab(TABS);
 	const [params] = useSearchParams();
+	const location = useLocation();
+	const navigate = useNavigate();
 
 	return (
 		<>
-			<DocumentTabs
+			<DetailTabs
 				tabs={TABS}
 				activeTab={activeTab}
 				onSelect={setActiveTab}
 				label="Invoice sections"
 			/>
 			<div data-testid="param">{params.get("tab") ?? "(none)"}</div>
+			<div data-testid="here">{location.pathname + location.search}</div>
+			<button onClick={() => navigate(-1)}>Back</button>
 			<div
 				role="tabpanel"
 				id={`tabpanel-${activeTab}`}
@@ -42,7 +46,7 @@ const at = (search: string) =>
 		</MemoryRouter>
 	);
 
-describe("DocumentTabs", () => {
+describe("DetailTabs", () => {
 	it("wires each tab to its panel", () => {
 		at("");
 
@@ -106,6 +110,30 @@ describe("DocumentTabs", () => {
 
 		await userEvent.keyboard("{End}");
 		expect(screen.getByTestId("param").textContent).toBe("activity");
+	});
+
+	// Tabs are a lens on one page, not navigation: back has to leave the detail
+	// page for whatever opened it, not unwind the tabs just read through.
+	it("does not bury the previous page behind tab switches", async () => {
+		render(
+			<MemoryRouter
+				initialEntries={[
+					"/dispatch/jobs/1?tab=visits",
+					"/dispatch/invoices/1",
+				]}
+				initialIndex={1}
+			>
+				<Harness />
+			</MemoryRouter>
+		);
+
+		await userEvent.click(screen.getByRole("tab", { name: "Payments" }));
+		await userEvent.click(screen.getByRole("tab", { name: "Activity" }));
+		expect(screen.getByTestId("param").textContent).toBe("activity");
+
+		await userEvent.click(screen.getByRole("button", { name: "Back" }));
+
+		expect(screen.getByTestId("here").textContent).toBe("/dispatch/jobs/1?tab=visits");
 	});
 
 	it("names the strip", () => {

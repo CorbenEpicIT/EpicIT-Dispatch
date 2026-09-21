@@ -82,6 +82,7 @@ vi.mock("../../services/logger.js", () => ({
 import quotesRouter from "../quotes.js";
 import invoicesRouter from "../invoices.js";
 import disputesRouter from "../disputes.js";
+import quickbooksRouter from "../quickbooks.js";
 import { getHandlers } from "./harness.js";
 
 /** The permission strings the gates on a route close over, in mount order. */
@@ -264,6 +265,49 @@ describe("money-mutating route permission gates", () => {
 			expect(permissionsFor(router, method, path).length).toBeGreaterThan(
 				0,
 			);
+		}
+	});
+});
+
+describe("document send route permission gates", () => {
+	// Emailing a quote to the client is not a document edit. A clerk who mails
+	// out finished documents has no business changing the prices on them, and an
+	// estimator who drafts them has no business contacting the client. Riding on
+	// edit_* made both roles impossible to express.
+	it("POST /quotes/:id/send requires send_quotes", () => {
+		expect(permissionsFor(quotesRouter, "post", "/:id/send")).toEqual([
+			"send_quotes",
+		]);
+	});
+
+	it("POST /invoices/:id/send requires send_invoices", () => {
+		expect(permissionsFor(invoicesRouter, "post", "/:id/send")).toEqual([
+			"send_invoices",
+		]);
+	});
+
+	// Mailing an invoice through QuickBooks is the same business act as mailing
+	// it through Postmark. This route carried no gate at all, so send_invoices
+	// was a permission with a door standing open next to it.
+	it("POST /integrations/quickbooks/invoices/:id/email requires send_invoices", () => {
+		expect(
+			permissionsFor(quickbooksRouter, "post", "/invoices/:id/email"),
+		).toEqual(["send_invoices"]);
+	});
+
+	// The gate is the whole point of the permission: a send route that lost its
+	// requirePermission during a refactor would ship green without this.
+	it("leaves no send route ungated", () => {
+		for (const router of [quotesRouter, invoicesRouter]) {
+			const sendRoutes = allRoutes(router).filter(({ path }) =>
+				path.endsWith("/send"),
+			);
+			expect(sendRoutes.length).toBeGreaterThan(0);
+			for (const { method, path } of sendRoutes) {
+				expect(
+					permissionsFor(router, method, path).length,
+				).toBeGreaterThan(0);
+			}
 		}
 	});
 });

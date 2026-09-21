@@ -216,7 +216,7 @@ export default function TechnicianDetailsPage() {
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex items-center gap-4 min-w-0">
 					<div className="relative flex-shrink-0">
-						<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-border to-border-strong flex items-center justify-center text-white font-bold text-xl">
+						<div className="w-14 h-14 rounded-xl bg-avatar-bg flex items-center justify-center text-avatar-fg font-bold text-xl">
 							{technician.name.charAt(0).toUpperCase()}
 						</div>
 						<div

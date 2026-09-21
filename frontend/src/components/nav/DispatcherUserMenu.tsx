@@ -57,8 +57,15 @@ export default function DispatcherUserMenu() {
 		<div ref={wrapperRef} className="relative">
 			<button
 				onClick={() => setMenuOpen((o) => !o)}
-				className={`w-9 h-9 rounded-lg bg-border-strong flex items-center justify-center text-on-primary font-semibold text-sm border-b-[3px] transition-colors ${
-					menuOpen ? "border-primary" : "border-transparent hover:border-border"
+				/* Underline carries interaction state only — closed, hovered, open — so
+				   it runs on one accent at two weights rather than a grey. It was
+				   `border-border` on hover against a `border-strong` fill: both from
+				   the border family, and the hover landed darker than the fill in dark
+				   mode but lighter in light mode, so the accent had no consistent
+				   direction. Fill moved to the avatar tokens for the same reason it
+				   did on the dashboard badge. */
+				className={`w-9 h-9 rounded-lg bg-avatar-bg flex items-center justify-center pt-[3px] text-avatar-fg font-semibold text-sm border-b-[3px] transition-colors ${
+					menuOpen ? "border-primary" : "border-transparent hover:border-primary/40"
 				}`}
 			>
 				{user?.name.charAt(0).toUpperCase()}
@@ -67,7 +74,7 @@ export default function DispatcherUserMenu() {
 			{menuOpen && (
 				<div className="absolute top-full right-0 mt-2 w-54 bg-surface-raised border border-border-subtle rounded-lg shadow-lg z-50 overflow-hidden">
 					<div className="px-4 py-3 border-b border-border-subtle flex items-start gap-3">
-						<span className="w-10 h-10 shrink-0 rounded-lg bg-border-strong flex items-center justify-center text-on-primary font-semibold text-sm">
+						<span className="w-10 h-10 shrink-0 rounded-lg bg-avatar-bg flex items-center justify-center text-avatar-fg font-semibold text-sm">
 							{user?.name.charAt(0).toUpperCase()}
 						</span>
 						<div className="min-w-0">
