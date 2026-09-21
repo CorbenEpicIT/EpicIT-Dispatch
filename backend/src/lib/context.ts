@@ -72,6 +72,9 @@ const ORG_SCOPED_MODELS = new Set([
 	"field_purchase_event",
 	"assistant_conversation",
 	"document_dispute",
+	"vehicle_maintenance_record",
+	"vehicle_maintenance_reminder",
+	"purchase",
 ]);
 
 /**
@@ -101,6 +104,7 @@ const RELATION_SCOPED_MODELS: Record<string, (organizationId: string) => Record<
 	stock_movement_batch: (o) => ({ movement: { organization_id: o } }),
 	visit_tech_time_entry: (o) => ({ visit: { job: { organization_id: o } } }),
 	field_purchase_line: (o) => ({ field_purchase: { organization_id: o } }),
+	purchase_line: (o) => ({ purchase: { organization_id: o } }),
 	field_purchase_job_allocation: (o) => ({ field_purchase: { organization_id: o } }),
 	assistant_message: (o) => ({ conversation: { organization_id: o } }),
 	assistant_tool_call: (o) => ({ message: { conversation: { organization_id: o } } }),

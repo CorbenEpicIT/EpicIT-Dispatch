@@ -108,6 +108,13 @@ export const qk = {
 				? (["vehicles", "detail", id, "readiness", date] as const)
 				: (["vehicles", "detail", id, "readiness"] as const),
 		stockConflicts: ["vehicles", "stock-conflicts"] as const,
+		maintenanceAlerts: ["vehicles", "maintenance-alerts"] as const,
+		maintenance: (id: string) => ["vehicles", "detail", id, "maintenance"] as const,
+		maintenanceSourceLines: (id: string, q?: string) =>
+			q
+				? (["vehicles", "detail", id, "maintenance-source-lines", q] as const)
+				: (["vehicles", "detail", id, "maintenance-source-lines"] as const),
+		maintenanceReminders: (id: string) => ["vehicles", "detail", id, "maintenance-reminders"] as const,
 	},
 	suppliers: {
 		all: ["suppliers"] as const,

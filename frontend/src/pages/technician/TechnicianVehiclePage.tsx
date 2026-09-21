@@ -13,11 +13,13 @@ import {
 	History,
 	ListChecks,
 	Barcode,
+	BellPlus,
 } from "lucide-react";
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
-import { useVehiclesQuery, useSetTechnicianVehicleMutation } from "../../hooks/useVehicles";
+import { useVehiclesQuery, useSetTechnicianVehicleMutation, useVehicleMaintenanceQuery, useVehicleMaintenanceReminderQuery } from "../../hooks/useVehicles";
+import { dueFor, STATUS_RANK, STATUS_LABEL, STATUS_CLASSNAME, type ReminderDue } from "../../util/vehicleMaintenanceStatus";
 import {
 	useVehicleStockQuery,
 	useRestockRequestMutation,
@@ -51,9 +53,12 @@ import type {
 	VehicleStockItem,
 	VehicleStockConflict,
 	BulkRestockInput,
+	VehicleMaintenanceReminder,
 } from "../../types/vehicles";
+import { MAINTENANCE_CATEGORY_LABELS } from "../../types/vehicles";
 import type { InventoryItem } from "../../types/inventory";
 import { unitLabel } from "../../lib/units";
+import CreateMaintenanceReminderModal from "../../components/vehicles/maintenance/CreateMaintenanceReminderModal";
 
 // ── Vehicle Status ────────────────────────────────────────────────────────────
 
@@ -508,6 +513,56 @@ function StockConflictWarning({ conflicts }: { conflicts: VehicleStockConflict[]
 	);
 }
 
+function MaintenanceReminderWarning(
+	{ reminders, setIsCreateReminderModalOpen }: 
+	{ reminders: { reminder: VehicleMaintenanceReminder; due: ReminderDue }[]; setIsCreateReminderModalOpen: (open: boolean) => void }
+) {
+	const noneDue = reminders.length <= 0;
+	const hasOverdue = reminders.some(({ due }) => due.status === "overdue");
+	return (
+		<div className={`rounded-xl border ${hasOverdue ? "border-error" : "border-warning"} bg-base overflow-hidden`}>
+			<div className={`px-4 py-2.5 border-b flex items-center gap-2 ${hasOverdue ? "bg-error/10 border-error/30" : "bg-warning/10 border-warning/30"}`}>
+				{hasOverdue && (<AlertTriangle size={14} className={`shrink-0 ${hasOverdue ? "text-error-text" : "text-warning-text"}`} />)}
+				<span className={`text-sm font-semibold flex-1 ${hasOverdue ? "text-error-text" : "text-warning-text"}`}>
+					{hasOverdue ? "Maintenance due" : "Maintenance reminders"}
+				</span>
+				<button
+					className="inline-flex items-center gap-1.5 rounded-md bg-primary hover:bg-primary-hover px-3 py-1.5 text-xs font-semibold text-on-primary transition-colors"
+					onClick={() => setIsCreateReminderModalOpen(true)}
+				>
+					<BellPlus size={14}/> Create Reminder
+				</button>
+			</div>
+			<div className="divide-y divide-border-subtle">
+				{noneDue 
+				?  (
+					<>
+						<p>No Upcoming reminders</p>
+					</>
+				)
+				: reminders.map(({ reminder, due }) => (
+					<div key={reminder.id} className="px-4 py-3 flex items-center justify-between gap-2">
+						<div className="min-w-0">
+							<span className="text-sm font-semibold text-text-primary">{reminder.title}</span>
+							<span className="text-xs text-text-muted ml-2">
+								{MAINTENANCE_CATEGORY_LABELS[reminder.category]}
+							</span>
+						</div>
+						<div className="flex items-center gap-2 shrink-0">
+							{due.status !== "none" && (
+								<span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${STATUS_CLASSNAME[due.status]}`}>
+									{STATUS_LABEL[due.status]}
+								</span>
+							)}
+							<span className="text-xs text-text-muted">{due.dueLines[0]}</span>
+						</div>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
 // ── Add to Stock Sheet ───────────────────────────────────────────────────────
 
 function AddStockItemSheet({
@@ -742,11 +797,19 @@ export default function TechnicianVehiclePage() {
 	const { data: techProfile, isLoading: techLoading } = useTechnicianByIdQuery(
 		user?.userId ?? null
 	);
+    const [isCreateReminderModalOpen, setIsCreateReminderModalOpen] = useState(false);
 	const { data: vehicles = [], isLoading: vehiclesLoading } = useVehiclesQuery();
 	const currentVehicleId = techProfile?.current_vehicle_id ?? null;
 	const { data: stockItems = [] } = useVehicleStockQuery(currentVehicleId);
 	const { data: stockConflicts = [] } = useVehicleStockConflictsQuery();
 	const myConflicts = stockConflicts.filter((c) => c.vehicleId === currentVehicleId);
+	const { data: maintenanceRecords = [] } = useVehicleMaintenanceQuery(currentVehicleId);
+	const { data: maintenanceReminders = [] } = useVehicleMaintenanceReminderQuery(currentVehicleId);
+	const currentOdometerMi = maintenanceRecords.find((r) => r.odometer_mi != null)?.odometer_mi ?? null;
+	const dueReminders = maintenanceReminders
+		.map((reminder) => ({ reminder, due: dueFor(reminder, maintenanceRecords, currentOdometerMi) }))
+		.filter(({ due, reminder }) => (due.status === "overdue" || due.status === "duesoon") && reminder.acknowledged_at == null)
+		.sort((a, b) => STATUS_RANK[a.due.status] - STATUS_RANK[b.due.status] || a.due.urgency - b.due.urgency);
 	const setVehicle = useSetTechnicianVehicleMutation();
 	const restockMutation = useRestockRequestMutation();
 	const bulk = useBulkRestockMutation(currentVehicleId ?? "");
@@ -1324,12 +1387,17 @@ export default function TechnicianVehiclePage() {
 				<StockConflictWarning conflicts={myConflicts} />
 			)}
 
+			{/* ── Vehicle Reminders ─────────────────────────────────────────────── */}
+			{!showVehicleList && !showCheckOutConfirm && (
+				<MaintenanceReminderWarning reminders={dueReminders} setIsCreateReminderModalOpen={setIsCreateReminderModalOpen}/>
+			)}
+
 			{/* ── Inventory ─────────────────────────────────────────────────────── */}
 			{currentVehicleId && !showVehicleList && !showCheckOutConfirm && (
 				<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 					<button
 						onClick={() => setShowInventory((v) => !v)}
-						className="w-full px-4 py-3 flex items-center gap-2 text-left"
+						className="w-full px-4 py-3 flex items-center gap-2 text-left hover:cursor-pointer"
 					>
 						<Package size={15} className="text-text-muted" />
 						<span className="text-xs font-medium text-text-tertiary uppercase tracking-wide flex-1">
@@ -1775,7 +1843,7 @@ export default function TechnicianVehiclePage() {
 					<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 						<button
 							onClick={() => setShowAddItem((v) => !v)}
-							className="w-full px-4 py-3 flex items-center gap-2 text-left"
+							className="w-full px-4 py-3 flex items-center gap-2 text-left hover:cursor-pointer"
 						>
 							<ListChecks
 								size={15}
@@ -1850,7 +1918,7 @@ export default function TechnicianVehiclePage() {
 					<div className="rounded-xl border border-border-subtle bg-base overflow-hidden">
 						<button
 							onClick={() => setRestockOpen((v) => !v)}
-							className="w-full px-4 py-3 flex items-center gap-2 text-left"
+							className="w-full px-4 py-3 flex items-center gap-2 text-left hover:cursor-pointer"
 						>
 							<ClipboardCheck
 								size={15}
@@ -1885,7 +1953,7 @@ export default function TechnicianVehiclePage() {
 							onClick={() =>
 								setShowStockHistory((v) => !v)
 							}
-							className="w-full px-4 py-3 flex items-center gap-2 text-left"
+							className="w-full px-4 py-3 flex items-center gap-2 text-left hover:cursor-pointer"
 						>
 							<History
 								size={15}
@@ -2252,6 +2320,14 @@ export default function TechnicianVehiclePage() {
 						</div>
 					</div>
 				</>
+			)}
+
+			{isCreateReminderModalOpen && (
+				<CreateMaintenanceReminderModal
+					vehicleId={currentVehicleId ?? ""}
+					isModalOpen={isCreateReminderModalOpen}
+					setIsModalOpen={setIsCreateReminderModalOpen}
+				/>
 			)}
 		</div>
 	);

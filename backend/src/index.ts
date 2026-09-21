@@ -11,6 +11,7 @@ import * as notificationsController from "./controllers/notificationsController.
 import { startVisitReminderInterval } from "./services/notifications.js";
 import { startInvoiceSchedulerInterval } from "./services/invoiceScheduler.js";
 import { startFollowupSchedulerInterval } from "./services/followupScheduler.js";
+import { startMaintenanceReminderInterval } from "./services/vehicleMaintenanceScheduler.js";
 import { rearmWrappingUpTimers } from "./services/wrappingUpTimer.js";
 import multer from "multer";
 import {
@@ -284,6 +285,7 @@ notificationsController.setSocketIo(io);
 startVisitReminderInterval();
 startInvoiceSchedulerInterval();
 startFollowupSchedulerInterval();
+startMaintenanceReminderInterval();
 rearmWrappingUpTimers().catch((e) =>
 	log.error(e, "Failed to rearm WrappingUp timers"),
 );

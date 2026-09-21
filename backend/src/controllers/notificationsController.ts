@@ -12,7 +12,8 @@ export type NotificationType =
 	| "note_added"
 	| "visit_reminder"
 	| "field_purchase_preauth"
-	| "field_purchase_reviewed";
+	| "field_purchase_reviewed"
+	| "vehicle_maintenance_due";
 
 // ── Socket.io injection ───────────────────────────────────────────────────────
 

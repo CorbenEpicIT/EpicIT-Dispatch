@@ -33,7 +33,11 @@ import {
 	mapStockAdjustmentRecord,
 	mapRestockRequest,
 	mapStockMovement,
+	mapMaintenanceRecord,
+	mapMaintenanceReminder,
 } from "../types/dto/vehicles.js";
+import { createMaintenanceRecordSchema, createMaintenanceReminderSchema, updateMaintenanceRecordSchema, updateMaintenanceReminderSchema } from "../lib/validate/vehicles.js";
+import { currentOdometerFor, classifyReminder, resolveDueTargets } from "../lib/validate/vehicleMaintenanceStatus.js";
 
 // Stock-item quantities nested under a restock request only carry a partial
 // inventory_item select (id/name/unit/quantity, no Decimal fields) — convert
@@ -3170,3 +3174,496 @@ export const getVehicleMovements = async (
 
 	return { err: "", movements: page.map(mapStockMovement), nextCursor };
 };
+
+// Vehicle maintenance
+
+export const createMaintenanceRecord = async (orgId: string, vehicleId: string, data: unknown, context?: UserContext) => {
+	const sdb = getScopedDb(orgId);
+
+	const vehicle = await sdb.vehicle.findFirst({where: { id: vehicleId }});
+	if (!vehicle) return { err: "Vehicle not found"};
+
+	let parsed: z.infer<typeof createMaintenanceRecordSchema>;
+	try {
+		parsed = createMaintenanceRecordSchema.parse(data);
+	} catch (e) {
+		if (e instanceof ZodError) return { err: formatZodError(e) };
+		return { err: "Invalid input" };
+	}
+
+	if (parsed.source_field_purchase_line_id) {
+		const line = await sdb.field_purchase_line.findFirst({ 
+			where: {id: parsed.source_field_purchase_line_id}, 
+		});
+		if (line?.disposition_vehicle_id !== vehicleId)
+			return { err: "Source purchase line belongs to another vehicle"}
+	}
+	if (parsed.source_purchase_line_id) {
+		const line = await sdb.purchase_line.findFirst({ 
+			where: {id: parsed.source_purchase_line_id}, 
+		});
+		if (line?.disposition_vehicle_id !== vehicleId)
+			return { err: "Source purchase line belongs to another vehicle"}
+	}
+
+	const record = await sdb.vehicle_maintenance_record.create({
+		data: {
+			...parsed,
+			performed_at: new Date(parsed.performed_at),
+			performed_by_id: context?.dispatcherId ?? null,
+			performed_by_tech_id: context?.dispatcherId ? null : (context?.techId ?? null),
+			organization_id: orgId,
+			vehicle_id: vehicleId
+		}
+	});
+
+	await logActivity({
+		event_type: "vehicle_maintenance.created",
+		action: "created",
+		entity_type: "vehicle_maintenance_record",
+		entity_id: record.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: {
+			category:     { old: null, new: record.category },
+			performed_at: { old: null, new: record.performed_at },
+		},
+	});
+
+	return { record };
+}
+
+export const getMaintenanceRecords = async (orgId: string, vehicleId: string) => {
+	const sdb = getScopedDb(orgId);
+
+	const exists = await sdb.vehicle.findFirst({ where: { id: vehicleId }});
+	if (!exists) return { err: "Vehicle not found"};
+
+	const records = await sdb.vehicle_maintenance_record.findMany({
+		where: {vehicle_id: vehicleId},
+		orderBy: { performed_at: "desc" }, 
+		include: {
+			performed_by: { select: { id: true, name: true } },
+			performed_by_tech: { select: { id: true, name: true } },
+			source_purchase_line: { select: { purchase_id: true } },
+			source_field_purchase_line: { select: { field_purchase_id: true } },
+		}
+	});
+
+	return { records: records.map(mapMaintenanceRecord) };
+}
+
+export const updateMaintenanceRecord = async(orgId: string, vehicleId: string, recordId: string, data: unknown, context?: UserContext) =>  {
+	let parsed: z.infer<typeof updateMaintenanceRecordSchema>;
+	try {
+		parsed = updateMaintenanceRecordSchema.parse(data);
+	} catch (e) {
+		if (e instanceof ZodError) return { err: formatZodError(e) };
+		return { err: "Invalid input" };
+	}
+
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_record.findFirst({
+		where: { id: recordId, vehicle_id: vehicleId }
+	});
+	if (!existing) return { err: "Maintenance record not found"};
+
+	if (parsed.source_field_purchase_line_id) {
+		const line = await sdb.field_purchase_line.findFirst({ where: { id: parsed.source_field_purchase_line_id } });
+		if (line?.disposition_vehicle_id !== vehicleId)
+			return { err: "Source purchase line belongs to another vehicle" };
+	}
+	if (parsed.source_purchase_line_id) {
+		const line = await sdb.purchase_line.findFirst({ where: { id: parsed.source_purchase_line_id } });
+		if (line?.disposition_vehicle_id !== vehicleId)
+			return { err: "Source purchase line belongs to another vehicle" };
+	}
+
+	const record = await sdb.vehicle_maintenance_record.update({
+		where: { id: recordId },
+		data: {
+			...parsed,
+			...(parsed.performed_at ? { performed_at: new Date(parsed.performed_at) } : {}),
+		},
+	});
+
+	const changes = buildChanges(existing, parsed, [
+		"category", "performed_at", "odometer_mi", "interval_miles",
+		"interval_months", "cost", "vendor_name", "notes",
+	] as const);
+
+	await logActivity({
+		event_type: "vehicle_maintenance.updated",
+		action: "updated",
+		entity_type: "vehicle_maintenance_record",
+		entity_id: record.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes,
+	});
+
+	return { record };
+}
+
+export const deleteMaintenanceRecord = async (orgId: string, recordId: string, vehicleId: string, context?: UserContext) => {
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_record.findFirst({ where: { id: recordId, vehicle_id: vehicleId }});
+	if (!existing) return { err: "Maintenance record not found" };
+
+	await sdb.vehicle_maintenance_record.delete({ where: { id: recordId } });
+
+	await logActivity({
+		event_type: "vehicle_maintenance.deleted",
+		action: "deleted",
+		entity_type: "vehicle_maintenance_record",
+		entity_id: recordId,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: {
+			category:     { old: existing.category, new: null },
+			performed_at: { old: existing.performed_at, new: null },
+		},
+	});
+
+	return { err: "" };
+}
+
+export interface MaintenanceSourceLine {
+	id: string;
+	source: "purchase" | "field_purchase";
+	description: string;
+	vendor_name: string | null;
+	cost: number;
+	date: string | null;
+	reference: string | null;
+}
+
+export const searchMaintenanceSourceLines = async (orgId: string, vehicleId: string, q: string | undefined) => {
+	const sdb = getScopedDb(orgId);
+
+	const vehicle = await sdb.vehicle.findFirst({where: { id: vehicleId }});
+	if (!vehicle) return { err: "Vehicle not found"};
+
+	const term = q?.trim();
+
+	const [purcahseLines, fieldLines] = await Promise.all([
+		sdb.purchase_line.findMany({
+			where: {
+				disposition_vehicle_id: vehicleId,
+				...(term 
+					? { OR: [
+							{ description: { contains: term, mode: "insensitive" as const } },
+							{ purchase: { purchase_number: { contains: term, mode: "insensitive" as const } } },
+							{ purchase: { vendor_name: { contains: term, mode: "insensitive" as const } } },
+						]
+					}
+					: {}
+				)
+			},
+			include: { purchase: { select: { purchase_number: true, vendor_name: true, purchased_at: true } } },
+			orderBy: { created_at: "desc" },
+			take: 20,
+		}),
+		sdb.field_purchase_line.findMany({
+			where: {
+				disposition_vehicle_id: vehicleId,
+				...(term 
+					? { OR: [
+							{ description: { contains: term, mode: "insensitive" as const } },
+							{ field_purchase: { receipt_number: { contains: term, mode: "insensitive" as const } } },
+							{ field_purchase: { vendor_name: { contains: term, mode: "insensitive" as const } } },
+						]
+					}
+					: {}
+				)
+			},
+			include: { field_purchase: { select: { receipt_number: true, vendor_name: true, purchased_at: true, submitted_at: true } } },
+			orderBy: { created_at: "desc" },
+			take: 20,
+		})
+	]);
+	
+	const lines: MaintenanceSourceLine[] = [
+		...purcahseLines.map((l): MaintenanceSourceLine => ({
+		id: l.id,
+		source: "purchase",
+		description: l.description,
+		vendor_name: l.purchase.vendor_name,
+		cost: Number(l.line_total),
+		date: (l.received_at ?? l.purchase.purchased_at)?.toISOString() ?? null,
+		reference: l.purchase.purchase_number,
+		})),
+		...fieldLines.map((l): MaintenanceSourceLine => ({
+		id: l.id,
+		source: "field_purchase",
+		description: l.description,
+		vendor_name: l.field_purchase.vendor_name,
+		cost: Number(l.line_total),
+		date: l.field_purchase.submitted_at?.toISOString() ?? null,
+		reference: l.field_purchase.receipt_number,
+		})),
+	].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 20);
+
+	return { lines };
+}
+
+export const getMaintenanceReminders = async (orgId: string, vehicleId: string) => {
+	const sdb = getScopedDb(orgId);
+
+	const vehicle = await sdb.vehicle.findFirst({where: {id: vehicleId}});
+	if (!vehicle) return { err: "Vehicle not found"};
+
+	const reminders = await sdb.vehicle_maintenance_reminder.findMany({
+		where: {vehicle_id: vehicleId},
+		orderBy: { created_at: "desc"}
+	});
+
+	return { reminders: reminders.map(mapMaintenanceReminder) };
+}
+
+export const createMaintenanceReminder = async (orgId: string, vehicleId: string, data: unknown, context?: UserContext) => {
+	let parsed: z.infer<typeof createMaintenanceReminderSchema>;
+	try {
+		parsed = createMaintenanceReminderSchema.parse(data);
+	} catch (e) {
+		if (e instanceof ZodError) return { err: formatZodError(e) };
+		return { err: "Invalid input" };
+	}
+
+	const sdb = getScopedDb(orgId);
+
+	const vehicle = await sdb.vehicle.findFirst({where: {id: vehicleId}});
+	if (!vehicle) return { err: "Vehicle not found"};
+
+	// repeating only: anchors the due calc until a matching-category record exists
+	const baseline = parsed.repeats
+		? {
+				baseline_at: new Date(),
+				baseline_odometer_mi: currentOdometerFor(
+					await sdb.vehicle_maintenance_record.findMany({ where: { vehicle_id: vehicleId } }),
+				),
+			}
+		: {};
+
+	const reminder = await sdb.vehicle_maintenance_reminder.create({
+		data: {
+			...parsed,
+			...(parsed.due_at ? { due_at: new Date(parsed.due_at) } : {}),
+			...baseline,
+			organization_id: orgId,
+			vehicle_id: vehicleId
+		}
+	});
+
+	await logActivity({
+		event_type: "vehicle_maintenance_reminder.created",
+		action: "created",
+		entity_type: "vehicle_maintenance_reminder",
+		entity_id: reminder.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: {
+			category: { old: null, new: reminder.category },
+			title:    { old: null, new: reminder.title },
+			repeats:  { old: null, new: reminder.repeats },
+		},
+	});
+
+	return { reminder };
+}
+
+export const updateMaintenanceReminder = async (orgId: string, vehicleId: string, reminderId: string, data: unknown, context?: UserContext) =>{
+	let parsed: z.infer<typeof updateMaintenanceReminderSchema>;
+	try {
+		parsed = updateMaintenanceReminderSchema.parse(data);
+	} catch (e) {
+		if (e instanceof ZodError) return { err: formatZodError(e) };
+		return { err: "Invalid input" };
+	}
+
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_reminder.findFirst({where: {id: reminderId, vehicle_id: vehicleId}});
+	if (!existing) return { err: "Maintenance reminder not found"};
+
+	const updated = await sdb.vehicle_maintenance_reminder.update({
+		where: {id: reminderId},
+		data: {
+			...parsed,
+			...(parsed.due_at ? { due_at: new Date(parsed.due_at) } : {}),
+		}
+	});
+
+	await logActivity({
+		event_type: "vehicle_maintenance_reminder.updated",
+		action: "updated",
+		entity_type: "vehicle_maintenance_reminder",
+		entity_id: updated.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: buildChanges(existing, parsed, [
+			"category", "title", "description", "interval_miles",
+			"interval_unit", "interval_count", "repeats", "due_at", "due_odometer_mi",
+		] as const),
+	});
+
+	return { reminder: updated };
+}
+
+export const deleteMaintenanceReminder = async (orgId: string, vehicleId: string, reminderId: string, context?: UserContext) => {
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_reminder.findFirst({where: {id: reminderId, vehicle_id: vehicleId}});
+	if (!existing) return { err: "Maintenance reminder not found"};
+
+	await sdb.vehicle_maintenance_reminder.delete({ where: { id: reminderId } });
+
+	await logActivity({
+		event_type: "vehicle_maintenance_reminder.deleted",
+		action: "deleted",
+		entity_type: "vehicle_maintenance_reminder",
+		entity_id: reminderId,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: {
+			category: { new: null, old: existing.category },
+			title:    { new: null, old: existing.title },
+			repeats:  { new: null, old: existing.repeats },
+		},
+	});
+
+	return { err: "" };
+}
+
+export const acknowledgeMaintenanceReminder = async (orgId: string, vehicleId: string, reminderId: string, context?: UserContext) => {
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_reminder.findFirst({where: {id: reminderId, vehicle_id: vehicleId}});
+	if (!existing) return { err: "Maintenance reminder not found"};
+
+	const reminder = await sdb.vehicle_maintenance_reminder.update({
+		where: {id: reminderId},
+		data: { acknowledged_at: new Date() },
+	});
+
+	await logActivity({
+		event_type: "vehicle_maintenance_reminder.acknowledged",
+		action: "updated",
+		entity_type: "vehicle_maintenance_reminder",
+		entity_id: reminder.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: { acknowledged_at: { old: null, new: reminder.acknowledged_at } },
+	});
+
+	return { reminder };
+}
+
+export const completeMaintenanceReminder = async (orgId: string, vehicleId: string, reminderId: string, context?: UserContext) => {
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_reminder.findFirst({where: {id: reminderId, vehicle_id: vehicleId}});
+	if (!existing) return { err: "Maintenance reminder not found"};
+
+	const reminder = await sdb.vehicle_maintenance_reminder.update({
+		where: {id: reminderId},
+		data: { completed_at: new Date() },
+	});
+
+	await logActivity({
+		event_type: "vehicle_maintenance_reminder.completed",
+		action: "updated",
+		entity_type: "vehicle_maintenance_reminder",
+		entity_id: reminder.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: { completed_at: { old: null, new: reminder.completed_at } },
+	});
+
+	return { reminder };
+}
+
+export const unacknowledgeMaintenanceReminder = async (orgId: string, vehicleId: string, reminderId: string, context?: UserContext) => {
+	const sdb = getScopedDb(orgId);
+
+	const existing = await sdb.vehicle_maintenance_reminder.findFirst({where: {id: reminderId, vehicle_id: vehicleId}});
+	if (!existing) return { err: "Maintenance reminder not found"};
+
+	const reminder = await sdb.vehicle_maintenance_reminder.update({
+		where: {id: reminderId},
+		data: { acknowledged_at: null },
+	});
+
+	await logActivity({
+		event_type: "vehicle_maintenance_reminder.unacknowledged",
+		action: "updated",
+		entity_type: "vehicle_maintenance_reminder",
+		entity_id: reminder.id,
+		organization_id: orgId,
+		...getActorInfo(context),
+		changes: { acknowledged_at: { old: existing.acknowledged_at, new: null } },
+	});
+
+	return { reminder };
+}
+
+interface MaintenanceAlert {
+	reminderId: string;
+	vehicleId: string;
+	vehicleName: string;
+	category: string;
+	title: string;
+	status: "overdue" | "duesoon";
+	dueAt: string | null;
+	dueOdometerMi: number | null;
+	currentOdometerMi: number | null;
+}
+
+export const getMaintenanceAlerts = async (orgId: string, scopeVehicleId?: string): Promise<MaintenanceAlert[]> => {
+	const sdb = getScopedDb(orgId);
+
+	const reminders = await sdb.vehicle_maintenance_reminder.findMany({
+		where: {
+			completed_at: null,
+			...(scopeVehicleId ? { vehicle_id: scopeVehicleId } : {}),
+		},
+		include: { vehicle: { select: { id: true, name: true } } },
+	});
+	if (reminders.length === 0) return [];
+
+	const vehicleIds = [...new Set(reminders.map((r) => r.vehicle_id))];
+	const records = await sdb.vehicle_maintenance_record.findMany({ where: { vehicle_id: { in: vehicleIds } } });
+
+	const recordsByVehicle = new Map<string, typeof records>();
+	for (const record of records) {
+		const list = recordsByVehicle.get(record.vehicle_id) ?? [];
+		list.push(record);
+		recordsByVehicle.set(record.vehicle_id, list);
+	}
+
+	const alerts: MaintenanceAlert[] = [];
+	for (const reminder of reminders) {
+		const vehicleRecords = recordsByVehicle.get(reminder.vehicle_id) ?? [];
+		const odometer = currentOdometerFor(vehicleRecords);
+		const status = classifyReminder(reminder, vehicleRecords, odometer);
+		if (status !== "overdue" && status !== "duesoon") continue;
+
+		const { dueAt, dueMiles } = resolveDueTargets(reminder, vehicleRecords);
+		alerts.push({
+			reminderId: reminder.id,
+			vehicleId: reminder.vehicle_id,
+			vehicleName: reminder.vehicle.name,
+			category: reminder.category,
+			title: reminder.title,
+			status,
+			dueAt: dueAt ? dueAt.toISOString() : null,
+			dueOdometerMi: dueMiles,
+			currentOdometerMi: odometer,
+		});
+	}
+
+	const rank = { overdue: 0, duesoon: 1 } as const;
+	return alerts.sort((a, b) => rank[a.status] - rank[b.status]);
+}

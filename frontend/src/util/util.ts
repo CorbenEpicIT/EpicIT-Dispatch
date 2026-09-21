@@ -70,6 +70,19 @@ export function daysUntil(date: Date | string): number {
 	return Math.round((target - today) / DAY_MS);
 }
 
+export function addMonths(isoDate: string, months: number): string {
+	const [y, m, d] = isoDate.slice(0, 10).split("-").map(Number);
+	return new Date(y, m - 1 + months, d).toISOString().slice(0, 10);
+}
+
+export function addInterval(isoDate: string, unit: "days" | "weeks" | "months" | "years", count: number): string {
+	if (unit === "months") return addMonths(isoDate, count);
+	if (unit === "years") return addMonths(isoDate, count * 12);
+	const [y, m, d] = isoDate.slice(0, 10).split("-").map(Number);
+	const days = unit === "weeks" ? count * 7 : count;
+	return new Date(y, m - 1, d + days).toISOString().slice(0, 10);
+}
+
 export const formatDateOnly = (date: Date | string) => {
 	return new Date(date).toLocaleDateString("en-US", {
 		month: "short",

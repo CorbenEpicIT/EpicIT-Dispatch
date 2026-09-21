@@ -102,6 +102,18 @@ export interface VehicleStockConflict {
 	conflicts: VehicleStockConflictItem[];
 }
 
+export interface VehicleMaintenanceAlert {
+	reminderId: string;
+	vehicleId: string;
+	vehicleName: string;
+	category: MaintenanceCategory;
+	title: string;
+	status: "overdue" | "duesoon";
+	dueAt: string | null;
+	dueOdometerMi: number | null;
+	currentOdometerMi: number | null;
+}
+
 export interface VehicleUsageTodayItem {
 	itemName: string;
 	qtyUsed: number;
@@ -341,5 +353,112 @@ export interface FillResultLine {
 export interface BulkRestockResult {
 	created: RestockRequest[];
 	skipped: { stock_item_id: string; reason: string }[];
+}
+
+export type MaintenanceCategory =
+	| "oil_change"
+	| "tire"
+	| "brake"
+	| "inspection"
+	| "registration"
+	| "repair"
+	| "other";
+
+export const MAINTENANCE_CATEGORY_LABELS: Record<MaintenanceCategory, string> = {
+	oil_change:   "Oil & fluids",
+	tire:         "Tire",
+	brake:        "Brake",
+	inspection:   "Inspection",
+	registration: "Registration",
+	repair:       "Repair",
+	other:        "Other",
+};
+
+export interface VehicleMaintenanceRecord {
+	id: string;
+	vehicle_id: string;
+	organization_id: string;
+	category: MaintenanceCategory;
+	performed_at: string;
+	odometer_mi: number | null;
+	interval_miles: number | null;
+	interval_months: number | null;
+	cost: number | null;
+	vendor_name: string | null;
+	notes: string | null;
+	performed_by: DualActor["dispatcher"];
+	performed_by_tech: DualActor["technician"];
+	source_purchase_line_id: string | null;
+	source_field_purchase_line_id: string | null;
+	source_purchase_id: string | null;
+	source_field_purchase_id: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export const CreateMaintenanceRecordSchema = z.object({
+	category: z.enum(["oil_change", "tire", "brake", "inspection", "registration", "repair", "other"]),
+	performed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "performed_at must be YYYY-MM-DD"),
+	odometer_mi: z.number().int().min(0).optional().nullable(),
+	interval_miles: z.number().int().min(0).optional().nullable(),
+	interval_months: z.number().int().min(0).optional().nullable(),
+	cost: z.number().min(0).optional().nullable(),
+	vendor_name: z.string().optional().nullable(),
+	notes: z.string().optional().nullable(),
+	source_purchase_line_id: z.string().optional().nullable(),
+	source_field_purchase_line_id: z.string().optional().nullable(),
+});
+export const UpdateMaintenanceRecordSchema = CreateMaintenanceRecordSchema.partial();
+
+export type CreateMaintenanceRecordInput = z.infer<typeof CreateMaintenanceRecordSchema>;
+export type UpdateMaintenanceRecordInput = Partial<CreateMaintenanceRecordInput>;
+
+export interface VehicleMaintenanceReminder {
+	id: string;
+	vehicle_id: string;
+	organization_id: string;
+	category: MaintenanceCategory;
+	title: string;
+	description: string | null;
+	interval_miles: number | null;
+	interval_unit: IntervalUnit | null;
+	interval_count: number | null;
+	repeats: boolean;
+	due_at: string | null;
+	due_odometer_mi: number | null;
+	completed_at: string | null;
+	acknowledged_at: string | null;
+	baseline_at: string | null;
+	baseline_odometer_mi: number | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export type IntervalUnit = "days" | "weeks" | "months" | "years";
+
+export const CreateMaintenanceReminderSchema = z.object({
+	category: z.enum(["oil_change", "tire", "brake", "inspection", "registration", "repair", "other"]),
+	title: z.string().min(1),
+	description: z.string().optional().nullable(),
+	interval_miles: z.number().int().min(0).optional().nullable(),
+	interval_unit: z.enum(["days", "weeks", "months", "years"]).optional().nullable(),
+	interval_count: z.number().int().min(1).optional().nullable(),
+	repeats: z.boolean().optional().default(true),
+	due_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "due_at must be YYYY-MM-DD").optional().nullable(),
+	due_odometer_mi: z.number().int().min(0).optional().nullable(),
+});
+export const UpdateMaintenanceReminderSchema = CreateMaintenanceReminderSchema.partial();
+
+export type CreateMaintenanceReminderInput = z.infer<typeof CreateMaintenanceReminderSchema>;
+export type UpdateMaintenanceReminderInput = Partial<CreateMaintenanceReminderInput>;
+
+export interface MaintenanceSourceLine {
+	id: string;
+	source: "purchase" | "field_purchase";
+	description: string;
+	vendor_name: string | null;
+	cost: number;
+	date: string | null;
+	reference: string | null;
 }
 

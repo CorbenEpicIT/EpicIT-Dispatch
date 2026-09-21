@@ -5858,6 +5858,352 @@ async function main() {
 	});
 
 	// ============================================================================
+	// Shop Purchases (POs) — separate from field_purchase above; these are the
+	// `purchase`/`purchase_line` rows the "Link a purchase" search on the vehicle
+	// maintenance modal reads via disposition_vehicle_id.
+	// ============================================================================
+
+	const poVan12Filters = await db.purchase.create({
+		data: {
+			organization_id: org.id,
+			status: "received",
+			purchase_number: "PO-2041",
+			supplier_id: supplierFerguson.id,
+			vendor_name: supplierFerguson.name,
+			purchased_at: daysFromNow(-18),
+			subtotal: 191.0,
+			total: 191.0,
+		},
+	});
+	await db.purchase_line.createMany({
+		data: [
+			{
+				purchase_id: poVan12Filters.id,
+				description: "Air Filter 16x25x1 MERV-8 (case of 12)",
+				quantity: 12,
+				unit_price: 8.5,
+				line_total: 102.0,
+				inventory_item_id: invFilter.id,
+				disposition: "receive",
+				disposition_location: "vehicle",
+				disposition_vehicle_id: van12.id,
+				quantity_recieved: 12,
+				received_at: daysFromNow(-18),
+			},
+			{
+				purchase_id: poVan12Filters.id,
+				description: "Contactor 2-Pole 40A 24V",
+				quantity: 2,
+				unit_price: 28.0,
+				line_total: 56.0,
+				inventory_item_id: invContactor.id,
+				disposition: "receive",
+				disposition_location: "vehicle",
+				disposition_vehicle_id: van12.id,
+				quantity_recieved: 2,
+				received_at: daysFromNow(-18),
+			},
+		],
+	});
+
+	const poVan8Refrigerant = await db.purchase.create({
+		data: {
+			organization_id: org.id,
+			status: "received",
+			purchase_number: "PO-2052",
+			supplier_id: supplierCopeland.id,
+			vendor_name: supplierCopeland.name,
+			purchased_at: daysFromNow(-9),
+			subtotal: 340.0,
+			total: 340.0,
+		},
+	});
+	const van8RefrigerantLine = await db.purchase_line.create({
+		data: {
+			purchase_id: poVan8Refrigerant.id,
+			description: "R-410A Refrigerant 25lb Cylinder",
+			quantity: 2,
+			unit_price: 170.0,
+			line_total: 340.0,
+			inventory_item_id: invRefrigerant.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: van8.id,
+			quantity_recieved: 2,
+			received_at: daysFromNow(-9),
+		},
+	});
+
+	// No supplier record — vendor as free text, same "not every vendor has a
+	// row" mix the field_purchase fixtures exercise above.
+	const poTruck4Compressor = await db.purchase.create({
+		data: {
+			organization_id: org.id,
+			status: "ordered",
+			purchase_number: "PO-2058",
+			vendor_name: "AC Wholesale Direct",
+			purchased_at: daysFromNow(-2),
+			subtotal: 610.0,
+			total: 610.0,
+		},
+	});
+	const truck4CompressorLine = await db.purchase_line.create({
+		data: {
+			purchase_id: poTruck4Compressor.id,
+			description: "Compressor 3-Ton Scroll R-410A — spare stock",
+			quantity: 1,
+			unit_price: 610.0,
+			line_total: 610.0,
+			inventory_item_id: invCompressor.id,
+			disposition: "receive",
+			disposition_location: "vehicle",
+			disposition_vehicle_id: truck4.id,
+		},
+	});
+
+	const poTruck4Consumables = await db.purchase.create({
+		data: {
+			organization_id: org.id,
+			status: "received",
+			purchase_number: "PO-2063",
+			supplier_id: supplierFerguson.id,
+			vendor_name: supplierFerguson.name,
+			purchased_at: daysFromNow(-1),
+			subtotal: 132.0,
+			total: 132.0,
+		},
+	});
+	await db.purchase_line.createMany({
+		data: [
+			{
+				purchase_id: poTruck4Consumables.id,
+				description: "Capacitor 45+5 MFD 440V Round",
+				quantity: 4,
+				unit_price: 22.0,
+				line_total: 88.0,
+				inventory_item_id: invCapacitor.id,
+				disposition: "receive",
+				disposition_location: "vehicle",
+				disposition_vehicle_id: truck4.id,
+				quantity_recieved: 4,
+				received_at: daysFromNow(-1),
+			},
+			{
+				purchase_id: poTruck4Consumables.id,
+				description: "Hot Surface Igniter (Universal)",
+				quantity: 2,
+				unit_price: 22.0,
+				line_total: 44.0,
+				inventory_item_id: invIgniter.id,
+				disposition: "receive",
+				disposition_location: "vehicle",
+				disposition_vehicle_id: truck4.id,
+				quantity_recieved: 2,
+				received_at: daysFromNow(-1),
+			},
+		],
+	});
+
+	// ============================================================================
+	// Vehicle Maintenance Records — some linked back to the purchases/field
+	// purchases above via source_purchase_line_id / source_field_purchase_line_id,
+	// so "Link a purchase" on the maintenance modal has real hits to find.
+	// Van 12 carries one record per category, so its summary tiles are never
+	// all "No records yet".
+	// ============================================================================
+
+	const fpCleanIgniterLine = fpClean.lines.find((l) => l.description.includes("IGNITER"))!;
+
+	await db.vehicle_maintenance_record.createMany({
+		data: [
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "repair",
+				performed_at: daysFromNow(-6),
+				odometer_mi: 41500,
+				cost: 42.4,
+				vendor_name: "Ferguson",
+				notes: "Hot surface igniter replaced during the Johnson follow-up.",
+				performed_by_tech_id: tech1.id,
+				source_field_purchase_line_id: fpCleanIgniterLine.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "oil_change",
+				performed_at: daysFromNow(-38),
+				odometer_mi: 39200,
+				interval_miles: 5000,
+				interval_months: 6,
+				cost: 68.5,
+				vendor_name: "Iowa 80 Truck Stop",
+				notes: "Full synthetic 5W-30, filter replaced.",
+				performed_by_tech_id: tech1.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "tire",
+				performed_at: daysFromNow(-95),
+				odometer_mi: 36800,
+				interval_months: 12,
+				cost: 598.0,
+				vendor_name: "Discount Tire",
+				notes: "4 new all-season, alignment included.",
+				performed_by_id: dispatcher.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "brake",
+				performed_at: daysFromNow(-160),
+				odometer_mi: 33500,
+				interval_miles: 12000,
+				cost: 274.99,
+				vendor_name: "Ferguson",
+				notes: "Front pads and rotors replaced — pads were down to 2mm.",
+				performed_by_tech_id: tech1.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "inspection",
+				performed_at: daysFromNow(-210),
+				odometer_mi: 31200,
+				interval_months: 12,
+				cost: 35.0,
+				vendor_name: "DOT Inspection Station",
+				notes: "Annual DOT inspection — passed, no defects noted.",
+				performed_by_id: dispatcher.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "registration",
+				performed_at: daysFromNow(-240),
+				interval_months: 12,
+				cost: 12.0,
+				vendor_name: "DMV",
+				notes: "Annual renewal, sticker mailed.",
+				performed_by_id: dispatcher.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "other",
+				performed_at: daysFromNow(-270),
+				odometer_mi: 28900,
+				cost: 15.0,
+				notes: "Windshield wiper blades replaced, no vendor receipt kept.",
+				performed_by_tech_id: tech1.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van8.id,
+				category: "repair",
+				performed_at: daysFromNow(-9),
+				odometer_mi: 28750,
+				interval_months: 12,
+				cost: 340.0,
+				vendor_name: "Copeland Distribution",
+				notes: "R-410A recharge — slow leak at the schrader valve, monitor next service.",
+				performed_by_id: dispatcher.id,
+				source_purchase_line_id: van8RefrigerantLine.id,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: truck4.id,
+				category: "repair",
+				performed_at: daysFromNow(-2),
+				odometer_mi: 52100,
+				interval_miles: 25000,
+				cost: 610.0,
+				vendor_name: "AC Wholesale Direct",
+				notes: "Spare compressor received and staged on the truck.",
+				performed_by_id: dispatcher2.id,
+				source_purchase_line_id: truck4CompressorLine.id,
+			},
+		],
+	});
+
+	// ============================================================================
+	// Vehicle Maintenance Reminders — mix of one-time (explicit due_at) and
+	// repeating (derived from the matching record above + interval) so the
+	// overdue/due-soon/upcoming classification and the due-reminder notification
+	// feature both have real data to exercise. Truck 4 is the unassigned spare
+	// (no current_technician) — its reminders should still surface to
+	// dispatchers but never page a technician.
+	// ============================================================================
+
+	await db.vehicle_maintenance_reminder.createMany({
+		data: [
+			// Van 12 — overdue, upcoming (repeating off the oil_change record above), due-soon.
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "registration",
+				title: "Registration Renewal",
+				repeats: false,
+				due_at: daysFromNow(-3),
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "oil_change",
+				title: "Oil & Filter Change",
+				repeats: true,
+				interval_miles: 5000,
+				interval_unit: "months",
+				interval_count: 6,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van12.id,
+				category: "inspection",
+				title: "Annual DOT Inspection",
+				repeats: false,
+				due_at: daysFromNow(5),
+			},
+			// Van 8 — overdue brake service, tire due soon.
+			{
+				organization_id: org.id,
+				vehicle_id: van8.id,
+				category: "brake",
+				title: "Brake Pad Inspection",
+				repeats: false,
+				due_at: daysFromNow(-10),
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: van8.id,
+				category: "tire",
+				title: "Tire Rotation",
+				repeats: false,
+				due_at: daysFromNow(4),
+			},
+			// Truck 4 — spare, unassigned: overdue oil change + upcoming registration.
+			{
+				organization_id: org.id,
+				vehicle_id: truck4.id,
+				category: "oil_change",
+				title: "Oil & Filter Change",
+				repeats: false,
+				due_at: daysFromNow(-1),
+				due_odometer_mi: 54000,
+			},
+			{
+				organization_id: org.id,
+				vehicle_id: truck4.id,
+				category: "registration",
+				title: "Registration Renewal",
+				repeats: false,
+				due_at: daysFromNow(20),
+			},
+		],
+	});
+
+	// ============================================================================
 	// Document Disputes — quote and invoice contest / resolution fixtures
 	// ============================================================================
 	//
@@ -7091,6 +7437,12 @@ async function main() {
 	);
 	console.log(
 		`  Purchase Grants:   3  Smith 750/1200/3000, Rodriguez 200/400/900, Park REVOKED`,
+	);
+	console.log(
+		`  Shop Purchases:    4  POs — Van 12 (filters+contactor), Van 8 (refrigerant), Truck 4 (compressor, capacitor+igniter)`,
+	);
+	console.log(
+		`  Maintenance Records: 9  Van 12 (1 per category — oil/tire/brake/inspection/registration/repair/other), Van 8 (refrigerant, PO), Truck 4 (compressor, PO)`,
 	);
 }
 

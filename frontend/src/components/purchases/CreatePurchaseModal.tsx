@@ -40,15 +40,15 @@ interface PurchaseLineDraft {
     job_visit_id: string | null;
 }
 
-const blankLine = (): PurchaseLineDraft => ({
+const blankLine = (defaultVehicleId?: string): PurchaseLineDraft => ({
     key: crypto.randomUUID(),
     description: "",
     quantity: "",
     unit_price: "",
     inventory_item_id: null,
     catalogItem: null,
-    disposition: null,
-    disposition_vehicle_id: null,
+    disposition: defaultVehicleId ? "receive" : null,
+    disposition_vehicle_id: defaultVehicleId ?? null,
     job_id: null,
     job_visit_id: null,
 });
@@ -261,16 +261,18 @@ interface CreatePurchaseProps {
     isModalOpen: boolean;
     setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
     createPurchaseOrder: (input: CreatePurchaseInput) => Promise<string>;
+    /** Pre-selects "Receive into stock" → this vehicle on every line, e.g. when opened from a vehicle's maintenance record. */
+    defaultDispositionVehicleId?: string;
 }
 
-export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, createPurchaseOrder }: CreatePurchaseProps) {
+export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, createPurchaseOrder, defaultDispositionVehicleId }: CreatePurchaseProps) {
     const [vendorName, setVendorName] = useState("");
     const [supplier, setSupplier] = useState<SupplierCapture>({});
     const [supplierQuery, setSupplierQuery] = useState("");
     const [purchasedAt, setPurchasedAt] = useState("");
     // undefined = not yet seeded from the org default; null = "No tax", explicitly chosen.
     const [taxGroupId, setTaxGroupId] = useState<string | null | undefined>(undefined);
-    const [lines, setLines] = useState<PurchaseLineDraft[]>(() => [blankLine()]);
+    const [lines, setLines] = useState<PurchaseLineDraft[]>(() => [blankLine(defaultDispositionVehicleId)]);
     const [errors, setErrors] = useState<ZodError | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
@@ -376,14 +378,14 @@ export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, crea
         setSupplierQuery("");
         setPurchasedAt("");
         setTaxGroupId(undefined);
-        setLines([blankLine()]);
+        setLines([blankLine(defaultDispositionVehicleId)]);
         setSupplierCreateSeed("");
         setCreatingItemForLineKey(null);
         setItemCreateSeed("");
         setSaveError(null);
     }
 
-    const addLine = () => setLines((prev) => [...prev, blankLine()]);
+    const addLine = () => setLines((prev) => [...prev, blankLine(defaultDispositionVehicleId)]);
     const removeLine = (key: string) => setLines((prev) => prev.filter((l) => l.key !== key));
     const updateLine = (key: string, patch: Partial<PurchaseLineDraft>) =>
         setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -394,6 +396,14 @@ export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, crea
 
     const invokeCreate = async () => {
         if (isLoading) return;
+
+        // Typed-but-unmatched vs. never-typed both collapse to supplier_id "" —
+        // only supplierQuery still distinguishes them.
+        if (!supplier.supplier_id && supplierQuery.trim()) {
+            setErrors(null);
+            setSaveError("Invalid supplier — select one from the list, or use \"+ Create supplier\".");
+            return;
+        }
 
         // One allocation per job a line names — a job_visit_id is per-job, not
         // per-line, so the first line that picked one for a job wins.

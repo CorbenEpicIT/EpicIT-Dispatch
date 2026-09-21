@@ -3,6 +3,7 @@ import * as vehicleApi from "../api/vehicles";
 import type {
 	VehicleStockItem,
 	VehicleStockConflict,
+	VehicleMaintenanceAlert,
 	VehicleUsageTodayGroup,
 	VehicleRestockRecord,
 	CompleteRestockInput,
@@ -37,6 +38,13 @@ export const useVehicleStockConflictsQuery = () =>
 	useQuery<VehicleStockConflict[]>({
 		queryKey: qk.vehicles.stockConflicts,
 		queryFn: vehicleApi.getStockConflicts,
+		staleTime: 30_000,
+	});
+
+export const useMaintenanceAlertsQuery = () =>
+	useQuery<VehicleMaintenanceAlert[]>({
+		queryKey: qk.vehicles.maintenanceAlerts,
+		queryFn: vehicleApi.getMaintenanceAlerts,
 		staleTime: 30_000,
 	});
 

@@ -32,6 +32,19 @@ import {
 	revokeReadiness,
 	getVehicleMovements,
 	type VehicleAdjustmentType,
+	getMaintenanceRecords,
+	createMaintenanceRecord,
+	updateMaintenanceRecord,
+	deleteMaintenanceRecord,
+	searchMaintenanceSourceLines,
+	getMaintenanceReminders,
+	createMaintenanceReminder,
+	updateMaintenanceReminder,
+	deleteMaintenanceReminder,
+	acknowledgeMaintenanceReminder,
+	unacknowledgeMaintenanceReminder,
+	completeMaintenanceReminder,
+	getMaintenanceAlerts,
 } from "../controllers/vehiclesController.js";
 import {
 	requirePermission,
@@ -81,6 +94,28 @@ router.get(
 				scopeVehicleId = tech?.current_vehicle_id ?? undefined;
 			}
 			const data = await getStockConflicts(orgId, scopeVehicleId);
+			res.json(createSuccessResponse(data, { count: data.length }));
+		} catch (err) {
+			next(err);
+		}
+	},
+);
+
+router.get(
+	"/maintenance-alerts",
+	requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles", "stock_own_vehicle"),
+	async (req, res, next) => {
+		try {
+			const orgId = req.user!.organization_id as string;
+			let scopeVehicleId: string | undefined;
+			if (req.user?.role === "technician") {
+				const tech = await db.technician.findFirst({
+					where: { id: req.user.uid as string, organization_id: orgId },
+					select: { current_vehicle_id: true },
+				});
+				scopeVehicleId = tech?.current_vehicle_id ?? undefined;
+			}
+			const data = await getMaintenanceAlerts(orgId, scopeVehicleId);
 			res.json(createSuccessResponse(data, { count: data.length }));
 		} catch (err) {
 			next(err);
@@ -589,6 +624,198 @@ router.get("/:id/movements", requireAnyPermission("view_inventory", "manage_tech
 			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
 		}
 		res.json(createSuccessResponse({ movements: result.movements, nextCursor: result.nextCursor }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// vehicle maintenance
+
+router.get("/:id/maintenance", requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+
+		const result = await getMaintenanceRecords(orgId, id);
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.records, { count: result.records!.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/maintenance", requireAnyPermission("manage_vehicles", "use_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+
+		const result = await createMaintenanceRecord(orgId, id, req.body, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.record));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.patch("/:id/maintenance/:recordId", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const recordId = req.params.recordId as string;
+
+		const result = await updateMaintenanceRecord(orgId, id, recordId, req.body, getUserContext(req));
+		if (result?.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.record));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.delete("/:id/maintenance/:recordId", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const recordId = req.params.recordId as string;
+
+		const result = await deleteMaintenanceRecord(orgId, recordId, id, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse("Maintenance record deleted"));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/maintenance/purchase-lines", requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const { q } = req.query as { q?: string };
+
+		const result = await searchMaintenanceSourceLines(orgId, id, q);
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.lines, { count: result.lines!.length }));
+	} catch (err) {
+		next(err);
+	}
+});
+
+// maintenance reminders
+
+router.get("/:id/maintenance/reminders", requireAnyPermission("view_vehicles", "manage_vehicles", "use_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+
+		const result = await getMaintenanceReminders(orgId, id);
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.reminders));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/maintenance/reminders", requireAnyPermission("manage_vehicles", "use_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		
+		const result = await createMaintenanceReminder(orgId, id, req.body, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.reminder));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.patch("/:id/maintenance/reminders/:reminderId", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const reminderId = req.params.reminderId as string;
+
+		const result = await updateMaintenanceReminder(orgId, id, reminderId, req.body, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.reminder));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.delete("/:id/maintenance/reminders/:reminderId", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const reminderId = req.params.reminderId as string;
+
+		const result = await deleteMaintenanceReminder(orgId, id, reminderId, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse("Maintenance reminder deleted"));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/maintenance/reminders/:reminderId/acknowledge", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const reminderId = req.params.reminderId as string;
+
+		const result = await acknowledgeMaintenanceReminder(orgId, id, reminderId, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.reminder));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/maintenance/reminders/:reminderId/complete", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const reminderId = req.params.reminderId as string;
+
+		const result = await completeMaintenanceReminder(orgId, id, reminderId, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.reminder));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.post("/:id/maintenance/reminders/:reminderId/unacknowledge", requirePermission("manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+		const reminderId = req.params.reminderId as string;
+
+		const result = await unacknowledgeMaintenanceReminder(orgId, id, reminderId, getUserContext(req));
+		if (result.err) {
+			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
+		}
+		res.json(createSuccessResponse(result.reminder));
 	} catch (err) {
 		next(err);
 	}

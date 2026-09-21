@@ -3,7 +3,10 @@ export type NotificationType =
 	| "visit_changed"
 	| "visit_cancelled"
 	| "note_added"
-	| "visit_reminder";
+	| "visit_reminder"
+	| "field_purchase_preauth"
+	| "field_purchase_reviewed"
+	| "vehicle_maintenance_due";
 
 export interface TechnicianNotification {
 	id: string;

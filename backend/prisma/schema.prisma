@@ -419,6 +419,8 @@ model organization {
   vehicles              vehicle[]
   logs                  log[]
   vehicle_readiness     vehicle_readiness[]
+  vehicle_maintenance_records vehicle_maintenance_record[]
+  vehicle_maintenance_reminders vehicle_maintenance_reminder[]
   stock_movements       stock_movement[]
   serial_units          serial_unit[]
   stock_batches         stock_batch[]
@@ -1571,6 +1573,23 @@ model inventory_tag {
 // VEHICLES + VEHICLE STOCK
 // ============================================================================
 
+enum vehicle_maintenance_category {
+  oil_change
+  tire
+  brake
+  inspection
+  registration
+  repair
+  other
+}
+
+enum interval_unit {
+  days
+  weeks
+  months
+  years
+}
+
 model vehicle {
   id              String        @id @default(uuid())
   organization_id String
@@ -1587,11 +1606,16 @@ model vehicle {
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt
 
+  current_odometer_mi Int?
+  odometer_updated_at DateTime?
+
   stock_items         vehicle_stock_item[]
   current_technicians technician[]         @relation("CurrentVehicle")
   restock_records     vehicle_restock_record[] @relation("VehicleRestockRecords")
   adjustments         vehicle_stock_adjustment[] @relation("VehicleAdjustments")
   readiness_records   vehicle_readiness[]
+  maintenance_records vehicle_maintenance_record[]
+  maintenance_reminders vehicle_maintenance_reminder[]
   movements_from      stock_movement[]     @relation("MovementFromVehicle")
   movements_to        stock_movement[]     @relation("MovementToVehicle")
   serial_units        serial_unit[]
@@ -1739,6 +1763,78 @@ model vehicle_restock_request {
   @@index([stock_item_id])
   @@index([technician_id])
   @@index([status])
+}
+
+model vehicle_maintenance_record {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+  vehicle_id      String
+  vehicle         vehicle      @relation(fields: [vehicle_id], references: [id], onDelete: Cascade)
+
+  category     vehicle_maintenance_category
+  performed_at DateTime
+  odometer_mi  Int?
+
+  interval_miles  Int? // null = no reminder computed for this category
+  interval_months Int?
+
+  cost        Decimal? @db.Decimal(10, 2)
+  vendor_name String?
+  notes       String?  @db.Text
+
+  performed_by_id      String?
+  performed_by         dispatcher? @relation("DispatcherPerformedMaintenance", fields: [performed_by_id], references: [id])
+  performed_by_tech_id String?
+  performed_by_tech    technician? @relation("TechPerformedMaintenance", fields: [performed_by_tech_id], references: [id])
+
+  source_purchase_line_id       String?
+  source_purchase_line          purchase_line?       @relation(fields: [source_purchase_line_id], references: [id], onDelete: SetNull)
+  source_field_purchase_line_id String?
+  source_field_purchase_line    field_purchase_line? @relation(fields: [source_field_purchase_line_id], references: [id], onDelete: SetNull)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([vehicle_id])
+  @@index([organization_id])
+  @@index([category])
+  @@index([performed_at])
+}
+
+model vehicle_maintenance_reminder {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    organization @relation(fields: [organization_id], references: [id])
+  vehicle_id      String
+  vehicle         vehicle      @relation(fields: [vehicle_id], references: [id], onDelete: Cascade)
+
+  category        vehicle_maintenance_category
+  title           String 
+  description     String?
+
+  interval_miles  Int?
+  interval_unit   interval_unit?
+  interval_count  Int?
+
+  repeats         Boolean   @default(true)
+  due_at          DateTime? // one-time only: fixed date target
+  due_odometer_mi Int?      // one-time only: fixed mileage target
+  completed_at    DateTime? // one-time only: set when dismissed/fulfilled
+
+  // dispatcher has seen it and muted its urgency — does not affect the due calc
+  acknowledged_at DateTime?
+
+  // repeating only: creation-time anchor, used until a matching-category record exists
+  baseline_at          DateTime?
+  baseline_odometer_mi Int?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([vehicle_id])
+  @@index([organization_id])
+  @@index([category])
 }
 
 // ============================================================================
@@ -1944,6 +2040,7 @@ model purchase_line {
   updated_at DateTime @updatedAt
 
   movements stock_movement[]
+  maintenance_records vehicle_maintenance_record[]
 
   @@index([purchase_id])
   @@index([inventory_item_id])
@@ -2205,6 +2302,7 @@ model field_purchase_line {
   updated_at DateTime @updatedAt
 
   movements stock_movement[]
+  maintenance_records vehicle_maintenance_record[]
 
   @@index([field_purchase_id])
   @@index([inventory_item_id])
@@ -2532,6 +2630,7 @@ model technician {
   restock_records        vehicle_restock_record[]   @relation("TechnicianRestockRecords")
   stock_adjustments      vehicle_stock_adjustment[] @relation("TechnicianAdjustments")
   readiness_confirmations vehicle_readiness[]       @relation("TechReadinessConfirmations")
+  performed_maintenance_records vehicle_maintenance_record[] @relation("TechPerformedMaintenance")
 
   created_client_notes      client_note[]  @relation("ClientNoteCreator")
   last_edited_client_notes  client_note[]  @relation("ClientNoteEditor")
@@ -2614,6 +2713,7 @@ model dispatcher {
   restock_records vehicle_restock_record[] @relation("DispatcherRestockRecords")
   stock_adjustments vehicle_stock_adjustment[] @relation("DispatcherAdjustments")
   readiness_confirmations  vehicle_readiness[] @relation("DispatcherReadinessConfirmations")
+  performed_maintenance_records vehicle_maintenance_record[] @relation("DispatcherPerformedMaintenance")
   approved_items      inventory_item[] @relation("DispatcherApprovedItems")
   acknowledged_restock_requests vehicle_restock_request[] @relation("DispatcherAcknowledgedRequests")
 
